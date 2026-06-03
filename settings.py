@@ -14,3 +14,4 @@ TILE_SIZE = 64
 
 # Animation
 ANIMATION_SPEED = 6
+SPEED = 200
