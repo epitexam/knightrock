@@ -32,10 +32,16 @@ class Player(pygame.sprite.Sprite):
 
         # --- Jump Settings ---
         self.jump_height = JUMP_HEIGHT
-        self.max_jumps = 2
-        self.jumps_left = self.max_jumps
         self.wall_jump_height = JUMP_HEIGHT * 0.85
         self.wall_jump_boost = 1.8
+
+        # Mid-air jump
+        self.max_midair_jumps = 1
+        self.midair_jumps_left = self.max_midair_jumps
+
+        # Wall jump
+        self.max_wall_jumps = 9999
+        self.wall_jumps_left = self.max_wall_jumps
 
         # --- Input state ---
         self.jump_requested = False
@@ -50,7 +56,6 @@ class Player(pygame.sprite.Sprite):
         self.left_held = keys[pygame.K_LEFT]
         self.right_held = keys[pygame.K_RIGHT]
 
-        # Jump detection (single press)
         if keys[pygame.K_SPACE]:
             if not self.space_held:
                 self.jump_requested = True
@@ -82,29 +87,22 @@ class Player(pygame.sprite.Sprite):
         if not self.jump_requested:
             return
 
-        # Consume the input immediately to avoid ghost jump bug
         self.jump_requested = False
 
-        # If we requested a jump but have no jumps left, cancel
-        if self.jumps_left <= 0:
-            return
-
         if self.on_surface["floor"]:
-            # Standard ground jump
             self.velocity.y = -self.jump_height
 
         elif self.on_surface["left"] or self.on_surface["right"]:
-            # Wall jump
-            direction = 1 if self.on_surface["left"] else -1
-            self.velocity.x = self.speed * self.wall_jump_boost * direction
-            self.velocity.y = -self.wall_jump_height
+            if self.wall_jumps_left > 0:
+                direction = 1 if self.on_surface["left"] else -1
+                self.velocity.x = self.speed * self.wall_jump_boost * direction
+                self.velocity.y = -self.wall_jump_height
+                self.wall_jumps_left -= 1
 
         else:
-            # Double jump in mid-air
-            self.velocity.y = -self.jump_height
-
-        # Reduce jump count
-        self.jumps_left -= 1
+            if self.midair_jumps_left > 0:
+                self.velocity.y = -self.jump_height
+                self.midair_jumps_left -= 1
 
     def apply_gravity(self, delta_time):
         """Applies normal gravity or slowed gravity when wall sliding."""
@@ -140,45 +138,51 @@ class Player(pygame.sprite.Sprite):
         self.on_surface["left"] = left_rect.collidelist(collide_rects) >= 0
 
         if self.on_surface["floor"]:
-            self.jumps_left = self.max_jumps
+            self.midair_jumps_left = self.max_midair_jumps
+            self.wall_jumps_left = self.max_wall_jumps
+        elif self.on_surface["left"] or self.on_surface["right"]:
+            self.midair_jumps_left = self.max_midair_jumps
 
     def move(self, delta_time):
         """Orchestrates movements and handles collisions axis by axis."""
-        # 1. Horizontal movement
         self.apply_horizontal_movement(delta_time)
         self.rect.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
 
-        # 2. Vertical movement
         self.handle_jump()
         self.apply_gravity(delta_time)
         self.rect.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
 
     def handle_collisions(self, axis):
-            """Handles repositioning when colliding with an obstacle."""
-            collided_sprites = pygame.sprite.spritecollide(self, self.collision_sprites, False)
-            
-            for sprite in collided_sprites:
-                if axis == "horizontal":
-                    if self.velocity.x > 0:
-                        self.rect.right = sprite.rect.left
-                    elif self.velocity.x < 0:
-                        self.rect.left = sprite.rect.right
-                    self.velocity.x = 0
+        """Handles repositioning when colliding with an obstacle."""
+        collided_sprites = pygame.sprite.spritecollide(
+            self, self.collision_sprites, False
+        )
 
-                elif axis == "vertical":
-                    if self.velocity.y > 0:
-                        self.rect.bottom = sprite.rect.top
-                    elif self.velocity.y < 0:
-                        self.rect.top = sprite.rect.bottom
-                    self.velocity.y = 0
+        for sprite in collided_sprites:
+            if axis == "horizontal":
+                if self.velocity.x > 0:
+                    self.rect.right = sprite.rect.left
+                elif self.velocity.x < 0:
+                    self.rect.left = sprite.rect.right
+                self.velocity.x = 0
+
+            elif axis == "vertical":
+                if self.velocity.y > 0:
+                    self.rect.bottom = sprite.rect.top
+                elif self.velocity.y < 0:
+                    self.rect.top = sprite.rect.bottom
+                self.velocity.y = 0
 
     def reset_position(self):
         """Resets the player to the center of the screen."""
         self.rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
         self.velocity = Vector2(0, 0)
-        self.jumps_left = self.max_jumps
+
+        self.midair_jumps_left = self.max_midair_jumps
+        self.wall_jumps_left = self.max_wall_jumps
+
         self.jump_requested = False
         self.old_rect = self.rect.copy()
 
