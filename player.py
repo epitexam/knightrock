@@ -156,37 +156,22 @@ class Player(pygame.sprite.Sprite):
         self.handle_collisions("vertical")
 
     def handle_collisions(self, axis):
-        """Handles repositioning when colliding with an obstacle."""
-        for sprite in self.collision_sprites:
-            if not sprite.rect.colliderect(self.rect):
-                continue  # Skip checking if there's no collision at all
-
-            if axis == "horizontal":
-                if (
-                    self.rect.left <= sprite.rect.right
-                    and self.old_rect.left >= sprite.old_rect.right
-                ):
-                    self.rect.left = sprite.rect.right
-                    self.velocity.x = 0
-                elif (
-                    self.rect.right >= sprite.rect.left
-                    and self.old_rect.right <= sprite.old_rect.left
-                ):
-                    self.rect.right = sprite.rect.left
+            """Handles repositioning when colliding with an obstacle."""
+            collided_sprites = pygame.sprite.spritecollide(self, self.collision_sprites, False)
+            
+            for sprite in collided_sprites:
+                if axis == "horizontal":
+                    if self.velocity.x > 0:
+                        self.rect.right = sprite.rect.left
+                    elif self.velocity.x < 0:
+                        self.rect.left = sprite.rect.right
                     self.velocity.x = 0
 
-            elif axis == "vertical":
-                if (
-                    self.rect.top <= sprite.rect.bottom
-                    and self.old_rect.top >= sprite.old_rect.bottom
-                ):
-                    self.rect.top = sprite.rect.bottom
-                    self.velocity.y = 0
-                elif (
-                    self.rect.bottom >= sprite.rect.top
-                    and self.old_rect.bottom <= sprite.old_rect.top
-                ):
-                    self.rect.bottom = sprite.rect.top
+                elif axis == "vertical":
+                    if self.velocity.y > 0:
+                        self.rect.bottom = sprite.rect.top
+                    elif self.velocity.y < 0:
+                        self.rect.top = sprite.rect.bottom
                     self.velocity.y = 0
 
     def reset_position(self):
