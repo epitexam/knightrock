@@ -6,7 +6,7 @@ from settings import JUMP_HEIGHT, SPEED
 
 
 class Player(Entity):
-    def __init__(self, pos, groups, collision_sprites):
+    def __init__(self, pos, groups, collision_sprites, moving_platforms):
         super().__init__(pos, (48, 56), Colors.green, groups, collision_sprites)
 
         self.speed = SPEED
@@ -26,6 +26,8 @@ class Player(Entity):
         self.space_held = False
         self.left_held = False
         self.right_held = False
+
+        self.moving_platforms = moving_platforms
 
     def _is_wall_sliding(self):
         on_left_wall = self.on_surface["left"] and self.left_held
@@ -79,6 +81,8 @@ class Player(Entity):
             self.midair_jumps_left -= 1
 
     def move(self, delta_time):
+        self.apply_moving_platform(self.moving_platforms)
+
         self.apply_horizontal_movement(delta_time)
         self.rect.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
@@ -98,3 +102,4 @@ class Player(Entity):
         super().update(delta_time)
         self.get_input()
         self.move(delta_time)
+        self.apply_moving_platform(self.moving_platforms)

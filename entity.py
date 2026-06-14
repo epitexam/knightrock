@@ -77,18 +77,52 @@ class Entity(pygame.sprite.Sprite):
             if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:
                 continue
 
+            is_moving_platform = hasattr(sprite, "old_rect")
+
             if axis == "horizontal":
                 if self.velocity.x > 0:
                     self.rect.right = sprite.rect.left
                 elif self.velocity.x < 0:
                     self.rect.left = sprite.rect.right
-                self.velocity.x = 0
+                if not is_moving_platform:
+                    self.velocity.x = 0
             elif axis == "vertical":
                 if self.velocity.y > 0:
                     self.rect.bottom = sprite.rect.top
                 elif self.velocity.y < 0:
                     self.rect.top = sprite.rect.bottom
                 self.velocity.y = 0
+
+    def apply_moving_platform(self, moving_platforms):
+        if not self.on_surface["floor"]:
+            return
+
+        if self.velocity.y < -2:
+            return
+
+        for platform in moving_platforms:
+            vertical_dist = self.rect.bottom - platform.rect.top
+            if not (0 <= vertical_dist <= 4):
+                continue
+
+            if (
+                self.rect.right <= platform.rect.left
+                or self.rect.left >= platform.rect.right
+            ):
+                continue
+
+            overlap = min(self.rect.right, platform.rect.right) - max(
+                self.rect.left, platform.rect.left
+            )
+            if overlap < self.rect.width * 0.5:
+                continue
+
+            dx = platform.rect.x - platform.old_rect.x
+            dy = platform.rect.y - platform.old_rect.y
+            self.rect.x += dx
+            self.rect.y += dy
+            self.old_rect = self.rect.copy()
+            break
 
     def reset_position(self):
         if self.rect is None:
