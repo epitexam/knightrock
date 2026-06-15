@@ -2,7 +2,7 @@ import pygame
 
 from colors import Colors
 from player import Player
-from settings import *
+from settings import TILE_SIZE
 from sprites import MovingPlatform, Sprite
 
 

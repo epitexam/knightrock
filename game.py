@@ -5,7 +5,7 @@ import pygame
 from pytmx.util_pygame import load_pygame
 
 from level import Level
-from settings import *
+from settings import CAPTION, WINDOW_HEIGHT, WINDOW_WIDTH
 
 
 class Game:

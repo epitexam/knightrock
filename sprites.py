@@ -3,7 +3,7 @@ from typing import Iterable, Tuple, Union
 import pygame
 
 from colors import Colors
-from settings import *
+from settings import TILE_SIZE
 
 
 class Sprite(pygame.sprite.Sprite):
