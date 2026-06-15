@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Tuple, Union, Optional
 
 import pygame
 
@@ -10,7 +10,7 @@ class Sprite(pygame.sprite.Sprite):
     def __init__(
         self,
         pos: Tuple[int, int],
-        color: Tuple[int, int, int],
+        color: Optional[Tuple[int, int, int]] = None,
         surf: pygame.Surface = pygame.Surface((TILE_SIZE, TILE_SIZE)),
         groups: Union[
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
@@ -26,7 +26,8 @@ class Sprite(pygame.sprite.Sprite):
                     group.add(self)
 
         self.image: pygame.Surface = surf
-        self.image.fill(color)
+        if color is not None:
+            self.image.fill(color)
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
         self.old_rect: pygame.FRect = self.rect.copy()
 
@@ -40,7 +41,7 @@ class MovingPlatform(Sprite):
         speed: float,
         groups=None,
     ):
-        super().__init__(pos, Colors.dark_grey, surf, groups)
+        super().__init__(pos, color=None, surf=surf, groups=groups)
         self.waypoints = [pygame.math.Vector2(x, y) for (x, y) in waypoints]
         self.speed = speed
         self.current_target = 1

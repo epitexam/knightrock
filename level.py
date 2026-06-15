@@ -37,8 +37,19 @@ class Level:
                     points = [(obj.x, obj.y), (end_x, end_y)]
 
                 speed = obj.properties.get("speed", 100)
-                surf = pygame.Surface((obj.width, obj.height))
-                surf.fill(Colors.yellow)
+
+                min_thickness = TILE_SIZE // 2
+                if obj.height < min_thickness:
+                    width = max(obj.width, min_thickness)
+                    height = min_thickness
+                elif obj.width < min_thickness:
+                    width = min_thickness
+                    height = max(obj.height, min_thickness)
+                else:
+                    width, height = obj.width, obj.height
+
+                surf = pygame.Surface((width, height))
+                surf.fill(Colors.gold)
 
                 platform = MovingPlatform(
                     (obj.x, obj.y),
