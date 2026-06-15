@@ -80,16 +80,18 @@ class Entity(pygame.sprite.Sprite):
             is_moving_platform = hasattr(sprite, "old_rect")
 
             if axis == "horizontal":
-                if self.velocity.x > 0:
+                if self.old_rect.right <= sprite.old_rect.left:
                     self.rect.right = sprite.rect.left
-                elif self.velocity.x < 0:
+                elif self.old_rect.left >= sprite.old_rect.right:
                     self.rect.left = sprite.rect.right
+
                 if not is_moving_platform:
                     self.velocity.x = 0
+
             elif axis == "vertical":
-                if self.velocity.y > 0:
+                if self.old_rect.bottom <= sprite.old_rect.top:
                     self.rect.bottom = sprite.rect.top
-                elif self.velocity.y < 0:
+                elif self.old_rect.top >= sprite.old_rect.bottom:
                     self.rect.top = sprite.rect.bottom
                 self.velocity.y = 0
 
@@ -97,31 +99,21 @@ class Entity(pygame.sprite.Sprite):
         if not self.on_surface["floor"]:
             return
 
-        if self.velocity.y < -2:
-            return
-
         for platform in moving_platforms:
-            vertical_dist = self.rect.bottom - platform.rect.top
-            if not (0 <= vertical_dist <= 4):
+            vertical_dist = self.rect.bottom - platform.old_rect.top
+            if not (-2 <= vertical_dist <= 16):
                 continue
 
-            if (
-                self.rect.right <= platform.rect.left
-                or self.rect.left >= platform.rect.right
-            ):
-                continue
-
-            overlap = min(self.rect.right, platform.rect.right) - max(
-                self.rect.left, platform.rect.left
+            overlap = min(self.rect.right, platform.old_rect.right) - max(
+                self.rect.left, platform.old_rect.left
             )
-            if overlap < self.rect.width * 0.5:
+            if overlap <= 0:
                 continue
 
             dx = platform.rect.x - platform.old_rect.x
             dy = platform.rect.y - platform.old_rect.y
             self.rect.x += dx
             self.rect.y += dy
-            self.old_rect = self.rect.copy()
             break
 
     def reset_position(self):
@@ -135,4 +127,3 @@ class Entity(pygame.sprite.Sprite):
         if self.rect is None:
             return
         self.old_rect = self.rect.copy()
-        self.check_contact()

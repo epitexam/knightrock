@@ -82,7 +82,6 @@ class Player(Entity):
 
     def move(self, delta_time):
         self.apply_moving_platform(self.moving_platforms)
-
         self.apply_horizontal_movement(delta_time)
         self.rect.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
@@ -91,6 +90,11 @@ class Player(Entity):
         self.apply_gravity(delta_time)
         self.rect.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
+
+        self.check_contact()
+
+        if self.on_surface["floor"] and not self.left_held and not self.right_held:
+            self.velocity.x = 0
 
     def reset_position(self):
         super().reset_position()
@@ -102,4 +106,3 @@ class Player(Entity):
         super().update(delta_time)
         self.get_input()
         self.move(delta_time)
-        self.apply_moving_platform(self.moving_platforms)

@@ -23,15 +23,6 @@ class Level:
                 groups=(self.all_sprites, self.collision_sprites),
             )
 
-        for obj in tmx_map.get_layer_by_name("Objects"):
-            if obj.name == "player":
-                Player(
-                    (obj.x, obj.y),
-                    self.all_sprites,
-                    self.collision_sprites,
-                    self.moving_platforms,
-                )
-
         for obj in tmx_map.get_layer_by_name("Moving Objects"):
             if obj.name == "helicopter":
                 waypoints_str = obj.properties.get("waypoints", "")
@@ -58,8 +49,16 @@ class Level:
                 )
                 self.moving_platforms.add(platform)
 
+        for obj in tmx_map.get_layer_by_name("Objects"):
+            if obj.name == "player":
+                Player(
+                    (obj.x, obj.y),
+                    self.all_sprites,
+                    self.collision_sprites,
+                    self.moving_platforms,
+                )
+
     def run(self, delta_time):
-        self.moving_platforms.update(delta_time)
         self.all_sprites.update(delta_time)
         self.display_surface.fill(Colors.red)
         self.all_sprites.draw(self.display_surface)
