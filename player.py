@@ -1,58 +1,48 @@
 import pygame
-from pygame.math import Vector2
 
 from colors import Colors
-from settings import *
+from entity import Entity
+from settings import JUMP_HEIGHT, SPEED
 
 
-class Player(pygame.sprite.Sprite):
-    def __init__(self, pos, groups, collision_sprites) -> None:
-        super().__init__(groups)
+class Player(Entity):
+    def __init__(self, pos, groups, collision_sprites, moving_platforms):
+        super().__init__(pos, (48, 56), Colors.green, groups, collision_sprites)
 
-        # --- Visual rendering ---
-        self.image = pygame.Surface((48, 56))
-        self.image.fill(Colors.green)
-        self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
-        self.old_rect = self.rect.copy()
-
-        # --- Environment ---
-        self.collision_sprites = collision_sprites
-        self.on_surface = {"floor": False, "left": False, "right": False}
-
-        # --- Movement & Control ---
-        self.velocity = Vector2(0, 0)
         self.speed = SPEED
         self.floor_control = 15.0
         self.air_control = 4.0
 
-        # --- Gravity & Wall Slide ---
-        self.normal_gravity = GRAVITY
-        self.slide_gravity = GRAVITY * 0.15
-        self.max_slide_speed = 80
-
-        # --- Jump Settings ---
         self.jump_height = JUMP_HEIGHT
         self.wall_jump_height = JUMP_HEIGHT * 0.85
         self.wall_jump_boost = 1.8
 
-        # Mid-air jump
         self.max_midair_jumps = 1
         self.midair_jumps_left = self.max_midair_jumps
-
-        # Wall jump
         self.max_wall_jumps = 9999
         self.wall_jumps_left = self.max_wall_jumps
 
-        # --- Input state ---
         self.jump_requested = False
         self.space_held = False
         self.left_held = False
         self.right_held = False
 
-    def get_input(self):
-        """Retrieves the state of keys to define movement intentions."""
-        keys = pygame.key.get_pressed()
+        self.moving_platforms = moving_platforms
 
+    def _is_wall_sliding(self):
+        on_left_wall = self.on_surface["left"] and self.left_held
+        on_right_wall = self.on_surface["right"] and self.right_held
+        return not self.on_surface["floor"] and (on_left_wall or on_right_wall)
+
+    def _on_floor_contact(self):
+        self.midair_jumps_left = self.max_midair_jumps
+        self.wall_jumps_left = self.max_wall_jumps
+
+    def _on_wall_contact(self):
+        self.midair_jumps_left = self.max_midair_jumps
+
+    def get_input(self):
+        keys = pygame.key.get_pressed()
         self.left_held = keys[pygame.K_LEFT]
         self.right_held = keys[pygame.K_RIGHT]
 
@@ -67,84 +57,31 @@ class Player(pygame.sprite.Sprite):
             self.reset_position()
 
     def apply_horizontal_movement(self, delta_time):
-        """Calculates and applies horizontal velocity (lerp)."""
-        target_speed = 0
-        if self.right_held:
-            target_speed += self.speed
-        if self.left_held:
-            target_speed -= self.speed
-
-        control_factor = (
-            self.floor_control if self.on_surface["floor"] else self.air_control
-        )
-
+        target_speed = (self.right_held - self.left_held) * self.speed
+        control = self.floor_control if self.on_surface["floor"] else self.air_control
         self.velocity.x = pygame.math.lerp(
-            self.velocity.x, target_speed, min(1.0, control_factor * delta_time)
+            self.velocity.x, target_speed, min(1.0, control * delta_time)
         )
 
     def handle_jump(self):
-        """Handles jump logic, double jump and wall jump."""
         if not self.jump_requested:
             return
-
         self.jump_requested = False
 
         if self.on_surface["floor"]:
             self.velocity.y = -self.jump_height
-
         elif self.on_surface["left"] or self.on_surface["right"]:
             if self.wall_jumps_left > 0:
                 direction = 1 if self.on_surface["left"] else -1
                 self.velocity.x = self.speed * self.wall_jump_boost * direction
                 self.velocity.y = -self.wall_jump_height
                 self.wall_jumps_left -= 1
-
-        else:
-            if self.midair_jumps_left > 0:
-                self.velocity.y = -self.jump_height
-                self.midair_jumps_left -= 1
-
-    def apply_gravity(self, delta_time):
-        """Applies normal gravity or slowed gravity when wall sliding."""
-        on_left_wall = self.on_surface["left"] and self.left_held
-        on_right_wall = self.on_surface["right"] and self.right_held
-        is_wall_sliding = not self.on_surface["floor"] and (
-            on_left_wall or on_right_wall
-        )
-
-        if is_wall_sliding:
-            self.velocity.y += self.slide_gravity * delta_time
-            self.velocity.y = min(self.velocity.y, self.max_slide_speed)
-        else:
-            self.velocity.y += self.normal_gravity * delta_time
-
-    def check_contact(self):
-        """Checks whether the player is touching the ground or walls."""
-        height_quarter = self.rect.height / 4
-        half_height = self.rect.height / 2
-
-        floor_rect = pygame.FRect(self.rect.bottomleft, (self.rect.width, 2))
-        right_rect = pygame.FRect(
-            self.rect.topright + Vector2(0, height_quarter), (2, half_height)
-        )
-        left_rect = pygame.FRect(
-            self.rect.topleft + Vector2(-2, height_quarter), (2, half_height)
-        )
-
-        collide_rects = [sprite.rect for sprite in self.collision_sprites]
-
-        self.on_surface["floor"] = floor_rect.collidelist(collide_rects) >= 0
-        self.on_surface["right"] = right_rect.collidelist(collide_rects) >= 0
-        self.on_surface["left"] = left_rect.collidelist(collide_rects) >= 0
-
-        if self.on_surface["floor"]:
-            self.midair_jumps_left = self.max_midair_jumps
-            self.wall_jumps_left = self.max_wall_jumps
-        elif self.on_surface["left"] or self.on_surface["right"]:
-            self.midair_jumps_left = self.max_midair_jumps
+        elif self.midair_jumps_left > 0:
+            self.velocity.y = -self.jump_height
+            self.midair_jumps_left -= 1
 
     def move(self, delta_time):
-        """Orchestrates movements and handles collisions axis by axis."""
+        self.apply_moving_platform(self.moving_platforms)
         self.apply_horizontal_movement(delta_time)
         self.rect.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
@@ -154,41 +91,18 @@ class Player(pygame.sprite.Sprite):
         self.rect.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
 
-    def handle_collisions(self, axis):
-        """Handles repositioning when colliding with an obstacle."""
-        collided_sprites = pygame.sprite.spritecollide(
-            self, self.collision_sprites, False
-        )
+        self.check_contact()
 
-        for sprite in collided_sprites:
-            if axis == "horizontal":
-                if self.velocity.x > 0:
-                    self.rect.right = sprite.rect.left
-                elif self.velocity.x < 0:
-                    self.rect.left = sprite.rect.right
-                self.velocity.x = 0
-
-            elif axis == "vertical":
-                if self.velocity.y > 0:
-                    self.rect.bottom = sprite.rect.top
-                elif self.velocity.y < 0:
-                    self.rect.top = sprite.rect.bottom
-                self.velocity.y = 0
+        if self.on_surface["floor"] and not self.left_held and not self.right_held:
+            self.velocity.x = 0
 
     def reset_position(self):
-        """Resets the player to the center of the screen."""
-        self.rect.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-        self.velocity = Vector2(0, 0)
-
+        super().reset_position()
+        self.jump_requested = False
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
-        self.jump_requested = False
-        self.old_rect = self.rect.copy()
-
     def update(self, delta_time):
-        """Main update loop for the player."""
-        self.old_rect = self.rect.copy()
-        self.check_contact()
+        super().update(delta_time)
         self.get_input()
         self.move(delta_time)
