@@ -7,7 +7,7 @@ from settings import JUMP_HEIGHT, SPEED
 
 class Player(Entity):
     def __init__(self, pos, groups, collision_sprites, moving_platforms):
-        super().__init__(pos, (48, 56), Colors.green, groups, collision_sprites)
+        super().__init__(pos, (48, 56), Colors.green, groups, collision_sprites, hitbox_inflate=(-8, 0))
 
         self.speed = SPEED
         self.floor_control = 15.0
@@ -59,9 +59,7 @@ class Player(Entity):
     def apply_horizontal_movement(self, delta_time):
         target_speed = (self.right_held - self.left_held) * self.speed
         control = self.floor_control if self.on_surface["floor"] else self.air_control
-        self.velocity.x = pygame.math.lerp(
-            self.velocity.x, target_speed, min(1.0, control * delta_time)
-        )
+        self.velocity.x = pygame.math.lerp(self.velocity.x, target_speed, min(1.0, control * delta_time))
 
     def handle_jump(self):
         if not self.jump_requested:
@@ -83,12 +81,12 @@ class Player(Entity):
     def move(self, delta_time):
         self.apply_moving_platform(self.moving_platforms)
         self.apply_horizontal_movement(delta_time)
-        self.rect.x += self.velocity.x * delta_time
+        self.hitbox.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
 
         self.handle_jump()
         self.apply_gravity(delta_time)
-        self.rect.y += self.velocity.y * delta_time
+        self.hitbox.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
 
         self.check_contact()
