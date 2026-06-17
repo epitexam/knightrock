@@ -1,4 +1,7 @@
+from typing import Any, Sequence
+
 import pygame
+from pygame.sprite import Group
 
 from colors import Colors
 from entity import Entity
@@ -11,23 +14,51 @@ class Player(Entity):
     inspired by modern tight-control platformers like Celeste.
     """
 
-    def __init__(self, pos, groups, collision_sprites, moving_platforms):
+    speed: float
+    floor_control: float
+    air_control: float
+    jump_height: float
+    wall_jump_height: float
+    wall_jump_boost: float
+    wall_slide_speed: float
+    max_midair_jumps: int
+    midair_jumps_left: int
+    max_wall_jumps: int
+    wall_jumps_left: int
+    space_held: bool
+    left_held: bool
+    right_held: bool
+    coyote_timer: float
+    coyote_duration: float
+    jump_buffer_timer: float
+    jump_buffer_duration: float
+    wall_jump_timer: float
+    wall_jump_duration: float
+    moving_platforms: list[Any]
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | pygame.math.Vector2,
+        groups: Group | Sequence[Group],
+        collision_sprites: Group,
+        moving_platforms: list[Any],
+    ) -> None:
         super().__init__(
             pos,
-            (48, 56),
+            (48.0, 56.0),
             Colors.green,
             groups,
             collision_sprites,
-            hitbox_inflate=(-8, 0),
+            hitbox_inflate=(-8.0, 0.0),
         )
 
-        self.speed = SPEED
+        self.speed = float(SPEED)
         self.floor_control = 25.0
         self.air_control = 12.0
 
         # Jump physics
-        self.jump_height = JUMP_HEIGHT
-        self.wall_jump_height = JUMP_HEIGHT * 0.90
+        self.jump_height = float(JUMP_HEIGHT)
+        self.wall_jump_height = float(JUMP_HEIGHT) * 0.90
         self.wall_jump_boost = 1.6
         self.wall_slide_speed = 100.0
 
@@ -53,30 +84,30 @@ class Player(Entity):
 
         self.moving_platforms = moving_platforms
 
-    def _is_wall_sliding(self):
+    def _is_wall_sliding(self) -> bool:
         """Checks if the player is actively pressing against a wall while falling."""
-        on_left_wall = self.on_surface["left"] and self.left_held
-        on_right_wall = self.on_surface["right"] and self.right_held
+        on_left_wall: bool = self.on_surface["left"] and self.left_held
+        on_right_wall: bool = self.on_surface["right"] and self.right_held
         return (
             not self.on_surface["floor"]
             and (on_left_wall or on_right_wall)
             and self.velocity.y > 0
         )
 
-    def _on_floor_contact(self):
+    def _on_floor_contact(self) -> None:
         """Resets jump resources upon touching the ground."""
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
-    def _on_wall_contact(self):
+    def _on_wall_contact(self) -> None:
         """Resets mid-air resources upon touching a wall."""
         self.midair_jumps_left = self.max_midair_jumps
 
-    def get_input(self):
+    def get_input(self) -> None:
         """Gathers and processes keyboard inputs."""
         keys = pygame.key.get_pressed()
-        self.left_held = keys[pygame.K_LEFT]
-        self.right_held = keys[pygame.K_RIGHT]
+        self.left_held = bool(keys[pygame.K_LEFT])
+        self.right_held = bool(keys[pygame.K_RIGHT])
 
         if keys[pygame.K_SPACE]:
             if not self.space_held:
@@ -88,7 +119,7 @@ class Player(Entity):
         if keys[pygame.K_r]:
             self.reset_position()
 
-    def update_timers(self, delta_time):
+    def update_timers(self, delta_time: float) -> None:
         """Decrements all game-feel buffers and timers."""
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
@@ -100,43 +131,45 @@ class Player(Entity):
         elif self.coyote_timer > 0:
             self.coyote_timer -= delta_time
 
-    def apply_horizontal_movement(self, delta_time):
+    def apply_horizontal_movement(self, delta_time: float) -> None:
         """Calculates and interpolates horizontal velocity based on context and inputs."""
         if self.wall_jump_timer > 0:
             return
 
-        target_speed = (self.right_held - self.left_held) * self.speed
-        control = self.floor_control if self.on_surface["floor"] else self.air_control
+        target_speed: float = (int(self.right_held) - int(self.left_held)) * self.speed
+        control: float = (
+            self.floor_control if self.on_surface["floor"] else self.air_control
+        )
         self.velocity.x = pygame.math.lerp(
             self.velocity.x, target_speed, min(1.0, control * delta_time)
         )
 
-    def handle_jump(self):
+    def handle_jump(self) -> None:
         """Evaluates jump requests against buffered inputs and physics context."""
         if self.jump_buffer_timer <= 0:
             return
 
         if self.coyote_timer > 0:
             self.velocity.y = -self.jump_height
-            self.jump_buffer_timer = 0
-            self.coyote_timer = 0
+            self.jump_buffer_timer = 0.0
+            self.coyote_timer = 0.0
 
         elif (
             self.on_surface["left"] or self.on_surface["right"]
         ) and self.wall_jumps_left > 0:
-            direction = 1 if self.on_surface["left"] else -1
+            direction: float = 1.0 if self.on_surface["left"] else -1.0
             self.velocity.x = self.speed * self.wall_jump_boost * direction
             self.velocity.y = -self.wall_jump_height
             self.wall_jumps_left -= 1
-            self.jump_buffer_timer = 0
+            self.jump_buffer_timer = 0.0
             self.wall_jump_timer = self.wall_jump_duration
 
         elif self.midair_jumps_left > 0:
             self.velocity.y = -self.jump_height
             self.midair_jumps_left -= 1
-            self.jump_buffer_timer = 0
+            self.jump_buffer_timer = 0.0
 
-    def move(self, delta_time):
+    def move(self, delta_time: float) -> None:
         """Performs full physics resolution sequence including collisions and movement application."""
         self.apply_moving_platform(self.moving_platforms)
 
@@ -156,7 +189,7 @@ class Player(Entity):
 
         self.check_contact()
 
-    def reset_position(self):
+    def reset_position(self) -> None:
         """Resets player position and fully replenishes state variables."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
@@ -165,7 +198,7 @@ class Player(Entity):
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
-    def update(self, delta_time):
+    def update(self, delta_time: float) -> None:
         """Core update cycle invoked each frame."""
         super().update(delta_time)
         self.get_input()
