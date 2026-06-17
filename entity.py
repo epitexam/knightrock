@@ -1,68 +1,92 @@
+from typing import Any, Dict, List, Sequence
+
 import pygame
 from pygame.math import Vector2
+from pygame.sprite import Group, Sprite
 
 from settings import GRAVITY, WINDOW_HEIGHT, WINDOW_WIDTH
 
 
-def _hitbox_collide(a, b):
+def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
     """
     Collision callback helper that prioritizes entity hitboxes over standard rects.
     """
     box_a = getattr(a, "hitbox", a.rect)
     box_b = getattr(b, "hitbox", b.rect)
-    return box_a.colliderect(box_b)
+    if isinstance(box_a, pygame.FRect | pygame.Rect) and isinstance(
+        box_b, pygame.FRect | pygame.Rect
+    ):
+        return box_a.colliderect(box_b)
+    return False
 
 
-class Entity(pygame.sprite.Sprite):
+class Entity(Sprite):
     """
     Base class representing any dynamic or physical game object.
     Handles movement, sweeping AABB collisions, and environmental contact state.
     """
 
+    hitbox: pygame.FRect
+    old_rect: pygame.FRect
+    attack_box: pygame.FRect | None
+    collision_sprites: Group
+    on_surface: Dict[str, bool]
+    velocity: Vector2
+    normal_gravity: float
+    slide_gravity: float
+    max_slide_speed: float
+
     def __init__(
-        self, pos, size, color, groups, collision_sprites, hitbox_inflate=(0, 0)
-    ):
-        super().__init__(groups)
+        self,
+        pos: Sequence[float] | Vector2,
+        size: Sequence[float],
+        color: Sequence[int],
+        groups: Group | Sequence[Group],
+        collision_sprites: Group,
+        hitbox_inflate: Sequence[float] = (0.0, 0.0),
+    ) -> None:
+        Sprite.__init__(self, groups)
         self.image = pygame.Surface(size)
         self.image.fill(color)
 
-        self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
-        self.hitbox: pygame.FRect = self.rect.inflate(*hitbox_inflate)
+        self.rect = self.image.get_frect(topleft=pos)
+        self.hitbox = self.rect.inflate(*hitbox_inflate)
         self.hitbox.midbottom = self.rect.midbottom
-        self.old_rect: pygame.FRect = self.hitbox.copy()
-        self.attack_box: pygame.FRect | None = None
+        self.old_rect = self.hitbox.copy()
+        self.attack_box = None
 
         self.collision_sprites = collision_sprites
-        self.on_surface = {"floor": False, "left": False, "right": False}
+        self.on_surface = {
+            "floor": False,
+            "left": False,
+            "right": False,
+        }
         self.velocity = Vector2(0, 0)
 
         self.normal_gravity = GRAVITY
         self.slide_gravity = GRAVITY * 0.15
-        self.max_slide_speed = 80
+        self.max_slide_speed = 80.0
 
     @property
     def hurtbox(self) -> pygame.FRect:
         """Returns the active vulnerable area of the entity."""
         return self.hitbox
 
-    def sync_rects(self):
-        """Synchronizes the visual rendering rect position with the underlying physics hitbox."""
-        self.rect.midbottom = self.hitbox.midbottom
+    def sync_rects(self) -> None:
+        """Rescales or shifts cosmetic boundaries to match updated physical positions."""
+        if self.rect is not None:
+            self.rect.midbottom = self.hitbox.midbottom
 
     def _is_wall_sliding(self) -> bool:
-        """Virtual method designed to be overridden by subclasses to detect wall sliding."""
         return False
 
-    def _on_floor_contact(self):
-        """Virtual callback executed instantly when the entity lands on a floor."""
+    def _on_floor_contact(self) -> None:
         pass
 
-    def _on_wall_contact(self):
-        """Virtual callback executed instantly when the entity touches a vertical wall."""
+    def _on_wall_contact(self) -> None:
         pass
 
-    def apply_gravity(self, delta_time):
-        """Applies downward acceleration, handling reduced terminal velocity if wall sliding."""
+    def apply_gravity(self, delta_time: float) -> None:
         if self._is_wall_sliding():
             self.velocity.y += self.slide_gravity * delta_time
             if self.velocity.y > self.max_slide_speed:
@@ -70,20 +94,21 @@ class Entity(pygame.sprite.Sprite):
         else:
             self.velocity.y += self.normal_gravity * delta_time
 
-    def check_contact(self):
-        """Generates low-profile sensory sub-rectangles to accurately probe solid surface contacts."""
-        height_quarter = self.hitbox.height / 4
-        half_height = self.hitbox.height / 2
+    def check_contact(self) -> None:
+        height_quarter: float = self.hitbox.height / 4
+        half_height: float = self.hitbox.height / 2
 
-        floor_rect = pygame.FRect(self.hitbox.bottomleft, (self.hitbox.width, 2))
-        right_rect = pygame.FRect(
+        floor_rect: pygame.FRect = pygame.FRect(
+            self.hitbox.bottomleft, (self.hitbox.width, 2)
+        )
+        right_rect: pygame.FRect = pygame.FRect(
             self.hitbox.topright + Vector2(0, height_quarter), (2, half_height)
         )
-        left_rect = pygame.FRect(
+        left_rect: pygame.FRect = pygame.FRect(
             self.hitbox.topleft + Vector2(-2, height_quarter), (2, half_height)
         )
 
-        collide_rects = [
+        collide_rects: List[pygame.Rect | pygame.FRect] = [
             s.rect
             for s in self.collision_sprites
             if s is not None and hasattr(s, "rect") and s.rect is not None
@@ -98,8 +123,7 @@ class Entity(pygame.sprite.Sprite):
         elif self.on_surface["left"] or self.on_surface["right"]:
             self._on_wall_contact()
 
-    def handle_collisions(self, axis):
-        """Resolves collisions along a specified vector axis and halts velocity upon impact."""
+    def handle_collisions(self, axis: str) -> None:
         for sprite in pygame.sprite.spritecollide(
             self, self.collision_sprites, False, _hitbox_collide
         ):
@@ -123,37 +147,42 @@ class Entity(pygame.sprite.Sprite):
 
         self.sync_rects()
 
-    def apply_moving_platform(self, moving_platforms):
+    def apply_moving_platform(self, moving_platforms: List[Any]) -> None:
         """Calculates and applies relative coordinate offsets when riding moving platforms."""
         if not self.on_surface["floor"]:
             return
 
         for platform in moving_platforms:
-            vertical_dist = self.hitbox.bottom - platform.old_rect.top
+            if not hasattr(platform, "old_rect") or platform.old_rect is None:
+                continue
+            if not hasattr(platform, "rect") or platform.rect is None:
+                continue
+
+            vertical_dist: float = self.hitbox.bottom - platform.old_rect.top
             if not (-2 <= vertical_dist <= 16):
                 continue
 
-            overlap = min(self.hitbox.right, platform.old_rect.right) - max(
+            overlap: float = min(self.hitbox.right, platform.old_rect.right) - max(
                 self.hitbox.left, platform.old_rect.left
             )
             if overlap <= 0:
                 continue
 
-            platform_dx = platform.rect.x - platform.old_rect.x
-            platform_dy = platform.rect.y - platform.old_rect.y
+            platform_dx: float = platform.rect.x - platform.old_rect.x
+            platform_dy: float = platform.rect.y - platform.old_rect.y
 
             self.hitbox.x += platform_dx
             self.hitbox.y += platform_dy
             self.sync_rects()
             break
 
-    def reset_position(self):
+    def reset_position(self) -> None:
         """Teleports the entity back to the display center and zeroes out momentum vectors."""
         self.hitbox.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
         self.sync_rects()
         self.velocity = Vector2(0, 0)
         self.old_rect = self.hitbox.copy()
 
-    def update(self, delta_time):
+    def update(self, delta_time: float) -> None:
         """Updates internal frame-history boundaries required for accurate collision resolution."""
         self.old_rect = self.hitbox.copy()
