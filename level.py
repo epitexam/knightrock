@@ -2,7 +2,7 @@ import pygame
 
 from colors import Colors
 from player import Player
-from settings import TILE_SIZE
+from settings import World
 from sprites import MovingPlatform, Sprite
 
 
@@ -17,7 +17,7 @@ class Level:
     def setup(self, tmx_map):
         for x, y, surf in tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite(
-                pos=(x * TILE_SIZE, y * TILE_SIZE),
+                pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
                 color=Colors.blue,
                 surf=surf,
                 groups=(self.all_sprites, self.collision_sprites),
@@ -38,7 +38,7 @@ class Level:
 
                 speed = obj.properties.get("speed", 100)
 
-                min_thickness = TILE_SIZE // 2
+                min_thickness = World.TILE_SIZE // 2
                 if obj.height < min_thickness:
                     width = max(obj.width, min_thickness)
                     height = min_thickness

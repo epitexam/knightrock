@@ -1,9 +1,8 @@
-from typing import Iterable, Tuple, Union, Optional
+from typing import Iterable, Optional, Tuple, Union
 
 import pygame
 
-from colors import Colors
-from settings import TILE_SIZE
+from settings import World
 
 
 class Sprite(pygame.sprite.Sprite):
@@ -11,7 +10,7 @@ class Sprite(pygame.sprite.Sprite):
         self,
         pos: Tuple[int, int],
         color: Optional[Tuple[int, int, int]] = None,
-        surf: pygame.Surface = pygame.Surface((TILE_SIZE, TILE_SIZE)),
+        surf: pygame.Surface = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE)),
         groups: Union[
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
         ] = None,

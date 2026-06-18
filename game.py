@@ -5,14 +5,14 @@ import pygame
 from pytmx.util_pygame import load_pygame
 
 from level import Level
-from settings import CAPTION, WINDOW_HEIGHT, WINDOW_WIDTH
+from settings import Display
 
 
 class Game:
     def __init__(self) -> None:
         pygame.init()
-        self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption(CAPTION)
+        self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
+        pygame.display.set_caption(Display.TITLE)
         self.tmx_maps = {0: load_pygame(join(".", "data", "levels", "omni.tmx"))}
         self.current_stage = Level(self.display_surface, self.tmx_maps[0])
         self.clock = pygame.time.Clock()

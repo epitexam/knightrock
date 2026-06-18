@@ -6,7 +6,7 @@ from pygame.sprite import Group
 from colors import Colors
 from combat import AttackData, CombatComponent
 from entity import Entity
-from settings import JUMP_HEIGHT, SPEED
+from settings import Physics
 
 
 class Player(Entity):
@@ -56,12 +56,12 @@ class Player(Entity):
             hitbox_inflate=(-8.0, 0.0),
         )
 
-        self.speed = float(SPEED)
+        self.speed = float(Physics.PLAYER_SPEED)
         self.floor_control = 25.0
         self.air_control = 12.0
 
-        self.jump_height = float(JUMP_HEIGHT)
-        self.wall_jump_height = float(JUMP_HEIGHT) * 0.90
+        self.jump_height = float(Physics.JUMP_FORCE)
+        self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90
         self.wall_jump_boost = 1.6
         self.wall_slide_speed = 100.0
 

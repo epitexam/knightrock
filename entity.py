@@ -4,7 +4,7 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from settings import GRAVITY, WINDOW_HEIGHT, WINDOW_WIDTH
+from settings import Display, Physics
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
@@ -61,8 +61,8 @@ class Entity(Sprite):
         }
         self.velocity = Vector2(0, 0)
 
-        self.normal_gravity = GRAVITY
-        self.slide_gravity = GRAVITY * 0.15
+        self.normal_gravity = Physics.GRAVITY
+        self.slide_gravity = Physics.GRAVITY * 0.15
         self.max_slide_speed = 80.0
 
     @property
@@ -176,7 +176,7 @@ class Entity(Sprite):
 
     def reset_position(self) -> None:
         """Teleports the entity back to the display center and zeroes out momentum vectors."""
-        self.hitbox.center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        self.hitbox.center = (Display.WIDTH // 2, Display.HEIGHT // 2)
         self.sync_rects()
         self.velocity = Vector2(0, 0)
         self.old_rect = self.hitbox.copy()
