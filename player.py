@@ -4,6 +4,7 @@ import pygame
 from pygame.sprite import Group
 
 from colors import Colors
+from combat import AttackData, CombatComponent
 from entity import Entity
 from settings import JUMP_HEIGHT, SPEED
 
@@ -36,6 +37,9 @@ class Player(Entity):
     wall_jump_duration: float
     moving_platforms: Iterable[Any]
 
+    facing_right: bool
+    combat: CombatComponent
+
     def __init__(
         self,
         pos: tuple[float, float] | pygame.math.Vector2,
@@ -56,19 +60,16 @@ class Player(Entity):
         self.floor_control = 25.0
         self.air_control = 12.0
 
-        # Jump physics
         self.jump_height = float(JUMP_HEIGHT)
         self.wall_jump_height = float(JUMP_HEIGHT) * 0.90
         self.wall_jump_boost = 1.6
         self.wall_slide_speed = 100.0
 
-        # Jump counters
         self.max_midair_jumps = 1
         self.midair_jumps_left = self.max_midair_jumps
         self.max_wall_jumps = 9999
         self.wall_jumps_left = self.max_wall_jumps
 
-        # Input states
         self.space_held = False
         self.left_held = False
         self.right_held = False
@@ -83,6 +84,54 @@ class Player(Entity):
         self.wall_jump_duration = 0.15
 
         self.moving_platforms = moving_platforms
+
+        self.facing_right = True
+
+        self.combat = CombatComponent(self)
+
+        self.combat.add_attack(
+            "light_punch",
+            AttackData(
+                size=(45.0, 20.0),
+                offset=(30.0, -10.0),
+                damage=10,
+                duration=0.15,
+                cooldown=0.3,
+            ),
+        )
+
+        self.combat.add_attack(
+            "heavy_smash",
+            AttackData(
+                size=(60.0, 40.0),
+                offset=(40.0, -5.0),
+                damage=25,
+                duration=0.4,
+                cooldown=1.2,
+            ),
+        )
+
+        self.combat.add_attack(
+            "uppercut",
+            AttackData(
+                size=(30.0, 60.0),
+                offset=(20.0, -40.0),
+                damage=15,
+                duration=0.25,
+                cooldown=0.8,
+            ),
+        )
+
+        self.combat.add_attack(
+            "dash_strike",
+            AttackData(
+                size=(80.0, 15.0),
+                offset=(50.0, -15.0),
+                damage=12,
+                duration=0.1,
+                cooldown=0.6,
+            ),
+        )
 
     def _is_wall_sliding(self) -> bool:
         """Checks if the player is actively pressing against a wall while falling."""
@@ -109,12 +158,26 @@ class Player(Entity):
         self.left_held = bool(keys[pygame.K_LEFT])
         self.right_held = bool(keys[pygame.K_RIGHT])
 
+        if self.right_held and not self.left_held:
+            self.facing_right = True
+        elif self.left_held and not self.right_held:
+            self.facing_right = False
+
         if keys[pygame.K_SPACE]:
             if not self.space_held:
                 self.jump_buffer_timer = self.jump_buffer_duration
                 self.space_held = True
         else:
             self.space_held = False
+
+        if keys[pygame.K_x]:
+            self.combat.start_attack("light_punch", self.facing_right)
+        elif keys[pygame.K_c]:
+            self.combat.start_attack("heavy_smash", self.facing_right)
+        elif keys[pygame.K_v]:
+            self.combat.start_attack("uppercut", self.facing_right)
+        elif keys[pygame.K_b]:
+            self.combat.start_attack("dash_strike", self.facing_right)
 
         if keys[pygame.K_r]:
             self.reset_position()
@@ -137,6 +200,10 @@ class Player(Entity):
             return
 
         target_speed: float = (int(self.right_held) - int(self.left_held)) * self.speed
+
+        if self.combat.is_attacking and self.on_surface["floor"]:
+            target_speed = 0.0
+
         control: float = (
             self.floor_control if self.on_surface["floor"] else self.air_control
         )
@@ -186,7 +253,6 @@ class Player(Entity):
 
         self.hitbox.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
-
         self.check_contact()
 
     def reset_position(self) -> None:
@@ -198,9 +264,14 @@ class Player(Entity):
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
+        if self.combat.current_attack:
+            self.combat.current_attack = None
+            self.combat.attack_box = None
+
     def update(self, delta_time: float) -> None:
         """Core update cycle invoked each frame."""
         super().update(delta_time)
         self.get_input()
         self.update_timers(delta_time)
         self.move(delta_time)
+        self.combat.update(delta_time, self.facing_right)

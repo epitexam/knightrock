@@ -28,7 +28,6 @@ class Entity(Sprite):
 
     hitbox: pygame.FRect
     old_rect: pygame.FRect
-    attack_box: pygame.FRect | None
     collision_sprites: Group
     on_surface: Dict[str, bool]
     velocity: Vector2
@@ -53,7 +52,6 @@ class Entity(Sprite):
         self.hitbox = self.rect.inflate(*hitbox_inflate)
         self.hitbox.midbottom = self.rect.midbottom
         self.old_rect = self.hitbox.copy()
-        self.attack_box = None
 
         self.collision_sprites = collision_sprites
         self.on_surface = {

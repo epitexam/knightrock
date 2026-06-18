@@ -73,3 +73,17 @@ class Level:
         self.all_sprites.update(delta_time)
         self.display_surface.fill(Colors.red)
         self.all_sprites.draw(self.display_surface)
+
+        for sprite in self.all_sprites:
+            if hasattr(sprite, "hitbox") and sprite.hitbox:
+                pygame.draw.rect(
+                    self.display_surface, (0, 0, 255), sprite.hitbox, width=2
+                )
+
+            if hasattr(sprite, "combat") and sprite.combat.attack_box:
+                pygame.draw.rect(
+                    self.display_surface,
+                    (255, 165, 0),
+                    sprite.combat.attack_box,
+                    width=3,
+                )
