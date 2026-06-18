@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 
 import pygame
 from pygame.math import Vector2
@@ -13,8 +13,8 @@ def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
     """
     box_a = getattr(a, "hitbox", a.rect)
     box_b = getattr(b, "hitbox", b.rect)
-    if isinstance(box_a, pygame.FRect | pygame.Rect) and isinstance(
-        box_b, pygame.FRect | pygame.Rect
+    if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
+        box_b, (pygame.FRect, pygame.Rect)
     ):
         return box_a.colliderect(box_b)
     return False
@@ -46,8 +46,8 @@ class Entity(Sprite):
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
     ) -> None:
         Sprite.__init__(self, groups)
-        self.image = pygame.Surface(size)
-        self.image.fill(color)
+        self.image = pygame.Surface(size)  # type: ignore
+        self.image.fill(color)  # type: ignore
 
         self.rect = self.image.get_frect(topleft=pos)
         self.hitbox = self.rect.inflate(*hitbox_inflate)
@@ -147,7 +147,7 @@ class Entity(Sprite):
 
         self.sync_rects()
 
-    def apply_moving_platform(self, moving_platforms: List[Any]) -> None:
+    def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
         """Calculates and applies relative coordinate offsets when riding moving platforms."""
         if not self.on_surface["floor"]:
             return

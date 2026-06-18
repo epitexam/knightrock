@@ -1,4 +1,4 @@
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence
 
 import pygame
 from pygame.sprite import Group
@@ -34,14 +34,14 @@ class Player(Entity):
     jump_buffer_duration: float
     wall_jump_timer: float
     wall_jump_duration: float
-    moving_platforms: list[Any]
+    moving_platforms: Iterable[Any]
 
     def __init__(
         self,
         pos: tuple[float, float] | pygame.math.Vector2,
         groups: Group | Sequence[Group],
         collision_sprites: Group,
-        moving_platforms: list[Any],
+        moving_platforms: Iterable[Any],
     ) -> None:
         super().__init__(
             pos,
