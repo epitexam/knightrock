@@ -6,11 +6,14 @@ if TYPE_CHECKING:
     from player import Player
 
 
-class PlayerIdleState(State["Player"]):
-    def enter(self) -> None:
-        self.entity.velocity.x = 0
+class PlayerGroundedState(State["Player"]):
+    """
+    Classe parente pour les états au sol (Idle, Run).
+    Centralise les transitions communes : block, attack, jump, fall.
+    """
 
-    def update(self, delta_time: float) -> str | None:
+    def check_global_transitions(self) -> str | None:
+        """Vérifie les transitions prioritaires communes à tous les états au sol."""
         if (
             self.entity.block_held
             and self.entity.block_cooldown_timer <= 0
@@ -25,8 +28,21 @@ class PlayerIdleState(State["Player"]):
         if self.entity.velocity.y < 0:
             return "jump"
 
+        # Fall
         if not self.entity.on_surface["floor"]:
             return "fall"
+
+        return None
+
+
+class PlayerIdleState(PlayerGroundedState):
+    def enter(self) -> None:
+        self.entity.velocity.x = 0
+
+    def update(self, delta_time: float) -> str | None:
+        transition = self.check_global_transitions()
+        if transition:
+            return transition
 
         if self.entity.left_held or self.entity.right_held:
             return "run"
@@ -34,30 +50,16 @@ class PlayerIdleState(State["Player"]):
         return None
 
 
-class PlayerRunState(State["Player"]):
+class PlayerRunState(PlayerGroundedState):
     def update(self, delta_time: float) -> str | None:
-        if (
-            self.entity.block_held
-            and self.entity.block_cooldown_timer <= 0
-            and self.entity.block_stamina > 0.3
-        ):
-            return "block"
-
-        if self.entity.combat.is_attacking:
-            return "attack"
-
-        self.entity.handle_jump()
-        if self.entity.velocity.y < 0:
-            return "jump"
+        transition = self.check_global_transitions()
+        if transition:
+            return transition
 
         self.entity.apply_horizontal_movement(delta_time)
 
-        if not self.entity.on_surface["floor"]:
-            return "fall"
-
         is_moving = abs(self.entity.velocity.x) > 0.1
         input_active = self.entity.left_held or self.entity.right_held
-
         if not is_moving and not input_active:
             return "idle"
 
@@ -171,7 +173,6 @@ class PlayerBlockState(State["Player"]):
             self.entity.block_cooldown_timer = 0.5
 
     def update(self, delta_time: float) -> str | None:
-
         if self.entity.on_surface["floor"]:
             self.entity.block_stamina -= delta_time
         else:
