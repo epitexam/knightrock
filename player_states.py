@@ -11,6 +11,13 @@ class PlayerIdleState(State["Player"]):
         self.entity.velocity.x = 0
 
     def update(self, delta_time: float) -> str | None:
+        if (
+            self.entity.block_held
+            and self.entity.block_cooldown_timer <= 0
+            and self.entity.block_stamina > 0.3
+        ):
+            return "block"
+
         if self.entity.combat.is_attacking:
             return "attack"
 
@@ -29,6 +36,13 @@ class PlayerIdleState(State["Player"]):
 
 class PlayerRunState(State["Player"]):
     def update(self, delta_time: float) -> str | None:
+        if (
+            self.entity.block_held
+            and self.entity.block_cooldown_timer <= 0
+            and self.entity.block_stamina > 0.3
+        ):
+            return "block"
+
         if self.entity.combat.is_attacking:
             return "attack"
 
@@ -41,9 +55,10 @@ class PlayerRunState(State["Player"]):
         if not self.entity.on_surface["floor"]:
             return "fall"
 
-        if self.entity.velocity.x == 0 and not (
-            self.entity.left_held or self.entity.right_held
-        ):
+        is_moving = abs(self.entity.velocity.x) > 0.1
+        input_active = self.entity.left_held or self.entity.right_held
+
+        if not is_moving and not input_active:
             return "idle"
 
         return None
@@ -53,6 +68,13 @@ class PlayerJumpState(State["Player"]):
     """State when the player gains altitude."""
 
     def update(self, delta_time: float) -> str | None:
+        if (
+            self.entity.block_held
+            and self.entity.block_cooldown_timer <= 0
+            and self.entity.block_stamina > 0.3
+        ):
+            return "block"
+
         if self.entity.combat.is_attacking:
             return "attack"
 
@@ -72,6 +94,13 @@ class PlayerFallState(State["Player"]):
     """State when the player loses altitude."""
 
     def update(self, delta_time: float) -> str | None:
+        if (
+            self.entity.block_held
+            and self.entity.block_cooldown_timer <= 0
+            and self.entity.block_stamina > 0.3
+        ):
+            return "block"
+
         if self.entity.combat.is_attacking:
             return "attack"
 
@@ -121,6 +150,34 @@ class PlayerAttackState(State["Player"]):
 
     def update(self, delta_time: float) -> str | None:
         if not self.entity.combat.is_attacking:
+            if self.entity.on_surface["floor"]:
+                return "idle"
+            return "fall"
+
+        return None
+
+
+class PlayerBlockState(State["Player"]):
+    """State when the player is blocking (holding LSHIFT)."""
+
+    def enter(self) -> None:
+        if self.entity.on_surface["floor"]:
+            self.entity.velocity.x = 0
+
+    def exit(self) -> None:
+        if self.entity.block_stamina <= 0:
+            self.entity.block_cooldown_timer = 2.0
+        else:
+            self.entity.block_cooldown_timer = 0.5
+
+    def update(self, delta_time: float) -> str | None:
+
+        if self.entity.on_surface["floor"]:
+            self.entity.block_stamina -= delta_time
+        else:
+            self.entity.block_stamina -= delta_time * 2.0
+
+        if not self.entity.block_held or self.entity.block_stamina <= 0:
             if self.entity.on_surface["floor"]:
                 return "idle"
             return "fall"

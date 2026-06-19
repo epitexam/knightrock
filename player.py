@@ -8,6 +8,7 @@ from combat import AttackData, CombatComponent
 from entity import Entity
 from player_states import (
     PlayerAttackState,
+    PlayerBlockState,
     PlayerFallState,
     PlayerIdleState,
     PlayerJumpState,
@@ -38,6 +39,7 @@ class Player(Entity):
     space_held: bool
     left_held: bool
     right_held: bool
+    block_held: bool
     coyote_timer: float
     coyote_duration: float
     jump_buffer_timer: float
@@ -45,6 +47,10 @@ class Player(Entity):
     wall_jump_timer: float
     wall_jump_duration: float
     moving_platforms: Iterable[Any]
+
+    max_block_stamina: float
+    block_stamina: float
+    block_cooldown_timer: float
 
     facing_right: bool
     combat: CombatComponent
@@ -82,6 +88,7 @@ class Player(Entity):
         self.space_held = False
         self.left_held = False
         self.right_held = False
+        self.block_held = False
 
         self.coyote_timer = 0.0
         self.coyote_duration = 0.12
@@ -93,6 +100,10 @@ class Player(Entity):
         self.wall_jump_duration = 0.15
 
         self.moving_platforms = moving_platforms
+
+        self.max_block_stamina = 0.75
+        self.block_stamina = self.max_block_stamina
+        self.block_cooldown_timer = 0.0
 
         self.facing_right = True
 
@@ -149,6 +160,7 @@ class Player(Entity):
         self.state_machine.add_state("fall", PlayerFallState(self))
         self.state_machine.add_state("wall_slide", PlayerWallSlideState(self))
         self.state_machine.add_state("attack", PlayerAttackState(self))
+        self.state_machine.add_state("block", PlayerBlockState(self))
         self.state_machine.set_initial_state("idle")
 
     def _is_wall_sliding(self) -> bool:
@@ -175,6 +187,7 @@ class Player(Entity):
         keys = pygame.key.get_pressed()
         self.left_held = bool(keys[pygame.K_LEFT])
         self.right_held = bool(keys[pygame.K_RIGHT])
+        self.block_held = bool(keys[pygame.K_LSHIFT])
 
         if self.right_held and not self.left_held:
             self.facing_right = True
@@ -211,6 +224,17 @@ class Player(Entity):
             self.coyote_timer = self.coyote_duration
         elif self.coyote_timer > 0:
             self.coyote_timer -= delta_time
+
+        if self.block_cooldown_timer > 0:
+            self.block_cooldown_timer -= delta_time
+
+        if (
+            self.state_machine is not None
+            and self.state_machine.current_state_name != "block"
+        ):
+            if self.block_stamina < self.max_block_stamina:
+                self.block_stamina += delta_time * 0.5
+                self.block_stamina = min(self.block_stamina, self.max_block_stamina)
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Calculates and interpolates horizontal velocity based on context and inputs."""
@@ -284,6 +308,8 @@ class Player(Entity):
         self.coyote_timer = 0.0
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
+        self.block_stamina = self.max_block_stamina
+        self.block_cooldown_timer = 0.0
 
         if self.combat.current_attack:
             self.combat.current_attack = None
