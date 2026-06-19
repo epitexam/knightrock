@@ -1,10 +1,11 @@
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
 from settings import Display, Physics
+from state_machine import StateMachine
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
@@ -64,6 +65,8 @@ class Entity(Sprite):
         self.normal_gravity = Physics.GRAVITY
         self.slide_gravity = Physics.GRAVITY * 0.15
         self.max_slide_speed = 80.0
+
+        self.state_machine: Optional[StateMachine] = None
 
     @property
     def hurtbox(self) -> pygame.FRect:

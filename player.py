@@ -6,7 +6,16 @@ from pygame.sprite import Group
 from colors import Colors
 from combat import AttackData, CombatComponent
 from entity import Entity
+from player_states import (
+    PlayerAttackState,
+    PlayerFallState,
+    PlayerIdleState,
+    PlayerJumpState,
+    PlayerRunState,
+    PlayerWallSlideState,
+)
 from settings import Physics
+from state_machine import StateMachine
 
 
 class Player(Entity):
@@ -133,6 +142,15 @@ class Player(Entity):
             ),
         )
 
+        self.state_machine = StateMachine(self)
+        self.state_machine.add_state("idle", PlayerIdleState(self))
+        self.state_machine.add_state("run", PlayerRunState(self))
+        self.state_machine.add_state("jump", PlayerJumpState(self))
+        self.state_machine.add_state("fall", PlayerFallState(self))
+        self.state_machine.add_state("wall_slide", PlayerWallSlideState(self))
+        self.state_machine.add_state("attack", PlayerAttackState(self))
+        self.state_machine.set_initial_state("idle")
+
     def _is_wall_sliding(self) -> bool:
         """Checks if the player is actively pressing against a wall while falling."""
         on_left_wall: bool = self.on_surface["left"] and self.left_held
@@ -212,7 +230,11 @@ class Player(Entity):
         )
 
     def handle_jump(self) -> None:
-        """Evaluates jump requests against buffered inputs and physics context."""
+        """
+        Evaluates jump requests against buffered inputs and physics context.
+        This method is now called from the state machine (e.g., PlayerJumpState),
+        but kept for potential use or reference.
+        """
         if self.jump_buffer_timer <= 0:
             return
 
@@ -237,22 +259,21 @@ class Player(Entity):
             self.jump_buffer_timer = 0.0
 
     def move(self, delta_time: float) -> None:
-        """Performs full physics resolution sequence including collisions and movement application."""
+        """
+        Performs full physics resolution sequence including collisions.
+        Horizontal movement is driven by the state machine.
+        Gravity and sliding are now handled by Entity.apply_gravity.
+        """
         self.apply_moving_platform(self.moving_platforms)
 
-        self.apply_horizontal_movement(delta_time)
         self.hitbox.x += self.velocity.x * delta_time
         self.handle_collisions("horizontal")
 
-        self.handle_jump()
-
-        if self._is_wall_sliding():
-            self.velocity.y = self.wall_slide_speed
-        else:
-            self.apply_gravity(delta_time)
+        self.apply_gravity(delta_time)
 
         self.hitbox.y += self.velocity.y * delta_time
         self.handle_collisions("vertical")
+
         self.check_contact()
 
     def reset_position(self) -> None:
@@ -273,5 +294,9 @@ class Player(Entity):
         super().update(delta_time)
         self.get_input()
         self.update_timers(delta_time)
-        self.move(delta_time)
         self.combat.update(delta_time, self.facing_right)
+
+        assert self.state_machine is not None
+        self.state_machine.update(delta_time)
+
+        self.move(delta_time)
