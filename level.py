@@ -81,7 +81,6 @@ class Level:
                 pygame.draw.rect(
                     self.display_surface, (0, 0, 255), sprite.hitbox, width=2
                 )
-
             if hasattr(sprite, "combat") and sprite.combat.attack_box:
                 pygame.draw.rect(
                     self.display_surface,
@@ -90,27 +89,65 @@ class Level:
                     width=3,
                 )
 
+        label_font = pygame.font.SysFont("Arial", 16)
+        for sprite in self.all_sprites:
+            if hasattr(sprite, "state_machine") and sprite.state_machine is not None:
+                state = sprite.state_machine.current_state_name or "None"
+                entity_name = sprite.__class__.__name__
+                label = f"{entity_name}: {state}"
+                label_surf = label_font.render(label, True, (255, 255, 200))
+
+                if hasattr(sprite, "hitbox") and sprite.hitbox:
+                    center_x = sprite.hitbox.centerx
+                    top_y = sprite.hitbox.top
+                else:
+                    center_x = sprite.rect.centerx
+                    top_y = sprite.rect.top
+
+                bg_rect = label_surf.get_rect()
+                bg_rect.midbottom = (center_x, top_y - 8)
+
+                bg_rect.left = max(
+                    0,
+                    min(bg_rect.left, self.display_surface.get_width() - bg_rect.width),
+                )
+                bg_rect.top = max(0, bg_rect.top)
+
+                pygame.draw.rect(
+                    self.display_surface, (0, 0, 0, 160), bg_rect, border_radius=4
+                )
+                self.display_surface.blit(label_surf, bg_rect)
+
         if self.player is not None and self.player.state_machine is not None:
-            state_name = self.player.state_machine.current_state_name or "None"
-            debug_text = f"Player state: {state_name}"
-            text_surf = self.debug_font.render(debug_text, True, (255, 255, 255))
-            self.display_surface.blit(text_surf, (10, 10))
+            panel_x, panel_y = 10, 10
+            line_height = 28
+            padding = 8
+            font = self.debug_font
 
-            vel_text = (
-                f"Vel: ({self.player.velocity.x:.1f}, {self.player.velocity.y:.1f})"
-            )
-            vel_surf = self.debug_font.render(vel_text, True, (200, 200, 200))
-            self.display_surface.blit(vel_surf, (10, 40))
-
-            surf_text = (
-                f"Floor: {self.player.on_surface['floor']}  "
-                f"Left: {self.player.on_surface['left']}  "
-                f"Right: {self.player.on_surface['right']}"
-            )
-            surf_surf = self.debug_font.render(surf_text, True, (200, 200, 200))
-            self.display_surface.blit(surf_surf, (10, 70))
-
+            lines = [
+                f"Player: {self.player.state_machine.current_state_name or 'None'}",
+                f"Vel: ({self.player.velocity.x:.1f}, {self.player.velocity.y:.1f})",
+                f"Floor: {self.player.on_surface['floor']}  Left: {self.player.on_surface['left']}  Right: {self.player.on_surface['right']}",
+            ]
             if self.player.combat.is_attacking:
-                atk_text = f"Attacking: {self.player.combat.current_attack}"
-                atk_surf = self.debug_font.render(atk_text, True, (255, 200, 100))
-                self.display_surface.blit(atk_surf, (10, 100))
+                lines.append(f"Attack: {self.player.combat.current_attack}")
+
+            max_width = 0
+            rendered = []
+            for line in lines:
+                surf = font.render(line, True, (255, 255, 255))
+                rendered.append(surf)
+                max_width = max(max_width, surf.get_width())
+
+            panel_width = max_width + padding * 2
+            panel_height = len(lines) * line_height + padding * 2
+
+            panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+            s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 180))
+            self.display_surface.blit(s, (panel_x, panel_y))
+
+            for i, surf in enumerate(rendered):
+                self.display_surface.blit(
+                    surf, (panel_x + padding, panel_y + padding + i * line_height)
+                )
