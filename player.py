@@ -10,6 +10,7 @@ from player_states import (
     PlayerAttackState,
     PlayerBlockState,
     PlayerFallState,
+    PlayerHurtState,
     PlayerIdleState,
     PlayerJumpState,
     PlayerRunState,
@@ -161,6 +162,7 @@ class Player(Entity):
         self.state_machine.add_state("wall_slide", PlayerWallSlideState(self))
         self.state_machine.add_state("attack", PlayerAttackState(self))
         self.state_machine.add_state("block", PlayerBlockState(self))
+        self.state_machine.add_state("hurt", PlayerHurtState(self))
         self.state_machine.set_initial_state("idle")
 
     def _is_wall_sliding(self) -> bool:

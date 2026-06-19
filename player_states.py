@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
 
+import pygame
+
 from state_machine import State
 
 if TYPE_CHECKING:
@@ -8,12 +10,15 @@ if TYPE_CHECKING:
 
 class PlayerGroundedState(State["Player"]):
     """
-    Classe parente pour les états au sol (Idle, Run).
-    Centralise les transitions communes : block, attack, jump, fall.
+    Parent class for grounded states (Idle, Run).
+    Centralizes common transitions: hurt, block, attack, jump, fall.
     """
 
     def check_global_transitions(self) -> str | None:
-        """Vérifie les transitions prioritaires communes à tous les états au sol."""
+        """Checks priority transitions common to all grounded states."""
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if (
             self.entity.block_held
             and self.entity.block_cooldown_timer <= 0
@@ -28,8 +33,29 @@ class PlayerGroundedState(State["Player"]):
         if self.entity.velocity.y < 0:
             return "jump"
 
-        # Fall
         if not self.entity.on_surface["floor"]:
+            return "fall"
+
+        return None
+
+
+class PlayerHurtState(State["Player"]):
+    """Hit state (forced immobilization and knockback)."""
+
+    def update(self, delta_time: float) -> str | None:
+
+        control: float = (
+            self.entity.floor_control
+            if self.entity.on_surface["floor"]
+            else self.entity.air_control
+        )
+        self.entity.velocity.x = pygame.math.lerp(
+            self.entity.velocity.x, 0.0, min(1.0, control * delta_time)
+        )
+
+        if not self.entity.combat.is_hurt:
+            if self.entity.on_surface["floor"]:
+                return "idle"
             return "fall"
 
         return None
@@ -70,6 +96,9 @@ class PlayerJumpState(State["Player"]):
     """State when the player gains altitude."""
 
     def update(self, delta_time: float) -> str | None:
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if (
             self.entity.block_held
             and self.entity.block_cooldown_timer <= 0
@@ -96,6 +125,9 @@ class PlayerFallState(State["Player"]):
     """State when the player loses altitude."""
 
     def update(self, delta_time: float) -> str | None:
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if (
             self.entity.block_held
             and self.entity.block_cooldown_timer <= 0
@@ -127,6 +159,9 @@ class PlayerWallSlideState(State["Player"]):
     """State when the player slides against a wall."""
 
     def update(self, delta_time: float) -> str | None:
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if self.entity.combat.is_attacking:
             return "attack"
 
@@ -151,6 +186,9 @@ class PlayerAttackState(State["Player"]):
             self.entity.velocity.x *= 0.1
 
     def update(self, delta_time: float) -> str | None:
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if not self.entity.combat.is_attacking:
             if self.entity.on_surface["floor"]:
                 return "idle"
@@ -166,13 +204,26 @@ class PlayerBlockState(State["Player"]):
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = 0
 
+        self.entity.hitbox.height -= 16.0
+
+        if self.entity.rect is not None:
+            self.entity.hitbox.bottom = self.entity.rect.bottom
+
     def exit(self) -> None:
         if self.entity.block_stamina <= 0:
             self.entity.block_cooldown_timer = 2.0
         else:
             self.entity.block_cooldown_timer = 0.5
 
+        self.entity.hitbox.height += 16.0
+
+        if self.entity.rect is not None:
+            self.entity.hitbox.bottom = self.entity.rect.bottom
+
     def update(self, delta_time: float) -> str | None:
+        if self.entity.combat.is_hurt:
+            return "hurt"
+
         if self.entity.on_surface["floor"]:
             self.entity.block_stamina -= delta_time
         else:

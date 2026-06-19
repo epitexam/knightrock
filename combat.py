@@ -18,7 +18,7 @@ class AttackData:
 class CombatComponent:
     """
     A modular component that attaches to any combat-capable entity.
-    Manages attack hitboxes, animation states, and cooldowns.
+    Manages attack hitboxes, animation states, cooldowns, and hurt states.
     """
 
     def __init__(self, entity) -> None:
@@ -30,6 +30,9 @@ class CombatComponent:
         self.attack_timer: float = 0.0
         self.attack_box: pygame.FRect | None = None
 
+        self.is_hurt: bool = False
+        self.hurt_timer: float = 0.0
+
     def add_attack(self, name: str, data: AttackData) -> None:
         """Ajoute une attaque au répertoire de l'entité."""
         self.attacks[name] = data
@@ -39,12 +42,31 @@ class CombatComponent:
     def is_attacking(self) -> bool:
         return self.current_attack is not None
 
+    def take_damage(
+        self, amount: int, knockback: tuple[float, float] | None = None
+    ) -> None:
+        """
+        Enregistre les dégâts, force l'état blessé (stun),
+        applique le recul et interrompt les attaques.
+        """
+        self.is_hurt = True
+        self.hurt_timer = 0.4  
+
+
+        self.current_attack = None
+        self.attack_timer = 0.0
+        self.attack_box = None
+
+        if knockback:
+            self.entity.velocity.x = knockback[0]
+            self.entity.velocity.y = knockback[1]
+
     def start_attack(self, name: str, facing_right: bool) -> bool:
         """
         Attempts to launch an attack.
         Returns True if the attack succeeded, False if it is on cooldown or if the entity is already attacking.
         """
-        if self.is_attacking:
+        if self.is_attacking or self.is_hurt:
             return False
         if name not in self.attacks:
             return False
@@ -62,6 +84,11 @@ class CombatComponent:
 
     def update(self, delta_time: float, facing_right: bool) -> None:
         """Updates timers, cooldowns, and the position of the offensive hitbox."""
+        if self.hurt_timer > 0:
+            self.hurt_timer -= delta_time
+            if self.hurt_timer <= 0:
+                self.is_hurt = False
+
         for atk_name in self.cooldowns:
             if self.cooldowns[atk_name] > 0:
                 self.cooldowns[atk_name] -= delta_time
