@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Dict, Set
 
 import pygame
 
@@ -21,7 +21,7 @@ class CombatComponent:
     Manages attack hitboxes, animation states, cooldowns, and hurt states.
     """
 
-    def __init__(self, entity) -> None:
+    def __init__(self, entity: Any) -> None:
         self.entity = entity
         self.attacks: Dict[str, AttackData] = {}
         self.cooldowns: Dict[str, float] = {}
@@ -29,6 +29,7 @@ class CombatComponent:
         self.current_attack: str | None = None
         self.attack_timer: float = 0.0
         self.attack_box: pygame.FRect | None = None
+        self.targets_hit: Set[Any] = set()
 
         self.is_hurt: bool = False
         self.hurt_timer: float = 0.0
@@ -47,10 +48,6 @@ class CombatComponent:
         source_center_x: float | None = None,
         knockback_power: tuple[float, float] = (250.0, -150.0),
     ) -> None:
-        """
-        Records damage, calculates directional recoil, and manages blocking
-        """
-
         is_blocking = (
             hasattr(self.entity, "state_machine")
             and self.entity.state_machine.current_state_name == "block"
@@ -58,13 +55,11 @@ class CombatComponent:
 
         if is_blocking:
             self.entity.block_stamina -= amount * 0.05
-
             if source_center_x is not None:
                 direction = (
                     1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
                 )
                 self.entity.velocity.x = (knockback_power[0] * 0.3) * direction
-
             print("Hit blocked!")
             return
 
@@ -74,6 +69,7 @@ class CombatComponent:
         self.current_attack = None
         self.attack_timer = 0.0
         self.attack_box = None
+        self.targets_hit.clear()
 
         if source_center_x is not None:
             direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
@@ -96,6 +92,8 @@ class CombatComponent:
         self.attack_timer = attack.duration
         self.cooldowns[name] = attack.cooldown
 
+        self.targets_hit.clear()
+
         self.attack_box = pygame.FRect((0, 0), attack.size)
         self._update_hitbox_position(facing_right)
         return True
@@ -115,6 +113,7 @@ class CombatComponent:
             if self.attack_timer <= 0:
                 self.current_attack = None
                 self.attack_box = None
+                self.targets_hit.clear()
             else:
                 self._update_hitbox_position(facing_right)
 

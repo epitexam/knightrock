@@ -86,6 +86,9 @@ class Level:
                 if attacker == target:
                     continue
 
+                if target in attacker.combat.targets_hit:
+                    continue
+
                 if target.combat.is_hurt:
                     continue
 
@@ -98,6 +101,8 @@ class Level:
                         amount=attack_data.damage,
                         source_center_x=attacker.hitbox.centerx,
                     )
+
+                    attacker.combat.targets_hit.add(target)
 
     def run(self, delta_time):
         self.all_sprites.update(delta_time)
