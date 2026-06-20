@@ -1,6 +1,7 @@
 import pygame
 
 from colors import Colors
+from enemy import Goblin
 from player import Player
 from settings import World
 from sprites import MovingPlatform, Sprite
@@ -13,6 +14,10 @@ class Level:
         self.collision_sprites = pygame.sprite.Group()
         self.moving_platforms = pygame.sprite.Group()
         self.player = None
+
+        self.hit_stop_timer = 0.0
+        self.spawn_cooldown = 0.0
+
         self.setup(tmx_map)
 
         self.debug_font = pygame.font.SysFont("Arial", 24)
@@ -73,9 +78,29 @@ class Level:
                     self.moving_platforms,
                 )
 
+    def _handle_debug_input(self, delta_time: float):
+        """Listens for keyboard inputs dedicated to level debugging."""
+        if self.spawn_cooldown > 0:
+            self.spawn_cooldown -= delta_time
+
+        keys = pygame.key.get_pressed()
+
+        if keys[pygame.K_g] and self.spawn_cooldown <= 0 and self.player is not None:
+            offset_x = 100 if self.player.facing_right else -100
+            spawn_x = self.player.hitbox.centerx + offset_x
+            spawn_y = self.player.hitbox.top
+
+            Goblin(
+                pos=(spawn_x, spawn_y),
+                groups=(self.all_sprites,),
+                collision_sprites=self.collision_sprites,
+                player_reference=self.player,
+            )
+
+            self.spawn_cooldown = 0.5
+
     def _handle_combat(self):
         """Detects collisions between attack_box (weapons) and hitbox (body)."""
-
         combatants = [s for s in self.all_sprites if hasattr(s, "combat")]
 
         for attacker in combatants:
@@ -104,10 +129,17 @@ class Level:
 
                     attacker.combat.targets_hit.add(target)
 
-    def run(self, delta_time):
-        self.all_sprites.update(delta_time)
+                    self.hit_stop_timer = 0.05 + (attack_data.damage * 0.002)
 
-        self._handle_combat()
+    def run(self, delta_time):
+
+        self._handle_debug_input(delta_time)
+
+        if self.hit_stop_timer > 0:
+            self.hit_stop_timer -= delta_time
+        else:
+            self.all_sprites.update(delta_time)
+            self._handle_combat()
 
         self.display_surface.fill(Colors.red)
         self.all_sprites.draw(self.display_surface)
@@ -177,7 +209,6 @@ class Level:
             panel_width = max_width + padding * 2
             panel_height = len(lines) * line_height + padding * 2
 
-            # panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
             s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
             s.fill((0, 0, 0, 180))
             self.display_surface.blit(s, (panel_x, panel_y))
