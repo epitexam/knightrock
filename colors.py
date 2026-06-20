@@ -40,7 +40,7 @@ class Colors:
     # Blues
     dark_blue: ClassVar[Color] = (40, 45, 90)
     blue: ClassVar[Color] = (70, 110, 235)
-    light_blue: ClassVar[Color] = (90, 130, 200)
+    light_blue: ClassVar[Color] = (200, 220, 255)
     sky_blue: ClassVar[Color] = (135, 185, 255)
 
     # Purples

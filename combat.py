@@ -1,5 +1,6 @@
+import weakref
 from dataclasses import dataclass
-from typing import Any, Dict, Set
+from typing import Any, Dict
 
 import pygame
 
@@ -29,7 +30,7 @@ class CombatComponent:
         self.current_attack: str | None = None
         self.attack_timer: float = 0.0
         self.attack_box: pygame.FRect | None = None
-        self.targets_hit: Set[Any] = set()
+        self.targets_hit: weakref.WeakSet[Any] = weakref.WeakSet()
 
         self.is_hurt: bool = False
         self.hurt_timer: float = 0.0
@@ -77,7 +78,11 @@ class CombatComponent:
             self.entity.velocity.x = knockback_power[0] * direction
             self.entity.velocity.y = knockback_power[1]
         else:
-            self.entity.velocity.x = knockback_power[0]
+            if hasattr(self.entity, "facing_right"):
+                direction = 1.0 if self.entity.facing_right else -1.0
+                self.entity.velocity.x = knockback_power[0] * direction
+            else:
+                self.entity.velocity.x = knockback_power[0]
             self.entity.velocity.y = knockback_power[1]
 
     def start_attack(self, name: str, facing_right: bool) -> bool:

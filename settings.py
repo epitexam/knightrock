@@ -35,3 +35,6 @@ class Physics:
     PLAYER_SPEED = 450
     GRAVITY = 3500
     JUMP_FORCE = 950
+
+
+DEBUG = True

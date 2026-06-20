@@ -19,7 +19,7 @@ class Game:
 
     def run(self):
         while True:
-            raw_delta = self.clock.tick() / 1000.0
+            raw_delta = self.clock.tick(Display.FPS) / 1000.0
             delta_time = min(raw_delta, 0.1)
 
             for event in pygame.event.get():
