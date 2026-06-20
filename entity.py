@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import pygame
@@ -46,6 +47,9 @@ class Entity(Sprite):
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
     ) -> None:
         Sprite.__init__(self, groups)
+        self.id: str = uuid.uuid4().hex
+        self.pushable: bool = True
+
         self.image = pygame.Surface(size)  # type: ignore
         self.image.fill(color)  # type: ignore
 

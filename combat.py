@@ -33,6 +33,7 @@ class CombatComponent:
 
         self.is_hurt: bool = False
         self.hurt_timer: float = 0.0
+        self.contact_damage: int = 0
 
     def add_attack(self, name: str, data: AttackData) -> None:
         self.attacks[name] = data

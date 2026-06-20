@@ -20,6 +20,9 @@ class EnemyHurtState(State):
 
 
 class EnemyPatrolState(State):
+    def enter(self) -> None:
+        self.entity.velocity.x = 0.0
+
     def update(self, delta_time: float) -> str | None:
         if self.entity.combat.is_hurt:
             return "hurt"
@@ -55,6 +58,8 @@ class Goblin(Entity):
         self.state_machine.set_initial_state("patrol")
 
     def update(self, delta_time: float) -> None:
+        super().update(delta_time)
+
         self.combat.update(delta_time, facing_right=True)
 
         assert self.state_machine is not None

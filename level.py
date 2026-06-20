@@ -131,14 +131,93 @@ class Level:
 
                     self.hit_stop_timer = 0.05 + (attack_data.damage * 0.002)
 
-    def run(self, delta_time):
+    def _handle_entity_interactions(self, delta_time: float):
+        """
+        Handles rigid collisions (body-to-body), pushing, and contact damage, with anti-wall safety.
+        """
+        entities = [
+            s
+            for s in self.all_sprites
+            if hasattr(s, "hitbox") and hasattr(s, "combat") and hasattr(s, "pushable")
+        ]
 
+        for i, ent_a in enumerate(entities):
+            for ent_b in entities[i + 1 :]:
+                if type(ent_a) is type(ent_b):
+                    continue
+
+                if ent_a.hitbox.colliderect(ent_b.hitbox):
+                    if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
+                        ent_a.combat.take_damage(
+                            ent_b.combat.contact_damage,
+                            source_center_x=ent_b.hitbox.centerx,
+                        )
+                    elif not ent_b.combat.is_hurt and ent_a.combat.contact_damage > 0:
+                        ent_b.combat.take_damage(
+                            ent_a.combat.contact_damage,
+                            source_center_x=ent_a.hitbox.centerx,
+                        )
+
+                    overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
+                        ent_a.hitbox.left, ent_b.hitbox.left
+                    )
+                    overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
+                        ent_a.hitbox.top, ent_b.hitbox.top
+                    )
+
+                    if overlap_x > 0 and overlap_y > 0:
+                        if overlap_x < overlap_y:
+                            dir_a = (
+                                -1.0
+                                if ent_a.hitbox.centerx < ent_b.hitbox.centerx
+                                else 1.0
+                            )
+                            dir_b = -dir_a
+
+                            if ent_a.pushable and ent_b.pushable:
+                                ent_a.hitbox.x += (overlap_x / 2.0) * dir_a
+                                ent_b.hitbox.x += (overlap_x / 2.0) * dir_b
+                            elif ent_a.pushable and not ent_b.pushable:
+                                ent_a.hitbox.x += overlap_x * dir_a
+                            elif ent_b.pushable and not ent_a.pushable:
+                                ent_b.hitbox.x += overlap_x * dir_b
+
+                            ent_a.sync_rects()
+                            ent_b.sync_rects()
+                            ent_a.handle_collisions("horizontal")
+                            ent_b.handle_collisions("horizontal")
+
+                        else:
+                            dir_a = (
+                                -1.0
+                                if ent_a.hitbox.centery < ent_b.hitbox.centery
+                                else 1.0
+                            )
+                            dir_b = -dir_a
+
+                            if ent_a.pushable and ent_b.pushable:
+                                ent_a.hitbox.y += (overlap_y / 2.0) * dir_a
+                                ent_b.hitbox.y += (overlap_y / 2.0) * dir_b
+                            elif ent_a.pushable and not ent_b.pushable:
+                                ent_a.hitbox.y += overlap_y * dir_a
+                            elif ent_b.pushable and not ent_a.pushable:
+                                ent_b.hitbox.y += overlap_y * dir_b
+
+                            ent_a.sync_rects()
+                            ent_b.sync_rects()
+
+                            ent_a.handle_collisions("vertical")
+                            ent_b.handle_collisions("vertical")
+
+    def run(self, delta_time):
         self._handle_debug_input(delta_time)
 
         if self.hit_stop_timer > 0:
             self.hit_stop_timer -= delta_time
         else:
             self.all_sprites.update(delta_time)
+
+            self._handle_entity_interactions(delta_time)
             self._handle_combat()
 
         self.display_surface.fill(Colors.red)
