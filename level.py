@@ -14,7 +14,9 @@ class Level:
         self.moving_platforms = pygame.sprite.Group()
         self.player = None
         self.setup(tmx_map)
+
         self.debug_font = pygame.font.SysFont("Arial", 24)
+        self.label_font = pygame.font.SysFont("Arial", 16)
 
     def setup(self, tmx_map):
         for x, y, surf in tmx_map.get_layer_by_name("Terrain").tiles():
@@ -71,8 +73,37 @@ class Level:
                     self.moving_platforms,
                 )
 
+    def _handle_combat(self):
+        """Detects collisions between attack_box (weapons) and hitbox (body)."""
+
+        combatants = [s for s in self.all_sprites if hasattr(s, "combat")]
+
+        for attacker in combatants:
+            if not attacker.combat.is_attacking or not attacker.combat.attack_box:
+                continue
+
+            for target in combatants:
+                if attacker == target:
+                    continue
+
+                if target.combat.is_hurt:
+                    continue
+
+                if attacker.combat.attack_box.colliderect(target.hitbox):
+                    attack_data = attacker.combat.attacks[
+                        attacker.combat.current_attack
+                    ]
+
+                    target.combat.take_damage(
+                        amount=attack_data.damage,
+                        source_center_x=attacker.hitbox.centerx,
+                    )
+
     def run(self, delta_time):
         self.all_sprites.update(delta_time)
+
+        self._handle_combat()
+
         self.display_surface.fill(Colors.red)
         self.all_sprites.draw(self.display_surface)
 
@@ -89,13 +120,12 @@ class Level:
                     width=3,
                 )
 
-        label_font = pygame.font.SysFont("Arial", 16)
         for sprite in self.all_sprites:
             if hasattr(sprite, "state_machine") and sprite.state_machine is not None:
                 state = sprite.state_machine.current_state_name or "None"
                 entity_name = sprite.__class__.__name__
                 label = f"{entity_name}: {state}"
-                label_surf = label_font.render(label, True, (255, 255, 200))
+                label_surf = self.label_font.render(label, True, (255, 255, 200))
 
                 if hasattr(sprite, "hitbox") and sprite.hitbox:
                     center_x = sprite.hitbox.centerx
@@ -142,7 +172,7 @@ class Level:
             panel_width = max_width + padding * 2
             panel_height = len(lines) * line_height + padding * 2
 
-            panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+            # panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
             s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
             s.fill((0, 0, 0, 180))
             self.display_surface.blit(s, (panel_x, panel_y))

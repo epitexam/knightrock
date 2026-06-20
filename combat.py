@@ -34,7 +34,6 @@ class CombatComponent:
         self.hurt_timer: float = 0.0
 
     def add_attack(self, name: str, data: AttackData) -> None:
-        """Ajoute une attaque au répertoire de l'entité."""
         self.attacks[name] = data
         self.cooldowns[name] = 0.0
 
@@ -43,29 +42,48 @@ class CombatComponent:
         return self.current_attack is not None
 
     def take_damage(
-        self, amount: int, knockback: tuple[float, float] | None = None
+        self,
+        amount: int,
+        source_center_x: float | None = None,
+        knockback_power: tuple[float, float] = (250.0, -150.0),
     ) -> None:
         """
-        Enregistre les dégâts, force l'état blessé (stun),
-        applique le recul et interrompt les attaques.
+        Records damage, calculates directional recoil, and manages blocking
         """
-        self.is_hurt = True
-        self.hurt_timer = 0.4  
 
+        is_blocking = (
+            hasattr(self.entity, "state_machine")
+            and self.entity.state_machine.current_state_name == "block"
+        )
+
+        if is_blocking:
+            self.entity.block_stamina -= amount * 0.05
+
+            if source_center_x is not None:
+                direction = (
+                    1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+                )
+                self.entity.velocity.x = (knockback_power[0] * 0.3) * direction
+
+            print("Hit blocked!")
+            return
+
+        self.is_hurt = True
+        self.hurt_timer = 0.4
 
         self.current_attack = None
         self.attack_timer = 0.0
         self.attack_box = None
 
-        if knockback:
-            self.entity.velocity.x = knockback[0]
-            self.entity.velocity.y = knockback[1]
+        if source_center_x is not None:
+            direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+            self.entity.velocity.x = knockback_power[0] * direction
+            self.entity.velocity.y = knockback_power[1]
+        else:
+            self.entity.velocity.x = knockback_power[0]
+            self.entity.velocity.y = knockback_power[1]
 
     def start_attack(self, name: str, facing_right: bool) -> bool:
-        """
-        Attempts to launch an attack.
-        Returns True if the attack succeeded, False if it is on cooldown or if the entity is already attacking.
-        """
         if self.is_attacking or self.is_hurt:
             return False
         if name not in self.attacks:
@@ -83,7 +101,6 @@ class CombatComponent:
         return True
 
     def update(self, delta_time: float, facing_right: bool) -> None:
-        """Updates timers, cooldowns, and the position of the offensive hitbox."""
         if self.hurt_timer > 0:
             self.hurt_timer -= delta_time
             if self.hurt_timer <= 0:
@@ -102,7 +119,6 @@ class CombatComponent:
                 self._update_hitbox_position(facing_right)
 
     def _update_hitbox_position(self, facing_right: bool) -> None:
-        """Dynamically aligns the attack_box with the parent entity."""
         if not self.attack_box or not self.current_attack:
             return
 
