@@ -8,14 +8,15 @@ if TYPE_CHECKING:
     from player import Player
 
 
-class PlayerGroundedState(State["Player"]):
+class PlayerState(State["Player"]):
     """
-    Parent class for grounded states (Idle, Run).
-    Centralizes common transitions: hurt, block, attack, jump, fall.
+    Base class for all player states.
+    Centralizes priority transitions: hurt, block, attack.
+    Provides helper for ground-state transitions.
     """
 
-    def check_global_transitions(self) -> str | None:
-        """Checks priority transitions common to all grounded states."""
+    def check_priority_transitions(self) -> str | None:
+        """Checks high-priority transitions common to all states."""
         if self.entity.combat.is_hurt:
             return "hurt"
 
@@ -29,6 +30,32 @@ class PlayerGroundedState(State["Player"]):
         if self.entity.combat.is_attacking:
             return "attack"
 
+        return None
+
+    def get_ground_return_state(self) -> str:
+        """
+        Returns the appropriate state when the player is on ground:
+        'run' if moving, 'idle' otherwise; 'fall' if airborne.
+        """
+        if self.entity.on_surface["floor"]:
+            return (
+                "run" if (self.entity.left_held or self.entity.right_held) else "idle"
+            )
+        return "fall"
+
+
+class PlayerGroundedState(PlayerState):
+    """
+    Parent class for grounded states (Idle, Run).
+    Adds jump and fall transitions on top of priority checks.
+    """
+
+    def check_global_transitions(self) -> str | None:
+        """Checks priority transitions then jump and fall."""
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
+
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
             return "jump"
@@ -39,7 +66,7 @@ class PlayerGroundedState(State["Player"]):
         return None
 
 
-class PlayerHurtState(State["Player"]):
+class PlayerHurtState(PlayerState):
     """Hit state (forced immobilization and knockback)."""
 
     def update(self, delta_time: float) -> str | None:
@@ -54,9 +81,7 @@ class PlayerHurtState(State["Player"]):
         )
 
         if not self.entity.combat.is_hurt:
-            if self.entity.on_surface["floor"]:
-                return "idle"
-            return "fall"
+            return self.get_ground_return_state()
 
         return None
 
@@ -92,22 +117,13 @@ class PlayerRunState(PlayerGroundedState):
         return None
 
 
-class PlayerJumpState(State["Player"]):
+class PlayerJumpState(PlayerState):
     """State when the player gains altitude."""
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.combat.is_hurt:
-            return "hurt"
-
-        if (
-            self.entity.block_held
-            and self.entity.block_cooldown_timer <= 0
-            and self.entity.block_stamina > 0.3
-        ):
-            return "block"
-
-        if self.entity.combat.is_attacking:
-            return "attack"
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
 
         self.entity.handle_jump()
         self.entity.apply_horizontal_movement(delta_time)
@@ -121,22 +137,13 @@ class PlayerJumpState(State["Player"]):
         return None
 
 
-class PlayerFallState(State["Player"]):
+class PlayerFallState(PlayerState):
     """State when the player loses altitude."""
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.combat.is_hurt:
-            return "hurt"
-
-        if (
-            self.entity.block_held
-            and self.entity.block_cooldown_timer <= 0
-            and self.entity.block_stamina > 0.3
-        ):
-            return "block"
-
-        if self.entity.combat.is_attacking:
-            return "attack"
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
 
         self.entity.handle_jump()
         self.entity.apply_horizontal_movement(delta_time)
@@ -147,23 +154,16 @@ class PlayerFallState(State["Player"]):
         if self.entity._is_wall_sliding():
             return "wall_slide"
 
-        if self.entity.on_surface["floor"]:
-            if self.entity.left_held or self.entity.right_held:
-                return "run"
-            return "idle"
-
-        return None
+        return self.get_ground_return_state()
 
 
-class PlayerWallSlideState(State["Player"]):
+class PlayerWallSlideState(PlayerState):
     """State when the player slides against a wall."""
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.combat.is_hurt:
-            return "hurt"
-
-        if self.entity.combat.is_attacking:
-            return "attack"
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
 
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
@@ -180,24 +180,23 @@ class PlayerWallSlideState(State["Player"]):
         return None
 
 
-class PlayerAttackState(State["Player"]):
+class PlayerAttackState(PlayerState):
     def enter(self) -> None:
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x *= 0.1
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.combat.is_hurt:
-            return "hurt"
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
 
         if not self.entity.combat.is_attacking:
-            if self.entity.on_surface["floor"]:
-                return "idle"
-            return "fall"
+            return self.get_ground_return_state()
 
         return None
 
 
-class PlayerBlockState(State["Player"]):
+class PlayerBlockState(PlayerState):
     """State when the player is blocking (holding LSHIFT)."""
 
     def enter(self) -> None:
@@ -221,8 +220,9 @@ class PlayerBlockState(State["Player"]):
             self.entity.hitbox.bottom = self.entity.rect.bottom
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.combat.is_hurt:
-            return "hurt"
+        priority = self.check_priority_transitions()
+        if priority:
+            return priority
 
         if self.entity.on_surface["floor"]:
             self.entity.block_stamina -= delta_time
@@ -230,8 +230,6 @@ class PlayerBlockState(State["Player"]):
             self.entity.block_stamina -= delta_time * 2.0
 
         if not self.entity.block_held or self.entity.block_stamina <= 0:
-            if self.entity.on_surface["floor"]:
-                return "idle"
-            return "fall"
+            return self.get_ground_return_state()
 
         return None
