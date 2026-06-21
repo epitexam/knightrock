@@ -29,7 +29,7 @@ class Entity(Sprite):
     """
 
     hitbox: pygame.FRect
-    old_rect: pygame.FRect
+    old_hitbox: pygame.FRect
     collision_sprites: Group
     on_surface: Dict[str, bool]
     velocity: Vector2
@@ -56,7 +56,7 @@ class Entity(Sprite):
         self.rect = self.image.get_frect(topleft=pos)
         self.hitbox = self.rect.inflate(*hitbox_inflate)
         self.hitbox.midbottom = self.rect.midbottom
-        self.old_rect = self.hitbox.copy()
+        self.old_hitbox = self.hitbox.copy()
 
         self.collision_sprites = collision_sprites
         self.on_surface = {
@@ -78,9 +78,9 @@ class Entity(Sprite):
         return self.hitbox
 
     def sync_rects(self) -> None:
-        """Rescales or shifts cosmetic boundaries to match updated physical positions."""
+        """Aligns the visual rect to the center of the physical hitbox."""
         if self.rect is not None:
-            self.rect.midbottom = self.hitbox.midbottom
+            self.rect.center = self.hitbox.center
 
     def _is_wall_sliding(self) -> bool:
         return False
@@ -135,18 +135,20 @@ class Entity(Sprite):
             if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:
                 continue
 
-            sprite_old = getattr(sprite, "old_rect", sprite.rect)
+            sprite_old = getattr(
+                sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect)
+            )
 
             if axis == "horizontal":
-                if self.old_rect.right <= sprite_old.left:
+                if self.old_hitbox.right <= sprite_old.left:
                     self.hitbox.right = sprite.rect.left
-                elif self.old_rect.left >= sprite_old.right:
+                elif self.old_hitbox.left >= sprite_old.right:
                     self.hitbox.left = sprite.rect.right
                 self.velocity.x = 0
             elif axis == "vertical":
-                if self.old_rect.bottom <= sprite_old.top:
+                if self.old_hitbox.bottom <= sprite_old.top:
                     self.hitbox.bottom = sprite.rect.top
-                elif self.old_rect.top >= sprite_old.bottom:
+                elif self.old_hitbox.top >= sprite_old.bottom:
                     self.hitbox.top = sprite.rect.bottom
                 self.velocity.y = 0
 
@@ -189,8 +191,8 @@ class Entity(Sprite):
         self.hitbox.center = (Display.WIDTH // 2, Display.HEIGHT // 2)
         self.sync_rects()
         self.velocity = Vector2(0, 0)
-        self.old_rect = self.hitbox.copy()
+        self.old_hitbox = self.hitbox.copy()
 
     def update(self, delta_time: float) -> None:
         """Updates internal frame-history boundaries required for accurate collision resolution."""
-        self.old_rect = self.hitbox.copy()
+        self.old_hitbox = self.hitbox.copy()
