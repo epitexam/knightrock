@@ -229,7 +229,8 @@ class Player(Entity):
 
         self.left_held = bool(keys[pygame.K_LEFT])
         self.right_held = bool(keys[pygame.K_RIGHT])
-        self.block_held = bool(keys[pygame.K_LSHIFT])
+
+        self.block_held = bool(keys[pygame.K_q])
 
         if self.right_held and not self.left_held:
             self.facing_right = True
@@ -239,7 +240,7 @@ class Player(Entity):
         if self._is_key_pressed_once(pygame.K_SPACE, keys):
             self.jump_buffer_timer = self.jump_buffer_duration
 
-        if self._is_key_pressed_once(pygame.K_LCTRL, keys):
+        if self._is_key_pressed_once(pygame.K_LSHIFT, keys):
             if (
                 self.state_machine is not None
                 and self.dash_charges > 0
@@ -254,13 +255,13 @@ class Player(Entity):
             can_attack = True
 
         if can_attack:
-            if self._is_key_pressed_once(pygame.K_x, keys):
+            if self._is_key_pressed_once(pygame.K_a, keys):
                 self.combat.start_attack("light_punch", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_c, keys):
+            elif self._is_key_pressed_once(pygame.K_s, keys):
                 self.combat.start_attack("heavy_smash", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_v, keys):
+            elif self._is_key_pressed_once(pygame.K_d, keys):
                 self.combat.start_attack("uppercut", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_b, keys):
+            elif self._is_key_pressed_once(pygame.K_f, keys):
                 self.combat.start_attack("dash_strike", self.facing_right)
 
         if self._is_key_pressed_once(pygame.K_r, keys):

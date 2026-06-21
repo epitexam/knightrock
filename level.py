@@ -298,7 +298,7 @@ class Level:
         s.fill((20, 20, 40, 200))
         self.display_surface.blit(s, (panel_x, panel_y))
 
-        # Draw text
+    
         for i, surf in enumerate(rendered):
             self.display_surface.blit(
                 surf, (panel_x + padding, panel_y + padding + i * line_height)
