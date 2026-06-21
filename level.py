@@ -153,12 +153,10 @@ class Level:
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1 :]:
-               
                 if type(ent_a) is type(ent_b):
                     continue
 
                 if ent_a.hitbox.colliderect(ent_b.hitbox):
-                   
                     if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
                         ent_a.combat.take_damage(
                             ent_b.combat.contact_damage,
@@ -254,6 +252,60 @@ class Level:
                 surf, (panel_x + padding, panel_y + padding + i * line_height)
             )
 
+    def _draw_user_panel(self, panel_x: int, panel_y: int):
+        """Draws a user info panel (health, stamina, dash) below the state panel."""
+        if self.player is None:
+            return
+
+        font = self.debug_font
+        padding = 8
+        line_height = 28
+
+        player = self.player
+
+        health_text = f"HP: {getattr(player, 'health', 100):.0f}"
+
+        block_stamina_text = (
+            f"Block Stamina: {player.block_stamina:.1f}/{player.max_block_stamina:.1f}"
+        )
+        dash_charges_text = (
+            f"Dash Charges: {player.dash_charges}/{player.max_dash_charges}"
+        )
+        block_cooldown_text = f"Block CD: {player.block_cooldown_timer:.2f}"
+        dash_penalty_text = f"Dash Penalty: {player.dash_penalty_timer:.2f}"
+        dash_recharge_text = f"Dash Recharge: {player.dash_recharge_timer:.2f}"
+
+        lines = [
+            health_text,
+            block_stamina_text,
+            dash_charges_text,
+            block_cooldown_text,
+            dash_penalty_text,
+            dash_recharge_text,
+        ]
+
+        rendered = []
+        max_width = 0
+        for line in lines:
+            surf = font.render(line, True, (220, 220, 220))
+            rendered.append(surf)
+            max_width = max(max_width, surf.get_width())
+
+        panel_width = max_width + padding * 2
+        panel_height = len(lines) * line_height + padding * 2
+
+        s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        s.fill((20, 20, 40, 200))
+        self.display_surface.blit(s, (panel_x, panel_y))
+
+        # Draw text
+        for i, surf in enumerate(rendered):
+            self.display_surface.blit(
+                surf, (panel_x + padding, panel_y + padding + i * line_height)
+            )
+
+        return panel_height
+
     def run(self, delta_time):
 
         self.fps_frames += 1
@@ -275,6 +327,7 @@ class Level:
 
         self.display_surface.fill(Colors.red)
         self.all_sprites.draw(self.display_surface)
+
         if DEBUG:
             for sprite in self.all_sprites:
                 if hasattr(sprite, "hitbox") and sprite.hitbox:
@@ -356,5 +409,8 @@ class Level:
                         surf,
                         (panel_x + padding, panel_y + padding + i * line_height),
                     )
+
+                user_panel_y = panel_y + panel_height + 10
+                self._draw_user_panel(panel_x, user_panel_y)
 
             self._draw_performance_panel()

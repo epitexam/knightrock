@@ -9,6 +9,7 @@ from entity import Entity
 from player_states import (
     PlayerAttackState,
     PlayerBlockState,
+    PlayerDashState,
     PlayerFallState,
     PlayerHurtState,
     PlayerIdleState,
@@ -48,10 +49,21 @@ class Player(Entity):
     wall_jump_timer: float
     wall_jump_duration: float
     moving_platforms: Iterable[Any]
+    _dash_duration_timer: float
+    _original_hitbox_width: float
 
     max_block_stamina: float
     block_stamina: float
     block_cooldown_timer: float
+
+    max_dash_charges: int
+    dash_charges: int
+    dash_recharge_timer: float
+    dash_penalty_timer: float
+    dash_speed: float
+    dash_duration: float
+    dash_friction: float
+    dash_penalty_duration: float
 
     facing_right: bool
     combat: CombatComponent
@@ -105,6 +117,17 @@ class Player(Entity):
         self.max_block_stamina = 0.75
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
+
+        self.max_dash_charges = Physics.DASH_MAX_CHARGES
+        self.dash_charges = self.max_dash_charges
+        self.dash_recharge_timer = 0.0
+        self.dash_penalty_timer = 0.0
+        self.dash_speed = Physics.DASH_SPEED
+        self.dash_duration = Physics.DASH_DURATION
+        self.dash_friction = Physics.DASH_FRICTION
+        self.dash_penalty_duration = Physics.DASH_PENALTY_TIME
+        self._dash_duration_timer = 0.0
+        self._original_hitbox_width = self.hitbox.width
 
         self.facing_right = True
 
@@ -163,7 +186,23 @@ class Player(Entity):
         self.state_machine.add_state("attack", PlayerAttackState(self))
         self.state_machine.add_state("block", PlayerBlockState(self))
         self.state_machine.add_state("hurt", PlayerHurtState(self))
+        self.state_machine.add_state("dash", PlayerDashState(self))
         self.state_machine.set_initial_state("idle")
+
+        self._key_prev: dict[int, bool] = {}
+
+    def _is_key_pressed_once(self, key: int, keys: pygame.key.ScancodeWrapper) -> bool:
+        """Returns True if the key was just pressed (transition from not pressed to pressed)."""
+        current = bool(keys[key])
+        previous = self._key_prev.get(key, False)
+        self._key_prev[key] = current
+        return current and not previous
+
+    def _is_key_held(self, key: int, keys: pygame.key.ScancodeWrapper) -> bool:
+        """Returns True if the key is currently held down."""
+        current = bool(keys[key])
+        self._key_prev[key] = current
+        return current
 
     def _is_wall_sliding(self) -> bool:
         """Checks if the player is actively pressing against a wall while falling."""
@@ -187,6 +226,7 @@ class Player(Entity):
     def get_input(self) -> None:
         """Gathers and processes keyboard inputs."""
         keys = pygame.key.get_pressed()
+
         self.left_held = bool(keys[pygame.K_LEFT])
         self.right_held = bool(keys[pygame.K_RIGHT])
         self.block_held = bool(keys[pygame.K_LSHIFT])
@@ -196,24 +236,37 @@ class Player(Entity):
         elif self.left_held and not self.right_held:
             self.facing_right = False
 
-        if keys[pygame.K_SPACE]:
-            if not self.space_held:
-                self.jump_buffer_timer = self.jump_buffer_duration
-                self.space_held = True
+        if self._is_key_pressed_once(pygame.K_SPACE, keys):
+            self.jump_buffer_timer = self.jump_buffer_duration
+
+        if self._is_key_pressed_once(pygame.K_LCTRL, keys):
+            if (
+                self.state_machine is not None
+                and self.dash_charges > 0
+                and self.state_machine.current_state_name != "dash"
+            ):
+                self._dash_requested = True
+
+        if self.state_machine is not None:
+            current_state = self.state_machine.current_state_name
+            can_attack = current_state not in ("wall_slide", "block", "hurt")
         else:
-            self.space_held = False
+            can_attack = True
 
-        if keys[pygame.K_x]:
-            self.combat.start_attack("light_punch", self.facing_right)
-        elif keys[pygame.K_c]:
-            self.combat.start_attack("heavy_smash", self.facing_right)
-        elif keys[pygame.K_v]:
-            self.combat.start_attack("uppercut", self.facing_right)
-        elif keys[pygame.K_b]:
-            self.combat.start_attack("dash_strike", self.facing_right)
+        if can_attack:
+            if self._is_key_pressed_once(pygame.K_x, keys):
+                self.combat.start_attack("light_punch", self.facing_right)
+            elif self._is_key_pressed_once(pygame.K_c, keys):
+                self.combat.start_attack("heavy_smash", self.facing_right)
+            elif self._is_key_pressed_once(pygame.K_v, keys):
+                self.combat.start_attack("uppercut", self.facing_right)
+            elif self._is_key_pressed_once(pygame.K_b, keys):
+                self.combat.start_attack("dash_strike", self.facing_right)
 
-        if keys[pygame.K_r]:
+        if self._is_key_pressed_once(pygame.K_r, keys):
             self.reset_position()
+
+    _dash_requested: bool = False
 
     def update_timers(self, delta_time: float) -> None:
         """Decrements all game-feel buffers and timers."""
@@ -238,6 +291,15 @@ class Player(Entity):
                 self.block_stamina += delta_time * 0.5
                 self.block_stamina = min(self.block_stamina, self.max_block_stamina)
 
+        if self.dash_penalty_timer > 0:
+            self.dash_penalty_timer -= delta_time
+        else:
+            if self.dash_charges < self.max_dash_charges:
+                self.dash_recharge_timer -= delta_time
+                if self.dash_recharge_timer <= 0:
+                    self.dash_charges += 1
+                    self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
+
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Calculates and interpolates horizontal velocity based on context and inputs."""
         if self.wall_jump_timer > 0:
@@ -248,12 +310,19 @@ class Player(Entity):
         if self.combat.is_attacking and self.on_surface["floor"]:
             target_speed = 0.0
 
+        if target_speed == 0 and abs(self.velocity.x) < 0.5:
+            self.velocity.x = 0.0
+            return
+
         control: float = (
             self.floor_control if self.on_surface["floor"] else self.air_control
         )
         self.velocity.x = pygame.math.lerp(
             self.velocity.x, target_speed, min(1.0, control * delta_time)
         )
+
+        if abs(self.velocity.x) < 0.01:
+            self.velocity.x = 0.0
 
     def handle_jump(self) -> None:
         """
@@ -312,6 +381,11 @@ class Player(Entity):
         self.wall_jumps_left = self.max_wall_jumps
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
+        self.dash_charges = self.max_dash_charges
+        self.dash_recharge_timer = 0.0
+        self.dash_penalty_timer = 0.0
+        self._dash_requested = False
+        self.hitbox.width = self._original_hitbox_width
 
         if self.combat.current_attack:
             self.combat.current_attack = None
