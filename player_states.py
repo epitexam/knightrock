@@ -226,10 +226,10 @@ class PlayerBlockState(PlayerState):
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = 0
 
+        old_bottom = self.entity.hitbox.bottom
         self.entity.hitbox.height -= 16.0
-
-        if self.entity.rect is not None:
-            self.entity.hitbox.bottom = self.entity.rect.bottom
+        self.entity.hitbox.bottom = old_bottom
+        self.entity.sync_rects()
 
     def exit(self) -> None:
         if self.entity.block_stamina <= 0:
@@ -237,10 +237,10 @@ class PlayerBlockState(PlayerState):
         else:
             self.entity.block_cooldown_timer = 0.5
 
+        old_bottom = self.entity.hitbox.bottom
         self.entity.hitbox.height += 16.0
-
-        if self.entity.rect is not None:
-            self.entity.hitbox.bottom = self.entity.rect.bottom
+        self.entity.hitbox.bottom = old_bottom
+        self.entity.sync_rects()
 
     def update(self, delta_time: float) -> str | None:
         self.entity.velocity.x = 0.0

@@ -47,8 +47,14 @@ class MovingPlatform(Sprite):
         self.direction = 1
         self.old_rect = self.rect.copy()
 
+        self.hitbox: pygame.FRect = self.rect.copy()
+        self.old_hitbox: pygame.FRect = self.hitbox.copy()
+
     def update(self, delta_time: float):
+
         self.old_rect = self.rect.copy()
+        self.old_hitbox = self.hitbox.copy()
+
         if not self.waypoints:
             return
 
@@ -66,3 +72,7 @@ class MovingPlatform(Sprite):
         else:
             direction.normalize_ip()
             self.rect.topleft += direction * self.speed * delta_time
+
+        self.hitbox.topleft = self.rect.topleft
+        self.hitbox.width = self.rect.width
+        self.hitbox.height = self.rect.height

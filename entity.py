@@ -114,9 +114,9 @@ class Entity(Sprite):
         )
 
         collide_rects: List[pygame.Rect | pygame.FRect] = [
-            s.rect
+            getattr(s, "hitbox", s.rect)
             for s in self.collision_sprites
-            if s is not None and hasattr(s, "rect") and s.rect is not None
+            if s is not None and (hasattr(s, "hitbox") or hasattr(s, "rect"))
         ]
 
         self.on_surface["floor"] = floor_rect.collidelist(collide_rects) >= 0
@@ -158,23 +158,26 @@ class Entity(Sprite):
             return
 
         for platform in moving_platforms:
-            if not hasattr(platform, "old_rect") or platform.old_rect is None:
-                continue
-            if not hasattr(platform, "rect") or platform.rect is None:
+            p_box = getattr(platform, "hitbox", getattr(platform, "rect", None))
+            p_old_box = getattr(
+                platform, "old_hitbox", getattr(platform, "old_rect", None)
+            )
+
+            if p_box is None or p_old_box is None:
                 continue
 
-            vertical_dist: float = self.hitbox.bottom - platform.old_rect.top
+            vertical_dist: float = self.hitbox.bottom - p_old_box.top
             if not (-2 <= vertical_dist <= 16):
                 continue
 
-            overlap: float = min(self.hitbox.right, platform.old_rect.right) - max(
-                self.hitbox.left, platform.old_rect.left
+            overlap: float = min(self.hitbox.right, p_old_box.right) - max(
+                self.hitbox.left, p_old_box.left
             )
             if overlap <= 0:
                 continue
 
-            platform_dx: float = platform.rect.x - platform.old_rect.x
-            platform_dy: float = platform.rect.y - platform.old_rect.y
+            platform_dx: float = p_box.x - p_old_box.x
+            platform_dy: float = p_box.y - p_old_box.y
 
             self.hitbox.x += platform_dx
             self.hitbox.y += platform_dy
