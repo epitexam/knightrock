@@ -11,8 +11,11 @@ from settings import Display
 class Game:
     def __init__(self) -> None:
         pygame.init()
+        pygame.joystick.init()
         self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
         pygame.display.set_caption(Display.TITLE)
+        if pygame.joystick.get_count() > 0:
+            pygame.joystick.Joystick(0).init()
         self.tmx_maps = {0: load_pygame(join(".", "data", "levels", "omni.tmx"))}
         self.current_stage = Level(self.display_surface, self.tmx_maps[0])
         self.clock = pygame.time.Clock()

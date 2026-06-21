@@ -1,6 +1,7 @@
 from typing import Any, Iterable, Sequence
 
 import pygame
+from pygame.joystick import Joystick
 from pygame.sprite import Group
 
 from colors import Colors
@@ -32,7 +33,6 @@ class Player(Entity):
     air_control: float
     jump_height: float
     wall_jump_height: float
-    wall_jump_boost: float
     wall_slide_speed: float
     max_midair_jumps: int
     midair_jumps_left: int
@@ -42,12 +42,11 @@ class Player(Entity):
     left_held: bool
     right_held: bool
     block_held: bool
+    move_axis: float
     coyote_timer: float
     coyote_duration: float
     jump_buffer_timer: float
     jump_buffer_duration: float
-    wall_jump_timer: float
-    wall_jump_duration: float
     moving_platforms: Iterable[Any]
     _dash_duration_timer: float
     _original_hitbox_width: float
@@ -90,7 +89,6 @@ class Player(Entity):
 
         self.jump_height = float(Physics.JUMP_FORCE)
         self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90
-        self.wall_jump_boost = 1.6
         self.wall_slide_speed = 100.0
 
         self.max_midair_jumps = 1
@@ -102,15 +100,13 @@ class Player(Entity):
         self.left_held = False
         self.right_held = False
         self.block_held = False
+        self.move_axis = 0.0
 
         self.coyote_timer = 0.0
         self.coyote_duration = 0.12
 
         self.jump_buffer_timer = 0.0
         self.jump_buffer_duration = 0.10
-
-        self.wall_jump_timer = 0.0
-        self.wall_jump_duration = 0.15
 
         self.moving_platforms = moving_platforms
 
@@ -190,6 +186,11 @@ class Player(Entity):
         self.state_machine.set_initial_state("idle")
 
         self._key_prev: dict[int, bool] = {}
+        self._joystick: Joystick | None = (
+            Joystick(0) if pygame.joystick.get_count() > 0 else None
+        )
+        self._button_prev: dict[int, bool] = {}
+        self._trigger_prev: dict[int, bool] = {}
 
     def _is_key_pressed_once(self, key: int, keys: pygame.key.ScancodeWrapper) -> bool:
         """Returns True if the key was just pressed (transition from not pressed to pressed)."""
@@ -223,24 +224,56 @@ class Player(Entity):
         """Resets mid-air resources upon touching a wall."""
         self.midair_jumps_left = self.max_midair_jumps
 
+    @staticmethod
+    def _apply_deadzone(value: float, deadzone: float) -> float:
+        """Applies a deadzone to an analog axis value."""
+        if abs(value) < deadzone:
+            return 0.0
+        sign = 1.0 if value > 0 else -1.0
+        return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+
     def get_input(self) -> None:
-        """Gathers and processes keyboard inputs."""
+        """Gathers and processes keyboard and controller inputs."""
         keys = pygame.key.get_pressed()
+        joy = self._joystick
+        _DZ = 0.2
 
-        self.left_held = bool(keys[pygame.K_LEFT])
-        self.right_held = bool(keys[pygame.K_RIGHT])
+        raw_joy_x = joy.get_axis(0) if joy else 0.0
+        hat_x = joy.get_hat(0)[0] if joy else 0
+        analog = self._apply_deadzone(raw_joy_x, _DZ) if joy else 0.0
+        if analog == 0.0 and hat_x != 0:
+            analog = float(hat_x)
 
-        self.block_held = bool(keys[pygame.K_q])
+        kb_axis = float(bool(keys[pygame.K_RIGHT])) - float(bool(keys[pygame.K_LEFT]))
+        self.move_axis = kb_axis if kb_axis != 0.0 else analog
 
-        if self.right_held and not self.left_held:
+        self.left_held = self.move_axis < -0.1
+        self.right_held = self.move_axis > 0.1
+
+        jb: dict[int, bool] = {}
+        jp: dict[int, bool] = {}
+        lt_just = False
+        if joy:
+            for btn in (0, 1, 2, 3, 4, 5, 7):
+                cur = bool(joy.get_button(btn))
+                jb[btn] = cur
+                jp[btn] = cur and not self._button_prev.get(btn, False)
+                self._button_prev[btn] = cur
+            lt_cur = joy.get_axis(2) > 0.5
+            lt_just = lt_cur and not self._trigger_prev.get(2, False)
+            self._trigger_prev[2] = lt_cur
+
+        self.block_held = bool(keys[pygame.K_q]) or jb.get(4, False)
+
+        if self.move_axis > 0.1:
             self.facing_right = True
-        elif self.left_held and not self.right_held:
+        elif self.move_axis < -0.1:
             self.facing_right = False
 
-        if self._is_key_pressed_once(pygame.K_SPACE, keys):
+        if self._is_key_pressed_once(pygame.K_SPACE, keys) or jp.get(0, False):
             self.jump_buffer_timer = self.jump_buffer_duration
 
-        if self._is_key_pressed_once(pygame.K_LSHIFT, keys):
+        if self._is_key_pressed_once(pygame.K_LSHIFT, keys) or lt_just:
             if (
                 self.state_machine is not None
                 and self.dash_charges > 0
@@ -255,16 +288,16 @@ class Player(Entity):
             can_attack = True
 
         if can_attack:
-            if self._is_key_pressed_once(pygame.K_a, keys):
+            if self._is_key_pressed_once(pygame.K_a, keys) or jp.get(1, False):
                 self.combat.start_attack("light_punch", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_s, keys):
+            elif self._is_key_pressed_once(pygame.K_s, keys) or jp.get(2, False):
                 self.combat.start_attack("heavy_smash", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_d, keys):
+            elif self._is_key_pressed_once(pygame.K_d, keys) or jp.get(3, False):
                 self.combat.start_attack("uppercut", self.facing_right)
-            elif self._is_key_pressed_once(pygame.K_f, keys):
+            elif self._is_key_pressed_once(pygame.K_f, keys) or jp.get(5, False):
                 self.combat.start_attack("dash_strike", self.facing_right)
 
-        if self._is_key_pressed_once(pygame.K_r, keys):
+        if self._is_key_pressed_once(pygame.K_r, keys) or jp.get(7, False):
             self.reset_position()
 
     _dash_requested: bool = False
@@ -273,8 +306,6 @@ class Player(Entity):
         """Decrements all game-feel buffers and timers."""
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
-        if self.wall_jump_timer > 0:
-            self.wall_jump_timer -= delta_time
 
         if self.on_surface["floor"]:
             self.coyote_timer = self.coyote_duration
@@ -303,10 +334,7 @@ class Player(Entity):
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Calculates and interpolates horizontal velocity based on context and inputs."""
-        if self.wall_jump_timer > 0:
-            return
-
-        target_speed: float = (int(self.right_held) - int(self.left_held)) * self.speed
+        target_speed: float = self.move_axis * self.speed
 
         if self.combat.is_attacking and self.on_surface["floor"]:
             target_speed = 0.0
@@ -342,12 +370,9 @@ class Player(Entity):
         elif (
             self.on_surface["left"] or self.on_surface["right"]
         ) and self.wall_jumps_left > 0:
-            direction: float = 1.0 if self.on_surface["left"] else -1.0
-            self.velocity.x = self.speed * self.wall_jump_boost * direction
             self.velocity.y = -self.wall_jump_height
             self.wall_jumps_left -= 1
             self.jump_buffer_timer = 0.0
-            self.wall_jump_timer = self.wall_jump_duration
 
         elif self.midair_jumps_left > 0:
             self.velocity.y = -self.jump_height
@@ -376,8 +401,8 @@ class Player(Entity):
         """Resets player position and fully replenishes state variables."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
-        self.wall_jump_timer = 0.0
         self.coyote_timer = 0.0
+        self.move_axis = 0.0
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
         self.block_stamina = self.max_block_stamina
