@@ -85,12 +85,10 @@ class Level:
                     self.collision_sprites,
                     self.moving_platforms,
                 )
-
                 self.combat_sprites.add(self.player)
                 self.entity_sprites.add(self.player)
 
     def _handle_debug_input(self, delta_time: float):
-        """Listens for keyboard inputs dedicated to level debugging."""
         if self.spawn_cooldown > 0:
             self.spawn_cooldown -= delta_time
 
@@ -98,35 +96,26 @@ class Level:
 
         if keys[pygame.K_g] and self.spawn_cooldown <= 0 and self.player is not None:
             offset_x = 100 if self.player.facing_right else -100
-            spawn_x = self.player.hitbox.centerx + offset_x
-            spawn_y = self.player.hitbox.top
-
             goblin = Goblin(
-                pos=(spawn_x, spawn_y),
+                pos=(self.player.hitbox.centerx + offset_x, self.player.hitbox.top),
                 groups=(self.all_sprites,),
                 collision_sprites=self.collision_sprites,
                 player_reference=self.player,
             )
-
             self.combat_sprites.add(goblin)
             self.entity_sprites.add(goblin)
-
             self.spawn_cooldown = 0.5
 
     def _handle_combat(self):
-        """Detects collisions between attack_box (weapons) and hitbox (body)."""
-
         for attacker in self.combat_sprites:
             if not attacker.combat.is_attacking or not attacker.combat.attack_box:
                 continue
 
             for target in self.combat_sprites:
-                if attacker == target:
+                if attacker is target:
                     continue
-
                 if target in attacker.combat.targets_hit:
                     continue
-
                 if target.combat.is_hurt:
                     continue
 
@@ -134,21 +123,14 @@ class Level:
                     attack_data = attacker.combat.attacks[
                         attacker.combat.current_attack
                     ]
-
                     target.combat.take_damage(
                         amount=attack_data.damage,
                         source_center_x=attacker.hitbox.centerx,
                     )
-
                     attacker.combat.targets_hit.add(target)
-
                     self.hit_stop_timer = 0.05 + (attack_data.damage * 0.002)
 
     def _handle_entity_interactions(self, delta_time: float):
-        """
-        Handles rigid collisions (body-to-body), pushing, and contact damage,
-        with anti-wall safety.
-        """
         entities = list(self.entity_sprites)
 
         for i, ent_a in enumerate(entities):
@@ -156,158 +138,186 @@ class Level:
                 if type(ent_a) is type(ent_b):
                     continue
 
-                if ent_a.hitbox.colliderect(ent_b.hitbox):
-                    if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
-                        ent_a.combat.take_damage(
-                            ent_b.combat.contact_damage,
-                            source_center_x=ent_b.hitbox.centerx,
-                        )
-                    elif not ent_b.combat.is_hurt and ent_a.combat.contact_damage > 0:
-                        ent_b.combat.take_damage(
-                            ent_a.combat.contact_damage,
-                            source_center_x=ent_a.hitbox.centerx,
-                        )
+                if not ent_a.hitbox.colliderect(ent_b.hitbox):
+                    continue
 
-                    overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
-                        ent_a.hitbox.left, ent_b.hitbox.left
+                if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
+                    ent_a.combat.take_damage(
+                        ent_b.combat.contact_damage,
+                        source_center_x=ent_b.hitbox.centerx,
                     )
-                    overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
-                        ent_a.hitbox.top, ent_b.hitbox.top
+                elif not ent_b.combat.is_hurt and ent_a.combat.contact_damage > 0:
+                    ent_b.combat.take_damage(
+                        ent_a.combat.contact_damage,
+                        source_center_x=ent_a.hitbox.centerx,
                     )
 
-                    if overlap_x < overlap_y:
-                        dir_a = (
-                            -1.0 if ent_a.hitbox.centerx < ent_b.hitbox.centerx else 1.0
-                        )
-                        dir_b = -dir_a
+                overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
+                    ent_a.hitbox.left, ent_b.hitbox.left
+                )
+                overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
+                    ent_a.hitbox.top, ent_b.hitbox.top
+                )
 
-                        if ent_a.pushable and ent_b.pushable:
-                            ent_a.hitbox.x += (overlap_x / 2.0) * dir_a
-                            ent_b.hitbox.x += (overlap_x / 2.0) * dir_b
-                        elif ent_a.pushable and not ent_b.pushable:
-                            ent_a.hitbox.x += overlap_x * dir_a
-                        elif ent_b.pushable and not ent_a.pushable:
-                            ent_b.hitbox.x += overlap_x * dir_b
+                if overlap_x < overlap_y:
+                    dir_a = -1.0 if ent_a.hitbox.centerx < ent_b.hitbox.centerx else 1.0
+                    dir_b = -dir_a
+                    if ent_a.pushable and ent_b.pushable:
+                        ent_a.hitbox.x += (overlap_x / 2.0) * dir_a
+                        ent_b.hitbox.x += (overlap_x / 2.0) * dir_b
+                    elif ent_a.pushable:
+                        ent_a.hitbox.x += overlap_x * dir_a
+                    elif ent_b.pushable:
+                        ent_b.hitbox.x += overlap_x * dir_b
+                    ent_a.sync_rects()
+                    ent_b.sync_rects()
+                    ent_a.handle_collisions("horizontal")
+                    ent_b.handle_collisions("horizontal")
+                else:
+                    dir_a = -1.0 if ent_a.hitbox.centery < ent_b.hitbox.centery else 1.0
+                    dir_b = -dir_a
+                    if ent_a.pushable and ent_b.pushable:
+                        ent_a.hitbox.y += (overlap_y / 2.0) * dir_a
+                        ent_b.hitbox.y += (overlap_y / 2.0) * dir_b
+                    elif ent_a.pushable:
+                        ent_a.hitbox.y += overlap_y * dir_a
+                    elif ent_b.pushable:
+                        ent_b.hitbox.y += overlap_y * dir_b
+                    ent_a.sync_rects()
+                    ent_b.sync_rects()
+                    ent_a.handle_collisions("vertical")
+                    ent_b.handle_collisions("vertical")
 
-                        ent_a.sync_rects()
-                        ent_b.sync_rects()
-
-                        ent_a.handle_collisions("horizontal")
-                        ent_b.handle_collisions("horizontal")
-
-                    else:
-                        dir_a = (
-                            -1.0 if ent_a.hitbox.centery < ent_b.hitbox.centery else 1.0
-                        )
-                        dir_b = -dir_a
-
-                        if ent_a.pushable and ent_b.pushable:
-                            ent_a.hitbox.y += (overlap_y / 2.0) * dir_a
-                            ent_b.hitbox.y += (overlap_y / 2.0) * dir_b
-                        elif ent_a.pushable and not ent_b.pushable:
-                            ent_a.hitbox.y += overlap_y * dir_a
-                        elif ent_b.pushable and not ent_a.pushable:
-                            ent_b.hitbox.y += overlap_y * dir_b
-
-                        ent_a.sync_rects()
-                        ent_b.sync_rects()
-                        ent_a.handle_collisions("vertical")
-                        ent_b.handle_collisions("vertical")
-
-    def _draw_performance_panel(self):
-        """Draws a performance panel at the top-right corner."""
+    def _draw_panel(
+        self, x: int, y: int, lines: list, color: tuple, text_color: tuple
+    ) -> int:
+        """Renders a generic text panel. Returns its height."""
         font = self.debug_font
         padding = 8
         line_height = 28
-        x_offset = 10
+
+        rendered = [font.render(line, True, text_color) for line in lines]
+        max_w = max(s.get_width() for s in rendered) if rendered else 0
+        panel_w = max_w + padding * 2
+        panel_h = len(lines) * line_height + padding * 2
+
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill(color)
+        self.display_surface.blit(bg, (x, y))
+
+        for i, surf in enumerate(rendered):
+            self.display_surface.blit(
+                surf, (x + padding, y + padding + i * line_height)
+            )
+
+        return panel_h
+
+    def _draw_state_panel(self, x: int, y: int) -> int:
+        """
+        Draws the player state machine panel.
+        Exploits StateMachine.history and previous_state_name from the refactored SM.
+        Returns panel height.
+        """
+        if self.player is None or self.player.state_machine is None:
+            return 0
+
+        sm = self.player.state_machine
+        current = sm.current_state_name or "None"
+        previous = sm.previous_state_name or "—"
+        history = sm.history[-6:] if sm.history else []
 
         lines = [
-            f"FPS: {self.current_fps:.1f}",
-            f"Sprites: {len(self.all_sprites)}",
-            f"Combat: {len(self.combat_sprites)}",
-            f"Entities: {len(self.entity_sprites)}",
-            f"Collision: {len(self.collision_sprites)}",
-            f"Hit Stop: {self.hit_stop_timer:.3f}",
-            f"Spawn CD: {self.spawn_cooldown:.3f}",
+            f"State:  {current}",
+            f"Prev:   {previous}",
+            f"Hist:   {' → '.join(history)}",
+            f"Vel:    ({self.player.velocity.x:.1f}, {self.player.velocity.y:.1f})",
+            f"Floor: {self.player.on_surface['floor']}   L: {self.player.on_surface['left']}   R: {self.player.on_surface['right']}",
         ]
+        if self.player.combat.is_attacking:
+            lines.append(f"Attack: {self.player.combat.current_attack}")
 
-        rendered = []
-        max_width = 0
-        for line in lines:
-            surf = font.render(line, True, Colors.light_blue)
-            rendered.append(surf)
-            max_width = max(max_width, surf.get_width())
+        return self._draw_panel(x, y, lines, (0, 0, 0, 180), Colors.white)
 
-        panel_width = max_width + padding * 2
-        panel_height = len(lines) * line_height + padding * 2
-        panel_x = self.display_surface.get_width() - panel_width - x_offset
+    def _draw_stats_panel(self, x: int, y: int) -> int:
+        """Draws player resource panel (HP, block, dash). Returns panel height."""
+        if self.player is None:
+            return 0
+
+        p = self.player
+        lines = [
+            f"HP:    {getattr(p, 'health', 100):.0f}",
+            f"Block: {p.block_stamina:.2f}/{p.max_block_stamina:.2f}   CD: {p.block_cooldown_timer:.2f}s",
+            f"Dash:  {p.dash_charges}/{p.max_dash_charges}   Pen: {p.dash_penalty_timer:.2f}s   Regen: {p.dash_recharge_timer:.2f}s",
+        ]
+        return self._draw_panel(x, y, lines, (20, 20, 40, 200), Colors.off_white)
+
+    def _draw_performance_panel(self) -> None:
+        """Draws a performance panel at the top-right corner."""
+        lines = [
+            f"FPS:       {self.current_fps:.1f}",
+            f"Sprites:   {len(self.all_sprites)}",
+            f"Combat:    {len(self.combat_sprites)}",
+            f"Entities:  {len(self.entity_sprites)}",
+            f"Collision: {len(self.collision_sprites)}",
+            f"Hit Stop:  {self.hit_stop_timer:.3f}",
+            f"Spawn CD:  {self.spawn_cooldown:.3f}",
+        ]
+        font = self.debug_font
+        padding = 8
+        line_height = 28
+
+        rendered = [font.render(line, True, Colors.light_blue) for line in lines]
+        max_w = max(s.get_width() for s in rendered)
+        panel_w = max_w + padding * 2
+        panel_h = len(lines) * line_height + padding * 2
+        panel_x = self.display_surface.get_width() - panel_w - 10
         panel_y = 10
 
-        s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        s.fill((0, 0, 30, 200))
-        self.display_surface.blit(s, (panel_x, panel_y))
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((0, 0, 30, 200))
+        self.display_surface.blit(bg, (panel_x, panel_y))
 
         for i, surf in enumerate(rendered):
             self.display_surface.blit(
                 surf, (panel_x + padding, panel_y + padding + i * line_height)
             )
 
-    def _draw_user_panel(self, panel_x: int, panel_y: int):
-        """Draws a user info panel (health, stamina, dash) below the state panel."""
-        if self.player is None:
-            return
+    def _draw_debug_overlays(self) -> None:
+        """Draws hitboxes, attack boxes, and floating state labels for all entities."""
+        for sprite in self.all_sprites:
+            if hasattr(sprite, "hitbox") and sprite.hitbox:
+                pygame.draw.rect(
+                    self.display_surface, (0, 0, 255), sprite.hitbox, width=2
+                )
+            if hasattr(sprite, "combat") and sprite.combat.attack_box:
+                pygame.draw.rect(
+                    self.display_surface,
+                    (255, 165, 0),
+                    sprite.combat.attack_box,
+                    width=3,
+                )
 
-        font = self.debug_font
-        padding = 8
-        line_height = 28
+        for sprite in self.all_sprites:
+            if not hasattr(sprite, "state_machine") or sprite.state_machine is None:
+                continue
 
-        player = self.player
-
-        health_text = f"HP: {getattr(player, 'health', 100):.0f}"
-
-        block_stamina_text = (
-            f"Block Stamina: {player.block_stamina:.1f}/{player.max_block_stamina:.1f}"
-        )
-        dash_charges_text = (
-            f"Dash Charges: {player.dash_charges}/{player.max_dash_charges}"
-        )
-        block_cooldown_text = f"Block CD: {player.block_cooldown_timer:.2f}"
-        dash_penalty_text = f"Dash Penalty: {player.dash_penalty_timer:.2f}"
-        dash_recharge_text = f"Dash Recharge: {player.dash_recharge_timer:.2f}"
-
-        lines = [
-            health_text,
-            block_stamina_text,
-            dash_charges_text,
-            block_cooldown_text,
-            dash_penalty_text,
-            dash_recharge_text,
-        ]
-
-        rendered = []
-        max_width = 0
-        for line in lines:
-            surf = font.render(line, True, (220, 220, 220))
-            rendered.append(surf)
-            max_width = max(max_width, surf.get_width())
-
-        panel_width = max_width + padding * 2
-        panel_height = len(lines) * line_height + padding * 2
-
-        s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        s.fill((20, 20, 40, 200))
-        self.display_surface.blit(s, (panel_x, panel_y))
-
-    
-        for i, surf in enumerate(rendered):
-            self.display_surface.blit(
-                surf, (panel_x + padding, panel_y + padding + i * line_height)
+            state = sprite.state_machine.current_state_name or "None"
+            label_surf = self.label_font.render(
+                f"{sprite.__class__.__name__}: {state}", True, (255, 255, 200)
             )
+            ref = (
+                sprite.hitbox
+                if (hasattr(sprite, "hitbox") and sprite.hitbox)
+                else sprite.rect
+            )
+            bg = label_surf.get_rect(midbottom=(ref.centerx, ref.top - 8))
+            bg.left = max(0, min(bg.left, self.display_surface.get_width() - bg.width))
+            bg.top = max(0, bg.top)
 
-        return panel_height
+            pygame.draw.rect(self.display_surface, (0, 0, 0, 160), bg, border_radius=4)
+            self.display_surface.blit(label_surf, bg)
 
-    def run(self, delta_time):
-
+    def run(self, delta_time: float):
         self.fps_frames += 1
         self.fps_timer += delta_time
         if self.fps_timer >= 1.0:
@@ -321,7 +331,6 @@ class Level:
             self.hit_stop_timer -= delta_time
         else:
             self.all_sprites.update(delta_time)
-
             self._handle_entity_interactions(delta_time)
             self._handle_combat()
 
@@ -329,88 +338,10 @@ class Level:
         self.all_sprites.draw(self.display_surface)
 
         if DEBUG:
-            for sprite in self.all_sprites:
-                if hasattr(sprite, "hitbox") and sprite.hitbox:
-                    pygame.draw.rect(
-                        self.display_surface, (0, 0, 255), sprite.hitbox, width=2
-                    )
-                if hasattr(sprite, "combat") and sprite.combat.attack_box:
-                    pygame.draw.rect(
-                        self.display_surface,
-                        (255, 165, 0),
-                        sprite.combat.attack_box,
-                        width=3,
-                    )
+            self._draw_debug_overlays()
 
-            for sprite in self.all_sprites:
-                if (
-                    hasattr(sprite, "state_machine")
-                    and sprite.state_machine is not None
-                ):
-                    state = sprite.state_machine.current_state_name or "None"
-                    entity_name = sprite.__class__.__name__
-                    label = f"{entity_name}: {state}"
-                    label_surf = self.label_font.render(label, True, (255, 255, 200))
-
-                    if hasattr(sprite, "hitbox") and sprite.hitbox:
-                        center_x = sprite.hitbox.centerx
-                        top_y = sprite.hitbox.top
-                    else:
-                        center_x = sprite.rect.centerx
-                        top_y = sprite.rect.top
-
-                    bg_rect = label_surf.get_rect()
-                    bg_rect.midbottom = (center_x, top_y - 8)
-
-                    bg_rect.left = max(
-                        0,
-                        min(
-                            bg_rect.left,
-                            self.display_surface.get_width() - bg_rect.width,
-                        ),
-                    )
-                    bg_rect.top = max(0, bg_rect.top)
-
-                    pygame.draw.rect(
-                        self.display_surface, (0, 0, 0, 160), bg_rect, border_radius=4
-                    )
-                    self.display_surface.blit(label_surf, bg_rect)
-
-            if self.player is not None and self.player.state_machine is not None:
-                panel_x, panel_y = 10, 10
-                line_height = 28
-                padding = 8
-                font = self.debug_font
-
-                lines = [
-                    f"Player: {self.player.state_machine.current_state_name or 'None'}",
-                    f"Vel: ({self.player.velocity.x:.1f}, {self.player.velocity.y:.1f})",
-                    f"Floor: {self.player.on_surface['floor']}  Left: {self.player.on_surface['left']}  Right: {self.player.on_surface['right']}",
-                ]
-                if self.player.combat.is_attacking:
-                    lines.append(f"Attack: {self.player.combat.current_attack}")
-
-                max_width = 0
-                rendered = []
-                for line in lines:
-                    surf = font.render(line, True, (255, 255, 255))
-                    rendered.append(surf)
-                    max_width = max(max_width, surf.get_width())
-
-                panel_width = max_width + padding * 2
-                panel_height = len(lines) * line_height + padding * 2
-
-                s = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-                s.fill((0, 0, 0, 180))
-                self.display_surface.blit(s, (panel_x, panel_y))
-
-                for i, surf in enumerate(rendered):
-                    self.display_surface.blit(
-                        surf,
-                        (panel_x + padding, panel_y + padding + i * line_height),
-                    )
-
-                user_panel_y = panel_y + panel_height + 10
-                self._draw_user_panel(panel_x, user_panel_y)
+            x, y = 10, 10
+            y += self._draw_state_panel(x, y) + 8
+            self._draw_stats_panel(x, y)
 
             self._draw_performance_panel()

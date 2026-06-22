@@ -1,7 +1,7 @@
 from typing import Any, Iterable, Sequence
 
 import pygame
-from pygame.joystick import Joystick
+from pygame.joystick import Joystick, JoystickType
 from pygame.sprite import Group
 
 from colors import Colors
@@ -139,7 +139,6 @@ class Player(Entity):
                 cooldown=0.3,
             ),
         )
-
         self.combat.add_attack(
             "heavy_smash",
             AttackData(
@@ -150,7 +149,6 @@ class Player(Entity):
                 cooldown=1.2,
             ),
         )
-
         self.combat.add_attack(
             "uppercut",
             AttackData(
@@ -161,7 +159,6 @@ class Player(Entity):
                 cooldown=0.8,
             ),
         )
-
         self.combat.add_attack(
             "dash_strike",
             AttackData(
@@ -185,8 +182,44 @@ class Player(Entity):
         self.state_machine.add_state("dash", PlayerDashState(self))
         self.state_machine.set_initial_state("idle")
 
+        sm = self.state_machine
+
+        sm.add_interrupt(
+            "hurt",
+            lambda: self.combat.is_hurt,
+            priority=100,
+        )
+        sm.add_interrupt(
+            "dash",
+            lambda: (
+                self._dash_requested
+                and self.dash_charges > 0
+                and sm.current_state_name not in ("dash", "hurt")
+            ),
+            priority=80,
+        )
+        sm.add_interrupt(
+            "block",
+            lambda: (
+                self.on_surface["floor"]
+                and self.block_held
+                and self.block_cooldown_timer <= 0
+                and self.block_stamina > 0.3
+                and sm.current_state_name not in ("wall_slide", "hurt", "dash")
+            ),
+            priority=60,
+        )
+        sm.add_interrupt(
+            "attack",
+            lambda: (
+                self.combat.is_attacking
+                and sm.current_state_name not in ("wall_slide", "block", "hurt", "dash")
+            ),
+            priority=40,
+        )
+
         self._key_prev: dict[int, bool] = {}
-        self._joystick: Joystick | None = (
+        self._joystick: JoystickType | None = (
             Joystick(0) if pygame.joystick.get_count() > 0 else None
         )
         self._button_prev: dict[int, bool] = {}
@@ -226,7 +259,6 @@ class Player(Entity):
 
     @staticmethod
     def _apply_deadzone(value: float, deadzone: float) -> float:
-        """Applies a deadzone to an analog axis value."""
         if abs(value) < deadzone:
             return 0.0
         sign = 1.0 if value > 0 else -1.0
@@ -274,12 +306,7 @@ class Player(Entity):
             self.jump_buffer_timer = self.jump_buffer_duration
 
         if self._is_key_pressed_once(pygame.K_LSHIFT, keys) or lt_just:
-            if (
-                self.state_machine is not None
-                and self.dash_charges > 0
-                and self.state_machine.current_state_name != "dash"
-            ):
-                self._dash_requested = True
+            self._dash_requested = True
 
         if self.state_machine is not None:
             current_state = self.state_machine.current_state_name
@@ -354,11 +381,7 @@ class Player(Entity):
             self.velocity.x = 0.0
 
     def handle_jump(self) -> None:
-        """
-        Evaluates jump requests against buffered inputs and physics context.
-        This method is now called from the state machine (e.g., PlayerJumpState),
-        but kept for potential use or reference.
-        """
+        """Evaluates jump requests against buffered inputs and physics context."""
         if self.jump_buffer_timer <= 0:
             return
 
@@ -380,11 +403,7 @@ class Player(Entity):
             self.jump_buffer_timer = 0.0
 
     def move(self, delta_time: float) -> None:
-        """
-        Performs full physics resolution sequence including collisions.
-        Horizontal movement is driven by the state machine.
-        Gravity and sliding are now handled by Entity.apply_gravity.
-        """
+        """Performs full physics resolution sequence including collisions."""
         self.apply_moving_platform(self.moving_platforms)
 
         self.hitbox.x += self.velocity.x * delta_time
@@ -423,8 +442,6 @@ class Player(Entity):
         self.get_input()
         self.update_timers(delta_time)
         self.combat.update(delta_time, self.facing_right)
-
-        assert self.state_machine is not None
-        self.state_machine.update(delta_time)
-
+        if self.state_machine is not None:
+            self.state_machine.update(delta_time)
         self.move(delta_time)

@@ -13,7 +13,7 @@ class Display:
     HEIGHT = 720
     SIZE = (WIDTH, HEIGHT)
 
-    FPS = 60
+    FPS = 180
     TITLE = "Knightrock"
 
 
