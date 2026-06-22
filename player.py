@@ -137,6 +137,7 @@ class Player(Entity):
                 damage=10,
                 duration=0.15,
                 cooldown=0.3,
+                lock_direction=True,
             ),
         )
         self.combat.add_attack(
@@ -147,6 +148,7 @@ class Player(Entity):
                 damage=25,
                 duration=0.4,
                 cooldown=1.2,
+                lock_direction=True,
             ),
         )
         self.combat.add_attack(
@@ -157,6 +159,7 @@ class Player(Entity):
                 damage=15,
                 duration=0.25,
                 cooldown=0.8,
+                lock_direction=True,
             ),
         )
         self.combat.add_attack(
@@ -167,6 +170,7 @@ class Player(Entity):
                 damage=12,
                 duration=0.1,
                 cooldown=0.6,
+                lock_direction=True,
             ),
         )
 

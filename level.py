@@ -119,7 +119,7 @@ class Level:
                 if target.combat.is_hurt:
                     continue
 
-                if attacker.combat.attack_box.colliderect(target.hitbox):
+                if attacker.combat.attack_box.colliderect(target.hurtbox):
                     attack_data = attacker.combat.attacks[
                         attacker.combat.current_attack
                     ]

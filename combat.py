@@ -1,6 +1,6 @@
 import weakref
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pygame
 
@@ -14,6 +14,7 @@ class AttackData:
     damage: int
     duration: float
     cooldown: float
+    lock_direction: bool = False
 
 
 class CombatComponent:
@@ -35,6 +36,8 @@ class CombatComponent:
         self.is_hurt: bool = False
         self.hurt_timer: float = 0.0
         self.contact_damage: int = 0
+
+        self._locked_facing_right: Optional[bool] = None
 
     def add_attack(self, name: str, data: AttackData) -> None:
         self.attacks[name] = data
@@ -72,6 +75,7 @@ class CombatComponent:
         self.attack_timer = 0.0
         self.attack_box = None
         self.targets_hit.clear()
+        self._locked_facing_right = None
 
         if source_center_x is not None:
             direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
@@ -100,6 +104,11 @@ class CombatComponent:
 
         self.targets_hit.clear()
 
+        if attack.lock_direction:
+            self._locked_facing_right = facing_right
+        else:
+            self._locked_facing_right = None
+
         self.attack_box = pygame.FRect((0, 0), attack.size)
         self._update_hitbox_position(facing_right)
         return True
@@ -120,8 +129,14 @@ class CombatComponent:
                 self.current_attack = None
                 self.attack_box = None
                 self.targets_hit.clear()
+                self._locked_facing_right = None
             else:
-                self._update_hitbox_position(facing_right)
+                dir_to_use = (
+                    self._locked_facing_right
+                    if self._locked_facing_right is not None
+                    else facing_right
+                )
+                self._update_hitbox_position(dir_to_use)
 
     def _update_hitbox_position(self, facing_right: bool) -> None:
         if not self.attack_box or not self.current_attack:

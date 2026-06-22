@@ -139,17 +139,19 @@ class Entity(Sprite):
                 sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect)
             )
 
+            sprite_box = getattr(sprite, "hitbox", sprite.rect)
+
             if axis == "horizontal":
                 if self.old_hitbox.right <= sprite_old.left:
-                    self.hitbox.right = sprite.rect.left
+                    self.hitbox.right = sprite_box.left
                 elif self.old_hitbox.left >= sprite_old.right:
-                    self.hitbox.left = sprite.rect.right
+                    self.hitbox.left = sprite_box.right
                 self.velocity.x = 0
             elif axis == "vertical":
                 if self.old_hitbox.bottom <= sprite_old.top:
-                    self.hitbox.bottom = sprite.rect.top
+                    self.hitbox.bottom = sprite_box.top
                 elif self.old_hitbox.top >= sprite_old.bottom:
-                    self.hitbox.top = sprite.rect.bottom
+                    self.hitbox.top = sprite_box.bottom
                 self.velocity.y = 0
 
         self.sync_rects()
