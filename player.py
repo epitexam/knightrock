@@ -6,7 +6,7 @@ from pygame.joystick import Joystick, JoystickType
 from pygame.sprite import Group
 
 from colors import Colors
-from combat import AttackData, CombatComponent
+from combat import AttackPhase, AttackSequence, CombatComponent
 from entity import Entity
 from player_states import (
     PlayerAttackState,
@@ -131,50 +131,87 @@ class Player(Entity):
         self.combat = CombatComponent(self)
 
         self.combat.add_attack(
-            "light_punch",
-            AttackData(
-                size=(45.0, 20.0),
-                offset=(30.0, -10.0),
-                damage=10,
-                duration=0.15,
-                cooldown=0.3,
-                lock_direction=True,
-            ),
-        )
-        self.combat.add_attack(
-            "heavy_smash",
-            AttackData(
-                size=(60.0, 40.0),
-                offset=(40.0, -5.0),
-                damage=25,
-                duration=0.4,
-                cooldown=1.2,
-                lock_direction=True,
-            ),
-        )
-        self.combat.add_attack(
-            "uppercut",
-            AttackData(
-                size=(30.0, 60.0),
-                offset=(20.0, -40.0),
-                damage=15,
-                duration=0.25,
-                cooldown=0.8,
-                lock_direction=True,
-            ),
-        )
-        self.combat.add_attack(
-            "dash_strike",
-            AttackData(
-                size=(80.0, 15.0),
-                offset=(50.0, -15.0),
-                damage=12,
-                duration=0.1,
-                cooldown=0.6,
+            "ground_combo",
+            AttackSequence(
+                phases=[
+                    AttackPhase(
+                        size=(38.0, 22.0), offset=(22.0, -2.0), damage=7, duration=0.10
+                    ),
+                    AttackPhase(
+                        size=(46.0, 26.0), offset=(28.0, -6.0), damage=13, duration=0.16
+                    ),
+                ],
+                cooldown=0.65,
                 lock_direction=True,
             ),
         )
 
+        self.combat.add_attack(
+            "heavy_smash",
+            AttackSequence(
+                phases=[
+                    AttackPhase(
+                        size=(55.0, 42.0),
+                        offset=(34.0, -26.0),
+                        damage=20,
+                        duration=0.25,
+                    ),
+                    AttackPhase(
+                        size=(68.0, 16.0), offset=(28.0, 8.0), damage=8, duration=0.15
+                    ),
+                ],
+                cooldown=1.3,
+                lock_direction=True,
+            ),
+        )
+
+        self.combat.add_attack(
+            "uppercut",
+            AttackSequence(
+                phases=[
+                    AttackPhase(
+                        size=(36.0, 20.0), offset=(22.0, 2.0), damage=6, duration=0.08
+                    ),
+                    AttackPhase(
+                        size=(30.0, 52.0),
+                        offset=(16.0, -32.0),
+                        damage=15,
+                        duration=0.20,
+                    ),
+                ],
+                cooldown=0.9,
+                lock_direction=True,
+            ),
+        )
+
+        self.combat.add_attack(
+            "dash_strike",
+            AttackSequence(
+                phases=[
+                    AttackPhase(
+                        size=(58.0, 20.0), offset=(36.0, -8.0), damage=14, duration=0.14
+                    ),
+                ],
+                cooldown=0.7,
+                lock_direction=True,
+            ),
+        )
+
+        self.combat.add_attack(
+            "air_combo",
+            AttackSequence(
+                phases=[
+                    AttackPhase(
+                        size=(50.0, 26.0), offset=(28.0, -4.0), damage=9, duration=0.13
+                    ),
+                    AttackPhase(
+                        size=(40.0, 34.0), offset=(20.0, 14.0), damage=14, duration=0.17
+                    ),
+                ],
+                cooldown=0.95,
+                lock_direction=False,
+            ),
+        )
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", PlayerIdleState(self))
         self.state_machine.add_state("run", PlayerRunState(self))
@@ -324,11 +361,15 @@ class Player(Entity):
 
         if can_attack:
             if self._is_key_pressed_once(pygame.K_a, keys) or jp.get(1, False):
-                self.combat.start_attack("light_punch", self.facing_right)
+                attack = "air_combo" if not self.on_surface["floor"] else "ground_combo"
+                self.combat.start_attack(attack, self.facing_right)
+
             elif self._is_key_pressed_once(pygame.K_s, keys) or jp.get(2, False):
                 self.combat.start_attack("heavy_smash", self.facing_right)
+
             elif self._is_key_pressed_once(pygame.K_d, keys) or jp.get(3, False):
                 self.combat.start_attack("uppercut", self.facing_right)
+
             elif self._is_key_pressed_once(pygame.K_f, keys) or jp.get(5, False):
                 self.combat.start_attack("dash_strike", self.facing_right)
 

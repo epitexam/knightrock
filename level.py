@@ -110,6 +110,9 @@ class Level:
         for attacker in self.combat_sprites:
             if not attacker.combat.is_attacking or not attacker.combat.attack_box:
                 continue
+            phase = attacker.combat.current_phase
+            if phase is None:
+                continue
 
             for target in self.combat_sprites:
                 if attacker is target:
@@ -120,15 +123,12 @@ class Level:
                     continue
 
                 if attacker.combat.attack_box.colliderect(target.hurtbox):
-                    attack_data = attacker.combat.attacks[
-                        attacker.combat.current_attack
-                    ]
                     target.combat.take_damage(
-                        amount=attack_data.damage,
+                        amount=phase.damage,
                         source_center_x=attacker.hitbox.centerx,
                     )
                     attacker.combat.targets_hit.add(target)
-                    self.hit_stop_timer = 0.05 + (attack_data.damage * 0.002)
+                    self.hit_stop_timer = 0.05 + (phase.damage * 0.002)
 
     def _handle_entity_interactions(self, delta_time: float):
         entities = list(self.entity_sprites)
