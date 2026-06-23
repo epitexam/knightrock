@@ -1,3 +1,4 @@
+import math
 import uuid
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -129,16 +130,22 @@ class Entity(Sprite):
             self._on_wall_contact()
 
     def handle_collisions(self, axis: str) -> None:
-        for sprite in pygame.sprite.spritecollide(
-            self, self.collision_sprites, False, _hitbox_collide
-        ):
+        nearby_sprites = [
+            sprite
+            for sprite in self.collision_sprites
+            if abs(sprite.rect.centerx - self.hitbox.centerx) < 192
+            and abs(sprite.rect.centery - self.hitbox.centery) < 192
+        ]
+
+        for sprite in nearby_sprites:
             if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:
+                continue
+            if not _hitbox_collide(self, sprite):
                 continue
 
             sprite_old = getattr(
                 sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect)
             )
-
             sprite_box = getattr(sprite, "hitbox", sprite.rect)
 
             if axis == "horizontal":
@@ -146,15 +153,60 @@ class Entity(Sprite):
                     self.hitbox.right = sprite_box.left
                 elif self.old_hitbox.left >= sprite_old.right:
                     self.hitbox.left = sprite_box.right
+                else:
+                    if abs(self.hitbox.right - sprite_box.left) < abs(
+                        self.hitbox.left - sprite_box.right
+                    ):
+                        self.hitbox.right = sprite_box.left
+                    else:
+                        self.hitbox.left = sprite_box.right
                 self.velocity.x = 0
+
             elif axis == "vertical":
                 if self.old_hitbox.bottom <= sprite_old.top:
                     self.hitbox.bottom = sprite_box.top
                 elif self.old_hitbox.top >= sprite_old.bottom:
                     self.hitbox.top = sprite_box.bottom
+                else:
+                    if abs(self.hitbox.bottom - sprite_box.top) < abs(
+                        self.hitbox.top - sprite_box.bottom
+                    ):
+                        self.hitbox.bottom = sprite_box.top
+                    else:
+                        self.hitbox.top = sprite_box.bottom
                 self.velocity.y = 0
 
         self.sync_rects()
+
+    def move(self, delta_time: float, apply_gravity: bool = True) -> None:
+        """Handles full physics resolution sequence with sub-stepping for any entity."""
+
+        move_x = self.velocity.x * delta_time
+        steps_x = max(1, math.ceil(abs(move_x) / 16.0))
+        step_move_x = move_x / steps_x
+
+        for _ in range(steps_x):
+            self.old_hitbox = self.hitbox.copy()
+            self.hitbox.x += step_move_x
+            self.handle_collisions("horizontal")
+            if self.velocity.x == 0:
+                break
+
+        if apply_gravity:
+            self.apply_gravity(delta_time)
+
+        move_y = self.velocity.y * delta_time
+        steps_y = max(1, math.ceil(abs(move_y) / 16.0))
+        step_move_y = move_y / steps_y
+
+        for _ in range(steps_y):
+            self.old_hitbox = self.hitbox.copy()
+            self.hitbox.y += step_move_y
+            self.handle_collisions("vertical")
+            if self.velocity.y == 0:
+                break
+
+        self.check_contact()
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
         """Calculates and applies relative coordinate offsets when riding moving platforms."""

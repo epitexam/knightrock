@@ -1,3 +1,4 @@
+import math
 from typing import Any, Iterable, Sequence
 
 import pygame
@@ -310,7 +311,10 @@ class Player(Entity):
             self.jump_buffer_timer = self.jump_buffer_duration
 
         if self._is_key_pressed_once(pygame.K_LSHIFT, keys) or lt_just:
-            self._dash_requested = True
+            if self.dash_charges > 0 and self.dash_penalty_timer <= 0:
+                self._dash_requested = True
+            else:
+                self._dash_requested = False
 
         if self.state_machine is not None:
             current_state = self.state_machine.current_state_name
@@ -406,19 +410,10 @@ class Player(Entity):
             self.midair_jumps_left -= 1
             self.jump_buffer_timer = 0.0
 
-    def move(self, delta_time: float) -> None:
-        """Performs full physics resolution sequence including collisions."""
+    def move(self, delta_time: float, apply_gravity: bool = True) -> None:
+        """Performs full physics resolution sequence including collisions (with sub-stepping)."""
         self.apply_moving_platform(self.moving_platforms)
-
-        self.hitbox.x += self.velocity.x * delta_time
-        self.handle_collisions("horizontal")
-
-        self.apply_gravity(delta_time)
-
-        self.hitbox.y += self.velocity.y * delta_time
-        self.handle_collisions("vertical")
-
-        self.check_contact()
+        super().move(delta_time, apply_gravity=apply_gravity)
 
     def reset_position(self) -> None:
         """Resets player position and fully replenishes state variables."""

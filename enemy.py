@@ -46,17 +46,12 @@ class Goblin(Entity):
         )
 
     def update(self, delta_time: float) -> None:
-        super().update(delta_time)
+        super().update(delta_time) 
         self.combat.update(delta_time, self.facing_right)
         if self.state_machine is not None:
             self.state_machine.update(delta_time)
 
-        self.apply_gravity(delta_time)
-        self.hitbox.x += self.velocity.x * delta_time
-        self.handle_collisions("horizontal")
-        self.hitbox.y += self.velocity.y * delta_time
-        self.handle_collisions("vertical")
-        self.check_contact()
+        self.move(delta_time, apply_gravity=True)
 
     def can_see_player(self) -> bool:
         if self.player is None:
