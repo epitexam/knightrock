@@ -128,6 +128,7 @@ class PlayerBlockState(PlayerBaseState):
         old_bottom = self.entity.hitbox.bottom
         self.entity.hitbox.height += 16.0
         self.entity.hitbox.bottom = old_bottom
+        self.entity.handle_collisions("vertical")
         self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
@@ -187,6 +188,8 @@ class PlayerDashState(PlayerBaseState):
                     self.entity._original_hitbox_width - current
                 ) / 2
                 self.entity.hitbox.width = self.entity._original_hitbox_width
+                self.entity.handle_collisions("horizontal")
+                self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
         self.entity._dash_duration_timer -= delta_time

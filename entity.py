@@ -79,9 +79,9 @@ class Entity(Sprite):
         return self.hitbox
 
     def sync_rects(self) -> None:
-        """Aligns the visual rect to the center of the physical hitbox."""
+        """Aligns the visual rect to the bottom of the physical hitbox (feet-anchored)."""
         if self.rect is not None:
-            self.rect.center = self.hitbox.center
+            self.rect.midbottom = self.hitbox.midbottom
 
     def _is_wall_sliding(self) -> bool:
         return False
@@ -107,11 +107,12 @@ class Entity(Sprite):
         floor_rect: pygame.FRect = pygame.FRect(
             self.hitbox.bottomleft, (self.hitbox.width, 2)
         )
+
         right_rect: pygame.FRect = pygame.FRect(
-            self.hitbox.topright + Vector2(0, height_quarter), (2, half_height)
+            Vector2(self.hitbox.topright) + Vector2(0, height_quarter), (2, half_height)
         )
         left_rect: pygame.FRect = pygame.FRect(
-            self.hitbox.topleft + Vector2(-2, height_quarter), (2, half_height)
+            Vector2(self.hitbox.topleft) + Vector2(-2, height_quarter), (2, half_height)
         )
 
         collide_rects: List[pygame.Rect | pygame.FRect] = [
@@ -130,12 +131,13 @@ class Entity(Sprite):
             self._on_wall_contact()
 
     def handle_collisions(self, axis: str) -> None:
-        nearby_sprites = [
-            sprite
-            for sprite in self.collision_sprites
-            if abs(sprite.rect.centerx - self.hitbox.centerx) < 192
-            and abs(sprite.rect.centery - self.hitbox.centery) < 192
-        ]
+        search_area = self.hitbox.inflate(400, 400)
+
+        nearby_sprites = []
+        for sprite in self.collision_sprites:
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is not None and search_area.colliderect(box):
+                nearby_sprites.append(sprite)
 
         for sprite in nearby_sprites:
             if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:

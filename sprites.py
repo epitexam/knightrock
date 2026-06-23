@@ -71,7 +71,9 @@ class MovingPlatform(Sprite):
                 self.current_target += self.direction
         else:
             direction.normalize_ip()
-            self.rect.topleft += direction * self.speed * delta_time
+            movement = direction * self.speed * delta_time
+            self.rect.x += movement.x
+            self.rect.y += movement.y
 
         self.hitbox.topleft = self.rect.topleft
         self.hitbox.width = self.rect.width
