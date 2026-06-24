@@ -6,6 +6,7 @@ from pytmx.util_pygame import load_pygame
 
 from level import Level
 from settings import Display
+from input_manager import InputManager
 
 
 class Game:
@@ -17,7 +18,8 @@ class Game:
         if pygame.joystick.get_count() > 0:
             pygame.joystick.Joystick(0).init()
         self.tmx_maps = {0: load_pygame(join(".", "data", "levels", "omni.tmx"))}
-        self.current_stage = Level(self.display_surface, self.tmx_maps[0])
+        self.input_manager = InputManager()
+        self.current_stage = Level(self.display_surface, self.tmx_maps[0], self.input_manager)
         self.clock = pygame.time.Clock()
 
     def run(self):
@@ -30,5 +32,6 @@ class Game:
                     pygame.quit()
                     sys.exit()
 
+            self.input_manager.update()
             self.current_stage.run(delta_time)
             pygame.display.update()

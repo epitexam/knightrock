@@ -2,7 +2,7 @@ from typing import Optional
 
 import pygame
 
-from combat import AttackPhase, AttackSequence, CombatComponent, KnockbackConfig, KnockbackConfig
+from combat import CombatComponent
 from enemy_states import (
     EnemyAttackState,
     EnemyChaseState,
@@ -11,6 +11,7 @@ from enemy_states import (
 )
 from entity import Entity
 from state_machine import StateMachine
+from attack_data import GOBLIN_ATTACKS
 
 
 class Goblin(Entity):
@@ -21,23 +22,9 @@ class Goblin(Entity):
         self.chase_speed = 120.0
 
         self.combat = CombatComponent(self)
-        self.combat.add_attack(
-            "claw_swipe",
-            AttackSequence(
-                phases=[
-                    AttackPhase(
-                        size=(50, 30), offset=(25, -5), damage=10, duration=0.15,
-                        knockback=KnockbackConfig(power=(200.0, -100.0)),
-                    ),
-                    AttackPhase(
-                        size=(65, 35), offset=(32, 5), damage=15, duration=0.15,
-                        knockback=KnockbackConfig(power=(260.0, -180.0)),
-                    ),
-                ],
-                cooldown=1.0,
-                lock_direction=True,
-            ),
-        )
+        for name, sequence in GOBLIN_ATTACKS.items():
+            self.combat.add_attack(name, sequence)
+
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("patrol", EnemyPatrolState(self))
         self.state_machine.add_state("chase", EnemyChaseState(self))
