@@ -119,13 +119,12 @@ class Level:
                     continue
                 if target in attacker.combat.targets_hit:
                     continue
-                if target.combat.is_hurt:
-                    continue
 
                 if attacker.combat.attack_box.colliderect(target.hurtbox):
                     target.combat.take_damage(
                         amount=phase.damage,
                         source_center_x=attacker.hitbox.centerx,
+                        knockback=phase.knockback,
                     )
                     attacker.combat.targets_hit.add(target)
                     self.hit_stop_timer = 0.05 + (phase.damage * 0.002)
@@ -159,7 +158,10 @@ class Level:
                     ent_a.hitbox.top, ent_b.hitbox.top
                 )
 
-                if overlap_x < overlap_y:
+                if overlap_x <= 0 or overlap_y <= 0:
+                    continue
+
+                if overlap_x <= overlap_y:
                     dir_a = -1.0 if ent_a.hitbox.centerx < ent_b.hitbox.centerx else 1.0
                     dir_b = -dir_a
                     if ent_a.pushable and ent_b.pushable:
@@ -169,10 +171,6 @@ class Level:
                         ent_a.hitbox.x += overlap_x * dir_a
                     elif ent_b.pushable:
                         ent_b.hitbox.x += overlap_x * dir_b
-                    ent_a.sync_rects()
-                    ent_b.sync_rects()
-                    ent_a.handle_collisions("horizontal")
-                    ent_b.handle_collisions("horizontal")
                 else:
                     dir_a = -1.0 if ent_a.hitbox.centery < ent_b.hitbox.centery else 1.0
                     dir_b = -dir_a
@@ -183,10 +181,9 @@ class Level:
                         ent_a.hitbox.y += overlap_y * dir_a
                     elif ent_b.pushable:
                         ent_b.hitbox.y += overlap_y * dir_b
-                    ent_a.sync_rects()
-                    ent_b.sync_rects()
-                    ent_a.handle_collisions("vertical")
-                    ent_b.handle_collisions("vertical")
+
+                ent_a.sync_rects()
+                ent_b.sync_rects()
 
     def _draw_panel(
         self, x: int, y: int, lines: list, color: tuple, text_color: tuple

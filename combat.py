@@ -1,8 +1,14 @@
 import weakref
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional
 
 import pygame
+
+
+@dataclass
+class KnockbackConfig:
+    power: tuple[float, float] = (250.0, -150.0)
+    mode: Literal["from_attacker", "fixed"] = "from_attacker"
 
 
 @dataclass
@@ -12,6 +18,7 @@ class AttackPhase:
     damage: int
     duration: float
     reset_targets: bool = True
+    knockback: KnockbackConfig = field(default_factory=KnockbackConfig)
 
 
 @dataclass
@@ -58,8 +65,10 @@ class CombatComponent:
         self,
         amount: int,
         source_center_x: float | None = None,
-        knockback_power: tuple[float, float] = (250.0, -150.0),
+        knockback: KnockbackConfig | None = None,
     ) -> None:
+        _kb = knockback if knockback is not None else KnockbackConfig()
+
         is_blocking = (
             hasattr(self.entity, "state_machine")
             and self.entity.state_machine.current_state_name == "block"
@@ -67,9 +76,11 @@ class CombatComponent:
 
         if is_blocking:
             self.entity.block_stamina -= amount * 0.05
-            if source_center_x is not None:
+            if _kb.mode == "fixed":
+                self.entity.velocity.x = _kb.power[0] * 0.3
+            elif source_center_x is not None:
                 direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
-                self.entity.velocity.x = (knockback_power[0] * 0.3) * direction
+                self.entity.velocity.x = _kb.power[0] * 0.3 * direction
             print("Hit blocked!")
             return
 
@@ -77,17 +88,18 @@ class CombatComponent:
         self.hurt_timer = 0.4
         self._end_attack()
 
-        if source_center_x is not None:
-            direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
-            self.entity.velocity.x = knockback_power[0] * direction
-            self.entity.velocity.y = knockback_power[1]
+        if _kb.mode == "fixed":
+            self.entity.velocity.x = _kb.power[0]
+            self.entity.velocity.y = _kb.power[1]
         else:
-            if hasattr(self.entity, "facing_right"):
+            if source_center_x is not None:
+                direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+            elif hasattr(self.entity, "facing_right"):
                 direction = 1.0 if self.entity.facing_right else -1.0
-                self.entity.velocity.x = knockback_power[0] * direction
             else:
-                self.entity.velocity.x = knockback_power[0]
-            self.entity.velocity.y = knockback_power[1]
+                direction = 1.0
+            self.entity.velocity.x = _kb.power[0] * direction
+            self.entity.velocity.y = _kb.power[1]
 
     def start_attack(self, name: str, facing_right: bool) -> bool:
         if self.is_attacking or self.is_hurt:
@@ -175,4 +187,3 @@ class CombatComponent:
             self.entity.hitbox.centerx + offset_x,
             self.entity.hitbox.centery + offset_y,
         )
-        

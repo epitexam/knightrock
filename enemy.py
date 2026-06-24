@@ -2,7 +2,7 @@ from typing import Optional
 
 import pygame
 
-from combat import AttackPhase, AttackSequence, CombatComponent
+from combat import AttackPhase, AttackSequence, CombatComponent, KnockbackConfig, KnockbackConfig
 from enemy_states import (
     EnemyAttackState,
     EnemyChaseState,
@@ -25,8 +25,14 @@ class Goblin(Entity):
             "claw_swipe",
             AttackSequence(
                 phases=[
-                    AttackPhase(size=(50, 30), offset=(25, -5), damage=10, duration=0.15),
-                    AttackPhase(size=(65, 35), offset=(32,  5), damage=15, duration=0.15),
+                    AttackPhase(
+                        size=(50, 30), offset=(25, -5), damage=10, duration=0.15,
+                        knockback=KnockbackConfig(power=(200.0, -100.0)),
+                    ),
+                    AttackPhase(
+                        size=(65, 35), offset=(32, 5), damage=15, duration=0.15,
+                        knockback=KnockbackConfig(power=(260.0, -180.0)),
+                    ),
                 ],
                 cooldown=1.0,
                 lock_direction=True,
