@@ -2,7 +2,7 @@ from typing import Iterable, Optional, Tuple, Union
 
 import pygame
 
-from settings import World
+from src.core.settings import World
 
 
 class Sprite(pygame.sprite.Sprite):

@@ -4,9 +4,9 @@ from os.path import join
 import pygame
 from pytmx.util_pygame import load_pygame
 
-from level import Level
-from settings import Display
-from input_manager import InputManager
+from src.core.level import Level
+from src.core.settings import Display
+from src.core.input_manager import InputManager
 
 
 class Game:
@@ -17,7 +17,7 @@ class Game:
         pygame.display.set_caption(Display.TITLE)
         if pygame.joystick.get_count() > 0:
             pygame.joystick.Joystick(0).init()
-        self.tmx_maps = {0: load_pygame(join(".", "data", "levels", "omni.tmx"))}
+        self.tmx_maps = {0: load_pygame(join(".", "assets", "data", "levels", "omni.tmx"))}
         self.input_manager = InputManager()
         self.current_stage = Level(self.display_surface, self.tmx_maps[0], self.input_manager)
         self.clock = pygame.time.Clock()

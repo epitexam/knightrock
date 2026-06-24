@@ -2,16 +2,16 @@ from typing import Optional
 
 import pygame
 
-from combat import CombatComponent
-from enemy_states import (
+from src.combat.combat import CombatComponent
+from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChaseState,
     EnemyHurtState,
     EnemyPatrolState,
 )
-from entity import Entity
-from state_machine import StateMachine
-from attack_data import GOBLIN_ATTACKS
+from src.entities.entity import Entity
+from src.states.state_machine import StateMachine
+from src.combat.attack_data import GOBLIN_ATTACKS
 
 
 class Goblin(Entity):

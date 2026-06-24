@@ -2,7 +2,7 @@
 Centralized attack data for all entities.
 Enables balancing without modifying the code.
 """
-from combat import AttackPhase, AttackSequence, KnockbackConfig
+from src.combat.combat import AttackPhase, AttackSequence, KnockbackConfig
 
 
 PLAYER_ATTACKS = {

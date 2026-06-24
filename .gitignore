@@ -9,6 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# Test Files 
-/data
-graphics
+# Temporary
+assets/

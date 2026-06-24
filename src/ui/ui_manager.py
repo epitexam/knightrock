@@ -3,7 +3,7 @@ User interface management (debugging panels, statistics, overlays)
 """
 
 import pygame
-from colors import Colors
+from src.core.colors import Colors
 
 
 class UIManager:

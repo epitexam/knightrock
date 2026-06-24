@@ -2,7 +2,7 @@ from typing import Optional
 
 import pygame
 
-from state_machine import State
+from src.states.state_machine import State
 
 
 class EnemyHurtState(State):

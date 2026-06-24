@@ -6,8 +6,8 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from settings import Display, Physics
-from state_machine import StateMachine
+from src.core.settings import Display, Physics
+from src.states.state_machine import StateMachine
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:

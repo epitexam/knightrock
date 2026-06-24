@@ -4,11 +4,11 @@ from typing import Any, Iterable, Sequence
 import pygame
 from pygame.sprite import Group
 
-from colors import Colors
-from combat import CombatComponent
-from entity import Entity
-from input_manager import InputManager
-from player_states import (
+from src.core.colors import Colors
+from src.combat.combat import CombatComponent
+from src.entities.entity import Entity
+from src.core.input_manager import InputManager
+from src.states.player_states import (
     PlayerAttackState,
     PlayerBlockState,
     PlayerDashState,
@@ -19,9 +19,9 @@ from player_states import (
     PlayerRunState,
     PlayerWallSlideState,
 )
-from settings import Physics
-from state_machine import StateMachine
-from attack_data import PLAYER_ATTACKS
+from src.core.settings import Physics
+from src.states.state_machine import StateMachine
+from src.combat.attack_data import PLAYER_ATTACKS
 
 
 class Player(Entity):

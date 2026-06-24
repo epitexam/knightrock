@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Optional
 
 import pygame
 
-from state_machine import State
+from src.states.state_machine import State
 
 if TYPE_CHECKING:
-    from player import Player
+    from src.entities.player import Player
 
 
 class PlayerBaseState(State["Player"]):

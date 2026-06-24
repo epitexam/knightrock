@@ -1,12 +1,12 @@
 import pygame
 
-from colors import Colors
-from enemy import Goblin
-from player import Player
-from settings import DEBUG, World
-from sprites import MovingPlatform, Sprite
-from ui_manager import UIManager
-from input_manager import InputManager
+from src.core.colors import Colors
+from src.entities.enemy import Goblin
+from src.entities.player import Player
+from src.core.settings import DEBUG, World
+from src.core.sprites import MovingPlatform, Sprite
+from src.ui.ui_manager import UIManager
+from src.core.input_manager import InputManager
 
 
 class Level:
