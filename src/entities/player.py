@@ -23,6 +23,8 @@ from src.core.settings import Physics
 from src.states.state_machine import StateMachine
 from src.combat.attack_data import PLAYER_ATTACKS
 
+ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash"}
+
 
 class Player(Entity):
     """
@@ -68,6 +70,7 @@ class Player(Entity):
 
     facing_right: bool
     combat: CombatComponent
+    state_machine: StateMachine
 
     def __init__(
         self,
@@ -84,6 +87,8 @@ class Player(Entity):
             groups,
             collision_sprites,
             hitbox_inflate=(-8.0, 0.0),
+            health=100.0,
+            max_health=100.0,
         )
 
         self.speed = float(Physics.PLAYER_SPEED)
@@ -175,15 +180,18 @@ class Player(Entity):
         )
         sm.add_interrupt(
             "attack",
-            lambda: (
-                self.combat.is_attacking
-                and sm.current_state_name not in ("wall_slide", "block", "hurt", "dash")
-            ),
+            lambda: (self.combat.is_attacking and self.can_attack()),
             priority=40,
         )
 
         self.input_manager = input_manager
         self._dash_requested = False
+
+    def can_attack(self) -> bool:
+        """Returns True if the current state allows starting an attack."""
+        if self.state_machine is None:
+            return False
+        return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
 
     def _is_wall_sliding(self) -> bool:
         """Checks if the player is actively pressing against a wall while falling."""
@@ -226,13 +234,7 @@ class Player(Entity):
             else:
                 self._dash_requested = False
 
-        if self.state_machine is not None:
-            current_state = self.state_machine.current_state_name
-            can_attack = current_state not in ("wall_slide", "block", "hurt")
-        else:
-            can_attack = True
-
-        if can_attack:
+        if self.can_attack():
             if im.attack1_just_pressed:
                 attack = "air_combo" if not self.on_surface["floor"] else "ground_combo"
                 self.combat.start_attack(attack, self.facing_right)
@@ -343,6 +345,16 @@ class Player(Entity):
         if self.combat.current_attack:
             self.combat.current_attack = None
             self.combat.attack_box = None
+
+        self.health = self.max_health
+
+    def die(self) -> None:
+        """Override death behavior: reset position instead of removing."""
+        self.is_dead = True
+
+        self.reset_position()
+
+        self.is_dead = False
 
     def update(self, delta_time: float) -> None:
         """Core update cycle invoked each frame."""

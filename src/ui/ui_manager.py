@@ -4,6 +4,7 @@ User interface management (debugging panels, statistics, overlays)
 
 import pygame
 from src.core.colors import Colors
+from src.core.camera import Camera
 
 
 class UIManager:
@@ -66,7 +67,7 @@ class UIManager:
 
         p = player
         lines = [
-            f"HP:    {getattr(p, 'health', 100):.0f}",
+            f"HP:    {p.health:.0f}/{p.max_health:.0f}",
             f"Block: {p.block_stamina:.2f}/{p.max_block_stamina:.2f}   CD: {p.block_cooldown_timer:.2f}s",
             f"Dash:  {p.dash_charges}/{p.max_dash_charges}   Pen: {p.dash_penalty_timer:.2f}s   Regen: {p.dash_recharge_timer:.2f}s",
         ]
@@ -112,18 +113,20 @@ class UIManager:
                 surf, (panel_x + padding, panel_y + padding + i * line_height)
             )
 
-    def draw_debug_overlays(self, all_sprites: pygame.sprite.Group) -> None:
-        """Draw the hitboxes, attack boxes, and state labels."""
+    def draw_debug_overlays(
+        self, all_sprites: pygame.sprite.Group, camera: Camera
+    ) -> None:
+        """Draw hitboxes, attack boxes, and state labels with camera offset."""
         for sprite in all_sprites:
             if hasattr(sprite, "hitbox") and sprite.hitbox:
-                pygame.draw.rect(
-                    self.display_surface, (0, 0, 255), sprite.hitbox, width=2
-                )
+                rect = camera.apply(sprite.hitbox)
+                pygame.draw.rect(self.display_surface, (0, 0, 255), rect, width=2)
             if hasattr(sprite, "combat") and sprite.combat.attack_box:
+                rect = camera.apply(sprite.combat.attack_box)
                 pygame.draw.rect(
                     self.display_surface,
                     (255, 165, 0),
-                    sprite.combat.attack_box,
+                    rect,
                     width=3,
                 )
 
@@ -140,6 +143,7 @@ class UIManager:
                 if (hasattr(sprite, "hitbox") and sprite.hitbox)
                 else sprite.rect
             )
+            ref = camera.apply(ref)
             bg = label_surf.get_rect(midbottom=(ref.centerx, ref.top - 8))
             bg.left = max(0, min(bg.left, self.display_surface.get_width() - bg.width))
             bg.top = max(0, bg.top)

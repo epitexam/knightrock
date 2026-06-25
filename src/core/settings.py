@@ -23,12 +23,6 @@ class World:
     TILE_SIZE = 64
 
 
-class Animation:
-    """Animation-related settings."""
-
-    SPEED = 6
-
-
 class Physics:
     """Movement and physics parameters."""
 

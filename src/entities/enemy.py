@@ -16,7 +16,7 @@ from src.combat.attack_data import GOBLIN_ATTACKS
 
 class Goblin(Entity):
     def __init__(self, pos, groups, collision_sprites, player_reference):
-        super().__init__(pos, (48, 48), (200, 50, 50), groups, collision_sprites)
+        super().__init__(pos, (48, 48), (200, 50, 50), groups, collision_sprites, health=50.0, max_health=50.0)
         self.player = player_reference
         self.facing_right = True
         self.chase_speed = 120.0

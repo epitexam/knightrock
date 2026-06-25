@@ -17,9 +17,13 @@ class Game:
         pygame.display.set_caption(Display.TITLE)
         if pygame.joystick.get_count() > 0:
             pygame.joystick.Joystick(0).init()
-        self.tmx_maps = {0: load_pygame(join(".", "assets", "data", "levels", "omni.tmx"))}
+        self.tmx_maps = {
+            0: load_pygame(join(".", "assets", "data", "levels", "omni.tmx"))
+        }
         self.input_manager = InputManager()
-        self.current_stage = Level(self.display_surface, self.tmx_maps[0], self.input_manager)
+        self.current_stage = Level(
+            self.display_surface, self.tmx_maps[0], self.input_manager
+        )
         self.clock = pygame.time.Clock()
 
     def run(self):
@@ -33,5 +37,6 @@ class Game:
                     sys.exit()
 
             self.input_manager.update()
-            self.current_stage.run(delta_time)
+            fps = self.clock.get_fps()
+            self.current_stage.run(delta_time, fps)
             pygame.display.update()

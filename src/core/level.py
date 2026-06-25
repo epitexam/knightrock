@@ -1,12 +1,16 @@
 import pygame
+from pytmx.util_pygame import load_pygame
 
 from src.core.colors import Colors
 from src.entities.enemy import Goblin
 from src.entities.player import Player
-from src.core.settings import DEBUG, World
+from src.core.settings import DEBUG, World, Display
 from src.core.sprites import MovingPlatform, Sprite
 from src.ui.ui_manager import UIManager
 from src.core.input_manager import InputManager
+from src.core.camera import Camera
+from src.core.combat_system import CombatSystem
+from src.core.separation_system import SeparationSystem
 
 
 class Level:
@@ -23,17 +27,16 @@ class Level:
         self.entity_sprites = pygame.sprite.Group()
 
         self.player = None
-
-        self.hit_stop_timer = 0.0
         self.spawn_cooldown = 0.0
+
+        self.camera = Camera(Display.WIDTH, Display.HEIGHT)
+        self.combat_system = CombatSystem()
+        self.separation_system = SeparationSystem()
 
         self.setup(tmx_map)
 
-        self.fps_timer = 0.0
-        self.fps_frames = 0
-        self.current_fps = 0
-
     def setup(self, tmx_map):
+
         for x, y, surf in tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite(
                 pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
@@ -90,13 +93,22 @@ class Level:
                 )
                 self.combat_sprites.add(self.player)
                 self.entity_sprites.add(self.player)
+            elif obj.name == "goblin":
+
+                goblin = Goblin(
+                    pos=(obj.x, obj.y),
+                    groups=(self.all_sprites,),
+                    collision_sprites=self.collision_sprites,
+                    player_reference=self.player,
+                )
+                self.combat_sprites.add(goblin)
+                self.entity_sprites.add(goblin)
 
     def _handle_debug_input(self, delta_time: float):
         if self.spawn_cooldown > 0:
             self.spawn_cooldown -= delta_time
 
         keys = pygame.key.get_pressed()
-
         if keys[pygame.K_g] and self.spawn_cooldown <= 0 and self.player is not None:
             offset_x = 100 if self.player.facing_right else -100
             goblin = Goblin(
@@ -109,118 +121,52 @@ class Level:
             self.entity_sprites.add(goblin)
             self.spawn_cooldown = 0.5
 
-    def _handle_combat(self):
-        for attacker in self.combat_sprites:
-            if not attacker.combat.is_attacking or not attacker.combat.attack_box:
-                continue
-            phase = attacker.combat.current_phase
-            if phase is None:
-                continue
+    def _remove_dead_entities(self):
+        """Remove dead entities from all groups."""
+        dead = [e for e in self.entity_sprites if e.is_dead]
+        for e in dead:
+            self.entity_sprites.remove(e)
+            self.combat_sprites.remove(e)
+            self.all_sprites.remove(e)
 
-            for target in self.combat_sprites:
-                if attacker is target:
-                    continue
-                if target in attacker.combat.targets_hit:
-                    continue
-
-                if attacker.combat.attack_box.colliderect(target.hurtbox):
-                    target.combat.take_damage(
-                        amount=phase.damage,
-                        source_center_x=attacker.hitbox.centerx,
-                        knockback=phase.knockback,
-                    )
-                    attacker.combat.targets_hit.add(target)
-                    self.hit_stop_timer = 0.05 + (phase.damage * 0.002)
-
-    def _handle_entity_interactions(self, delta_time: float):
-        entities = list(self.entity_sprites)
-
-        for i, ent_a in enumerate(entities):
-            for ent_b in entities[i + 1 :]:
-                if type(ent_a) is type(ent_b):
-                    continue
-
-                if not ent_a.hitbox.colliderect(ent_b.hitbox):
-                    continue
-
-                if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
-                    ent_a.combat.take_damage(
-                        ent_b.combat.contact_damage,
-                        source_center_x=ent_b.hitbox.centerx,
-                    )
-                elif not ent_b.combat.is_hurt and ent_a.combat.contact_damage > 0:
-                    ent_b.combat.take_damage(
-                        ent_a.combat.contact_damage,
-                        source_center_x=ent_a.hitbox.centerx,
-                    )
-
-                overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
-                    ent_a.hitbox.left, ent_b.hitbox.left
-                )
-                overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
-                    ent_a.hitbox.top, ent_b.hitbox.top
-                )
-
-                if overlap_x <= 0 or overlap_y <= 0:
-                    continue
-
-                if overlap_x <= overlap_y:
-                    dir_a = -1.0 if ent_a.hitbox.centerx < ent_b.hitbox.centerx else 1.0
-                    dir_b = -dir_a
-                    if ent_a.pushable and ent_b.pushable:
-                        ent_a.hitbox.x += (overlap_x / 2.0) * dir_a
-                        ent_b.hitbox.x += (overlap_x / 2.0) * dir_b
-                    elif ent_a.pushable:
-                        ent_a.hitbox.x += overlap_x * dir_a
-                    elif ent_b.pushable:
-                        ent_b.hitbox.x += overlap_x * dir_b
-                else:
-                    dir_a = -1.0 if ent_a.hitbox.centery < ent_b.hitbox.centery else 1.0
-                    dir_b = -dir_a
-                    if ent_a.pushable and ent_b.pushable:
-                        ent_a.hitbox.y += (overlap_y / 2.0) * dir_a
-                        ent_b.hitbox.y += (overlap_y / 2.0) * dir_b
-                    elif ent_a.pushable:
-                        ent_a.hitbox.y += overlap_y * dir_a
-                    elif ent_b.pushable:
-                        ent_b.hitbox.y += overlap_y * dir_b
-
-                ent_a.sync_rects()
-                ent_b.sync_rects()
-
-    def run(self, delta_time: float):
-        self.fps_frames += 1
-        self.fps_timer += delta_time
-        if self.fps_timer >= 1.0:
-            self.current_fps = self.fps_frames / self.fps_timer
-            self.fps_frames = 0
-            self.fps_timer = 0.0
+    def run(self, delta_time: float, fps: float):
 
         self._handle_debug_input(delta_time)
 
-        if self.hit_stop_timer > 0:
-            self.hit_stop_timer -= delta_time
-        else:
+        self.combat_system.update_timer(delta_time)
+
+        if not self.combat_system.in_hit_stop:
             self.all_sprites.update(delta_time)
-            self._handle_entity_interactions(delta_time)
-            self._handle_combat()
+            self.separation_system.process(self.entity_sprites)
+            self.combat_system.process_attacks(self.combat_sprites, delta_time)
+
+        self._remove_dead_entities()
+
+        if self.player is not None and not self.player.is_dead:
+            self.camera.follow(self.player.hitbox)
 
         self.display_surface.fill(Colors.red)
-        self.all_sprites.draw(self.display_surface)
+        for sprite in self.all_sprites:
+            if hasattr(sprite, "rect") and sprite.rect is not None:
+                rect = self.camera.apply(sprite.rect)
+                self.display_surface.blit(sprite.image, rect)
+            elif hasattr(sprite, "hitbox"):
+                rect = self.camera.apply(pygame.FRect(sprite.hitbox))
+                self.display_surface.blit(sprite.image, rect)
 
         if DEBUG:
-            self.ui_manager.draw_debug_overlays(self.all_sprites)
+            self.ui_manager.draw_debug_overlays(self.all_sprites, self.camera)
 
             x, y = 10, 10
             y += self.ui_manager.draw_state_panel(x, y, self.player) + 8
             self.ui_manager.draw_stats_panel(x, y, self.player)
 
             self.ui_manager.draw_performance_panel(
-                fps=self.current_fps,
+                fps=fps,
                 sprite_count=len(self.all_sprites),
                 combat_count=len(self.combat_sprites),
                 entity_count=len(self.entity_sprites),
                 collision_count=len(self.collision_sprites),
-                hit_stop=self.hit_stop_timer,
+                hit_stop=self.combat_system.hit_stop_timer,
                 spawn_cd=self.spawn_cooldown,
             )

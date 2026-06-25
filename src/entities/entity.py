@@ -7,7 +7,6 @@ from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
 from src.core.settings import Display, Physics
-from src.states.state_machine import StateMachine
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
@@ -46,6 +45,8 @@ class Entity(Sprite):
         groups: Group | Sequence[Group],
         collision_sprites: Group,
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
+        health: float = 100.0,
+        max_health: float = 100.0,
     ) -> None:
         Sprite.__init__(self, groups)
         self.id: str = uuid.uuid4().hex
@@ -71,7 +72,29 @@ class Entity(Sprite):
         self.slide_gravity = Physics.GRAVITY * 0.15
         self.max_slide_speed = 80.0
 
-        self.state_machine: Optional[StateMachine] = None
+        self._health = health
+        self._max_health = max_health
+        self.is_dead = False
+
+    @property
+    def health(self) -> float:
+        return self._health
+
+    @health.setter
+    def health(self, value: float) -> None:
+        self._health = max(0.0, min(value, self._max_health))
+
+    @property
+    def max_health(self) -> float:
+        return self._max_health
+
+    @max_health.setter
+    def max_health(self, value: float) -> None:
+        self._max_health = max(1.0, value)
+
+    def die(self) -> None:
+        """Mark entity as dead. Subclasses may override for custom death behavior."""
+        self.is_dead = True
 
     @property
     def hurtbox(self) -> pygame.FRect:
@@ -181,7 +204,7 @@ class Entity(Sprite):
         self.sync_rects()
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Handles full physics resolution sequence with sub-stepping for any entity."""
+        """Handles full physics resolution sequence with sub‑stepping for any entity."""
 
         move_x = self.velocity.x * delta_time
         steps_x = max(1, math.ceil(abs(move_x) / 16.0))

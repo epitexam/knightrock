@@ -1,38 +1,16 @@
 import weakref
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Optional
 
 import pygame
 
-
-@dataclass
-class KnockbackConfig:
-    power: tuple[float, float] = (250.0, -150.0)
-    mode: Literal["from_attacker", "fixed"] = "from_attacker"
-
-
-@dataclass
-class AttackPhase:
-    size: tuple[float, float]
-    offset: tuple[float, float]
-    damage: int
-    duration: float
-    reset_targets: bool = True
-    knockback: KnockbackConfig = field(default_factory=KnockbackConfig)
-
-
-@dataclass
-class AttackSequence:
-    phases: List[AttackPhase]
-    cooldown: float
-    lock_direction: bool = False
+from src.combat.attack_types import AttackPhase, AttackSequence, KnockbackConfig
 
 
 class CombatComponent:
     def __init__(self, entity: Any) -> None:
         self.entity = entity
-        self.attacks: Dict[str, AttackSequence] = {}
-        self.cooldowns: Dict[str, float] = {}
+        self.attacks: dict[str, AttackSequence] = {}
+        self.cooldowns: dict[str, float] = {}
 
         self.current_attack: str | None = None
         self.current_phase_index: int = 0
@@ -79,10 +57,16 @@ class CombatComponent:
             if _kb.mode == "fixed":
                 self.entity.velocity.x = _kb.power[0] * 0.3
             elif source_center_x is not None:
-                direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+                direction = (
+                    1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+                )
                 self.entity.velocity.x = _kb.power[0] * 0.3 * direction
-            print("Hit blocked!")
             return
+
+        self.entity.health -= amount
+        if self.entity.health <= 0:
+            self.entity.health = 0
+            self.entity.die()
 
         self.is_hurt = True
         self.hurt_timer = 0.4
@@ -93,7 +77,9 @@ class CombatComponent:
             self.entity.velocity.y = _kb.power[1]
         else:
             if source_center_x is not None:
-                direction = 1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+                direction = (
+                    1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
+                )
             elif hasattr(self.entity, "facing_right"):
                 direction = 1.0 if self.entity.facing_right else -1.0
             else:
@@ -141,7 +127,11 @@ class CombatComponent:
                 self._update_hitbox_position(self._effective_direction(facing_right))
 
     def _effective_direction(self, facing_right: bool) -> bool:
-        return self._locked_facing_right if self._locked_facing_right is not None else facing_right
+        return (
+            self._locked_facing_right
+            if self._locked_facing_right is not None
+            else facing_right
+        )
 
     def _advance_phase(self, facing_right: bool) -> None:
         attack_name = self.current_attack
