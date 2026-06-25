@@ -1,8 +1,7 @@
-"""
-Handles attack resolution between combatants.
-"""
 import pygame
 from typing import TYPE_CHECKING
+
+from src.core.settings import Combat as CombatSettings
 
 if TYPE_CHECKING:
     from src.entities.entity import Entity
@@ -14,7 +13,7 @@ class CombatSystem:
     def __init__(self):
         self.hit_stop_timer = 0.0
 
-    def process_attacks(self, combat_sprites: pygame.sprite.Group, delta_time: float) -> None:
+    def process_attacks(self, combat_sprites: pygame.sprite.Group) -> None:
         """Check all active attack boxes against all targets."""
         if self.hit_stop_timer > 0:
             return
@@ -29,6 +28,8 @@ class CombatSystem:
             for target in combat_sprites:
                 if attacker is target:
                     continue
+                if attacker.faction == target.faction:
+                    continue
                 if target in attacker.combat.targets_hit:
                     continue
 
@@ -39,7 +40,10 @@ class CombatSystem:
                         knockback=phase.knockback,
                     )
                     attacker.combat.targets_hit.add(target)
-                    self.hit_stop_timer = 0.05 + (phase.damage * 0.002)
+                    self.hit_stop_timer = (
+                        CombatSettings.HITSTOP_BASE
+                        + (phase.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
+                    )
 
     def update_timer(self, delta_time: float) -> None:
         if self.hit_stop_timer > 0:

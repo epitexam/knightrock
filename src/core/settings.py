@@ -1,35 +1,25 @@
 """
 Centralized game configuration.
-
-This module contains all tunable values used throughout the game.
-Settings are grouped by domain to improve readability and maintenance.
 """
+import os
 
 
 class Display:
-    """Window and rendering settings."""
-
     WIDTH = 1280
     HEIGHT = 720
     SIZE = (WIDTH, HEIGHT)
-
     FPS = 180
     TITLE = "Knightrock"
 
 
 class World:
-    """World and level settings."""
-
     TILE_SIZE = 64
 
 
 class Physics:
-    """Movement and physics parameters."""
-
     PLAYER_SPEED = 450
     GRAVITY = 3500
     JUMP_FORCE = 950
-
     DASH_SPEED = 2750
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
@@ -38,5 +28,31 @@ class Physics:
     DASH_PENALTY_TIME = 2.20
     DASH_GRAVITY_MULT = 0.0
 
+    FLOOR_CONTROL = 25.0
+    AIR_CONTROL = 12.0
+    WALL_SLIDE_SPEED = 100.0
+    COYOTE_DURATION = 0.12
+    JUMP_BUFFER_DURATION = 0.10
+    MAX_BLOCK_STAMINA = 0.75
 
-DEBUG = True
+
+class Combat:
+    HURT_DURATION = 0.4
+    BLOCK_STAMINA_COST_RATIO = 0.05
+    BLOCK_KNOCKBACK_FACTOR = 0.3
+    BLOCK_HEIGHT_REDUCTION = 16.0
+    BLOCK_COOLDOWN_NORMAL = 0.5
+    BLOCK_COOLDOWN_BROKEN = 2.0
+    HITSTOP_BASE = 0.05
+    HITSTOP_DAMAGE_FACTOR = 0.002
+
+
+class Separation:
+    SEARCH_INFLATE = 400
+    SUB_STEP_SIZE = 16.0
+
+
+class Debug:
+    ENABLED = os.getenv("DEBUG", "0") == "1"
+    FONT_SIZE = 24
+    LABEL_FONT_SIZE = 16

@@ -10,7 +10,7 @@ class Sprite(pygame.sprite.Sprite):
         self,
         pos: Tuple[int, int],
         color: Optional[Tuple[int, int, int]] = None,
-        surf: pygame.Surface = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE)),
+        surf: Optional[pygame.Surface] = None,
         groups: Union[
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
         ] = None,
@@ -24,6 +24,8 @@ class Sprite(pygame.sprite.Sprite):
                 for group in groups:
                     group.add(self)
 
+        if surf is None:
+            surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE))
         self.image: pygame.Surface = surf
         if color is not None:
             self.image.fill(color)
@@ -51,7 +53,6 @@ class MovingPlatform(Sprite):
         self.old_hitbox: pygame.FRect = self.hitbox.copy()
 
     def update(self, delta_time: float):
-
         self.old_rect = self.rect.copy()
         self.old_hitbox = self.hitbox.copy()
 

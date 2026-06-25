@@ -19,59 +19,15 @@ from src.states.player_states import (
     PlayerRunState,
     PlayerWallSlideState,
 )
-from src.core.settings import Physics
+from src.core.settings import Physics, Combat as CombatSettings
 from src.states.state_machine import StateMachine
 from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.attack_types import KnockbackConfig
 
 ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash"}
 
 
 class Player(Entity):
-    """
-    Represents the playable character with precise, responsive platforming physics
-    inspired by modern tight-control platformers like Celeste.
-    """
-
-    speed: float
-    floor_control: float
-    air_control: float
-    jump_height: float
-    wall_jump_height: float
-    wall_slide_speed: float
-    max_midair_jumps: int
-    midair_jumps_left: int
-    max_wall_jumps: int
-    wall_jumps_left: int
-    space_held: bool
-    left_held: bool
-    right_held: bool
-    block_held: bool
-    move_axis: float
-    coyote_timer: float
-    coyote_duration: float
-    jump_buffer_timer: float
-    jump_buffer_duration: float
-    moving_platforms: Iterable[Any]
-    _dash_duration_timer: float
-    _original_hitbox_width: float
-
-    max_block_stamina: float
-    block_stamina: float
-    block_cooldown_timer: float
-
-    max_dash_charges: int
-    dash_charges: int
-    dash_recharge_timer: float
-    dash_penalty_timer: float
-    dash_speed: float
-    dash_duration: float
-    dash_friction: float
-    dash_penalty_duration: float
-
-    facing_right: bool
-    combat: CombatComponent
-    state_machine: StateMachine
-
     def __init__(
         self,
         pos: tuple[float, float] | pygame.math.Vector2,
@@ -80,6 +36,8 @@ class Player(Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
     ) -> None:
+        combat = CombatComponent(self)
+
         super().__init__(
             pos,
             (48.0, 56.0),
@@ -89,15 +47,18 @@ class Player(Entity):
             hitbox_inflate=(-8.0, 0.0),
             health=100.0,
             max_health=100.0,
+            faction="player",
+            spawn_pos=pos,
+            combat=combat,
         )
 
         self.speed = float(Physics.PLAYER_SPEED)
-        self.floor_control = 25.0
-        self.air_control = 12.0
+        self.floor_control = Physics.FLOOR_CONTROL
+        self.air_control = Physics.AIR_CONTROL
 
         self.jump_height = float(Physics.JUMP_FORCE)
         self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90
-        self.wall_slide_speed = 100.0
+        self.wall_slide_speed = Physics.WALL_SLIDE_SPEED
 
         self.max_midair_jumps = 1
         self.midair_jumps_left = self.max_midair_jumps
@@ -111,14 +72,14 @@ class Player(Entity):
         self.move_axis = 0.0
 
         self.coyote_timer = 0.0
-        self.coyote_duration = 0.12
+        self.coyote_duration = Physics.COYOTE_DURATION
 
         self.jump_buffer_timer = 0.0
-        self.jump_buffer_duration = 0.10
+        self.jump_buffer_duration = Physics.JUMP_BUFFER_DURATION
 
         self.moving_platforms = moving_platforms
 
-        self.max_block_stamina = 0.75
+        self.max_block_stamina = Physics.MAX_BLOCK_STAMINA
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
 
@@ -135,7 +96,6 @@ class Player(Entity):
 
         self.facing_right = True
 
-        self.combat = CombatComponent(self)
         for name, sequence in PLAYER_ATTACKS.items():
             self.combat.add_attack(name, sequence)
 
@@ -187,16 +147,20 @@ class Player(Entity):
         self.input_manager = input_manager
         self._dash_requested = False
 
+    @property
+    def is_blocking(self) -> bool:
+        if self.state_machine is None:
+            return False
+        return self.state_machine.current_state_name == "block"
+
     def can_attack(self) -> bool:
-        """Returns True if the current state allows starting an attack."""
         if self.state_machine is None:
             return False
         return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
 
     def _is_wall_sliding(self) -> bool:
-        """Checks if the player is actively pressing against a wall while falling."""
-        on_left_wall: bool = self.on_surface["left"] and self.left_held
-        on_right_wall: bool = self.on_surface["right"] and self.right_held
+        on_left_wall = self.on_surface["left"] and self.left_held
+        on_right_wall = self.on_surface["right"] and self.right_held
         return (
             not self.on_surface["floor"]
             and (on_left_wall or on_right_wall)
@@ -204,16 +168,13 @@ class Player(Entity):
         )
 
     def _on_floor_contact(self) -> None:
-        """Resets jump resources upon touching the ground."""
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
     def _on_wall_contact(self) -> None:
-        """Resets mid-air resources upon touching a wall."""
         self.midair_jumps_left = self.max_midair_jumps
 
     def get_input(self) -> None:
-        """Gathers and processes keyboard and controller inputs via InputManager."""
         im = self.input_manager
         self.move_axis = im.move_axis
         self.left_held = im.left_held
@@ -234,22 +195,26 @@ class Player(Entity):
             else:
                 self._dash_requested = False
 
-        if self.can_attack():
-            if im.attack1_just_pressed:
-                attack = "air_combo" if not self.on_surface["floor"] else "ground_combo"
-                self.combat.start_attack(attack, self.facing_right)
-            elif im.attack2_just_pressed:
-                self.combat.start_attack("heavy_smash", self.facing_right)
-            elif im.attack3_just_pressed:
-                self.combat.start_attack("uppercut", self.facing_right)
-            elif im.attack4_just_pressed:
-                self.combat.start_attack("dash_strike", self.facing_right)
-
         if im.reset_just_pressed:
             self.reset_position()
 
+    def _handle_attack_input(self) -> None:
+        """Map input to attack selection based on context."""
+        im = self.input_manager
+        if not self.can_attack():
+            return
+
+        if im.attack1_just_pressed:
+            attack = "air_combo" if not self.on_surface["floor"] else "ground_combo"
+            self.combat.start_attack(attack, self.facing_right)
+        elif im.attack2_just_pressed:
+            self.combat.start_attack("heavy_smash", self.facing_right)
+        elif im.attack3_just_pressed:
+            self.combat.start_attack("uppercut", self.facing_right)
+        elif im.attack4_just_pressed:
+            self.combat.start_attack("dash_strike", self.facing_right)
+
     def update_timers(self, delta_time: float) -> None:
-        """Decrements all game-feel buffers and timers."""
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
 
@@ -279,8 +244,7 @@ class Player(Entity):
                     self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
-        """Calculates and interpolates horizontal velocity based on context and inputs."""
-        target_speed: float = self.move_axis * self.speed
+        target_speed = self.move_axis * self.speed
 
         if self.combat.is_attacking and self.on_surface["floor"]:
             target_speed = 0.0
@@ -289,9 +253,7 @@ class Player(Entity):
             self.velocity.x = 0.0
             return
 
-        control: float = (
-            self.floor_control if self.on_surface["floor"] else self.air_control
-        )
+        control = self.floor_control if self.on_surface["floor"] else self.air_control
         self.velocity.x = pygame.math.lerp(
             self.velocity.x, target_speed, min(1.0, control * delta_time)
         )
@@ -300,7 +262,6 @@ class Player(Entity):
             self.velocity.x = 0.0
 
     def handle_jump(self) -> None:
-        """Evaluates jump requests against buffered inputs and physics context."""
         if self.jump_buffer_timer <= 0:
             return
 
@@ -322,12 +283,10 @@ class Player(Entity):
             self.jump_buffer_timer = 0.0
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Performs full physics resolution sequence including collisions (with sub-stepping)."""
         self.apply_moving_platform(self.moving_platforms)
         super().move(delta_time, apply_gravity=apply_gravity)
 
     def reset_position(self) -> None:
-        """Resets player position and fully replenishes state variables."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
         self.coyote_timer = 0.0
@@ -349,17 +308,40 @@ class Player(Entity):
         self.health = self.max_health
 
     def die(self) -> None:
-        """Override death behavior: reset position instead of removing."""
-        self.is_dead = True
+        """Mark player as dead without resetting position (respawn handled by Level)."""
+        super().die()
 
+    def respawn(self) -> None:
+        """Respawn the player at spawn point."""
+        self.is_dead = False
         self.reset_position()
 
-        self.is_dead = False
+    def receive_damage(
+        self,
+        amount: int,
+        source_center_x: float | None = None,
+        knockback: KnockbackConfig | None = None,
+    ) -> None:
+        if self.is_blocking:
+            _kb = knockback if knockback is not None else KnockbackConfig()
+            self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
+            if _kb.mode == "fixed":
+                self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR
+            elif source_center_x is not None:
+                direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+                self.velocity.x = (
+                    _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
+                )
+            return
+
+        super().receive_damage(amount, source_center_x, knockback)
 
     def update(self, delta_time: float) -> None:
-        """Core update cycle invoked each frame."""
+        if self.is_dead:
+            return
         super().update(delta_time)
         self.get_input()
+        self._handle_attack_input()
         self.update_timers(delta_time)
         self.combat.update(delta_time, self.facing_right)
         if self.state_machine is not None:

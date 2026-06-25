@@ -1,7 +1,3 @@
-"""
-Resolves physical overlaps between entities and handles contact damage.
-"""
-
 import pygame
 from typing import List, TYPE_CHECKING
 
@@ -10,29 +6,21 @@ if TYPE_CHECKING:
 
 
 class SeparationSystem:
-    """Separates overlapping entities and applies contact damage if configured."""
+    """Resolves physical overlaps between entities and applies contact damage if configured."""
 
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
         entities = list(entity_sprites)
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1 :]:
-                if type(ent_a) is type(ent_b):
+
+                if ent_a.faction == ent_b.faction:
                     continue
 
                 if not ent_a.hitbox.colliderect(ent_b.hitbox):
                     continue
 
-                if not ent_a.combat.is_hurt and ent_b.combat.contact_damage > 0:
-                    ent_a.combat.take_damage(
-                        ent_b.combat.contact_damage,
-                        source_center_x=ent_b.hitbox.centerx,
-                    )
-                elif not ent_b.combat.is_hurt and ent_a.combat.contact_damage > 0:
-                    ent_b.combat.take_damage(
-                        ent_a.combat.contact_damage,
-                        source_center_x=ent_a.hitbox.centerx,
-                    )
+                self._apply_contact_damage(ent_a, ent_b)
 
                 overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
                     ent_a.hitbox.left, ent_b.hitbox.left
@@ -67,3 +55,12 @@ class SeparationSystem:
 
                 ent_a.sync_rects()
                 ent_b.sync_rects()
+
+    def _apply_contact_damage(self, ent_a, ent_b):
+        """Apply contact damage if configured."""
+        for receiver, source in ((ent_a, ent_b), (ent_b, ent_a)):
+            if not receiver.combat.is_hurt and source.combat.contact_damage > 0:
+                receiver.receive_damage(
+                    source.combat.contact_damage,
+                    source_center_x=source.hitbox.centerx,
+                )

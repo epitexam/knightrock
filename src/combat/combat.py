@@ -4,10 +4,12 @@ from typing import Any, Optional
 import pygame
 
 from src.combat.attack_types import AttackPhase, AttackSequence, KnockbackConfig
+from src.core.settings import Combat as CombatSettings
+from src.combat.combatant_protocol import Combatant
 
 
 class CombatComponent:
-    def __init__(self, entity: Any) -> None:
+    def __init__(self, entity: Combatant) -> None:
         self.entity = entity
         self.attacks: dict[str, AttackSequence] = {}
         self.cooldowns: dict[str, float] = {}
@@ -22,7 +24,7 @@ class CombatComponent:
         self.hurt_timer: float = 0.0
         self.contact_damage: int = 0
 
-        self._locked_facing_right: Optional[bool] = None
+        self._locked_facing_right: bool | None = None
 
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
         self.attacks[name] = sequence
@@ -33,11 +35,16 @@ class CombatComponent:
         return self.current_attack is not None
 
     @property
-    def current_phase(self) -> Optional[AttackPhase]:
+    def current_phase(self) -> AttackPhase | None:
         attack_name = self.current_attack
         if not attack_name:
             return None
         return self.attacks[attack_name].phases[self.current_phase_index]
+
+    def on_hit(self) -> None:
+        self.is_hurt = True
+        self.hurt_timer = CombatSettings.HURT_DURATION
+        self._end_attack()
 
     def take_damage(
         self,
@@ -45,47 +52,8 @@ class CombatComponent:
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
-        _kb = knockback if knockback is not None else KnockbackConfig()
-
-        is_blocking = (
-            hasattr(self.entity, "state_machine")
-            and self.entity.state_machine.current_state_name == "block"
-        )
-
-        if is_blocking:
-            self.entity.block_stamina -= amount * 0.05
-            if _kb.mode == "fixed":
-                self.entity.velocity.x = _kb.power[0] * 0.3
-            elif source_center_x is not None:
-                direction = (
-                    1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
-                )
-                self.entity.velocity.x = _kb.power[0] * 0.3 * direction
-            return
-
-        self.entity.health -= amount
-        if self.entity.health <= 0:
-            self.entity.health = 0
-            self.entity.die()
-
-        self.is_hurt = True
-        self.hurt_timer = 0.4
-        self._end_attack()
-
-        if _kb.mode == "fixed":
-            self.entity.velocity.x = _kb.power[0]
-            self.entity.velocity.y = _kb.power[1]
-        else:
-            if source_center_x is not None:
-                direction = (
-                    1.0 if self.entity.hitbox.centerx >= source_center_x else -1.0
-                )
-            elif hasattr(self.entity, "facing_right"):
-                direction = 1.0 if self.entity.facing_right else -1.0
-            else:
-                direction = 1.0
-            self.entity.velocity.x = _kb.power[0] * direction
-            self.entity.velocity.y = _kb.power[1]
+        """Delegate damage application to the entity."""
+        self.entity.receive_damage(amount, source_center_x, knockback)
 
     def start_attack(self, name: str, facing_right: bool) -> bool:
         if self.is_attacking or self.is_hurt:
@@ -177,3 +145,40 @@ class CombatComponent:
             self.entity.hitbox.centerx + offset_x,
             self.entity.hitbox.centery + offset_y,
         )
+
+
+class NullCombatComponent:
+    """Null object for entities without combat capabilities."""
+    def __init__(self) -> None:
+        self.is_attacking = False
+        self.is_hurt = False
+        self.current_attack = None
+        self.current_phase_index = 0
+        self.attack_timer = 0.0
+        self.attack_box = None
+        self.targets_hit = set()
+        self.hurt_timer = 0.0
+        self.contact_damage = 0
+        self._locked_facing_right = None
+
+    def add_attack(self, name: str, sequence: AttackSequence) -> None:
+        pass
+
+    def on_hit(self) -> None:
+        pass
+
+    def start_attack(self, name: str, facing_right: bool) -> bool:
+        return False
+
+    def update(self, delta_time: float, facing_right: bool) -> None:
+        pass
+
+    def _end_attack(self) -> None:
+        pass
+
+    def take_damage(self, amount: int, source_center_x: float | None = None, knockback: KnockbackConfig | None = None) -> None:
+        pass
+
+    @property
+    def current_phase(self) -> AttackPhase | None:
+        return None

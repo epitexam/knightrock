@@ -4,16 +4,21 @@ from pytmx.util_pygame import load_pygame
 from src.core.colors import Colors
 from src.entities.enemy import Goblin
 from src.entities.player import Player
-from src.core.settings import DEBUG, World, Display
+from src.core.settings import Debug, World, Display
 from src.core.sprites import MovingPlatform, Sprite
 from src.ui.ui_manager import UIManager
 from src.core.input_manager import InputManager
 from src.core.camera import Camera
-from src.core.combat_system import CombatSystem
+from src.combat.combat_system import CombatSystem
 from src.core.separation_system import SeparationSystem
 
 
 class Level:
+    ENTITY_CLASSES = {
+        "player": Player,
+        "goblin": Goblin,
+    }
+
     def __init__(self, display_surface, tmx_map, input_manager: InputManager):
         self.display_surface = display_surface
         self.input_manager = input_manager
@@ -28,6 +33,7 @@ class Level:
 
         self.player = None
         self.spawn_cooldown = 0.0
+        self.respawn_timer = 0.0
 
         self.camera = Camera(Display.WIDTH, Display.HEIGHT)
         self.combat_system = CombatSystem()
@@ -36,7 +42,11 @@ class Level:
         self.setup(tmx_map)
 
     def setup(self, tmx_map):
+        self._setup_terrain(tmx_map)
+        self._setup_platforms(tmx_map)
+        self._setup_entities(tmx_map)
 
+    def _setup_terrain(self, tmx_map):
         for x, y, surf in tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite(
                 pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
@@ -45,6 +55,7 @@ class Level:
                 groups=(self.all_sprites, self.collision_sprites),
             )
 
+    def _setup_platforms(self, tmx_map):
         for obj in tmx_map.get_layer_by_name("Moving Objects"):
             if obj.name == "helicopter":
                 waypoints_str = obj.properties.get("waypoints", "")
@@ -82,8 +93,14 @@ class Level:
                 )
                 self.moving_platforms.add(platform)
 
+    def _setup_entities(self, tmx_map):
         for obj in tmx_map.get_layer_by_name("Objects"):
+            cls = self.ENTITY_CLASSES.get(obj.name)
+            if cls is None:
+                continue
+
             if obj.name == "player":
+
                 self.player = Player(
                     (obj.x, obj.y),
                     self.all_sprites,
@@ -93,16 +110,15 @@ class Level:
                 )
                 self.combat_sprites.add(self.player)
                 self.entity_sprites.add(self.player)
-            elif obj.name == "goblin":
-
-                goblin = Goblin(
+            else:
+                entity = cls(
                     pos=(obj.x, obj.y),
                     groups=(self.all_sprites,),
                     collision_sprites=self.collision_sprites,
                     player_reference=self.player,
                 )
-                self.combat_sprites.add(goblin)
-                self.entity_sprites.add(goblin)
+                self.combat_sprites.add(entity)
+                self.entity_sprites.add(entity)
 
     def _handle_debug_input(self, delta_time: float):
         if self.spawn_cooldown > 0:
@@ -122,15 +138,21 @@ class Level:
             self.spawn_cooldown = 0.5
 
     def _remove_dead_entities(self):
-        """Remove dead entities from all groups."""
-        dead = [e for e in self.entity_sprites if e.is_dead]
+        """Remove dead entities except the player (respawn handled separately)."""
+        dead = [e for e in self.entity_sprites if e.is_dead and e is not self.player]
         for e in dead:
-            self.entity_sprites.remove(e)
-            self.combat_sprites.remove(e)
-            self.all_sprites.remove(e)
+            e.kill()
+
+    def _draw(self):
+        self.display_surface.fill(Colors.red)
+        for sprite in self.all_sprites:
+            rect = self.camera.apply(sprite.rect)
+            self.display_surface.blit(sprite.image, rect)
+
+        if Debug.ENABLED:
+            self.ui_manager.draw_debug_overlays(self.all_sprites, self.camera)
 
     def run(self, delta_time: float, fps: float):
-
         self._handle_debug_input(delta_time)
 
         self.combat_system.update_timer(delta_time)
@@ -138,25 +160,24 @@ class Level:
         if not self.combat_system.in_hit_stop:
             self.all_sprites.update(delta_time)
             self.separation_system.process(self.entity_sprites)
-            self.combat_system.process_attacks(self.combat_sprites, delta_time)
+            self.combat_system.process_attacks(self.combat_sprites)
 
         self._remove_dead_entities()
+
+        if self.player is not None and self.player.is_dead:
+            self.respawn_timer += delta_time
+            if self.respawn_timer >= 2.0:
+                self.player.respawn()
+                self.respawn_timer = 0.0
+        else:
+            self.respawn_timer = 0.0
 
         if self.player is not None and not self.player.is_dead:
             self.camera.follow(self.player.hitbox)
 
-        self.display_surface.fill(Colors.red)
-        for sprite in self.all_sprites:
-            if hasattr(sprite, "rect") and sprite.rect is not None:
-                rect = self.camera.apply(sprite.rect)
-                self.display_surface.blit(sprite.image, rect)
-            elif hasattr(sprite, "hitbox"):
-                rect = self.camera.apply(pygame.FRect(sprite.hitbox))
-                self.display_surface.blit(sprite.image, rect)
+        self._draw()
 
-        if DEBUG:
-            self.ui_manager.draw_debug_overlays(self.all_sprites, self.camera)
-
+        if Debug.ENABLED:
             x, y = 10, 10
             y += self.ui_manager.draw_state_panel(x, y, self.player) + 8
             self.ui_manager.draw_stats_panel(x, y, self.player)

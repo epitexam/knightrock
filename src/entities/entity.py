@@ -1,18 +1,16 @@
 import math
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, Sequence
 
 import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from src.core.settings import Display, Physics
+from src.core.settings import Physics, Separation, Combat as CombatSettings
+from src.combat.attack_types import KnockbackConfig
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
-    """
-    Collision callback helper that prioritizes entity hitboxes over standard rects.
-    """
     box_a = getattr(a, "hitbox", a.rect)
     box_b = getattr(b, "hitbox", b.rect)
     if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
@@ -23,15 +21,10 @@ def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
 
 
 class Entity(Sprite):
-    """
-    Base class representing any dynamic or physical game object.
-    Handles movement, sweeping AABB collisions, and environmental contact state.
-    """
-
     hitbox: pygame.FRect
     old_hitbox: pygame.FRect
     collision_sprites: Group
-    on_surface: Dict[str, bool]
+    on_surface: dict[str, bool]
     velocity: Vector2
     normal_gravity: float
     slide_gravity: float
@@ -47,13 +40,17 @@ class Entity(Sprite):
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
         health: float = 100.0,
         max_health: float = 100.0,
+        faction: str = "neutral",
+        spawn_pos: Sequence[float] | Vector2 | None = None,
+        combat: Any = None,
     ) -> None:
         Sprite.__init__(self, groups)
         self.id: str = uuid.uuid4().hex
         self.pushable: bool = True
+        self.faction: str = faction
 
-        self.image = pygame.Surface(size)  # type: ignore
-        self.image.fill(color)  # type: ignore
+        self.image = pygame.Surface(size)
+        self.image.fill(color)
 
         self.rect = self.image.get_frect(topleft=pos)
         self.hitbox = self.rect.inflate(*hitbox_inflate)
@@ -61,11 +58,7 @@ class Entity(Sprite):
         self.old_hitbox = self.hitbox.copy()
 
         self.collision_sprites = collision_sprites
-        self.on_surface = {
-            "floor": False,
-            "left": False,
-            "right": False,
-        }
+        self.on_surface = {"floor": False, "left": False, "right": False}
         self.velocity = Vector2(0, 0)
 
         self.normal_gravity = Physics.GRAVITY
@@ -76,13 +69,23 @@ class Entity(Sprite):
         self._max_health = max_health
         self.is_dead = False
 
+        if spawn_pos is None:
+            spawn_pos = pos
+        self.spawn_pos = Vector2(spawn_pos)
+
+        self.combat = combat
+        self.facing_right = True
+
     @property
     def health(self) -> float:
         return self._health
 
     @health.setter
     def health(self, value: float) -> None:
+        old = self._health
         self._health = max(0.0, min(value, self._max_health))
+        if old > 0 and self._health == 0 and not self.is_dead:
+            self.die()
 
     @property
     def max_health(self) -> float:
@@ -93,16 +96,14 @@ class Entity(Sprite):
         self._max_health = max(1.0, value)
 
     def die(self) -> None:
-        """Mark entity as dead. Subclasses may override for custom death behavior."""
+        """Mark entity as dead."""
         self.is_dead = True
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Returns the active vulnerable area of the entity."""
         return self.hitbox
 
     def sync_rects(self) -> None:
-        """Aligns the visual rect to the bottom of the physical hitbox (feet-anchored)."""
         if self.rect is not None:
             self.rect.midbottom = self.hitbox.midbottom
 
@@ -124,21 +125,18 @@ class Entity(Sprite):
             self.velocity.y += self.normal_gravity * delta_time
 
     def check_contact(self) -> None:
-        height_quarter: float = self.hitbox.height / 4
-        half_height: float = self.hitbox.height / 2
+        height_quarter = self.hitbox.height / 4
+        half_height = self.hitbox.height / 2
 
-        floor_rect: pygame.FRect = pygame.FRect(
-            self.hitbox.bottomleft, (self.hitbox.width, 2)
-        )
-
-        right_rect: pygame.FRect = pygame.FRect(
+        floor_rect = pygame.FRect(self.hitbox.bottomleft, (self.hitbox.width, 2))
+        right_rect = pygame.FRect(
             Vector2(self.hitbox.topright) + Vector2(0, height_quarter), (2, half_height)
         )
-        left_rect: pygame.FRect = pygame.FRect(
+        left_rect = pygame.FRect(
             Vector2(self.hitbox.topleft) + Vector2(-2, height_quarter), (2, half_height)
         )
 
-        collide_rects: List[pygame.Rect | pygame.FRect] = [
+        collide_rects = [
             getattr(s, "hitbox", s.rect)
             for s in self.collision_sprites
             if s is not None and (hasattr(s, "hitbox") or hasattr(s, "rect"))
@@ -154,7 +152,9 @@ class Entity(Sprite):
             self._on_wall_contact()
 
     def handle_collisions(self, axis: str) -> None:
-        search_area = self.hitbox.inflate(400, 400)
+        search_area = self.hitbox.inflate(
+            Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE
+        )
 
         nearby_sprites = []
         for sprite in self.collision_sprites:
@@ -204,10 +204,8 @@ class Entity(Sprite):
         self.sync_rects()
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Handles full physics resolution sequence with sub‑stepping for any entity."""
-
         move_x = self.velocity.x * delta_time
-        steps_x = max(1, math.ceil(abs(move_x) / 16.0))
+        steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))
         step_move_x = move_x / steps_x
 
         for _ in range(steps_x):
@@ -221,7 +219,7 @@ class Entity(Sprite):
             self.apply_gravity(delta_time)
 
         move_y = self.velocity.y * delta_time
-        steps_y = max(1, math.ceil(abs(move_y) / 16.0))
+        steps_y = max(1, math.ceil(abs(move_y) / Separation.SUB_STEP_SIZE))
         step_move_y = move_y / steps_y
 
         for _ in range(steps_y):
@@ -234,7 +232,6 @@ class Entity(Sprite):
         self.check_contact()
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
-        """Calculates and applies relative coordinate offsets when riding moving platforms."""
         if not self.on_surface["floor"]:
             return
 
@@ -247,18 +244,18 @@ class Entity(Sprite):
             if p_box is None or p_old_box is None:
                 continue
 
-            vertical_dist: float = self.hitbox.bottom - p_old_box.top
+            vertical_dist = self.hitbox.bottom - p_old_box.top
             if not (-2 <= vertical_dist <= 16):
                 continue
 
-            overlap: float = min(self.hitbox.right, p_old_box.right) - max(
+            overlap = min(self.hitbox.right, p_old_box.right) - max(
                 self.hitbox.left, p_old_box.left
             )
             if overlap <= 0:
                 continue
 
-            platform_dx: float = p_box.x - p_old_box.x
-            platform_dy: float = p_box.y - p_old_box.y
+            platform_dx = p_box.x - p_old_box.x
+            platform_dy = p_box.y - p_old_box.y
 
             self.hitbox.x += platform_dx
             self.hitbox.y += platform_dy
@@ -266,12 +263,36 @@ class Entity(Sprite):
             break
 
     def reset_position(self) -> None:
-        """Teleports the entity back to the display center and zeroes out momentum vectors."""
-        self.hitbox.center = (Display.WIDTH // 2, Display.HEIGHT // 2)
+        self.hitbox.center = self.spawn_pos
         self.sync_rects()
         self.velocity = Vector2(0, 0)
         self.old_hitbox = self.hitbox.copy()
+        self.is_dead = False
+
+    def receive_damage(
+        self,
+        amount: int,
+        source_center_x: float | None = None,
+        knockback: KnockbackConfig | None = None,
+    ) -> None:
+        """Default damage reception – override in subclasses for custom behaviour."""
+        _kb = knockback if knockback is not None else KnockbackConfig()
+
+        self.health -= amount
+
+        if self.combat is not None:
+            self.combat.on_hit()
+
+        if _kb.mode == "fixed":
+            self.velocity.x = _kb.power[0]
+            self.velocity.y = _kb.power[1]
+        else:
+            if source_center_x is not None:
+                direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+            else:
+                direction = 1.0 if getattr(self, "facing_right", True) else -1.0
+            self.velocity.x = _kb.power[0] * direction
+            self.velocity.y = _kb.power[1]
 
     def update(self, delta_time: float) -> None:
-        """Updates internal frame-history boundaries required for accurate collision resolution."""
         self.old_hitbox = self.hitbox.copy()

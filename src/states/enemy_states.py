@@ -1,6 +1,6 @@
 from typing import Optional
-
 import pygame
+import random
 
 from src.states.state_machine import State
 
@@ -12,17 +12,50 @@ class EnemyHurtState(State):
                 self.entity.velocity.x, 0.0, min(1.0, 10.0 * delta_time)
             )
         if not self.entity.combat.is_hurt:
+            return "idle"
+        return None
+
+
+class EnemyIdleState(State):
+    def enter(self, previous: Optional[str] = None) -> None:
+        self.entity.velocity.x = 0.0
+        self.entity.patrol_timer = 0.0
+
+    def update(self, delta_time: float) -> Optional[str]:
+        if self.entity.can_see_player():
+            return "chase"
+        self.entity.patrol_timer += delta_time
+        if self.entity.patrol_timer >= 0.5:
             return "patrol"
         return None
 
 
 class EnemyPatrolState(State):
     def enter(self, previous: Optional[str] = None) -> None:
-        self.entity.velocity.x = 0.0
+
+        self.entity.patrol_direction = 1 if random.random() > 0.5 else -1
+        self.entity.patrol_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
         if self.entity.can_see_player():
             return "chase"
+
+        self.entity.facing_right = self.entity.patrol_direction > 0
+        self.entity.velocity.x = (
+            self.entity.patrol_direction * self.entity.chase_speed * 0.5
+        )
+
+        self.entity.patrol_timer += delta_time
+        if self.entity.patrol_timer >= self.entity.patrol_interval:
+            self.entity.patrol_direction *= -1
+            self.entity.patrol_timer = 0.0
+
+        if (self.entity.patrol_direction > 0 and self.entity.on_surface["right"]) or (
+            self.entity.patrol_direction < 0 and self.entity.on_surface["left"]
+        ):
+            self.entity.patrol_direction *= -1
+            self.entity.patrol_timer = 0.0
+
         return None
 
 
@@ -34,11 +67,10 @@ class EnemyChaseState(State):
             )
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.chase_speed
-
         if self.entity.is_player_in_range():
             return "attack"
         if not self.entity.can_see_player():
-            return "patrol"
+            return "idle"
         return None
 
 
@@ -49,5 +81,5 @@ class EnemyAttackState(State):
 
     def update(self, delta_time: float) -> Optional[str]:
         if not self.entity.combat.is_attacking:
-            return "chase" if self.entity.can_see_player() else "patrol"
+            return "chase" if self.entity.can_see_player() else "idle"
         return None

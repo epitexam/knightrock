@@ -1,24 +1,18 @@
-"""
-User interface management (debugging panels, statistics, overlays)
-"""
-
 import pygame
 from src.core.colors import Colors
 from src.core.camera import Camera
+from src.core.settings import Debug
 
 
 class UIManager:
-    """Draws the various information panels and debugging overlays."""
-
     def __init__(self, display_surface: pygame.Surface) -> None:
         self.display_surface = display_surface
-        self.debug_font = pygame.font.SysFont("Arial", 24)
-        self.label_font = pygame.font.SysFont("Arial", 16)
+        self.debug_font = pygame.font.SysFont("Arial", Debug.FONT_SIZE)
+        self.label_font = pygame.font.SysFont("Arial", Debug.LABEL_FONT_SIZE)
 
     def draw_panel(
         self, x: int, y: int, lines: list[str], color: tuple, text_color: tuple
     ) -> int:
-        """Draw a generic panel and return its height."""
         font = self.debug_font
         padding = 8
         line_height = 28
@@ -39,14 +33,13 @@ class UIManager:
         return panel_h
 
     def draw_state_panel(self, x: int, y: int, player) -> int:
-        """Player state machine status panel."""
         if player is None or player.state_machine is None:
             return 0
 
         sm = player.state_machine
         current = sm.current_state_name or "None"
         previous = sm.previous_state_name or "—"
-        history = sm.history[-6:] if sm.history else []
+        history = list(sm.history)[-6:] if sm.history else []
 
         lines = [
             f"State:  {current}",
@@ -61,7 +54,6 @@ class UIManager:
         return self.draw_panel(x, y, lines, (0, 0, 0, 180), Colors.white)
 
     def draw_stats_panel(self, x: int, y: int, player) -> int:
-        """Player resource panel (HP, block, dash)."""
         if player is None:
             return 0
 
@@ -83,7 +75,6 @@ class UIManager:
         hit_stop: float,
         spawn_cd: float,
     ) -> None:
-        """Performance panel at the top right."""
         lines = [
             f"FPS:       {fps:.1f}",
             f"Sprites:   {sprite_count}",
@@ -93,30 +84,22 @@ class UIManager:
             f"Hit Stop:  {hit_stop:.3f}",
             f"Spawn CD:  {spawn_cd:.3f}",
         ]
+
         font = self.debug_font
         padding = 8
         line_height = 28
 
-        rendered = [font.render(line, True, Colors.light_blue) for line in lines]
-        max_w = max(s.get_width() for s in rendered)
+        max_w = max(font.size(line)[0] for line in lines)
         panel_w = max_w + padding * 2
         panel_h = len(lines) * line_height + padding * 2
         panel_x = self.display_surface.get_width() - panel_w - 10
         panel_y = 10
 
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill((0, 0, 30, 200))
-        self.display_surface.blit(bg, (panel_x, panel_y))
-
-        for i, surf in enumerate(rendered):
-            self.display_surface.blit(
-                surf, (panel_x + padding, panel_y + padding + i * line_height)
-            )
+        self.draw_panel(panel_x, panel_y, lines, (0, 0, 30, 200), Colors.light_blue)
 
     def draw_debug_overlays(
         self, all_sprites: pygame.sprite.Group, camera: Camera
     ) -> None:
-        """Draw hitboxes, attack boxes, and state labels with camera offset."""
         for sprite in all_sprites:
             if hasattr(sprite, "hitbox") and sprite.hitbox:
                 rect = camera.apply(sprite.hitbox)

@@ -1,12 +1,13 @@
 from typing import Optional
-
 import pygame
+import random
 
 from src.combat.combat import CombatComponent
 from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChaseState,
     EnemyHurtState,
+    EnemyIdleState,
     EnemyPatrolState,
 )
 from src.entities.entity import Entity
@@ -16,21 +17,38 @@ from src.combat.attack_data import GOBLIN_ATTACKS
 
 class Goblin(Entity):
     def __init__(self, pos, groups, collision_sprites, player_reference):
-        super().__init__(pos, (48, 48), (200, 50, 50), groups, collision_sprites, health=50.0, max_health=50.0)
+        combat = CombatComponent(self)
+
+        super().__init__(
+            pos,
+            (48, 48),
+            (200, 50, 50),
+            groups,
+            collision_sprites,
+            health=50.0,
+            max_health=50.0,
+            faction="enemy",
+            spawn_pos=pos,
+            combat=combat,
+        )
         self.player = player_reference
         self.facing_right = True
         self.chase_speed = 120.0
 
-        self.combat = CombatComponent(self)
+        self.patrol_direction = 1 if random.random() > 0.5 else -1
+        self.patrol_timer = 0.0
+        self.patrol_interval = 2.0
+
         for name, sequence in GOBLIN_ATTACKS.items():
             self.combat.add_attack(name, sequence)
 
         self.state_machine = StateMachine(self)
+        self.state_machine.add_state("idle", EnemyIdleState(self))
         self.state_machine.add_state("patrol", EnemyPatrolState(self))
         self.state_machine.add_state("chase", EnemyChaseState(self))
         self.state_machine.add_state("attack", EnemyAttackState(self))
         self.state_machine.add_state("hurt", EnemyHurtState(self))
-        self.state_machine.set_initial_state("patrol")
+        self.state_machine.set_initial_state("idle")
 
         self.state_machine.add_interrupt(
             "hurt",
@@ -39,7 +57,7 @@ class Goblin(Entity):
         )
 
     def update(self, delta_time: float) -> None:
-        super().update(delta_time) 
+        super().update(delta_time)
         self.combat.update(delta_time, self.facing_right)
         if self.state_machine is not None:
             self.state_machine.update(delta_time)

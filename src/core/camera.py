@@ -19,9 +19,3 @@ class Camera:
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
         """Return a rect shifted by the camera offset."""
         return rect.move(-self.offset.x, -self.offset.y)
-
-    def apply_to_surface(
-        self, surface: pygame.Surface, rect: pygame.FRect
-    ) -> pygame.FRect:
-        """Return the blit position for a surface."""
-        return rect.move(-self.offset.x, -self.offset.y)
