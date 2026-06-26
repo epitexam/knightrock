@@ -1,4 +1,5 @@
 import sys
+import traceback
 from os.path import join
 
 import pygame
@@ -38,5 +39,19 @@ class Game:
 
             self.input_manager.update()
             fps = self.clock.get_fps()
-            self.current_stage.run(delta_time, fps)
+
+            try:
+                self.current_stage.run(delta_time, fps)
+            except Exception as e:
+                traceback.print_exc()
+               
+                self.display_surface.fill((0, 0, 0))
+                font = pygame.font.SysFont("Arial", 30)
+                text = font.render("FATAL ERROR: " + str(e), True, (255, 0, 0))
+                self.display_surface.blit(text, (10, 10))
+                pygame.display.update()
+                pygame.time.wait(5000)
+                pygame.quit()
+                sys.exit(1)
+
             pygame.display.update()

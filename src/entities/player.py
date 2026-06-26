@@ -36,7 +36,6 @@ class Player(Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
     ) -> None:
-        combat = CombatComponent(self)
 
         super().__init__(
             pos,
@@ -49,8 +48,12 @@ class Player(Entity):
             max_health=100.0,
             faction="player",
             spawn_pos=pos,
-            combat=combat,
+            combat=None,
         )
+
+        self.combat = CombatComponent(self)
+        for name, sequence in PLAYER_ATTACKS.items():
+            self.combat.add_attack(name, sequence)
 
         self.speed = float(Physics.PLAYER_SPEED)
         self.floor_control = Physics.FLOOR_CONTROL
@@ -95,9 +98,6 @@ class Player(Entity):
         self._original_hitbox_width = self.hitbox.width
 
         self.facing_right = True
-
-        for name, sequence in PLAYER_ATTACKS.items():
-            self.combat.add_attack(name, sequence)
 
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", PlayerIdleState(self))

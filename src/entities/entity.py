@@ -1,6 +1,6 @@
 import math
 import uuid
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence, Union
 
 import pygame
 from pygame.math import Vector2
@@ -8,6 +8,7 @@ from pygame.sprite import Group, Sprite
 
 from src.core.settings import Physics, Separation, Combat as CombatSettings
 from src.combat.attack_types import KnockbackConfig
+from src.combat.combat import NullCombatComponent, CombatComponent
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
@@ -42,7 +43,7 @@ class Entity(Sprite):
         max_health: float = 100.0,
         faction: str = "neutral",
         spawn_pos: Sequence[float] | Vector2 | None = None,
-        combat: Any = None,
+        combat: CombatComponent | None = None,
     ) -> None:
         Sprite.__init__(self, groups)
         self.id: str = uuid.uuid4().hex
@@ -73,7 +74,9 @@ class Entity(Sprite):
             spawn_pos = pos
         self.spawn_pos = Vector2(spawn_pos)
 
-        self.combat = combat
+        self.combat: CombatComponent | NullCombatComponent = (
+            combat or NullCombatComponent()
+        )
         self.facing_right = True
 
     @property
@@ -136,15 +139,27 @@ class Entity(Sprite):
             Vector2(self.hitbox.topleft) + Vector2(-2, height_quarter), (2, half_height)
         )
 
-        collide_rects = [
-            getattr(s, "hitbox", s.rect)
-            for s in self.collision_sprites
-            if s is not None and (hasattr(s, "hitbox") or hasattr(s, "rect"))
-        ]
+        self.on_surface["floor"] = False
+        self.on_surface["right"] = False
+        self.on_surface["left"] = False
 
-        self.on_surface["floor"] = floor_rect.collidelist(collide_rects) >= 0
-        self.on_surface["right"] = right_rect.collidelist(collide_rects) >= 0
-        self.on_surface["left"] = left_rect.collidelist(collide_rects) >= 0
+        for sprite in self.collision_sprites:
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is None:
+                continue
+            if floor_rect.colliderect(box):
+                self.on_surface["floor"] = True
+            if right_rect.colliderect(box):
+                self.on_surface["right"] = True
+            if left_rect.colliderect(box):
+                self.on_surface["left"] = True
+
+            if (
+                self.on_surface["floor"]
+                and self.on_surface["right"]
+                and self.on_surface["left"]
+            ):
+                break
 
         if self.on_surface["floor"]:
             self._on_floor_contact()
@@ -179,6 +194,7 @@ class Entity(Sprite):
                 elif self.old_hitbox.left >= sprite_old.right:
                     self.hitbox.left = sprite_box.right
                 else:
+
                     if abs(self.hitbox.right - sprite_box.left) < abs(
                         self.hitbox.left - sprite_box.right
                     ):
@@ -193,6 +209,7 @@ class Entity(Sprite):
                 elif self.old_hitbox.top >= sprite_old.bottom:
                     self.hitbox.top = sprite_box.bottom
                 else:
+
                     if abs(self.hitbox.bottom - sprite_box.top) < abs(
                         self.hitbox.top - sprite_box.bottom
                     ):

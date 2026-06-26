@@ -75,11 +75,29 @@ class EnemyChaseState(State):
 
 
 class EnemyAttackState(State):
+    def __init__(self, entity):
+        super().__init__(entity)
+        self.attack_retry_timer = 0.0
+
     def enter(self, previous: Optional[str] = None) -> None:
         self.entity.velocity.x = 0.0
-        self.entity.combat.start_attack("claw_swipe", self.entity.facing_right)
+        success = self.entity.combat.start_attack(
+            "claw_swipe", self.entity.facing_right
+        )
+        if not success:
+            self.attack_retry_timer = 0.3
+        else:
+            self.attack_retry_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
+
+        if self.attack_retry_timer > 0:
+            self.attack_retry_timer -= delta_time
+            if self.attack_retry_timer <= 0:
+
+                if not self.entity.combat.is_attacking:
+                    return "chase" if self.entity.can_see_player() else "idle"
+
         if not self.entity.combat.is_attacking:
             return "chase" if self.entity.can_see_player() else "idle"
         return None

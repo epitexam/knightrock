@@ -6,7 +6,7 @@ if TYPE_CHECKING:
 
 
 class SeparationSystem:
-    """Resolves physical overlaps between entities and applies contact damage if configured."""
+    """Resolves physical overlaps between entities (no damage logic)."""
 
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
         entities = list(entity_sprites)
@@ -19,8 +19,6 @@ class SeparationSystem:
 
                 if not ent_a.hitbox.colliderect(ent_b.hitbox):
                     continue
-
-                self._apply_contact_damage(ent_a, ent_b)
 
                 overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
                     ent_a.hitbox.left, ent_b.hitbox.left
@@ -55,12 +53,3 @@ class SeparationSystem:
 
                 ent_a.sync_rects()
                 ent_b.sync_rects()
-
-    def _apply_contact_damage(self, ent_a, ent_b):
-        """Apply contact damage if configured."""
-        for receiver, source in ((ent_a, ent_b), (ent_b, ent_a)):
-            if not receiver.combat.is_hurt and source.combat.contact_damage > 0:
-                receiver.receive_damage(
-                    source.combat.contact_damage,
-                    source_center_x=source.hitbox.centerx,
-                )

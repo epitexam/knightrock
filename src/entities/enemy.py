@@ -17,7 +17,6 @@ from src.combat.attack_data import GOBLIN_ATTACKS
 
 class Goblin(Entity):
     def __init__(self, pos, groups, collision_sprites, player_reference):
-        combat = CombatComponent(self)
 
         super().__init__(
             pos,
@@ -29,8 +28,12 @@ class Goblin(Entity):
             max_health=50.0,
             faction="enemy",
             spawn_pos=pos,
-            combat=combat,
+            combat=None,
         )
+        self.combat = CombatComponent(self)
+        for name, sequence in GOBLIN_ATTACKS.items():
+            self.combat.add_attack(name, sequence)
+
         self.player = player_reference
         self.facing_right = True
         self.chase_speed = 120.0
@@ -38,9 +41,6 @@ class Goblin(Entity):
         self.patrol_direction = 1 if random.random() > 0.5 else -1
         self.patrol_timer = 0.0
         self.patrol_interval = 2.0
-
-        for name, sequence in GOBLIN_ATTACKS.items():
-            self.combat.add_attack(name, sequence)
 
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", EnemyIdleState(self))
