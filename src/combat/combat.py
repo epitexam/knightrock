@@ -41,9 +41,9 @@ class CombatComponent:
             return None
         return self.attacks[attack_name].phases[self.current_phase_index]
 
-    def on_hit(self) -> None:
+    def on_hit(self, duration: float | None = None) -> None:
         self.is_hurt = True
-        self.hurt_timer = CombatSettings.HURT_DURATION
+        self.hurt_timer = duration if duration is not None else CombatSettings.HURT_DURATION
         self._end_attack()
 
     def take_damage(
@@ -52,7 +52,6 @@ class CombatComponent:
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
-        """Delegate damage application to the entity."""
         self.entity.receive_damage(amount, source_center_x, knockback)
 
     def start_attack(self, name: str, facing_right: bool) -> bool:
@@ -148,7 +147,6 @@ class CombatComponent:
 
 
 class NullCombatComponent:
-    """Null object for entities without combat capabilities."""
     def __init__(self) -> None:
         self.is_attacking = False
         self.is_hurt = False
@@ -164,7 +162,7 @@ class NullCombatComponent:
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
         pass
 
-    def on_hit(self) -> None:
+    def on_hit(self, duration: float | None = None) -> None:
         pass
 
     def start_attack(self, name: str, facing_right: bool) -> bool:

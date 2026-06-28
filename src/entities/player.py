@@ -199,7 +199,6 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Map input to attack selection based on context."""
         im = self.input_manager
         if not self.can_attack():
             return
@@ -246,17 +245,13 @@ class Player(Entity):
     def apply_horizontal_movement(self, delta_time: float) -> None:
         target_speed = self.move_axis * self.speed
 
-        if self.combat.is_attacking and self.on_surface["floor"]:
-            target_speed = 0.0
-
         if target_speed == 0 and abs(self.velocity.x) < 0.5:
             self.velocity.x = 0.0
             return
 
         control = self.floor_control if self.on_surface["floor"] else self.air_control
-        self.velocity.x = pygame.math.lerp(
-            self.velocity.x, target_speed, min(1.0, control * delta_time)
-        )
+        alpha = 1.0 - math.exp(-control * delta_time)
+        self.velocity.x = pygame.math.lerp(self.velocity.x, target_speed, alpha)
 
         if abs(self.velocity.x) < 0.01:
             self.velocity.x = 0.0
@@ -274,6 +269,8 @@ class Player(Entity):
             self.on_surface["left"] or self.on_surface["right"]
         ) and self.wall_jumps_left > 0:
             self.velocity.y = -self.wall_jump_height
+            push = self.speed * 0.85
+            self.velocity.x = push if self.on_surface["left"] else -push
             self.wall_jumps_left -= 1
             self.jump_buffer_timer = 0.0
 
@@ -308,11 +305,9 @@ class Player(Entity):
         self.health = self.max_health
 
     def die(self) -> None:
-        """Mark player as dead without resetting position (respawn handled by Level)."""
         super().die()
 
     def respawn(self) -> None:
-        """Respawn the player at spawn point."""
         self.is_dead = False
         self.reset_position()
 

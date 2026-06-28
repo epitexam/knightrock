@@ -99,7 +99,6 @@ class Entity(Sprite):
         self._max_health = max(1.0, value)
 
     def die(self) -> None:
-        """Mark entity as dead."""
         self.is_dead = True
 
     @property
@@ -194,7 +193,6 @@ class Entity(Sprite):
                 elif self.old_hitbox.left >= sprite_old.right:
                     self.hitbox.left = sprite_box.right
                 else:
-
                     if abs(self.hitbox.right - sprite_box.left) < abs(
                         self.hitbox.left - sprite_box.right
                     ):
@@ -209,7 +207,6 @@ class Entity(Sprite):
                 elif self.old_hitbox.top >= sprite_old.bottom:
                     self.hitbox.top = sprite_box.bottom
                 else:
-
                     if abs(self.hitbox.bottom - sprite_box.top) < abs(
                         self.hitbox.top - sprite_box.bottom
                     ):
@@ -292,13 +289,16 @@ class Entity(Sprite):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
-        """Default damage reception – override in subclasses for custom behaviour."""
         _kb = knockback if knockback is not None else KnockbackConfig()
 
         self.health -= amount
 
         if self.combat is not None:
-            self.combat.on_hit()
+            hurt_duration = (
+                CombatSettings.HURT_DURATION
+                + abs(_kb.power[1]) * CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
+            )
+            self.combat.on_hit(hurt_duration)
 
         if _kb.mode == "fixed":
             self.velocity.x = _kb.power[0]

@@ -7,11 +7,6 @@ from src.core.settings import Combat as CombatSettings
 
 
 class PlayerBaseState(State):
-    """
-    Base for all player states.
-    Provides ground_return() only.
-    """
-
     def __init__(self, entity):
         super().__init__(entity)
 
@@ -92,7 +87,8 @@ class PlayerWallSlideState(PlayerBaseState):
 class PlayerAttackState(PlayerBaseState):
     def enter(self, previous: Optional[str] = None) -> None:
         if self.entity.on_surface["floor"]:
-            self.entity.velocity.x *= 0.1
+            direction = 1.0 if self.entity.facing_right else -1.0
+            self.entity.velocity.x = direction * self.entity.speed * 0.35
 
     def update(self, delta_time: float) -> Optional[str]:
         if not self.entity.combat.is_attacking:
@@ -132,7 +128,6 @@ class PlayerBlockState(PlayerBaseState):
 
 class PlayerHurtState(PlayerBaseState):
     def enter(self, previous: Optional[str] = None) -> None:
-
         self.entity._dash_requested = False
 
     def update(self, delta_time: float) -> Optional[str]:
