@@ -101,3 +101,16 @@ class EnemyAttackState(State):
         if not self.entity.combat.is_attacking:
             return "chase" if self.entity.can_see_player() else "idle"
         return None
+
+
+class EnemyStaggerState(State):
+    def enter(self, previous: Optional[str] = None) -> None:
+        self.entity.velocity.x = 0.0
+
+    def update(self, delta_time: float) -> Optional[str]:
+        if self.entity.stagger_timer <= 0:
+            if self.entity.can_see_player():
+                return "chase"
+            else:
+                return "idle"
+        return None

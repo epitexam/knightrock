@@ -6,97 +6,87 @@ from src.combat.attack_types import AttackPhase, AttackSequence, KnockbackConfig
 
 
 PLAYER_ATTACKS = {
-    "ground_combo": AttackSequence(
+
+    "light_attack": AttackSequence(
         phases=[
             AttackPhase(
-                size=(38.0, 22.0),
-                offset=(22.0, -2.0),
-                damage=7,
-                duration=0.10,
-                knockback=KnockbackConfig(power=(200.0, -80.0)),
-            ),
-            AttackPhase(
-                size=(46.0, 26.0),
-                offset=(28.0, -6.0),
-                damage=13,
-                duration=0.16,
-                knockback=KnockbackConfig(power=(300.0, -130.0)),
-            ),
-        ],
-        cooldown=0.65,
-        lock_direction=True,
-    ),
-    "heavy_smash": AttackSequence(
-        phases=[
-            AttackPhase(
-                size=(55.0, 42.0),
-                offset=(34.0, -26.0),
-                damage=20,
-                duration=0.25,
-                knockback=KnockbackConfig(power=(250.0, -320.0)),
-            ),
-            AttackPhase(
-                size=(68.0, 16.0),
-                offset=(28.0, 8.0),
+                size=(40.0, 20.0),
+                offset=(24.0, -4.0),
                 damage=8,
-                duration=0.15,
-                knockback=KnockbackConfig(power=(420.0, -30.0)),
+                duration=0.10,
+                knockback=KnockbackConfig(power=(150.0, -50.0)),
+                damage_type="slash",
+                stagger=0.1,
             ),
         ],
-        cooldown=1.3,
+        cooldown=0.30,
         lock_direction=True,
     ),
+
+    "heavy_attack": AttackSequence(
+        phases=[
+            AttackPhase(
+                size=(55.0, 35.0),
+                offset=(32.0, -10.0),
+                damage=18,
+                duration=0.25,
+                knockback=KnockbackConfig(power=(300.0, -200.0)),
+                damage_type="blunt",
+                stagger=0.3,
+                super_armor_break=True,
+            ),
+        ],
+        cooldown=0.80,
+        lock_direction=True,
+    ),
+
     "uppercut": AttackSequence(
         phases=[
             AttackPhase(
-                size=(36.0, 20.0),
-                offset=(22.0, 2.0),
-                damage=6,
-                duration=0.08,
-                knockback=KnockbackConfig(power=(150.0, -60.0)),
-            ),
-            AttackPhase(
-                size=(30.0, 52.0),
-                offset=(16.0, -32.0),
-                damage=15,
+                size=(30.0, 50.0),
+                offset=(18.0, -30.0),
+                damage=16,
                 duration=0.20,
-                knockback=KnockbackConfig(power=(900.0, -1200.0)),
+                knockback=KnockbackConfig(power=(400.0, -2500.0)),
+                damage_type="blunt",
+                stagger=0.4,
+                super_armor_break=True,
             ),
         ],
-        cooldown=0.9,
+        cooldown=0.90,
         lock_direction=True,
     ),
-    "dash_strike": AttackSequence(
+
+    "dash_attack": AttackSequence(
         phases=[
             AttackPhase(
-                size=(58.0, 20.0),
-                offset=(36.0, -8.0),
+                size=(60.0, 20.0),
+                offset=(38.0, -6.0),
                 damage=14,
+                duration=0.12,
+                knockback=KnockbackConfig(power=(500.0, -50.0)),
+                damage_type="pierce",
+                stagger=0.2,
+                super_armor_break=True,
+            ),
+        ],
+        cooldown=0.60,
+        lock_direction=True,
+    ),
+
+    "air_attack": AttackSequence(
+        phases=[
+            AttackPhase(
+                size=(45.0, 25.0),
+                offset=(26.0, -2.0),
+                damage=10,
                 duration=0.14,
-                knockback=KnockbackConfig(power=(480.0, -60.0)),
+                knockback=KnockbackConfig(power=(180.0, -120.0)),
+                damage_type="slash",
+                stagger=0.1,
             ),
         ],
-        cooldown=0.7,
-        lock_direction=True,
-    ),
-    "air_combo": AttackSequence(
-        phases=[
-            AttackPhase(
-                size=(50.0, 26.0),
-                offset=(28.0, -4.0),
-                damage=9,
-                duration=0.13,
-                knockback=KnockbackConfig(power=(220.0, -100.0)),
-            ),
-            AttackPhase(
-                size=(40.0, 34.0),
-                offset=(20.0, 14.0),
-                damage=14,
-                duration=0.17,
-                knockback=KnockbackConfig(power=(180.0, 250.0)),
-            ),
-        ],
-        cooldown=0.95,
+        cooldown=0.35,
         lock_direction=False,
     ),
 }
@@ -105,18 +95,22 @@ GOBLIN_ATTACKS = {
     "claw_swipe": AttackSequence(
         phases=[
             AttackPhase(
-                size=(50, 30),
-                offset=(25, -5),
-                damage=10,
+                size=(40, 20),
+                offset=(20, -4),
+                damage=8,
                 duration=0.15,
-                knockback=KnockbackConfig(power=(200.0, -100.0)),
+                knockback=KnockbackConfig(power=(180.0, -80.0)),
+                damage_type="slash",
+                stagger=0.0,
             ),
             AttackPhase(
-                size=(65, 35),
-                offset=(32, 5),
-                damage=15,
+                size=(48, 24),
+                offset=(24, 4),
+                damage=12,
                 duration=0.15,
-                knockback=KnockbackConfig(power=(260.0, -180.0)),
+                knockback=KnockbackConfig(power=(220.0, -150.0)),
+                damage_type="slash",
+                stagger=0.0,
             ),
         ],
         cooldown=1.0,

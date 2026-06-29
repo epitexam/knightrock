@@ -1,9 +1,8 @@
 """
 Data structures for attack definitions.
-Moved from combat.py to break coupling (C3).
 """
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 
 @dataclass
@@ -21,9 +20,17 @@ class AttackPhase:
     reset_targets: bool = True
     knockback: KnockbackConfig = field(default_factory=KnockbackConfig)
 
+    damage_type: str = "slash"
+    stagger: float = 0.0
+    super_armor_break: bool = False
+    is_finisher: bool = False
+
 
 @dataclass
 class AttackSequence:
     phases: List[AttackPhase]
     cooldown: float
     lock_direction: bool = False
+    combo_reset: bool = False
+    chargeable: bool = False
+    max_charge_time: float = 1.0

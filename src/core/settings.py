@@ -12,10 +12,6 @@ class Display:
     TITLE = "Knightrock"
 
 
-class Simulation:
-    TIMESTEP = 1.0 / 60.0
-
-
 class World:
     TILE_SIZE = 64
 
@@ -27,7 +23,7 @@ class Physics:
     DASH_SPEED = 2750
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
-    DASH_MAX_CHARGES = 3
+    DASH_MAX_CHARGES = 2
     DASH_RECHARGE_TIME = 0.40
     DASH_PENALTY_TIME = 2.20
     DASH_GRAVITY_MULT = 0.0
@@ -41,8 +37,9 @@ class Physics:
 
 
 class Combat:
-    HURT_DURATION = 0.18
-    HURT_DURATION_KNOCKBACK_SCALE = 0.00008
+    HURT_DURATION = 0.4
+    PLAYER_HURT_DURATION = 0.12
+    INVINCIBILITY_DURATION = 0.18
     BLOCK_STAMINA_COST_RATIO = 0.05
     BLOCK_KNOCKBACK_FACTOR = 0.3
     BLOCK_HEIGHT_REDUCTION = 16.0
@@ -50,6 +47,12 @@ class Combat:
     BLOCK_COOLDOWN_BROKEN = 2.0
     HITSTOP_BASE = 0.05
     HITSTOP_DAMAGE_FACTOR = 0.002
+    HURT_DURATION_KNOCKBACK_SCALE = 0.0002
+    STAGGER_DURATION = 0.25
+    PLAYER_STAGGER_DURATION = 0.15
+    SUPER_ARMOR_THRESHOLD = 3
+    DAMAGE_TYPES = ["slash", "blunt", "pierce", "magic", "fire", "ice"]
+    COMBO_WINDOW = 0.5
 
 
 class Separation:
@@ -61,3 +64,12 @@ class Debug:
     ENABLED = os.getenv("DEBUG", "0") == "1"
     FONT_SIZE = 24
     LABEL_FONT_SIZE = 16
+
+
+class Simulation:
+    """Paramètres pour le timestep fixe et le réseau."""
+    TICK_RATE = 60
+    TICK_DURATION = 1.0 / TICK_RATE
+    TIMESTEP = TICK_DURATION
+    MAX_PREDICTION_FRAMES = 8
+    ROLLBACK_FRAMES = 4

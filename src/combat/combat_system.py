@@ -34,10 +34,8 @@ class CombatSystem:
                     continue
 
                 if attacker.combat.attack_box.colliderect(target.hurtbox):
-                    target.combat.take_damage(
-                        amount=phase.damage,
-                        source_center_x=attacker.hitbox.centerx,
-                        knockback=phase.knockback,
+                    attacker.combat.apply_damage_to_target(
+                        target, phase, attacker.hitbox.centerx
                     )
                     attacker.combat.targets_hit.add(target)
                     self.hit_stop_timer = (

@@ -51,6 +51,11 @@ class UIManager:
         if player.combat.is_attacking:
             lines.append(f"Attack: {player.combat.current_attack}")
 
+        if hasattr(player, "stagger_timer") and player.stagger_timer > 0:
+            lines.append(f"Stagger: {player.stagger_timer:.2f}s")
+        if hasattr(player, "invincibility_timer") and player.invincibility_timer > 0:
+            lines.append(f"Invincible: {player.invincibility_timer:.2f}s")
+
         return self.draw_panel(x, y, lines, (0, 0, 0, 180), Colors.white)
 
     def draw_stats_panel(self, x: int, y: int, player) -> int:
@@ -63,6 +68,13 @@ class UIManager:
             f"Block: {p.block_stamina:.2f}/{p.max_block_stamina:.2f}   CD: {p.block_cooldown_timer:.2f}s",
             f"Dash:  {p.dash_charges}/{p.max_dash_charges}   Pen: {p.dash_penalty_timer:.2f}s   Regen: {p.dash_recharge_timer:.2f}s",
         ]
+
+        combo_count = p.combat.combo_count if hasattr(
+            p.combat, "combo_count") else 0
+        combo_timer = p.combat.combo_timer if hasattr(
+            p.combat, "combo_timer") else 0.0
+        lines.append(f"Combo: {combo_count}   Timer: {combo_timer:.2f}s")
+
         return self.draw_panel(x, y, lines, (20, 20, 40, 200), Colors.off_white)
 
     def draw_performance_panel(

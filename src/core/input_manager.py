@@ -1,6 +1,6 @@
 """
 Unified keyboard and gamepad input management.
-Exposes boolean states and "just pressed" events.
+Exposes boolean states and "just pressed" / "just released" events.
 """
 
 from typing import Optional
@@ -29,9 +29,12 @@ class InputManager:
         self._attack4_just_pressed = False
         self._reset_just_pressed = False
 
+        self._attack1_held = False
+        self._attack1_just_released = False
+
     def update(self) -> None:
         """Updates the input state for the current frame.
-        Calculates 'just pressed' events for all actions.
+        Calculates 'just pressed' and 'just released' events for all actions.
         """
         keys = pygame.key.get_pressed()
         joy = self._joystick
@@ -43,6 +46,13 @@ class InputManager:
             self._key_prev[key] = current
             return just
 
+        def update_key_release(key: int) -> bool:
+            current = bool(keys[key])
+            previous = self._key_prev.get(key, False)
+            released = not current and previous
+            self._key_prev[key] = current
+            return released
+
         def update_button(btn: int) -> bool:
             if not joy:
                 return False
@@ -51,6 +61,15 @@ class InputManager:
             just = current and not previous
             self._button_prev[btn] = current
             return just
+
+        def update_button_release(btn: int) -> bool:
+            if not joy:
+                return False
+            current = bool(joy.get_button(btn))
+            previous = self._button_prev.get(btn, False)
+            released = not current and previous
+            self._button_prev[btn] = current
+            return released
 
         def update_trigger(axis: int) -> bool:
             if not joy:
@@ -61,6 +80,15 @@ class InputManager:
             self._trigger_prev[axis] = current
             return just
 
+        def update_trigger_release(axis: int) -> bool:
+            if not joy:
+                return False
+            current = joy.get_axis(axis) > 0.5
+            previous = self._trigger_prev.get(axis, False)
+            released = not current and previous
+            self._trigger_prev[axis] = current
+            return released
+
         jump_key = update_key(pygame.K_SPACE)
         jump_btn = update_button(0)
         self._jump_just_pressed = jump_key or jump_btn
@@ -69,9 +97,16 @@ class InputManager:
         dash_trig = update_trigger(2)
         self._dash_just_pressed = dash_key or dash_trig
 
-        attack1_key = update_key(pygame.K_a)
-        attack1_btn = update_button(1)
-        self._attack1_just_pressed = attack1_key or attack1_btn
+        attack1_key_pressed = update_key(pygame.K_a)
+        attack1_btn_pressed = update_button(1)
+        self._attack1_just_pressed = attack1_key_pressed or attack1_btn_pressed
+
+        self._attack1_held = bool(keys[pygame.K_a]) or (
+            joy and joy.get_button(1))
+
+        attack1_key_released = update_key_release(pygame.K_a)
+        attack1_btn_released = update_button_release(1)
+        self._attack1_just_released = attack1_key_released or attack1_btn_released
 
         attack2_key = update_key(pygame.K_s)
         attack2_btn = update_button(2)
@@ -143,6 +178,14 @@ class InputManager:
     @property
     def attack1_just_pressed(self) -> bool:
         return self._attack1_just_pressed
+
+    @property
+    def attack1_held(self) -> bool:
+        return self._attack1_held
+
+    @property
+    def attack1_just_released(self) -> bool:
+        return self._attack1_just_released
 
     @property
     def attack2_just_pressed(self) -> bool:

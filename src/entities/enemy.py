@@ -9,6 +9,7 @@ from src.states.enemy_states import (
     EnemyHurtState,
     EnemyIdleState,
     EnemyPatrolState,
+    EnemyStaggerState,
 )
 from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
@@ -42,12 +43,15 @@ class Goblin(Entity):
         self.patrol_timer = 0.0
         self.patrol_interval = 2.0
 
+        self.super_armor = False
+
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", EnemyIdleState(self))
         self.state_machine.add_state("patrol", EnemyPatrolState(self))
         self.state_machine.add_state("chase", EnemyChaseState(self))
         self.state_machine.add_state("attack", EnemyAttackState(self))
         self.state_machine.add_state("hurt", EnemyHurtState(self))
+        self.state_machine.add_state("stagger", EnemyStaggerState(self))
         self.state_machine.set_initial_state("idle")
 
         self.state_machine.add_interrupt(
@@ -55,6 +59,11 @@ class Goblin(Entity):
             lambda: self.combat.is_hurt,
             priority=100,
         )
+
+    def stagger(self, duration: float) -> None:
+        if self.stagger_timer > 0:
+            return
+        super().stagger(duration)
 
     def update(self, delta_time: float) -> None:
         super().update(delta_time)

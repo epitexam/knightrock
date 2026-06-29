@@ -79,6 +79,10 @@ class Entity(Sprite):
         )
         self.facing_right = True
 
+        self.stagger_timer = 0.0
+        self.super_armor = False
+        self.super_armor_count = 0
+
     @property
     def health(self) -> float:
         return self._health
@@ -130,12 +134,15 @@ class Entity(Sprite):
         height_quarter = self.hitbox.height / 4
         half_height = self.hitbox.height / 2
 
-        floor_rect = pygame.FRect(self.hitbox.bottomleft, (self.hitbox.width, 2))
+        floor_rect = pygame.FRect(
+            self.hitbox.bottomleft, (self.hitbox.width, 2))
         right_rect = pygame.FRect(
-            Vector2(self.hitbox.topright) + Vector2(0, height_quarter), (2, half_height)
+            Vector2(self.hitbox.topright) +
+            Vector2(0, height_quarter), (2, half_height)
         )
         left_rect = pygame.FRect(
-            Vector2(self.hitbox.topleft) + Vector2(-2, height_quarter), (2, half_height)
+            Vector2(self.hitbox.topleft) + Vector2(-2,
+                                                   height_quarter), (2, half_height)
         )
 
         self.on_surface["floor"] = False
@@ -250,7 +257,8 @@ class Entity(Sprite):
             return
 
         for platform in moving_platforms:
-            p_box = getattr(platform, "hitbox", getattr(platform, "rect", None))
+            p_box = getattr(platform, "hitbox",
+                            getattr(platform, "rect", None))
             p_old_box = getattr(
                 platform, "old_hitbox", getattr(platform, "old_rect", None)
             )
@@ -282,6 +290,9 @@ class Entity(Sprite):
         self.velocity = Vector2(0, 0)
         self.old_hitbox = self.hitbox.copy()
         self.is_dead = False
+        self.stagger_timer = 0.0
+        self.super_armor = False
+        self.super_armor_count = 0
 
     def receive_damage(
         self,
@@ -296,7 +307,8 @@ class Entity(Sprite):
         if self.combat is not None:
             hurt_duration = (
                 CombatSettings.HURT_DURATION
-                + abs(_kb.power[1]) * CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
+                + abs(_kb.power[1]) *
+                CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
             )
             self.combat.on_hit(hurt_duration)
 
@@ -307,9 +319,28 @@ class Entity(Sprite):
             if source_center_x is not None:
                 direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
             else:
-                direction = 1.0 if getattr(self, "facing_right", True) else -1.0
+                direction = 1.0 if getattr(
+                    self, "facing_right", True) else -1.0
             self.velocity.x = _kb.power[0] * direction
             self.velocity.y = _kb.power[1]
 
+    def stagger(self, duration: float) -> None:
+        """Apply stagger effect, considering super armor."""
+        if self.super_armor:
+            self.super_armor_count += 1
+            if self.super_armor_count >= CombatSettings.SUPER_ARMOR_THRESHOLD:
+                self.super_armor = False
+                self.stagger_timer = duration
+                if hasattr(self, 'state_machine') and self.state_machine:
+                    self.state_machine.change_state("stagger")
+        else:
+            self.stagger_timer = duration
+            if hasattr(self, 'state_machine') and self.state_machine:
+                self.state_machine.change_state("stagger")
+
     def update(self, delta_time: float) -> None:
         self.old_hitbox = self.hitbox.copy()
+        if self.stagger_timer > 0:
+            self.stagger_timer -= delta_time
+            if self.stagger_timer < 0:
+                self.stagger_timer = 0.0

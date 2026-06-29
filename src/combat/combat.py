@@ -26,6 +26,10 @@ class CombatComponent:
 
         self._locked_facing_right: bool | None = None
 
+        self.combo_count = 0
+        self.combo_timer = 0.0
+        self.last_attack_name: str | None = None
+
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
         self.attacks[name] = sequence
         self.cooldowns[name] = 0.0
@@ -54,7 +58,7 @@ class CombatComponent:
     ) -> None:
         self.entity.receive_damage(amount, source_center_x, knockback)
 
-    def start_attack(self, name: str, facing_right: bool) -> bool:
+    def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool:
         if self.is_attacking or self.is_hurt:
             return False
         if name not in self.attacks:
@@ -63,6 +67,24 @@ class CombatComponent:
             return False
 
         sequence = self.attacks[name]
+
+        if sequence.combo_reset:
+
+            self.combo_count = 0
+            self.combo_timer = 0.0
+        else:
+            if self.combo_timer > 0 and self.last_attack_name != name:
+                self.combo_count += 1
+                self.combo_timer = CombatSettings.COMBO_WINDOW
+            else:
+                self.combo_count = 0
+                self.combo_timer = 0.0
+
+        if self.combo_count == 0 and not sequence.combo_reset:
+            self.combo_timer = CombatSettings.COMBO_WINDOW
+
+        self.last_attack_name = name
+
         self.current_attack = name
         self.current_phase_index = 0
         self.cooldowns[name] = sequence.cooldown
@@ -71,6 +93,7 @@ class CombatComponent:
         self._locked_facing_right = facing_right if sequence.lock_direction else None
 
         phase = sequence.phases[0]
+        self._charge_multiplier = charge_multiplier
         self.attack_timer = phase.duration
         self.attack_box = pygame.FRect((0, 0), phase.size)
         self._update_hitbox_position(self._effective_direction(facing_right))
@@ -86,12 +109,18 @@ class CombatComponent:
             if self.cooldowns[name] > 0:
                 self.cooldowns[name] -= delta_time
 
+        if self.combo_timer > 0:
+            self.combo_timer -= delta_time
+            if self.combo_timer <= 0:
+                self.combo_count = 0
+
         if self.current_attack:
             self.attack_timer -= delta_time
             if self.attack_timer <= 0:
                 self._advance_phase(facing_right)
             else:
-                self._update_hitbox_position(self._effective_direction(facing_right))
+                self._update_hitbox_position(
+                    self._effective_direction(facing_right))
 
     def _effective_direction(self, facing_right: bool) -> bool:
         return (
@@ -128,6 +157,7 @@ class CombatComponent:
         self.attack_box = None
         self.targets_hit.clear()
         self._locked_facing_right = None
+        self._charge_multiplier = 1.0
 
     def _update_hitbox_position(self, facing_right: bool) -> None:
         attack_name = self.current_attack
@@ -145,6 +175,22 @@ class CombatComponent:
             self.entity.hitbox.centery + offset_y,
         )
 
+    def apply_damage_to_target(self, target, phase: AttackPhase, source_center_x: float):
+        """Applique les dégâts, le knockback, l'étourdissement et le finisher."""
+        multiplier = getattr(self, '_charge_multiplier', 1.0)
+        target.combat.take_damage(
+            int(phase.damage * multiplier),
+            source_center_x,
+            phase.knockback
+        )
+
+        if phase.stagger > 0 and hasattr(target, "stagger"):
+            target.stagger(phase.stagger)
+
+        if phase.is_finisher and target.health < target.max_health * 0.2:
+            target.health = 0
+            target.die()
+
 
 class NullCombatComponent:
     def __init__(self) -> None:
@@ -158,6 +204,9 @@ class NullCombatComponent:
         self.hurt_timer = 0.0
         self.contact_damage = 0
         self._locked_facing_right = None
+        self.combo_count = 0
+        self.combo_timer = 0.0
+        self.last_attack_name = None
 
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
         pass
@@ -165,7 +214,7 @@ class NullCombatComponent:
     def on_hit(self, duration: float | None = None) -> None:
         pass
 
-    def start_attack(self, name: str, facing_right: bool) -> bool:
+    def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool:
         return False
 
     def update(self, delta_time: float, facing_right: bool) -> None:
@@ -180,3 +229,6 @@ class NullCombatComponent:
     @property
     def current_phase(self) -> AttackPhase | None:
         return None
+
+    def apply_damage_to_target(self, target, phase: AttackPhase, source_center_x: float):
+        pass

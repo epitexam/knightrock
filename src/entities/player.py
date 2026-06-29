@@ -18,13 +18,14 @@ from src.states.player_states import (
     PlayerJumpState,
     PlayerRunState,
     PlayerWallSlideState,
+    PlayerStaggerState,
 )
 from src.core.settings import Physics, Combat as CombatSettings
 from src.states.state_machine import StateMachine
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.attack_types import KnockbackConfig
 
-ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash"}
+ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
 
 
 class Player(Entity):
@@ -99,6 +100,8 @@ class Player(Entity):
 
         self.facing_right = True
 
+        self.invincibility_timer = 0.0
+
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", PlayerIdleState(self))
         self.state_machine.add_state("run", PlayerRunState(self))
@@ -109,6 +112,7 @@ class Player(Entity):
         self.state_machine.add_state("block", PlayerBlockState(self))
         self.state_machine.add_state("hurt", PlayerHurtState(self))
         self.state_machine.add_state("dash", PlayerDashState(self))
+        self.state_machine.add_state("stagger", PlayerStaggerState(self))
         self.state_machine.set_initial_state("idle")
 
         sm = self.state_machine
@@ -123,7 +127,7 @@ class Player(Entity):
             lambda: (
                 self._dash_requested
                 and self.dash_charges > 0
-                and sm.current_state_name not in ("dash", "hurt")
+                and sm.current_state_name not in ("dash", "hurt", "stagger")
             ),
             priority=80,
         )
@@ -134,7 +138,7 @@ class Player(Entity):
                 and self.block_held
                 and self.block_cooldown_timer <= 0
                 and self.block_stamina > 0.3
-                and sm.current_state_name not in ("wall_slide", "hurt", "dash")
+                and sm.current_state_name not in ("wall_slide", "hurt", "dash", "stagger")
             ),
             priority=60,
         )
@@ -204,14 +208,20 @@ class Player(Entity):
             return
 
         if im.attack1_just_pressed:
-            attack = "air_combo" if not self.on_surface["floor"] else "ground_combo"
-            self.combat.start_attack(attack, self.facing_right)
+            if self.on_surface["floor"]:
+                attack_name = "light_attack"
+            else:
+                attack_name = "air_attack"
+            self.combat.start_attack(attack_name, self.facing_right)
+
         elif im.attack2_just_pressed:
-            self.combat.start_attack("heavy_smash", self.facing_right)
+            self.combat.start_attack("heavy_attack", self.facing_right)
+
         elif im.attack3_just_pressed:
             self.combat.start_attack("uppercut", self.facing_right)
+
         elif im.attack4_just_pressed:
-            self.combat.start_attack("dash_strike", self.facing_right)
+            self.combat.start_attack("dash_attack", self.facing_right)
 
     def update_timers(self, delta_time: float) -> None:
         if self.jump_buffer_timer > 0:
@@ -296,6 +306,7 @@ class Player(Entity):
         self.dash_recharge_timer = 0.0
         self.dash_penalty_timer = 0.0
         self._dash_requested = False
+        self.invincibility_timer = 0.0
         self.hitbox.width = self._original_hitbox_width
 
         if self.combat.current_attack:
@@ -317,6 +328,9 @@ class Player(Entity):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
+        if self.invincibility_timer > 0:
+            return
+
         if self.is_blocking:
             _kb = knockback if knockback is not None else KnockbackConfig()
             self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
@@ -331,10 +345,24 @@ class Player(Entity):
 
         super().receive_damage(amount, source_center_x, knockback)
 
+        if hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
+            self.combat.hurt_timer = min(
+                self.combat.hurt_timer,
+                CombatSettings.PLAYER_HURT_DURATION
+            )
+
+        self.invincibility_timer = CombatSettings.INVINCIBILITY_DURATION
+
     def update(self, delta_time: float) -> None:
         if self.is_dead:
             return
         super().update(delta_time)
+
+        if self.invincibility_timer > 0:
+            self.invincibility_timer -= delta_time
+            if self.invincibility_timer < 0:
+                self.invincibility_timer = 0.0
+
         self.get_input()
         self._handle_attack_input()
         self.update_timers(delta_time)

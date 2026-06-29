@@ -183,3 +183,14 @@ class PlayerDashState(PlayerBaseState):
             self.entity.velocity.x = 0.0
             return self.ground_return()
         return None
+
+
+class PlayerStaggerState(PlayerBaseState):
+    def enter(self, previous: Optional[str] = None) -> None:
+        self.entity.velocity.x = 0.0
+        self.entity.velocity.y = 0.0
+
+    def update(self, delta_time: float) -> Optional[str]:
+        if self.entity.stagger_timer <= 0:
+            return self.ground_return()
+        return None
