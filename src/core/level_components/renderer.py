@@ -17,6 +17,10 @@ class Renderer:
         if debug_enabled:
             self.ui_manager.draw_debug_overlays(all_sprites, self.camera)
 
+    def draw_health_bars(self, entities):
+        """Draw the health bars for the entities (player, enemies)."""
+        self.ui_manager.draw_health_bars(entities, self.camera)
+
     def draw_debug_panels(self, player, fps, sprite_count, combat_count,
                           entity_count, collision_count, hit_stop, spawn_cd):
         x, y = 10, 10

@@ -71,6 +71,7 @@ class Level:
 
     def draw(self, fps: float) -> None:
         self.renderer.draw(self.all_sprites, Debug.ENABLED)
+        self.renderer.draw_health_bars(self.entity_sprites)
 
         if Debug.ENABLED:
             self.renderer.draw_debug_panels(

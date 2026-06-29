@@ -95,7 +95,8 @@ class UIManager:
         panel_x = self.display_surface.get_width() - panel_w - 10
         panel_y = 10
 
-        self.draw_panel(panel_x, panel_y, lines, (0, 0, 30, 200), Colors.light_blue)
+        self.draw_panel(panel_x, panel_y, lines,
+                        (0, 0, 30, 200), Colors.light_blue)
 
     def draw_debug_overlays(
         self, all_sprites: pygame.sprite.Group, camera: Camera
@@ -103,7 +104,8 @@ class UIManager:
         for sprite in all_sprites:
             if hasattr(sprite, "hitbox") and sprite.hitbox:
                 rect = camera.apply(sprite.hitbox)
-                pygame.draw.rect(self.display_surface, (0, 0, 255), rect, width=2)
+                pygame.draw.rect(self.display_surface,
+                                 (0, 0, 255), rect, width=2)
             if hasattr(sprite, "combat") and sprite.combat.attack_box:
                 rect = camera.apply(sprite.combat.attack_box)
                 pygame.draw.rect(
@@ -128,8 +130,67 @@ class UIManager:
             )
             ref = camera.apply(ref)
             bg = label_surf.get_rect(midbottom=(ref.centerx, ref.top - 8))
-            bg.left = max(0, min(bg.left, self.display_surface.get_width() - bg.width))
+            bg.left = max(
+                0, min(bg.left, self.display_surface.get_width() - bg.width))
             bg.top = max(0, bg.top)
 
-            pygame.draw.rect(self.display_surface, (0, 0, 0, 160), bg, border_radius=4)
+            pygame.draw.rect(self.display_surface,
+                             (0, 0, 0, 160), bg, border_radius=4)
             self.display_surface.blit(label_surf, bg)
+
+    def draw_health_bars(
+        self, entities: pygame.sprite.Group | list, camera: Camera
+    ) -> None:
+        """
+            Draws a health bar above each entity with `health` / `max_health`.
+            The bar is centered and dynamically adjusts to avoid overlapping the debug text.
+        """
+        for entity in entities:
+            if not hasattr(entity, "health") or not hasattr(entity, "max_health"):
+                continue
+
+            if getattr(entity, "is_dead", False):
+                continue
+
+            rect = entity.hitbox if hasattr(
+                entity, "hitbox") and entity.hitbox else entity.rect
+            if rect is None:
+                continue
+
+            screen_rect = camera.apply(rect)
+
+            bar_width = max(30, min(screen_rect.width * 0.8, 60))
+            bar_height = 6
+
+            bar_x = screen_rect.centerx - (bar_width / 2)
+
+            base_offset = 8
+
+            if Debug.ENABLED:
+                base_offset += self.label_font.get_height() + 4
+
+            bar_y = screen_rect.top - base_offset - bar_height
+
+            border_rect = (bar_x - 1, bar_y - 1, bar_width + 2, bar_height + 2)
+            bg_rect = (bar_x, bar_y, bar_width, bar_height)
+
+            pygame.draw.rect(self.display_surface, (0, 0, 0), border_rect, 1)
+            pygame.draw.rect(self.display_surface, (40, 40, 40), bg_rect)
+
+            health_ratio = max(
+                0.0, min(1.0, entity.health / entity.max_health))
+            health_width = bar_width * health_ratio
+
+            if health_ratio > 0.5:
+                color = (46, 204, 113)
+            elif health_ratio > 0.25:
+                color = (241, 196, 15)
+            else:
+                color = (231, 76, 60)
+
+            if health_width > 0:
+                pygame.draw.rect(
+                    self.display_surface,
+                    color,
+                    (bar_x, bar_y, health_width, bar_height)
+                )
