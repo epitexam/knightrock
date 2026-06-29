@@ -7,10 +7,13 @@ from src.core.settings import Combat as CombatSettings
 
 
 class PlayerBaseState(State):
+    """Represent the PlayerBase state."""
     def __init__(self, entity):
+        """Initialize the PlayerBaseState instance."""
         super().__init__(entity)
 
     def ground_return(self) -> str:
+        """Perform ground return."""
         if self.entity.on_surface["floor"]:
             return (
                 "run" if (self.entity.left_held or self.entity.right_held) else "idle"
@@ -19,10 +22,13 @@ class PlayerBaseState(State):
 
 
 class PlayerIdleState(PlayerBaseState):
+    """Represent the PlayerIdle state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.velocity.x = 0
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
             return "jump"
@@ -34,7 +40,9 @@ class PlayerIdleState(PlayerBaseState):
 
 
 class PlayerRunState(PlayerBaseState):
+    """Represent the PlayerRun state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.apply_horizontal_movement(delta_time)
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
@@ -50,7 +58,9 @@ class PlayerRunState(PlayerBaseState):
 
 
 class PlayerJumpState(PlayerBaseState):
+    """Represent the PlayerJump state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.handle_jump()
         self.entity.apply_horizontal_movement(delta_time)
         if self.entity.velocity.y >= 0:
@@ -61,7 +71,9 @@ class PlayerJumpState(PlayerBaseState):
 
 
 class PlayerFallState(PlayerBaseState):
+    """Represent the PlayerFall state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.handle_jump()
         self.entity.apply_horizontal_movement(delta_time)
         if self.entity.velocity.y < 0:
@@ -72,7 +84,9 @@ class PlayerFallState(PlayerBaseState):
 
 
 class PlayerWallSlideState(PlayerBaseState):
+    """Represent the PlayerWallSlide state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
             return "jump"
@@ -85,19 +99,24 @@ class PlayerWallSlideState(PlayerBaseState):
 
 
 class PlayerAttackState(PlayerBaseState):
+    """Represent the PlayerAttack state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         if self.entity.on_surface["floor"]:
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * 0.35
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if not self.entity.combat.is_attacking:
             return self.ground_return()
         return None
 
 
 class PlayerBlockState(PlayerBaseState):
+    """Represent the PlayerBlock state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = 0
         old_bottom = self.entity.hitbox.bottom
@@ -106,6 +125,7 @@ class PlayerBlockState(PlayerBaseState):
         self.entity.sync_rects()
 
     def exit(self, next_state: Optional[str] = None) -> None:
+        """Exit the state."""
         if self.entity.block_stamina <= 0:
             self.entity.block_cooldown_timer = CombatSettings.BLOCK_COOLDOWN_BROKEN
         else:
@@ -117,6 +137,7 @@ class PlayerBlockState(PlayerBaseState):
         self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity.velocity.x = 0.0
         self.entity.block_stamina -= (
             delta_time if self.entity.on_surface["floor"] else delta_time * 2.0
@@ -127,10 +148,13 @@ class PlayerBlockState(PlayerBaseState):
 
 
 class PlayerHurtState(PlayerBaseState):
+    """Represent the PlayerHurt state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity._dash_requested = False
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         control = (
             self.entity.floor_control
             if self.entity.on_surface["floor"]
@@ -145,7 +169,9 @@ class PlayerHurtState(PlayerBaseState):
 
 
 class PlayerDashState(PlayerBaseState):
+    """Represent the PlayerDash state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.dash_charges -= 1
         self.entity._dash_requested = False
         if self.entity.dash_charges == 0:
@@ -160,6 +186,7 @@ class PlayerDashState(PlayerBaseState):
         self.entity._dash_duration_timer = self.entity.dash_duration
 
     def exit(self, next_state: Optional[str] = None) -> None:
+        """Exit the state."""
         if hasattr(self.entity, "_original_hitbox_width"):
             current = self.entity.hitbox.width
             if current != self.entity._original_hitbox_width:
@@ -171,6 +198,7 @@ class PlayerDashState(PlayerBaseState):
                 self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         self.entity._dash_duration_timer -= delta_time
         friction = max(0.0, 1.0 - self.entity.dash_friction * delta_time)
         self.entity.velocity.x *= friction
@@ -186,11 +214,14 @@ class PlayerDashState(PlayerBaseState):
 
 
 class PlayerStaggerState(PlayerBaseState):
+    """Represent the PlayerStagger state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.velocity.x = 0.0
         self.entity.velocity.y = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.stagger_timer <= 0:
             return self.ground_return()
         return None

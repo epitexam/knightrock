@@ -5,6 +5,7 @@ Color = tuple[int, int, int]
 
 class Colors:
     # Neutrals
+    """Define shared color constants used by the game."""
     black: ClassVar[Color] = (0, 0, 0)
     dark_grey: ClassVar[Color] = (24, 28, 36)
     grey: ClassVar[Color] = (80, 85, 95)

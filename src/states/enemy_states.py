@@ -6,7 +6,9 @@ from src.states.state_machine import State
 
 
 class EnemyHurtState(State):
+    """Represent the EnemyHurt state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = pygame.math.lerp(
                 self.entity.velocity.x, 0.0, min(1.0, 10.0 * delta_time)
@@ -17,11 +19,14 @@ class EnemyHurtState(State):
 
 
 class EnemyIdleState(State):
+    """Represent the EnemyIdle state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.velocity.x = 0.0
         self.entity.patrol_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.can_see_player():
             return "chase"
         self.entity.patrol_timer += delta_time
@@ -31,12 +36,15 @@ class EnemyIdleState(State):
 
 
 class EnemyPatrolState(State):
+    """Represent the EnemyPatrol state."""
     def enter(self, previous: Optional[str] = None) -> None:
 
+        """Enter the state."""
         self.entity.patrol_direction = 1 if random.random() > 0.5 else -1
         self.entity.patrol_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.can_see_player():
             return "chase"
 
@@ -60,7 +68,9 @@ class EnemyPatrolState(State):
 
 
 class EnemyChaseState(State):
+    """Represent the EnemyChase state."""
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.player is not None:
             self.entity.facing_right = (
                 self.entity.player.hitbox.centerx > self.entity.hitbox.centerx
@@ -75,11 +85,14 @@ class EnemyChaseState(State):
 
 
 class EnemyAttackState(State):
+    """Represent the EnemyAttack state."""
     def __init__(self, entity):
+        """Initialize the EnemyAttackState instance."""
         super().__init__(entity)
         self.attack_retry_timer = 0.0
 
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.velocity.x = 0.0
         success = self.entity.combat.start_attack(
             "claw_swipe", self.entity.facing_right
@@ -91,6 +104,7 @@ class EnemyAttackState(State):
 
     def update(self, delta_time: float) -> Optional[str]:
 
+        """Update the current state."""
         if self.attack_retry_timer > 0:
             self.attack_retry_timer -= delta_time
             if self.attack_retry_timer <= 0:
@@ -104,10 +118,13 @@ class EnemyAttackState(State):
 
 
 class EnemyStaggerState(State):
+    """Represent the EnemyStagger state."""
     def enter(self, previous: Optional[str] = None) -> None:
+        """Enter the state."""
         self.entity.velocity.x = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state."""
         if self.entity.stagger_timer <= 0:
             if self.entity.can_see_player():
                 return "chase"

@@ -13,6 +13,7 @@ class InputManager:
     """Abstraction of inputs for the player."""
 
     def __init__(self) -> None:
+        """Initialize the InputManager instance."""
         self._joystick: Optional[JoystickType] = (
             Joystick(0) if pygame.joystick.get_count() > 0 else None
         )
@@ -40,6 +41,7 @@ class InputManager:
         joy = self._joystick
 
         def update_key(key: int) -> bool:
+            """Update key."""
             current = bool(keys[key])
             previous = self._key_prev.get(key, False)
             just = current and not previous
@@ -47,6 +49,7 @@ class InputManager:
             return just
 
         def update_key_release(key: int) -> bool:
+            """Update key release."""
             current = bool(keys[key])
             previous = self._key_prev.get(key, False)
             released = not current and previous
@@ -54,6 +57,7 @@ class InputManager:
             return released
 
         def update_button(btn: int) -> bool:
+            """Update button."""
             if not joy:
                 return False
             current = bool(joy.get_button(btn))
@@ -63,6 +67,7 @@ class InputManager:
             return just
 
         def update_button_release(btn: int) -> bool:
+            """Update button release."""
             if not joy:
                 return False
             current = bool(joy.get_button(btn))
@@ -72,6 +77,7 @@ class InputManager:
             return released
 
         def update_trigger(axis: int) -> bool:
+            """Update trigger."""
             if not joy:
                 return False
             current = joy.get_axis(axis) > 0.5
@@ -81,6 +87,7 @@ class InputManager:
             return just
 
         def update_trigger_release(axis: int) -> bool:
+            """Update trigger release."""
             if not joy:
                 return False
             current = joy.get_axis(axis) > 0.5
@@ -126,6 +133,7 @@ class InputManager:
 
     @staticmethod
     def _apply_deadzone(value: float, deadzone: float = 0.2) -> float:
+        """Internal helper for apply deadzone."""
         if abs(value) < deadzone:
             return 0.0
         sign = 1.0 if value > 0 else -1.0
@@ -152,14 +160,17 @@ class InputManager:
 
     @property
     def left_held(self) -> bool:
+        """Perform left held."""
         return self.move_axis < -0.1
 
     @property
     def right_held(self) -> bool:
+        """Perform right held."""
         return self.move_axis > 0.1
 
     @property
     def block_held(self) -> bool:
+        """Perform block held."""
         keys = pygame.key.get_pressed()
         if keys[pygame.K_q]:
             return True
@@ -169,36 +180,45 @@ class InputManager:
 
     @property
     def jump_just_pressed(self) -> bool:
+        """Perform jump just pressed."""
         return self._jump_just_pressed
 
     @property
     def dash_just_pressed(self) -> bool:
+        """Perform dash just pressed."""
         return self._dash_just_pressed
 
     @property
     def attack1_just_pressed(self) -> bool:
+        """Perform attack1 just pressed."""
         return self._attack1_just_pressed
 
     @property
     def attack1_held(self) -> bool:
+        """Perform attack1 held."""
         return self._attack1_held
 
     @property
     def attack1_just_released(self) -> bool:
+        """Perform attack1 just released."""
         return self._attack1_just_released
 
     @property
     def attack2_just_pressed(self) -> bool:
+        """Perform attack2 just pressed."""
         return self._attack2_just_pressed
 
     @property
     def attack3_just_pressed(self) -> bool:
+        """Perform attack3 just pressed."""
         return self._attack3_just_pressed
 
     @property
     def attack4_just_pressed(self) -> bool:
+        """Perform attack4 just pressed."""
         return self._attack4_just_pressed
 
     @property
     def reset_just_pressed(self) -> bool:
+        """Reset just pressed."""
         return self._reset_just_pressed

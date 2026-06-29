@@ -9,6 +9,7 @@ class SeparationSystem:
     """Resolves physical overlaps between entities (no damage logic)."""
 
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
+        """Process the current state."""
         entities = list(entity_sprites)
 
         for i, ent_a in enumerate(entities):

@@ -17,8 +17,10 @@ from src.combat.attack_data import GOBLIN_ATTACKS
 
 
 class Goblin(Entity):
+    """Represent an enemy goblin with simple AI behavior."""
     def __init__(self, pos, groups, collision_sprites, player_reference):
 
+        """Initialize the Goblin instance."""
         super().__init__(
             pos,
             (48, 48),
@@ -61,11 +63,13 @@ class Goblin(Entity):
         )
 
     def stagger(self, duration: float) -> None:
+        """Perform stagger."""
         if self.stagger_timer > 0:
             return
         super().stagger(duration)
 
     def update(self, delta_time: float) -> None:
+        """Update the current state."""
         super().update(delta_time)
         self.combat.update(delta_time, self.facing_right)
         if self.state_machine is not None:
@@ -74,6 +78,7 @@ class Goblin(Entity):
         self.move(delta_time, apply_gravity=True)
 
     def can_see_player(self) -> bool:
+        """Return whether see player."""
         if self.player is None:
             return False
         return (
@@ -84,6 +89,7 @@ class Goblin(Entity):
         )
 
     def is_player_in_range(self) -> bool:
+        """Return whether player in range."""
         if self.player is None:
             return False
         return (

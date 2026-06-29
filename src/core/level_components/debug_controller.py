@@ -3,7 +3,9 @@ from src.entities.enemy import Goblin
 
 
 class DebugController:
+    """Manage debug tools and on-screen debug state."""
     def __init__(self, all_sprites, collision_sprites, combat_sprites, entity_sprites):
+        """Initialize the DebugController instance."""
         self.all_sprites = all_sprites
         self.collision_sprites = collision_sprites
         self.combat_sprites = combat_sprites
@@ -11,6 +13,7 @@ class DebugController:
         self.spawn_cooldown = 0.0
 
     def update(self, delta_time, player):
+        """Update the current state."""
         if self.spawn_cooldown > 0:
             self.spawn_cooldown -= delta_time
 

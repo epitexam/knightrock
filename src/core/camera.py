@@ -6,7 +6,9 @@ import pygame
 
 
 class Camera:
+    """Track a viewport offset for rendering."""
     def __init__(self, width: int, height: int):
+        """Initialize the Camera instance."""
         self.offset = pygame.math.Vector2(0, 0)
         self.width = width
         self.height = height

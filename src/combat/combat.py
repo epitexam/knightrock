@@ -9,7 +9,9 @@ from src.combat.combatant_protocol import Combatant
 
 
 class CombatComponent:
+    """Represent a Combat component."""
     def __init__(self, entity: Combatant) -> None:
+        """Initialize the CombatComponent instance."""
         self.entity = entity
         self.attacks: dict[str, AttackSequence] = {}
         self.cooldowns: dict[str, float] = {}
@@ -31,21 +33,25 @@ class CombatComponent:
         self.last_attack_name: str | None = None
 
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
+        """Add attack."""
         self.attacks[name] = sequence
         self.cooldowns[name] = 0.0
 
     @property
     def is_attacking(self) -> bool:
+        """Return whether attacking."""
         return self.current_attack is not None
 
     @property
     def current_phase(self) -> AttackPhase | None:
+        """Return the current attack phase."""
         attack_name = self.current_attack
         if not attack_name:
             return None
         return self.attacks[attack_name].phases[self.current_phase_index]
 
     def on_hit(self, duration: float | None = None) -> None:
+        """Apply hit effects when damaged."""
         self.is_hurt = True
         self.hurt_timer = duration if duration is not None else CombatSettings.HURT_DURATION
         self._end_attack()
@@ -56,9 +62,11 @@ class CombatComponent:
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
+        """Perform take damage."""
         self.entity.receive_damage(amount, source_center_x, knockback)
 
     def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool:
+        """Start an attack sequence."""
         if self.is_attacking or self.is_hurt:
             return False
         if name not in self.attacks:
@@ -100,6 +108,7 @@ class CombatComponent:
         return True
 
     def update(self, delta_time: float, facing_right: bool) -> None:
+        """Update the current state."""
         if self.hurt_timer > 0:
             self.hurt_timer -= delta_time
             if self.hurt_timer <= 0:
@@ -123,6 +132,7 @@ class CombatComponent:
                     self._effective_direction(facing_right))
 
     def _effective_direction(self, facing_right: bool) -> bool:
+        """Internal helper for effective direction."""
         return (
             self._locked_facing_right
             if self._locked_facing_right is not None
@@ -130,6 +140,7 @@ class CombatComponent:
         )
 
     def _advance_phase(self, facing_right: bool) -> None:
+        """Internal helper for advance phase."""
         attack_name = self.current_attack
         if not attack_name:
             return
@@ -151,6 +162,7 @@ class CombatComponent:
         self._update_hitbox_position(self._effective_direction(facing_right))
 
     def _end_attack(self) -> None:
+        """Internal helper for end attack."""
         self.current_attack = None
         self.current_phase_index = 0
         self.attack_timer = 0.0
@@ -160,6 +172,7 @@ class CombatComponent:
         self._charge_multiplier = 1.0
 
     def _update_hitbox_position(self, facing_right: bool) -> None:
+        """Internal helper for update hitbox position."""
         attack_name = self.current_attack
         if not self.attack_box or not attack_name:
             return
@@ -193,7 +206,9 @@ class CombatComponent:
 
 
 class NullCombatComponent:
+    """Represent a NullCombat component."""
     def __init__(self) -> None:
+        """Initialize the NullCombatComponent instance."""
         self.is_attacking = False
         self.is_hurt = False
         self.current_attack = None
@@ -209,26 +224,34 @@ class NullCombatComponent:
         self.last_attack_name = None
 
     def add_attack(self, name: str, sequence: AttackSequence) -> None:
+        """Add attack."""
         pass
 
     def on_hit(self, duration: float | None = None) -> None:
+        """Apply hit effects when damaged."""
         pass
 
     def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool:
+        """Start an attack sequence."""
         return False
 
     def update(self, delta_time: float, facing_right: bool) -> None:
+        """Update the current state."""
         pass
 
     def _end_attack(self) -> None:
+        """Internal helper for end attack."""
         pass
 
     def take_damage(self, amount: int, source_center_x: float | None = None, knockback: KnockbackConfig | None = None) -> None:
+        """Perform take damage."""
         pass
 
     @property
     def current_phase(self) -> AttackPhase | None:
+        """Return the current attack phase."""
         return None
 
     def apply_damage_to_target(self, target, phase: AttackPhase, source_center_x: float):
+        """Apply damage to target."""
         pass

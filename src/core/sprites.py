@@ -6,6 +6,7 @@ from src.core.settings import World
 
 
 class Sprite(pygame.sprite.Sprite):
+    """Represent a Sprite."""
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -15,6 +16,7 @@ class Sprite(pygame.sprite.Sprite):
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
         ] = None,
     ) -> None:
+        """Initialize the Sprite instance."""
         super().__init__()
 
         if groups is not None:
@@ -34,6 +36,7 @@ class Sprite(pygame.sprite.Sprite):
 
 
 class MovingPlatform(Sprite):
+    """Represent a MovingPlatform."""
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -42,6 +45,7 @@ class MovingPlatform(Sprite):
         speed: float,
         groups=None,
     ):
+        """Initialize the MovingPlatform instance."""
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.waypoints = [pygame.math.Vector2(x, y) for (x, y) in waypoints]
         self.speed = speed
@@ -53,6 +57,7 @@ class MovingPlatform(Sprite):
         self.old_hitbox: pygame.FRect = self.hitbox.copy()
 
     def update(self, delta_time: float):
+        """Update the current state."""
         self.old_rect = self.rect.copy()
         self.old_hitbox = self.hitbox.copy()
 

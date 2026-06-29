@@ -11,6 +11,7 @@ class CombatSystem:
     """Processes attack hit detection and applies damage/knockback."""
 
     def __init__(self):
+        """Initialize the CombatSystem instance."""
         self.hit_stop_timer = 0.0
 
     def process_attacks(self, combat_sprites: pygame.sprite.Group) -> None:
@@ -44,6 +45,7 @@ class CombatSystem:
                     )
 
     def update_timer(self, delta_time: float) -> None:
+        """Update timer."""
         if self.hit_stop_timer > 0:
             self.hit_stop_timer -= delta_time
             if self.hit_stop_timer < 0:
@@ -51,4 +53,5 @@ class CombatSystem:
 
     @property
     def in_hit_stop(self) -> bool:
+        """Perform in hit stop."""
         return self.hit_stop_timer > 0

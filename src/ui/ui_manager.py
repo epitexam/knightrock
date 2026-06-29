@@ -5,7 +5,9 @@ from src.core.settings import Debug
 
 
 class UIManager:
+    """Draw UI overlays and debug panels."""
     def __init__(self, display_surface: pygame.Surface) -> None:
+        """Initialize the UIManager instance."""
         self.display_surface = display_surface
         self.debug_font = pygame.font.SysFont("Arial", Debug.FONT_SIZE)
         self.label_font = pygame.font.SysFont("Arial", Debug.LABEL_FONT_SIZE)
@@ -13,6 +15,7 @@ class UIManager:
     def draw_panel(
         self, x: int, y: int, lines: list[str], color: tuple, text_color: tuple
     ) -> int:
+        """Draw panel."""
         font = self.debug_font
         padding = 8
         line_height = 28
@@ -33,6 +36,7 @@ class UIManager:
         return panel_h
 
     def draw_state_panel(self, x: int, y: int, player) -> int:
+        """Draw state panel."""
         if player is None or player.state_machine is None:
             return 0
 
@@ -59,6 +63,7 @@ class UIManager:
         return self.draw_panel(x, y, lines, (0, 0, 0, 180), Colors.white)
 
     def draw_stats_panel(self, x: int, y: int, player) -> int:
+        """Draw stats panel."""
         if player is None:
             return 0
 
@@ -87,6 +92,7 @@ class UIManager:
         hit_stop: float,
         spawn_cd: float,
     ) -> None:
+        """Draw performance panel."""
         lines = [
             f"FPS:       {fps:.1f}",
             f"Sprites:   {sprite_count}",
@@ -113,6 +119,7 @@ class UIManager:
     def draw_debug_overlays(
         self, all_sprites: pygame.sprite.Group, camera: Camera
     ) -> None:
+        """Draw debug overlays."""
         for sprite in all_sprites:
             if hasattr(sprite, "hitbox") and sprite.hitbox:
                 rect = camera.apply(sprite.hitbox)

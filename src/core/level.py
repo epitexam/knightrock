@@ -10,7 +10,9 @@ from src.core.camera import Camera
 
 
 class Level:
+    """Manage a game level and its entities."""
     def __init__(self, display_surface, tmx_map, input_manager):
+        """Initialize the Level instance."""
         self.display_surface = display_surface
         self.input_manager = input_manager
 
@@ -37,6 +39,7 @@ class Level:
         self.setup(tmx_map)
 
     def setup(self, tmx_map):
+        """Perform setup."""
         self.world_builder = WorldBuilder(tmx_map)
         self.player = self.world_builder.build(
             self.all_sprites,
@@ -48,6 +51,7 @@ class Level:
         )
 
     def update(self, delta_time: float) -> None:
+        """Update the current state."""
         self.debug_controller.update(delta_time, self.player)
 
         if not self.gameplay_loop.combat_system.in_hit_stop:
@@ -70,6 +74,7 @@ class Level:
             self.camera.follow(self.player.hitbox)
 
     def draw(self, fps: float) -> None:
+        """Draw the current state."""
         self.renderer.draw(self.all_sprites, Debug.ENABLED)
         self.renderer.draw_health_bars(self.entity_sprites)
 

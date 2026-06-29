@@ -7,16 +7,19 @@ from src.entities.enemy import Goblin
 
 
 class WorldBuilder:
+    """Build game objects from the TMX map."""
     ENTITY_CLASSES = {
         "player": Player,
         "goblin": Goblin,
     }
 
     def __init__(self, tmx_map):
+        """Initialize the WorldBuilder instance."""
         self.tmx_map = tmx_map
 
     def build(self, all_sprites, collision_sprites, moving_platforms,
               combat_sprites, entity_sprites, input_manager):
+        """Build and return the requested objects."""
         self._setup_terrain(all_sprites, collision_sprites)
         self._setup_platforms(all_sprites, collision_sprites, moving_platforms)
         player = self._setup_entities(
@@ -26,6 +29,7 @@ class WorldBuilder:
         return player
 
     def _setup_terrain(self, all_sprites, collision_sprites):
+        """Internal helper for setup terrain."""
         for x, y, surf in self.tmx_map.get_layer_by_name("Terrain").tiles():
             Sprite(
                 pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
@@ -35,6 +39,7 @@ class WorldBuilder:
             )
 
     def _setup_platforms(self, all_sprites, collision_sprites, moving_platforms):
+        """Internal helper for setup platforms."""
         for obj in self.tmx_map.get_layer_by_name("Moving Objects"):
             if obj.name == "helicopter":
                 waypoints_str = obj.properties.get("waypoints", "")
@@ -74,6 +79,7 @@ class WorldBuilder:
 
     def _setup_entities(self, all_sprites, collision_sprites, moving_platforms,
                         combat_sprites, entity_sprites, input_manager):
+        """Internal helper for setup entities."""
         player = None
         for obj in self.tmx_map.get_layer_by_name("Objects"):
             cls = self.ENTITY_CLASSES.get(obj.name)

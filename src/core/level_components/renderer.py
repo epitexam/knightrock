@@ -3,12 +3,15 @@ from src.ui.ui_manager import UIManager
 
 
 class Renderer:
+    """Render the game world and UI overlays."""
     def __init__(self, display_surface, camera):
+        """Initialize the Renderer instance."""
         self.display_surface = display_surface
         self.camera = camera
         self.ui_manager = UIManager(display_surface)
 
     def draw(self, all_sprites, debug_enabled=False):
+        """Draw the current state."""
         self.display_surface.fill(Colors.red)
         for sprite in all_sprites:
             rect = self.camera.apply(sprite.rect)
@@ -23,6 +26,7 @@ class Renderer:
 
     def draw_debug_panels(self, player, fps, sprite_count, combat_count,
                           entity_count, collision_count, hit_stop, spawn_cd):
+        """Draw debug panels."""
         x, y = 10, 10
         y += self.ui_manager.draw_state_panel(x, y, player) + 8
         self.ui_manager.draw_stats_panel(x, y, player)

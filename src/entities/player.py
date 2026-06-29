@@ -29,6 +29,7 @@ ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
 
 
 class Player(Entity):
+    """Represent the player character and its behavior."""
     def __init__(
         self,
         pos: tuple[float, float] | pygame.math.Vector2,
@@ -38,6 +39,7 @@ class Player(Entity):
         input_manager: InputManager,
     ) -> None:
 
+        """Initialize the Player instance."""
         super().__init__(
             pos,
             (48.0, 56.0),
@@ -153,16 +155,19 @@ class Player(Entity):
 
     @property
     def is_blocking(self) -> bool:
+        """Return whether blocking."""
         if self.state_machine is None:
             return False
         return self.state_machine.current_state_name == "block"
 
     def can_attack(self) -> bool:
+        """Return whether attack."""
         if self.state_machine is None:
             return False
         return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
 
     def _is_wall_sliding(self) -> bool:
+        """Internal helper for is wall sliding."""
         on_left_wall = self.on_surface["left"] and self.left_held
         on_right_wall = self.on_surface["right"] and self.right_held
         return (
@@ -172,13 +177,16 @@ class Player(Entity):
         )
 
     def _on_floor_contact(self) -> None:
+        """Internal helper for on floor contact."""
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
     def _on_wall_contact(self) -> None:
+        """Internal helper for on wall contact."""
         self.midair_jumps_left = self.max_midair_jumps
 
     def get_input(self) -> None:
+        """Return input."""
         im = self.input_manager
         self.move_axis = im.move_axis
         self.left_held = im.left_held
@@ -203,6 +211,7 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
+        """Internal helper for handle attack input."""
         im = self.input_manager
         if not self.can_attack():
             return
@@ -224,6 +233,7 @@ class Player(Entity):
             self.combat.start_attack("dash_attack", self.facing_right)
 
     def update_timers(self, delta_time: float) -> None:
+        """Update timers."""
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
 
@@ -253,6 +263,7 @@ class Player(Entity):
                     self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
+        """Apply horizontal movement."""
         target_speed = self.move_axis * self.speed
 
         if target_speed == 0 and abs(self.velocity.x) < 0.5:
@@ -267,6 +278,7 @@ class Player(Entity):
             self.velocity.x = 0.0
 
     def handle_jump(self) -> None:
+        """Handle jump."""
         if self.jump_buffer_timer <= 0:
             return
 
@@ -290,10 +302,12 @@ class Player(Entity):
             self.jump_buffer_timer = 0.0
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
+        """Move the entity based on velocity and environment."""
         self.apply_moving_platform(self.moving_platforms)
         super().move(delta_time, apply_gravity=apply_gravity)
 
     def reset_position(self) -> None:
+        """Reset position."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
         self.coyote_timer = 0.0
@@ -316,9 +330,11 @@ class Player(Entity):
         self.health = self.max_health
 
     def die(self) -> None:
+        """Mark the entity as dead and perform cleanup."""
         super().die()
 
     def respawn(self) -> None:
+        """Reset the entity after death."""
         self.is_dead = False
         self.reset_position()
 
@@ -328,6 +344,7 @@ class Player(Entity):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
+        """Apply damage to this entity."""
         if self.invincibility_timer > 0:
             return
 
@@ -354,6 +371,7 @@ class Player(Entity):
         self.invincibility_timer = CombatSettings.INVINCIBILITY_DURATION
 
     def update(self, delta_time: float) -> None:
+        """Update the current state."""
         if self.is_dead:
             return
         super().update(delta_time)

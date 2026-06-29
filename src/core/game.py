@@ -11,7 +11,9 @@ from src.core.input_manager import InputManager
 
 
 class Game:
+    """Initialize and run the main game loop."""
     def __init__(self) -> None:
+        """Initialize the Game instance."""
         pygame.init()
         pygame.joystick.init()
         self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
@@ -29,6 +31,7 @@ class Game:
         self._accumulator = 0.0
 
     def run(self):
+        """Run the main loop."""
         while True:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
             self._accumulator += min(raw_delta, 0.1)

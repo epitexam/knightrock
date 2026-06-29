@@ -5,6 +5,7 @@ import os
 
 
 class Display:
+    """Represent a Display."""
     WIDTH = 1280
     HEIGHT = 720
     SIZE = (WIDTH, HEIGHT)
@@ -13,10 +14,12 @@ class Display:
 
 
 class World:
+    """Represent a World."""
     TILE_SIZE = 64
 
 
 class Physics:
+    """Represent a Physics."""
     PLAYER_SPEED = 450
     GRAVITY = 3500
     JUMP_FORCE = 950
@@ -37,6 +40,7 @@ class Physics:
 
 
 class Combat:
+    """Represent a Combat."""
     HURT_DURATION = 0.4
     PLAYER_HURT_DURATION = 0.12
     INVINCIBILITY_DURATION = 0.18
@@ -56,18 +60,20 @@ class Combat:
 
 
 class Separation:
+    """Represent a Separation."""
     SEARCH_INFLATE = 400
     SUB_STEP_SIZE = 16.0
 
 
 class Debug:
+    """Represent a Debug."""
     ENABLED = os.getenv("DEBUG", "0") == "1"
     FONT_SIZE = 24
     LABEL_FONT_SIZE = 16
 
 
 class Simulation:
-    """Paramètres pour le timestep fixe et le réseau."""
+    """Settings for fixed timestep and network."""
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION

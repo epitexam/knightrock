@@ -7,12 +7,14 @@ from typing import List, Literal, Optional
 
 @dataclass
 class KnockbackConfig:
+    """Represent a KnockbackConfig."""
     power: tuple[float, float] = (250.0, -150.0)
     mode: Literal["from_attacker", "fixed"] = "from_attacker"
 
 
 @dataclass
 class AttackPhase:
+    """Represent a AttackPhase."""
     size: tuple[float, float]
     offset: tuple[float, float]
     damage: int
@@ -28,6 +30,7 @@ class AttackPhase:
 
 @dataclass
 class AttackSequence:
+    """Represent a AttackSequence."""
     phases: List[AttackPhase]
     cooldown: float
     lock_direction: bool = False

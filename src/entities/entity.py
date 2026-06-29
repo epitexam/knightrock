@@ -12,6 +12,7 @@ from src.combat.combat import NullCombatComponent, CombatComponent
 
 
 def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
+    """Internal helper for hitbox collide."""
     box_a = getattr(a, "hitbox", a.rect)
     box_b = getattr(b, "hitbox", b.rect)
     if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
@@ -22,6 +23,7 @@ def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
 
 
 class Entity(Sprite):
+    """Represent a Entity."""
     hitbox: pygame.FRect
     old_hitbox: pygame.FRect
     collision_sprites: Group
@@ -45,6 +47,7 @@ class Entity(Sprite):
         spawn_pos: Sequence[float] | Vector2 | None = None,
         combat: CombatComponent | None = None,
     ) -> None:
+        """Initialize the Entity instance."""
         Sprite.__init__(self, groups)
         self.id: str = uuid.uuid4().hex
         self.pushable: bool = True
@@ -85,10 +88,12 @@ class Entity(Sprite):
 
     @property
     def health(self) -> float:
+        """Perform health."""
         return self._health
 
     @health.setter
     def health(self, value: float) -> None:
+        """Perform health."""
         old = self._health
         self._health = max(0.0, min(value, self._max_health))
         if old > 0 and self._health == 0 and not self.is_dead:
@@ -96,33 +101,42 @@ class Entity(Sprite):
 
     @property
     def max_health(self) -> float:
+        """Perform max health."""
         return self._max_health
 
     @max_health.setter
     def max_health(self, value: float) -> None:
+        """Perform max health."""
         self._max_health = max(1.0, value)
 
     def die(self) -> None:
+        """Mark the entity as dead and perform cleanup."""
         self.is_dead = True
 
     @property
     def hurtbox(self) -> pygame.FRect:
+        """Perform hurtbox."""
         return self.hitbox
 
     def sync_rects(self) -> None:
+        """Sync rect and hitbox positions."""
         if self.rect is not None:
             self.rect.midbottom = self.hitbox.midbottom
 
     def _is_wall_sliding(self) -> bool:
+        """Internal helper for is wall sliding."""
         return False
 
     def _on_floor_contact(self) -> None:
+        """Internal helper for on floor contact."""
         pass
 
     def _on_wall_contact(self) -> None:
+        """Internal helper for on wall contact."""
         pass
 
     def apply_gravity(self, delta_time: float) -> None:
+        """Apply gravity."""
         if self._is_wall_sliding():
             self.velocity.y += self.slide_gravity * delta_time
             if self.velocity.y > self.max_slide_speed:
@@ -131,6 +145,7 @@ class Entity(Sprite):
             self.velocity.y += self.normal_gravity * delta_time
 
     def check_contact(self) -> None:
+        """Check contact."""
         height_quarter = self.hitbox.height / 4
         half_height = self.hitbox.height / 2
 
@@ -173,6 +188,7 @@ class Entity(Sprite):
             self._on_wall_contact()
 
     def handle_collisions(self, axis: str) -> None:
+        """Handle collisions."""
         search_area = self.hitbox.inflate(
             Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE
         )
@@ -225,6 +241,7 @@ class Entity(Sprite):
         self.sync_rects()
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
+        """Move the entity based on velocity and environment."""
         move_x = self.velocity.x * delta_time
         steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))
         step_move_x = move_x / steps_x
@@ -253,6 +270,7 @@ class Entity(Sprite):
         self.check_contact()
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
+        """Apply moving platform."""
         if not self.on_surface["floor"]:
             return
 
@@ -285,6 +303,7 @@ class Entity(Sprite):
             break
 
     def reset_position(self) -> None:
+        """Reset position."""
         self.hitbox.center = self.spawn_pos
         self.sync_rects()
         self.velocity = Vector2(0, 0)
@@ -300,6 +319,7 @@ class Entity(Sprite):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
+        """Apply damage to this entity."""
         _kb = knockback if knockback is not None else KnockbackConfig()
 
         self.health -= amount
@@ -339,6 +359,7 @@ class Entity(Sprite):
                 self.state_machine.change_state("stagger")
 
     def update(self, delta_time: float) -> None:
+        """Update the current state."""
         self.old_hitbox = self.hitbox.copy()
         if self.stagger_timer > 0:
             self.stagger_timer -= delta_time
