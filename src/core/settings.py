@@ -12,6 +12,10 @@ class Display:
     TITLE = "Knightrock"
 
 
+class Simulation:
+    TIMESTEP = 1.0 / 60.0
+
+
 class World:
     TILE_SIZE = 64
 
@@ -23,7 +27,7 @@ class Physics:
     DASH_SPEED = 2750
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
-    DASH_MAX_CHARGES = 2
+    DASH_MAX_CHARGES = 3
     DASH_RECHARGE_TIME = 0.40
     DASH_PENALTY_TIME = 2.20
     DASH_GRAVITY_MULT = 0.0

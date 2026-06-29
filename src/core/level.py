@@ -47,7 +47,7 @@ class Level:
             self.input_manager,
         )
 
-    def run(self, delta_time: float, fps: float):
+    def update(self, delta_time: float) -> None:
         self.debug_controller.update(delta_time, self.player)
 
         if not self.gameplay_loop.combat_system.in_hit_stop:
@@ -56,7 +56,6 @@ class Level:
         self.gameplay_loop.process_combat_and_separation(
             delta_time, self.combat_sprites, self.entity_sprites
         )
-
         self.gameplay_loop.remove_dead_entities(self.entity_sprites, self.player)
 
         if self.player is not None and self.player.is_dead:
@@ -70,6 +69,7 @@ class Level:
         if self.player is not None and not self.player.is_dead:
             self.camera.follow(self.player.hitbox)
 
+    def draw(self, fps: float) -> None:
         self.renderer.draw(self.all_sprites, Debug.ENABLED)
 
         if Debug.ENABLED:

@@ -6,7 +6,7 @@ import pygame
 from pytmx.util_pygame import load_pygame
 
 from src.core.level import Level
-from src.core.settings import Display
+from src.core.settings import Display, Simulation
 from src.core.input_manager import InputManager
 
 
@@ -26,25 +26,28 @@ class Game:
             self.display_surface, self.tmx_maps[0], self.input_manager
         )
         self.clock = pygame.time.Clock()
+        self._accumulator = 0.0
 
     def run(self):
         while True:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
-            delta_time = min(raw_delta, 0.1)
+            self._accumulator += min(raw_delta, 0.1)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
 
-            self.input_manager.update()
-            fps = self.clock.get_fps()
-
             try:
-                self.current_stage.run(delta_time, fps)
+                while self._accumulator >= Simulation.TIMESTEP:
+                    self.input_manager.update()
+                    self.current_stage.update(Simulation.TIMESTEP)
+                    self._accumulator -= Simulation.TIMESTEP
+
+                self.current_stage.draw(self.clock.get_fps())
+
             except Exception as e:
                 traceback.print_exc()
-               
                 self.display_surface.fill((0, 0, 0))
                 font = pygame.font.SysFont("Arial", 30)
                 text = font.render("FATAL ERROR: " + str(e), True, (255, 0, 0))
