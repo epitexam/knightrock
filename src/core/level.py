@@ -8,14 +8,14 @@ from src.core.level_components import (
 from src.core.settings import Display, Debug
 from src.core.camera import Camera
 
-
 class Level:
     """Manage a game level and its entities."""
-    def __init__(self, display_surface, tmx_map, input_manager):
+    
+    def __init__(self, display_surface: pygame.Surface, tmx_map, input_manager) -> None:
         """Initialize the Level instance."""
         self.display_surface = display_surface
         self.input_manager = input_manager
-
+        
         self.all_sprites = pygame.sprite.Group()
         self.collision_sprites = pygame.sprite.Group()
         self.moving_platforms = pygame.sprite.Group()
@@ -38,7 +38,7 @@ class Level:
 
         self.setup(tmx_map)
 
-    def setup(self, tmx_map):
+    def setup(self, tmx_map) -> None:
         """Perform setup."""
         self.world_builder = WorldBuilder(tmx_map)
         self.player = self.world_builder.build(
@@ -54,16 +54,23 @@ class Level:
         """Update the current state."""
         self.debug_controller.update(delta_time, self.player)
 
-        if not self.gameplay_loop.combat_system.in_hit_stop:
-            self.all_sprites.update(delta_time)
+        combat_system = self.gameplay_loop.combat_system
+        in_hit_stop = combat_system.in_hit_stop
+
+        combat_system.update_timer(delta_time)
+
+        effective_delta = 0.0 if in_hit_stop else delta_time
+
+        self.all_sprites.update(effective_delta)
 
         self.gameplay_loop.process_combat_and_separation(
-            delta_time, self.combat_sprites, self.entity_sprites
+            effective_delta, self.combat_sprites, self.entity_sprites
         )
+
         self.gameplay_loop.remove_dead_entities(self.entity_sprites, self.player)
 
         if self.player is not None and self.player.is_dead:
-            self.respawn_timer += delta_time
+            self.respawn_timer += delta_time 
             if self.respawn_timer >= 2.0:
                 self.player.respawn()
                 self.respawn_timer = 0.0
