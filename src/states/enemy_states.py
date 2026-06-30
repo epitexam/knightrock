@@ -11,7 +11,7 @@ class EnemyHurtState(State):
         """Update the current state."""
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = pygame.math.lerp(
-                self.entity.velocity.x, 0.0, min(1.0, 10.0 * delta_time)
+                self.entity.velocity.x, 0.0, min(1.0, 3.0 * delta_time)
             )
         if not self.entity.combat.is_hurt:
             return "idle"
@@ -121,7 +121,7 @@ class EnemyStaggerState(State):
     """Represent the EnemyStagger state."""
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
-        self.entity.velocity.x = 0.0
+        pass
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""

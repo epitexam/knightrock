@@ -155,13 +155,8 @@ class PlayerHurtState(PlayerBaseState):
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
-        control = (
-            self.entity.floor_control
-            if self.entity.on_surface["floor"]
-            else self.entity.air_control
-        )
         self.entity.velocity.x = pygame.math.lerp(
-            self.entity.velocity.x, 0.0, min(1.0, control * delta_time)
+            self.entity.velocity.x, 0.0, min(1.0, 5.0 * delta_time)
         )
         if not self.entity.combat.is_hurt:
             return self.ground_return()
@@ -217,8 +212,7 @@ class PlayerStaggerState(PlayerBaseState):
     """Represent the PlayerStagger state."""
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
-        self.entity.velocity.x = 0.0
-        self.entity.velocity.y = 0.0
+        pass
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
