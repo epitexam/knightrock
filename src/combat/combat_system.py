@@ -44,20 +44,18 @@ class CombatSystem:
                 if target in attacker.combat.targets_hit:
                     continue
 
-                if getattr(target.combat, 'is_hurt', False):
+                if not attack_box.colliderect(target.hurtbox):
                     continue
 
-                if not attack_box.colliderect(target.hitbox):
-                    continue
-
-                if attack_box.colliderect(target.hurtbox):
-                    self._resolve_hit(attacker, target, phase)
-                    attacker.combat.targets_hit.add(target)
-
-                    self.hit_stop_timer = (
-                        CombatSettings.HITSTOP_BASE
-                        + (phase.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
-                    )
+                self._resolve_hit(attacker, target, phase)
+                attacker.combat.targets_hit.add(target)
+                hitstop_duration = (
+                    CombatSettings.HITSTOP_BASE
+                    + (phase.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
+                )
+                self.hit_stop_timer = hitstop_duration
+                attacker.combat.hit_pause_timer = hitstop_duration
+                target.combat.hit_pause_timer = hitstop_duration
 
     def _resolve_hit(self, attacker: "Entity", target: "Entity", phase: AttackPhase) -> None:
         """Calculates and applies damage, stagger, and finisher effects to the target."""

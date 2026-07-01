@@ -73,7 +73,6 @@ class CombatComponent:
             return False
         if self.cooldowns[name] > 0:
             return False
-
         self.is_charging = True
         self.charge_timer = 0.0
         self.charging_attack_name = name
@@ -82,15 +81,12 @@ class CombatComponent:
     def release_charge(self, facing_right: bool) -> bool:
         if not self.is_charging or not self.charging_attack_name:
             return False
-
         name = self.charging_attack_name
         sequence = self.attacks[name]
         charge_mult = 1.0 + (self.charge_timer / sequence.max_charge_time)
-
         self.is_charging = False
         self.charge_timer = 0.0
         self.charging_attack_name = None
-
         return self.start_attack(name, facing_right, charge_mult)
 
     def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool:
@@ -109,17 +105,15 @@ class CombatComponent:
         else:
             if self.combo_timer > 0:
                 self.combo_count += 1
-                self.combo_timer = CombatSettings.COMBO_WINDOW
             else:
                 self.combo_count = 1
-                self.combo_timer = CombatSettings.COMBO_WINDOW
+            self.combo_timer = CombatSettings.COMBO_WINDOW
 
         self.last_attack_name = name
         self.current_attack = name
         self.current_phase_index = 0
         self.cooldowns[name] = sequence.cooldown
         self.targets_hit.clear()
-
         self._locked_facing_right = facing_right if sequence.lock_direction else None
         self.charge_multiplier = charge_multiplier
 
@@ -146,16 +140,14 @@ class CombatComponent:
 
         if self.is_charging and self.charging_attack_name:
             sequence = self.attacks[self.charging_attack_name]
-            self.charge_timer = min(
-                self.charge_timer + delta_time, sequence.max_charge_time)
+            self.charge_timer = min(self.charge_timer + delta_time, sequence.max_charge_time)
 
         if self.current_attack:
             self.attack_timer -= delta_time
             if self.attack_timer <= 0:
                 self._advance_phase(facing_right)
             else:
-                self._update_hitbox_position(
-                    self._effective_direction(facing_right))
+                self._update_hitbox_position(self._effective_direction(facing_right))
 
     def _effective_direction(self, facing_right: bool) -> bool:
         return self._locked_facing_right if self._locked_facing_right is not None else facing_right
@@ -163,20 +155,15 @@ class CombatComponent:
     def _advance_phase(self, facing_right: bool) -> None:
         if not self.current_attack:
             return
-
         sequence = self.attacks[self.current_attack]
         next_index = self.current_phase_index + 1
-
         if next_index >= len(sequence.phases):
             self._end_attack()
             return
-
         self.current_phase_index = next_index
         phase = sequence.phases[next_index]
-
         if phase.reset_targets:
             self.targets_hit.clear()
-
         self.attack_timer = phase.duration
         self.attack_box = pygame.FRect((0, 0), phase.size)
         self._update_hitbox_position(self._effective_direction(facing_right))
@@ -193,13 +180,10 @@ class CombatComponent:
     def _update_hitbox_position(self, facing_right: bool) -> None:
         if not self.attack_box or not self.current_attack:
             return
-
         phase = self.attacks[self.current_attack].phases[self.current_phase_index]
         offset_x, offset_y = phase.offset
-
         if not facing_right:
             offset_x = -offset_x
-
         self.attack_box.center = (
             self.entity.hitbox.centerx + offset_x,
             self.entity.hitbox.centery + offset_y,
@@ -232,13 +216,9 @@ class NullCombatComponent:
     def on_hit(self, duration: float | None = None) -> None: pass
     def start_charge(self, name: str) -> bool: return False
     def release_charge(self, facing_right: bool) -> bool: return False
-    def start_attack(self, name: str, facing_right: bool,
-                     charge_multiplier: float = 1.0) -> bool: return False
-
+    def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool: return False
     def update(self, delta_time: float, facing_right: bool) -> None: pass
-
-    def take_damage(self, amount: int, source_center_x: float | None = None,
-                    knockback: KnockbackConfig | None = None) -> None: pass
+    def take_damage(self, amount: int, source_center_x: float | None = None, knockback: KnockbackConfig | None = None) -> None: pass
 
     @property
     def current_phase(self) -> AttackPhase | None:

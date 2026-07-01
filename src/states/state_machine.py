@@ -60,9 +60,9 @@ class StateMachine:
             if next_state and next_state in self.states:
                 self.change_state(next_state)
 
-    def change_state(self, new_name: str) -> None:
-        """Perform change state."""
-        if new_name == self.current_state_name:
+    def change_state(self, new_name: str, force: bool = False) -> None:
+        """Perform change state. 'force' allows reloading an identical state."""
+        if new_name == self.current_state_name and not force:
             return
         prev = self.current_state_name
         if self.current_state:
