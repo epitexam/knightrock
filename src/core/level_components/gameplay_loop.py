@@ -1,5 +1,5 @@
 from src.combat.combat_system import CombatSystem
-from src.core.separation_system import SeparationSystem
+from src.physics import SeparationSystem
 
 
 class GameplayLoop:

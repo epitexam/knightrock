@@ -1,25 +1,20 @@
-import math
 import uuid
-from typing import Any, Iterable, Sequence, Union
+from typing import Any, Iterable, Sequence
 
 import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from src.core.settings import Physics, Separation, Combat as CombatSettings
+from src.core.settings import Physics, Combat as CombatSettings
 from src.combat.attack_types import KnockbackConfig
 from src.combat.combat import NullCombatComponent, CombatComponent
-
-
-def _hitbox_collide(a: Sprite, b: Sprite) -> bool:
-    """Internal helper for hitbox collide."""
-    box_a = getattr(a, "hitbox", a.rect)
-    box_b = getattr(b, "hitbox", b.rect)
-    if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
-        box_b, (pygame.FRect, pygame.Rect)
-    ):
-        return box_a.colliderect(box_b)
-    return False
+from src.physics import (
+    apply_entity_gravity,
+    apply_moving_platform,
+    move_entity,
+    resolve_collisions,
+    update_contact_state,
+)
 
 
 class Entity(Sprite):
@@ -137,170 +132,24 @@ class Entity(Sprite):
 
     def apply_gravity(self, delta_time: float) -> None:
         """Apply gravity."""
-        if self._is_wall_sliding():
-            self.velocity.y += self.slide_gravity * delta_time
-            if self.velocity.y > self.max_slide_speed:
-                self.velocity.y = self.max_slide_speed
-        else:
-            self.velocity.y += self.normal_gravity * delta_time
+        apply_entity_gravity(self, delta_time)
 
     def check_contact(self) -> None:
         """Check contact."""
-        height_quarter = self.hitbox.height / 4
-        half_height = self.hitbox.height / 2
-
-        floor_rect = pygame.FRect(
-            self.hitbox.bottomleft, (self.hitbox.width, 2))
-        right_rect = pygame.FRect(
-            Vector2(self.hitbox.topright) +
-            Vector2(0, height_quarter), (2, half_height)
-        )
-        left_rect = pygame.FRect(
-            Vector2(self.hitbox.topleft) + Vector2(-2,
-                                                   height_quarter), (2, half_height)
-        )
-
-        self.on_surface["floor"] = False
-        self.on_surface["right"] = False
-        self.on_surface["left"] = False
-
-        for sprite in self.collision_sprites:
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
-            if box is None:
-                continue
-            if floor_rect.colliderect(box):
-                self.on_surface["floor"] = True
-            if right_rect.colliderect(box):
-                self.on_surface["right"] = True
-            if left_rect.colliderect(box):
-                self.on_surface["left"] = True
-
-            if (
-                self.on_surface["floor"]
-                and self.on_surface["right"]
-                and self.on_surface["left"]
-            ):
-                break
-
-        if self.on_surface["floor"]:
-            self._on_floor_contact()
-        elif self.on_surface["left"] or self.on_surface["right"]:
-            self._on_wall_contact()
+        update_contact_state(self, self.collision_sprites)
 
     def handle_collisions(self, axis: str) -> None:
         """Handle collisions."""
-        search_area = self.hitbox.inflate(
-            Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE
-        )
-
-        nearby_sprites = []
-        for sprite in self.collision_sprites:
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
-            if box is not None and search_area.colliderect(box):
-                nearby_sprites.append(sprite)
-
-        for sprite in nearby_sprites:
-            if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:
-                continue
-            if not _hitbox_collide(self, sprite):
-                continue
-
-            sprite_old = getattr(
-                sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect)
-            )
-            sprite_box = getattr(sprite, "hitbox", sprite.rect)
-
-            if axis == "horizontal":
-                if self.old_hitbox.right <= sprite_old.left:
-                    self.hitbox.right = sprite_box.left
-                elif self.old_hitbox.left >= sprite_old.right:
-                    self.hitbox.left = sprite_box.right
-                else:
-                    if abs(self.hitbox.right - sprite_box.left) < abs(
-                        self.hitbox.left - sprite_box.right
-                    ):
-                        self.hitbox.right = sprite_box.left
-                    else:
-                        self.hitbox.left = sprite_box.right
-                self.velocity.x = 0
-
-            elif axis == "vertical":
-                if self.old_hitbox.bottom <= sprite_old.top:
-                    self.hitbox.bottom = sprite_box.top
-                elif self.old_hitbox.top >= sprite_old.bottom:
-                    self.hitbox.top = sprite_box.bottom
-                else:
-                    if abs(self.hitbox.bottom - sprite_box.top) < abs(
-                        self.hitbox.top - sprite_box.bottom
-                    ):
-                        self.hitbox.bottom = sprite_box.top
-                    else:
-                        self.hitbox.top = sprite_box.bottom
-                self.velocity.y = 0
-
-        self.sync_rects()
+        resolve_collisions(self, axis)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
         """Move the entity based on velocity and environment."""
-        move_x = self.velocity.x * delta_time
-        steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))
-        step_move_x = move_x / steps_x
-
-        for _ in range(steps_x):
-            self.old_hitbox = self.hitbox.copy()
-            self.hitbox.x += step_move_x
-            self.handle_collisions("horizontal")
-            if self.velocity.x == 0:
-                break
-
-        if apply_gravity:
-            self.apply_gravity(delta_time)
-
-        move_y = self.velocity.y * delta_time
-        steps_y = max(1, math.ceil(abs(move_y) / Separation.SUB_STEP_SIZE))
-        step_move_y = move_y / steps_y
-
-        for _ in range(steps_y):
-            self.old_hitbox = self.hitbox.copy()
-            self.hitbox.y += step_move_y
-            self.handle_collisions("vertical")
-            if self.velocity.y == 0:
-                break
-
-        self.check_contact()
+        self.apply_moving_platform(getattr(self, "moving_platforms", []))
+        move_entity(self, delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
         """Apply moving platform."""
-        if not self.on_surface["floor"]:
-            return
-
-        for platform in moving_platforms:
-            p_box = getattr(platform, "hitbox",
-                            getattr(platform, "rect", None))
-            p_old_box = getattr(
-                platform, "old_hitbox", getattr(platform, "old_rect", None)
-            )
-
-            if p_box is None or p_old_box is None:
-                continue
-
-            vertical_dist = self.hitbox.bottom - p_old_box.top
-            if not (-2 <= vertical_dist <= 16):
-                continue
-
-            overlap = min(self.hitbox.right, p_old_box.right) - max(
-                self.hitbox.left, p_old_box.left
-            )
-            if overlap <= 0:
-                continue
-
-            platform_dx = p_box.x - p_old_box.x
-            platform_dy = p_box.y - p_old_box.y
-
-            self.hitbox.x += platform_dx
-            self.hitbox.y += platform_dy
-            self.sync_rects()
-            break
+        apply_moving_platform(self, moving_platforms)
 
     def reset_position(self) -> None:
         """Reset position."""

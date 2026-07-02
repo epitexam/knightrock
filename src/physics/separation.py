@@ -1,8 +1,4 @@
 import pygame
-from typing import List, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.entities.entity import Entity
 
 
 class SeparationSystem:
@@ -14,7 +10,6 @@ class SeparationSystem:
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1 :]:
-
                 if ent_a.faction == ent_b.faction:
                     continue
 

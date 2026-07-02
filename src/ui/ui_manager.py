@@ -51,9 +51,34 @@ class UIManager:
             f"Hist:   {' → '.join(history)}",
             f"Vel:    ({player.velocity.x:.1f}, {player.velocity.y:.1f})",
             f"Floor: {player.on_surface['floor']}   L: {player.on_surface['left']}   R: {player.on_surface['right']}",
+            f"Axis:   {player.move_axis:+.2f}",
+            f"Jump:   buf {player.jump_buffer_timer:.2f}s  coy {player.coyote_timer:.2f}s",
+            f"Jumps:  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
+            f"Dash:   req {player._dash_requested}  dur {player._dash_duration_timer:.2f}s",
         ]
-        if player.combat.is_attacking:
-            lines.append(f"Attack: {player.combat.current_attack}")
+
+        combat = player.combat
+        if combat is not None:
+            attack_name = combat.current_attack or "—"
+            if combat.current_attack and combat.current_phase is not None:
+                phase_text = f"{combat.current_phase_index}/{len(combat.attacks[combat.current_attack].phases) - 1}"
+            else:
+                phase_text = "idle"
+            lines.append(f"Combat: {attack_name}  phase {phase_text}")
+            lines.append(
+                f"Hurt:   {combat.is_hurt}  timer {combat.hurt_timer:.2f}s  dmg {combat.contact_damage}"
+            )
+            if combat.is_charging and combat.charging_attack_name:
+                lines.append(
+                    f"Charge: {combat.charging_attack_name} {combat.charge_timer:.2f}s"
+                )
+            cooldowns = [
+                f"{name}:{cd:.2f}s"
+                for name, cd in combat.cooldowns.items()
+                if cd > 0
+            ]
+            if cooldowns:
+                lines.append("CDs:    " + ", ".join(cooldowns[:4]))
 
         if hasattr(player, "stagger_timer") and player.stagger_timer > 0:
             lines.append(f"Stagger: {player.stagger_timer:.2f}s")
@@ -72,6 +97,9 @@ class UIManager:
             f"HP:    {p.health:.0f}/{p.max_health:.0f}",
             f"Block: {p.block_stamina:.2f}/{p.max_block_stamina:.2f}   CD: {p.block_cooldown_timer:.2f}s",
             f"Dash:  {p.dash_charges}/{p.max_dash_charges}   Pen: {p.dash_penalty_timer:.2f}s   Regen: {p.dash_recharge_timer:.2f}s",
+            f"Move:  spd {p.speed:.0f}  ctrl {p.floor_control:.1f}/{p.air_control:.1f}",
+            f"Jump:  h {p.jump_height:.0f}  wall {p.wall_jump_height:.0f}",
+            f"Dash:  spd {p.dash_speed:.0f}  duration {p.dash_duration:.2f}s  fric {p.dash_friction:.1f}",
         ]
 
         combo_count = p.combat.combo_count if hasattr(

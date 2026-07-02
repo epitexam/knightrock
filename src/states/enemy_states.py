@@ -3,6 +3,7 @@ import pygame
 import random
 
 from src.states.state_machine import State
+from src.physics import lerp_velocity
 
 
 class EnemyHurtState(State):
@@ -11,9 +12,7 @@ class EnemyHurtState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
-            self.entity.velocity.x = pygame.math.lerp(
-                self.entity.velocity.x, 0.0, min(1.0, 3.0 * delta_time)
-            )
+            lerp_velocity(self.entity, 0.0, min(1.0, 3.0 * delta_time))
         if not self.entity.combat.is_hurt:
             return "idle"
         return None
@@ -131,9 +130,7 @@ class EnemyStaggerState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
-            self.entity.velocity.x = pygame.math.lerp(
-                self.entity.velocity.x, 0.0, min(1.0, 10.0 * delta_time)
-            )
+            lerp_velocity(self.entity, 0.0, min(1.0, 10.0 * delta_time))
 
         if self.entity.stagger_timer <= 0:
             return "chase" if self.entity.can_see_player() else "idle"

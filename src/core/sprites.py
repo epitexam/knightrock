@@ -3,6 +3,7 @@ from typing import Iterable, Optional, Tuple, Union
 import pygame
 
 from src.core.settings import World
+from src.physics.platforms import update_moving_platform
 
 
 class Sprite(pygame.sprite.Sprite):
@@ -58,29 +59,4 @@ class MovingPlatform(Sprite):
 
     def update(self, delta_time: float):
         """Update the current state."""
-        self.old_rect = self.rect.copy()
-        self.old_hitbox = self.hitbox.copy()
-
-        if not self.waypoints:
-            return
-
-        target = self.waypoints[self.current_target]
-        pos = pygame.math.Vector2(self.rect.topleft)
-        direction = target - pos
-        distance = direction.length()
-
-        if distance < 1.0:
-            self.rect.topleft = target
-            self.current_target += self.direction
-            if self.current_target in (len(self.waypoints), -1):
-                self.direction *= -1
-                self.current_target += self.direction
-        else:
-            direction.normalize_ip()
-            movement = direction * self.speed * delta_time
-            self.rect.x += movement.x
-            self.rect.y += movement.y
-
-        self.hitbox.topleft = self.rect.topleft
-        self.hitbox.width = self.rect.width
-        self.hitbox.height = self.rect.height
+        update_moving_platform(self, delta_time)

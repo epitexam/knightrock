@@ -1,4 +1,3 @@
-import math
 from typing import Any, Iterable, Sequence
 
 import pygame
@@ -24,6 +23,7 @@ from src.core.settings import Physics, Combat as CombatSettings
 from src.states.state_machine import StateMachine
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.attack_types import KnockbackConfig
+from src.physics import apply_horizontal_movement, resolve_jump
 
 ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
 
@@ -264,46 +264,14 @@ class Player(Entity):
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal movement."""
-        target_speed = self.move_axis * self.speed
-
-        if target_speed == 0 and abs(self.velocity.x) < 0.5:
-            self.velocity.x = 0.0
-            return
-
-        control = self.floor_control if self.on_surface["floor"] else self.air_control
-        alpha = 1.0 - math.exp(-control * delta_time)
-        self.velocity.x = pygame.math.lerp(self.velocity.x, target_speed, alpha)
-
-        if abs(self.velocity.x) < 0.01:
-            self.velocity.x = 0.0
+        apply_horizontal_movement(self, delta_time)
 
     def handle_jump(self) -> None:
         """Handle jump."""
-        if self.jump_buffer_timer <= 0:
-            return
-
-        if self.coyote_timer > 0:
-            self.velocity.y = -self.jump_height
-            self.jump_buffer_timer = 0.0
-            self.coyote_timer = 0.0
-
-        elif (
-            self.on_surface["left"] or self.on_surface["right"]
-        ) and self.wall_jumps_left > 0:
-            self.velocity.y = -self.wall_jump_height
-            push = self.speed * 0.85
-            self.velocity.x = push if self.on_surface["left"] else -push
-            self.wall_jumps_left -= 1
-            self.jump_buffer_timer = 0.0
-
-        elif self.midair_jumps_left > 0:
-            self.velocity.y = -self.jump_height
-            self.midair_jumps_left -= 1
-            self.jump_buffer_timer = 0.0
+        resolve_jump(self)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
         """Move the entity based on velocity and environment."""
-        self.apply_moving_platform(self.moving_platforms)
         super().move(delta_time, apply_gravity=apply_gravity)
 
     def reset_position(self) -> None:
