@@ -1,5 +1,4 @@
-import math
-from typing import Any, Iterable
+from typing import Literal
 
 import pygame
 from pygame.math import Vector2
@@ -22,70 +21,65 @@ def hitbox_collide(a: Sprite, b: Sprite) -> bool:
 def get_nearby_sprites(sprite: Sprite, collision_sprites: Group) -> list[Sprite]:
     """Return the collision sprites near the given sprite."""
     search_area = sprite.hitbox.inflate(
-        Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE
-    )
-
-    nearby_sprites: list[Sprite] = []
-    for other in collision_sprites:
-        box = getattr(other, "hitbox", getattr(other, "rect", None))
-        if box is not None and search_area.colliderect(box):
-            nearby_sprites.append(other)
-    return nearby_sprites
+        Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
+    return [
+        other for other in collision_sprites
+        if (box := getattr(other, "hitbox", getattr(other, "rect", None))) is not None
+        and search_area.colliderect(box)
+    ]
 
 
 def update_contact_state(entity: Sprite, collision_sprites: Group) -> None:
     """Update floor/left/right contact flags for an entity."""
-    height_quarter = entity.hitbox.height / 4
-    half_height = entity.hitbox.height / 2
+    hq = entity.hitbox.height / 4
+    hh = entity.hitbox.height / 2
 
-    floor_rect = pygame.FRect(entity.hitbox.bottomleft, (entity.hitbox.width, 2))
+    floor_rect = pygame.FRect(entity.hitbox.bottomleft,
+                              (entity.hitbox.width, 2))
     right_rect = pygame.FRect(
-        Vector2(entity.hitbox.topright) + Vector2(0, height_quarter),
-        (2, half_height),
-    )
+        Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
     left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft) + Vector2(-2, height_quarter),
-        (2, half_height),
-    )
+        Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
 
-    entity.on_surface["floor"] = False
-    entity.on_surface["right"] = False
-    entity.on_surface["left"] = False
+    on = entity.on_surface
+    on["floor"] = on["right"] = on["left"] = False
 
     for sprite in collision_sprites:
         box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
         if box is None:
             continue
         if floor_rect.colliderect(box):
-            entity.on_surface["floor"] = True
+            on["floor"] = True
         if right_rect.colliderect(box):
-            entity.on_surface["right"] = True
+            on["right"] = True
         if left_rect.colliderect(box):
-            entity.on_surface["left"] = True
-
-        if (
-            entity.on_surface["floor"]
-            and entity.on_surface["right"]
-            and entity.on_surface["left"]
-        ):
+            on["left"] = True
+        if on["floor"] and on["right"] and on["left"]:
             break
 
-    if entity.on_surface["floor"]:
+    if on["floor"]:
         entity._on_floor_contact()
-    elif entity.on_surface["left"] or entity.on_surface["right"]:
+    elif on["left"] or on["right"]:
         entity._on_wall_contact()
 
 
-def resolve_collisions(entity: Sprite, axis: str) -> None:
+def resolve_collisions(
+    entity: Sprite,
+    axis: Literal["horizontal", "vertical"],
+    nearby_sprites: list[Sprite] | None = None,
+) -> None:
     """Resolve collisions between an entity and nearby collidable sprites."""
-    nearby_sprites = get_nearby_sprites(entity, entity.collision_sprites)
+    if nearby_sprites is None:
+        nearby_sprites = get_nearby_sprites(entity, entity.collision_sprites)
+
     for sprite in nearby_sprites:
-        if sprite is None or not hasattr(sprite, "rect") or sprite.rect is None:
+        if not hasattr(sprite, "rect") or sprite.rect is None:
             continue
         if not hitbox_collide(entity, sprite):
             continue
 
-        sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
+        sprite_old = getattr(sprite, "old_hitbox", getattr(
+            sprite, "old_rect", sprite.rect))
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
 
         if axis == "horizontal":
@@ -93,27 +87,20 @@ def resolve_collisions(entity: Sprite, axis: str) -> None:
                 entity.hitbox.right = sprite_box.left
             elif entity.old_hitbox.left >= sprite_old.right:
                 entity.hitbox.left = sprite_box.right
+            elif abs(entity.hitbox.right - sprite_box.left) < abs(entity.hitbox.left - sprite_box.right):
+                entity.hitbox.right = sprite_box.left
             else:
-                if abs(entity.hitbox.right - sprite_box.left) < abs(
-                    entity.hitbox.left - sprite_box.right
-                ):
-                    entity.hitbox.right = sprite_box.left
-                else:
-                    entity.hitbox.left = sprite_box.right
+                entity.hitbox.left = sprite_box.right
             entity.velocity.x = 0
-
-        elif axis == "vertical":
+        else:
             if entity.old_hitbox.bottom <= sprite_old.top:
                 entity.hitbox.bottom = sprite_box.top
             elif entity.old_hitbox.top >= sprite_old.bottom:
                 entity.hitbox.top = sprite_box.bottom
+            elif abs(entity.hitbox.bottom - sprite_box.top) < abs(entity.hitbox.top - sprite_box.bottom):
+                entity.hitbox.bottom = sprite_box.top
             else:
-                if abs(entity.hitbox.bottom - sprite_box.top) < abs(
-                    entity.hitbox.top - sprite_box.bottom
-                ):
-                    entity.hitbox.bottom = sprite_box.top
-                else:
-                    entity.hitbox.top = sprite_box.bottom
+                entity.hitbox.top = sprite_box.bottom
             entity.velocity.y = 0
 
     entity.sync_rects()
