@@ -65,6 +65,8 @@ class Separation:
     """Represent a Separation."""
     SEARCH_INFLATE = 400
     SUB_STEP_SIZE = 16.0
+    STRENGTH = 0.65
+    VERTICAL_STACK_RATIO = 0.4
 
 
 class Debug:

@@ -97,7 +97,7 @@ GOBLIN_ATTACKS = {
             AttackPhase(
                 size=(40, 20),
                 offset=(20, -4),
-                damage=8,
+                damage=0,
                 duration=0.15,
                 knockback=KnockbackConfig(power=(10.0, -80.0)),
                 damage_type="slash",
@@ -106,7 +106,7 @@ GOBLIN_ATTACKS = {
             AttackPhase(
                 size=(48, 24),
                 offset=(24, 4),
-                damage=12,
+                damage=0,
                 duration=0.15,
                 knockback=KnockbackConfig(power=(100.0, -150.0)),
                 damage_type="slash",

@@ -1,51 +1,55 @@
 import pygame
+from src.core.settings import Separation as Sep
 
 
 class SeparationSystem:
-    """Resolves physical overlaps between entities (no damage logic)."""
-
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
-        """Process the current state."""
-        entities = list(entity_sprites)
+        entities = [e for e in entity_sprites if getattr(e, "pushable", False)]
 
         for i, ent_a in enumerate(entities):
-            for ent_b in entities[i + 1 :]:
-                if ent_a.faction == ent_b.faction:
-                    continue
-
+            for ent_b in entities[i + 1:]:
                 if not ent_a.hitbox.colliderect(ent_b.hitbox):
                     continue
 
-                overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
-                    ent_a.hitbox.left, ent_b.hitbox.left
+                overlap_x = (
+                    min(ent_a.hitbox.right, ent_b.hitbox.right)
+                    - max(ent_a.hitbox.left, ent_b.hitbox.left)
                 )
-                overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
-                    ent_a.hitbox.top, ent_b.hitbox.top
+                overlap_y = (
+                    min(ent_a.hitbox.bottom, ent_b.hitbox.bottom)
+                    - max(ent_a.hitbox.top, ent_b.hitbox.top)
                 )
 
                 if overlap_x <= 0 or overlap_y <= 0:
                     continue
 
-                if overlap_x <= overlap_y:
-                    dir_a = -1.0 if ent_a.hitbox.centerx < ent_b.hitbox.centerx else 1.0
-                    dir_b = -dir_a
-                    if ent_a.pushable and ent_b.pushable:
-                        ent_a.hitbox.x += (overlap_x / 2.0) * dir_a
-                        ent_b.hitbox.x += (overlap_x / 2.0) * dir_b
-                    elif ent_a.pushable:
-                        ent_a.hitbox.x += overlap_x * dir_a
-                    elif ent_b.pushable:
-                        ent_b.hitbox.x += overlap_x * dir_b
+                a_grounded = ent_a.on_surface.get("floor", False)
+                b_grounded = ent_b.on_surface.get("floor", False)
+                both_airborne = not a_grounded and not b_grounded
+                clearly_stacked = overlap_y < overlap_x * Sep.VERTICAL_STACK_RATIO
+
+                if clearly_stacked and both_airborne:
+                    push = overlap_y * Sep.STRENGTH
+                    dir_a = -1.0 if ent_a.hitbox.centery <= ent_b.hitbox.centery else 1.0
+                    self._push(ent_a, ent_b, push * dir_a,
+                               push * -dir_a, axis="y")
                 else:
-                    dir_a = -1.0 if ent_a.hitbox.centery < ent_b.hitbox.centery else 1.0
-                    dir_b = -dir_a
-                    if ent_a.pushable and ent_b.pushable:
-                        ent_a.hitbox.y += (overlap_y / 2.0) * dir_a
-                        ent_b.hitbox.y += (overlap_y / 2.0) * dir_b
-                    elif ent_a.pushable:
-                        ent_a.hitbox.y += overlap_y * dir_a
-                    elif ent_b.pushable:
-                        ent_b.hitbox.y += overlap_y * dir_b
+                    push = overlap_x * Sep.STRENGTH
+                    dir_a = -1.0 if ent_a.hitbox.centerx <= ent_b.hitbox.centerx else 1.0
+                    self._push(ent_a, ent_b, push * dir_a,
+                               push * -dir_a, axis="x")
 
                 ent_a.sync_rects()
                 ent_b.sync_rects()
+
+    @staticmethod
+    def _push(ent_a, ent_b, delta_a: float, delta_b: float, axis: str) -> None:
+        if ent_a.pushable and ent_b.pushable:
+            setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a)
+            setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b)
+        elif ent_a.pushable:
+            setattr(ent_a.hitbox, axis, getattr(
+                ent_a.hitbox, axis) + delta_a * 2)
+        elif ent_b.pushable:
+            setattr(ent_b.hitbox, axis, getattr(
+                ent_b.hitbox, axis) + delta_b * 2)
