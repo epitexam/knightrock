@@ -21,8 +21,10 @@ class World:
 class Physics:
     """Represent a Physics."""
     PLAYER_SPEED = 450
-    GRAVITY = 3500
-    JUMP_FORCE = 950
+    GRAVITY = 2000.0
+    FALL_GRAVITY = 2800.0
+    JUMP_FORCE = 550.0
+    MAX_FALL_SPEED = 1500.0
     DASH_SPEED = 2750
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0

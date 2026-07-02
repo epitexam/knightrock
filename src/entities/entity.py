@@ -61,8 +61,13 @@ class Entity(Sprite):
         self.velocity = Vector2(0, 0)
 
         self.normal_gravity = Physics.GRAVITY
+        self.fall_gravity = Physics.FALL_GRAVITY
         self.slide_gravity = Physics.GRAVITY * 0.15
         self.max_slide_speed = 80.0
+        self.max_fall_speed = Physics.MAX_FALL_SPEED
+
+        self.drag_coefficient = 0.08
+        self.fall_drag_coefficient = 0.12
 
         self._health = health
         self._max_health = max_health
