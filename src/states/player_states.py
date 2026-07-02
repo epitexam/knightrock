@@ -8,6 +8,7 @@ from src.core.settings import Combat as CombatSettings
 
 class PlayerBaseState(State):
     """Represent the PlayerBase state."""
+
     def __init__(self, entity):
         """Initialize the PlayerBaseState instance."""
         super().__init__(entity)
@@ -16,13 +17,15 @@ class PlayerBaseState(State):
         """Perform ground return."""
         if self.entity.on_surface["floor"]:
             return (
-                "run" if (self.entity.left_held or self.entity.right_held) else "idle"
+                "run" if (
+                    self.entity.left_held or self.entity.right_held) else "idle"
             )
         return "fall"
 
 
 class PlayerIdleState(PlayerBaseState):
     """Represent the PlayerIdle state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity.velocity.x = 0
@@ -41,6 +44,7 @@ class PlayerIdleState(PlayerBaseState):
 
 class PlayerRunState(PlayerBaseState):
     """Represent the PlayerRun state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         self.entity.apply_horizontal_movement(delta_time)
@@ -59,6 +63,7 @@ class PlayerRunState(PlayerBaseState):
 
 class PlayerJumpState(PlayerBaseState):
     """Represent the PlayerJump state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         self.entity.handle_jump()
@@ -72,6 +77,7 @@ class PlayerJumpState(PlayerBaseState):
 
 class PlayerFallState(PlayerBaseState):
     """Represent the PlayerFall state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         self.entity.handle_jump()
@@ -85,6 +91,7 @@ class PlayerFallState(PlayerBaseState):
 
 class PlayerWallSlideState(PlayerBaseState):
     """Represent the PlayerWallSlide state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         self.entity.handle_jump()
@@ -100,6 +107,7 @@ class PlayerWallSlideState(PlayerBaseState):
 
 class PlayerAttackState(PlayerBaseState):
     """Represent the PlayerAttack state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         if self.entity.on_surface["floor"]:
@@ -115,6 +123,7 @@ class PlayerAttackState(PlayerBaseState):
 
 class PlayerBlockState(PlayerBaseState):
     """Represent the PlayerBlock state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         if self.entity.on_surface["floor"]:
@@ -149,6 +158,7 @@ class PlayerBlockState(PlayerBaseState):
 
 class PlayerHurtState(PlayerBaseState):
     """Represent the PlayerHurt state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity._dash_requested = False
@@ -165,6 +175,7 @@ class PlayerHurtState(PlayerBaseState):
 
 class PlayerDashState(PlayerBaseState):
     """Represent the PlayerDash state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity.dash_charges -= 1
@@ -173,7 +184,8 @@ class PlayerDashState(PlayerBaseState):
             self.entity.dash_penalty_timer = self.entity.dash_penalty_duration
         self.entity._original_hitbox_width = self.entity.hitbox.width
         new_width = self.entity._original_hitbox_width * 0.6
-        self.entity.hitbox.x += (self.entity._original_hitbox_width - new_width) / 2
+        self.entity.hitbox.x += (self.entity._original_hitbox_width -
+                                 new_width) / 2
         self.entity.hitbox.width = new_width
         direction = 1 if self.entity.facing_right else -1
         self.entity.velocity.x = self.entity.dash_speed * direction
@@ -210,12 +222,18 @@ class PlayerDashState(PlayerBaseState):
 
 class PlayerStaggerState(PlayerBaseState):
     """Represent the PlayerStagger state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         pass
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
+        if self.entity.on_surface["floor"]:
+            self.entity.velocity.x = pygame.math.lerp(
+                self.entity.velocity.x, 0.0, min(1.0, 8.0 * delta_time)
+            )
+
         if self.entity.stagger_timer <= 0:
             return self.ground_return()
         return None

@@ -324,14 +324,6 @@ class Entity(Sprite):
 
         self.health -= amount
 
-        if self.combat is not None:
-            hurt_duration = (
-                CombatSettings.HURT_DURATION
-                + abs(_kb.power[1]) *
-                CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
-            )
-            self.combat.on_hit(hurt_duration)
-
         if _kb.mode == "fixed":
             self.velocity.x = _kb.power[0]
             self.velocity.y = _kb.power[1]
@@ -344,6 +336,14 @@ class Entity(Sprite):
             self.velocity.x = _kb.power[0] * direction
             self.velocity.y = _kb.power[1]
 
+        if self.combat is not None:
+            hurt_duration = (
+                CombatSettings.HURT_DURATION
+                + abs(_kb.power[1]) *
+                CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
+            )
+            self.combat.on_hit(hurt_duration)
+
     def stagger(self, duration: float) -> None:
         """Apply stagger effect, considering super armor."""
         if self.super_armor:
@@ -352,11 +352,17 @@ class Entity(Sprite):
                 self.super_armor = False
                 self.stagger_timer = duration
                 if hasattr(self, 'state_machine') and self.state_machine:
-                    self.state_machine.change_state("stagger")
+                    self.state_machine.change_state("stagger", force=True)
+                    if hasattr(self.combat, 'is_hurt'):
+                        self.combat.is_hurt = False
+                        self.combat.hurt_timer = 0.0
         else:
             self.stagger_timer = duration
             if hasattr(self, 'state_machine') and self.state_machine:
-                self.state_machine.change_state("stagger")
+                self.state_machine.change_state("stagger", force=True)
+                if hasattr(self.combat, 'is_hurt'):
+                    self.combat.is_hurt = False
+                    self.combat.hurt_timer = 0.0
 
     def update(self, delta_time: float) -> None:
         """Update the current state."""

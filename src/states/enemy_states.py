@@ -7,6 +7,7 @@ from src.states.state_machine import State
 
 class EnemyHurtState(State):
     """Represent the EnemyHurt state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
@@ -20,6 +21,7 @@ class EnemyHurtState(State):
 
 class EnemyIdleState(State):
     """Represent the EnemyIdle state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity.velocity.x = 0.0
@@ -37,8 +39,8 @@ class EnemyIdleState(State):
 
 class EnemyPatrolState(State):
     """Represent the EnemyPatrol state."""
-    def enter(self, previous: Optional[str] = None) -> None:
 
+    def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity.patrol_direction = 1 if random.random() > 0.5 else -1
         self.entity.patrol_timer = 0.0
@@ -69,6 +71,7 @@ class EnemyPatrolState(State):
 
 class EnemyChaseState(State):
     """Represent the EnemyChase state."""
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.player is not None:
@@ -86,6 +89,7 @@ class EnemyChaseState(State):
 
 class EnemyAttackState(State):
     """Represent the EnemyAttack state."""
+
     def __init__(self, entity):
         """Initialize the EnemyAttackState instance."""
         super().__init__(entity)
@@ -103,12 +107,10 @@ class EnemyAttackState(State):
             self.attack_retry_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
-
         """Update the current state."""
         if self.attack_retry_timer > 0:
             self.attack_retry_timer -= delta_time
             if self.attack_retry_timer <= 0:
-
                 if not self.entity.combat.is_attacking:
                     return "chase" if self.entity.can_see_player() else "idle"
 
@@ -119,15 +121,20 @@ class EnemyAttackState(State):
 
 class EnemyStaggerState(State):
     """Represent the EnemyStagger state."""
+
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
-        pass
+        if hasattr(self.entity.combat, 'is_hurt'):
+            self.entity.combat.is_hurt = False
+            self.entity.combat.hurt_timer = 0.0
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
+        if self.entity.on_surface["floor"]:
+            self.entity.velocity.x = pygame.math.lerp(
+                self.entity.velocity.x, 0.0, min(1.0, 10.0 * delta_time)
+            )
+
         if self.entity.stagger_timer <= 0:
-            if self.entity.can_see_player():
-                return "chase"
-            else:
-                return "idle"
+            return "chase" if self.entity.can_see_player() else "idle"
         return None
