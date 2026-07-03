@@ -3,6 +3,7 @@ Centralized attack data for all entities.
 Enables balancing without modifying the code.
 """
 from src.combat.attack_types import AttackPhase, AttackSequence, KnockbackConfig
+from src.combat.damage_types import DamageType
 
 
 PLAYER_ATTACKS = {
@@ -15,7 +16,7 @@ PLAYER_ATTACKS = {
                 damage=8,
                 duration=0.10,
                 knockback=KnockbackConfig(power=(150.0, -50.0)),
-                damage_type="slash",
+                damage_type=DamageType.SLASH,
                 stagger=0.1,
             ),
         ],
@@ -31,7 +32,7 @@ PLAYER_ATTACKS = {
                 damage=18,
                 duration=0.25,
                 knockback=KnockbackConfig(power=(300.0, -200.0)),
-                damage_type="blunt",
+                damage_type=DamageType.BLUNT,
                 stagger=0.3,
                 super_armor_break=True,
             ),
@@ -48,7 +49,7 @@ PLAYER_ATTACKS = {
                 damage=16,
                 duration=0.20,
                 knockback=KnockbackConfig(power=(400.0, -2500.0)),
-                damage_type="blunt",
+                damage_type=DamageType.BLUNT,
                 stagger=0.4,
                 super_armor_break=True,
             ),
@@ -65,7 +66,7 @@ PLAYER_ATTACKS = {
                 damage=14,
                 duration=0.12,
                 knockback=KnockbackConfig(power=(500.0, -50.0)),
-                damage_type="pierce",
+                damage_type=DamageType.PIERCE,
                 stagger=0.2,
                 super_armor_break=True,
             ),
@@ -82,7 +83,7 @@ PLAYER_ATTACKS = {
                 damage=10,
                 duration=0.14,
                 knockback=KnockbackConfig(power=(180.0, -120.0)),
-                damage_type="slash",
+                damage_type=DamageType.SLASH,
                 stagger=0.1,
             ),
         ],
@@ -97,20 +98,20 @@ GOBLIN_ATTACKS = {
             AttackPhase(
                 size=(40, 20),
                 offset=(20, -4),
-                damage=0,
+                damage=8,
                 duration=0.15,
-                knockback=KnockbackConfig(power=(10.0, -80.0)),
-                damage_type="slash",
-                stagger=0.0,
+                knockback=KnockbackConfig(power=(100.0, -80.0)),
+                damage_type=DamageType.SLASH,
+                stagger=0.1,
             ),
             AttackPhase(
                 size=(48, 24),
                 offset=(24, 4),
-                damage=0,
+                damage=10,
                 duration=0.15,
-                knockback=KnockbackConfig(power=(100.0, -150.0)),
-                damage_type="slash",
-                stagger=0.0,
+                knockback=KnockbackConfig(power=(120.0, -150.0)),
+                damage_type=DamageType.SLASH,
+                stagger=0.15,
             ),
         ],
         cooldown=1.0,

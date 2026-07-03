@@ -113,6 +113,10 @@ class PlayerAttackState(PlayerBaseState):
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * 0.35
 
+    def exit(self, next_state: Optional[str] = None) -> None:
+        """Exit the state and cancel the ongoing attack."""
+        self.entity.combat._end_attack()
+
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if not self.entity.combat.is_attacking:
@@ -166,6 +170,8 @@ class PlayerHurtState(PlayerBaseState):
         """Update the current state."""
         lerp_velocity(self.entity, 0.0, min(1.0, 5.0 * delta_time))
         if not self.entity.combat.is_hurt:
+            if self.entity.stagger_timer > 0:
+                return "stagger"
             return self.ground_return()
         return None
 

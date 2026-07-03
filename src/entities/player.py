@@ -30,6 +30,7 @@ ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
 
 class Player(Entity):
     """Represent the player character and its behavior."""
+
     def __init__(
         self,
         pos: tuple[float, float] | pygame.math.Vector2,
@@ -38,7 +39,6 @@ class Player(Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
     ) -> None:
-
         """Initialize the Player instance."""
         super().__init__(
             pos,
@@ -251,7 +251,8 @@ class Player(Entity):
         ):
             if self.block_stamina < self.max_block_stamina:
                 self.block_stamina += delta_time * 0.5
-                self.block_stamina = min(self.block_stamina, self.max_block_stamina)
+                self.block_stamina = min(
+                    self.block_stamina, self.max_block_stamina)
 
         if self.dash_penalty_timer > 0:
             self.dash_penalty_timer -= delta_time
@@ -313,6 +314,9 @@ class Player(Entity):
         knockback: KnockbackConfig | None = None,
     ) -> None:
         """Apply damage to this entity."""
+        if self.is_dead:
+            return
+
         if self.invincibility_timer > 0:
             return
 
@@ -320,11 +324,13 @@ class Player(Entity):
             _kb = knockback if knockback is not None else KnockbackConfig()
             self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
             if _kb.mode == "fixed":
-                self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR
+                self.velocity.x = _kb.power[0] * \
+                    CombatSettings.BLOCK_KNOCKBACK_FACTOR
             elif source_center_x is not None:
                 direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
                 self.velocity.x = (
-                    _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
+                    _kb.power[0] *
+                    CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
                 )
             return
 

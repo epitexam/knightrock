@@ -8,6 +8,7 @@ from pygame.sprite import Group, Sprite
 from src.core.settings import Physics, Combat as CombatSettings
 from src.combat.attack_types import KnockbackConfig
 from src.combat.combat import NullCombatComponent, CombatComponent
+from src.combat.damage_types import DamageType
 from src.physics import (
     apply_entity_gravity,
     apply_moving_platform,
@@ -118,6 +119,17 @@ class Entity(Sprite):
         """Perform hurtbox."""
         return self.hitbox
 
+    @property
+    def has_super_armor(self) -> bool:
+        return self.super_armor
+
+    def break_super_armor(self) -> None:
+        self.super_armor = False
+        self.super_armor_count = 0
+
+    def get_damage_modifier(self, damage_type: DamageType) -> float:
+        return 1.0
+
     def sync_rects(self) -> None:
         """Sync rect and hitbox positions."""
         if self.rect is not None:
@@ -174,49 +186,52 @@ class Entity(Sprite):
         knockback: KnockbackConfig | None = None,
     ) -> None:
         """Apply damage to this entity."""
-        _kb = knockback if knockback is not None else KnockbackConfig()
+        if self.is_dead:
+            return
 
         self.health -= amount
 
-        if _kb.mode == "fixed":
-            self.velocity.x = _kb.power[0]
-            self.velocity.y = _kb.power[1]
-        else:
-            if source_center_x is not None:
-                direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+        if knockback is not None:
+            _kb = knockback
+            if _kb.mode == "fixed":
+                self.velocity.x = _kb.power[0]
+                self.velocity.y = _kb.power[1]
             else:
-                direction = 1.0 if getattr(
-                    self, "facing_right", True) else -1.0
-            self.velocity.x = _kb.power[0] * direction
-            self.velocity.y = _kb.power[1]
+                if source_center_x is not None:
+                    direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+                else:
+                    direction = 1.0 if getattr(
+                        self, "facing_right", True) else -1.0
+                self.velocity.x = _kb.power[0] * direction
+                self.velocity.y = _kb.power[1]
 
-        if self.combat is not None:
-            hurt_duration = (
-                CombatSettings.HURT_DURATION
-                + abs(_kb.power[1]) *
-                CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
-            )
-            self.combat.on_hit(hurt_duration)
+            if self.combat is not None:
+                hurt_duration = (
+                    CombatSettings.HURT_DURATION
+                    + abs(_kb.power[1]) *
+                    CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
+                )
+                self.combat.on_hit(hurt_duration)
 
     def stagger(self, duration: float) -> None:
         """Apply stagger effect, considering super armor."""
+        if self.is_dead:
+            return
         if self.super_armor:
             self.super_armor_count += 1
             if self.super_armor_count >= CombatSettings.SUPER_ARMOR_THRESHOLD:
                 self.super_armor = False
                 self.stagger_timer = duration
                 if hasattr(self, 'state_machine') and self.state_machine:
+                    self.combat.is_hurt = False
+                    self.combat.hurt_timer = 0.0
                     self.state_machine.change_state("stagger", force=True)
-                    if hasattr(self.combat, 'is_hurt'):
-                        self.combat.is_hurt = False
-                        self.combat.hurt_timer = 0.0
         else:
             self.stagger_timer = duration
             if hasattr(self, 'state_machine') and self.state_machine:
+                self.combat.is_hurt = False
+                self.combat.hurt_timer = 0.0
                 self.state_machine.change_state("stagger", force=True)
-                if hasattr(self.combat, 'is_hurt'):
-                    self.combat.is_hurt = False
-                    self.combat.hurt_timer = 0.0
 
     def update(self, delta_time: float) -> None:
         """Update the current state."""

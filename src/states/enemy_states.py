@@ -14,6 +14,8 @@ class EnemyHurtState(State):
         if self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, min(1.0, 3.0 * delta_time))
         if not self.entity.combat.is_hurt:
+            if self.entity.stagger_timer > 0:
+                return "stagger"
             return "idle"
         return None
 
@@ -85,7 +87,6 @@ class EnemyChaseState(State):
             return "idle"
         return None
 
-
 class EnemyAttackState(State):
     """Represent the EnemyAttack state."""
 
@@ -104,6 +105,10 @@ class EnemyAttackState(State):
             self.attack_retry_timer = 0.3
         else:
             self.attack_retry_timer = 0.0
+
+    def exit(self, next_state: Optional[str] = None) -> None:
+        """Exit the state and cancel the ongoing attack."""
+        self.entity.combat._end_attack()
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""

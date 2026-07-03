@@ -4,10 +4,14 @@ from src.core.settings import Separation as Sep
 
 class SeparationSystem:
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
-        entities = [e for e in entity_sprites if getattr(e, "pushable", False)]
+        entities = [e for e in entity_sprites if hasattr(
+            e, "hitbox") and hasattr(e, "on_surface")]
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1:]:
+                if not (ent_a.pushable or ent_b.pushable):
+                    continue
+
                 if not ent_a.hitbox.colliderect(ent_b.hitbox):
                     continue
 

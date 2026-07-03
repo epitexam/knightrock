@@ -10,22 +10,20 @@ def update_moving_platform(platform, delta_time: float) -> None:
         return
 
     target = platform.waypoints[platform.current_target]
-    pos = pygame.math.Vector2(platform.rect.topleft)
-    direction = target - pos
+    direction = target - platform.pos
     distance = direction.length()
 
     if distance < 1.0:
-        platform.rect.topleft = target
+        platform.pos = pygame.math.Vector2(target)
         platform.current_target += platform.direction
         if platform.current_target in (len(platform.waypoints), -1):
             platform.direction *= -1
             platform.current_target += platform.direction
     else:
         direction.normalize_ip()
-        movement = direction * platform.speed * delta_time
-        platform.rect.x += movement.x
-        platform.rect.y += movement.y
+        platform.pos += direction * platform.speed * delta_time
 
-    platform.hitbox.topleft = platform.rect.topleft
+    platform.rect.topleft = platform.pos
+    platform.hitbox.topleft = platform.pos
     platform.hitbox.width = platform.rect.width
     platform.hitbox.height = platform.rect.height

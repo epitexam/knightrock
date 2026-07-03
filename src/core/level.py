@@ -7,15 +7,16 @@ from src.core.level_components import (
 )
 from src.core.settings import Display, Debug
 from src.core.camera import Camera
+from src.physics.contact_damage import ContactDamageSystem
 
 class Level:
     """Manage a game level and its entities."""
-    
+
     def __init__(self, display_surface: pygame.Surface, tmx_map, input_manager) -> None:
         """Initialize the Level instance."""
         self.display_surface = display_surface
         self.input_manager = input_manager
-        
+
         self.all_sprites = pygame.sprite.Group()
         self.collision_sprites = pygame.sprite.Group()
         self.moving_platforms = pygame.sprite.Group()
@@ -35,6 +36,8 @@ class Level:
             self.combat_sprites,
             self.entity_sprites,
         )
+
+        self.contact_damage_system = ContactDamageSystem()
 
         self.setup(tmx_map)
 
@@ -67,10 +70,13 @@ class Level:
             effective_delta, self.combat_sprites, self.entity_sprites
         )
 
-        self.gameplay_loop.remove_dead_entities(self.entity_sprites, self.player)
+        self.contact_damage_system.process(self.entity_sprites)
+
+        self.gameplay_loop.remove_dead_entities(
+            self.entity_sprites, self.player)
 
         if self.player is not None and self.player.is_dead:
-            self.respawn_timer += delta_time 
+            self.respawn_timer += delta_time
             if self.respawn_timer >= 2.0:
                 self.player.respawn()
                 self.respawn_timer = 0.0

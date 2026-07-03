@@ -83,7 +83,8 @@ class CombatComponent:
             return False
         name = self.charging_attack_name
         sequence = self.attacks[name]
-        charge_mult = 1.0 + (self.charge_timer / sequence.max_charge_time)
+        max_time = max(sequence.max_charge_time, 0.001)
+        charge_mult = 1.0 + (self.charge_timer / max_time)
         self.is_charging = False
         self.charge_timer = 0.0
         self.charging_attack_name = None
@@ -140,14 +141,16 @@ class CombatComponent:
 
         if self.is_charging and self.charging_attack_name:
             sequence = self.attacks[self.charging_attack_name]
-            self.charge_timer = min(self.charge_timer + delta_time, sequence.max_charge_time)
+            self.charge_timer = min(
+                self.charge_timer + delta_time, sequence.max_charge_time)
 
         if self.current_attack:
             self.attack_timer -= delta_time
             if self.attack_timer <= 0:
                 self._advance_phase(facing_right)
             else:
-                self._update_hitbox_position(self._effective_direction(facing_right))
+                self._update_hitbox_position(
+                    self._effective_direction(facing_right))
 
     def _effective_direction(self, facing_right: bool) -> bool:
         return self._locked_facing_right if self._locked_facing_right is not None else facing_right
@@ -216,9 +219,13 @@ class NullCombatComponent:
     def on_hit(self, duration: float | None = None) -> None: pass
     def start_charge(self, name: str) -> bool: return False
     def release_charge(self, facing_right: bool) -> bool: return False
-    def start_attack(self, name: str, facing_right: bool, charge_multiplier: float = 1.0) -> bool: return False
+    def start_attack(self, name: str, facing_right: bool,
+                     charge_multiplier: float = 1.0) -> bool: return False
+
     def update(self, delta_time: float, facing_right: bool) -> None: pass
-    def take_damage(self, amount: int, source_center_x: float | None = None, knockback: KnockbackConfig | None = None) -> None: pass
+
+    def take_damage(self, amount: int, source_center_x: float | None = None,
+                    knockback: KnockbackConfig | None = None) -> None: pass
 
     @property
     def current_phase(self) -> AttackPhase | None:

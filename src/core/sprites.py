@@ -8,6 +8,7 @@ from src.physics.platforms import update_moving_platform
 
 class Sprite(pygame.sprite.Sprite):
     """Represent a Sprite."""
+
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -38,6 +39,7 @@ class Sprite(pygame.sprite.Sprite):
 
 class MovingPlatform(Sprite):
     """Represent a MovingPlatform."""
+
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -56,6 +58,7 @@ class MovingPlatform(Sprite):
 
         self.hitbox: pygame.FRect = self.rect.copy()
         self.old_hitbox: pygame.FRect = self.hitbox.copy()
+        self.pos = pygame.math.Vector2(self.rect.topleft)
 
     def update(self, delta_time: float):
         """Update the current state."""

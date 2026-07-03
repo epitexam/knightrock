@@ -23,6 +23,9 @@ class CombatSystem:
             return
 
         for attacker in combat_sprites:
+            if getattr(attacker, 'is_dead', False):
+                continue
+
             if not attacker.combat.is_attacking or not attacker.combat.attack_box:
                 continue
 
@@ -36,14 +39,13 @@ class CombatSystem:
             for target in combat_sprites:
                 if attacker is target:
                     continue
-
+                if target.is_dead:
+                    continue
                 target_faction = getattr(target, 'faction', None)
                 if attacker_faction is not None and attacker_faction == target_faction:
                     continue
-
                 if target in attacker.combat.targets_hit:
                     continue
-
                 if not attack_box.colliderect(target.hurtbox):
                     continue
 
@@ -54,36 +56,30 @@ class CombatSystem:
                     + (phase.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
                 )
                 self.hit_stop_timer = hitstop_duration
-                attacker.combat.hit_pause_timer = hitstop_duration
-                target.combat.hit_pause_timer = hitstop_duration
 
     def _resolve_hit(self, attacker: "Entity", target: "Entity", phase: AttackPhase) -> None:
         """Calculates and applies damage, stagger, and finisher effects to the target."""
 
         charge_mult = attacker.combat.charge_multiplier
 
-        type_mult = 1.0
-        if hasattr(target, 'get_damage_modifier'):
-            type_mult = target.get_damage_modifier(phase.damage_type)
+        type_mult = target.get_damage_modifier(phase.damage_type)
 
         final_damage = int(phase.damage * charge_mult * type_mult)
 
-        target_has_super_armor = getattr(target, 'has_super_armor', False)
-
-        if target_has_super_armor and not phase.super_armor_break:
+        if target.has_super_armor and not phase.super_armor_break:
             target.combat.take_damage(
                 final_damage, attacker.hitbox.centerx, None)
         else:
-            if target_has_super_armor and phase.super_armor_break and hasattr(target, 'break_super_armor'):
+            if target.has_super_armor and phase.super_armor_break:
                 target.break_super_armor()
 
             target.combat.take_damage(
                 final_damage, attacker.hitbox.centerx, phase.knockback)
 
-            if phase.stagger > 0 and hasattr(target, "stagger"):
+            if phase.stagger > 0:
                 target.stagger(phase.stagger)
 
-        if phase.is_finisher and target.health <= target.max_health * 0.2:
+        if phase.is_finisher and not target.is_dead and target.health <= target.max_health * 0.2:
             target.combat.take_damage(
                 int(target.health), attacker.hitbox.centerx, phase.knockback)
 
