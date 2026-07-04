@@ -41,32 +41,39 @@ class CombatSystem:
                     continue
                 if target.is_dead:
                     continue
+
                 target_faction = getattr(target, 'faction', None)
-                if attacker_faction is not None and attacker_faction == target_faction:
+                if attacker_faction == target_faction:
                     continue
+
                 if target in attacker.combat.targets_hit:
                     continue
+
                 if not attack_box.colliderect(target.hurtbox):
                     continue
 
                 self._resolve_hit(attacker, target, phase)
                 attacker.combat.targets_hit.add(target)
+
                 hitstop_duration = (
                     CombatSettings.HITSTOP_BASE
                     + (phase.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
                 )
-                self.hit_stop_timer = hitstop_duration
+                self.hit_stop_timer = max(
+                    self.hit_stop_timer, hitstop_duration)
 
     def _resolve_hit(self, attacker: "Entity", target: "Entity", phase: AttackPhase) -> None:
         """Calculates and applies damage, stagger, and finisher effects to the target."""
 
         charge_mult = attacker.combat.charge_multiplier
-
         type_mult = target.get_damage_modifier(phase.damage_type)
-
         final_damage = int(phase.damage * charge_mult * type_mult)
 
+        if final_damage <= 0:
+            return
+
         if target.has_super_armor and not phase.super_armor_break:
+
             target.combat.take_damage(
                 final_damage, attacker.hitbox.centerx, None)
         else:

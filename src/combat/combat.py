@@ -57,6 +57,9 @@ class CombatComponent:
         self.is_hurt = True
         self.hurt_timer = duration if duration is not None else CombatSettings.HURT_DURATION
         self._end_attack()
+        self.is_charging = False
+        self.charge_timer = 0.0
+        self.charging_attack_name = None
 
     def take_damage(
         self,
@@ -221,6 +224,8 @@ class NullCombatComponent:
     def release_charge(self, facing_right: bool) -> bool: return False
     def start_attack(self, name: str, facing_right: bool,
                      charge_multiplier: float = 1.0) -> bool: return False
+
+    def _end_attack(self) -> None: pass
 
     def update(self, delta_time: float, facing_right: bool) -> None: pass
 

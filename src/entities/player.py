@@ -344,6 +344,12 @@ class Player(Entity):
 
         self.invincibility_timer = CombatSettings.INVINCIBILITY_DURATION
 
+    def stagger(self, duration: float) -> None:
+        """Protection anti‑stunlock : ignorer si déjà en stagger."""
+        if self.stagger_timer > 0:
+            return
+        super().stagger(duration)
+
     def update(self, delta_time: float) -> None:
         """Update the current state."""
         if self.is_dead:

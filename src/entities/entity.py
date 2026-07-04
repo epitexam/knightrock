@@ -193,17 +193,18 @@ class Entity(Sprite):
 
         if knockback is not None:
             _kb = knockback
-            if _kb.mode == "fixed":
-                self.velocity.x = _kb.power[0]
-                self.velocity.y = _kb.power[1]
-            else:
-                if source_center_x is not None:
-                    direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+            if _kb.power != (0.0, 0.0):
+                if _kb.mode == "fixed":
+                    self.velocity.x = _kb.power[0]
+                    self.velocity.y = _kb.power[1]
                 else:
-                    direction = 1.0 if getattr(
-                        self, "facing_right", True) else -1.0
-                self.velocity.x = _kb.power[0] * direction
-                self.velocity.y = _kb.power[1]
+                    if source_center_x is not None:
+                        direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+                    else:
+                        direction = 1.0 if getattr(
+                            self, "facing_right", True) else -1.0
+                    self.velocity.x = _kb.power[0] * direction
+                    self.velocity.y = _kb.power[1]
 
             if self.combat is not None:
                 hurt_duration = (
