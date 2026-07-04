@@ -6,8 +6,8 @@ import os
 
 class Display:
     """Represent a Display."""
-    WIDTH = 1280
-    HEIGHT = 720
+    WIDTH = 1440
+    HEIGHT = 900
     SIZE = (WIDTH, HEIGHT)
     FPS = 180
     TITLE = "Knightrock"
