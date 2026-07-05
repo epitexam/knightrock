@@ -33,7 +33,7 @@ class EnemyIdleState(State):
         if self.entity.can_see_player():
             return "chase"
         self.entity.patrol_timer += delta_time
-        if self.entity.patrol_timer >= 0.5:
+        if self.entity.patrol_timer >= self.entity.idle_duration:
             return "patrol"
         return None
 
@@ -98,8 +98,11 @@ class EnemyAttackState(State):
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
         self.entity.velocity.x = 0.0
+        if self.entity.attack_name is None:
+            self.attack_retry_timer = 0.0
+            return
         success = self.entity.combat.start_attack(
-            "claw_swipe", self.entity.facing_right
+            self.entity.attack_name, self.entity.facing_right
         )
         if not success:
             self.attack_retry_timer = 0.3
@@ -128,9 +131,7 @@ class EnemyStaggerState(State):
 
     def enter(self, previous: Optional[str] = None) -> None:
         """Enter the state."""
-        if hasattr(self.entity.combat, 'is_hurt'):
-            self.entity.combat.is_hurt = False
-            self.entity.combat.hurt_timer = 0.0
+        pass
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""

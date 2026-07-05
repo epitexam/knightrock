@@ -1,10 +1,10 @@
 import pygame
-
 from src.combat.attack_types import KnockbackConfig
+from src.core.settings import Combat as CombatSettings
 
 
 class ContactDamageSystem:
-    """Applies contact damage when entities overlap, independent of separation."""
+    """Applies contact damage when entities overlap, based on momentum threshold."""
 
     def process(self, entity_sprites: pygame.sprite.Group) -> None:
         """Process the current state."""
@@ -14,11 +14,14 @@ class ContactDamageSystem:
             for ent_b in entities[i + 1:]:
                 if ent_a.is_dead or ent_b.is_dead:
                     continue
-
                 if ent_a.faction == ent_b.faction:
                     continue
-
                 if not ent_a.hitbox.colliderect(ent_b.hitbox):
+                    continue
+
+                speed_a = ent_a.velocity.length()
+                speed_b = ent_b.velocity.length()
+                if max(speed_a, speed_b) < CombatSettings.CONTACT_DAMAGE_THRESHOLD:
                     continue
 
                 self._apply_contact_damage(ent_a, ent_b)
@@ -26,10 +29,13 @@ class ContactDamageSystem:
     def _apply_contact_damage(self, ent_a, ent_b):
         """Internal helper for apply contact damage."""
         null_knockback = KnockbackConfig(power=(0.0, 0.0))
+        contact_damage = 5
+
         for receiver, source in ((ent_a, ent_b), (ent_b, ent_a)):
-            if not receiver.combat.is_hurt and source.combat.contact_damage > 0:
+            if not receiver.combat.is_hurt:
                 receiver.receive_damage(
-                    source.combat.contact_damage,
+                    amount=contact_damage,
                     source_center_x=source.hitbox.centerx,
-                    knockback=null_knockback
+                    knockback=null_knockback,
+                    interrupt=False
                 )

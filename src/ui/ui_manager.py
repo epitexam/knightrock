@@ -108,7 +108,7 @@ class UIManager:
 
             hurt_idx = len(lines)
             lines.append(
-                f"Hurt   {combat.is_hurt!s:5} {combat.hurt_timer:.2f}s  dmg {combat.contact_damage}")
+                f"Hurt   {combat.is_hurt!s:5} {combat.hurt_timer:.2f}s")
             if combat.is_hurt:
                 line_colors[hurt_idx] = TEXT_CRIT
 

@@ -154,6 +154,8 @@ class PlayerBlockState(PlayerBaseState):
         self.entity.block_stamina -= (
             delta_time if self.entity.on_surface["floor"] else delta_time * 2.0
         )
+        if self.entity.block_stamina < 0:
+            self.entity.block_stamina = 0.0
         if not self.entity.block_held or self.entity.block_stamina <= 0:
             return self.ground_return()
         return None
@@ -197,15 +199,14 @@ class PlayerDashState(PlayerBaseState):
 
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state."""
-        if hasattr(self.entity, "_original_hitbox_width"):
-            current = self.entity.hitbox.width
-            if current != self.entity._original_hitbox_width:
-                self.entity.hitbox.x -= (
-                    self.entity._original_hitbox_width - current
-                ) / 2
-                self.entity.hitbox.width = self.entity._original_hitbox_width
-                self.entity.handle_collisions("horizontal")
-                self.entity.sync_rects()
+        current = self.entity.hitbox.width
+        if current != self.entity._original_hitbox_width:
+            self.entity.hitbox.x -= (
+                self.entity._original_hitbox_width - current
+            ) / 2
+            self.entity.hitbox.width = self.entity._original_hitbox_width
+            self.entity.handle_collisions("horizontal")
+            self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""

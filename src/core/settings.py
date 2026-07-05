@@ -59,6 +59,7 @@ class Combat:
     SUPER_ARMOR_THRESHOLD = 3
     DAMAGE_TYPES = ["slash", "blunt", "pierce", "magic", "fire", "ice"]
     COMBO_WINDOW = 0.5
+    CONTACT_DAMAGE_THRESHOLD = 300.0
 
 
 class Separation:

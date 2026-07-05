@@ -1,12 +1,20 @@
-from typing import Any, Iterable, Sequence
+import math
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import pygame
 from pygame.sprite import Group
 
-from src.core.colors import Colors
+from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.attack_loading import load_attacks
+from src.combat.attack_types import KnockbackConfig
 from src.combat.combat import CombatComponent
-from src.entities.entity import Entity
+from src.core.colors import Colors
 from src.core.input_manager import InputManager
+from src.core.settings import Combat as CombatSettings
+from src.core.settings import Physics
+from src.entities.entity import Entity
+from src.physics import apply_horizontal_movement, resolve_jump
 from src.states.player_states import (
     PlayerAttackState,
     PlayerBlockState,
@@ -16,20 +24,20 @@ from src.states.player_states import (
     PlayerIdleState,
     PlayerJumpState,
     PlayerRunState,
-    PlayerWallSlideState,
     PlayerStaggerState,
+    PlayerWallSlideState,
 )
-from src.core.settings import Physics, Combat as CombatSettings
 from src.states.state_machine import StateMachine
-from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.attack_types import KnockbackConfig
-from src.physics import apply_horizontal_movement, resolve_jump
 
 ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
 
 
 class Player(Entity):
-    """Represent the player character and its behavior."""
+    """
+    Playable character with full state machine, input reading, and combat.
+
+    Extends Entity with movement, jumping, dashing, blocking, and attacks.
+    """
 
     def __init__(
         self,
@@ -39,7 +47,16 @@ class Player(Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
     ) -> None:
-        """Initialize the Player instance."""
+        """
+        Initialise the player.
+
+        Args:
+            pos: Starting position.
+            groups: Sprite groups to add to.
+            collision_sprites: Collision group.
+            moving_platforms: Platforms that can carry the player.
+            input_manager: Input source.
+        """
         super().__init__(
             pos,
             (48.0, 56.0),
@@ -55,20 +72,22 @@ class Player(Entity):
         )
 
         self.combat = CombatComponent(self)
-        for name, sequence in PLAYER_ATTACKS.items():
-            self.combat.add_attack(name, sequence)
+        load_attacks(self.combat, PLAYER_ATTACKS)
 
         self.speed = float(Physics.PLAYER_SPEED)
         self.floor_control = Physics.FLOOR_CONTROL
         self.air_control = Physics.AIR_CONTROL
 
         self.jump_height = float(Physics.JUMP_FORCE)
-        self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90
+        self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90 * 1.15
+        self.wall_jump_push_multiplier = 1.3
+        self.wall_jump_lock_duration = 0.18
+        self.wall_jump_min_lock = 0.08
         self.wall_slide_speed = Physics.WALL_SLIDE_SPEED
 
         self.max_midair_jumps = 1
         self.midair_jumps_left = self.max_midair_jumps
-        self.max_wall_jumps = 9999
+        self.max_wall_jumps = math.inf
         self.wall_jumps_left = self.max_wall_jumps
 
         self.space_held = False
@@ -100,9 +119,8 @@ class Player(Entity):
         self._dash_duration_timer = 0.0
         self._original_hitbox_width = self.hitbox.width
 
-        self.facing_right = True
-
         self.invincibility_timer = 0.0
+        self._dash_requested = False
 
         self.state_machine = StateMachine(self)
         self.state_machine.add_state("idle", PlayerIdleState(self))
@@ -118,7 +136,6 @@ class Player(Entity):
         self.state_machine.set_initial_state("idle")
 
         sm = self.state_machine
-
         sm.add_interrupt(
             "hurt",
             lambda: self.combat.is_hurt,
@@ -146,28 +163,23 @@ class Player(Entity):
         )
         sm.add_interrupt(
             "attack",
-            lambda: (self.combat.is_attacking and self.can_attack()),
+            lambda: self.combat.is_attacking and self.can_attack(),
             priority=40,
         )
 
         self.input_manager = input_manager
-        self._dash_requested = False
 
     @property
     def is_blocking(self) -> bool:
-        """Return whether blocking."""
-        if self.state_machine is None:
-            return False
+        """Return True if the player is currently blocking."""
         return self.state_machine.current_state_name == "block"
 
     def can_attack(self) -> bool:
-        """Return whether attack."""
-        if self.state_machine is None:
-            return False
+        """Return True if an attack can be started from the current state."""
         return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
 
     def _is_wall_sliding(self) -> bool:
-        """Internal helper for is wall sliding."""
+        """Return True when sliding down a wall."""
         on_left_wall = self.on_surface["left"] and self.left_held
         on_right_wall = self.on_surface["right"] and self.right_held
         return (
@@ -177,16 +189,16 @@ class Player(Entity):
         )
 
     def _on_floor_contact(self) -> None:
-        """Internal helper for on floor contact."""
+        """Reset midair and wall jumps when landing."""
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
     def _on_wall_contact(self) -> None:
-        """Internal helper for on wall contact."""
+        """Reset midair jumps when touching a wall."""
         self.midair_jumps_left = self.max_midair_jumps
 
     def get_input(self) -> None:
-        """Return input."""
+        """Read all input and update facing direction and buffers."""
         im = self.input_manager
         self.move_axis = im.move_axis
         self.left_held = im.left_held
@@ -211,29 +223,26 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Internal helper for handle attack input."""
-        im = self.input_manager
+        """Start the appropriate attack based on input and state."""
         if not self.can_attack():
             return
 
+        im = self.input_manager
         if im.attack1_just_pressed:
             if self.on_surface["floor"]:
                 attack_name = "light_attack"
             else:
                 attack_name = "air_attack"
             self.combat.start_attack(attack_name, self.facing_right)
-
         elif im.attack2_just_pressed:
             self.combat.start_attack("heavy_attack", self.facing_right)
-
         elif im.attack3_just_pressed:
             self.combat.start_attack("uppercut", self.facing_right)
-
         elif im.attack4_just_pressed:
             self.combat.start_attack("dash_attack", self.facing_right)
 
     def update_timers(self, delta_time: float) -> None:
-        """Update timers."""
+        """Update coyote, jump buffer, block stamina, and dash recharge timers."""
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
 
@@ -245,10 +254,7 @@ class Player(Entity):
         if self.block_cooldown_timer > 0:
             self.block_cooldown_timer -= delta_time
 
-        if (
-            self.state_machine is not None
-            and self.state_machine.current_state_name != "block"
-        ):
+        if self.state_machine.current_state_name != "block":
             if self.block_stamina < self.max_block_stamina:
                 self.block_stamina += delta_time * 0.5
                 self.block_stamina = min(
@@ -264,19 +270,15 @@ class Player(Entity):
                     self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
-        """Apply horizontal movement."""
+        """Apply horizontal acceleration/control."""
         apply_horizontal_movement(self, delta_time)
 
     def handle_jump(self) -> None:
-        """Handle jump."""
+        """Process jump input with coyote time, wall jumps, and midair jumps."""
         resolve_jump(self)
 
-    def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Move the entity based on velocity and environment."""
-        super().move(delta_time, apply_gravity=apply_gravity)
-
     def reset_position(self) -> None:
-        """Reset position."""
+        """Full reset of all player‑specific state."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
         self.coyote_timer = 0.0
@@ -296,24 +298,46 @@ class Player(Entity):
             self.combat.current_attack = None
             self.combat.attack_box = None
 
-        self.health = self.max_health
-
-    def die(self) -> None:
-        """Mark the entity as dead and perform cleanup."""
-        super().die()
-
     def respawn(self) -> None:
-        """Reset the entity after death."""
-        self.is_dead = False
+        """Alias for reset_position, used after death."""
         self.reset_position()
+
+    def _apply_block_damage_reaction(
+        self,
+        amount: int,
+        knockback: KnockbackConfig | None,
+        source_center_x: float | None,
+    ) -> None:
+        """
+        Handle damage while blocking: consume stamina, reduce knockback, and apply reduced push.
+        """
+        _kb = knockback if knockback is not None else KnockbackConfig()
+        self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
+        if self.block_stamina < 0:
+            self.block_stamina = 0.0
+
+        if _kb.mode == "fixed":
+            self.velocity.x = _kb.power[0] * \
+                CombatSettings.BLOCK_KNOCKBACK_FACTOR
+        elif source_center_x is not None:
+            direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
+            self.velocity.x = _kb.power[0] * \
+                CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
 
     def receive_damage(
         self,
         amount: int,
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
+        interrupt: bool = True,
     ) -> None:
-        """Apply damage to this entity."""
+        """
+        Override to add blocking, invincibility, and reduced hurt duration.
+
+        If blocking, stamina is consumed and knockback is reduced; no health lost.
+        If invincible (from being hit), damage is ignored.
+        Otherwise, delegate to the base implementation and reduce hurt duration.
+        """
         if self.is_dead:
             return
 
@@ -321,39 +345,25 @@ class Player(Entity):
             return
 
         if self.is_blocking:
-            _kb = knockback if knockback is not None else KnockbackConfig()
-            self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
-            if _kb.mode == "fixed":
-                self.velocity.x = _kb.power[0] * \
-                    CombatSettings.BLOCK_KNOCKBACK_FACTOR
-            elif source_center_x is not None:
-                direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
-                self.velocity.x = (
-                    _kb.power[0] *
-                    CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
-                )
+            self._apply_block_damage_reaction(
+                amount, knockback, source_center_x)
             return
 
-        super().receive_damage(amount, source_center_x, knockback)
+        super().receive_damage(amount, source_center_x, knockback, interrupt)
 
-        if hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
+        if interrupt and hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
             self.combat.hurt_timer = min(
                 self.combat.hurt_timer,
-                CombatSettings.PLAYER_HURT_DURATION
+                CombatSettings.PLAYER_HURT_DURATION,
             )
 
         self.invincibility_timer = CombatSettings.INVINCIBILITY_DURATION
 
-    def stagger(self, duration: float) -> None:
-        """Protection anti‑stunlock : ignorer si déjà en stagger."""
-        if self.stagger_timer > 0:
-            return
-        super().stagger(duration)
-
     def update(self, delta_time: float) -> None:
-        """Update the current state."""
+        """Main update loop: input, timers, combat, state machine, and movement."""
         if self.is_dead:
             return
+
         super().update(delta_time)
 
         if self.invincibility_timer > 0:
@@ -365,6 +375,5 @@ class Player(Entity):
         self._handle_attack_input()
         self.update_timers(delta_time)
         self.combat.update(delta_time, self.facing_right)
-        if self.state_machine is not None:
-            self.state_machine.update(delta_time)
+        self.state_machine.update(delta_time)
         self.move(delta_time)

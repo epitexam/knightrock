@@ -26,8 +26,6 @@ class CombatComponent:
 
         self.is_hurt: bool = False
         self.hurt_timer: float = 0.0
-        self.contact_damage: int = 0
-
         self._locked_facing_right: bool | None = None
         self.charge_multiplier: float = 1.0
 
@@ -208,7 +206,6 @@ class NullCombatComponent:
         self.attack_box = None
         self.targets_hit = set()
         self.hurt_timer = 0.0
-        self.contact_damage = 0
         self._locked_facing_right = None
         self.charge_multiplier = 1.0
         self.combo_count = 0

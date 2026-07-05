@@ -8,6 +8,22 @@ from src.physics.gravity import apply_entity_gravity
 
 def apply_horizontal_movement(entity, delta_time: float) -> None:
     """Apply horizontal movement with acceleration and damping."""
+    lock_timer = getattr(entity, "wall_jump_lock_timer", 0.0)
+    if lock_timer > 0:
+        duration = getattr(entity, "wall_jump_lock_duration", lock_timer)
+        min_lock = getattr(entity, "wall_jump_min_lock", 0.0)
+        elapsed = duration - lock_timer
+        entity.wall_jump_lock_timer = lock_timer - delta_time
+        opposing = (
+            (entity.move_axis > 0.1 and entity.velocity.x < 0)
+            or (entity.move_axis < -0.1 and entity.velocity.x > 0)
+        )
+        if elapsed >= min_lock and opposing:
+            entity.wall_jump_lock_timer = 0.0
+        else:
+            entity.velocity.x *= max(0.0, 1.0 - 2.0 * delta_time)
+            return
+
     target_speed = entity.move_axis * entity.speed
 
     if target_speed == 0 and abs(entity.velocity.x) < 0.5:
@@ -16,7 +32,8 @@ def apply_horizontal_movement(entity, delta_time: float) -> None:
 
     control = entity.floor_control if entity.on_surface["floor"] else entity.air_control
     alpha = 1.0 - math.exp(-control * delta_time)
-    entity.velocity.x = entity.velocity.x + (target_speed - entity.velocity.x) * alpha
+    entity.velocity.x = entity.velocity.x + \
+        (target_speed - entity.velocity.x) * alpha
 
     if abs(entity.velocity.x) < 0.01:
         entity.velocity.x = 0.0
@@ -34,9 +51,12 @@ def resolve_jump(entity) -> None:
     elif (
         entity.on_surface["left"] or entity.on_surface["right"]
     ) and entity.wall_jumps_left > 0:
-        entity.velocity.y = -entity.wall_jump_height
-        push = entity.speed * 0.85
+        entity.velocity.y = -entity.wall_jump_height * 1.15
+        push = entity.speed * 1.3
         entity.velocity.x = push if entity.on_surface["left"] else -push
+        entity.wall_jump_lock_timer = 0.18
+        entity.wall_jump_lock_duration = 0.18
+        entity.wall_jump_min_lock = 0.08
         entity.wall_jumps_left -= 1
         entity.jump_buffer_timer = 0.0
     elif entity.midair_jumps_left > 0:
@@ -82,7 +102,8 @@ def apply_moving_platform(entity, moving_platforms: Iterable[Any]) -> None:
 
     for platform in moving_platforms:
         p_box = getattr(platform, "hitbox", getattr(platform, "rect", None))
-        p_old_box = getattr(platform, "old_hitbox", getattr(platform, "old_rect", None))
+        p_old_box = getattr(platform, "old_hitbox",
+                            getattr(platform, "old_rect", None))
 
         if p_box is None or p_old_box is None:
             continue

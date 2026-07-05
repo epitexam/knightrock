@@ -118,3 +118,21 @@ GOBLIN_ATTACKS = {
         lock_direction=True,
     ),
 }
+
+SLIME_ATTACKS = {
+    "body_slam": AttackSequence(
+        phases=[
+            AttackPhase(
+                size=(36.0, 22.0),
+                offset=(22.0, 2.0),
+                damage=6,
+                duration=0.18,
+                knockback=KnockbackConfig(power=(90.0, -120.0)),
+                damage_type=DamageType.BLUNT,
+                stagger=0.08,
+            ),
+        ],
+        cooldown=1.25,
+        lock_direction=True,
+    ),
+}

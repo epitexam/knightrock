@@ -2,16 +2,12 @@ import pygame
 from src.core.colors import Colors
 from src.core.settings import World
 from src.core.sprites import MovingPlatform, Sprite
+from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
-from src.entities.enemy import Goblin
 
 
 class WorldBuilder:
     """Build game objects from the TMX map."""
-    ENTITY_CLASSES = {
-        "player": Player,
-        "goblin": Goblin,
-    }
 
     def __init__(self, tmx_map):
         """Initialize the WorldBuilder instance."""
@@ -81,10 +77,9 @@ class WorldBuilder:
                         combat_sprites, entity_sprites, input_manager):
         """Internal helper for setup entities."""
         player = None
-        for obj in self.tmx_map.get_layer_by_name("Objects"):
-            cls = self.ENTITY_CLASSES.get(obj.name)
-            if cls is None:
-                continue
+        objects = list(self.tmx_map.get_layer_by_name("Objects"))
+
+        for obj in objects:
             if obj.name == "player":
                 player = Player(
                     (obj.x, obj.y),
@@ -95,8 +90,11 @@ class WorldBuilder:
                 )
                 combat_sprites.add(player)
                 entity_sprites.add(player)
-            else:
-                entity = cls(
+
+        for obj in objects:
+            if is_enemy_type(obj.name):
+                entity = create_enemy(
+                    obj.name,
                     pos=(obj.x, obj.y),
                     groups=(all_sprites,),
                     collision_sprites=collision_sprites,
