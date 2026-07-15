@@ -5,6 +5,8 @@ from src.core.settings import Separation
 from src.physics.collisions import resolve_collisions
 from src.physics.gravity import apply_entity_gravity
 
+VELOCITY_EPSILON = 0.01
+
 
 def apply_horizontal_movement(entity, delta_time: float) -> None:
     """Apply horizontal movement with acceleration and damping."""
@@ -14,14 +16,17 @@ def apply_horizontal_movement(entity, delta_time: float) -> None:
         min_lock = getattr(entity, "wall_jump_min_lock", 0.0)
         elapsed = duration - lock_timer
         entity.wall_jump_lock_timer = lock_timer - delta_time
+
         opposing = (
             (entity.move_axis > 0.1 and entity.velocity.x < 0)
             or (entity.move_axis < -0.1 and entity.velocity.x > 0)
         )
+
         if elapsed >= min_lock and opposing:
             entity.wall_jump_lock_timer = 0.0
         else:
-            entity.velocity.x *= max(0.0, 1.0 - 2.0 * delta_time)
+            damp_alpha = 1.0 - math.exp(-10.0 * delta_time)
+            entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
             return
 
     target_speed = entity.move_axis * entity.speed
@@ -35,7 +40,7 @@ def apply_horizontal_movement(entity, delta_time: float) -> None:
     entity.velocity.x = entity.velocity.x + \
         (target_speed - entity.velocity.x) * alpha
 
-    if abs(entity.velocity.x) < 0.01:
+    if abs(entity.velocity.x) < VELOCITY_EPSILON:
         entity.velocity.x = 0.0
 
 
@@ -75,7 +80,9 @@ def move_entity(entity, delta_time: float, apply_gravity: bool = True) -> None:
         entity.old_hitbox = entity.hitbox.copy()
         entity.hitbox.x += step_move_x
         resolve_collisions(entity, "horizontal")
-        if entity.velocity.x == 0:
+
+        if abs(entity.velocity.x) < VELOCITY_EPSILON:
+            entity.velocity.x = 0.0
             break
 
     if apply_gravity:
@@ -89,7 +96,8 @@ def move_entity(entity, delta_time: float, apply_gravity: bool = True) -> None:
         entity.old_hitbox = entity.hitbox.copy()
         entity.hitbox.y += step_move_y
         resolve_collisions(entity, "vertical")
-        if entity.velocity.y == 0:
+        if abs(entity.velocity.y) < VELOCITY_EPSILON:
+            entity.velocity.y = 0.0
             break
 
     entity.check_contact()
@@ -109,7 +117,8 @@ def apply_moving_platform(entity, moving_platforms: Iterable[Any]) -> None:
             continue
 
         vertical_dist = entity.hitbox.bottom - p_old_box.top
-        if not (-2 <= vertical_dist <= 16):
+
+        if not (-2 <= vertical_dist <= 4):
             continue
 
         overlap = min(entity.hitbox.right, p_old_box.right) - max(
@@ -121,7 +130,13 @@ def apply_moving_platform(entity, moving_platforms: Iterable[Any]) -> None:
         platform_dx = p_box.x - p_old_box.x
         platform_dy = p_box.y - p_old_box.y
 
+        if platform_dx == 0 and platform_dy == 0:
+            continue
+
         entity.hitbox.x += platform_dx
         entity.hitbox.y += platform_dy
+
+        entity.old_hitbox = entity.hitbox.copy()
+
         entity.sync_rects()
         break

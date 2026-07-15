@@ -105,7 +105,7 @@ class Enemy(Entity):
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
             lerp_velocity(self, 0.0, min(
-                1.0, self.passive_friction * delta_time))
+                1.0, self.passive_friction * delta_time), delta_time)
 
         self.move(delta_time, apply_gravity=True)
 

@@ -34,12 +34,9 @@ def update_contact_state(entity: Sprite, collision_sprites: Group) -> None:
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
 
-    floor_rect = pygame.FRect(entity.hitbox.bottomleft,
-                              (entity.hitbox.width, 2))
-    right_rect = pygame.FRect(
-        Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
-    left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
+    floor_rect = pygame.FRect(entity.hitbox.bottomleft, (entity.hitbox.width, 2))
+    right_rect = pygame.FRect(Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
+    left_rect = pygame.FRect(Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
 
     on = entity.on_surface
     on["floor"] = on["right"] = on["left"] = False
@@ -78,14 +75,15 @@ def resolve_collisions(
         if not hitbox_collide(entity, sprite):
             continue
 
-        sprite_old = getattr(sprite, "old_hitbox", getattr(
-            sprite, "old_rect", sprite.rect))
+        sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
 
+        was_overlapping = entity.old_hitbox.colliderect(sprite_old)
+
         if axis == "horizontal":
-            if entity.old_hitbox.right <= sprite_old.left:
+            if not was_overlapping and entity.old_hitbox.right <= sprite_old.left:
                 entity.hitbox.right = sprite_box.left
-            elif entity.old_hitbox.left >= sprite_old.right:
+            elif not was_overlapping and entity.old_hitbox.left >= sprite_old.right:
                 entity.hitbox.left = sprite_box.right
             elif abs(entity.hitbox.right - sprite_box.left) < abs(entity.hitbox.left - sprite_box.right):
                 entity.hitbox.right = sprite_box.left
@@ -93,9 +91,9 @@ def resolve_collisions(
                 entity.hitbox.left = sprite_box.right
             entity.velocity.x = 0
         else:
-            if entity.old_hitbox.bottom <= sprite_old.top:
+            if not was_overlapping and entity.old_hitbox.bottom <= sprite_old.top:
                 entity.hitbox.bottom = sprite_box.top
-            elif entity.old_hitbox.top >= sprite_old.bottom:
+            elif not was_overlapping and entity.old_hitbox.top >= sprite_old.bottom:
                 entity.hitbox.top = sprite_box.bottom
             elif abs(entity.hitbox.bottom - sprite_box.top) < abs(entity.hitbox.top - sprite_box.bottom):
                 entity.hitbox.bottom = sprite_box.top

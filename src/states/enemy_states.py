@@ -12,7 +12,7 @@ class EnemyHurtState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 3.0 * delta_time))
+            lerp_velocity(self.entity, 0.0, min(1.0, 3.0 * delta_time), delta_time)
         if not self.entity.combat.is_hurt:
             if self.entity.stagger_timer > 0:
                 return "stagger"
@@ -136,7 +136,7 @@ class EnemyStaggerState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 10.0 * delta_time))
+            lerp_velocity(self.entity, 0.0, min(1.0, 10.0 * delta_time), delta_time)
 
         if self.entity.stagger_timer <= 0:
             return "chase" if self.entity.can_see_player() else "idle"

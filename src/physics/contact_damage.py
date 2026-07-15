@@ -21,21 +21,28 @@ class ContactDamageSystem:
 
                 speed_a = ent_a.velocity.length()
                 speed_b = ent_b.velocity.length()
+
                 if max(speed_a, speed_b) < CombatSettings.CONTACT_DAMAGE_THRESHOLD:
                     continue
 
-                self._apply_contact_damage(ent_a, ent_b)
+                if speed_a > speed_b:
+                    self._apply_contact_damage(ent_b, ent_a)
+                elif speed_b > speed_a:
+                    self._apply_contact_damage(ent_a, ent_b)
+                else:
 
-    def _apply_contact_damage(self, ent_a, ent_b):
+                    self._apply_contact_damage(ent_a, ent_b)
+                    self._apply_contact_damage(ent_b, ent_a)
+
+    def _apply_contact_damage(self, receiver, source):
         """Internal helper for apply contact damage."""
         null_knockback = KnockbackConfig(power=(0.0, 0.0))
         contact_damage = 5
 
-        for receiver, source in ((ent_a, ent_b), (ent_b, ent_a)):
-            if not receiver.combat.is_hurt:
-                receiver.receive_damage(
-                    amount=contact_damage,
-                    source_center_x=source.hitbox.centerx,
-                    knockback=null_knockback,
-                    interrupt=False
-                )
+        if not receiver.combat.is_hurt:
+            receiver.receive_damage(
+                amount=contact_damage,
+                source_center_x=source.hitbox.centerx,
+                knockback=null_knockback,
+                interrupt=False
+            )

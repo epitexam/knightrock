@@ -78,8 +78,8 @@ class Game:
             try:
                 while self._accumulator >= Simulation.TIMESTEP:
                     self.input_manager.update()
-                    self.current_stage.update(Simulation.TIMESTEP)
 
+                    self.current_stage.update(Simulation.TIMESTEP)
                     self._accumulator -= Simulation.TIMESTEP
 
                 self.current_stage.draw(self.clock.get_fps())

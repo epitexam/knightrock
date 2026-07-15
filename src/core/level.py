@@ -8,6 +8,7 @@ from src.core.level_components import (
 from src.core.settings import Display, Debug
 from src.core.camera import Camera
 from src.physics.contact_damage import ContactDamageSystem
+from src.physics.movement import apply_moving_platform
 
 
 class Level:
@@ -65,7 +66,18 @@ class Level:
 
         effective_delta = 0.0 if in_hit_stop else delta_time
 
-        self.all_sprites.update(effective_delta)
+        self.moving_platforms.update(effective_delta)
+        if not in_hit_stop:
+            for entity in self.entity_sprites:
+                apply_moving_platform(entity, self.moving_platforms)
+
+        self.entity_sprites.update(effective_delta)
+
+        updated_ids = {id(s) for s in self.moving_platforms} | {
+            id(s) for s in self.entity_sprites}
+        for sprite in self.all_sprites:
+            if id(sprite) not in updated_ids:
+                sprite.update(effective_delta)
 
         self.gameplay_loop.process_combat_and_separation(
             effective_delta, self.combat_sprites, self.entity_sprites

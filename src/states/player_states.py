@@ -169,7 +169,7 @@ class PlayerHurtState(PlayerBaseState):
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
-        lerp_velocity(self.entity, 0.0, min(1.0, 5.0 * delta_time))
+        lerp_velocity(self.entity, 0.0, min(1.0, 5.0 * delta_time), delta_time)
         if not self.entity.combat.is_hurt:
             if self.entity.stagger_timer > 0:
                 return "stagger"
@@ -211,7 +211,7 @@ class PlayerDashState(PlayerBaseState):
         """Update the current state."""
         self.entity._dash_duration_timer -= delta_time
         friction = max(0.0, 1.0 - self.entity.dash_friction * delta_time)
-        apply_velocity_friction(self.entity, friction)
+        apply_velocity_friction(self.entity, friction, delta_time)
         if self.entity.left_held:
             self.entity.velocity.x -= 100.0 * delta_time
         if self.entity.right_held:
@@ -233,7 +233,7 @@ class PlayerStaggerState(PlayerBaseState):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 8.0 * delta_time))
+            lerp_velocity(self.entity, 0.0, min(1.0, 8.0 * delta_time), delta_time)
 
         if self.entity.stagger_timer <= 0:
             return self.ground_return()

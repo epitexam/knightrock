@@ -51,9 +51,23 @@ class SeparationSystem:
         if ent_a.pushable and ent_b.pushable:
             setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a)
             setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b)
+            if axis == "x":
+                ent_a.velocity.x = 0
+                ent_b.velocity.x = 0
+            else:
+                ent_a.velocity.y = 0
+                ent_b.velocity.y = 0
+                
         elif ent_a.pushable:
-            setattr(ent_a.hitbox, axis, getattr(
-                ent_a.hitbox, axis) + delta_a * 2)
+            setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a * 2)
+            if axis == "x":
+                ent_a.velocity.x = 0
+            else:
+                ent_a.velocity.y = 0
+                
         elif ent_b.pushable:
-            setattr(ent_b.hitbox, axis, getattr(
-                ent_b.hitbox, axis) + delta_b * 2)
+            setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b * 2)
+            if axis == "x":
+                ent_b.velocity.x = 0
+            else:
+                ent_b.velocity.y = 0
