@@ -1,8 +1,7 @@
-"""
-Combat component: the per-entity orchestrator for all combat mechanics.
+"""Combat component: the per-entity orchestrator for all combat mechanics.
 
 ``CombatComponent`` coordinates the attack state machine, hitbox manager,
-combo tracker, charge handler, and hurt state.  It provides a high-level
+combo tracker, charge handler, and hurt state. It provides a high-level
 API for starting attacks, charging, and responding to damage.
 
 ``NullCombatComponent`` is a no-op stand-in for entities without combat
@@ -11,18 +10,41 @@ capabilities, implementing the same public interface.
 
 from __future__ import annotations
 
-import weakref
-from typing import Any
+from dataclasses import dataclass
 
 import pygame
 
-from src.combat.attack_state import AttackStateMachine
+from src.combat.attack_state import AttackStateMachine, AttackStateSnapshot
 from src.combat.charge_handler import ChargeHandler
 from src.combat.combo_tracker import ComboTracker
-from src.combat.frame_data import AttackDefinition, PhaseDefinition
+from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
 from src.combat.knockback import KnockbackConfig
 from src.combat.combatant_protocol import Combatant
+
+
+@dataclass
+class CombatSnapshot:
+    """Lightweight, serializable snapshot of the combat component for rollback.
+
+    Attributes
+    ----------
+    attack_state : AttackStateSnapshot
+        Snapshot of the attack state machine.
+    is_hurt : bool
+        Whether the entity is currently in the hurt state.
+    hurt_timer : float
+        Remaining time for the hurt state.
+    combo_count : int
+        Current combo count.
+    combo_timer : float
+        Remaining time for the combo window.
+    """
+    attack_state: AttackStateSnapshot
+    is_hurt: bool
+    hurt_timer: float
+    combo_count: int
+    combo_timer: float
 
 
 class CombatComponent:
@@ -30,21 +52,27 @@ class CombatComponent:
 
     This component owns sub-modules for attack state, hitbox positioning,
     combo tracking, and charging, delegating work to each while enforcing
-    high-level rules (e.g. cannot start an attack while hurt).
+    high-level rules such as preventing attacks while hurt.
 
     Parameters
     ----------
     entity : Combatant
         The entity that owns this component.
     combo_window : float
-        Duration in seconds of the combo window.  Subsequent attacks
-        within this window increment the combo counter.
+        Duration in seconds of the combo window.
     hurt_duration : float
-        Default duration in seconds of the hurt state when the entity
-        is hit.
+        Default duration in seconds of the hurt state when the entity is hit.
 
     Attributes
     ----------
+    state : AttackStateMachine
+        The frame-accurate attack state machine.
+    hitbox : HitboxManager
+        The manager responsible for positioning the attack hitbox.
+    combo : ComboTracker
+        The combo counter and window tracker.
+    charging : ChargeHandler
+        The handler for charge attack mechanics.
     is_hurt : bool
         Whether the entity is currently in the hurt state.
     """
@@ -102,29 +130,24 @@ class CombatComponent:
         return self.state.charge_multiplier
 
     @property
-    def targets_hit(self) -> weakref.WeakSet[Any]:
-        """Set of entities already hit during the current attack sequence."""
+    def targets_hit(self) -> set[int]:
+        """Set of entity IDs already hit during the current attack sequence."""
         return self.state.targets_hit
 
     def start_attack(
         self,
         name: str,
-        facing_right: bool,
         charge_multiplier: float = 1.0,
     ) -> bool:
         """Attempt to start a new attack sequence.
 
-        The action is rejected if the entity is hurt, charging, or if the
-        attack is on cooldown.  If the entity is currently in the RECOVERY
-        sub-state and the new attack is in the current phase's
-        ``cancel_into`` list, the current attack is ended first (cancel).
+        Facing direction is resolved deterministically inside the update loop
+        via the state machine, so it is not passed as a parameter here.
 
         Parameters
         ----------
         name : str
             Name of the attack to start.
-        facing_right : bool
-            Current facing direction of the entity.
         charge_multiplier : float
             Damage multiplier from a released charge (default 1.0).
 
@@ -148,22 +171,17 @@ class CombatComponent:
             else:
                 return False
 
-        definition = self._attacks[name]
-
-        if not self.state.start(name, facing_right, charge_multiplier):
+        if not self.state.start(name, charge_multiplier):
             return False
 
+        definition = self._attacks[name]
         self._cooldowns[name] = definition.cooldown
-
         self.combo.on_attack_started(definition.combo_reset)
 
         return True
 
     def start_charge(self, name: str) -> bool:
         """Begin charging an attack.
-
-        The action is rejected if the entity is already attacking, hurt,
-        or already charging.
 
         Parameters
         ----------
@@ -179,13 +197,8 @@ class CombatComponent:
             return False
         return self.charging.start_charge(name)
 
-    def release_charge(self, facing_right: bool) -> bool:
+    def release_charge(self) -> bool:
         """Release the current charge and execute the attack.
-
-        Parameters
-        ----------
-        facing_right : bool
-            Current facing direction of the entity.
 
         Returns
         -------
@@ -197,7 +210,7 @@ class CombatComponent:
             return False
 
         name, multiplier = result
-        return self.start_attack(name, facing_right, multiplier)
+        return self.start_attack(name, multiplier)
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """React to being hit.
@@ -209,8 +222,8 @@ class CombatComponent:
         Parameters
         ----------
         duration : float | None
-            Custom hurt duration in seconds.  If ``None``, the default
-            ``hurt_duration`` from the constructor is used.  Ignored if
+            Custom hurt duration in seconds. If ``None``, the default
+            ``hurt_duration`` from the constructor is used. Ignored if
             ``interrupt`` is False.
         interrupt : bool
             Whether the hit interrupts the entity's current action.
@@ -224,7 +237,6 @@ class CombatComponent:
 
         self.state.end()
         self.hitbox.clear()
-
         self.charging.cancel()
 
     def take_damage(
@@ -234,10 +246,6 @@ class CombatComponent:
         knockback: KnockbackConfig | None = None,
     ) -> None:
         """Forward damage to the entity's ``receive_damage`` method.
-
-        This method exists so that ``CombatSystem`` can interact solely
-        with the ``combat`` component without needing a reference to the
-        entity itself for damage application.
 
         Parameters
         ----------
@@ -250,20 +258,47 @@ class CombatComponent:
         """
         self._entity.receive_damage(amount, source_center_x, knockback)
 
-    def update(self, delta_time: float, facing_right: bool) -> None:
+    def save_state(self) -> CombatSnapshot:
+        """Capture the full combat state for a rollback frame.
+
+        Returns
+        -------
+        CombatSnapshot
+            A serializable snapshot of the combat component's current state.
+        """
+        return CombatSnapshot(
+            attack_state=self.state.save_state(),
+            is_hurt=self.is_hurt,
+            hurt_timer=self._hurt_timer,
+            combo_count=self.combo.count,
+            combo_timer=self.combo._timer,
+        )
+
+    def load_state(self, snapshot: CombatSnapshot) -> None:
+        """Restore combat state from a rollback frame.
+
+        Parameters
+        ----------
+        snapshot : CombatSnapshot
+            The snapshot to restore.
+        """
+        self.state.load_state(snapshot.attack_state)
+        self.is_hurt = snapshot.is_hurt
+        self._hurt_timer = snapshot.hurt_timer
+        self.combo.count = snapshot.combo_count
+        self.combo._timer = snapshot.combo_timer
+
+    def update(self, delta_time: float) -> None:
         """Tick all combat sub-systems.
 
-        Must be called once per frame for each entity that has a combat
-        component.
+        Facing direction is read directly from the entity to ensure
+        deterministic state resolution over the network.
 
         Parameters
         ----------
         delta_time : float
             Elapsed time in seconds since the last frame.
-        facing_right : bool
-            Current facing direction of the entity.
         """
-
         if self.is_hurt:
             self._hurt_timer -= delta_time
             if self._hurt_timer <= 0.0:
@@ -275,11 +310,9 @@ class CombatComponent:
                 self._cooldowns[name] -= delta_time
 
         self.combo.update(delta_time)
-
         self.charging.update(delta_time)
-
+        self.state.resolve_facing(self._entity.facing_right)
         self.state.update(delta_time)
-
         self.hitbox.update(self.state)
 
 
@@ -288,18 +321,17 @@ class NullCombatComponent:
 
     Implements the same public interface as ``CombatComponent`` so that
     systems can interact with any entity's ``combat`` attribute without
-    null checks.
-
-    All mutation methods do nothing; all query methods return default
-    falsy values.
+    null checks. Adapted for the deterministic, network-ready architecture.
     """
 
     def __init__(self) -> None:
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
-        self.targets_hit: set[Any] = set()
+        self.targets_hit: set[int] = set()
         self.charge_multiplier: float = 1.0
+        self.state: _NullAttackState = _NullAttackState()
+        self.combo: _NullComboTracker = _NullComboTracker()
 
     @property
     def current_phase(self) -> PhaseDefinition | None:
@@ -312,7 +344,6 @@ class NullCombatComponent:
     def start_attack(
         self,
         name: str,
-        facing_right: bool,
         charge_multiplier: float = 1.0,
     ) -> bool:
         """Always returns ``False``."""
@@ -322,7 +353,7 @@ class NullCombatComponent:
         """Always returns ``False``."""
         return False
 
-    def release_charge(self, facing_right: bool) -> bool:
+    def release_charge(self) -> bool:
         """Always returns ``False``."""
         return False
 
@@ -339,5 +370,64 @@ class NullCombatComponent:
     ) -> None:
         """No-op."""
 
-    def update(self, delta_time: float, facing_right: bool) -> None:
+    def update(self, delta_time: float) -> None:
+        """No-op."""
+
+    def save_state(self) -> CombatSnapshot:
+        """Return a dummy snapshot for rollback systems.
+
+        Returns
+        -------
+        CombatSnapshot
+            A default, serialized safe-state snapshot.
+        """
+        return CombatSnapshot(
+            attack_state=AttackStateSnapshot(
+                attack_name=None,
+                phase_index=0,
+                sub_state=PhaseState.IDLE,
+                frame_counter=0,
+                targets_hit=set(),
+                locked_facing=None,
+                charge_multiplier=1.0,
+                accumulator=0.0
+            ),
+            is_hurt=False,
+            hurt_timer=0.0,
+            combo_count=0,
+            combo_timer=0.0
+        )
+
+    def load_state(self, snapshot: CombatSnapshot) -> None:
+        """No-op."""
+
+
+class _NullAttackState:
+    """Mock state for NullCombatComponent to avoid AttributeError in CombatSystem.
+
+    Attributes
+    ----------
+    is_active : bool
+        Always False.
+    is_attacking : bool
+        Always False.
+    """
+    is_active = False
+    is_attacking = False
+
+
+class _NullComboTracker:
+    """Mock combo tracker for NullCombatComponent.
+
+    Attributes
+    ----------
+    count : int
+        Always 0.
+    """
+    count = 0
+
+    def on_attack_started(self, resets_combo: bool) -> None:
+        """No-op."""
+
+    def update(self, delta_time: float) -> None:
         """No-op."""

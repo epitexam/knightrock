@@ -377,6 +377,6 @@ class Player(Entity):
         self.get_input()
         self._handle_attack_input()
         self.update_timers(delta_time)
-        self.combat.update(delta_time, self.facing_right)
+        self.combat.update(delta_time)
         self.state_machine.update(delta_time)
         self.move(delta_time)

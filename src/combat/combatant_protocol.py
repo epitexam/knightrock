@@ -1,9 +1,8 @@
-"""
-Protocols defining the interfaces required by the combat system.
+"""Protocols defining the interfaces required by the combat system.
 
 These runtime-checkable protocols describe the minimal surface an entity
 must expose so that the combat system can apply damage, knockback, stagger,
-and other effects.  They decouple the combat logic from any concrete entity
+and other effects. They decouple the combat logic from any concrete entity
 class.
 """
 
@@ -21,6 +20,8 @@ class Combatant(Protocol):
 
     Attributes
     ----------
+    id : int
+        Unique network identifier for the entity.
     velocity : pygame.math.Vector2
         Current movement velocity of the entity (px/s).
     hitbox : pygame.FRect
@@ -28,19 +29,16 @@ class Combatant(Protocol):
     hurtbox : pygame.FRect
         Rectangle that incoming attacks must overlap to register a hit.
     faction : str | None
-        Faction identifier for friendly-fire rules.  Entities of the same
-        faction cannot hit each other.  ``None`` means the entity can hit
-        and be hit by anyone.
+        Faction identifier for friendly-fire rules.
     facing_right : bool
-        ``True`` if the entity is currently facing right.
+        True if the entity is currently facing right.
     is_dead : bool
-        ``True`` if the entity's health has reached zero.
+        True if the entity's health has reached zero.
     combat : Any
-        The entity's ``CombatComponent``-like object.  Must expose at least
-        ``is_attacking``, ``attack_box``, ``current_phase``,
-        ``charge_multiplier``, ``targets_hit``, and ``on_hit()``.
+        The entity's CombatComponent-like object.
     """
 
+    id: int
     velocity: pygame.math.Vector2
     hitbox: pygame.FRect
     hurtbox: pygame.FRect
@@ -71,21 +69,14 @@ class Combatant(Protocol):
     ) -> None:
         """Apply raw damage and knockback to the entity.
 
-        Implementations should reduce health, apply velocity for knockback,
-        and trigger death when health reaches zero.  **This method should
-        NOT call ``self.combat.on_hit()``** — the combat system is
-        responsible for calling ``on_hit()`` separately so it can control
-        the ``interrupt`` parameter (e.g. for super armor).
-
         Parameters
         ----------
         amount : int
             Hit points to subtract.
         source_center_x : float | None
-            X centre of the damage source, used to determine knockback
-            direction.  ``None`` if directionless.
+            X centre of the damage source.
         knockback : KnockbackConfig | None
-            Knockback impulse.  ``None`` means no knockback.
+            Knockback impulse.
         """
         ...
 
@@ -100,14 +91,11 @@ class Combatant(Protocol):
         ...
 
     def die(self) -> None:
-        """Handle the entity's death (play animation, disable collisions, etc.)."""
+        """Handle the entity's death."""
         ...
 
     def get_damage_modifier(self, damage_type: DamageType) -> float:
         """Return the damage multiplier for a given damage type.
-
-        A value of 1.0 means normal damage; 0.5 means 50 % resistance;
-        values above 1.0 indicate weakness.
 
         Parameters
         ----------
@@ -123,11 +111,7 @@ class Combatant(Protocol):
 
     @property
     def has_super_armor(self) -> bool:
-        """Whether the entity currently has super armor.
-
-        Super armor prevents stagger and directional knockback but does
-        NOT prevent damage.
-        """
+        """Whether the entity currently has super armor."""
         ...
 
     def break_super_armor(self) -> None:

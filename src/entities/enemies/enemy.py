@@ -100,7 +100,7 @@ class Enemy(Entity):
         if self.is_dead:
             return
         super().update(delta_time)
-        self.combat.update(delta_time, self.facing_right)
+        self.combat.update(delta_time)
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:

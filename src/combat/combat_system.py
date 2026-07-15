@@ -1,16 +1,14 @@
-"""
-System responsible for processing combat interactions, hit detection, and timing.
+"""System responsible for processing combat interactions, hit detection, and timing.
 
 The ``CombatSystem`` iterates over all combatants, checks for hitbox collisions
 during active attack frames, delegates hit resolution to ``HitResolver``, and
-manages the global hit-stop (freeze frame) timer for impact emphasis.
+manages the global hit-stop timer for impact emphasis.
 """
 
 import pygame
 from typing import TYPE_CHECKING
 
 from src.core.settings import Combat as CombatSettings
-from src.combat.frame_data import PhaseState
 from src.combat.hit_resolver import HitResolver
 
 if TYPE_CHECKING:
@@ -32,9 +30,9 @@ class CombatSystem:
     def process_attacks(self, combat_sprites: pygame.sprite.Group) -> None:
         """Check all active attack boxes against valid targets and resolve hits.
 
-        Iterates through all entities in ``combat_sprites``.  If an entity
+        Iterates through all entities in ``combat_sprites``. If an entity
         is attacking and in the ACTIVE sub-state, its attack box is tested
-        against the hurtboxes of entities from different factions.  Valid
+        against the hurtboxes of entities from different factions. Valid
         hits are forwarded to ``HitResolver.resolve``.
 
         Parameters
@@ -71,7 +69,7 @@ class CombatSystem:
                 if attacker_faction == target_faction:
                     continue
 
-                if target in combat.targets_hit:
+                if target.id in combat.targets_hit:
                     continue
 
                 if not attack_box.colliderect(target.hurtbox):
@@ -84,14 +82,13 @@ class CombatSystem:
                     charge_multiplier=combat.charge_multiplier,
                 )
 
-                combat.targets_hit.add(target)
+                combat.targets_hit.add(target.id)
 
                 hitstop_duration = (
                     CombatSettings.HITSTOP_BASE
                     + (phase.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR)
                 )
-                self.hit_stop_timer = max(
-                    self.hit_stop_timer, hitstop_duration)
+                self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
 
     def update_timer(self, delta_time: float) -> None:
         """Tick the hit-stop timer.
