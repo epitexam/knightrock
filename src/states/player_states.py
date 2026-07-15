@@ -115,14 +115,13 @@ class PlayerAttackState(PlayerBaseState):
 
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state and cancel the ongoing attack."""
-        self.entity.combat._end_attack()
+        self.entity.combat.state.end()
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state."""
         if not self.entity.combat.is_attacking:
             return self.ground_return()
         return None
-
 
 class PlayerBlockState(PlayerBaseState):
     """Represent the PlayerBlock state."""

@@ -4,6 +4,7 @@ from src.physics import SeparationSystem
 
 class GameplayLoop:
     """Process combat and entity updates each frame."""
+
     def __init__(self):
         """Initialize the GameplayLoop instance."""
         self.combat_system = CombatSystem()

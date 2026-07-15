@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from src.combat.attack_types import AttackSequence
+from src.combat.frame_data import AttackDefinition
 
 
 @dataclass(frozen=True)
@@ -11,7 +11,7 @@ class EnemyConfig:
     size: Sequence[float]
     color: Sequence[int]
     health: float
-    attacks: Mapping[str, AttackSequence]
+    attacks: Mapping[str, AttackDefinition]
     attack_name: str | None = None
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)

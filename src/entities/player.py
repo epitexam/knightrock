@@ -7,8 +7,8 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.attack_loading import load_attacks
-from src.combat.attack_types import KnockbackConfig
-from src.combat.combat import CombatComponent
+from src.combat.combat_component import CombatComponent
+from src.combat.knockback import KnockbackConfig
 from src.core.colors import Colors
 from src.core.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
@@ -71,7 +71,11 @@ class Player(Entity):
             combat=None,
         )
 
-        self.combat = CombatComponent(self)
+        self.combat = CombatComponent(
+            self,
+            combo_window=CombatSettings.COMBO_WINDOW,
+            hurt_duration=CombatSettings.PLAYER_HURT_DURATION,
+        )
         load_attacks(self.combat, PLAYER_ATTACKS)
 
         self.speed = float(Physics.PLAYER_SPEED)
@@ -294,9 +298,8 @@ class Player(Entity):
         self.invincibility_timer = 0.0
         self.hitbox.width = self._original_hitbox_width
 
-        if self.combat.current_attack:
-            self.combat.current_attack = None
-            self.combat.attack_box = None
+        self.combat.state.end()
+        self.combat.hitbox.clear()
 
     def respawn(self) -> None:
         """Alias for reset_position, used after death."""
@@ -351,9 +354,9 @@ class Player(Entity):
 
         super().receive_damage(amount, source_center_x, knockback, interrupt)
 
-        if interrupt and hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
-            self.combat.hurt_timer = min(
-                self.combat.hurt_timer,
+        if interrupt and self.combat._hurt_timer > 0:
+            self.combat._hurt_timer = min(
+                self.combat._hurt_timer,
                 CombatSettings.PLAYER_HURT_DURATION,
             )
 

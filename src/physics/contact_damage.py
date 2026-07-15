@@ -1,5 +1,5 @@
 import pygame
-from src.combat.attack_types import KnockbackConfig
+from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
 
 

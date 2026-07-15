@@ -6,8 +6,8 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from src.combat.attack_types import KnockbackConfig
-from src.combat.combat import CombatComponent, NullCombatComponent
+from src.combat.knockback import KnockbackConfig
+from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.damage_types import DamageType
 from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import (
@@ -83,7 +83,7 @@ class Entity(Sprite):
         Initialize the entity.
 
         Args:
-            pos: Initial top-left position.
+            pos: Starting top-left position.
             size: Width and height of the sprite surface.
             color: Fill colour for the sprite surface.
             groups: Sprite group(s) to add this entity to.
@@ -258,7 +258,6 @@ class Entity(Sprite):
             self.velocity.x = knockback.power[0]
             self.velocity.y = knockback.power[1]
         else:
-
             if source_center_x is not None:
                 direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
             else:
@@ -266,27 +265,6 @@ class Entity(Sprite):
                     self, "facing_right", True) else -1.0
             self.velocity.x = knockback.power[0] * direction
             self.velocity.y = knockback.power[1]
-
-    def _trigger_hit_interruption(
-        self,
-        interrupt: bool,
-        knockback: Optional[KnockbackConfig],
-    ) -> None:
-        """
-        If `interrupt` is True and the entity has a combat component,
-        call `on_hit` with a hurt duration calculated from the knockback.
-        """
-        if not interrupt or self.combat is None:
-            return
-        if knockback is not None:
-            hurt_duration = (
-                CombatSettings.HURT_DURATION
-                + abs(knockback.power[1]) *
-                CombatSettings.HURT_DURATION_KNOCKBACK_SCALE
-            )
-        else:
-            hurt_duration = CombatSettings.HURT_DURATION
-        self.combat.on_hit(hurt_duration)
 
     def receive_damage(
         self,
@@ -302,7 +280,7 @@ class Entity(Sprite):
             amount: Raw damage (will be modified by resistances in subclasses).
             source_center_x: X‑coordinate of the damage source for knockback direction.
             knockback: Configuration for the push effect.
-            interrupt: Whether to interrupt current actions and enter hurt state.
+            interrupt: Whether to interrupt current actions (ignored here, handled by HitResolver).
         """
         if self.is_dead:
             return
@@ -311,8 +289,6 @@ class Entity(Sprite):
 
         if knockback is not None:
             self._apply_knockback(knockback, source_center_x)
-
-        self._trigger_hit_interruption(interrupt, knockback)
 
     def stagger(self, duration: float) -> None:
         """
@@ -333,7 +309,7 @@ class Entity(Sprite):
 
         self.stagger_timer = duration
         self.combat.is_hurt = False
-        self.combat.hurt_timer = 0.0
+        self.combat._hurt_timer = 0.0
         self.state_machine.change_state("stagger", force=True)
 
     def update(self, delta_time: float) -> None:

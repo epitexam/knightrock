@@ -9,6 +9,7 @@ from src.core.settings import Display, Debug
 from src.core.camera import Camera
 from src.physics.contact_damage import ContactDamageSystem
 
+
 class Level:
     """Manage a game level and its entities."""
 

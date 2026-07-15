@@ -2,6 +2,7 @@ import pygame
 from src.core.colors import Colors
 from src.core.camera import Camera
 from src.core.settings import Debug
+from src.combat.frame_data import PhaseState
 
 PANEL_BG = (20, 22, 26, 220)
 PANEL_BORDER = (90, 100, 110)
@@ -95,31 +96,33 @@ class UIManager:
             f"Jumps  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
             f"Dash   req {player._dash_requested!s:5}  dur {player._dash_duration_timer:.2f}s",
         ]
+
         line_colors = {}
 
         combat = player.combat
         if combat is not None:
-            attack_name = combat.current_attack or "-"
-            if combat.current_attack and combat.current_phase is not None:
-                phase_text = f"{combat.current_phase_index}/{len(combat.attacks[combat.current_attack].phases) - 1}"
-            else:
-                phase_text = "idle"
+            attack_name = combat.state.attack_name or "-"
+            phase_idx = combat.state.phase_index
+            total_phases = 0
+            if combat.state.current_attack_def:
+                total_phases = len(combat.state.current_attack_def.phases)
+            phase_text = f"{phase_idx}/{total_phases-1}" if total_phases > 0 else "idle"
             lines.append(f"Combat {attack_name}  phase {phase_text}")
 
             hurt_idx = len(lines)
             lines.append(
-                f"Hurt   {combat.is_hurt!s:5} {combat.hurt_timer:.2f}s")
+                f"Hurt   {combat.is_hurt!s:5} {combat._hurt_timer:.2f}s")
             if combat.is_hurt:
                 line_colors[hurt_idx] = TEXT_CRIT
 
-            if combat.is_charging and combat.charging_attack_name:
+            if combat.charging.is_charging and combat.charging.attack_name:
                 idx = len(lines)
                 lines.append(
-                    f"Charge {combat.charging_attack_name} {combat.charge_timer:.2f}s")
+                    f"Charge {combat.charging.attack_name} {combat.charging.charge_timer:.2f}s")
                 line_colors[idx] = TEXT_WARN
 
             cooldowns = [
-                f"{name}:{cd:.2f}s" for name, cd in combat.cooldowns.items() if cd > 0
+                f"{name}:{cd:.2f}s" for name, cd in combat._cooldowns.items() if cd > 0
             ]
             if cooldowns:
                 lines.append("CDs    " + ", ".join(cooldowns[:4]))
@@ -153,10 +156,8 @@ class UIManager:
             f"Dash   spd {p.dash_speed:.0f}  dur {p.dash_duration:.2f}s  fric {p.dash_friction:.1f}",
         ]
 
-        combo_count = p.combat.combo_count if hasattr(
-            p.combat, "combo_count") else 0
-        combo_timer = p.combat.combo_timer if hasattr(
-            p.combat, "combo_timer") else 0.0
+        combo_count = p.combat.combo.count if hasattr(p.combat, "combo") else 0
+        combo_timer = p.combat.combo._timer if hasattr(p.combat.combo, "_timer") else 0.0
         lines.append(f"Combo  x{combo_count}   {combo_timer:.2f}s")
 
         return self.draw_panel(x, y, lines, title="STATS", line_colors={0: hp_color})

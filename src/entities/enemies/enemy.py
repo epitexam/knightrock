@@ -5,7 +5,7 @@ import pygame
 import random
 from pygame.sprite import Group
 
-from src.combat.combat import CombatComponent
+from src.combat.combat_component import CombatComponent
 from src.combat.attack_loading import load_attacks
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.schema import EnemyConfig
@@ -20,6 +20,7 @@ from src.states.enemy_states import (
 from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
 from src.physics import lerp_velocity
+from src.core.settings import Combat as CombatSettings
 
 
 class Enemy(Entity):
@@ -52,7 +53,11 @@ class Enemy(Entity):
         )
 
         self.config = config
-        self.combat = CombatComponent(self)
+        self.combat = CombatComponent(
+            self,
+            combo_window=CombatSettings.COMBO_WINDOW,
+            hurt_duration=CombatSettings.HURT_DURATION,
+        )
         load_attacks(self.combat, config.attacks)
 
         self.player = player_reference
@@ -99,7 +104,8 @@ class Enemy(Entity):
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
-            lerp_velocity(self, 0.0, min(1.0, self.passive_friction * delta_time))
+            lerp_velocity(self, 0.0, min(
+                1.0, self.passive_friction * delta_time))
 
         self.move(delta_time, apply_gravity=True)
 
