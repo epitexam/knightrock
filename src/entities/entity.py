@@ -1,3 +1,5 @@
+"""Base module for game entities with physics, health, and combat capabilities."""
+
 import uuid
 from collections.abc import Iterable, Sequence
 from typing import Any, Optional, Union
@@ -21,35 +23,60 @@ from src.states.null_state_machine import NullStateMachine
 
 
 class Entity(Sprite):
-    """
-    Base class for any game entity with a hitbox, health, and combat capabilities.
+    """Base class for any game entity with a hitbox, health, and combat capabilities.
 
-    Attributes:
-        hitbox (pygame.FRect): The physical collision box.
-        old_hitbox (pygame.FRect): Previous frame's hitbox (for collision resolution).
-        collision_sprites (Group): All sprites that block movement.
-        on_surface (dict[str, bool]): Contact flags: floor, left, right.
-        velocity (Vector2): Current speed in pixels per second.
-        normal_gravity (float): Gravity when moving upward or stationary.
-        fall_gravity (float): Gravity when falling (can be higher).
-        slide_gravity (float): Gravity applied during wall sliding.
-        max_slide_speed (float): Maximum downward speed while sliding.
-        max_fall_speed (float): Terminal velocity.
-        drag_coefficient (float): Air resistance during upward movement.
-        fall_drag_coefficient (float): Air resistance during downward movement.
-        health (float): Current hit points.
-        max_health (float): Maximum hit points.
-        is_dead (bool): True if health <= 0 and die() has been called.
-        spawn_pos (Vector2): Initial position for respawning.
-        moving_platforms (list): Platforms that carry the entity.
-        combat (CombatComponent | NullCombatComponent): Attack/defense state.
-        state_machine: State machine for AI or player behaviour.
-        facing_right (bool): Visual direction.
-        stagger_timer (float): Remaining time of forced stagger.
-        super_armor (bool): Whether the entity ignores stagger.
-        super_armor_count (int): Number of hits received while super_armor active.
-        pushable (bool): Whether the entity can be pushed by separation system.
-        faction (str): "player", "enemy", "neutral", etc.
+    Attributes
+    ----------
+    hitbox : pygame.FRect
+        The physical collision box.
+    old_hitbox : pygame.FRect
+        Previous frame's hitbox for collision resolution.
+    collision_sprites : Group
+        All sprites that block movement.
+    on_surface : dict[str, bool]
+        Contact flags: floor, left, right.
+    velocity : Vector2
+        Current speed in pixels per second.
+    normal_gravity : float
+        Gravity when moving upward or stationary.
+    fall_gravity : float
+        Gravity when falling (can be higher).
+    slide_gravity : float
+        Gravity applied during wall sliding.
+    max_slide_speed : float
+        Maximum downward speed while sliding.
+    max_fall_speed : float
+        Terminal velocity.
+    drag_coefficient : float
+        Air resistance during upward movement.
+    fall_drag_coefficient : float
+        Air resistance during downward movement.
+    health : float
+        Current hit points.
+    max_health : float
+        Maximum hit points.
+    is_dead : bool
+        True if health <= 0 and die() has been called.
+    spawn_pos : Vector2
+        Initial position for respawning.
+    moving_platforms : list
+        Platforms that carry the entity.
+    combat : CombatComponent | NullCombatComponent
+        Attack/defense state.
+    state_machine : StateMachine
+        State machine for AI or player behaviour.
+    facing_right : bool
+        Visual direction.
+    stagger_timer : float
+        Remaining time of forced stagger.
+    super_armor : bool
+        Whether the entity ignores stagger.
+    super_armor_count : int
+        Number of hits received while super_armor active.
+    pushable : bool
+        Whether the entity can be pushed by separation system.
+    faction : str
+        Faction identifier ("player", "enemy", "neutral", etc.).
     """
 
     hitbox: pygame.FRect
@@ -79,21 +106,32 @@ class Entity(Sprite):
         spawn_pos: Optional[Union[Sequence[float], Vector2]] = None,
         combat: Optional[CombatComponent] = None,
     ) -> None:
-        """
-        Initialize the entity.
+        """Initialize the entity.
 
-        Args:
-            pos: Starting top-left position.
-            size: Width and height of the sprite surface.
-            color: Fill colour for the sprite surface.
-            groups: Sprite group(s) to add this entity to.
-            collision_sprites: Group of sprites that block movement.
-            hitbox_inflate: (x, y) inflation for the hitbox relative to the rect.
-            health: Starting health.
-            max_health: Maximum health cap.
-            faction: Faction for combat targeting.
-            spawn_pos: Respawn position; defaults to `pos`.
-            combat: Optional custom combat component; otherwise NullCombatComponent.
+        Parameters
+        ----------
+        pos : Union[Sequence[float], Vector2]
+            Starting top-left position.
+        size : Sequence[float]
+            Width and height of the sprite surface.
+        color : Sequence[int]
+            Fill colour for the sprite surface.
+        groups : Union[Group, Sequence[Group]]
+            Sprite group(s) to add this entity to.
+        collision_sprites : Group
+            Group of sprites that block movement.
+        hitbox_inflate : Sequence[float]
+            (x, y) inflation for the hitbox relative to the rect.
+        health : float
+            Starting health.
+        max_health : float
+            Maximum health cap.
+        faction : str
+            Faction for combat targeting.
+        spawn_pos : Optional[Union[Sequence[float], Vector2]]
+            Respawn position; defaults to `pos`.
+        combat : Optional[CombatComponent]
+            Optional custom combat component; otherwise NullCombatComponent.
         """
         super().__init__(groups)
         self.id: str = uuid.uuid4().hex
@@ -178,9 +216,19 @@ class Entity(Sprite):
         self.super_armor_count = 0
 
     def get_damage_modifier(self, damage_type: DamageType) -> float:
-        """
-        Damage multiplier for a given damage type.
+        """Damage multiplier for a given damage type.
+
         Override in subclasses for resistances/vulnerabilities.
+
+        Parameters
+        ----------
+        damage_type : DamageType
+            The category of incoming damage.
+
+        Returns
+        -------
+        float
+            Multiplier applied to the raw damage amount.
         """
         return 1.0
 
@@ -201,7 +249,13 @@ class Entity(Sprite):
         pass
 
     def apply_gravity(self, delta_time: float) -> None:
-        """Apply gravity with drag, respecting wall sliding."""
+        """Apply gravity with drag, respecting wall sliding.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         apply_entity_gravity(self, delta_time)
 
     def check_contact(self) -> None:
@@ -209,15 +263,35 @@ class Entity(Sprite):
         update_contact_state(self, self.collision_sprites)
 
     def handle_collisions(self, axis: str) -> None:
-        """Resolve collisions along a given axis."""
+        """Resolve collisions along a given axis.
+
+        Parameters
+        ----------
+        axis : str
+            The axis to resolve collisions on ('x' or 'y').
+        """
         resolve_collisions(self, axis)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Move the entity based on velocity, resolving collisions."""
+        """Move the entity based on velocity, resolving collisions.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        apply_gravity : bool
+            Whether to apply gravity this frame.
+        """
         move_entity(self, delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
-        """Carry the entity along moving platforms."""
+        """Carry the entity along moving platforms.
+
+        Parameters
+        ----------
+        moving_platforms : Iterable[Any]
+            An iterable of moving platform sprites.
+        """
         apply_moving_platform(self, moving_platforms)
 
     def reset_position(self) -> None:
@@ -233,9 +307,14 @@ class Entity(Sprite):
         self.health = self.max_health
 
     def _apply_damage(self, amount: int) -> None:
-        """
-        Subtract health points and trigger death if health reaches zero.
+        """Subtract health points and trigger death if health reaches zero.
+
         This is a separate method to allow overriding or extending.
+
+        Parameters
+        ----------
+        amount : int
+            The amount of hit points to subtract.
         """
         self.health -= amount
 
@@ -244,11 +323,18 @@ class Entity(Sprite):
         knockback: KnockbackConfig,
         source_center_x: Optional[float],
     ) -> None:
-        """
-        Apply knockback velocity based on the configuration and source position.
+        """Apply knockback velocity based on the configuration and source position.
+
         For 'from_attacker' mode, the horizontal direction is derived from
         the source's x‑coordinate relative to this entity's hitbox.
         For 'fixed' mode, the power is applied as‑is.
+
+        Parameters
+        ----------
+        knockback : KnockbackConfig
+            Configuration for the push effect.
+        source_center_x : Optional[float]
+            X‑coordinate of the damage source for knockback direction.
         """
         if knockback.power == (0.0, 0.0):
             return
@@ -272,14 +358,18 @@ class Entity(Sprite):
         knockback: Optional[KnockbackConfig] = None,
         interrupt: bool = True,
     ) -> None:
-        """
-        Public entry point for applying damage, knockback, and hit reactions.
+        """Public entry point for applying damage, knockback, and hit reactions.
 
-        Args:
-            amount: Raw damage (will be modified by resistances in subclasses).
-            source_center_x: X‑coordinate of the damage source for knockback direction.
-            knockback: Configuration for the push effect.
-            interrupt: Whether to interrupt current actions (ignored here, handled by HitResolver).
+        Parameters
+        ----------
+        amount : int
+            Raw damage (will be modified by resistances in subclasses).
+        source_center_x : Optional[float]
+            X‑coordinate of the damage source for knockback direction.
+        knockback : Optional[KnockbackConfig]
+            Configuration for the push effect.
+        interrupt : bool
+            Whether to interrupt current actions (handled by HitResolver).
         """
         if self.is_dead:
             return
@@ -290,12 +380,16 @@ class Entity(Sprite):
             self._apply_knockback(knockback, source_center_x)
 
     def stagger(self, duration: float) -> None:
-        """
-        Apply stagger, handling super armor and stunlock protection.
+        """Apply stagger, handling super armor and stunlock protection.
 
         Super armor is consumed after `SUPER_ARMOR_THRESHOLD` hits.
         If the entity has super armor and the threshold is not reached,
         no stagger is applied.
+
+        Parameters
+        ----------
+        duration : float
+            The duration of the stagger in seconds.
         """
         if self.is_dead or self.stagger_timer > 0:
             return
@@ -312,7 +406,13 @@ class Entity(Sprite):
         self.state_machine.change_state("stagger", force=True)
 
     def update(self, delta_time: float) -> None:
-        """Update timers and state; called every frame."""
+        """Update timers and state; called every frame.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         if self.is_dead:
             return
 

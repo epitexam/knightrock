@@ -1,143 +1,114 @@
-from typing import Optional
-import pygame
+"""
+États de la machine d'état pour les ennemis (IA).
+"""
+
 import random
-
+import pygame
 from src.states.state_machine import State
-from src.physics import lerp_velocity
-
-
-class EnemyHurtState(State):
-    """Represent the EnemyHurt state."""
-
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 3.0 * delta_time), delta_time)
-        if not self.entity.combat.is_hurt:
-            if self.entity.stagger_timer > 0:
-                return "stagger"
-            return "idle"
-        return None
 
 
 class EnemyIdleState(State):
-    """Represent the EnemyIdle state."""
+    """État d'attente : l'ennemi reste immobile un court instant."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
-        self.entity.velocity.x = 0.0
-        self.entity.patrol_timer = 0.0
+    def enter(self, previous=None):
+        self.timer = self.entity.idle_duration
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
-        if self.entity.can_see_player():
-            return "chase"
-        self.entity.patrol_timer += delta_time
-        if self.entity.patrol_timer >= self.entity.idle_duration:
-            return "patrol"
-        return None
+    def update(self, delta_time):
+        self.timer -= delta_time
+        if self.timer <= 0:
+            if self.entity.can_see_player():
+                self.entity.state_machine.change_state("chase")
+            else:
+                self.entity.state_machine.change_state("patrol")
 
 
 class EnemyPatrolState(State):
-    """Represent the EnemyPatrol state."""
+    """État de patrouille : l'ennemi se déplace dans une direction."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
-        self.entity.patrol_direction = 1 if random.random() > 0.5 else -1
-        self.entity.patrol_timer = 0.0
+    def enter(self, previous=None):
+        self.patrol_timer = self.entity.patrol_interval
+        self.direction = self.entity.patrol_direction
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+    def update(self, delta_time):
+        self.entity.move_axis = self.direction
+        self.entity.apply_horizontal_movement(delta_time)
+
         if self.entity.can_see_player():
-            return "chase"
+            self.entity.state_machine.change_state("chase")
+            return
 
-        self.entity.facing_right = self.entity.patrol_direction > 0
-        self.entity.velocity.x = (
-            self.entity.patrol_direction * self.entity.chase_speed * 0.5
-        )
+        self.patrol_timer -= delta_time
+        if self.patrol_timer <= 0:
+            self.direction *= -1
+            self.patrol_timer = self.entity.patrol_interval
+            self.entity.facing_right = self.direction > 0
 
-        self.entity.patrol_timer += delta_time
-        if self.entity.patrol_timer >= self.entity.patrol_interval:
-            self.entity.patrol_direction *= -1
-            self.entity.patrol_timer = 0.0
-
-        if (self.entity.patrol_direction > 0 and self.entity.on_surface["right"]) or (
-            self.entity.patrol_direction < 0 and self.entity.on_surface["left"]
-        ):
-            self.entity.patrol_direction *= -1
-            self.entity.patrol_timer = 0.0
-
-        return None
+    def exit(self, next_state=None):
+        self.entity.move_axis = 0.0
 
 
 class EnemyChaseState(State):
-    """Represent the EnemyChase state."""
+    """État de poursuite : l'ennemi se dirige vers le joueur."""
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
-        if self.entity.player is not None:
-            self.entity.facing_right = (
-                self.entity.player.hitbox.centerx > self.entity.hitbox.centerx
-            )
-            direction = 1.0 if self.entity.facing_right else -1.0
-            self.entity.velocity.x = direction * self.entity.chase_speed
+    def enter(self, previous=None):
+        self.entity.face_player()
+
+    def update(self, delta_time):
+        if self.entity.player is None:
+            self.entity.state_machine.change_state("idle")
+            return
+
+        player_center = self.entity.player.hitbox.centerx
+        enemy_center = self.entity.hitbox.centerx
+        if abs(player_center - enemy_center) < 10:
+            self.entity.move_axis = 0.0
+        else:
+            self.entity.move_axis = 1.0 if player_center > enemy_center else -1.0
+            self.entity.facing_right = self.entity.move_axis > 0
+
+        self.entity.apply_horizontal_movement(delta_time)
+
         if self.entity.is_player_in_range():
-            return "attack"
-        if not self.entity.can_see_player():
-            return "idle"
-        return None
+            self.entity.state_machine.change_state("attack")
+        elif not self.entity.can_see_player():
+            self.entity.state_machine.change_state("idle")
+
 
 class EnemyAttackState(State):
-    """Represent the EnemyAttack state."""
+    """État d'attaque : l'ennemi exécute son attaque."""
 
-    def __init__(self, entity):
-        """Initialize the EnemyAttackState instance."""
-        super().__init__(entity)
-        self.attack_retry_timer = 0.0
+    def enter(self, previous=None):
+        self.entity.face_player()
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
-        self.entity.velocity.x = 0.0
-        if self.entity.attack_name is None:
-            self.attack_retry_timer = 0.0
-            return
-        success = self.entity.combat.start_attack(
-            self.entity.attack_name, self.entity.facing_right
-        )
-        if not success:
-            self.attack_retry_timer = 0.3
-        else:
-            self.attack_retry_timer = 0.0
+        if self.entity.attack_name is not None:
+            self.entity.combat.start_attack(self.entity.attack_name)
+        self._started = True
 
-    def exit(self, next_state: Optional[str] = None) -> None:
-        """Exit the state and cancel the ongoing attack."""
-        self.entity.combat.state.end()
-
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
-        if self.attack_retry_timer > 0:
-            self.attack_retry_timer -= delta_time
-            if self.attack_retry_timer <= 0:
-                if not self.entity.combat.is_attacking:
-                    return "chase" if self.entity.can_see_player() else "idle"
-
+    def update(self, delta_time):
         if not self.entity.combat.is_attacking:
-            return "chase" if self.entity.can_see_player() else "idle"
-        return None
+            self.entity.state_machine.change_state("idle")
+
+    def exit(self, next_state=None):
+        self._started = False
+
+
+class EnemyHurtState(State):
+    """État de réaction aux dégâts (hurt)."""
+
+    def enter(self, previous=None):
+        pass
+
+    def update(self, delta_time):
+        if not self.entity.combat.is_hurt:
+            self.entity.state_machine.change_state("idle")
 
 
 class EnemyStaggerState(State):
-    """Represent the EnemyStagger state."""
+    """État de stagger (étourdissement)."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
+    def enter(self, previous=None):
         pass
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 10.0 * delta_time), delta_time)
-
+    def update(self, delta_time):
         if self.entity.stagger_timer <= 0:
-            return "chase" if self.entity.can_see_player() else "idle"
-        return None
+            self.entity.state_machine.change_state("idle")

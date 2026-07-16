@@ -1,3 +1,5 @@
+"""Enemy entities configured by data with AI state machines and combat capabilities."""
+
 from collections.abc import Sequence
 from typing import Any
 
@@ -19,12 +21,50 @@ from src.states.enemy_states import (
 )
 from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
-from src.physics import lerp_velocity
+from src.physics import lerp_velocity, apply_horizontal_movement
 from src.core.settings import Combat as CombatSettings
 
 
 class Enemy(Entity):
-    """Enemy entity configured by data instead of per-enemy boilerplate."""
+    """Enemy entity configured by data instead of per-enemy boilerplate.
+
+    Attributes
+    ----------
+    config : EnemyConfig
+        Data class holding enemy parameters.
+    player : Any
+        Reference to the player entity for AI targeting.
+    chase_speed : float
+        Movement speed when chasing the player.
+    vision_range : float
+        Distance at which the enemy can detect the player.
+    attack_range : float
+        Distance required to initiate an attack.
+    attack_name : str
+        Name of the attack definition loaded into the combat component.
+    idle_duration : float
+        Time spent in the idle state before patrolling.
+    passive_friction : float
+        Friction applied when the enemy has no AI.
+    move_axis : float
+        Normalized horizontal input for physics calculations.
+    speed : float
+        Current maximum movement speed.
+    floor_control : float
+        Ground acceleration factor.
+    air_control : float
+        Air acceleration factor.
+    patrol_direction : int
+        1 for right, -1 for left.
+    patrol_timer : float
+        Time elapsed in current patrol direction.
+    patrol_interval : float
+        Time before changing patrol direction.
+    pushable : bool
+        Whether the entity can be pushed by separation system.
+    super_armor : bool
+        Whether the entity ignores stagger.
+    """
 
     def __init__(
         self,
@@ -34,7 +74,21 @@ class Enemy(Entity):
         player_reference: Any,
         config: EnemyConfig,
     ) -> None:
-        """Initialize an enemy from its configuration."""
+        """Initialize an enemy from its configuration.
+
+        Parameters
+        ----------
+        pos : Sequence[float]
+            Starting top-left position.
+        groups : Group | Sequence[Group]
+            Sprite group(s) to add this enemy to.
+        collision_sprites : Group
+            Group of sprites that block movement.
+        player_reference : Any
+            Reference to the player entity.
+        config : EnemyConfig
+            Data class holding enemy parameters.
+        """
         max_health = (
             config.max_health if config.max_health is not None else config.health
         )
@@ -68,12 +122,22 @@ class Enemy(Entity):
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
 
+        self.move_axis = 0.0
+        self.speed = self.chase_speed
+        self.floor_control = 20.0
+        self.air_control = 10.0
+
         self.patrol_direction = 1 if random.random() > 0.5 else -1
         self.patrol_timer = 0.0
         self.patrol_interval = config.patrol_interval
 
         self.pushable = config.pushable
         self.super_armor = config.super_armor
+
+        if self.player is not None:
+            self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
+        else:
+            self.facing_right = True
 
         if config.has_ai:
             self._setup_state_machine()
@@ -95,12 +159,50 @@ class Enemy(Entity):
             priority=100,
         )
 
+    def face_player(self) -> None:
+        """Orient the enemy toward the player if player exists.
+
+        Includes a small threshold to prevent rapid toggling when
+        horizontally aligned.
+        """
+        if self.player is None or self.is_dead:
+            return
+
+        if abs(self.player.hitbox.centerx - self.hitbox.centerx) > 2.0:
+            self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
+
+    def apply_horizontal_movement(self, delta_time: float) -> None:
+        """Delegate to the shared physics function.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
+        apply_horizontal_movement(self, delta_time)
+
     def update(self, delta_time: float) -> None:
-        """Update the current state."""
+        """Update the current state, direction, and combat.
+
+        Ensures facing direction is resolved correctly before the combat
+        component updates the attack hitbox position.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         if self.is_dead:
             return
         super().update(delta_time)
+
+        if self.config.has_ai and self.player is not None:
+            current = self.state_machine.current_state_name
+            if current not in ("attack", "hurt", "stagger"):
+                self.face_player()
+
         self.combat.update(delta_time)
+
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
@@ -110,7 +212,13 @@ class Enemy(Entity):
         self.move(delta_time, apply_gravity=True)
 
     def can_see_player(self) -> bool:
-        """Return whether see player."""
+        """Check if the player is within vision range.
+
+        Returns
+        -------
+        bool
+            True if the player is close enough to be detected.
+        """
         if self.player is None:
             return False
         return (
@@ -121,7 +229,13 @@ class Enemy(Entity):
         )
 
     def is_player_in_range(self) -> bool:
-        """Return whether player in range."""
+        """Check if the player is within attack range.
+
+        Returns
+        -------
+        bool
+            True if the player is close enough to be attacked.
+        """
         if self.player is None:
             return False
         return (
@@ -142,7 +256,19 @@ class Goblin(Enemy):
         collision_sprites: Group,
         player_reference: Any,
     ) -> None:
-        """Initialize the Goblin instance."""
+        """Initialize the Goblin instance.
+
+        Parameters
+        ----------
+        pos : Sequence[float]
+            Starting top-left position.
+        groups : Group | Sequence[Group]
+            Sprite group(s) to add this goblin to.
+        collision_sprites : Group
+            Group of sprites that block movement.
+        player_reference : Any
+            Reference to the player entity.
+        """
         super().__init__(
             pos=pos,
             groups=groups,
@@ -162,6 +288,19 @@ class TrainingDummy(Enemy):
         collision_sprites: Group,
         player_reference: Any = None,
     ) -> None:
+        """Initialize the TrainingDummy instance.
+
+        Parameters
+        ----------
+        pos : Sequence[float]
+            Starting top-left position.
+        groups : Group | Sequence[Group]
+            Sprite group(s) to add this dummy to.
+        collision_sprites : Group
+            Group of sprites that block movement.
+        player_reference : Any, optional
+            Reference to the player entity.
+        """
         super().__init__(
             pos=pos,
             groups=groups,

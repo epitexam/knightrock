@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
+from src.combat.knockback import KnockbackConfig
 
 
 class HitResolver:
@@ -31,16 +32,18 @@ class HitResolver:
         The resolution flow:
 
         1. Compute final damage = ``hit.damage × charge_multiplier × type_modifier``.
-        2. If the target has super armor **and** the hit does not break it:
+        2. Compute scaled knockback by applying ``charge_multiplier`` to the
+           base knockback power vectors.
+        3. If the target has super armor **and** the hit does not break it:
            - Apply damage without knockback.
            - Notify the target's combat component with ``interrupt=False``.
-        3. Otherwise:
+        4. Otherwise:
            - Break super armor if applicable.
-           - Apply damage with knockback.
+           - Apply damage with scaled knockback.
            - Notify the target's combat component with ``interrupt=True``.
            - Apply stagger if ``hit.stagger > 0``.
-        4. If the hit is a finisher and the target is below 20 % HP:
-           - Deal damage equal to remaining HP (kills the target).
+        5. If the hit is a finisher and the target is below 20 % HP:
+           - Deal damage equal to remaining HP (kills the target) with scaled knockback.
 
         Parameters
         ----------
@@ -51,7 +54,7 @@ class HitResolver:
         hit : HitProperties
             Hit properties from the active phase definition.
         charge_multiplier : float
-            Damage multiplier from charging (default 1.0).
+            Damage and knockback multiplier from charging (default 1.0).
 
         Raises
         ------
@@ -64,6 +67,13 @@ class HitResolver:
         if final_damage <= 0:
             return
 
+        scaled_power = (
+            hit.knockback.power[0] * charge_multiplier,
+            hit.knockback.power[1] * charge_multiplier,
+        )
+        effective_knockback = KnockbackConfig(
+            power=scaled_power, mode=hit.knockback.mode)
+
         source_x: float = attacker.hitbox.centerx
 
         if target.has_super_armor and not hit.super_armor_break:
@@ -73,7 +83,7 @@ class HitResolver:
             if target.has_super_armor and hit.super_armor_break:
                 target.break_super_armor()
 
-            target.receive_damage(final_damage, source_x, hit.knockback)
+            target.receive_damage(final_damage, source_x, effective_knockback)
             target.combat.on_hit(interrupt=True)
 
             if hit.stagger > 0:
@@ -84,4 +94,5 @@ class HitResolver:
             and not target.is_dead
             and target.health <= target.max_health * 0.2
         ):
-            target.receive_damage(int(target.health), source_x, hit.knockback)
+            target.receive_damage(int(target.health),
+                                  source_x, effective_knockback)

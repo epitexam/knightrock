@@ -1,7 +1,9 @@
 """
 Unified keyboard and gamepad input management.
-Provides a snapshot-based input state to ensure deterministic behavior within fixed timesteps.
-Exposes boolean states and 'just pressed' / 'just released' events.
+
+Provides a snapshot-based input state to ensure deterministic behavior
+within fixed timesteps. Exposes boolean states and 'just pressed' /
+'just released' events.
 """
 
 from typing import Optional
@@ -36,6 +38,9 @@ class InputManager:
 
         self._attack1_held = False
         self._attack1_just_released = False
+
+        self._attack2_held = False
+        self._attack2_just_released = False
 
     def connect_joystick(self, joystick: JoystickType) -> None:
         """Handle the connection of a new joystick."""
@@ -81,6 +86,9 @@ class InputManager:
         self._attack1_just_released = self._is_key_just_released(pygame.K_a) or self._is_button_just_released(1)
 
         self._attack2_just_pressed = self._is_key_just_pressed(pygame.K_s) or self._is_button_just_pressed(2)
+        self._attack2_held = self._is_key_held(pygame.K_s) or self._is_button_held(2)
+        self._attack2_just_released = self._is_key_just_released(pygame.K_s) or self._is_button_just_released(2)
+
         self._attack3_just_pressed = self._is_key_just_pressed(pygame.K_d) or self._is_button_just_pressed(3)
         self._attack4_just_pressed = self._is_key_just_pressed(pygame.K_f) or self._is_button_just_pressed(5)
         self._reset_just_pressed = self._is_key_just_pressed(pygame.K_r) or self._is_button_just_pressed(7)
@@ -190,6 +198,16 @@ class InputManager:
     def attack2_just_pressed(self) -> bool:
         """Check if attack 2 was just pressed."""
         return self._attack2_just_pressed
+
+    @property
+    def attack2_held(self) -> bool:
+        """Check if attack 2 is held."""
+        return self._attack2_held
+
+    @property
+    def attack2_just_released(self) -> bool:
+        """Check if attack 2 was just released."""
+        return self._attack2_just_released
 
     @property
     def attack3_just_pressed(self) -> bool:

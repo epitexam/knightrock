@@ -1,3 +1,5 @@
+"""Player entity with full state machine, input reading, and combat mechanics."""
+
 import math
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -30,11 +32,11 @@ from src.states.player_states import (
 from src.states.state_machine import StateMachine
 
 ATTACK_FORBIDDEN_STATES = {"wall_slide", "block", "hurt", "dash", "stagger"}
+"""Set of state names where initiating an attack is forbidden."""
 
 
 class Player(Entity):
-    """
-    Playable character with full state machine, input reading, and combat.
+    """Playable character with full state machine, input reading, and combat.
 
     Extends Entity with movement, jumping, dashing, blocking, and attacks.
     """
@@ -47,15 +49,20 @@ class Player(Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
     ) -> None:
-        """
-        Initialise the player.
+        """Initialise the player.
 
-        Args:
-            pos: Starting position.
-            groups: Sprite groups to add to.
-            collision_sprites: Collision group.
-            moving_platforms: Platforms that can carry the player.
-            input_manager: Input source.
+        Parameters
+        ----------
+        pos : tuple[float, float] | pygame.math.Vector2
+            Starting position.
+        groups : Group | Sequence[Group]
+            Sprite groups to add to.
+        collision_sprites : Group
+            Collision group.
+        moving_platforms : Iterable[Any]
+            Platforms that can carry the player.
+        input_manager : InputManager
+            Input source.
         """
         super().__init__(
             pos,
@@ -227,26 +234,47 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Start the appropriate attack based on input and state."""
+        """Process attack input with support for charge attacks.
+
+        Chargeable attacks (heavy_attack) use a hold-to-charge, release-to-fire
+        flow. Non-chargeable attacks fire immediately on press.
+
+        While charging, entering a forbidden state (dash, hurt, etc.) cancels
+        the charge. Releasing the charge button triggers the attack with a
+        damage multiplier proportional to the hold duration.
+        """
+        im = self.input_manager
+
+        if self.combat.charging.is_charging:
+            if not self.can_attack():
+                self.combat.charging.cancel()
+                return
+            if im.attack2_just_released:
+                self.combat.release_charge()
+            return
+
         if not self.can_attack():
             return
 
-        im = self.input_manager
         if im.attack1_just_pressed:
-            if self.on_surface["floor"]:
-                attack_name = "light_attack"
-            else:
-                attack_name = "air_attack"
-            self.combat.start_attack(attack_name, self.facing_right)
+            attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
+            self.combat.start_attack(attack_name)
         elif im.attack2_just_pressed:
-            self.combat.start_attack("heavy_attack", self.facing_right)
+            if not self.combat.start_charge("heavy_attack"):
+                self.combat.start_attack("heavy_attack")
         elif im.attack3_just_pressed:
-            self.combat.start_attack("uppercut", self.facing_right)
+            self.combat.start_attack("uppercut")
         elif im.attack4_just_pressed:
-            self.combat.start_attack("dash_attack", self.facing_right)
+            self.combat.start_attack("dash_attack")
 
     def update_timers(self, delta_time: float) -> None:
-        """Update coyote, jump buffer, block stamina, and dash recharge timers."""
+        """Update coyote, jump buffer, block stamina, and dash recharge timers.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         if self.jump_buffer_timer > 0:
             self.jump_buffer_timer -= delta_time
 
@@ -274,7 +302,13 @@ class Player(Entity):
                     self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
-        """Apply horizontal acceleration/control."""
+        """Apply horizontal acceleration/control.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         apply_horizontal_movement(self, delta_time)
 
     def handle_jump(self) -> None:
@@ -282,7 +316,7 @@ class Player(Entity):
         resolve_jump(self)
 
     def reset_position(self) -> None:
-        """Full reset of all player‑specific state."""
+        """Full reset of all player-specific state."""
         super().reset_position()
         self.jump_buffer_timer = 0.0
         self.coyote_timer = 0.0
@@ -300,6 +334,7 @@ class Player(Entity):
 
         self.combat.state.end()
         self.combat.hitbox.clear()
+        self.combat.charging.cancel()
 
     def respawn(self) -> None:
         """Alias for reset_position, used after death."""
@@ -311,8 +346,16 @@ class Player(Entity):
         knockback: KnockbackConfig | None,
         source_center_x: float | None,
     ) -> None:
-        """
-        Handle damage while blocking: consume stamina, reduce knockback, and apply reduced push.
+        """Handle damage while blocking: consume stamina, reduce knockback, and apply reduced push.
+
+        Parameters
+        ----------
+        amount : int
+            Raw damage amount used for stamina calculation.
+        knockback : KnockbackConfig | None
+            Original knockback configuration.
+        source_center_x : float | None
+            X‑coordinate of the damage source.
         """
         _kb = knockback if knockback is not None else KnockbackConfig()
         self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
@@ -334,12 +377,22 @@ class Player(Entity):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
     ) -> None:
-        """
-        Override to add blocking, invincibility, and reduced hurt duration.
+        """Override to add blocking, invincibility, and reduced hurt duration.
 
         If blocking, stamina is consumed and knockback is reduced; no health lost.
         If invincible (from being hit), damage is ignored.
         Otherwise, delegate to the base implementation and reduce hurt duration.
+
+        Parameters
+        ----------
+        amount : int
+            Hit points to subtract.
+        source_center_x : float | None
+            X centre of the damage source for knockback direction.
+        knockback : KnockbackConfig | None
+            Knockback impulse configuration.
+        interrupt : bool
+            Whether the hit interrupts the entity's current action.
         """
         if self.is_dead:
             return
@@ -363,7 +416,13 @@ class Player(Entity):
         self.invincibility_timer = CombatSettings.INVINCIBILITY_DURATION
 
     def update(self, delta_time: float) -> None:
-        """Main update loop: input, timers, combat, state machine, and movement."""
+        """Main update loop: input, timers, combat, state machine, and movement.
+
+        Parameters
+        ----------
+        delta_time : float
+            Elapsed time in seconds since the last frame.
+        """
         if self.is_dead:
             return
 
