@@ -1,11 +1,11 @@
 """
-Centralized game configuration.
+Centralized game configuration and constants.
 """
 import os
 
 
 class Display:
-    """Represent a Display."""
+    """Display and rendering settings."""
     WIDTH = 1440
     HEIGHT = 900
     SIZE = (WIDTH, HEIGHT)
@@ -14,18 +14,18 @@ class Display:
 
 
 class World:
-    """Represent a World."""
+    """World and tilemap dimensions."""
     TILE_SIZE = 64
 
 
 class Physics:
-    """Represent a Physics."""
+    """Physics and movement constants."""
     PLAYER_SPEED = 450
     GRAVITY = 2000.0
     FALL_GRAVITY = 2800.0
     JUMP_FORCE = 550.0
     MAX_FALL_SPEED = 1500.0
-    DASH_SPEED = 2750
+    DASH_SPEED = 1500
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
     DASH_MAX_CHARGES = 2
@@ -42,7 +42,7 @@ class Physics:
 
 
 class Combat:
-    """Represent a Combat."""
+    """Combat, damage, and stagger mechanics."""
     HURT_DURATION = 0.4
     PLAYER_HURT_DURATION = 0.12
     INVINCIBILITY_DURATION = 0.18
@@ -63,7 +63,7 @@ class Combat:
 
 
 class Separation:
-    """Represent a Separation."""
+    """Collision separation and resolution constants."""
     SEARCH_INFLATE = 400
     SUB_STEP_SIZE = 16.0
     STRENGTH = 0.65
@@ -71,14 +71,14 @@ class Separation:
 
 
 class Debug:
-    """Represent a Debug."""
+    """Debug overlay settings."""
     ENABLED = os.getenv("DEBUG", "0") == "1"
     FONT_SIZE = 24
     LABEL_FONT_SIZE = 16
 
 
 class Simulation:
-    """Settings for fixed timestep and network."""
+    """Fixed timestep and simulation loop settings."""
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION

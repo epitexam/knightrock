@@ -12,10 +12,10 @@ from src.physics.movement import apply_moving_platform
 
 
 class Level:
-    """Manage a game level and its entities."""
+    """Manage a game level, its entities, and the execution of gameplay systems."""
 
     def __init__(self, display_surface: pygame.Surface, tmx_map, input_manager) -> None:
-        """Initialize the Level instance."""
+        """Initialize the Level instance with rendering, physics, and gameplay groups."""
         self.display_surface = display_surface
         self.input_manager = input_manager
 
@@ -24,6 +24,7 @@ class Level:
         self.moving_platforms = pygame.sprite.Group()
         self.combat_sprites = pygame.sprite.Group()
         self.entity_sprites = pygame.sprite.Group()
+        self.fx_sprites = pygame.sprite.Group()
 
         self.camera = Camera(Display.WIDTH, Display.HEIGHT)
 
@@ -44,7 +45,7 @@ class Level:
         self.setup(tmx_map)
 
     def setup(self, tmx_map) -> None:
-        """Perform setup."""
+        """Parse map data and build the level entities."""
         self.world_builder = WorldBuilder(tmx_map)
         self.player = self.world_builder.build(
             self.all_sprites,
@@ -56,7 +57,7 @@ class Level:
         )
 
     def update(self, delta_time: float) -> None:
-        """Update the current state."""
+        """Process all level logic for a single tick."""
         self.debug_controller.update(delta_time, self.player)
 
         combat_system = self.gameplay_loop.combat_system
@@ -72,12 +73,7 @@ class Level:
                 apply_moving_platform(entity, self.moving_platforms)
 
         self.entity_sprites.update(effective_delta)
-
-        updated_ids = {id(s) for s in self.moving_platforms} | {
-            id(s) for s in self.entity_sprites}
-        for sprite in self.all_sprites:
-            if id(sprite) not in updated_ids:
-                sprite.update(effective_delta)
+        self.fx_sprites.update(effective_delta)
 
         self.gameplay_loop.process_combat_and_separation(
             effective_delta, self.combat_sprites, self.entity_sprites
@@ -97,10 +93,10 @@ class Level:
             self.respawn_timer = 0.0
 
         if self.player is not None and not self.player.is_dead:
-            self.camera.follow(self.player.hitbox)
+            self.camera.follow(self.player.hitbox, delta_time)
 
     def draw(self, fps: float) -> None:
-        """Draw the current state."""
+        """Render the level visuals and debug overlays."""
         self.renderer.draw(self.all_sprites, Debug.ENABLED)
         self.renderer.draw_health_bars(self.entity_sprites)
 

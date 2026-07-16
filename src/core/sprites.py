@@ -7,7 +7,7 @@ from src.physics.platforms import update_moving_platform
 
 
 class Sprite(pygame.sprite.Sprite):
-    """Represent a Sprite."""
+    """Represent a base game sprite with floating-point rect precision."""
 
     def __init__(
         self,
@@ -18,7 +18,7 @@ class Sprite(pygame.sprite.Sprite):
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
         ] = None,
     ) -> None:
-        """Initialize the Sprite instance."""
+        """Initialize the Sprite instance and assign it to specified groups."""
         super().__init__()
 
         if groups is not None:
@@ -38,7 +38,7 @@ class Sprite(pygame.sprite.Sprite):
 
 
 class MovingPlatform(Sprite):
-    """Represent a MovingPlatform."""
+    """Represent a platform that moves between predefined waypoints."""
 
     def __init__(
         self,
@@ -48,18 +48,17 @@ class MovingPlatform(Sprite):
         speed: float,
         groups=None,
     ):
-        """Initialize the MovingPlatform instance."""
+        """Initialize the MovingPlatform with waypoints, speed, and physics properties."""
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.waypoints = [pygame.math.Vector2(x, y) for (x, y) in waypoints]
         self.speed = speed
         self.current_target = 1
         self.direction = 1
-        self.old_rect = self.rect.copy()
 
         self.hitbox: pygame.FRect = self.rect.copy()
         self.old_hitbox: pygame.FRect = self.hitbox.copy()
         self.pos = pygame.math.Vector2(self.rect.topleft)
 
     def update(self, delta_time: float):
-        """Update the current state."""
+        """Update the platform position based on its movement logic."""
         update_moving_platform(self, delta_time)

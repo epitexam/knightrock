@@ -214,7 +214,6 @@ class Entity(Sprite):
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
         """Move the entity based on velocity, resolving collisions."""
-        self.apply_moving_platform(self.moving_platforms)
         move_entity(self, delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:

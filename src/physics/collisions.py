@@ -34,9 +34,12 @@ def update_contact_state(entity: Sprite, collision_sprites: Group) -> None:
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
 
-    floor_rect = pygame.FRect(entity.hitbox.bottomleft, (entity.hitbox.width, 2))
-    right_rect = pygame.FRect(Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
-    left_rect = pygame.FRect(Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
+    floor_rect = pygame.FRect(entity.hitbox.bottomleft,
+                              (entity.hitbox.width, 2))
+    right_rect = pygame.FRect(
+        Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
+    left_rect = pygame.FRect(
+        Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
 
     on = entity.on_surface
     on["floor"] = on["right"] = on["left"] = False
@@ -75,8 +78,13 @@ def resolve_collisions(
         if not hitbox_collide(entity, sprite):
             continue
 
-        sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
+        sprite_old = getattr(sprite, "old_hitbox", getattr(
+            sprite, "old_rect", sprite.rect))
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
+
+        if axis == "horizontal":
+            if entity.hitbox.bottom <= sprite_box.top + 4:
+                continue
 
         was_overlapping = entity.old_hitbox.colliderect(sprite_old)
 
