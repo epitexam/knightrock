@@ -1,14 +1,12 @@
 """Enemy entities configured by data with AI state machines and combat capabilities."""
 
+import random
 from collections.abc import Sequence
 from typing import Any
 
 import pygame
-import random
 from pygame.sprite import Group
 
-from src.combat.combat_component import CombatComponent
-from src.combat.attack_loading import load_attacks
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import (
@@ -21,7 +19,7 @@ from src.states.enemy_states import (
 )
 from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
-from src.physics import lerp_velocity, apply_horizontal_movement
+from src.physics import lerp_velocity
 from src.core.settings import Combat as CombatSettings
 
 
@@ -46,24 +44,12 @@ class Enemy(Entity):
         Time spent in the idle state before patrolling.
     passive_friction : float
         Friction applied when the enemy has no AI.
-    move_axis : float
-        Normalized horizontal input for physics calculations.
-    speed : float
-        Current maximum movement speed.
-    floor_control : float
-        Ground acceleration factor.
-    air_control : float
-        Air acceleration factor.
     patrol_direction : int
         1 for right, -1 for left.
     patrol_timer : float
         Time elapsed in current patrol direction.
     patrol_interval : float
         Time before changing patrol direction.
-    pushable : bool
-        Whether the entity can be pushed by separation system.
-    super_armor : bool
-        Whether the entity ignores stagger.
     """
 
     def __init__(
@@ -73,6 +59,7 @@ class Enemy(Entity):
         collision_sprites: Group,
         player_reference: Any,
         config: EnemyConfig,
+        rng: random.Random | None = None,
     ) -> None:
         """Initialize an enemy from its configuration.
 
@@ -88,6 +75,8 @@ class Enemy(Entity):
             Reference to the player entity.
         config : EnemyConfig
             Data class holding enemy parameters.
+        rng : random.Random | None
+            Optional random number generator instance for deterministic behaviors.
         """
         max_health = (
             config.max_health if config.max_health is not None else config.health
@@ -103,17 +92,12 @@ class Enemy(Entity):
             max_health=max_health,
             faction="enemy",
             spawn_pos=pos,
-            combat=None,
+            attacks=config.attacks,
+            hurt_duration=CombatSettings.HURT_DURATION,
+            rng=rng,
         )
 
         self.config = config
-        self.combat = CombatComponent(
-            self,
-            combo_window=CombatSettings.COMBO_WINDOW,
-            hurt_duration=CombatSettings.HURT_DURATION,
-        )
-        load_attacks(self.combat, config.attacks)
-
         self.player = player_reference
         self.chase_speed = config.chase_speed
         self.vision_range = config.vision_range
@@ -122,12 +106,11 @@ class Enemy(Entity):
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
 
-        self.move_axis = 0.0
         self.speed = self.chase_speed
         self.floor_control = 20.0
         self.air_control = 10.0
 
-        self.patrol_direction = 1 if random.random() > 0.5 else -1
+        self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
         self.patrol_timer = 0.0
         self.patrol_interval = config.patrol_interval
 
@@ -152,7 +135,10 @@ class Enemy(Entity):
         self.state_machine.add_state("hurt", EnemyHurtState(self))
         self.state_machine.add_state("stagger", EnemyStaggerState(self))
         self.state_machine.set_initial_state("idle")
+        self._setup_interrupts()
 
+    def _setup_interrupts(self) -> None:
+        """Register enemy-specific state machine interrupts."""
         self.state_machine.add_interrupt(
             "hurt",
             lambda: self.combat.is_hurt,
@@ -160,56 +146,25 @@ class Enemy(Entity):
         )
 
     def face_player(self) -> None:
-        """Orient the enemy toward the player if player exists.
-
-        Includes a small threshold to prevent rapid toggling when
-        horizontally aligned.
-        """
+        """Orient the enemy toward the player if player exists."""
         if self.player is None or self.is_dead:
             return
+        self.face_towards(self.player.hitbox.centerx)
 
-        if abs(self.player.hitbox.centerx - self.hitbox.centerx) > 2.0:
-            self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
-
-    def apply_horizontal_movement(self, delta_time: float) -> None:
-        """Delegate to the shared physics function.
-
-        Parameters
-        ----------
-        delta_time : float
-            Elapsed time in seconds since the last frame.
-        """
-        apply_horizontal_movement(self, delta_time)
-
-    def update(self, delta_time: float) -> None:
-        """Update the current state, direction, and combat.
-
-        Ensures facing direction is resolved correctly before the combat
-        component updates the attack hitbox position.
-
-        Parameters
-        ----------
-        delta_time : float
-            Elapsed time in seconds since the last frame.
-        """
-        if self.is_dead:
-            return
-        super().update(delta_time)
-
+    def _pre_update(self, delta_time: float) -> None:
+        """Update facing direction before combat updates."""
         if self.config.has_ai and self.player is not None:
             current = self.state_machine.current_state_name
             if current not in ("attack", "hurt", "stagger"):
                 self.face_player()
 
-        self.combat.update(delta_time)
-
+    def _update_state_machine(self, delta_time: float) -> None:
+        """Update AI state machine or apply passive friction if AI is disabled."""
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
             lerp_velocity(self, 0.0, min(
                 1.0, self.passive_friction * delta_time), delta_time)
-
-        self.move(delta_time, apply_gravity=True)
 
     def can_see_player(self) -> bool:
         """Check if the player is within vision range.
@@ -255,6 +210,7 @@ class Goblin(Enemy):
         groups: Group | Sequence[Group],
         collision_sprites: Group,
         player_reference: Any,
+        rng: random.Random | None = None,
     ) -> None:
         """Initialize the Goblin instance.
 
@@ -268,6 +224,8 @@ class Goblin(Enemy):
             Group of sprites that block movement.
         player_reference : Any
             Reference to the player entity.
+        rng : random.Random | None
+            Optional random number generator instance for deterministic behaviors.
         """
         super().__init__(
             pos=pos,
@@ -275,6 +233,7 @@ class Goblin(Enemy):
             collision_sprites=collision_sprites,
             player_reference=player_reference,
             config=ENEMY_CONFIGS["goblin"],
+            rng=rng,
         )
 
 
@@ -287,6 +246,7 @@ class TrainingDummy(Enemy):
         groups: Group | Sequence[Group],
         collision_sprites: Group,
         player_reference: Any = None,
+        rng: random.Random | None = None,
     ) -> None:
         """Initialize the TrainingDummy instance.
 
@@ -300,6 +260,8 @@ class TrainingDummy(Enemy):
             Group of sprites that block movement.
         player_reference : Any, optional
             Reference to the player entity.
+        rng : random.Random | None
+            Optional random number generator instance for deterministic behaviors.
         """
         super().__init__(
             pos=pos,
@@ -307,4 +269,5 @@ class TrainingDummy(Enemy):
             collision_sprites=collision_sprites,
             player_reference=player_reference,
             config=ENEMY_CONFIGS["dummy"],
+            rng=rng,
         )

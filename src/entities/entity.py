@@ -1,8 +1,10 @@
 """Base module for game entities with physics, health, and combat capabilities."""
 
+import random
 import uuid
 from collections.abc import Iterable, Sequence
-from typing import Any, Optional, Union
+from dataclasses import dataclass
+from typing import Any
 
 import pygame
 from pygame.math import Vector2
@@ -10,10 +12,12 @@ from pygame.sprite import Group, Sprite
 
 from src.combat.knockback import KnockbackConfig
 from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.combat.attack_loading import load_attacks
 from src.combat.damage_types import DamageType
 from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import (
     apply_entity_gravity,
+    apply_horizontal_movement,
     apply_moving_platform,
     move_entity,
     resolve_collisions,
@@ -22,101 +26,73 @@ from src.physics import (
 from src.states.null_state_machine import NullStateMachine
 
 
-class Entity(Sprite):
-    """Base class for any game entity with a hitbox, health, and combat capabilities.
+@dataclass
+class DamageResult:
+    """Represents the outcome of a damage application."""
+    applied: bool = False
+    blocked: bool = False
+    killed: bool = False
+    actual_damage: float = 0.0
 
-    Attributes
+
+def compute_knockback_direction(
+    hitbox_centerx: float,
+    source_center_x: float | None,
+    facing_right: bool,
+) -> float:
+    """Compute the horizontal direction of a knockback impulse.
+
+    Parameters
     ----------
-    hitbox : pygame.FRect
-        The physical collision box.
-    old_hitbox : pygame.FRect
-        Previous frame's hitbox for collision resolution.
-    collision_sprites : Group
-        All sprites that block movement.
-    on_surface : dict[str, bool]
-        Contact flags: floor, left, right.
-    velocity : Vector2
-        Current speed in pixels per second.
-    normal_gravity : float
-        Gravity when moving upward or stationary.
-    fall_gravity : float
-        Gravity when falling (can be higher).
-    slide_gravity : float
-        Gravity applied during wall sliding.
-    max_slide_speed : float
-        Maximum downward speed while sliding.
-    max_fall_speed : float
-        Terminal velocity.
-    drag_coefficient : float
-        Air resistance during upward movement.
-    fall_drag_coefficient : float
-        Air resistance during downward movement.
-    health : float
-        Current hit points.
-    max_health : float
-        Maximum hit points.
-    is_dead : bool
-        True if health <= 0 and die() has been called.
-    spawn_pos : Vector2
-        Initial position for respawning.
-    moving_platforms : list
-        Platforms that carry the entity.
-    combat : CombatComponent | NullCombatComponent
-        Attack/defense state.
-    state_machine : StateMachine
-        State machine for AI or player behaviour.
+    hitbox_centerx : float
+        The center X coordinate of the receiving entity.
+    source_center_x : float | None
+        The center X coordinate of the damage source.
     facing_right : bool
-        Visual direction.
-    stagger_timer : float
-        Remaining time of forced stagger.
-    super_armor : bool
-        Whether the entity ignores stagger.
-    super_armor_count : int
-        Number of hits received while super_armor active.
-    pushable : bool
-        Whether the entity can be pushed by separation system.
-    faction : str
-        Faction identifier ("player", "enemy", "neutral", etc.).
-    """
+        The current facing direction of the entity.
 
-    hitbox: pygame.FRect
-    old_hitbox: pygame.FRect
-    collision_sprites: Group
-    on_surface: dict[str, bool]
-    velocity: Vector2
-    normal_gravity: float
-    slide_gravity: float
-    max_slide_speed: float
-    fall_gravity: float
-    max_fall_speed: float
-    drag_coefficient: float
-    fall_drag_coefficient: float
+    Returns
+    -------
+    float
+        1.0 for right, -1.0 for left.
+    """
+    if source_center_x is not None:
+        return 1.0 if hitbox_centerx >= source_center_x else -1.0
+    return 1.0 if facing_right else -1.0
+
+
+class Entity(Sprite):
+    """Base class for any game entity with a hitbox, health, and combat capabilities."""
 
     def __init__(
         self,
-        pos: Union[Sequence[float], Vector2],
+        pos: Sequence[float] | Vector2,
         size: Sequence[float],
         color: Sequence[int],
-        groups: Union[Group, Sequence[Group]],
+        groups: Group | Sequence[Group],
         collision_sprites: Group,
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
         health: float = 100.0,
         max_health: float = 100.0,
         faction: str = "neutral",
-        spawn_pos: Optional[Union[Sequence[float], Vector2]] = None,
-        combat: Optional[CombatComponent] = None,
+        spawn_pos: Sequence[float] | Vector2 | None = None,
+        combat: CombatComponent | None = None,
+        attacks: dict[str, Any] | None = None,
+        hurt_duration: float | None = None,
+        invincibility_duration: float = 0.0,
+        rng: random.Random | None = None,
     ) -> None:
         """Initialize the entity.
 
         Parameters
         ----------
-        pos : Union[Sequence[float], Vector2]
+        pos : Sequence[float] | Vector2
             Starting top-left position.
         size : Sequence[float]
             Width and height of the sprite surface.
         color : Sequence[int]
             Fill colour for the sprite surface.
-        groups : Union[Group, Sequence[Group]]
+        groups : Group | Sequence[Group]
             Sprite group(s) to add this entity to.
         collision_sprites : Group
             Group of sprites that block movement.
@@ -128,15 +104,24 @@ class Entity(Sprite):
             Maximum health cap.
         faction : str
             Faction for combat targeting.
-        spawn_pos : Optional[Union[Sequence[float], Vector2]]
+        spawn_pos : Sequence[float] | Vector2 | None
             Respawn position; defaults to `pos`.
-        combat : Optional[CombatComponent]
+        combat : CombatComponent | None
             Optional custom combat component; otherwise NullCombatComponent.
+        attacks : dict[str, Any] | None
+            Dictionary of attack definitions to load into the combat component.
+        hurt_duration : float | None
+            Duration of the hurt state. Defaults to standard combat settings.
+        invincibility_duration : float
+            Duration of invincibility frames after taking damage.
+        rng : random.Random | None
+            Optional random number generator instance for deterministic behaviors.
         """
         super().__init__(groups)
         self.id: str = uuid.uuid4().hex
         self.pushable: bool = True
         self.faction: str = faction
+        self.rng = rng or random.Random()
 
         self.image = pygame.Surface(size)
         self.image.fill(color)
@@ -149,6 +134,11 @@ class Entity(Sprite):
         self.collision_sprites = collision_sprites
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.velocity = Vector2(0, 0)
+
+        self.move_axis = 0.0
+        self.speed = 0.0
+        self.floor_control = 20.0
+        self.air_control = 10.0
 
         self.normal_gravity = Physics.GRAVITY
         self.fall_gravity = Physics.FALL_GRAVITY
@@ -165,15 +155,36 @@ class Entity(Sprite):
 
         self.spawn_pos = Vector2(spawn_pos if spawn_pos is not None else pos)
         self.moving_platforms: list = []
-        self.combat: Union[CombatComponent, NullCombatComponent] = (
-            combat or NullCombatComponent()
-        )
+        
+        self.invincibility_timer = 0.0
+        self.invincibility_duration = invincibility_duration
+
+        if combat:
+            self.combat = combat
+        elif attacks:
+            self.combat = CombatComponent(
+                self,
+                combo_window=CombatSettings.COMBO_WINDOW,
+                hurt_duration=hurt_duration or CombatSettings.HURT_DURATION,
+            )
+            load_attacks(self.combat, attacks)
+        else:
+            self.combat = NullCombatComponent()
+
         self.state_machine = NullStateMachine()
         self.facing_right = True
 
         self.stagger_timer = 0.0
         self.super_armor = False
         self.super_armor_count = 0
+
+    def _setup_state_machine(self) -> None:
+        """Initialize the state machine. Override in subclasses for specific states."""
+        pass
+
+    def _setup_interrupts(self) -> None:
+        """Register state machine interrupts. Override in subclasses if needed."""
+        pass
 
     @property
     def health(self) -> float:
@@ -236,6 +247,32 @@ class Entity(Sprite):
         """Align the sprite rect with the hitbox (midbottom anchor)."""
         self.rect.midbottom = self.hitbox.midbottom
 
+    def face_movement(self, threshold: float = 0.1) -> None:
+        """Orient the entity based on its current movement axis.
+        
+        Parameters
+        ----------
+        threshold : float
+            The minimum axis magnitude to trigger a direction change.
+        """
+        if self.move_axis > threshold:
+            self.facing_right = True
+        elif self.move_axis < -threshold:
+            self.facing_right = False
+
+    def face_towards(self, x: float, threshold: float = 2.0) -> None:
+        """Orient the entity toward a specific X coordinate.
+        
+        Parameters
+        ----------
+        x : float
+            The target X-coordinate to face.
+        threshold : float
+            The minimum distance to trigger a direction change, preventing rapid toggling.
+        """
+        if abs(x - self.hitbox.centerx) > threshold:
+            self.facing_right = x > self.hitbox.centerx
+
     def _is_wall_sliding(self) -> bool:
         """Return True if the entity is currently sliding down a wall."""
         return False
@@ -249,49 +286,27 @@ class Entity(Sprite):
         pass
 
     def apply_gravity(self, delta_time: float) -> None:
-        """Apply gravity with drag, respecting wall sliding.
-
-        Parameters
-        ----------
-        delta_time : float
-            Elapsed time in seconds since the last frame.
-        """
+        """Apply gravity with drag, respecting wall sliding."""
         apply_entity_gravity(self, delta_time)
+
+    def apply_horizontal_movement(self, delta_time: float) -> None:
+        """Apply horizontal acceleration and control based on move_axis."""
+        apply_horizontal_movement(self, delta_time)
 
     def check_contact(self) -> None:
         """Update surface contact flags."""
         update_contact_state(self, self.collision_sprites)
 
     def handle_collisions(self, axis: str) -> None:
-        """Resolve collisions along a given axis.
-
-        Parameters
-        ----------
-        axis : str
-            The axis to resolve collisions on ('x' or 'y').
-        """
+        """Resolve collisions along a given axis."""
         resolve_collisions(self, axis)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
-        """Move the entity based on velocity, resolving collisions.
-
-        Parameters
-        ----------
-        delta_time : float
-            Elapsed time in seconds since the last frame.
-        apply_gravity : bool
-            Whether to apply gravity this frame.
-        """
+        """Move the entity based on velocity, resolving collisions."""
         move_entity(self, delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
-        """Carry the entity along moving platforms.
-
-        Parameters
-        ----------
-        moving_platforms : Iterable[Any]
-            An iterable of moving platform sprites.
-        """
+        """Carry the entity along moving platforms."""
         apply_moving_platform(self, moving_platforms)
 
     def reset_position(self) -> None:
@@ -304,37 +319,42 @@ class Entity(Sprite):
         self.stagger_timer = 0.0
         self.super_armor = False
         self.super_armor_count = 0
+        self.invincibility_timer = 0.0
         self.health = self.max_health
+        
+        self.combat.state.end()
+        self.combat.hitbox.clear()
+        self.combat.charging.cancel()
+        
+        self._on_reset()
 
-    def _apply_damage(self, amount: int) -> None:
-        """Subtract health points and trigger death if health reaches zero.
+    def _on_reset(self) -> None:
+        """Hook for subclasses to reset their specific state."""
+        pass
 
-        This is a separate method to allow overriding or extending.
+    def _can_receive_damage(self) -> bool:
+        """Check if the entity can currently receive damage. Override to add immunities."""
+        return not self.is_dead and self.invincibility_timer <= 0
 
-        Parameters
-        ----------
-        amount : int
-            The amount of hit points to subtract.
-        """
+    def _apply_damage(self, amount: float) -> float:
+        """Subtract health points and return actual damage dealt."""
+        old_health = self._health
         self.health -= amount
+        return old_health - self.health
 
     def _apply_knockback(
         self,
         knockback: KnockbackConfig,
-        source_center_x: Optional[float],
+        source_center_x: float | None,
     ) -> None:
         """Apply knockback velocity based on the configuration and source position.
-
-        For 'from_attacker' mode, the horizontal direction is derived from
-        the source's x‑coordinate relative to this entity's hitbox.
-        For 'fixed' mode, the power is applied as‑is.
 
         Parameters
         ----------
         knockback : KnockbackConfig
             Configuration for the push effect.
-        source_center_x : Optional[float]
-            X‑coordinate of the damage source for knockback direction.
+        source_center_x : float | None
+            X-coordinate of the damage source for knockback direction.
         """
         if knockback.power == (0.0, 0.0):
             return
@@ -343,41 +363,53 @@ class Entity(Sprite):
             self.velocity.x = knockback.power[0]
             self.velocity.y = knockback.power[1]
         else:
-            if source_center_x is not None:
-                direction = 1.0 if self.hitbox.centerx >= source_center_x else -1.0
-            else:
-                direction = 1.0 if getattr(
-                    self, "facing_right", True) else -1.0
+            direction = compute_knockback_direction(
+                self.hitbox.centerx, source_center_x, self.facing_right
+            )
             self.velocity.x = knockback.power[0] * direction
             self.velocity.y = knockback.power[1]
 
     def receive_damage(
         self,
-        amount: int,
-        source_center_x: Optional[float] = None,
-        knockback: Optional[KnockbackConfig] = None,
+        amount: float,
+        source_center_x: float | None = None,
+        knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
-    ) -> None:
+    ) -> DamageResult:
         """Public entry point for applying damage, knockback, and hit reactions.
 
         Parameters
         ----------
-        amount : int
+        amount : float
             Raw damage (will be modified by resistances in subclasses).
-        source_center_x : Optional[float]
-            X‑coordinate of the damage source for knockback direction.
-        knockback : Optional[KnockbackConfig]
+        source_center_x : float | None
+            X-coordinate of the damage source for knockback direction.
+        knockback : KnockbackConfig | None
             Configuration for the push effect.
         interrupt : bool
-            Whether to interrupt current actions (handled by HitResolver).
+            Whether to interrupt current actions.
+
+        Returns
+        -------
+        DamageResult
+            A dataclass detailing the outcome of the damage application.
         """
-        if self.is_dead:
-            return
+        if not self._can_receive_damage():
+            return DamageResult()
 
-        self._apply_damage(amount)
-
+        actual_damage = self._apply_damage(amount)
+        
         if knockback is not None:
             self._apply_knockback(knockback, source_center_x)
+
+        if self.invincibility_duration > 0:
+            self.invincibility_timer = self.invincibility_duration
+
+        return DamageResult(
+            applied=True,
+            killed=self.is_dead,
+            actual_damage=actual_damage,
+        )
 
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.
@@ -401,12 +433,24 @@ class Entity(Sprite):
             self.super_armor = False
 
         self.stagger_timer = duration
-        self.combat.is_hurt = False
-        self.combat._hurt_timer = 0.0
+        if hasattr(self.combat, "reset_hurt_state"):
+            self.combat.reset_hurt_state()
         self.state_machine.change_state("stagger", force=True)
 
+    def _pre_update(self, delta_time: float) -> None:
+        """Hook called at the beginning of the update loop, before combat and physics."""
+        pass
+
+    def _update_state_machine(self, delta_time: float) -> None:
+        """Update the state machine. Can be overridden to disable AI dynamically."""
+        self.state_machine.update(delta_time)
+
+    def _post_update(self, delta_time: float) -> None:
+        """Hook called at the end of the update loop, after physics."""
+        pass
+
     def update(self, delta_time: float) -> None:
-        """Update timers and state; called every frame.
+        """Main update loop template handling timers, combat, state, and movement.
 
         Parameters
         ----------
@@ -422,3 +466,14 @@ class Entity(Sprite):
             self.stagger_timer -= delta_time
             if self.stagger_timer < 0:
                 self.stagger_timer = 0.0
+
+        if self.invincibility_timer > 0:
+            self.invincibility_timer -= delta_time
+            if self.invincibility_timer < 0:
+                self.invincibility_timer = 0.0
+
+        self._pre_update(delta_time)
+        self.combat.update(delta_time)
+        self._update_state_machine(delta_time)
+        self.move(delta_time, apply_gravity=True)
+        self._post_update(delta_time)

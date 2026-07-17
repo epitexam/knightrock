@@ -1,8 +1,8 @@
 import pygame
-from src.core.colors import Colors
+from typing import Any
+
 from src.core.camera import Camera
 from src.core.settings import Debug
-from src.combat.frame_data import PhaseState
 
 PANEL_BG = (20, 22, 26, 220)
 PANEL_BORDER = (90, 100, 110)
@@ -30,11 +30,12 @@ class UIManager:
         x: int,
         y: int,
         lines: list[str],
-        color: tuple = PANEL_BG,
-        text_color: tuple = TEXT_MUTED,
+        color: tuple[int, int, int, int] = PANEL_BG,
+        text_color: tuple[int, int, int] = TEXT_MUTED,
         title: str | None = None,
-        line_colors: dict[int, tuple] | None = None,
+        line_colors: dict[int, tuple[int, int, int]] | None = None,
     ) -> int:
+        """Draw a semi-transparent debug panel with optional title and colored lines."""
         font = self.debug_font
         padding = 12
         line_height = 23
@@ -76,8 +77,8 @@ class UIManager:
 
         return panel_h + 12
 
-    def draw_state_panel(self, x: int, y: int, player) -> int:
-        """Draw state panel."""
+    def draw_state_panel(self, x: int, y: int, player: Any) -> int:
+        """Draw state panel for the player."""
         if player is None or player.state_machine is None:
             return 0
 
@@ -97,7 +98,7 @@ class UIManager:
             f"Dash   req {player._dash_requested!s:5}  dur {player._dash_duration_timer:.2f}s",
         ]
 
-        line_colors = {}
+        line_colors: dict[int, tuple[int, int, int]] = {}
 
         combat = player.combat
         if combat is not None:
@@ -110,8 +111,8 @@ class UIManager:
             lines.append(f"Combat {attack_name}  phase {phase_text}")
 
             hurt_idx = len(lines)
-            lines.append(
-                f"Hurt   {combat.is_hurt!s:5} {combat._hurt_timer:.2f}s")
+            hurt_timer = getattr(combat, "_hurt_timer", 0.0)
+            lines.append(f"Hurt   {combat.is_hurt!s:5} {hurt_timer:.2f}s")
             if combat.is_hurt:
                 line_colors[hurt_idx] = TEXT_CRIT
 
@@ -121,8 +122,9 @@ class UIManager:
                     f"Charge {combat.charging.attack_name} {combat.charging.charge_timer:.2f}s")
                 line_colors[idx] = TEXT_WARN
 
+            cooldowns_dict = getattr(combat, "_cooldowns", {})
             cooldowns = [
-                f"{name}:{cd:.2f}s" for name, cd in combat._cooldowns.items() if cd > 0
+                f"{name}:{cd:.2f}s" for name, cd in cooldowns_dict.items() if cd > 0
             ]
             if cooldowns:
                 lines.append("CDs    " + ", ".join(cooldowns[:4]))
@@ -139,7 +141,8 @@ class UIManager:
 
         return self.draw_panel(x, y, lines, title="PLAYER STATE", line_colors=line_colors)
 
-    def draw_stats_panel(self, x: int, y: int, player) -> int:
+    def draw_stats_panel(self, x: int, y: int, player: Any) -> int:
+        """Draw stats panel for the player."""
         if player is None:
             return 0
 
@@ -156,8 +159,10 @@ class UIManager:
             f"Dash   spd {p.dash_speed:.0f}  dur {p.dash_duration:.2f}s  fric {p.dash_friction:.1f}",
         ]
 
-        combo_count = p.combat.combo.count if hasattr(p.combat, "combo") else 0
-        combo_timer = p.combat.combo._timer if hasattr(p.combat.combo, "_timer") else 0.0
+        combo_count = getattr(p.combat.combo, "count", 0) if hasattr(
+            p.combat, "combo") else 0
+        combo_timer = getattr(p.combat.combo, "_timer", 0.0) if hasattr(
+            p.combat, "combo") else 0.0
         lines.append(f"Combo  x{combo_count}   {combo_timer:.2f}s")
 
         return self.draw_panel(x, y, lines, title="STATS", line_colors={0: hp_color})
@@ -172,7 +177,7 @@ class UIManager:
         hit_stop: float,
         spawn_cd: float,
     ) -> None:
-        """Draw performance panel."""
+        """Draw performance panel at the top right of the screen."""
         fps_color = TEXT_OK if fps >= 55 else TEXT_WARN if fps >= 30 else TEXT_CRIT
 
         lines = [
@@ -187,12 +192,8 @@ class UIManager:
 
         font = self.debug_font
         padding = 12
-        line_height = 23
-        title_block_h = self.title_font.get_height() + 8 + 1 + 8
-
         max_w = max(font.size(line)[0] for line in lines)
         panel_w = max_w + padding * 2
-        panel_h = title_block_h + len(lines) * line_height + padding * 2
         panel_x = self.display_surface.get_width() - panel_w - 12
         panel_y = 12
 
@@ -203,7 +204,7 @@ class UIManager:
     def draw_debug_overlays(
         self, all_sprites: pygame.sprite.Group, camera: Camera
     ) -> None:
-        """Draw debug overlays."""
+        """Draw debug overlays for hitboxes, attack boxes, and entity states."""
         for sprite in all_sprites:
             if hasattr(sprite, "hitbox") and sprite.hitbox:
                 rect = camera.apply(sprite.hitbox)
@@ -244,9 +245,9 @@ class UIManager:
     def draw_health_bars(
         self, entities: pygame.sprite.Group | list, camera: Camera
     ) -> None:
-        """
-            Draws a health bar above each entity with `health` / `max_health`.
-            The bar is centered and dynamically adjusts to avoid overlapping the debug text.
+        """Draw a health bar above each entity.
+
+        The bar is centered and dynamically adjusts to avoid overlapping the debug text.
         """
         for entity in entities:
             if not hasattr(entity, "health") or not hasattr(entity, "max_health"):
