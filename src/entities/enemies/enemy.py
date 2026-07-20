@@ -2,9 +2,10 @@
 
 import random
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Protocol
 
 import pygame
+from pygame.math import Vector2
 from pygame.sprite import Group
 
 from src.entities.enemies.schema import EnemyConfig
@@ -24,6 +25,11 @@ from src.combat.combat_component import CombatComponent
 from src.combat.attack_loading import load_attacks
 
 
+class PlayerReference(Protocol):
+    """Protocol for player reference to enable proper typing."""
+    hitbox: pygame.FRect
+
+
 class Enemy(Entity):
     """Enemy entity configured by data instead of per-enemy boilerplate.
 
@@ -36,7 +42,7 @@ class Enemy(Entity):
     ----------
     config : EnemyConfig
         Data class holding enemy parameters.
-    player : Any
+    player : PlayerReference | None
         Reference to the player entity for AI targeting.
     chase_speed : float
         Movement speed when chasing the player.
@@ -44,7 +50,7 @@ class Enemy(Entity):
         Distance at which the enemy can detect the player.
     attack_range : float
         Distance required to initiate an attack.
-    attack_name : str
+    attack_name : str | None
         Name of the attack definition loaded into the combat component.
     idle_duration : float
         Time spent in the idle state before patrolling.
@@ -64,10 +70,10 @@ class Enemy(Entity):
 
     def __init__(
         self,
-        pos: Sequence[float],
+        pos: Sequence[float] | Vector2,
         groups: Group | Sequence[Group],
         collision_sprites: Group,
-        player_reference: Any,
+        player_reference: PlayerReference | None,
         config: EnemyConfig,
         rng: random.Random | None = None,
     ) -> None:
@@ -75,13 +81,13 @@ class Enemy(Entity):
 
         Parameters
         ----------
-        pos : Sequence[float]
+        pos : Sequence[float] | Vector2
             Starting top-left position.
         groups : Group | Sequence[Group]
             Sprite group(s) to add this enemy to.
         collision_sprites : Group
             Group of sprites that block movement.
-        player_reference : Any
+        player_reference : PlayerReference | None
             Reference to the player entity.
         config : EnemyConfig
             Data class holding enemy parameters.
