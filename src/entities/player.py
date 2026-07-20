@@ -126,9 +126,9 @@ class Player(Entity):
         Maximum number of jumps allowed while airborne.
     midair_jumps_left : int
         Remaining midair jumps.
-    max_wall_jumps : int
+    max_wall_jumps : int | float
         Maximum number of wall jumps allowed.
-    wall_jumps_left : int
+    wall_jumps_left : int | float
         Remaining wall jumps.
     coyote_timer : float
         Time remaining for coyote jump.
@@ -168,15 +168,44 @@ class Player(Entity):
         Original hitbox width for dash hitbox modification.
     _dash_requested : bool
         Whether a dash was requested this frame.
-    space_held : bool
-        Whether space is currently held.
-    left_held : bool
-        Whether left movement is currently held.
-    right_held : bool
-        Whether right movement is currently held.
-    block_held : bool
-        Whether block is currently held.
     """
+
+    # Public attributes with type annotations
+    input_manager: InputManager
+    speed: float
+    floor_control: float
+    air_control: float
+    jump_height: float
+    wall_jump_height: float
+    wall_jump_push_multiplier: float
+    wall_jump_lock_duration: float
+    wall_jump_min_lock: float
+    wall_slide_speed: float
+    max_midair_jumps: int
+    midair_jumps_left: int
+    max_wall_jumps: int | float
+    wall_jumps_left: int | float
+    coyote_timer: float
+    coyote_duration: float
+    jump_buffer_timer: float
+    jump_buffer_duration: float
+    moving_platforms: list
+    max_block_stamina: float
+    block_stamina: float
+    block_cooldown_timer: float
+    max_dash_charges: int
+    dash_charges: int
+    dash_recharge_timer: float
+    dash_penalty_timer: float
+    dash_speed: float
+    dash_duration: float
+    dash_friction: float
+    dash_penalty_duration: float
+    
+    # Private attributes
+    _dash_duration_timer: float
+    _original_hitbox_width: float
+    _dash_requested: bool
 
     def __init__(
         self,
@@ -251,16 +280,9 @@ class Player(Entity):
         self.max_wall_jumps = config.max_wall_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
-        # Input state
-        self.space_held = False
-        self.left_held = False
-        self.right_held = False
-        self.block_held = False
-
         # Jump timing
         self.coyote_timer = 0.0
         self.coyote_duration = config.coyote_duration
-
         self.jump_buffer_timer = 0.0
         self.jump_buffer_duration = config.jump_buffer_duration
 
@@ -362,6 +384,46 @@ class Player(Entity):
     def is_blocking(self) -> bool:
         """Return True if the player is currently blocking."""
         return self.state_machine.current_state_name == PlayerState.BLOCK
+
+    @property
+    def space_held(self) -> bool:
+        """Whether space is currently held."""
+        return self._space_held
+
+    @space_held.setter
+    def space_held(self, value: bool) -> None:
+        """Set space held state."""
+        self._space_held = value
+
+    @property
+    def left_held(self) -> bool:
+        """Whether left movement is currently held."""
+        return self._left_held
+
+    @left_held.setter
+    def left_held(self, value: bool) -> None:
+        """Set left held state."""
+        self._left_held = value
+
+    @property
+    def right_held(self) -> bool:
+        """Whether right movement is currently held."""
+        return self._right_held
+
+    @right_held.setter
+    def right_held(self, value: bool) -> None:
+        """Set right held state."""
+        self._right_held = value
+
+    @property
+    def block_held(self) -> bool:
+        """Whether block is currently held."""
+        return self._block_held
+
+    @block_held.setter
+    def block_held(self, value: bool) -> None:
+        """Set block held state."""
+        self._block_held = value
 
     def can_attack(self) -> bool:
         """Return True if an attack can be started from the current state."""
@@ -508,6 +570,12 @@ class Player(Entity):
         self.dash_penalty_timer = 0.0
         self._dash_requested = False
         self.hitbox.width = self._original_hitbox_width
+        
+        # Reset input state
+        self._space_held = False
+        self._left_held = False
+        self._right_held = False
+        self._block_held = False
 
     def respawn(self) -> None:
         """Alias for reset_position, used after death."""
@@ -600,3 +668,9 @@ class Player(Entity):
             )
 
         return result
+
+    # Initialize private input state attributes
+    _space_held: bool = False
+    _left_held: bool = False
+    _right_held: bool = False
+    _block_held: bool = False

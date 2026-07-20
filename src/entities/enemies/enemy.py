@@ -26,7 +26,11 @@ from src.combat.attack_loading import load_attacks
 
 
 class PlayerReference(Protocol):
-    """Protocol for player reference to enable proper typing."""
+    """Protocol for player reference to enable proper typing.
+    
+    This protocol defines the minimal interface that a player reference
+    must provide for enemy AI to function correctly.
+    """
     hitbox: pygame.FRect
 
 
@@ -67,6 +71,21 @@ class Enemy(Entity):
     super_armor : bool
         Whether the enemy has super armor (ignores stagger).
     """
+
+    # Type annotations for class attributes
+    config: EnemyConfig
+    player: PlayerReference | None
+    chase_speed: float
+    vision_range: float
+    attack_range: float
+    attack_name: str | None
+    idle_duration: float
+    passive_friction: float
+    patrol_direction: int
+    patrol_timer: float
+    patrol_interval: float
+    pushable: bool
+    super_armor: bool
 
     def __init__(
         self,
@@ -126,23 +145,23 @@ class Enemy(Entity):
 
         self.config = config
         self.player = player_reference
-        self.chase_speed: float = config.chase_speed
-        self.vision_range: float = config.vision_range
-        self.attack_range: float = config.attack_range
-        self.attack_name: str | None = config.attack_name
-        self.idle_duration: float = config.idle_duration
-        self.passive_friction: float = config.passive_friction
+        self.chase_speed = config.chase_speed
+        self.vision_range = config.vision_range
+        self.attack_range = config.attack_range
+        self.attack_name = config.attack_name
+        self.idle_duration = config.idle_duration
+        self.passive_friction = config.passive_friction
 
         self.speed = self.chase_speed
         self.floor_control = 20.0
         self.air_control = 10.0
 
-        self.patrol_direction: int = 1 if self.rng.random() > 0.5 else -1
-        self.patrol_timer: float = 0.0
-        self.patrol_interval: float = config.patrol_interval
+        self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
+        self.patrol_timer = 0.0
+        self.patrol_interval = config.patrol_interval
 
-        self.pushable: bool = config.pushable
-        self.super_armor: bool = config.super_armor
+        self.pushable = config.pushable
+        self.super_armor = config.super_armor
 
         if self.player is not None:
             self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
