@@ -28,7 +28,19 @@ from src.states.null_state_machine import NullStateMachine
 
 @dataclass
 class DamageResult:
-    """Represents the outcome of a damage application."""
+    """Represents the outcome of a damage application.
+
+    Attributes
+    ----------
+    applied : bool
+        Whether damage was successfully applied.
+    blocked : bool
+        Whether the damage was blocked.
+    killed : bool
+        Whether the damage killed the entity.
+    actual_damage : float
+        The actual amount of damage dealt after modifiers.
+    """
     applied: bool = False
     blocked: bool = False
     killed: bool = False
@@ -62,7 +74,29 @@ def compute_knockback_direction(
 
 
 class Entity(Sprite):
-    """Base class for any game entity with a hitbox, health, and combat capabilities."""
+    """Base class for any game entity with a hitbox, health, and combat capabilities.
+
+    This class provides core functionality for movement, collision detection,
+    health management, and combat interactions. It serves as the foundation
+    for both player and enemy entities.
+
+    Attributes
+    ----------
+    hitbox : pygame.FRect
+        The collision hitbox for the entity.
+    velocity : Vector2
+        Current velocity vector (x, y).
+    on_surface : dict[str, bool]
+        Contact flags for floor, left wall, and right wall.
+    health : float
+        Current health points (clamped to [0, max_health]).
+    max_health : float
+        Maximum health cap.
+    is_dead : bool
+        Whether the entity has been defeated.
+    facing_right : bool
+        Current facing direction (True = right, False = left).
+    """
 
     def __init__(
         self,
@@ -135,31 +169,32 @@ class Entity(Sprite):
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.velocity = Vector2(0, 0)
 
-        self.move_axis = 0.0
-        self.speed = 0.0
-        self.floor_control = 20.0
-        self.air_control = 10.0
+        self.move_axis: float = 0.0
+        self.speed: float = 0.0
+        self.floor_control: float = Physics.FLOOR_CONTROL
+        self.air_control: float = Physics.AIR_CONTROL
 
-        self.normal_gravity = Physics.GRAVITY
-        self.fall_gravity = Physics.FALL_GRAVITY
-        self.slide_gravity = Physics.GRAVITY * 0.15
-        self.max_slide_speed = 80.0
-        self.max_fall_speed = Physics.MAX_FALL_SPEED
+        self.normal_gravity: float = Physics.GRAVITY
+        self.fall_gravity: float = Physics.FALL_GRAVITY
+        self.slide_gravity: float = Physics.GRAVITY * 0.15
+        self.max_slide_speed: float = Physics.MAX_SLIDE_SPEED
+        self.max_fall_speed: float = Physics.MAX_FALL_SPEED
 
-        self.drag_coefficient = 0.08
-        self.fall_drag_coefficient = 0.12
+        self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
+        self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
 
-        self._health = health
-        self._max_health = max_health
-        self.is_dead = False
+        self._health: float = health
+        self._max_health: float = max_health
+        self.is_dead: bool = False
 
-        self.spawn_pos = Vector2(spawn_pos if spawn_pos is not None else pos)
+        self.spawn_pos: Vector2 = Vector2(spawn_pos if spawn_pos is not None else pos)
         self.moving_platforms: list = []
         
-        self.invincibility_timer = 0.0
-        self.invincibility_duration = invincibility_duration
+        self.invincibility_timer: float = 0.0
+        self.invincibility_duration: float = invincibility_duration
 
-        if combat:
+        # Initialize combat component - only create NullCombatComponent if no attacks and no combat provided
+        if combat is not None:
             self.combat = combat
         elif attacks:
             self.combat = CombatComponent(
@@ -172,11 +207,11 @@ class Entity(Sprite):
             self.combat = NullCombatComponent()
 
         self.state_machine = NullStateMachine()
-        self.facing_right = True
+        self.facing_right: bool = True
 
-        self.stagger_timer = 0.0
-        self.super_armor = False
-        self.super_armor_count = 0
+        self.stagger_timer: float = 0.0
+        self.super_armor: bool = False
+        self.super_armor_count: int = 0
 
     def _setup_state_machine(self) -> None:
         """Initialize the state machine. Override in subclasses for specific states."""
@@ -193,6 +228,13 @@ class Entity(Sprite):
 
     @health.setter
     def health(self, value: float) -> None:
+        """Set health, clamping to valid range and triggering death if needed.
+
+        Parameters
+        ----------
+        value : float
+            New health value.
+        """
         old = self._health
         self._health = max(0.0, min(value, self._max_health))
         if old > 0 and self._health == 0 and not self.is_dead:
@@ -205,6 +247,13 @@ class Entity(Sprite):
 
     @max_health.setter
     def max_health(self, value: float) -> None:
+        """Set maximum health, ensuring it's at least 1.0.
+
+        Parameters
+        ----------
+        value : float
+            New maximum health value.
+        """
         self._max_health = max(1.0, value)
 
     def die(self) -> None:
@@ -310,7 +359,11 @@ class Entity(Sprite):
         apply_moving_platform(self, moving_platforms)
 
     def reset_position(self) -> None:
-        """Reset the entity to its spawn position and clear all states."""
+        """Reset the entity to its spawn position and clear all states.
+
+        This method resets position, velocity, health, and various timers.
+        It also changes the state machine to idle state if available.
+        """
         self.hitbox.center = self.spawn_pos
         self.sync_rects()
         self.velocity = Vector2(0, 0)
@@ -326,6 +379,10 @@ class Entity(Sprite):
         self.combat.hitbox.clear()
         self.combat.charging.cancel()
         
+        # Reset state machine to idle
+        if hasattr(self.state_machine, 'change_state'):
+            self.state_machine.change_state("idle")
+        
         self._on_reset()
 
     def _on_reset(self) -> None:
@@ -337,7 +394,18 @@ class Entity(Sprite):
         return not self.is_dead and self.invincibility_timer <= 0
 
     def _apply_damage(self, amount: float) -> float:
-        """Subtract health points and return actual damage dealt."""
+        """Subtract health points and return actual damage dealt.
+
+        Parameters
+        ----------
+        amount : float
+            Damage amount to apply.
+
+        Returns
+        -------
+        float
+            Actual damage dealt.
+        """
         old_health = self._health
         self.health -= amount
         return old_health - self.health

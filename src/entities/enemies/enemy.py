@@ -7,7 +7,6 @@ from typing import Any
 import pygame
 from pygame.sprite import Group
 
-from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import (
     EnemyAttackState,
@@ -21,10 +20,17 @@ from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
 from src.physics import lerp_velocity
 from src.core.settings import Combat as CombatSettings
+from src.combat.combat_component import CombatComponent
+from src.combat.attack_loading import load_attacks
 
 
 class Enemy(Entity):
     """Enemy entity configured by data instead of per-enemy boilerplate.
+
+    This class provides a data-driven approach to enemy creation, where all
+    enemy parameters are defined in EnemyConfig dataclasses. This eliminates
+    the need for individual enemy subclasses that only differ in their
+    configuration.
 
     Attributes
     ----------
@@ -50,6 +56,10 @@ class Enemy(Entity):
         Time elapsed in current patrol direction.
     patrol_interval : float
         Time before changing patrol direction.
+    pushable : bool
+        Whether the enemy can be pushed by attacks.
+    super_armor : bool
+        Whether the enemy has super armor (ignores stagger).
     """
 
     def __init__(
@@ -81,6 +91,17 @@ class Enemy(Entity):
         max_health = (
             config.max_health if config.max_health is not None else config.health
         )
+        
+        # Initialize combat component before calling super().__init__
+        # to avoid creating a NullCombatComponent that will be immediately discarded
+        combat_component = CombatComponent(
+            self,
+            combo_window=CombatSettings.COMBO_WINDOW,
+            hurt_duration=CombatSettings.HURT_DURATION,
+        )
+        if config.attacks:
+            load_attacks(combat_component, config.attacks)
+        
         super().__init__(
             pos=pos,
             size=config.size,
@@ -92,30 +113,30 @@ class Enemy(Entity):
             max_health=max_health,
             faction="enemy",
             spawn_pos=pos,
-            attacks=config.attacks,
+            combat=combat_component,
             hurt_duration=CombatSettings.HURT_DURATION,
             rng=rng,
         )
 
         self.config = config
         self.player = player_reference
-        self.chase_speed = config.chase_speed
-        self.vision_range = config.vision_range
-        self.attack_range = config.attack_range
-        self.attack_name = config.attack_name
-        self.idle_duration = config.idle_duration
-        self.passive_friction = config.passive_friction
+        self.chase_speed: float = config.chase_speed
+        self.vision_range: float = config.vision_range
+        self.attack_range: float = config.attack_range
+        self.attack_name: str | None = config.attack_name
+        self.idle_duration: float = config.idle_duration
+        self.passive_friction: float = config.passive_friction
 
         self.speed = self.chase_speed
         self.floor_control = 20.0
         self.air_control = 10.0
 
-        self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
-        self.patrol_timer = 0.0
-        self.patrol_interval = config.patrol_interval
+        self.patrol_direction: int = 1 if self.rng.random() > 0.5 else -1
+        self.patrol_timer: float = 0.0
+        self.patrol_interval: float = config.patrol_interval
 
-        self.pushable = config.pushable
-        self.super_armor = config.super_armor
+        self.pushable: bool = config.pushable
+        self.super_armor: bool = config.super_armor
 
         if self.player is not None:
             self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
@@ -198,76 +219,4 @@ class Enemy(Entity):
                 pygame.math.Vector2(self.player.hitbox.center)
             )
             < self.attack_range
-        )
-
-
-class Goblin(Enemy):
-    """Represent an enemy goblin with simple AI behavior."""
-
-    def __init__(
-        self,
-        pos: Sequence[float],
-        groups: Group | Sequence[Group],
-        collision_sprites: Group,
-        player_reference: Any,
-        rng: random.Random | None = None,
-    ) -> None:
-        """Initialize the Goblin instance.
-
-        Parameters
-        ----------
-        pos : Sequence[float]
-            Starting top-left position.
-        groups : Group | Sequence[Group]
-            Sprite group(s) to add this goblin to.
-        collision_sprites : Group
-            Group of sprites that block movement.
-        player_reference : Any
-            Reference to the player entity.
-        rng : random.Random | None
-            Optional random number generator instance for deterministic behaviors.
-        """
-        super().__init__(
-            pos=pos,
-            groups=groups,
-            collision_sprites=collision_sprites,
-            player_reference=player_reference,
-            config=ENEMY_CONFIGS["goblin"],
-            rng=rng,
-        )
-
-
-class TrainingDummy(Enemy):
-    """Represent a non-aggressive training target."""
-
-    def __init__(
-        self,
-        pos: Sequence[float],
-        groups: Group | Sequence[Group],
-        collision_sprites: Group,
-        player_reference: Any = None,
-        rng: random.Random | None = None,
-    ) -> None:
-        """Initialize the TrainingDummy instance.
-
-        Parameters
-        ----------
-        pos : Sequence[float]
-            Starting top-left position.
-        groups : Group | Sequence[Group]
-            Sprite group(s) to add this dummy to.
-        collision_sprites : Group
-            Group of sprites that block movement.
-        player_reference : Any, optional
-            Reference to the player entity.
-        rng : random.Random | None
-            Optional random number generator instance for deterministic behaviors.
-        """
-        super().__init__(
-            pos=pos,
-            groups=groups,
-            collision_sprites=collision_sprites,
-            player_reference=player_reference,
-            config=ENEMY_CONFIGS["dummy"],
-            rng=rng,
         )

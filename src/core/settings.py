@@ -39,6 +39,11 @@ class Physics:
     COYOTE_DURATION = 0.12
     JUMP_BUFFER_DURATION = 0.10
     MAX_BLOCK_STAMINA = 0.75
+    
+    # Drag coefficients
+    DRAG_COEFFICIENT = 0.08
+    FALL_DRAG_COEFFICIENT = 0.12
+    MAX_SLIDE_SPEED = 80.0
 
 
 class Combat:

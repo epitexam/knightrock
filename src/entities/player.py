@@ -15,6 +15,7 @@ from src.core.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
 from src.entities.entity import Entity, DamageResult, compute_knockback_direction
+from src.entities.player_config import PlayerConfig
 from src.physics import resolve_jump
 from src.states.player_states import (
     PlayerAttackState,
@@ -29,6 +30,8 @@ from src.states.player_states import (
     PlayerWallSlideState,
 )
 from src.states.state_machine import StateMachine
+from src.combat.combat_component import CombatComponent
+from src.combat.attack_loading import load_attacks
 
 
 class PlayerState(str, Enum):
@@ -55,10 +58,124 @@ ATTACK_FORBIDDEN_STATES = {
 """Set of states where initiating an attack is forbidden."""
 
 
+# Default player configuration
+DEFAULT_PLAYER_CONFIG = PlayerConfig(
+    size=(48.0, 56.0),
+    color=Colors.green,
+    health=100.0,
+    max_health=100.0,
+    hitbox_inflate=(-8.0, 0.0),
+    attacks=PLAYER_ATTACKS,
+    speed=Physics.PLAYER_SPEED,
+    floor_control=Physics.FLOOR_CONTROL,
+    air_control=Physics.AIR_CONTROL,
+    jump_height=Physics.JUMP_FORCE,
+    wall_jump_height=Physics.JUMP_FORCE * 0.90 * 1.15,
+    wall_jump_push_multiplier=1.3,
+    wall_jump_lock_duration=0.18,
+    wall_jump_min_lock=0.08,
+    wall_slide_speed=Physics.WALL_SLIDE_SPEED,
+    max_midair_jumps=1,
+    max_wall_jumps=math.inf,
+    coyote_duration=Physics.COYOTE_DURATION,
+    jump_buffer_duration=Physics.JUMP_BUFFER_DURATION,
+    max_block_stamina=Physics.MAX_BLOCK_STAMINA,
+    block_cooldown_normal=CombatSettings.BLOCK_COOLDOWN_NORMAL,
+    block_cooldown_broken=CombatSettings.BLOCK_COOLDOWN_BROKEN,
+    max_dash_charges=Physics.DASH_MAX_CHARGES,
+    dash_speed=Physics.DASH_SPEED,
+    dash_duration=Physics.DASH_DURATION,
+    dash_friction=Physics.DASH_FRICTION,
+    dash_penalty_duration=Physics.DASH_PENALTY_TIME,
+    dash_recharge_time=Physics.DASH_RECHARGE_TIME,
+    dash_gravity_mult=Physics.DASH_GRAVITY_MULT,
+    hurt_duration=CombatSettings.PLAYER_HURT_DURATION,
+    invincibility_duration=CombatSettings.INVINCIBILITY_DURATION,
+    faction="player",
+)
+
+
 class Player(Entity):
     """Playable character with full state machine, input reading, and combat.
 
     Extends Entity with movement, jumping, dashing, blocking, and attacks.
+
+    Attributes
+    ----------
+    input_manager : InputManager
+        Source of player input.
+    speed : float
+        Base movement speed.
+    floor_control : float
+        Horizontal control when on the ground.
+    air_control : float
+        Horizontal control when airborne.
+    jump_height : float
+        Vertical impulse for a normal jump.
+    wall_jump_height : float
+        Vertical impulse for a wall jump.
+    wall_jump_push_multiplier : float
+        Horizontal push multiplier for wall jumps.
+    wall_jump_lock_duration : float
+        Duration to lock controls after a wall jump.
+    wall_jump_min_lock : float
+        Minimum lock duration after a wall jump.
+    wall_slide_speed : float
+        Descent speed when sliding down a wall.
+    max_midair_jumps : int
+        Maximum number of jumps allowed while airborne.
+    midair_jumps_left : int
+        Remaining midair jumps.
+    max_wall_jumps : int
+        Maximum number of wall jumps allowed.
+    wall_jumps_left : int
+        Remaining wall jumps.
+    coyote_timer : float
+        Time remaining for coyote jump.
+    coyote_duration : float
+        Duration after leaving a surface where jump is still allowed.
+    jump_buffer_timer : float
+        Time remaining for jump buffer.
+    jump_buffer_duration : float
+        Duration to buffer a jump input before landing.
+    moving_platforms : list
+        Platforms that can carry the player.
+    max_block_stamina : float
+        Maximum stamina for blocking.
+    block_stamina : float
+        Current block stamina.
+    block_cooldown_timer : float
+        Time remaining before blocking can be used again.
+    max_dash_charges : int
+        Maximum number of dash charges.
+    dash_charges : int
+        Current dash charges available.
+    dash_recharge_timer : float
+        Time remaining to recharge next dash.
+    dash_penalty_timer : float
+        Time remaining of dash penalty.
+    dash_speed : float
+        Horizontal speed during a dash.
+    dash_duration : float
+        Duration of a dash in seconds.
+    dash_friction : float
+        Friction applied during a dash.
+    dash_penalty_duration : float
+        Duration of penalty after a dash.
+    _dash_duration_timer : float
+        Internal timer for current dash duration.
+    _original_hitbox_width : float
+        Original hitbox width for dash hitbox modification.
+    _dash_requested : bool
+        Whether a dash was requested this frame.
+    space_held : bool
+        Whether space is currently held.
+    left_held : bool
+        Whether left movement is currently held.
+    right_held : bool
+        Whether right movement is currently held.
+    block_held : bool
+        Whether block is currently held.
     """
 
     def __init__(
@@ -68,6 +185,7 @@ class Player(Entity):
         collision_sprites: Group,
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
+        config: PlayerConfig | None = None,
     ) -> None:
         """Initialise the player.
 
@@ -83,64 +201,85 @@ class Player(Entity):
             Platforms that can carry the player.
         input_manager : InputManager
             Input source.
+        config : PlayerConfig | None
+            Optional player configuration. Uses DEFAULT_PLAYER_CONFIG if not provided.
         """
+        config = config or DEFAULT_PLAYER_CONFIG
+        
+        # Initialize combat component before calling super().__init__
+        # to avoid creating a NullCombatComponent that will be immediately discarded
+        combat_component = CombatComponent(
+            self,
+            combo_window=CombatSettings.COMBO_WINDOW,
+            hurt_duration=config.hurt_duration,
+        )
+        if config.attacks:
+            load_attacks(combat_component, config.attacks)
+        
         super().__init__(
             pos,
-            (48.0, 56.0),
-            Colors.green,
+            config.size,
+            config.color,
             groups,
             collision_sprites,
-            hitbox_inflate=(-8.0, 0.0),
-            health=100.0,
-            max_health=100.0,
-            faction="player",
+            hitbox_inflate=config.hitbox_inflate,
+            health=config.health,
+            max_health=config.max_health,
+            faction=config.faction,
             spawn_pos=pos,
-            attacks=PLAYER_ATTACKS,
-            hurt_duration=CombatSettings.PLAYER_HURT_DURATION,
-            invincibility_duration=CombatSettings.INVINCIBILITY_DURATION,
+            combat=combat_component,
+            hurt_duration=config.hurt_duration,
+            invincibility_duration=config.invincibility_duration,
         )
 
-        self.speed = float(Physics.PLAYER_SPEED)
-        self.floor_control = Physics.FLOOR_CONTROL
-        self.air_control = Physics.AIR_CONTROL
+        # Movement parameters
+        self.speed = config.speed
+        self.floor_control = config.floor_control
+        self.air_control = config.air_control
 
-        self.jump_height = float(Physics.JUMP_FORCE)
-        self.wall_jump_height = float(Physics.JUMP_FORCE) * 0.90 * 1.15
-        self.wall_jump_push_multiplier = 1.3
-        self.wall_jump_lock_duration = 0.18
-        self.wall_jump_min_lock = 0.08
-        self.wall_slide_speed = Physics.WALL_SLIDE_SPEED
+        # Jump parameters
+        self.jump_height = config.jump_height
+        self.wall_jump_height = config.wall_jump_height
+        self.wall_jump_push_multiplier = config.wall_jump_push_multiplier
+        self.wall_jump_lock_duration = config.wall_jump_lock_duration
+        self.wall_jump_min_lock = config.wall_jump_min_lock
+        self.wall_slide_speed = config.wall_slide_speed
 
-        self.max_midair_jumps = 1
+        # Jump mechanics
+        self.max_midair_jumps = config.max_midair_jumps
         self.midair_jumps_left = self.max_midair_jumps
-        self.max_wall_jumps = math.inf
+        self.max_wall_jumps = config.max_wall_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
+        # Input state
         self.space_held = False
         self.left_held = False
         self.right_held = False
         self.block_held = False
 
+        # Jump timing
         self.coyote_timer = 0.0
-        self.coyote_duration = Physics.COYOTE_DURATION
+        self.coyote_duration = config.coyote_duration
 
         self.jump_buffer_timer = 0.0
-        self.jump_buffer_duration = Physics.JUMP_BUFFER_DURATION
+        self.jump_buffer_duration = config.jump_buffer_duration
 
         self.moving_platforms = moving_platforms
 
-        self.max_block_stamina = Physics.MAX_BLOCK_STAMINA
+        # Block parameters
+        self.max_block_stamina = config.max_block_stamina
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
 
-        self.max_dash_charges = Physics.DASH_MAX_CHARGES
+        # Dash parameters
+        self.max_dash_charges = config.max_dash_charges
         self.dash_charges = self.max_dash_charges
         self.dash_recharge_timer = 0.0
         self.dash_penalty_timer = 0.0
-        self.dash_speed = Physics.DASH_SPEED
-        self.dash_duration = Physics.DASH_DURATION
-        self.dash_friction = Physics.DASH_FRICTION
-        self.dash_penalty_duration = Physics.DASH_PENALTY_TIME
+        self.dash_speed = config.dash_speed
+        self.dash_duration = config.dash_duration
+        self.dash_friction = config.dash_friction
+        self.dash_penalty_duration = config.dash_penalty_duration
         self._dash_duration_timer = 0.0
         self._original_hitbox_width = self.hitbox.width
 
