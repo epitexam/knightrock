@@ -65,7 +65,6 @@ DEFAULT_PLAYER_CONFIG = PlayerConfig(
     health=100.0,
     max_health=100.0,
     hitbox_inflate=(-8.0, 0.0),
-    attacks=PLAYER_ATTACKS,
     speed=Physics.PLAYER_SPEED,
     floor_control=Physics.FLOOR_CONTROL,
     air_control=Physics.AIR_CONTROL,
@@ -242,8 +241,13 @@ class Player(Entity):
             combo_window=CombatSettings.COMBO_WINDOW,
             hurt_duration=config.hurt_duration,
         )
-        if config.attacks:
-            load_attacks(combat_component, config.attacks)
+        # Load attacks from PLAYER_ATTACKS if attacks are not already set in config
+        if not hasattr(config, '_attacks_loaded') and PLAYER_ATTACKS:
+            load_attacks(combat_component, PLAYER_ATTACKS)
+        else:
+            # If config has custom attacks, load them
+            if hasattr(config, 'attacks') and config.attacks:
+                load_attacks(combat_component, dict(config.attacks))
         
         super().__init__(
             pos,

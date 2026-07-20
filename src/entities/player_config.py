@@ -1,10 +1,16 @@
 """Player configuration dataclass for data-driven player initialization."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import AttackDefinition
+
+
+def _default_attacks() -> dict[str, AttackDefinition]:
+    """Return default attacks dictionary."""
+    return dict(PLAYER_ATTACKS)
 
 
 @dataclass(frozen=True)
@@ -45,7 +51,7 @@ class PlayerConfig:
         Descent speed when sliding down a wall.
     max_midair_jumps : int
         Maximum number of jumps allowed while airborne.
-    max_wall_jumps : int
+    max_wall_jumps : int | float
         Maximum number of wall jumps allowed.
     coyote_duration : float
         Duration after leaving a surface where jump is still allowed.
@@ -83,7 +89,7 @@ class PlayerConfig:
     health: float = 100.0
     max_health: float = 100.0
     hitbox_inflate: tuple[float, float] = (-8.0, 0.0)
-    attacks: Mapping[str, AttackDefinition] = PLAYER_ATTACKS
+    attacks: Mapping[str, AttackDefinition] = field(default_factory=_default_attacks)
     speed: float = 450.0
     floor_control: float = 25.0
     air_control: float = 12.0
@@ -94,7 +100,7 @@ class PlayerConfig:
     wall_jump_min_lock: float = 0.08
     wall_slide_speed: float = 100.0
     max_midair_jumps: int = 1
-    max_wall_jumps: int = 999  # Effectively infinite
+    max_wall_jumps: int | float = float('inf')
     coyote_duration: float = 0.12
     jump_buffer_duration: float = 0.10
     max_block_stamina: float = 0.75
