@@ -375,9 +375,13 @@ class Entity(Sprite):
         self.invincibility_timer = 0.0
         self.health = self.max_health
         
-        self.combat.state.end()
-        self.combat.hitbox.clear()
-        self.combat.charging.cancel()
+        # Only call combat methods if they exist (NullCombatComponent has limited interface)
+        if hasattr(self.combat, 'state') and hasattr(self.combat.state, 'end'):
+            self.combat.state.end()
+        if hasattr(self.combat, 'hitbox') and hasattr(self.combat.hitbox, 'clear'):
+            self.combat.hitbox.clear()
+        if hasattr(self.combat, 'charging') and hasattr(self.combat.charging, 'cancel'):
+            self.combat.charging.cancel()
         
         # Reset state machine to idle
         if hasattr(self.state_machine, 'change_state'):
