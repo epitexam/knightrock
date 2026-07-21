@@ -98,6 +98,7 @@ class Player(Entity):
     """Playable character with full state machine, input reading, and combat.
 
     Extends Entity with movement, jumping, dashing, blocking, and attacks.
+    Utilizes the enhanced StateMachine with Input Buffering and State Tags.
 
     Attributes
     ----------
@@ -200,7 +201,7 @@ class Player(Entity):
     dash_duration: float
     dash_friction: float
     dash_penalty_duration: float
-    
+
     # Private attributes
     _dash_duration_timer: float
     _original_hitbox_width: float
@@ -233,7 +234,7 @@ class Player(Entity):
             Optional player configuration. Uses DEFAULT_PLAYER_CONFIG if not provided.
         """
         config = config or DEFAULT_PLAYER_CONFIG
-        
+
         # Initialize combat component before calling super().__init__
         # to avoid creating a NullCombatComponent that will be immediately discarded
         combat_component = CombatComponent(
@@ -248,7 +249,7 @@ class Player(Entity):
             # If config has custom attacks, load them
             if hasattr(config, 'attacks') and config.attacks:
                 load_attacks(combat_component, dict(config.attacks))
-        
+
         super().__init__(
             pos,
             config.size,
@@ -474,7 +475,7 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Process attack input with support for charge attacks.
+        """Process attack input with support for charge attacks and input buffering.
 
         Chargeable attacks (heavy_attack) use a hold-to-charge, release-to-fire
         flow. Non-chargeable attacks fire immediately on press.
@@ -482,6 +483,9 @@ class Player(Entity):
         While charging, entering a forbidden state (dash, hurt, etc.) cancels
         the charge. Releasing the charge button triggers the attack with a
         damage multiplier proportional to the hold duration.
+
+        Light attacks are buffered in the StateMachine to allow seamless combos
+        even if pressed slightly before the current attack animation finishes.
         """
         im = self.input_manager
 
@@ -492,6 +496,9 @@ class Player(Entity):
             if im.attack2_just_released:
                 self.combat.release_charge()
             return
+
+        if im.attack1_just_pressed:
+            self.state_machine.buffer_input("attack", window=0.2)
 
         if not self.can_attack():
             return
@@ -574,8 +581,7 @@ class Player(Entity):
         self.dash_penalty_timer = 0.0
         self._dash_requested = False
         self.hitbox.width = self._original_hitbox_width
-        
-        # Reset input state
+
         self._space_held = False
         self._left_held = False
         self._right_held = False
@@ -640,6 +646,8 @@ class Player(Entity):
 
         If blocking, stamina is consumed and knockback is reduced; no health lost.
         Otherwise, delegate to the base implementation and reduce hurt duration.
+        The state machine's interrupt system will automatically transition to the
+        HURT state, where velocity/knockback is applied.
 
         Parameters
         ----------
@@ -673,7 +681,6 @@ class Player(Entity):
 
         return result
 
-    # Initialize private input state attributes
     _space_held: bool = False
     _left_held: bool = False
     _right_held: bool = False

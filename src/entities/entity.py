@@ -187,9 +187,10 @@ class Entity(Sprite):
         self._max_health: float = max_health
         self.is_dead: bool = False
 
-        self.spawn_pos: Vector2 = Vector2(spawn_pos if spawn_pos is not None else pos)
+        self.spawn_pos: Vector2 = Vector2(
+            spawn_pos if spawn_pos is not None else pos)
         self.moving_platforms: list = []
-        
+
         self.invincibility_timer: float = 0.0
         self.invincibility_duration: float = invincibility_duration
 
@@ -298,7 +299,7 @@ class Entity(Sprite):
 
     def face_movement(self, threshold: float = 0.1) -> None:
         """Orient the entity based on its current movement axis.
-        
+
         Parameters
         ----------
         threshold : float
@@ -311,7 +312,7 @@ class Entity(Sprite):
 
     def face_towards(self, x: float, threshold: float = 2.0) -> None:
         """Orient the entity toward a specific X coordinate.
-        
+
         Parameters
         ----------
         x : float
@@ -374,7 +375,7 @@ class Entity(Sprite):
         self.super_armor_count = 0
         self.invincibility_timer = 0.0
         self.health = self.max_health
-        
+
         # Only call combat methods if they exist (NullCombatComponent has limited interface)
         if hasattr(self.combat, 'state') and hasattr(self.combat.state, 'end'):
             self.combat.state.end()
@@ -382,11 +383,11 @@ class Entity(Sprite):
             self.combat.hitbox.clear()
         if hasattr(self.combat, 'charging') and hasattr(self.combat.charging, 'cancel'):
             self.combat.charging.cancel()
-        
+
         # Reset state machine to idle
         if hasattr(self.state_machine, 'change_state'):
-            self.state_machine.change_state("idle")
-        
+            self.state_machine.change_state("idle", force=True)
+
         self._on_reset()
 
     def _on_reset(self) -> None:
@@ -470,7 +471,7 @@ class Entity(Sprite):
             return DamageResult()
 
         actual_damage = self._apply_damage(amount)
-        
+
         if knockback is not None:
             self._apply_knockback(knockback, source_center_x)
 

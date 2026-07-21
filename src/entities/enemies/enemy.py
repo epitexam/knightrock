@@ -27,7 +27,7 @@ from src.combat.attack_loading import load_attacks
 
 class PlayerReference(Protocol):
     """Protocol for player reference to enable proper typing.
-    
+
     This protocol defines the minimal interface that a player reference
     must provide for enemy AI to function correctly.
     """
@@ -116,7 +116,7 @@ class Enemy(Entity):
         max_health = (
             config.max_health if config.max_health is not None else config.health
         )
-        
+
         # Initialize combat component before calling super().__init__
         # to avoid creating a NullCombatComponent that will be immediately discarded
         combat_component = CombatComponent(
@@ -126,7 +126,7 @@ class Enemy(Entity):
         )
         if config.attacks:
             load_attacks(combat_component, config.attacks)
-        
+
         super().__init__(
             pos=pos,
             size=config.size,

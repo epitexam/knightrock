@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 
 from src.states.state_machine import State
 from src.core.settings import Combat as CombatSettings
@@ -8,12 +8,12 @@ from src.physics import apply_velocity_friction, lerp_velocity
 class PlayerBaseState(State):
     """Represent the PlayerBase state."""
 
-    def __init__(self, entity):
+    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
         """Initialize the PlayerBaseState instance."""
-        super().__init__(entity)
+        super().__init__(entity, tags)
 
     def ground_return(self) -> str:
-        """Perform ground return."""
+        """Determine the next state when returning to the ground."""
         if self.entity.on_surface["floor"]:
             return (
                 "run" if (
@@ -25,7 +25,7 @@ class PlayerBaseState(State):
 class PlayerIdleState(PlayerBaseState):
     """Represent the PlayerIdle state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state."""
         self.entity.velocity.x = 0
 
@@ -107,8 +107,13 @@ class PlayerWallSlideState(PlayerBaseState):
 class PlayerAttackState(PlayerBaseState):
     """Represent the PlayerAttack state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
+    def __init__(self, entity: Any):
+        """Initialize the PlayerAttackState instance with attack tags."""
+
+        super().__init__(entity, tags=["attack", "busy"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state and apply forward momentum if grounded."""
         if self.entity.on_surface["floor"]:
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * 0.35
@@ -118,16 +123,24 @@ class PlayerAttackState(PlayerBaseState):
         self.entity.combat.state.end()
 
     def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+        """Update the current state and check for buffered combo inputs."""
         if not self.entity.combat.is_attacking:
+            if self.entity.state_machine.consume_input("attack"):
+                return "attack"
+
             return self.ground_return()
         return None
+
 
 class PlayerBlockState(PlayerBaseState):
     """Represent the PlayerBlock state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
+    def __init__(self, entity: Any):
+        """Initialize the PlayerBlockState instance with block tags."""
+        super().__init__(entity, tags=["block", "busy"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state, stop horizontal velocity, and reduce hitbox height."""
         if self.entity.on_surface["floor"]:
             self.entity.velocity.x = 0
         old_bottom = self.entity.hitbox.bottom
@@ -136,7 +149,7 @@ class PlayerBlockState(PlayerBaseState):
         self.entity.sync_rects()
 
     def exit(self, next_state: Optional[str] = None) -> None:
-        """Exit the state."""
+        """Exit the state, restore hitbox height, and apply block cooldown."""
         if self.entity.block_stamina <= 0:
             self.entity.block_cooldown_timer = CombatSettings.BLOCK_COOLDOWN_BROKEN
         else:
@@ -148,7 +161,7 @@ class PlayerBlockState(PlayerBaseState):
         self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+        """Update the current state, draining stamina and checking conditions."""
         self.entity.velocity.x = 0.0
         self.entity.block_stamina -= (
             delta_time if self.entity.on_surface["floor"] else delta_time * 2.0
@@ -163,12 +176,21 @@ class PlayerBlockState(PlayerBaseState):
 class PlayerHurtState(PlayerBaseState):
     """Represent the PlayerHurt state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
+    def __init__(self, entity: Any):
+        """Initialize the PlayerHurtState instance with invincibility tags."""
+        super().__init__(entity, tags=["hurt", "invincible"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state and apply knockback if provided."""
         self.entity._dash_requested = False
 
+        knockback_dir = kwargs.get("knockback_direction", 0)
+        knockback_force = kwargs.get("knockback_force", 0)
+        if knockback_dir != 0 and knockback_force > 0:
+            self.entity.velocity.x = knockback_dir * knockback_force
+
     def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+        """Update the current state, applying friction until hurt duration ends."""
         lerp_velocity(self.entity, 0.0, min(1.0, 5.0 * delta_time), delta_time)
         if not self.entity.combat.is_hurt:
             if self.entity.stagger_timer > 0:
@@ -180,8 +202,12 @@ class PlayerHurtState(PlayerBaseState):
 class PlayerDashState(PlayerBaseState):
     """Represent the PlayerDash state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
-        """Enter the state."""
+    def __init__(self, entity: Any):
+        """Initialize the PlayerDashState instance with dashing tags."""
+        super().__init__(entity, tags=["dash", "invincible"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.dash_charges -= 1
         self.entity._dash_requested = False
         if self.entity.dash_charges == 0:
@@ -197,7 +223,7 @@ class PlayerDashState(PlayerBaseState):
         self.entity._dash_duration_timer = self.entity.dash_duration
 
     def exit(self, next_state: Optional[str] = None) -> None:
-        """Exit the state."""
+        """Exit the state and restore the original hitbox width."""
         current = self.entity.hitbox.width
         if current != self.entity._original_hitbox_width:
             self.entity.hitbox.x -= (
@@ -208,7 +234,7 @@ class PlayerDashState(PlayerBaseState):
             self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+        """Update the current state, applying dash friction and air control."""
         self.entity._dash_duration_timer -= delta_time
         friction = max(0.0, 1.0 - self.entity.dash_friction * delta_time)
         apply_velocity_friction(self.entity, friction, delta_time)
@@ -226,14 +252,19 @@ class PlayerDashState(PlayerBaseState):
 class PlayerStaggerState(PlayerBaseState):
     """Represent the PlayerStagger state."""
 
-    def enter(self, previous: Optional[str] = None) -> None:
+    def __init__(self, entity: Any):
+        """Initialize the PlayerStaggerState instance with stagger tags."""
+        super().__init__(entity, tags=["stagger", "busy"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state."""
         pass
 
     def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state."""
+        """Update the current state, applying friction until stagger ends."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(1.0, 8.0 * delta_time), delta_time)
+            lerp_velocity(self.entity, 0.0, min(
+                1.0, 8.0 * delta_time), delta_time)
 
         if self.entity.stagger_timer <= 0:
             return self.ground_return()
