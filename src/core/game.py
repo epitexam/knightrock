@@ -11,6 +11,7 @@ from pytmx.util_pygame import load_pygame
 from src.core.level import Level
 from src.core.settings import Display, Simulation
 from src.core.input_manager import InputManager
+from src.core.input_provider import LocalInputProvider
 
 
 class Game:
@@ -33,7 +34,9 @@ class Game:
             0: load_pygame(join(".", "assets", "data", "levels", "omni.tmx"))
         }
 
-        self.input_manager = InputManager()
+        self.input_provider = LocalInputProvider()
+        self.input_manager = InputManager(self.input_provider)
+        
         self.current_stage = Level(
             self.display_surface, self.tmx_maps[0], self.input_manager
         )
@@ -74,16 +77,16 @@ class Game:
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
                 print(f"Connected controller : {joy.get_name()}")
-                if self.input_manager._joystick is None:
-                    self.input_manager.connect_joystick(joy)
+                if self.input_provider._joystick is None:
+                    self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED:
                 if event.instance_id in self.joysticks:
                     disconnected_joy = self.joysticks[event.instance_id]
                     print(f"Controller disconnected : {disconnected_joy.get_name()}")
-                    self.input_manager.disconnect_joystick(event.instance_id)
+                    self.input_provider.disconnect_joystick(event.instance_id)
                     del self.joysticks[event.instance_id]
-                    self.input_manager.reassign_joystick(self.joysticks)
+                    self.input_provider.reassign_joystick(self.joysticks)
 
     def _handle_fatal_error(self, error: Exception) -> None:
         """Display a fatal error screen and gracefully exit the application."""

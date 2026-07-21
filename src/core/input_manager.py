@@ -1,225 +1,140 @@
 """
-Unified keyboard and gamepad input management.
+Core input state management for deterministic game logic.
 
-Provides a snapshot-based input state to ensure deterministic behavior
-within fixed timesteps. Exposes boolean states and 'just pressed' /
-'just released' events.
+Provides a state-based input representation decoupled from hardware.
+This allows the Player entity to interact with a generic InputManager
+that calculates 'just pressed' and 'just released' events, whether the
+input originates from a local keyboard, a gamepad, or a network packet.
 """
 
+from copy import copy
 from typing import Optional
 
-import pygame
-from pygame.joystick import JoystickType
+from src.core.input_provider import InputProvider, NullInputProvider
+from src.core.input_state import InputState
 
 
 class InputManager:
-    """Abstraction layer for player inputs, handling keyboard and gamepad."""
+    """Abstraction layer for player inputs.
 
-    def __init__(self) -> None:
-        """Initialize the InputManager and default input states."""
-        self._joystick: Optional[JoystickType] = None
+    Maintains the current and previous input states to provide event-driven
+    properties like 'just_pressed' and 'just_released'. By relying on an
+    InputProvider, this class is fully compatible with local and networked
+    multiplayer architectures.
+    """
 
-        self._current_keys = pygame.key.get_pressed()
-        self._prev_keys = self._current_keys
+    def __init__(self, provider: Optional[InputProvider] = None) -> None:
+        """Initialize the InputManager with a default state and provider.
 
-        self._current_joy_buttons: dict[int, bool] = {}
-        self._prev_joy_buttons: dict[int, bool] = {}
+        Parameters
+        ----------
+        provider : Optional[InputProvider]
+            The source of hardware or network inputs. Defaults to NullInputProvider.
+        """
+        self._provider: InputProvider = provider or NullInputProvider()
+        self._current_state: InputState = InputState()
+        self._prev_state: InputState = InputState()
 
-        self._current_joy_axes: dict[int, float] = {}
-        self._prev_joy_axes: dict[int, float] = {}
+    def set_provider(self, provider: InputProvider) -> None:
+        """Assign a new input provider, such as a local hardware reader or network receiver.
 
-        self._jump_just_pressed = False
-        self._dash_just_pressed = False
-        self._attack1_just_pressed = False
-        self._attack2_just_pressed = False
-        self._attack3_just_pressed = False
-        self._attack4_just_pressed = False
-        self._reset_just_pressed = False
+        Parameters
+        ----------
+        provider : InputProvider
+            The new input provider to use for polling states.
+        """
+        self._provider = provider
 
-        self._attack1_held = False
-        self._attack1_just_released = False
+    def apply_remote_state(self, state: InputState) -> None:
+        """Directly inject a new input state, used for networked remote players.
 
-        self._attack2_held = False
-        self._attack2_just_released = False
+        This bypasses the provider, allowing server-side or network-received
+        states to drive the logic without reading local hardware.
 
-    def connect_joystick(self, joystick: JoystickType) -> None:
-        """Handle the connection of a new joystick."""
-        self._joystick = joystick
-        self._prev_joy_buttons.clear()
-        self._prev_joy_axes.clear()
-
-    def disconnect_joystick(self, instance_id: int) -> None:
-        """Handle the disconnection of the active joystick."""
-        if self._joystick and self._joystick.get_instance_id() == instance_id:
-            self._joystick = None
-            self._prev_joy_buttons.clear()
-            self._prev_joy_axes.clear()
-
-    def reassign_joystick(self, joysticks: dict[int, JoystickType]) -> None:
-        """Reassign the active joystick from available devices if the current one was disconnected."""
-        if not self._joystick and joysticks:
-            self._joystick = list(joysticks.values())[0]
-            self._prev_joy_buttons.clear()
-            self._prev_joy_axes.clear()
+        Parameters
+        ----------
+        state : InputState
+            The remote input state to apply for the current tick.
+        """
+        self._prev_state = copy(self._current_state)
+        self._current_state = state
 
     def update(self) -> None:
-        """Update the input state for the current logic tick by calculating deltas."""
-        self._prev_keys = self._current_keys
-        self._current_keys = pygame.key.get_pressed()
-
-        self._prev_joy_buttons = self._current_joy_buttons.copy()
-        self._prev_joy_axes = self._current_joy_axes.copy()
-        self._current_joy_buttons = {}
-        self._current_joy_axes = {}
-
-        if self._joystick:
-            for i in range(self._joystick.get_numbuttons()):
-                self._current_joy_buttons[i] = bool(self._joystick.get_button(i))
-            for i in range(self._joystick.get_numaxes()):
-                self._current_joy_axes[i] = self._joystick.get_axis(i)
-
-        self._jump_just_pressed = self._is_key_just_pressed(pygame.K_SPACE) or self._is_button_just_pressed(0)
-        self._dash_just_pressed = self._is_key_just_pressed(pygame.K_LSHIFT) or self._is_trigger_just_pressed(2)
-
-        self._attack1_just_pressed = self._is_key_just_pressed(pygame.K_a) or self._is_button_just_pressed(1)
-        self._attack1_held = self._is_key_held(pygame.K_a) or self._is_button_held(1)
-        self._attack1_just_released = self._is_key_just_released(pygame.K_a) or self._is_button_just_released(1)
-
-        self._attack2_just_pressed = self._is_key_just_pressed(pygame.K_s) or self._is_button_just_pressed(2)
-        self._attack2_held = self._is_key_held(pygame.K_s) or self._is_button_held(2)
-        self._attack2_just_released = self._is_key_just_released(pygame.K_s) or self._is_button_just_released(2)
-
-        self._attack3_just_pressed = self._is_key_just_pressed(pygame.K_d) or self._is_button_just_pressed(3)
-        self._attack4_just_pressed = self._is_key_just_pressed(pygame.K_f) or self._is_button_just_pressed(5)
-        self._reset_just_pressed = self._is_key_just_pressed(pygame.K_r) or self._is_button_just_pressed(7)
-
-    def _is_key_just_pressed(self, key: int) -> bool:
-        """Check if a keyboard key was pressed this tick."""
-        return self._current_keys[key] and not self._prev_keys[key]
-
-    def _is_key_just_released(self, key: int) -> bool:
-        """Check if a keyboard key was released this tick."""
-        return not self._current_keys[key] and self._prev_keys[key]
-
-    def _is_key_held(self, key: int) -> bool:
-        """Check if a keyboard key is currently held."""
-        return bool(self._current_keys[key])
-
-    def _is_button_just_pressed(self, btn: int) -> bool:
-        """Check if a gamepad button was pressed this tick."""
-        return self._current_joy_buttons.get(btn, False) and not self._prev_joy_buttons.get(btn, False)
-
-    def _is_button_just_released(self, btn: int) -> bool:
-        """Check if a gamepad button was released this tick."""
-        return not self._current_joy_buttons.get(btn, False) and self._prev_joy_buttons.get(btn, False)
-
-    def _is_button_held(self, btn: int) -> bool:
-        """Check if a gamepad button is currently held."""
-        return self._current_joy_buttons.get(btn, False)
-
-    def _is_trigger_just_pressed(self, axis: int) -> bool:
-        """Check if a gamepad trigger axis passed the activation threshold this tick."""
-        current = self._current_joy_axes.get(axis, 0.0) > 0.5
-        previous = self._prev_joy_axes.get(axis, 0.0) > 0.5
-        return current and not previous
-
-    @staticmethod
-    def _apply_deadzone(value: float, deadzone: float = 0.2) -> float:
-        """Apply a radial deadzone to an analog axis value."""
-        if abs(value) < deadzone:
-            return 0.0
-        sign = 1.0 if value > 0 else -1.0
-        return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+        """Advance the input state by polling the provider and calculating deltas."""
+        self._prev_state = copy(self._current_state)
+        self._current_state = self._provider.poll()
 
     @property
     def move_axis(self) -> float:
-        """Horizontal axis: -1.0 (left) to 1.0 (right), prioritizing keyboard over gamepad."""
-        kb_axis = float(self._current_keys[pygame.K_RIGHT]) - float(self._current_keys[pygame.K_LEFT])
-
-        if kb_axis != 0.0:
-            return kb_axis
-
-        if self._joystick:
-            raw = self._current_joy_axes.get(0, 0.0)
-            analog = self._apply_deadzone(raw)
-            if analog != 0.0:
-                return analog
-            hat = self._joystick.get_hat(0)[0]
-            if hat != 0:
-                return float(hat)
-
-        return 0.0
+        """Return the horizontal movement axis value."""
+        return self._current_state.move_axis
 
     @property
     def left_held(self) -> bool:
-        """Check if the movement axis is towards the left."""
-        return self.move_axis < -0.1
+        """Return True if the movement axis is towards the left."""
+        return self._current_state.move_axis < -0.1
 
     @property
     def right_held(self) -> bool:
-        """Check if the movement axis is towards the right."""
-        return self.move_axis > 0.1
+        """Return True if the movement axis is towards the right."""
+        return self._current_state.move_axis > 0.1
 
     @property
     def block_held(self) -> bool:
-        """Check if the block action is held via keyboard or gamepad."""
-        if self._current_keys[pygame.K_q]:
-            return True
-        if self._joystick:
-            return self._current_joy_buttons.get(4, False)
-        return False
+        """Return True if the block action is held."""
+        return self._current_state.block_held
 
     @property
     def jump_just_pressed(self) -> bool:
-        """Check if jump was just pressed."""
-        return self._jump_just_pressed
+        """Return True if jump was pressed this tick."""
+        return self._current_state.jump_held and not self._prev_state.jump_held
 
     @property
     def dash_just_pressed(self) -> bool:
-        """Check if dash was just pressed."""
-        return self._dash_just_pressed
+        """Return True if dash was pressed this tick."""
+        return self._current_state.dash_held and not self._prev_state.dash_held
 
     @property
     def attack1_just_pressed(self) -> bool:
-        """Check if attack 1 was just pressed."""
-        return self._attack1_just_pressed
+        """Return True if attack 1 was pressed this tick."""
+        return self._current_state.attack1_held and not self._prev_state.attack1_held
 
     @property
     def attack1_held(self) -> bool:
-        """Check if attack 1 is held."""
-        return self._attack1_held
+        """Return True if attack 1 is held."""
+        return self._current_state.attack1_held
 
     @property
     def attack1_just_released(self) -> bool:
-        """Check if attack 1 was just released."""
-        return self._attack1_just_released
+        """Return True if attack 1 was released this tick."""
+        return not self._current_state.attack1_held and self._prev_state.attack1_held
 
     @property
     def attack2_just_pressed(self) -> bool:
-        """Check if attack 2 was just pressed."""
-        return self._attack2_just_pressed
+        """Return True if attack 2 was pressed this tick."""
+        return self._current_state.attack2_held and not self._prev_state.attack2_held
 
     @property
     def attack2_held(self) -> bool:
-        """Check if attack 2 is held."""
-        return self._attack2_held
+        """Return True if attack 2 is held."""
+        return self._current_state.attack2_held
 
     @property
     def attack2_just_released(self) -> bool:
-        """Check if attack 2 was just released."""
-        return self._attack2_just_released
+        """Return True if attack 2 was released this tick."""
+        return not self._current_state.attack2_held and self._prev_state.attack2_held
 
     @property
     def attack3_just_pressed(self) -> bool:
-        """Check if attack 3 was just pressed."""
-        return self._attack3_just_pressed
+        """Return True if attack 3 was pressed this tick."""
+        return self._current_state.attack3_held and not self._prev_state.attack3_held
 
     @property
     def attack4_just_pressed(self) -> bool:
-        """Check if attack 4 was just pressed."""
-        return self._attack4_just_pressed
+        """Return True if attack 4 was pressed this tick."""
+        return self._current_state.attack4_held and not self._prev_state.attack4_held
 
     @property
     def reset_just_pressed(self) -> bool:
-        """Check if reset was just pressed."""
-        return self._reset_just_pressed
+        """Return True if reset was pressed this tick."""
+        return self._current_state.reset_held and not self._prev_state.reset_held
