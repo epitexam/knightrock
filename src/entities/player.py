@@ -475,17 +475,17 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Process attack input with support for charge attacks and input buffering.
+        """Process attack input with support for charge attacks, input buffering, and combos.
 
-        Chargeable attacks (heavy_attack) use a hold-to-charge, release-to-fire
-        flow. Non-chargeable attacks fire immediately on press.
+            Chargeable attacks (heavy_attack) use a hold-to-charge, release-to-fire
+            flow. Non-chargeable attacks fire immediately on press.
 
-        While charging, entering a forbidden state (dash, hurt, etc.) cancels
-        the charge. Releasing the charge button triggers the attack with a
-        damage multiplier proportional to the hold duration.
+            While charging, entering a forbidden state (dash, hurt, etc.) cancels
+            the charge. Releasing the charge button triggers the attack with a
+            damage multiplier proportional to the hold duration.
 
-        Light attacks are buffered in the StateMachine to allow seamless combos
-        even if pressed slightly before the current attack animation finishes.
+            Light attacks are buffered in the StateMachine to allow seamless combos
+            even if pressed slightly before the current attack animation finishes.
         """
         im = self.input_manager
 
@@ -497,13 +497,15 @@ class Player(Entity):
                 self.combat.release_charge()
             return
 
-        if im.attack1_just_pressed:
-            self.state_machine.buffer_input("attack", window=0.2)
-
         if not self.can_attack():
             return
 
+        if im.special_attack_just_pressed:
+            self.combat.start_attack("special_attack")
+            return
+
         if im.attack1_just_pressed:
+            self.state_machine.buffer_input("attack", window=0.2)
             attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
             self.combat.start_attack(attack_name)
         elif im.attack2_just_pressed:

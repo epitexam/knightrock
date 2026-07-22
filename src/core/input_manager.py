@@ -138,3 +138,8 @@ class InputManager:
     def reset_just_pressed(self) -> bool:
         """Return True if reset was pressed this tick."""
         return self._current_state.reset_held and not self._prev_state.reset_held
+
+    @property
+    def special_attack_just_pressed(self) -> bool:
+        """Return True if the special attack combination was pressed this tick."""
+        return self._current_state.special_attack_held and not self._prev_state.special_attack_held

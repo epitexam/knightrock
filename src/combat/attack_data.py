@@ -122,6 +122,89 @@ PLAYER_ATTACKS = {
         cooldown=0.35,
         lock_direction=False,
     ),
+
+    "special_attack": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=6,
+                active_frames=8,
+                recovery_frames=4,
+                hitbox_size=(30.0, 30.0),
+                hitbox_offset=(0.0, -20.0),
+                hit=HitProperties(
+                    damage=12,
+                    knockback=KnockbackConfig(power=(100.0, -100.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.5,
+                    super_armor_break=True,
+                ),
+                reset_targets=True,
+            ),
+            PhaseDefinition(
+                startup_frames=6,
+                active_frames=8,
+                recovery_frames=4,
+                hitbox_size=(40.0, 40.0),
+                hitbox_offset=(0.0, -20.0),
+                hit=HitProperties(
+                    damage=12,
+                    knockback=KnockbackConfig(power=(100.0, -100.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.5,
+                    super_armor_break=True,
+                ),
+                reset_targets=True,
+            ),
+            PhaseDefinition(
+                startup_frames=6,
+                active_frames=8,
+                recovery_frames=4,
+                hitbox_size=(50.0, 50.0),
+                hitbox_offset=(0.0, -20.0),
+                hit=HitProperties(
+                    damage=12,
+                    knockback=KnockbackConfig(power=(100.0, -100.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.5,
+                    super_armor_break=True,
+                ),
+                reset_targets=True,
+            ),
+
+            PhaseDefinition(
+                startup_frames=6,
+                active_frames=8,
+                recovery_frames=4,
+                hitbox_size=(70.0, 70.0),
+                hitbox_offset=(0.0, -20.0),
+                hit=HitProperties(
+                    damage=12,
+                    knockback=KnockbackConfig(power=(100.0, -100.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.5,
+                    super_armor_break=True,
+                ),
+                reset_targets=True,
+            ),
+            PhaseDefinition(
+                startup_frames=3,
+                active_frames=10,
+                recovery_frames=25,
+                hitbox_size=(90.0, 90.0),
+                hitbox_offset=(0.0, -20.0),
+                hit=HitProperties(
+                    damage=30,
+                    knockback=KnockbackConfig(power=(900.0, -600.0)),
+                    damage_type=DamageType.PIERCE,
+                    stagger=0.8,
+                    super_armor_break=True,
+                ),
+            ),
+        ),
+        cooldown=0.5,
+        lock_direction=True,
+        combo_reset=True,
+    ),
 }
 
 GOBLIN_ATTACKS = {

@@ -89,6 +89,8 @@ class LocalInputProvider(InputProvider):
         kb = self._bindings.keyboard
         btns = self._bindings.gamepad_buttons
         axes = self._bindings.gamepad_axes
+        kb_combos = self._bindings.keyboard_combos
+        joy_combos = self._bindings.gamepad_combos
 
         self._current_joy_buttons = {}
         self._current_joy_axes = {}
@@ -108,16 +110,29 @@ class LocalInputProvider(InputProvider):
             btns["jump"], False)
         state.dash_held = keys[kb["dash"]] or self._current_joy_axes.get(
             axes["dash"], 0.0) > 0.5
-        state.attack1_held = keys[kb["attack1"]] or self._current_joy_buttons.get(
-            btns["attack1"], False)
-        state.attack2_held = keys[kb["attack2"]] or self._current_joy_buttons.get(
-            btns["attack2"], False)
-        state.attack3_held = keys[kb["attack3"]] or self._current_joy_buttons.get(
-            btns["attack3"], False)
-        state.attack4_held = keys[kb["attack4"]] or self._current_joy_buttons.get(
-            btns["attack4"], False)
         state.reset_held = keys[kb["reset"]] or self._current_joy_buttons.get(
             btns["reset"], False)
+
+        special_kb_held = all(keys[k]
+                              for k in kb_combos.get("special_attack", []))
+        special_joy_held = all(self._current_joy_buttons.get(
+            b, False) for b in joy_combos.get("special_attack", []))
+
+        if special_kb_held or special_joy_held:
+            state.special_attack_held = True
+            state.attack1_held = False
+            state.attack2_held = False
+            state.attack3_held = False
+            state.attack4_held = False
+        else:
+            state.attack1_held = keys[kb["attack1"]] or self._current_joy_buttons.get(
+                btns["attack1"], False)
+            state.attack2_held = keys[kb["attack2"]] or self._current_joy_buttons.get(
+                btns["attack2"], False)
+            state.attack3_held = keys[kb["attack3"]] or self._current_joy_buttons.get(
+                btns["attack3"], False)
+            state.attack4_held = keys[kb["attack4"]] or self._current_joy_buttons.get(
+                btns["attack4"], False)
 
         return state
 

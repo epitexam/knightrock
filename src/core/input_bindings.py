@@ -21,6 +21,10 @@ class InputBindings:
         Mapping of action names to gamepad button indices.
     gamepad_axes : dict[str, int]
         Mapping of action names to gamepad axis indices.
+    keyboard_combos : dict[str, list[int]]
+        Mapping of combo action names to a list of required keyboard keys.
+    gamepad_combos : dict[str, list[int]]
+        Mapping of combo action names to a list of required gamepad buttons.
     """
 
     keyboard: dict[str, int] = field(default_factory=lambda: {
@@ -49,4 +53,12 @@ class InputBindings:
     gamepad_axes: dict[str, int] = field(default_factory=lambda: {
         "move_x": 0,
         "dash": 2,
+    })
+
+    keyboard_combos: dict[str, list[int]] = field(default_factory=lambda: {
+        "special_attack": [pygame.K_g, pygame.K_h],
+    })
+
+    gamepad_combos: dict[str, list[int]] = field(default_factory=lambda: {
+        "special_attack": [1, 3],  # attack1 + attack3 (B + Y on Xbox)
     })

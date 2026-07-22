@@ -32,6 +32,8 @@ class InputState:
         Whether the quaternary attack action is currently held.
     reset_held : bool
         Whether the reset action is currently held.
+    special_attack_held : bool
+        Whether the special attack combination is currently held.
     """
     move_axis: float = 0.0
     block_held: bool = False
@@ -42,3 +44,4 @@ class InputState:
     attack3_held: bool = False
     attack4_held: bool = False
     reset_held: bool = False
+    special_attack_held: bool = False
