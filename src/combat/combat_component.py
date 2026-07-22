@@ -134,6 +134,20 @@ class CombatComponent:
         """Set of entity IDs already hit during the current attack sequence."""
         return self.state.targets_hit
 
+    @property
+    def movement_multiplier(self) -> float:
+        """Movement speed multiplier to apply to the entity this frame."""
+        if self.charging.is_charging:
+            return self.charging.movement_multiplier
+
+        # NOUVEAU : Si on attaque, on prend la vitesse de déplacement de l'attaque
+        if self.state.is_attacking:
+            attack = self.state.current_attack_def
+            if attack is not None:
+                return attack.attack_move_multiplier
+
+        return 1.0
+
     def start_attack(
         self,
         name: str,
@@ -228,9 +242,22 @@ class CombatComponent:
         interrupt : bool
             Whether the hit interrupts the entity's current action.
             Set to False for hits absorbed by super armor.
+
+        Notes
+        -----
+        If the entity is currently executing an attack whose definition
+        has ``uninterruptible`` set to True, the interruption is ignored
+        entirely: no hurt state is entered, the attack is not ended, and
+        the charge is not cancelled. Damage itself is unaffected, since
+        it is applied separately via ``take_damage``.
         """
         if not interrupt:
             return
+
+        if self.state.is_attacking:
+            attack = self.state.current_attack_def
+            if attack is not None and attack.uninterruptible:
+                return
 
         self.is_hurt = True
         self._hurt_timer = duration if duration is not None else self._hurt_duration
@@ -337,6 +364,11 @@ class NullCombatComponent:
     def current_phase(self) -> PhaseDefinition | None:
         """Always returns ``None``."""
         return None
+
+    @property
+    def movement_multiplier(self) -> float:
+        """Always returns ``1.0``."""
+        return 1.0
 
     def add_attack(self, name: str, definition: AttackDefinition) -> None:
         """No-op."""

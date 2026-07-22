@@ -29,7 +29,9 @@ def apply_horizontal_movement(entity, delta_time: float) -> None:
             entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
             return
 
-    target_speed = entity.move_axis * entity.speed
+    combat = getattr(entity, "combat", None)
+    movement_multiplier = combat.movement_multiplier if combat is not None else 1.0
+    target_speed = entity.move_axis * entity.speed * movement_multiplier
 
     if target_speed == 0 and abs(entity.velocity.x) < 0.5:
         entity.velocity.x = 0.0

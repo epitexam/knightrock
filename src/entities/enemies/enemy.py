@@ -11,18 +11,21 @@ from pygame.sprite import Group
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import (
     EnemyAttackState,
+    EnemyChargeState,
     EnemyChaseState,
     EnemyHurtState,
     EnemyIdleState,
+    EnemyKnockbackState,
     EnemyPatrolState,
     EnemyStaggerState,
 )
-from src.entities.entity import Entity
+from src.entities.entity import Entity, DamageResult, compute_knockback_direction
 from src.states.state_machine import StateMachine
 from src.physics import lerp_velocity
 from src.core.settings import Combat as CombatSettings
 from src.combat.combat_component import CombatComponent
 from src.combat.attack_loading import load_attacks
+from src.combat.knockback import KnockbackConfig
 
 
 class PlayerReference(Protocol):
@@ -117,8 +120,6 @@ class Enemy(Entity):
             config.max_health if config.max_health is not None else config.health
         )
 
-        # Initialize combat component before calling super().__init__
-        # to avoid creating a NullCombatComponent that will be immediately discarded
         combat_component = CombatComponent(
             self,
             combo_window=CombatSettings.COMBO_WINDOW,
@@ -178,7 +179,9 @@ class Enemy(Entity):
         self.state_machine.add_state("patrol", EnemyPatrolState(self))
         self.state_machine.add_state("chase", EnemyChaseState(self))
         self.state_machine.add_state("attack", EnemyAttackState(self))
+        self.state_machine.add_state("charge", EnemyChargeState(self))
         self.state_machine.add_state("hurt", EnemyHurtState(self))
+        self.state_machine.add_state("knockback", EnemyKnockbackState(self))
         self.state_machine.add_state("stagger", EnemyStaggerState(self))
         self.state_machine.set_initial_state("idle")
         self._setup_interrupts()
@@ -201,7 +204,7 @@ class Enemy(Entity):
         """Update facing direction before combat updates."""
         if self.config.has_ai and self.player is not None:
             current = self.state_machine.current_state_name
-            if current not in ("attack", "hurt", "stagger"):
+            if current not in ("attack", "hurt", "knockback", "stagger"):
                 self.face_player()
 
     def _update_state_machine(self, delta_time: float) -> None:
@@ -245,3 +248,54 @@ class Enemy(Entity):
             )
             < self.attack_range
         )
+
+    def receive_damage(
+        self,
+        amount: float,
+        source_center_x: float | None = None,
+        knockback: KnockbackConfig | None = None,
+        interrupt: bool = True,
+    ) -> DamageResult:
+        """Override to handle knockback thresholds for enemies.
+
+        If the knockback force is very high, the enemy enters the KNOCKBACK state
+        (launched into the air). Otherwise, they enter the standard HURT state.
+
+        Parameters
+        ----------
+        amount : float
+            Hit points to subtract.
+        source_center_x : float | None
+            X centre of the damage source for knockback direction.
+        knockback : KnockbackConfig | None
+            Knockback impulse configuration.
+        interrupt : bool
+            Whether the hit interrupts the entity's current action.
+
+        Returns
+        -------
+        DamageResult
+            A dataclass detailing the outcome of the damage application.
+        """
+        result = super().receive_damage(amount, source_center_x, knockback, interrupt)
+
+        if interrupt and not self.is_dead and knockback is not None:
+            kb_power_x = knockback.power[0]
+            kb_power_y = knockback.power[1]
+
+            # Seuil de projection (Knockback state)
+            if kb_power_x > 400 or kb_power_y > 400:
+                direction = compute_knockback_direction(
+                    self.hitbox.centerx, source_center_x, self.facing_right
+                )
+                self.state_machine.change_state(
+                    "knockback",
+                    force=True,
+                    knockback_direction=direction,
+                    knockback_force=kb_power_x,
+                    knockback_up_force=kb_power_y
+                )
+                if hasattr(self.combat, "is_hurt"):
+                    self.combat.is_hurt = False
+
+        return result

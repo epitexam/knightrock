@@ -178,6 +178,18 @@ class AttackDefinition:
     max_charge_time : float
         Maximum charge duration in seconds. Ignored when chargeable
         is False. Typical range: 0.5-2.0.
+    charge_move_multiplier : float
+        Multiplier applied to the entity's movement speed while charging
+        this attack. Ignored when chargeable is False.
+        1.0 = no slowdown, 0.0 = fully immobilized while charging.
+    uninterruptible : bool
+        If True, this attack sequence cannot be cancelled by taking a hit.
+        The entity still receives damage normally, but the attack keeps
+        running: no hurt state is entered and the attack is not ended.
+    lunge_speed_multiplier : float
+        Multiplier applied to the entity's speed to compute the forward
+        lunge velocity applied when this attack starts on the ground.
+        0.0 disables the lunge entirely.
 
     Properties
     ----------
@@ -190,6 +202,10 @@ class AttackDefinition:
     combo_reset: bool = False
     chargeable: bool = False
     max_charge_time: float = 1.0
+    charge_move_multiplier: float = 1.0
+    uninterruptible: bool = False
+    lunge_speed_multiplier: float = 0.35
+    attack_move_multiplier:float = 0.3
 
     @property
     def total_frames(self) -> int:

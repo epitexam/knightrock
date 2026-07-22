@@ -58,6 +58,7 @@ PLAYER_ATTACKS = {
         combo_reset=True,
         chargeable=True,
         max_charge_time=1.0,
+        charge_move_multiplier=0.4
     ),
 
     "uppercut": AttackDefinition(

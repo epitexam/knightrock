@@ -20,11 +20,13 @@ from src.physics import resolve_jump
 from src.states.player_states import (
     PlayerAttackState,
     PlayerBlockState,
+    PlayerChargeState,
     PlayerDashState,
     PlayerFallState,
     PlayerHurtState,
     PlayerIdleState,
     PlayerJumpState,
+    PlayerKnockbackState,
     PlayerRunState,
     PlayerStaggerState,
     PlayerWallSlideState,
@@ -46,6 +48,8 @@ class PlayerState(str, Enum):
     HURT = "hurt"
     DASH = "dash"
     STAGGER = "stagger"
+    CHARGE = "charge"
+    KNOCKBACK = "knockback"
 
 
 ATTACK_FORBIDDEN_STATES = {
@@ -54,6 +58,7 @@ ATTACK_FORBIDDEN_STATES = {
     PlayerState.HURT,
     PlayerState.DASH,
     PlayerState.STAGGER,
+    PlayerState.KNOCKBACK,
 }
 """Set of states where initiating an attack is forbidden."""
 
@@ -235,18 +240,14 @@ class Player(Entity):
         """
         config = config or DEFAULT_PLAYER_CONFIG
 
-        # Initialize combat component before calling super().__init__
-        # to avoid creating a NullCombatComponent that will be immediately discarded
         combat_component = CombatComponent(
             self,
             combo_window=CombatSettings.COMBO_WINDOW,
             hurt_duration=config.hurt_duration,
         )
-        # Load attacks from PLAYER_ATTACKS if attacks are not already set in config
         if not hasattr(config, '_attacks_loaded') and PLAYER_ATTACKS:
             load_attacks(combat_component, PLAYER_ATTACKS)
         else:
-            # If config has custom attacks, load them
             if hasattr(config, 'attacks') and config.attacks:
                 load_attacks(combat_component, dict(config.attacks))
 
@@ -266,12 +267,10 @@ class Player(Entity):
             invincibility_duration=config.invincibility_duration,
         )
 
-        # Movement parameters
         self.speed = config.speed
         self.floor_control = config.floor_control
         self.air_control = config.air_control
 
-        # Jump parameters
         self.jump_height = config.jump_height
         self.wall_jump_height = config.wall_jump_height
         self.wall_jump_push_multiplier = config.wall_jump_push_multiplier
@@ -279,13 +278,11 @@ class Player(Entity):
         self.wall_jump_min_lock = config.wall_jump_min_lock
         self.wall_slide_speed = config.wall_slide_speed
 
-        # Jump mechanics
         self.max_midair_jumps = config.max_midair_jumps
         self.midair_jumps_left = self.max_midair_jumps
         self.max_wall_jumps = config.max_wall_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
-        # Jump timing
         self.coyote_timer = 0.0
         self.coyote_duration = config.coyote_duration
         self.jump_buffer_timer = 0.0
@@ -293,12 +290,10 @@ class Player(Entity):
 
         self.moving_platforms = moving_platforms
 
-        # Block parameters
         self.max_block_stamina = config.max_block_stamina
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
 
-        # Dash parameters
         self.max_dash_charges = config.max_dash_charges
         self.dash_charges = self.max_dash_charges
         self.dash_recharge_timer = 0.0
@@ -327,8 +322,12 @@ class Player(Entity):
             PlayerState.WALL_SLIDE, PlayerWallSlideState(self))
         self.state_machine.add_state(
             PlayerState.ATTACK, PlayerAttackState(self))
+        self.state_machine.add_state(
+            PlayerState.CHARGE, PlayerChargeState(self))
         self.state_machine.add_state(PlayerState.BLOCK, PlayerBlockState(self))
         self.state_machine.add_state(PlayerState.HURT, PlayerHurtState(self))
+        self.state_machine.add_state(
+            PlayerState.KNOCKBACK, PlayerKnockbackState(self))
         self.state_machine.add_state(PlayerState.DASH, PlayerDashState(self))
         self.state_machine.add_state(
             PlayerState.STAGGER, PlayerStaggerState(self))
@@ -341,7 +340,7 @@ class Player(Entity):
             self._dash_requested
             and self.dash_charges > 0
             and self.state_machine.current_state_name not in (
-                PlayerState.DASH, PlayerState.HURT, PlayerState.STAGGER
+                PlayerState.DASH, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER
             )
         )
 
@@ -353,7 +352,7 @@ class Player(Entity):
             and self.block_cooldown_timer <= 0
             and self.block_stamina > 0.3
             and self.state_machine.current_state_name not in (
-                PlayerState.WALL_SLIDE, PlayerState.HURT, PlayerState.DASH, PlayerState.STAGGER
+                PlayerState.WALL_SLIDE, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.DASH, PlayerState.STAGGER
             )
         )
 
@@ -509,7 +508,9 @@ class Player(Entity):
             attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
             self.combat.start_attack(attack_name)
         elif im.attack2_just_pressed:
-            if not self.combat.start_charge("heavy_attack"):
+            if self.combat.start_charge("heavy_attack"):
+                self.state_machine.change_state(PlayerState.CHARGE, force=True)
+            else:
                 self.combat.start_attack("heavy_attack")
         elif im.attack3_just_pressed:
             self.combat.start_attack("uppercut")
@@ -644,12 +645,11 @@ class Player(Entity):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
     ) -> DamageResult:
-        """Override to add blocking logic and reduced hurt duration.
+        """Override to add blocking logic, knockback thresholds, and reduced hurt duration.
 
         If blocking, stamina is consumed and knockback is reduced; no health lost.
-        Otherwise, delegate to the base implementation and reduce hurt duration.
-        The state machine's interrupt system will automatically transition to the
-        HURT state, where velocity/knockback is applied.
+        If the knockback force is very high, the player enters the KNOCKBACK state
+        (launched into the air). Otherwise, they enter the standard HURT state.
 
         Parameters
         ----------
@@ -680,6 +680,25 @@ class Player(Entity):
                 self.combat.hurt_timer,
                 CombatSettings.PLAYER_HURT_DURATION,
             )
+
+            if knockback is not None:
+                kb_power_x = knockback.power[0]
+                kb_power_y = knockback.power[1]
+
+                # Seuil de projection (Knockback state)
+                if kb_power_x > 400 or kb_power_y > 400:
+                    direction = compute_knockback_direction(
+                        self.hitbox.centerx, source_center_x, self.facing_right
+                    )
+                    self.state_machine.change_state(
+                        PlayerState.KNOCKBACK,
+                        force=True,
+                        knockback_direction=direction,
+                        knockback_force=kb_power_x,
+                        knockback_up_force=kb_power_y
+                    )
+                    # On désactive is_hurt pour éviter que l'interrupt HURT ne reprenne le dessus
+                    self.combat.is_hurt = False
 
         return result
 

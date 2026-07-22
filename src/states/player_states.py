@@ -104,19 +104,38 @@ class PlayerWallSlideState(PlayerBaseState):
         return None
 
 
+class PlayerChargeState(PlayerBaseState):
+    """Represent the PlayerCharge state."""
+
+    def __init__(self, entity: Any):
+        """Initialize the PlayerChargeState instance with charge tags."""
+        super().__init__(entity, tags=["charge", "busy"])
+
+    def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state, allowing limited movement while charging."""
+        self.entity.apply_horizontal_movement(delta_time)
+
+        if not self.entity.combat.charging.is_charging:
+            if self.entity.combat.is_attacking:
+                return "attack"
+            return self.ground_return()
+        return None
+
+
 class PlayerAttackState(PlayerBaseState):
     """Represent the PlayerAttack state."""
 
     def __init__(self, entity: Any):
         """Initialize the PlayerAttackState instance with attack tags."""
-
         super().__init__(entity, tags=["attack", "busy"])
 
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state and apply forward momentum if grounded."""
         if self.entity.on_surface["floor"]:
+            attack = self.entity.combat.state.current_attack_def
+            multiplier = attack.lunge_speed_multiplier if attack else 0.35
             direction = 1.0 if self.entity.facing_right else -1.0
-            self.entity.velocity.x = direction * self.entity.speed * 0.35
+            self.entity.velocity.x = direction * self.entity.speed * multiplier
 
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state and cancel the ongoing attack."""
@@ -124,6 +143,8 @@ class PlayerAttackState(PlayerBaseState):
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state and check for buffered combo inputs."""
+        self.entity.apply_horizontal_movement(delta_time)
+
         if not self.entity.combat.is_attacking:
             if self.entity.state_machine.consume_input("attack"):
                 return "attack"
@@ -181,7 +202,7 @@ class PlayerHurtState(PlayerBaseState):
         super().__init__(entity, tags=["hurt", "invincible"])
 
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state and apply knockback if provided."""
+        """Enter the state and apply light knockback if provided."""
         self.entity._dash_requested = False
 
         knockback_dir = kwargs.get("knockback_direction", 0)
@@ -196,6 +217,39 @@ class PlayerHurtState(PlayerBaseState):
             if self.entity.stagger_timer > 0:
                 return "stagger"
             return self.ground_return()
+        return None
+
+
+class PlayerKnockbackState(PlayerBaseState):
+    """Represent the PlayerKnockback state."""
+
+    def __init__(self, entity: Any):
+        """Initialize the PlayerKnockbackState instance with knockback tags."""
+        super().__init__(entity, tags=["knockback", "invincible"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state and apply strong launch velocity."""
+        self.entity._dash_requested = False
+
+        knockback_dir = kwargs.get("knockback_direction", 0)
+        knockback_force = kwargs.get("knockback_force", 0)
+        knockback_up = kwargs.get("knockback_up_force", 0)
+
+        if knockback_dir != 0 and knockback_force > 0:
+            self.entity.velocity.x = knockback_dir * knockback_force
+        if knockback_up > 0:
+            self.entity.velocity.y = -knockback_up
+
+    def update(self, delta_time: float) -> Optional[str]:
+        """Update the current state, applying gravity and friction until landing."""
+        if self.entity.on_surface["floor"]:
+            lerp_velocity(self.entity, 0.0, min(
+                1.0, 8.0 * delta_time), delta_time)
+            if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
+                self.entity.velocity.x = 0.0
+                if self.entity.combat.is_hurt:
+                    return "hurt"
+                return self.ground_return()
         return None
 
 

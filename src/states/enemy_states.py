@@ -4,6 +4,7 @@ State machine states for enemies (AI).
 
 from typing import Optional, Any
 from src.states.state_machine import State
+from src.physics import lerp_velocity
 
 
 class EnemyIdleState(State):
@@ -109,6 +110,23 @@ class EnemyAttackState(State):
         self._started = False
 
 
+class EnemyChargeState(State):
+    """Charge state: the enemy is charging an attack."""
+
+    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
+        """Initialize the EnemyChargeState instance."""
+        super().__init__(entity, tags or ["charge", "busy"])
+
+    def update(self, delta_time: float) -> Optional[str]:
+        """Update the state and transition to attack when charge is released."""
+        if not self.entity.combat.charging.is_charging:
+            if self.entity.combat.is_attacking:
+                self.entity.state_machine.change_state("attack")
+            else:
+                self.entity.state_machine.change_state("idle")
+        return None
+
+
 class EnemyHurtState(State):
     """Hurt state: reaction to taking damage."""
 
@@ -120,6 +138,38 @@ class EnemyHurtState(State):
         """Update the state and return to idle when hurt duration ends."""
         if not self.entity.combat.is_hurt:
             self.entity.state_machine.change_state("idle")
+        return None
+
+
+class EnemyKnockbackState(State):
+    """Knockback state: the enemy is being projected by a strong force."""
+
+    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
+        """Initialize the EnemyKnockbackState instance."""
+        super().__init__(entity, tags or ["knockback", "busy"])
+
+    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+        """Enter the state and apply launch velocity."""
+        knockback_dir = kwargs.get("knockback_direction", 0)
+        knockback_force = kwargs.get("knockback_force", 0)
+        knockback_up = kwargs.get("knockback_up_force", 0)
+
+        if knockback_dir != 0 and knockback_force > 0:
+            self.entity.velocity.x = knockback_dir * knockback_force
+        if knockback_up > 0:
+            self.entity.velocity.y = -knockback_up
+
+    def update(self, delta_time: float) -> Optional[str]:
+        """Update the state, applying friction until the enemy lands and stops."""
+        if self.entity.on_surface["floor"]:
+            lerp_velocity(self.entity, 0.0, min(
+                1.0, 8.0 * delta_time), delta_time)
+            if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
+                self.entity.velocity.x = 0.0
+                if self.entity.combat.is_hurt:
+                    self.entity.state_machine.change_state("hurt")
+                else:
+                    self.entity.state_machine.change_state("idle")
         return None
 
 

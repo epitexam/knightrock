@@ -39,6 +39,24 @@ class ChargeHandler:
         """Name of the attack currently being charged, or ``None``."""
         return self._attack_name
 
+    @property
+    def movement_multiplier(self) -> float:
+        """Movement speed multiplier while charging.
+
+        Returns the ``charge_move_multiplier`` of the attack currently
+        being charged, or ``1.0`` if no charge is in progress.
+
+        Returns
+        -------
+        float
+            Value in ``[0.0, 1.0]`` intended to be multiplied with the
+            entity's normal movement speed. ``0.0`` fully immobilizes
+            the entity while charging.
+        """
+        if not self.is_charging or self._attack_name is None:
+            return 1.0
+        return self._attacks[self._attack_name].charge_move_multiplier
+
     def start_charge(self, name: str) -> bool:
         """Begin charging an attack.
 
