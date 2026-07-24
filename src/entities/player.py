@@ -11,7 +11,7 @@ from pygame.sprite import Group
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.knockback import KnockbackConfig
 from src.core.colors import Colors
-from src.core.input_manager import InputManager
+from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
 from src.entities.entity import Entity, DamageResult, compute_knockback_direction

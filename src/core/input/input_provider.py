@@ -11,8 +11,8 @@ from typing import Optional
 import pygame
 from pygame.joystick import JoystickType
 
-from src.core.input_state import InputState
-from src.core.input_bindings import InputBindings
+from src.core.input.input_state import InputState
+from src.core.input.input_bindings import InputBindings
 
 
 class InputProvider:
