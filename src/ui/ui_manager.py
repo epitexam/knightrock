@@ -1,6 +1,6 @@
 import pygame
 from typing import Any, Optional
-from src.core.camera import Camera
+from src.core.rendering.camera import Camera
 from src.core.settings import Debug
 
 # --- UI Constants ---

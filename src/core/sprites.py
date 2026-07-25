@@ -7,8 +7,6 @@ from src.physics.platforms import update_moving_platform
 
 
 class Sprite(pygame.sprite.Sprite):
-    """Represent a base game sprite with floating-point rect precision."""
-
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -18,7 +16,6 @@ class Sprite(pygame.sprite.Sprite):
             pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
         ] = None,
     ) -> None:
-        """Initialize the Sprite instance and assign it to specified groups."""
         super().__init__()
 
         if groups is not None:
@@ -38,8 +35,6 @@ class Sprite(pygame.sprite.Sprite):
 
 
 class MovingPlatform(Sprite):
-    """Represent a platform that moves between predefined waypoints."""
-
     def __init__(
         self,
         pos: Tuple[int, int],
@@ -48,7 +43,6 @@ class MovingPlatform(Sprite):
         speed: float,
         groups=None,
     ):
-        """Initialize the MovingPlatform with waypoints, speed, and physics properties."""
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.waypoints = [pygame.math.Vector2(x, y) for (x, y) in waypoints]
         self.speed = speed
@@ -60,5 +54,10 @@ class MovingPlatform(Sprite):
         self.pos = pygame.math.Vector2(self.rect.topleft)
 
     def update(self, delta_time: float):
-        """Update the platform position based on its movement logic."""
         update_moving_platform(self, delta_time)
+
+
+class LevelExit(Sprite):
+    def __init__(self, pos: Tuple[int, int], groups=None):
+        surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE), pygame.SRCALPHA)
+        super().__init__(pos, color=None, surf=surf, groups=groups)

@@ -10,8 +10,8 @@ input originates from a local keyboard, a gamepad, or a network packet.
 from copy import copy
 from typing import Optional
 
-from src.core.input_provider import InputProvider, NullInputProvider
-from src.core.input_state import InputState
+from src.core.input.input_provider import InputProvider, NullInputProvider
+from src.core.input.input_state import InputState
 
 
 class InputManager:

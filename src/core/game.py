@@ -1,51 +1,48 @@
-"""
-Main game application class and entry point for the fixed timestep loop.
-"""
 import os
 import sys
 import traceback
 from os.path import join
-import pygame
-from pytmx.util_pygame import load_pygame
 
-from src.core.level import Level
+import pygame
+
 from src.core.settings import Display, Simulation
-from src.core.input_manager import InputManager
-from src.core.input_provider import LocalInputProvider
+from src.core.input.input_manager import InputManager
+from src.core.input.input_provider import LocalInputProvider
+from src.core.level.level_manager import LevelManager
+from src.core.level.level import Level
 
 
 class Game:
-    """Initialize the game engine and run the main fixed-timestep loop."""
-
     def __init__(self) -> None:
-        """Initialize Pygame subsystems, display, and the first level."""
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
 
         pygame.init()
         pygame.joystick.init()
 
-        self.display_surface = pygame.display.set_mode(
-            (Display.WIDTH, Display.HEIGHT))
+        self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
         pygame.display.set_caption(Display.TITLE)
 
         self.joysticks: dict[int, pygame.joystick.Joystick] = {}
 
-        self.tmx_maps = {
-            0: load_pygame(join(".", "assets", "data", "levels", "omni.tmx"))
-        }
+        self.level_manager = LevelManager()
+        self.level_manager.register(0, join(".", "assets", "data", "levels", "1.tmx"))
+        # Ajoute ici les autres niveaux, par ex :
+        # self.level_manager.register(1, join(".", "assets", "data", "levels", "autre.tmx"))
 
         self.input_provider = LocalInputProvider()
         self.input_manager = InputManager(self.input_provider)
-        
-        self.current_stage = Level(
-            self.display_surface, self.tmx_maps[0], self.input_manager
-        )
+
+        self.current_level_id = 0
+        self.current_stage = self._load_level(self.current_level_id)
 
         self.clock = pygame.time.Clock()
         self._accumulator = 0.0
 
+    def _load_level(self, level_id: int) -> Level:
+        level_data = self.level_manager.get(level_id)
+        return Level(self.display_surface, level_data, self.input_manager)
+
     def run(self) -> None:
-        """Execute the main game loop, handling events, fixed updates, and rendering."""
         while True:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
             self._accumulator += min(raw_delta, 0.1)
@@ -58,6 +55,9 @@ class Game:
                     self.current_stage.update(Simulation.TIMESTEP)
                     self._accumulator -= Simulation.TIMESTEP
 
+                if self.current_stage.completed:
+                    self._advance_level()
+
                 self.current_stage.draw(self.clock.get_fps())
 
             except Exception as e:
@@ -66,8 +66,15 @@ class Game:
 
             pygame.display.update()
 
+    def _advance_level(self) -> None:
+        next_id = self.level_manager.next_id(self.current_level_id)
+        if next_id is None:
+            return
+        self.current_level_id = next_id
+        self.current_stage = self._load_level(next_id)
+        self._accumulator = 0.0
+
     def _handle_events(self) -> None:
-        """Poll and process Pygame system and input events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -89,7 +96,6 @@ class Game:
                     self.input_provider.reassign_joystick(self.joysticks)
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        """Display a fatal error screen and gracefully exit the application."""
         self.display_surface.fill((0, 0, 0))
         font = pygame.font.SysFont("Arial", 30)
         text = font.render("FATAL ERROR: " + str(error), True, (255, 0, 0))
