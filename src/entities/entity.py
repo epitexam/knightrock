@@ -26,6 +26,9 @@ from src.physics import (
 from src.states.null_state_machine import NullStateMachine
 
 
+HEAVY_KNOCKBACK_THRESHOLD = 400.0
+
+
 @dataclass
 class DamageResult:
     """Represents the outcome of a damage application.
@@ -194,7 +197,6 @@ class Entity(Sprite):
         self.invincibility_timer: float = 0.0
         self.invincibility_duration: float = invincibility_duration
 
-        # Initialize combat component - only create NullCombatComponent if no attacks and no combat provided
         if combat is not None:
             self.combat = combat
         elif attacks:
@@ -219,8 +221,12 @@ class Entity(Sprite):
         pass
 
     def _setup_interrupts(self) -> None:
-        """Register state machine interrupts. Override in subclasses if needed."""
-        pass
+        """Register shared state machine interrupts."""
+        self.state_machine.add_interrupt(
+            "hurt",
+            lambda: self.combat.is_hurt,
+            priority=100,
+        )
 
     @property
     def health(self) -> float:
@@ -376,7 +382,6 @@ class Entity(Sprite):
         self.invincibility_timer = 0.0
         self.health = self.max_health
 
-        # Only call combat methods if they exist (NullCombatComponent has limited interface)
         if hasattr(self.combat, 'state') and hasattr(self.combat.state, 'end'):
             self.combat.state.end()
         if hasattr(self.combat, 'hitbox') and hasattr(self.combat.hitbox, 'clear'):
@@ -384,7 +389,6 @@ class Entity(Sprite):
         if hasattr(self.combat, 'charging') and hasattr(self.combat.charging, 'cancel'):
             self.combat.charging.cancel()
 
-        # Reset state machine to idle
         if hasattr(self.state_machine, 'change_state'):
             self.state_machine.change_state("idle", force=True)
 
@@ -442,6 +446,40 @@ class Entity(Sprite):
             self.velocity.x = knockback.power[0] * direction
             self.velocity.y = knockback.power[1]
 
+    def _handle_heavy_knockback(
+        self,
+        knockback: KnockbackConfig,
+        source_center_x: float | None,
+    ) -> None:
+        """Check if knockback exceeds the threshold to trigger the launch state.
+
+        If the horizontal or vertical knockback power exceeds a defined threshold,
+        the entity's state machine is forced into the 'knockback' state.
+
+        Parameters
+        ----------
+        knockback : KnockbackConfig
+            Configuration for the push effect.
+        source_center_x : float | None
+            X-coordinate of the damage source for knockback direction.
+        """
+        kb_power_x = knockback.power[0]
+        kb_power_y = knockback.power[1]
+
+        if kb_power_x > HEAVY_KNOCKBACK_THRESHOLD or kb_power_y > HEAVY_KNOCKBACK_THRESHOLD:
+            direction = compute_knockback_direction(
+                self.hitbox.centerx, source_center_x, self.facing_right
+            )
+            self.state_machine.change_state(
+                "knockback",
+                force=True,
+                knockback_direction=direction,
+                knockback_force=kb_power_x,
+                knockback_up_force=kb_power_y
+            )
+            if hasattr(self.combat, "is_hurt"):
+                self.combat.is_hurt = False
+
     def receive_damage(
         self,
         amount: float,
@@ -477,6 +515,9 @@ class Entity(Sprite):
 
         if self.invincibility_duration > 0:
             self.invincibility_timer = self.invincibility_duration
+
+        if interrupt and not self.is_dead and knockback is not None:
+            self._handle_heavy_knockback(knockback, source_center_x)
 
         return DamageResult(
             applied=True,

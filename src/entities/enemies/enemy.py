@@ -19,13 +19,10 @@ from src.states.enemy_states import (
     EnemyPatrolState,
     EnemyStaggerState,
 )
-from src.entities.entity import Entity, DamageResult, compute_knockback_direction
+from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
 from src.physics import lerp_velocity
 from src.core.settings import Combat as CombatSettings
-from src.combat.combat_component import CombatComponent
-from src.combat.attack_loading import load_attacks
-from src.combat.knockback import KnockbackConfig
 
 
 class PlayerReference(Protocol):
@@ -75,7 +72,6 @@ class Enemy(Entity):
         Whether the enemy has super armor (ignores stagger).
     """
 
-    # Type annotations for class attributes
     config: EnemyConfig
     player: PlayerReference | None
     chase_speed: float
@@ -120,14 +116,6 @@ class Enemy(Entity):
             config.max_health if config.max_health is not None else config.health
         )
 
-        combat_component = CombatComponent(
-            self,
-            combo_window=CombatSettings.COMBO_WINDOW,
-            hurt_duration=CombatSettings.HURT_DURATION,
-        )
-        if config.attacks:
-            load_attacks(combat_component, config.attacks)
-
         super().__init__(
             pos=pos,
             size=config.size,
@@ -139,7 +127,7 @@ class Enemy(Entity):
             max_health=max_health,
             faction="enemy",
             spawn_pos=pos,
-            combat=combat_component,
+            attacks=config.attacks if config.attacks else None,
             hurt_duration=CombatSettings.HURT_DURATION,
             rng=rng,
         )
@@ -188,11 +176,7 @@ class Enemy(Entity):
 
     def _setup_interrupts(self) -> None:
         """Register enemy-specific state machine interrupts."""
-        self.state_machine.add_interrupt(
-            "hurt",
-            lambda: self.combat.is_hurt,
-            priority=100,
-        )
+        super()._setup_interrupts()
 
     def face_player(self) -> None:
         """Orient the enemy toward the player if player exists."""
@@ -248,54 +232,3 @@ class Enemy(Entity):
             )
             < self.attack_range
         )
-
-    def receive_damage(
-        self,
-        amount: float,
-        source_center_x: float | None = None,
-        knockback: KnockbackConfig | None = None,
-        interrupt: bool = True,
-    ) -> DamageResult:
-        """Override to handle knockback thresholds for enemies.
-
-        If the knockback force is very high, the enemy enters the KNOCKBACK state
-        (launched into the air). Otherwise, they enter the standard HURT state.
-
-        Parameters
-        ----------
-        amount : float
-            Hit points to subtract.
-        source_center_x : float | None
-            X centre of the damage source for knockback direction.
-        knockback : KnockbackConfig | None
-            Knockback impulse configuration.
-        interrupt : bool
-            Whether the hit interrupts the entity's current action.
-
-        Returns
-        -------
-        DamageResult
-            A dataclass detailing the outcome of the damage application.
-        """
-        result = super().receive_damage(amount, source_center_x, knockback, interrupt)
-
-        if interrupt and not self.is_dead and knockback is not None:
-            kb_power_x = knockback.power[0]
-            kb_power_y = knockback.power[1]
-
-            # Seuil de projection (Knockback state)
-            if kb_power_x > 400 or kb_power_y > 400:
-                direction = compute_knockback_direction(
-                    self.hitbox.centerx, source_center_x, self.facing_right
-                )
-                self.state_machine.change_state(
-                    "knockback",
-                    force=True,
-                    knockback_direction=direction,
-                    knockback_force=kb_power_x,
-                    knockback_up_force=kb_power_y
-                )
-                if hasattr(self.combat, "is_hurt"):
-                    self.combat.is_hurt = False
-
-        return result

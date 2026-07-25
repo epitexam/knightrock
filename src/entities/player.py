@@ -32,8 +32,6 @@ from src.states.player_states import (
     PlayerWallSlideState,
 )
 from src.states.state_machine import StateMachine
-from src.combat.combat_component import CombatComponent
-from src.combat.attack_loading import load_attacks
 
 
 class PlayerState(str, Enum):
@@ -63,7 +61,6 @@ ATTACK_FORBIDDEN_STATES = {
 """Set of states where initiating an attack is forbidden."""
 
 
-# Default player configuration
 DEFAULT_PLAYER_CONFIG = PlayerConfig(
     size=(48.0, 56.0),
     color=Colors.green,
@@ -175,7 +172,6 @@ class Player(Entity):
         Whether a dash was requested this frame.
     """
 
-    # Public attributes with type annotations
     input_manager: InputManager
     speed: float
     floor_control: float
@@ -207,7 +203,6 @@ class Player(Entity):
     dash_friction: float
     dash_penalty_duration: float
 
-    # Private attributes
     _dash_duration_timer: float
     _original_hitbox_width: float
     _dash_requested: bool
@@ -240,16 +235,11 @@ class Player(Entity):
         """
         config = config or DEFAULT_PLAYER_CONFIG
 
-        combat_component = CombatComponent(
-            self,
-            combo_window=CombatSettings.COMBO_WINDOW,
-            hurt_duration=config.hurt_duration,
-        )
-        if not hasattr(config, '_attacks_loaded') and PLAYER_ATTACKS:
-            load_attacks(combat_component, PLAYER_ATTACKS)
-        else:
-            if hasattr(config, 'attacks') and config.attacks:
-                load_attacks(combat_component, dict(config.attacks))
+        attacks = None
+        if hasattr(config, 'attacks') and config.attacks:
+            attacks = dict(config.attacks)
+        elif PLAYER_ATTACKS:
+            attacks = PLAYER_ATTACKS
 
         super().__init__(
             pos,
@@ -262,7 +252,7 @@ class Player(Entity):
             max_health=config.max_health,
             faction=config.faction,
             spawn_pos=pos,
-            combat=combat_component,
+            attacks=attacks,
             hurt_duration=config.hurt_duration,
             invincibility_duration=config.invincibility_duration,
         )
@@ -362,12 +352,8 @@ class Player(Entity):
 
     def _setup_interrupts(self) -> None:
         """Register player-specific state machine interrupts."""
+        super()._setup_interrupts()
         sm = self.state_machine
-        sm.add_interrupt(
-            PlayerState.HURT,
-            lambda: self.combat.is_hurt,
-            priority=100,
-        )
         sm.add_interrupt(
             PlayerState.DASH,
             self._can_dash,
@@ -474,18 +460,7 @@ class Player(Entity):
             self.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Process attack input with support for charge attacks, input buffering, and combos.
-
-            Chargeable attacks (heavy_attack) use a hold-to-charge, release-to-fire
-            flow. Non-chargeable attacks fire immediately on press.
-
-            While charging, entering a forbidden state (dash, hurt, etc.) cancels
-            the charge. Releasing the charge button triggers the attack with a
-            damage multiplier proportional to the hold duration.
-
-            Light attacks are buffered in the StateMachine to allow seamless combos
-            even if pressed slightly before the current attack animation finishes.
-        """
+        """Process attack input with support for charge attacks, input buffering, and combos."""
         im = self.input_manager
 
         if self.combat.charging.is_charging:
@@ -645,11 +620,10 @@ class Player(Entity):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
     ) -> DamageResult:
-        """Override to add blocking logic, knockback thresholds, and reduced hurt duration.
+        """Override to add blocking logic and cap hurt duration.
 
         If blocking, stamina is consumed and knockback is reduced; no health lost.
-        If the knockback force is very high, the player enters the KNOCKBACK state
-        (launched into the air). Otherwise, they enter the standard HURT state.
+        Otherwise, the base entity logic is applied and the hurt timer is capped.
 
         Parameters
         ----------
@@ -680,25 +654,6 @@ class Player(Entity):
                 self.combat.hurt_timer,
                 CombatSettings.PLAYER_HURT_DURATION,
             )
-
-            if knockback is not None:
-                kb_power_x = knockback.power[0]
-                kb_power_y = knockback.power[1]
-
-                # Seuil de projection (Knockback state)
-                if kb_power_x > 400 or kb_power_y > 400:
-                    direction = compute_knockback_direction(
-                        self.hitbox.centerx, source_center_x, self.facing_right
-                    )
-                    self.state_machine.change_state(
-                        PlayerState.KNOCKBACK,
-                        force=True,
-                        knockback_direction=direction,
-                        knockback_force=kb_power_x,
-                        knockback_up_force=kb_power_y
-                    )
-                    # On désactive is_hurt pour éviter que l'interrupt HURT ne reprenne le dessus
-                    self.combat.is_hurt = False
 
         return result
 
