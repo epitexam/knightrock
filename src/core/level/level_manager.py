@@ -7,6 +7,7 @@ from typing import Optional
 from pytmx.util_pygame import load_pygame
 
 from src.core.level.level_data import LevelData
+from src.core.paths import resource_path
 
 
 class LevelManager:
@@ -42,7 +43,8 @@ class LevelManager:
             The parsed LevelData object.
         """
         if level_id not in self._cache:
-            tmx_map = load_pygame(self.level_paths[level_id])
+            absolute_path = resource_path(self.level_paths[level_id])
+            tmx_map = load_pygame(absolute_path)
             self._cache[level_id] = LevelData.from_tmx(tmx_map)
         return self._cache[level_id]
 
