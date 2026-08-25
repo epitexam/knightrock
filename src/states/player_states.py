@@ -1,7 +1,7 @@
 from typing import Optional, Any
 
 from src.states.state_machine import State
-from src.core.settings import Combat as CombatSettings
+from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import apply_velocity_friction, lerp_velocity
 
 
@@ -138,8 +138,9 @@ class PlayerAttackState(PlayerBaseState):
             self.entity.velocity.x = direction * self.entity.speed * multiplier
 
     def exit(self, next_state: Optional[str] = None) -> None:
-        """Exit the state and cancel the ongoing attack."""
-        self.entity.combat.state.end()
+        """Cancel the attack unless this state is restarting a buffered one."""
+        if next_state != "attack":
+            self.entity.combat.state.end()
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state and check for buffered combo inputs."""
@@ -147,7 +148,10 @@ class PlayerAttackState(PlayerBaseState):
 
         if not self.entity.combat.is_attacking:
             if self.entity.state_machine.consume_input("attack"):
-                return "attack"
+                attack_name = self.entity._buffered_attack_name
+                self.entity._buffered_attack_name = None
+                if attack_name and self.entity.combat.start_attack(attack_name):
+                    return ("attack", {"force": True})
 
             return self.ground_return()
         return None
@@ -172,9 +176,17 @@ class PlayerBlockState(PlayerBaseState):
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state, restore hitbox height, and apply block cooldown."""
         if self.entity.block_stamina <= 0:
-            self.entity.block_cooldown_timer = CombatSettings.BLOCK_COOLDOWN_BROKEN
+            self.entity.block_cooldown_timer = getattr(
+                self.entity,
+                "block_cooldown_broken",
+                CombatSettings.BLOCK_COOLDOWN_BROKEN,
+            )
         else:
-            self.entity.block_cooldown_timer = CombatSettings.BLOCK_COOLDOWN_NORMAL
+            self.entity.block_cooldown_timer = getattr(
+                self.entity,
+                "block_cooldown_normal",
+                CombatSettings.BLOCK_COOLDOWN_NORMAL,
+            )
         old_bottom = self.entity.hitbox.bottom
         self.entity.hitbox.height += CombatSettings.BLOCK_HEIGHT_REDUCTION
         self.entity.hitbox.bottom = old_bottom
@@ -264,6 +276,12 @@ class PlayerDashState(PlayerBaseState):
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.dash_charges -= 1
         self.entity._dash_requested = False
+        if self.entity.dash_recharge_timer <= 0:
+            self.entity.dash_recharge_timer = getattr(
+                self.entity,
+                "dash_recharge_time",
+                Physics.DASH_RECHARGE_TIME,
+            )
         if self.entity.dash_charges == 0:
             self.entity.dash_penalty_timer = self.entity.dash_penalty_duration
         self.entity._original_hitbox_width = self.entity.hitbox.width
@@ -296,7 +314,12 @@ class PlayerDashState(PlayerBaseState):
             self.entity.velocity.x -= 100.0 * delta_time
         if self.entity.right_held:
             self.entity.velocity.x += 100.0 * delta_time
-        self.entity.velocity.y = 0.0
+        dash_gravity = getattr(
+            self.entity, "dash_gravity_mult", Physics.DASH_GRAVITY_MULT
+        )
+        self.entity.velocity.y += (
+            self.entity.normal_gravity * dash_gravity * delta_time
+        )
         if self.entity._dash_duration_timer <= 0 or abs(self.entity.velocity.x) < 10.0:
             self.entity.velocity.x = 0.0
             return self.ground_return()

@@ -6,12 +6,64 @@ and other effects. They decouple the combat logic from any concrete entity
 class.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 import pygame
 
 from src.combat.damage_types import DamageType
+from src.combat.frame_data import PhaseDefinition
 from src.combat.knockback import KnockbackConfig
+
+
+@dataclass(frozen=True)
+class DamageResult:
+    """Explicit outcome of a call to ``receive_damage``."""
+
+    applied: bool = False
+    blocked: bool = False
+    killed: bool = False
+    actual_damage: float = 0.0
+    heavy_knockback: bool = False
+
+
+class AttackStatePort(Protocol):
+    """Attack-state surface consumed by combat orchestration."""
+
+    is_active: bool
+    is_attacking: bool
+    targets_hit: set[str]
+
+
+class CombatPort(Protocol):
+    """Minimal combat component surface exposed by a combatant."""
+
+    is_hurt: bool
+    hurt_timer: float
+
+    @property
+    def state(self) -> AttackStatePort: ...
+
+    @property
+    def attack_box(self) -> pygame.FRect | None: ...
+
+    @property
+    def current_phase(self) -> PhaseDefinition | None: ...
+
+    @property
+    def charge_multiplier(self) -> float: ...
+
+    @property
+    def targets_hit(self) -> set[str]: ...
+
+    @property
+    def movement_multiplier(self) -> float: ...
+
+    def on_hit(
+        self, duration: float | None = None, interrupt: bool = True
+    ) -> None: ...
+
+    def reset(self) -> None: ...
 
 
 @runtime_checkable
@@ -20,8 +72,8 @@ class Combatant(Protocol):
 
     Attributes
     ----------
-    id : int
-        Unique network identifier for the entity.
+    id : str
+        Unique identifier for the entity.
     velocity : pygame.math.Vector2
         Current movement velocity of the entity (px/s).
     hitbox : pygame.FRect
@@ -34,18 +86,25 @@ class Combatant(Protocol):
         True if the entity is currently facing right.
     is_dead : bool
         True if the entity's health has reached zero.
-    combat : Any
-        The entity's CombatComponent-like object.
+    combat : CombatPort
+        The entity's combat component through its explicit public port.
     """
 
-    id: int
+    id: str
     velocity: pygame.math.Vector2
     hitbox: pygame.FRect
-    hurtbox: pygame.FRect
-    faction: str | None
+    faction: str
     facing_right: bool
     is_dead: bool
-    combat: Any
+    @property
+    def combat(self) -> CombatPort:
+        """Combat operations exposed to gameplay systems."""
+        ...
+
+    @property
+    def hurtbox(self) -> pygame.FRect:
+        """Collision rectangle used for incoming attacks."""
+        ...
 
     @property
     def health(self) -> float:
@@ -63,20 +122,28 @@ class Combatant(Protocol):
 
     def receive_damage(
         self,
-        amount: int,
+        amount: float,
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
-    ) -> None:
+        interrupt: bool = True,
+    ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
         Parameters
         ----------
-        amount : int
+        amount : float
             Hit points to subtract.
         source_center_x : float | None
             X centre of the damage source.
         knockback : KnockbackConfig | None
             Knockback impulse.
+        interrupt : bool
+            Whether the hit may interrupt the current action.
+
+        Returns
+        -------
+        DamageResult
+            Explicit damage and reaction outcome.
         """
         ...
 

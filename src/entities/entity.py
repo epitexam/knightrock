@@ -3,7 +3,6 @@
 import random
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 import pygame
@@ -11,6 +10,7 @@ from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
 from src.combat.knockback import KnockbackConfig
+from src.combat.combatant_protocol import DamageResult
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.attack_loading import load_attacks
 from src.combat.damage_types import DamageType
@@ -28,26 +28,6 @@ from src.states.null_state_machine import NullStateMachine
 
 HEAVY_KNOCKBACK_THRESHOLD = 400.0
 
-
-@dataclass
-class DamageResult:
-    """Represents the outcome of a damage application.
-
-    Attributes
-    ----------
-    applied : bool
-        Whether damage was successfully applied.
-    blocked : bool
-        Whether the damage was blocked.
-    killed : bool
-        Whether the damage killed the entity.
-    actual_damage : float
-        The actual amount of damage dealt after modifiers.
-    """
-    applied: bool = False
-    blocked: bool = False
-    killed: bool = False
-    actual_damage: float = 0.0
 
 
 def compute_knockback_direction(
@@ -382,12 +362,7 @@ class Entity(Sprite):
         self.invincibility_timer = 0.0
         self.health = self.max_health
 
-        if hasattr(self.combat, 'state') and hasattr(self.combat.state, 'end'):
-            self.combat.state.end()
-        if hasattr(self.combat, 'hitbox') and hasattr(self.combat.hitbox, 'clear'):
-            self.combat.hitbox.clear()
-        if hasattr(self.combat, 'charging') and hasattr(self.combat.charging, 'cancel'):
-            self.combat.charging.cancel()
+        self.combat.reset()
 
         if hasattr(self.state_machine, 'change_state'):
             self.state_machine.change_state("idle", force=True)
@@ -450,11 +425,11 @@ class Entity(Sprite):
         self,
         knockback: KnockbackConfig,
         source_center_x: float | None,
-    ) -> None:
-        """Check if knockback exceeds the threshold to trigger the launch state.
+    ) -> bool:
+        """Trigger the launch state for knockback at or above the heavy threshold.
 
-        If the horizontal or vertical knockback power exceeds a defined threshold,
-        the entity's state machine is forced into the 'knockback' state.
+        The full vector magnitude is used so upward launches and combined diagonal
+        impulses are classified consistently.
 
         Parameters
         ----------
@@ -463,22 +438,27 @@ class Entity(Sprite):
         source_center_x : float | None
             X-coordinate of the damage source for knockback direction.
         """
-        kb_power_x = knockback.power[0]
-        kb_power_y = knockback.power[1]
+        kb_power_x, kb_power_y = knockback.power
+        magnitude = Vector2(kb_power_x, kb_power_y).length()
+        if magnitude < HEAVY_KNOCKBACK_THRESHOLD:
+            return False
 
-        if kb_power_x > HEAVY_KNOCKBACK_THRESHOLD or kb_power_y > HEAVY_KNOCKBACK_THRESHOLD:
-            direction = compute_knockback_direction(
-                self.hitbox.centerx, source_center_x, self.facing_right
-            )
-            self.state_machine.change_state(
-                "knockback",
-                force=True,
-                knockback_direction=direction,
-                knockback_force=kb_power_x,
-                knockback_up_force=kb_power_y
-            )
-            if hasattr(self.combat, "is_hurt"):
-                self.combat.is_hurt = False
+        # Cancel an active action before selecting knockback as the definitive
+        # reaction. This avoids a simultaneous hurt/knockback state.
+        self.combat.on_hit(interrupt=True)
+        direction = compute_knockback_direction(
+            self.hitbox.centerx, source_center_x, self.facing_right
+        )
+        self.state_machine.change_state(
+            "knockback",
+            force=True,
+            knockback_direction=direction,
+            knockback_force=kb_power_x,
+            knockback_up_force=kb_power_y,
+        )
+        if hasattr(self.combat, "is_hurt"):
+            self.combat.is_hurt = False
+        return True
 
     def receive_damage(
         self,
@@ -516,13 +496,17 @@ class Entity(Sprite):
         if self.invincibility_duration > 0:
             self.invincibility_timer = self.invincibility_duration
 
+        heavy_knockback = False
         if interrupt and not self.is_dead and knockback is not None:
-            self._handle_heavy_knockback(knockback, source_center_x)
+            heavy_knockback = self._handle_heavy_knockback(
+                knockback, source_center_x
+            )
 
         return DamageResult(
-            applied=True,
+            applied=actual_damage > 0,
             killed=self.is_dead,
             actual_damage=actual_damage,
+            heavy_knockback=heavy_knockback,
         )
 
     def stagger(self, duration: float) -> None:

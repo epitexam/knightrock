@@ -8,7 +8,7 @@ a hitbox collision is detected.
 
 from __future__ import annotations
 
-from src.combat.combatant_protocol import Combatant
+from src.combat.combatant_protocol import Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 
@@ -26,7 +26,7 @@ class HitResolver:
         target: Combatant,
         hit: HitProperties,
         charge_multiplier: float = 1.0,
-    ) -> None:
+    ) -> DamageResult:
         """Calculate and apply damage, knockback, stagger, and finisher.
 
         The resolution flow:
@@ -34,16 +34,11 @@ class HitResolver:
         1. Compute final damage = ``hit.damage × charge_multiplier × type_modifier``.
         2. Compute scaled knockback by applying ``charge_multiplier`` to the
            base knockback power vectors.
-        3. If the target has super armor **and** the hit does not break it:
-           - Apply damage without knockback.
-           - Notify the target's combat component with ``interrupt=False``.
-        4. Otherwise:
-           - Break super armor if applicable.
-           - Apply damage with scaled knockback.
-           - Notify the target's combat component with ``interrupt=True``.
-           - Apply stagger if ``hit.stagger > 0``.
-        5. If the hit is a finisher and the target is below 20 % HP:
-           - Deal damage equal to remaining HP (kills the target) with scaled knockback.
+        3. Apply damage and inspect its explicit ``DamageResult``.
+        4. Stop immediately for blocked or immune hits.
+        5. Resolve armor break and finishers only after applied damage.
+        6. Interrupt and stagger only living targets not already reacting to
+           heavy knockback or protected by super armor.
 
         Parameters
         ----------
@@ -56,16 +51,16 @@ class HitResolver:
         charge_multiplier : float
             Damage and knockback multiplier from charging (default 1.0).
 
-        Raises
-        ------
-        AttributeError
-            If ``target.combat`` does not expose an ``on_hit`` method.
+        Returns
+        -------
+        DamageResult
+            Combined outcome, including any finisher damage.
         """
         type_mult = target.get_damage_modifier(hit.damage_type)
         final_damage = int(hit.damage * charge_multiplier * type_mult)
 
         if final_damage <= 0:
-            return
+            return DamageResult()
 
         scaled_power = (
             hit.knockback.power[0] * charge_multiplier,
@@ -76,23 +71,50 @@ class HitResolver:
 
         source_x: float = attacker.hitbox.centerx
 
-        if target.has_super_armor and not hit.super_armor_break:
-            target.receive_damage(final_damage, source_x, None)
-            target.combat.on_hit(interrupt=False)
-        else:
-            if target.has_super_armor and hit.super_armor_break:
-                target.break_super_armor()
+        armor_absorbs_reaction = (
+            target.has_super_armor and not hit.super_armor_break
+        )
+        applied_knockback = None if armor_absorbs_reaction else effective_knockback
+        result = target.receive_damage(
+            final_damage, source_x, applied_knockback
+        )
 
-            target.receive_damage(final_damage, source_x, effective_knockback)
-            target.combat.on_hit(interrupt=True)
+        # Blocking, invincibility, death, or any future immunity is authoritative:
+        # no interruption, stagger, armor break, or finisher may leak through.
+        if not result.applied:
+            return result
 
-            if hit.stagger > 0:
-                target.stagger(hit.stagger)
+        if target.has_super_armor and hit.super_armor_break:
+            target.break_super_armor()
 
         if (
             hit.is_finisher
-            and not target.is_dead
+            and not result.killed
             and target.health <= target.max_health * 0.2
         ):
-            target.receive_damage(int(target.health),
-                                  source_x, effective_knockback)
+            finisher_result = target.receive_damage(
+                target.health, source_x, effective_knockback
+            )
+            result = DamageResult(
+                applied=result.applied or finisher_result.applied,
+                blocked=finisher_result.blocked,
+                killed=finisher_result.killed,
+                actual_damage=(
+                    result.actual_damage + finisher_result.actual_damage
+                ),
+                heavy_knockback=(
+                    result.heavy_knockback
+                    or finisher_result.heavy_knockback
+                ),
+            )
+
+        if (
+            not result.killed
+            and not armor_absorbs_reaction
+            and not result.heavy_knockback
+        ):
+            target.combat.on_hit(interrupt=True)
+            if hit.stagger > 0:
+                target.stagger(hit.stagger)
+
+        return result

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import pygame
 
 from src.combat.attack_state import AttackStateMachine, AttackStateSnapshot
-from src.combat.charge_handler import ChargeHandler
+from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
 from src.combat.combo_tracker import ComboTracker
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
@@ -45,6 +45,8 @@ class CombatSnapshot:
     hurt_timer: float
     combo_count: int
     combo_timer: float
+    cooldowns: dict[str, float]
+    charge_state: ChargeSnapshot
 
 
 class CombatComponent:
@@ -130,9 +132,18 @@ class CombatComponent:
         return self.state.charge_multiplier
 
     @property
-    def targets_hit(self) -> set[int]:
+    def targets_hit(self) -> set[str]:
         """Set of entity IDs already hit during the current attack sequence."""
         return self.state.targets_hit
+
+    @property
+    def hurt_timer(self) -> float:
+        """Remaining hurt duration."""
+        return self._hurt_timer
+
+    @hurt_timer.setter
+    def hurt_timer(self, value: float) -> None:
+        self._hurt_timer = max(0.0, value)
 
     @property
     def movement_multiplier(self) -> float:
@@ -298,7 +309,9 @@ class CombatComponent:
             is_hurt=self.is_hurt,
             hurt_timer=self._hurt_timer,
             combo_count=self.combo.count,
-            combo_timer=self.combo._timer,
+            combo_timer=self.combo.timer,
+            cooldowns=dict(self._cooldowns),
+            charge_state=self.charging.save_state(),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
@@ -312,8 +325,9 @@ class CombatComponent:
         self.state.load_state(snapshot.attack_state)
         self.is_hurt = snapshot.is_hurt
         self._hurt_timer = snapshot.hurt_timer
-        self.combo.count = snapshot.combo_count
-        self.combo._timer = snapshot.combo_timer
+        self.combo.restore(snapshot.combo_count, snapshot.combo_timer)
+        self._cooldowns = dict(snapshot.cooldowns)
+        self.charging.load_state(snapshot.charge_state)
 
     def update(self, delta_time: float) -> None:
         """Tick all combat sub-systems.
@@ -342,6 +356,17 @@ class CombatComponent:
         self.state.update(delta_time)
         self.hitbox.update(self.state)
 
+    def reset(self) -> None:
+        """Return all transient combat state to a neutral baseline."""
+        self.is_hurt = False
+        self._hurt_timer = 0.0
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+        self.combo.restore(0, 0.0)
+        for name in self._cooldowns:
+            self._cooldowns[name] = 0.0
+
 
 class NullCombatComponent:
     """No-op stand-in for entities without combat capabilities.
@@ -355,10 +380,13 @@ class NullCombatComponent:
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
-        self.targets_hit: set[int] = set()
+        self.targets_hit: set[str] = set()
         self.charge_multiplier: float = 1.0
+        self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()
         self.combo: _NullComboTracker = _NullComboTracker()
+        self.hitbox: _NullHitboxManager = _NullHitboxManager()
+        self.charging: _NullChargeHandler = _NullChargeHandler()
 
     @property
     def current_phase(self) -> PhaseDefinition | None:
@@ -405,6 +433,12 @@ class NullCombatComponent:
     def update(self, delta_time: float) -> None:
         """No-op."""
 
+    def reset(self) -> None:
+        """No-op neutral reset, matching ``CombatComponent``."""
+        self.is_hurt = False
+        self.hurt_timer = 0.0
+        self.targets_hit.clear()
+
     def save_state(self) -> CombatSnapshot:
         """Return a dummy snapshot for rollback systems.
 
@@ -427,10 +461,27 @@ class NullCombatComponent:
             is_hurt=False,
             hurt_timer=0.0,
             combo_count=0,
-            combo_timer=0.0
+            combo_timer=0.0,
+            cooldowns={},
+            charge_state=ChargeSnapshot(),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
+        """No-op."""
+
+
+class _NullHitboxManager:
+    rect = None
+
+    def clear(self) -> None:
+        """No-op."""
+
+
+class _NullChargeHandler:
+    is_charging = False
+    movement_multiplier = 1.0
+
+    def cancel(self) -> None:
         """No-op."""
 
 

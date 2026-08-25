@@ -1,69 +1,80 @@
 import os
 import sys
 import traceback
-from os.path import join
 
 import pygame
+from pygame.joystick import JoystickType
 
-from src.core.settings import Display, Simulation
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
-from src.core.level.level_manager import LevelManager
 from src.core.level.level import Level
+from src.core.level.level_manager import LevelManager
+from src.core.settings import Display, Simulation
 
 
 class Game:
     def __init__(self) -> None:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
+        self.display_surface: pygame.Surface | None = None
+        self.joysticks: dict[int, JoystickType] = {}
+        self.level_manager = LevelManager()
+        self.level_manager.register(0, "assets/data/levels/1.tmx")
+        self.input_provider = LocalInputProvider()
+        self.input_manager = InputManager(self.input_provider)
+        self.current_level_id = 0
+        self.current_stage: Level | None = None
+        self.clock: pygame.time.Clock | None = None
+        self._accumulator = 0.0
 
+    def _initialize(self) -> None:
         pygame.init()
         pygame.joystick.init()
 
         self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
         pygame.display.set_caption(Display.TITLE)
 
-        self.joysticks: dict[int, pygame.joystick.Joystick] = {}
-
-        self.level_manager = LevelManager()
-        self.level_manager.register(0, join(".", "assets", "data", "levels", "1.tmx"))
-        # Ajoute ici les autres niveaux, par ex :
-        # self.level_manager.register(1, join(".", "assets", "data", "levels", "autre.tmx"))
-
-        self.input_provider = LocalInputProvider()
-        self.input_manager = InputManager(self.input_provider)
-
-        self.current_level_id = 0
         self.current_stage = self._load_level(self.current_level_id)
 
         self.clock = pygame.time.Clock()
         self._accumulator = 0.0
 
     def _load_level(self, level_id: int) -> Level:
+        if self.display_surface is None:
+            raise RuntimeError("The game display is not initialized")
         level_data = self.level_manager.get(level_id)
         return Level(self.display_surface, level_data, self.input_manager)
 
     def run(self) -> None:
+        """Initialize and run the game, always releasing Pygame resources."""
+        try:
+            self._initialize()
+            self._run_loop()
+        except Exception as error:
+            traceback.print_exc()
+            self._handle_fatal_error(error)
+            raise SystemExit(1) from error
+        finally:
+            pygame.quit()
+
+    def _run_loop(self) -> None:
+        if self.clock is None or self.current_stage is None:
+            raise RuntimeError("The game runtime is not initialized")
+
         while True:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
             self._accumulator += min(raw_delta, 0.1)
 
             self._handle_events()
 
-            try:
-                while self._accumulator >= Simulation.TIMESTEP:
-                    self.input_manager.update()
-                    self.current_stage.update(Simulation.TIMESTEP)
-                    self._accumulator -= Simulation.TIMESTEP
+            while self._accumulator >= Simulation.TIMESTEP:
+                self.input_manager.update()
+                self.current_stage.update(Simulation.TIMESTEP)
+                self._accumulator -= Simulation.TIMESTEP
 
-                if self.current_stage.completed:
-                    self._advance_level()
+            if self.current_stage.completed:
+                self._advance_level()
 
-                self.current_stage.draw(self.clock.get_fps())
-
-            except Exception as e:
-                traceback.print_exc()
-                self._handle_fatal_error(e)
-
+            self.current_stage.draw(self.clock.get_fps())
             pygame.display.update()
 
     def _advance_level(self) -> None:
@@ -77,14 +88,14 @@ class Game:
     def _handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                raise SystemExit
 
             elif event.type == pygame.JOYDEVICEADDED:
+                should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
                 print(f"Connected controller : {joy.get_name()}")
-                if self.input_provider._joystick is None:
+                if should_assign:
                     self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED:
@@ -96,11 +107,15 @@ class Game:
                     self.input_provider.reassign_joystick(self.joysticks)
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        self.display_surface.fill((0, 0, 0))
-        font = pygame.font.SysFont("Arial", 30)
-        text = font.render("FATAL ERROR: " + str(error), True, (255, 0, 0))
-        self.display_surface.blit(text, (10, 10))
-        pygame.display.update()
-        pygame.time.wait(5000)
-        pygame.quit()
-        sys.exit(1)
+        print(f"FATAL ERROR: {error}", file=sys.stderr)
+        if self.display_surface is None:
+            return
+
+        try:
+            self.display_surface.fill((0, 0, 0))
+            font = pygame.font.SysFont("Arial", 30)
+            text = font.render(f"FATAL ERROR: {error}", True, (255, 0, 0))
+            self.display_surface.blit(text, (10, 10))
+            pygame.display.update()
+        except pygame.error:
+            print("Unable to render the fatal error screen", file=sys.stderr)

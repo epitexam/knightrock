@@ -1,13 +1,37 @@
-from typing import Literal
+from collections.abc import Iterable
+from typing import Literal, Protocol
 
 import pygame
 from pygame.math import Vector2
-from pygame.sprite import Group, Sprite
+
 
 from src.core.settings import Separation
 
 
-def hitbox_collide(a: Sprite, b: Sprite) -> bool:
+class CollisionSprite(Protocol):
+    @property
+    def rect(self) -> pygame.Rect | pygame.FRect: ...
+
+    @property
+    def hitbox(self) -> pygame.Rect | pygame.FRect: ...
+
+
+class CollisionEntity(Protocol):
+    rect: pygame.FRect
+    hitbox: pygame.FRect
+    old_hitbox: pygame.FRect
+    velocity: Vector2
+    on_surface: dict[str, bool]
+    collision_sprites: Iterable[CollisionSprite]
+
+    def sync_rects(self) -> None: ...
+
+    def _on_floor_contact(self) -> None: ...
+
+    def _on_wall_contact(self) -> None: ...
+
+
+def hitbox_collide(a: CollisionSprite, b: CollisionSprite) -> bool:
     """Return whether the hitboxes of two sprites overlap."""
     box_a = getattr(a, "hitbox", a.rect)
     box_b = getattr(b, "hitbox", b.rect)
@@ -18,7 +42,10 @@ def hitbox_collide(a: Sprite, b: Sprite) -> bool:
     return False
 
 
-def get_nearby_sprites(sprite: Sprite, collision_sprites: Group) -> list[Sprite]:
+def get_nearby_sprites(
+    sprite: CollisionEntity,
+    collision_sprites: Iterable[CollisionSprite],
+) -> list[CollisionSprite]:
     """Return the collision sprites near the given sprite."""
     search_area = sprite.hitbox.inflate(
         Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
@@ -29,7 +56,10 @@ def get_nearby_sprites(sprite: Sprite, collision_sprites: Group) -> list[Sprite]
     ]
 
 
-def update_contact_state(entity: Sprite, collision_sprites: Group) -> None:
+def update_contact_state(
+    entity: CollisionEntity,
+    collision_sprites: Iterable[CollisionSprite],
+) -> None:
     """Update floor/left/right contact flags for an entity."""
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
@@ -64,9 +94,9 @@ def update_contact_state(entity: Sprite, collision_sprites: Group) -> None:
 
 
 def resolve_collisions(
-    entity: Sprite,
+    entity: CollisionEntity,
     axis: Literal["horizontal", "vertical"],
-    nearby_sprites: list[Sprite] | None = None,
+    nearby_sprites: list[CollisionSprite] | None = None,
 ) -> None:
     """Resolve collisions between an entity and nearby collidable sprites."""
     if nearby_sprites is None:

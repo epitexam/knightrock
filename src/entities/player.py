@@ -10,11 +10,12 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.knockback import KnockbackConfig
+from src.combat.combatant_protocol import DamageResult
 from src.core.colors import Colors
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
-from src.entities.entity import Entity, DamageResult, compute_knockback_direction
+from src.entities.entity import Entity, compute_knockback_direction
 from src.entities.player_config import PlayerConfig
 from src.physics import resolve_jump
 from src.states.player_states import (
@@ -190,7 +191,8 @@ class Player(Entity):
     coyote_duration: float
     jump_buffer_timer: float
     jump_buffer_duration: float
-    moving_platforms: list
+    wall_jump_lock_timer: float
+    moving_platforms: Iterable[Any]
     max_block_stamina: float
     block_stamina: float
     block_cooldown_timer: float
@@ -265,6 +267,7 @@ class Player(Entity):
         self.wall_jump_height = config.wall_jump_height
         self.wall_jump_push_multiplier = config.wall_jump_push_multiplier
         self.wall_jump_lock_duration = config.wall_jump_lock_duration
+        self.wall_jump_lock_timer = 0.0
         self.wall_jump_min_lock = config.wall_jump_min_lock
         self.wall_slide_speed = config.wall_slide_speed
 
@@ -283,6 +286,8 @@ class Player(Entity):
         self.max_block_stamina = config.max_block_stamina
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
+        self.block_cooldown_normal = config.block_cooldown_normal
+        self.block_cooldown_broken = config.block_cooldown_broken
 
         self.max_dash_charges = config.max_dash_charges
         self.dash_charges = self.max_dash_charges
@@ -292,10 +297,13 @@ class Player(Entity):
         self.dash_duration = config.dash_duration
         self.dash_friction = config.dash_friction
         self.dash_penalty_duration = config.dash_penalty_duration
+        self.dash_recharge_time = config.dash_recharge_time
+        self.dash_gravity_mult = config.dash_gravity_mult
         self._dash_duration_timer = 0.0
         self._original_hitbox_width = self.hitbox.width
 
         self._dash_requested = False
+        self._buffered_attack_name: str | None = None
 
         self.input_manager = input_manager
 
@@ -479,9 +487,10 @@ class Player(Entity):
             return
 
         if im.attack1_just_pressed:
-            self.state_machine.buffer_input("attack", window=0.2)
             attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
-            self.combat.start_attack(attack_name)
+            if not self.combat.start_attack(attack_name):
+                self._buffered_attack_name = attack_name
+                self.state_machine.buffer_input("attack", window=0.2)
         elif im.attack2_just_pressed:
             if self.combat.start_charge("heavy_attack"):
                 self.state_machine.change_state(PlayerState.CHARGE, force=True)
@@ -522,7 +531,7 @@ class Player(Entity):
                 self.dash_recharge_timer -= delta_time
                 if self.dash_recharge_timer <= 0:
                     self.dash_charges += 1
-                    self.dash_recharge_timer = Physics.DASH_RECHARGE_TIME
+                    self.dash_recharge_timer = self.dash_recharge_time
 
     def update_timers(self, delta_time: float) -> None:
         """Update all player-specific timers."""
@@ -558,6 +567,7 @@ class Player(Entity):
         self.dash_recharge_timer = 0.0
         self.dash_penalty_timer = 0.0
         self._dash_requested = False
+        self._buffered_attack_name = None
         self.hitbox.width = self._original_hitbox_width
 
         self._space_held = False
@@ -591,7 +601,11 @@ class Player(Entity):
         DamageResult
             A dataclass detailing the outcome of the blocked damage.
         """
-        _kb = knockback if knockback is not None else KnockbackConfig()
+        _kb = (
+            knockback
+            if knockback is not None
+            else KnockbackConfig(power=(0.0, 0.0))
+        )
         self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
         if self.block_stamina < 0:
             self.block_stamina = 0.0
@@ -610,8 +624,8 @@ class Player(Entity):
         return DamageResult(blocked=True)
 
     def _can_receive_damage(self) -> bool:
-        """Check if the player can receive damage, accounting for blocking."""
-        return super()._can_receive_damage() and not self.is_blocking
+        """Check immunity/death; blocking is resolved as an explicit outcome."""
+        return super()._can_receive_damage()
 
     def receive_damage(
         self,
@@ -645,7 +659,9 @@ class Player(Entity):
             return DamageResult()
 
         if self.is_blocking:
-            return self._apply_block_damage_reaction(amount, knockback, source_center_x)
+            return self._apply_block_damage_reaction(
+                amount, knockback, source_center_x
+            )
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 

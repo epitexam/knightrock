@@ -5,9 +5,15 @@ build/
 dist/
 wheels/
 *.egg-info
+.coverage
+coverage.xml
+htmlcov/
 
 # Virtual environments
 .venv
 
-# Temporary
-assets/
+# Temporary asset files (the assets tree itself is source data)
+/assets
+/assets/**/*.tmp
+/assets/**/*.bak
+/assets/**/.DS_Store

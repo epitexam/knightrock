@@ -32,6 +32,16 @@ class ComboTracker:
         """Whether a combo is currently in progress (timer > 0)."""
         return self._timer > 0
 
+    @property
+    def timer(self) -> float:
+        """Remaining combo window, exposed for deterministic snapshots."""
+        return self._timer
+
+    def restore(self, count: int, timer: float) -> None:
+        """Restore deterministic combo state from a validated snapshot."""
+        self.count = max(0, count)
+        self._timer = max(0.0, timer)
+
     def on_attack_started(self, resets_combo: bool) -> None:
         """Notify the tracker that a new attack has been started.
 

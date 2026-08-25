@@ -8,8 +8,10 @@ class GameplayLoop:
         self.separation_system = SeparationSystem()
 
     def begin_tick(self, delta_time: float) -> float:
+        """Advance hit-stop timing and return the simulation delta for this tick."""
+        simulation_suspended = self.combat_system.in_hit_stop
         self.combat_system.update_timer(delta_time)
-        return 0.0 if self.combat_system.in_hit_stop else delta_time
+        return 0.0 if simulation_suspended else delta_time
 
     def process_combat_and_separation(self, effective_delta, combat_sprites, entity_sprites):
         if effective_delta > 0.0:

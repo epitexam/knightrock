@@ -77,37 +77,44 @@ class Level:
 
         effective_delta = self.gameplay_loop.begin_tick(delta_time)
 
-        self.groups.moving_platforms.update(effective_delta)
-        self.groups.hazard_sprites.update(effective_delta)
-
         if effective_delta > 0.0:
+            self.groups.moving_platforms.update(effective_delta)
+            self.groups.hazard_sprites.update(effective_delta)
+
             for entity in self.groups.entity_sprites:
                 apply_moving_platform(entity, self.groups.moving_platforms)
 
-        self.groups.entity_sprites.update(effective_delta)
-        self.groups.fx_sprites.update(effective_delta)
+            self.groups.entity_sprites.update(effective_delta)
+            self.groups.fx_sprites.update(effective_delta)
 
-        self.gameplay_loop.process_combat_and_separation(
-            effective_delta, self.groups.combat_sprites, self.groups.entity_sprites
-        )
+            self.gameplay_loop.process_combat_and_separation(
+                effective_delta,
+                self.groups.combat_sprites,
+                self.groups.entity_sprites,
+            )
+            self.contact_damage_system.process(self.groups.entity_sprites)
+            self.gameplay_loop.remove_dead_entities(
+                self.groups.entity_sprites, self.player)
 
-        self.contact_damage_system.process(self.groups.entity_sprites)
-
-        self.gameplay_loop.remove_dead_entities(
-            self.groups.entity_sprites, self.player)
-
-        if self.player is not None and self.player.is_dead:
-            self.respawn_timer += delta_time
-            if self.respawn_timer >= 2.0:
-                self.player.respawn()
+            if self.player is not None and self.player.is_dead:
+                self.respawn_timer += effective_delta
+                if self.respawn_timer >= 2.0:
+                    self.player.respawn()
+                    self.respawn_timer = 0.0
+            else:
                 self.respawn_timer = 0.0
-        else:
-            self.respawn_timer = 0.0
+
+            if (
+                self.player is not None
+                and not self.player.is_dead
+                and pygame.sprite.spritecollide(
+                    self.player, self.groups.exit_sprites, False
+                )
+            ):
+                self.exit_reached = True
 
         if self.player is not None and not self.player.is_dead:
             self.camera.follow(self.player.hitbox, delta_time)
-            if pygame.sprite.spritecollide(self.player, self.groups.exit_sprites, False):
-                self.exit_reached = True
 
     def draw(self, fps: float) -> None:
         """

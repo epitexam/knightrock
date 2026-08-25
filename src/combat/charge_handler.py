@@ -8,7 +8,18 @@ at maximum charge time.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from src.combat.frame_data import AttackDefinition
+
+
+@dataclass(frozen=True)
+class ChargeSnapshot:
+    """Serializable charge state used by rollback snapshots."""
+
+    is_charging: bool = False
+    charge_timer: float = 0.0
+    attack_name: str | None = None
 
 
 class ChargeHandler:
@@ -122,6 +133,25 @@ class ChargeHandler:
     def cancel(self) -> None:
         """Cancel the current charge without releasing (e.g. on hit-stun)."""
         self._reset()
+
+    def save_state(self) -> ChargeSnapshot:
+        """Capture the complete deterministic charge state."""
+        return ChargeSnapshot(
+            is_charging=self.is_charging,
+            charge_timer=self.charge_timer,
+            attack_name=self._attack_name,
+        )
+
+    def load_state(self, snapshot: ChargeSnapshot) -> None:
+        """Restore charge state, rejecting references to unknown attacks."""
+        if snapshot.attack_name is not None and snapshot.attack_name not in self._attacks:
+            raise ValueError(f"Unknown charged attack: {snapshot.attack_name}")
+        if snapshot.is_charging and snapshot.attack_name is None:
+            raise ValueError("A charging snapshot requires an attack name")
+
+        self.is_charging = snapshot.is_charging
+        self.charge_timer = max(0.0, snapshot.charge_timer)
+        self._attack_name = snapshot.attack_name
 
     def _reset(self) -> None:
         """Reset all charging state."""

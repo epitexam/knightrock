@@ -5,14 +5,11 @@ during active attack frames, delegates hit resolution to ``HitResolver``, and
 manages the global hit-stop timer for impact emphasis.
 """
 
-import pygame
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
-from src.core.settings import Combat as CombatSettings
+from src.combat.combatant_protocol import Combatant
 from src.combat.hit_resolver import HitResolver
-
-if TYPE_CHECKING:
-    from src.entities.entity import Entity
+from src.core.settings import Combat as CombatSettings
 
 
 class CombatSystem:
@@ -27,7 +24,7 @@ class CombatSystem:
     def __init__(self) -> None:
         self.hit_stop_timer: float = 0.0
 
-    def process_attacks(self, combat_sprites: pygame.sprite.Group) -> None:
+    def process_attacks(self, combat_sprites: Iterable[Combatant]) -> None:
         """Check all active attack boxes against valid targets and resolve hits.
 
         Iterates through all entities in ``combat_sprites``. If an entity
@@ -37,7 +34,7 @@ class CombatSystem:
 
         Parameters
         ----------
-        combat_sprites : pygame.sprite.Group
+        combat_sprites : Iterable[Combatant]
             The group containing all entities participating in combat.
         """
         if self.hit_stop_timer > 0:
@@ -75,13 +72,18 @@ class CombatSystem:
                 if not attack_box.colliderect(target.hurtbox):
                     continue
 
-                HitResolver.resolve(
+                result = HitResolver.resolve(
                     attacker=attacker,
                     target=target,
                     hit=phase.hit,
                     charge_multiplier=combat.charge_multiplier,
                 )
 
+                if not (result.applied or result.blocked):
+                    continue
+
+                # A block still consumes this attack's contact so it cannot drain
+                # stamina repeatedly on every active frame.
                 combat.targets_hit.add(target.id)
 
                 hitstop_duration = (

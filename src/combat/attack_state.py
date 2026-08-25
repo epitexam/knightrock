@@ -35,7 +35,7 @@ class AttackStateSnapshot:
         Current sub-state (IDLE, STARTUP, ACTIVE, RECOVERY).
     frame_counter : int
         Number of frames elapsed in the current sub-state.
-    targets_hit : set[int]
+    targets_hit : set[str]
         Set of entity IDs already hit during this attack sequence.
     locked_facing : bool | None
         Locked facing direction if the attack freezes direction, else None.
@@ -48,7 +48,7 @@ class AttackStateSnapshot:
     phase_index: int
     sub_state: PhaseState
     frame_counter: int
-    targets_hit: set[int]
+    targets_hit: set[str]
     locked_facing: bool | None
     charge_multiplier: float
     accumulator: float
@@ -76,7 +76,7 @@ class AttackStateMachine:
         self.phase_index: int = 0
         self.sub_state: PhaseState = PhaseState.IDLE
         self.frame_counter: int = 0
-        self.targets_hit: set[int] = set()
+        self.targets_hit: set[str] = set()
         self._accumulator: float = 0.0
         self._locked_facing: bool | None = None
         self._charge_multiplier: float = 1.0

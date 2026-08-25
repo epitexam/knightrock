@@ -2,10 +2,11 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import AttackDefinition
+from src.core.colors import Colors
+from src.core.settings import Combat, Physics
 
 
 def _default_attacks() -> dict[str, AttackDefinition]:
@@ -85,34 +86,34 @@ class PlayerConfig:
         Faction identifier for combat targeting.
     """
     size: tuple[float, float] = (48.0, 56.0)
-    color: tuple[int, int, int] = (0, 255, 0)
+    color: tuple[int, int, int] = Colors.green
     health: float = 100.0
     max_health: float = 100.0
     hitbox_inflate: tuple[float, float] = (-8.0, 0.0)
     attacks: Mapping[str, AttackDefinition] = field(default_factory=_default_attacks)
-    speed: float = 450.0
-    floor_control: float = 25.0
-    air_control: float = 12.0
-    jump_height: float = 550.0
-    wall_jump_height: float = 550.0 * 0.90 * 1.15
+    speed: float = Physics.PLAYER_SPEED
+    floor_control: float = Physics.FLOOR_CONTROL
+    air_control: float = Physics.AIR_CONTROL
+    jump_height: float = Physics.JUMP_FORCE
+    wall_jump_height: float = Physics.JUMP_FORCE * 0.90 * 1.15
     wall_jump_push_multiplier: float = 1.3
     wall_jump_lock_duration: float = 0.18
     wall_jump_min_lock: float = 0.08
-    wall_slide_speed: float = 100.0
+    wall_slide_speed: float = Physics.WALL_SLIDE_SPEED
     max_midair_jumps: int = 1
     max_wall_jumps: int | float = float('inf')
-    coyote_duration: float = 0.12
-    jump_buffer_duration: float = 0.10
-    max_block_stamina: float = 0.75
-    block_cooldown_normal: float = 0.5
-    block_cooldown_broken: float = 2.0
-    max_dash_charges: int = 2
-    dash_speed: float = 1500.0
-    dash_duration: float = 0.12
-    dash_friction: float = 15.0
-    dash_penalty_duration: float = 2.20
-    dash_recharge_time: float = 0.40
-    dash_gravity_mult: float = 0.0
-    hurt_duration: float = 0.12
-    invincibility_duration: float = 0.18
+    coyote_duration: float = Physics.COYOTE_DURATION
+    jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
+    max_block_stamina: float = Physics.MAX_BLOCK_STAMINA
+    block_cooldown_normal: float = Combat.BLOCK_COOLDOWN_NORMAL
+    block_cooldown_broken: float = Combat.BLOCK_COOLDOWN_BROKEN
+    max_dash_charges: int = Physics.DASH_MAX_CHARGES
+    dash_speed: float = Physics.DASH_SPEED
+    dash_duration: float = Physics.DASH_DURATION
+    dash_friction: float = Physics.DASH_FRICTION
+    dash_penalty_duration: float = Physics.DASH_PENALTY_TIME
+    dash_recharge_time: float = Physics.DASH_RECHARGE_TIME
+    dash_gravity_mult: float = Physics.DASH_GRAVITY_MULT
+    hurt_duration: float = Combat.PLAYER_HURT_DURATION
+    invincibility_duration: float = Combat.INVINCIBILITY_DURATION
     faction: str = "player"
