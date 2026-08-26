@@ -250,6 +250,7 @@ class Player(Entity):
             groups,
             collision_sprites,
             hitbox_inflate=config.hitbox_inflate,
+            hurtbox_inflate=config.hurtbox_inflate,
             health=config.health,
             max_health=config.max_health,
             faction=config.faction,

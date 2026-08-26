@@ -2,7 +2,7 @@
 
 import random
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -123,6 +123,7 @@ class Enemy(Entity):
             groups=groups,
             collision_sprites=collision_sprites,
             hitbox_inflate=config.hitbox_inflate,
+            hurtbox_inflate=config.hurtbox_inflate,
             health=config.health,
             max_health=max_health,
             faction="enemy",

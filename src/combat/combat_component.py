@@ -136,6 +136,14 @@ class CombatComponent:
         """Set of entity IDs already hit during the current attack sequence."""
         return self.state.targets_hit
 
+    def can_contact(self, target_id: str) -> bool:
+        """Return whether the active attack may contact this target."""
+        return target_id not in self.state.targets_hit
+
+    def record_contact(self, target_id: str) -> None:
+        """Consume a target contact for the current attack or phase."""
+        self.state.targets_hit.add(target_id)
+
     @property
     def hurt_timer(self) -> float:
         """Remaining hurt duration."""
@@ -328,6 +336,7 @@ class CombatComponent:
         self.combo.restore(snapshot.combo_count, snapshot.combo_timer)
         self._cooldowns = dict(snapshot.cooldowns)
         self.charging.load_state(snapshot.charge_state)
+        self.sync_attack_box()
 
     def update(self, delta_time: float) -> None:
         """Tick all combat sub-systems.
@@ -346,7 +355,7 @@ class CombatComponent:
                 self._hurt_timer = 0.0
                 self.is_hurt = False
 
-        for name in list(self._cooldowns):
+        for name in self._cooldowns:
             if self._cooldowns[name] > 0:
                 self._cooldowns[name] -= delta_time
 
@@ -354,12 +363,19 @@ class CombatComponent:
         self.charging.update(delta_time)
         self.state.resolve_facing(self._entity.facing_right)
         self.state.update(delta_time)
+
+    def sync_attack_box(self) -> None:
+        """Synchronize offensive geometry from the owner's final position."""
         self.hitbox.update(self.state)
+
+    def reset_hurt_state(self) -> None:
+        """Clear only the hurt reaction state."""
+        self.is_hurt = False
+        self._hurt_timer = 0.0
 
     def reset(self) -> None:
         """Return all transient combat state to a neutral baseline."""
-        self.is_hurt = False
-        self._hurt_timer = 0.0
+        self.reset_hurt_state()
         self.state.end()
         self.hitbox.clear()
         self.charging.cancel()
@@ -380,10 +396,10 @@ class NullCombatComponent:
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
-        self.targets_hit: set[str] = set()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()
+        self.targets_hit: set[str] = self.state.targets_hit
         self.combo: _NullComboTracker = _NullComboTracker()
         self.hitbox: _NullHitboxManager = _NullHitboxManager()
         self.charging: _NullChargeHandler = _NullChargeHandler()
@@ -433,10 +449,24 @@ class NullCombatComponent:
     def update(self, delta_time: float) -> None:
         """No-op."""
 
-    def reset(self) -> None:
-        """No-op neutral reset, matching ``CombatComponent``."""
+    def sync_attack_box(self) -> None:
+        """No-op."""
+
+    def can_contact(self, target_id: str) -> bool:
+        """A non-combatant never owns a valid offensive contact."""
+        return False
+
+    def record_contact(self, target_id: str) -> None:
+        """No-op."""
+
+    def reset_hurt_state(self) -> None:
+        """Clear the neutral hurt state."""
         self.is_hurt = False
         self.hurt_timer = 0.0
+
+    def reset(self) -> None:
+        """No-op neutral reset, matching ``CombatComponent``."""
+        self.reset_hurt_state()
         self.targets_hit.clear()
 
     def save_state(self) -> CombatSnapshot:
@@ -451,9 +481,9 @@ class NullCombatComponent:
             attack_state=AttackStateSnapshot(
                 attack_name=None,
                 phase_index=0,
-                sub_state=PhaseState.IDLE,
+                sub_state=PhaseState.IDLE.value,
                 frame_counter=0,
-                targets_hit=set(),
+                targets_hit=(),
                 locked_facing=None,
                 charge_multiplier=1.0,
                 accumulator=0.0
@@ -495,8 +525,11 @@ class _NullAttackState:
     is_attacking : bool
         Always False.
     """
-    is_active = False
-    is_attacking = False
+    is_active: bool = False
+    is_attacking: bool = False
+
+    def __init__(self) -> None:
+        self.targets_hit: set[str] = set()
 
 
 class _NullComboTracker:

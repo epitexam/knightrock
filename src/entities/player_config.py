@@ -90,6 +90,7 @@ class PlayerConfig:
     health: float = 100.0
     max_health: float = 100.0
     hitbox_inflate: tuple[float, float] = (-8.0, 0.0)
+    hurtbox_inflate: tuple[float, float] = (0.0, 0.0)
     attacks: Mapping[str, AttackDefinition] = field(default_factory=_default_attacks)
     speed: float = Physics.PLAYER_SPEED
     floor_control: float = Physics.FLOOR_CONTROL

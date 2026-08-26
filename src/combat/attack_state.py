@@ -31,12 +31,12 @@ class AttackStateSnapshot:
         Name of the currently executing attack.
     phase_index : int
         Index of the current phase within the attack definition.
-    sub_state : PhaseState
-        Current sub-state (IDLE, STARTUP, ACTIVE, RECOVERY).
+    sub_state : str
+        Serialized sub-state value (idle, startup, active, recovery).
     frame_counter : int
         Number of frames elapsed in the current sub-state.
-    targets_hit : set[str]
-        Set of entity IDs already hit during this attack sequence.
+    targets_hit : tuple[str, ...]
+        Stable, serializable entity IDs already hit during the attack.
     locked_facing : bool | None
         Locked facing direction if the attack freezes direction, else None.
     charge_multiplier : float
@@ -46,9 +46,9 @@ class AttackStateSnapshot:
     """
     attack_name: str | None
     phase_index: int
-    sub_state: PhaseState
+    sub_state: str
     frame_counter: int
-    targets_hit: set[str]
+    targets_hit: tuple[str, ...]
     locked_facing: bool | None
     charge_multiplier: float
     accumulator: float
@@ -217,9 +217,9 @@ class AttackStateMachine:
         return AttackStateSnapshot(
             attack_name=self.attack_name,
             phase_index=self.phase_index,
-            sub_state=self.sub_state,
+            sub_state=self.sub_state.value,
             frame_counter=self.frame_counter,
-            targets_hit=set(self.targets_hit),
+            targets_hit=tuple(sorted(self.targets_hit)),
             locked_facing=self._locked_facing,
             charge_multiplier=self._charge_multiplier,
             accumulator=self._accumulator,
@@ -235,7 +235,7 @@ class AttackStateMachine:
         """
         self.attack_name = snapshot.attack_name
         self.phase_index = snapshot.phase_index
-        self.sub_state = snapshot.sub_state
+        self.sub_state = PhaseState(snapshot.sub_state)
         self.frame_counter = snapshot.frame_counter
         self.targets_hit = set(snapshot.targets_hit)
         self._locked_facing = snapshot.locked_facing
@@ -253,7 +253,9 @@ class AttackStateMachine:
         if self.is_idle:
             return
         self._accumulator += delta_time
-        while self._accumulator >= self._FRAME_DURATION:
+        # Resolve at most one attack frame per simulation tick so an active
+        # window always receives a collision pass, even after a delayed caller.
+        if self._accumulator >= self._FRAME_DURATION:
             self._accumulator -= self._FRAME_DURATION
             self._advance_one_frame()
 

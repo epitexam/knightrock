@@ -83,6 +83,12 @@ class HitProperties:
     super_armor_break: bool = False
     is_finisher: bool = False
 
+    def __post_init__(self) -> None:
+        if self.damage < 0:
+            raise ValueError("Hit damage cannot be negative")
+        if self.stagger < 0:
+            raise ValueError("Hit stagger cannot be negative")
+
 
 @dataclass(frozen=True)
 class PhaseDefinition:
@@ -143,6 +149,14 @@ class PhaseDefinition:
     hit: HitProperties
     reset_targets: bool = True
     cancel_into: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.startup_frames < 0 or self.recovery_frames < 0:
+            raise ValueError("Startup and recovery frames cannot be negative")
+        if self.active_frames <= 0:
+            raise ValueError("An attack phase requires at least one active frame")
+        if any(size <= 0 for size in self.hitbox_size):
+            raise ValueError("Hitbox dimensions must be strictly positive")
 
     @property
     def total_frames(self) -> int:
@@ -205,7 +219,19 @@ class AttackDefinition:
     charge_move_multiplier: float = 1.0
     uninterruptible: bool = False
     lunge_speed_multiplier: float = 0.35
-    attack_move_multiplier:float = 0.3
+    attack_move_multiplier: float = 0.3
+
+    def __post_init__(self) -> None:
+        if not self.phases:
+            raise ValueError("An attack requires at least one phase")
+        if self.cooldown < 0:
+            raise ValueError("Attack cooldown cannot be negative")
+        if self.max_charge_time <= 0:
+            raise ValueError("Maximum charge time must be strictly positive")
+        if self.charge_move_multiplier < 0 or self.attack_move_multiplier < 0:
+            raise ValueError("Movement multipliers cannot be negative")
+        if self.lunge_speed_multiplier < 0:
+            raise ValueError("Lunge speed multiplier cannot be negative")
 
     @property
     def total_frames(self) -> int:

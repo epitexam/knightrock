@@ -28,6 +28,9 @@ class SpyCombat:
         self.hit_interrupts.append(interrupt)
         self.is_hurt = interrupt
 
+    def reset(self) -> None:
+        self.is_hurt = False
+
 
 @dataclass
 class SpyStateMachine:
@@ -155,6 +158,24 @@ def test_heavy_knockback_threshold_is_inclusive_and_uses_magnitude() -> None:
     )
 
     assert diagonal.heavy_knockback is True
+
+
+def test_finisher_is_atomic_even_when_damage_starts_invincibility() -> None:
+    target = make_entity(health=25.0, invincibility=0.2)
+
+    result = HitResolver.resolve(
+        AttackerStub(centerx=80.0),  # type: ignore[arg-type]
+        target,
+        HitProperties(
+            damage=10,
+            is_finisher=True,
+            knockback=KnockbackConfig(power=(100.0, 0.0)),
+        ),
+    )
+
+    assert result.killed is True
+    assert result.actual_damage == 25.0
+    assert target.health == 0.0
 
 
 def test_resolver_reports_and_applies_actual_damage() -> None:

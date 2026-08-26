@@ -30,16 +30,27 @@ class DamageResult:
 class AttackStatePort(Protocol):
     """Attack-state surface consumed by combat orchestration."""
 
-    is_active: bool
-    is_attacking: bool
-    targets_hit: set[str]
+    @property
+    def is_active(self) -> bool: ...
+
+    @property
+    def is_attacking(self) -> bool: ...
+
+    @property
+    def targets_hit(self) -> set[str]: ...
 
 
 class CombatPort(Protocol):
     """Minimal combat component surface exposed by a combatant."""
 
-    is_hurt: bool
-    hurt_timer: float
+    @property
+    def is_hurt(self) -> bool: ...
+
+    @property
+    def hurt_timer(self) -> float: ...
+
+    @hurt_timer.setter
+    def hurt_timer(self, value: float) -> None: ...
 
     @property
     def state(self) -> AttackStatePort: ...
@@ -62,6 +73,14 @@ class CombatPort(Protocol):
     def on_hit(
         self, duration: float | None = None, interrupt: bool = True
     ) -> None: ...
+
+    def reset_hurt_state(self) -> None: ...
+
+    def sync_attack_box(self) -> None: ...
+
+    def can_contact(self, target_id: str) -> bool: ...
+
+    def record_contact(self, target_id: str) -> None: ...
 
     def reset(self) -> None: ...
 

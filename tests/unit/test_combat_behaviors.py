@@ -1,5 +1,7 @@
 """Regression tests for combat orchestration, buffering, and rollback state."""
 
+import json
+from dataclasses import asdict
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -38,12 +40,15 @@ def make_active_attacker(target: Entity):
         damage=10,
         knockback=KnockbackConfig(power=(100.0, 0.0)),
     )
+    targets_hit: set[str] = set()
     combat = SimpleNamespace(
         state=SimpleNamespace(is_active=True),
         attack_box=target.hurtbox.copy(),
         current_phase=SimpleNamespace(hit=hit),
         charge_multiplier=1.0,
-        targets_hit=set(),
+        targets_hit=targets_hit,
+        can_contact=lambda target_id: target_id not in targets_hit,
+        record_contact=targets_hit.add,
     )
     return SimpleNamespace(
         id="attacker",
@@ -129,6 +134,7 @@ def test_combat_snapshot_restores_cooldowns_charge_and_combo() -> None:
     assert combat.start_charge("heavy_attack")
     combat.update(0.1)
     snapshot = combat.save_state()
+    json.dumps(asdict(snapshot))
 
     combat.charging.cancel()
     combat.update(1.0)

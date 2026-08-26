@@ -62,6 +62,12 @@ class HitResolver:
         if final_damage <= 0:
             return DamageResult()
 
+        if (
+            hit.is_finisher
+            and target.health - final_damage <= target.max_health * 0.2
+        ):
+            final_damage = target.health
+
         scaled_power = (
             hit.knockback.power[0] * charge_multiplier,
             hit.knockback.power[1] * charge_multiplier,
@@ -87,26 +93,6 @@ class HitResolver:
         if target.has_super_armor and hit.super_armor_break:
             target.break_super_armor()
 
-        if (
-            hit.is_finisher
-            and not result.killed
-            and target.health <= target.max_health * 0.2
-        ):
-            finisher_result = target.receive_damage(
-                target.health, source_x, effective_knockback
-            )
-            result = DamageResult(
-                applied=result.applied or finisher_result.applied,
-                blocked=finisher_result.blocked,
-                killed=finisher_result.killed,
-                actual_damage=(
-                    result.actual_damage + finisher_result.actual_damage
-                ),
-                heavy_knockback=(
-                    result.heavy_knockback
-                    or finisher_result.heavy_knockback
-                ),
-            )
 
         if (
             not result.killed

@@ -89,6 +89,7 @@ class Entity(Sprite):
         groups: Group | Sequence[Group],
         collision_sprites: Group,
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
+        hurtbox_inflate: Sequence[float] = (0.0, 0.0),
         health: float = 100.0,
         max_health: float = 100.0,
         faction: str = "neutral",
@@ -114,7 +115,9 @@ class Entity(Sprite):
         collision_sprites : Group
             Group of sprites that block movement.
         hitbox_inflate : Sequence[float]
-            (x, y) inflation for the hitbox relative to the rect.
+            (x, y) inflation for the physical collider relative to the rect.
+        hurtbox_inflate : Sequence[float]
+            Additional inflation for the damage-receiving area.
         health : float
             Starting health.
         max_health : float
@@ -147,6 +150,8 @@ class Entity(Sprite):
         self.hitbox = self.rect.inflate(*hitbox_inflate)
         self.hitbox.midbottom = self.rect.midbottom
         self.old_hitbox = self.hitbox.copy()
+        self._hurtbox_inflate = tuple(hurtbox_inflate)
+        self._hurtbox = self.hitbox.inflate(*self._hurtbox_inflate)
 
         self.collision_sprites = collision_sprites
         self.on_surface = {"floor": False, "left": False, "right": False}
@@ -244,13 +249,14 @@ class Entity(Sprite):
         self._max_health = max(1.0, value)
 
     def die(self) -> None:
-        """Mark the entity as dead and perform cleanup."""
+        """Mark the entity as dead and clear transient offensive state."""
         self.is_dead = True
+        self.combat.reset()
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Hitbox used for incoming damage detection."""
-        return self.hitbox
+        """Damage-receiving area, distinct from the physical collider."""
+        return self._hurtbox
 
     @property
     def has_super_armor(self) -> bool:
@@ -280,8 +286,14 @@ class Entity(Sprite):
         return 1.0
 
     def sync_rects(self) -> None:
-        """Align the sprite rect with the hitbox (midbottom anchor)."""
+        """Align sprite and hurtbox geometry with the physical collider."""
         self.rect.midbottom = self.hitbox.midbottom
+        inflate_x, inflate_y = self._hurtbox_inflate
+        self._hurtbox.size = (
+            self.hitbox.width + inflate_x,
+            self.hitbox.height + inflate_y,
+        )
+        self._hurtbox.center = self.hitbox.center
 
     def face_movement(self, threshold: float = 0.1) -> None:
         """Orient the entity based on its current movement axis.
@@ -531,8 +543,7 @@ class Entity(Sprite):
             self.super_armor = False
 
         self.stagger_timer = duration
-        if hasattr(self.combat, "reset_hurt_state"):
-            self.combat.reset_hurt_state()
+        self.combat.reset_hurt_state()
         self.state_machine.change_state("stagger", force=True)
 
     def _pre_update(self, delta_time: float) -> None:
@@ -571,7 +582,8 @@ class Entity(Sprite):
                 self.invincibility_timer = 0.0
 
         self._pre_update(delta_time)
-        self.combat.update(delta_time)
         self._update_state_machine(delta_time)
+        self.combat.update(delta_time)
         self.move(delta_time, apply_gravity=True)
+        self.combat.sync_attack_box()
         self._post_update(delta_time)

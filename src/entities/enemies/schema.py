@@ -15,6 +15,7 @@ class EnemyConfig:
     attack_name: str | None = None
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)
+    hurtbox_inflate: Sequence[float] = (0.0, 0.0)
     chase_speed: float = 120.0
     vision_range: float = 300.0
     attack_range: float = 60.0
