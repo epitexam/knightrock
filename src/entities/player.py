@@ -169,7 +169,7 @@ class Player(Entity):
         Internal timer for current dash duration.
     _original_hitbox_width : float
         Original hitbox width for dash hitbox modification.
-    _dash_requested : bool
+    dash_requested : bool
         Whether a dash was requested this frame.
     """
 
@@ -207,7 +207,12 @@ class Player(Entity):
 
     _dash_duration_timer: float
     _original_hitbox_width: float
-    _dash_requested: bool
+    dash_requested: bool
+
+    _space_held: bool
+    _left_held: bool
+    _right_held: bool
+    _block_held: bool
 
     def __init__(
         self,
@@ -303,8 +308,13 @@ class Player(Entity):
         self._dash_duration_timer = 0.0
         self._original_hitbox_width = self.hitbox.width
 
-        self._dash_requested = False
+        self.dash_requested = False
         self._buffered_attack_name: str | None = None
+
+        self._space_held = False
+        self._left_held = False
+        self._right_held = False
+        self._block_held = False
 
         self.input_manager = input_manager
 
@@ -336,7 +346,7 @@ class Player(Entity):
     def _can_dash(self) -> bool:
         """Check if the player can currently interrupt to dash."""
         return (
-            self._dash_requested
+            self.dash_requested
             and self.dash_charges > 0
             and self.state_machine.current_state_name not in (
                 PlayerState.DASH, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER
@@ -428,7 +438,7 @@ class Player(Entity):
         """Return True if an attack can be started from the current state."""
         return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
 
-    def _is_wall_sliding(self) -> bool:
+    def is_wall_sliding(self) -> bool:
         """Return True when sliding down a wall."""
         on_left_wall = self.on_surface["left"] and self.left_held
         on_right_wall = self.on_surface["right"] and self.right_held
@@ -461,7 +471,7 @@ class Player(Entity):
             self.jump_buffer_timer = self.jump_buffer_duration
 
         if im.dash_just_pressed:
-            self._dash_requested = (
+            self.dash_requested = (
                 self.dash_charges > 0 and self.dash_penalty_timer <= 0
             )
 
@@ -549,7 +559,7 @@ class Player(Entity):
     def _post_update(self, delta_time: float) -> None:
         """Clear consumed inputs after state machine and physics updates."""
         if self.state_machine.current_state_name == PlayerState.DASH:
-            self._dash_requested = False
+            self.dash_requested = False
 
     def handle_jump(self) -> None:
         """Process jump input with coyote time, wall jumps, and midair jumps."""
@@ -567,7 +577,7 @@ class Player(Entity):
         self.dash_charges = self.max_dash_charges
         self.dash_recharge_timer = 0.0
         self.dash_penalty_timer = 0.0
-        self._dash_requested = False
+        self.dash_requested = False
         self._buffered_attack_name = None
         self.hitbox.width = self._original_hitbox_width
 
@@ -674,7 +684,3 @@ class Player(Entity):
 
         return result
 
-    _space_held: bool = False
-    _left_held: bool = False
-    _right_held: bool = False
-    _block_held: bool = False

@@ -76,7 +76,7 @@ class HitProperties:
         If True, instantly kills a target whose HP is below 20%.
         Use sparingly — best on slow, high-risk moves.
     """
-    damage: int
+    damage: float
     knockback: KnockbackConfig = field(default_factory=KnockbackConfig)
     damage_type: DamageType = DamageType.SLASH
     stagger: float = 0.0

@@ -1,24 +1,25 @@
 from collections import deque
-from typing import Callable, List, Optional, Tuple, Any, Dict, Union
+from collections.abc import Callable
+from typing import Any
 
 
 class State:
     """Abstract base for all states."""
 
-    def __init__(self, entity: Any, tags: Optional[List[str]] = None) -> None:
+    def __init__(self, entity: Any, tags: list[str] | None = None) -> None:
         """Initialize the State instance."""
         self.entity: Any = entity
-        self.tags: List[str] = tags or []
+        self.tags: list[str] = tags or []
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state. Accepts extra data (e.g., knockback direction)."""
         pass
 
-    def exit(self, next_state: Optional[str] = None) -> None:
+    def exit(self, next_state: str | None = None) -> None:
         """Exit the state."""
         pass
 
-    def update(self, delta_time: float) -> Optional[Union[str, Tuple[str, Dict[str, Any]]]]:
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
         """Update the current state. Can return a string or a tuple (state_name, kwargs)."""
         return None
 
@@ -29,19 +30,18 @@ class StateMachine:
     def __init__(self, entity: Any) -> None:
         """Initialize the StateMachine instance."""
         self.entity: Any = entity
-        self.states: Dict[str, State] = {}
+        self.states: dict[str, State] = {}
 
-        self.current_state: Optional[State] = None
-        self.current_state_name: Optional[str] = None
-        self.previous_state_name: Optional[str] = None
+        self.current_state: State | None = None
+        self.current_state_name: str | None = None
+        self.previous_state_name: str | None = None
 
-        self._interrupts: List[Tuple[int, str, Callable[[], bool]]] = []
+        self._interrupts: list[tuple[int, str, Callable[[], bool]]] = []
         self.history: deque[str] = deque(maxlen=16)
 
-        self._input_buffer: Dict[str, float] = {}
+        self._input_buffer: dict[str, float] = {}
 
-        self.on_state_change: Optional[Callable[[
-            Optional[str], str], None]] = None
+        self.on_state_change: Callable[[str | None, str], None] | None = None
 
     def add_state(self, name: str, state: State) -> None:
         """Add state."""

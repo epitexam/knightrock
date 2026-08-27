@@ -287,7 +287,7 @@ class CombatComponent:
 
     def take_damage(
         self,
-        amount: int,
+        amount: float,
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:
@@ -295,7 +295,7 @@ class CombatComponent:
 
         Parameters
         ----------
-        amount : int
+        amount : float
             Hit points to subtract.
         source_center_x : float | None
             X centre of the damage source for knockback direction.
@@ -440,7 +440,7 @@ class NullCombatComponent:
 
     def take_damage(
         self,
-        amount: int,
+        amount: float,
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
     ) -> None:

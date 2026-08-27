@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple, Union
+from collections.abc import Iterable
 
 import pygame
 
@@ -9,12 +9,10 @@ from src.physics.platforms import update_moving_platform
 class Sprite(pygame.sprite.Sprite):
     def __init__(
         self,
-        pos: Tuple[int, int],
-        color: Optional[Tuple[int, int, int]] = None,
-        surf: Optional[pygame.Surface] = None,
-        groups: Union[
-            pygame.sprite.AbstractGroup, Iterable[pygame.sprite.AbstractGroup], None
-        ] = None,
+        pos: tuple[int, int],
+        color: tuple[int, int, int] | None = None,
+        surf: pygame.Surface | None = None,
+        groups: pygame.sprite.AbstractGroup | Iterable[pygame.sprite.AbstractGroup] | None = None,
     ) -> None:
         super().__init__()
 
@@ -37,9 +35,9 @@ class Sprite(pygame.sprite.Sprite):
 class MovingPlatform(Sprite):
     def __init__(
         self,
-        pos: Tuple[int, int],
+        pos: tuple[int, int],
         surf: pygame.Surface,
-        waypoints: list[Tuple[int, int]],
+        waypoints: list[tuple[int, int]],
         speed: float,
         groups=None,
     ):
@@ -58,6 +56,6 @@ class MovingPlatform(Sprite):
 
 
 class LevelExit(Sprite):
-    def __init__(self, pos: Tuple[int, int], groups=None):
+    def __init__(self, pos: tuple[int, int], groups=None):
         surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE), pygame.SRCALPHA)
         super().__init__(pos, color=None, surf=surf, groups=groups)

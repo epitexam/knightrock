@@ -7,7 +7,7 @@ def apply_entity_gravity(entity, delta_time: float) -> None:
     Les coefficients de drag sont lus depuis l'entité (attributs drag_coefficient
     et fall_drag_coefficient). Ajustez-les pour modifier la courbe de chute.
     """
-    if entity._is_wall_sliding():
+    if entity.is_wall_sliding():
 
         entity.velocity.y += entity.slide_gravity * delta_time
         if entity.velocity.y > entity.max_slide_speed:

@@ -57,7 +57,7 @@ class HitResolver:
             Combined outcome, including any finisher damage.
         """
         type_mult = target.get_damage_modifier(hit.damage_type)
-        final_damage = int(hit.damage * charge_multiplier * type_mult)
+        final_damage = hit.damage * charge_multiplier * type_mult
 
         if final_damage <= 0:
             return DamageResult()

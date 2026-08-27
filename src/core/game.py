@@ -1,4 +1,5 @@
 import os
+import logging
 import sys
 import traceback
 
@@ -94,20 +95,20 @@ class Game:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
-                print(f"Connected controller : {joy.get_name()}")
+                logging.info(f"Connected controller : {joy.get_name()}")
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED:
                 if event.instance_id in self.joysticks:
                     disconnected_joy = self.joysticks[event.instance_id]
-                    print(f"Controller disconnected : {disconnected_joy.get_name()}")
+                    logging.info(f"Controller disconnected : {disconnected_joy.get_name()}")
                     self.input_provider.disconnect_joystick(event.instance_id)
                     del self.joysticks[event.instance_id]
                     self.input_provider.reassign_joystick(self.joysticks)
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        print(f"FATAL ERROR: {error}", file=sys.stderr)
+        logging.error(f"FATAL ERROR: {error}")
         if self.display_surface is None:
             return
 

@@ -321,7 +321,7 @@ class Entity(Sprite):
         if abs(x - self.hitbox.centerx) > threshold:
             self.facing_right = x > self.hitbox.centerx
 
-    def _is_wall_sliding(self) -> bool:
+    def is_wall_sliding(self) -> bool:
         """Return True if the entity is currently sliding down a wall."""
         return False
 

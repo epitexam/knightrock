@@ -260,7 +260,7 @@ class TestPrivateVariables:
         # Check that private variables exist and have _ prefix
         assert hasattr(player, '_dash_duration_timer')
         assert hasattr(player, '_original_hitbox_width')
-        assert hasattr(player, '_dash_requested')
+        assert hasattr(player, 'dash_requested')
         
         # Check that input state variables are private
         assert hasattr(player, '_space_held')

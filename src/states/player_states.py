@@ -69,7 +69,7 @@ class PlayerJumpState(PlayerBaseState):
         self.entity.apply_horizontal_movement(delta_time)
         if self.entity.velocity.y >= 0:
             return "fall"
-        if self.entity._is_wall_sliding():
+        if self.entity.is_wall_sliding():
             return "wall_slide"
         return None
 
@@ -83,7 +83,7 @@ class PlayerFallState(PlayerBaseState):
         self.entity.apply_horizontal_movement(delta_time)
         if self.entity.velocity.y < 0:
             return "jump"
-        if self.entity._is_wall_sliding():
+        if self.entity.is_wall_sliding():
             return "wall_slide"
         return self.ground_return()
 
@@ -99,7 +99,7 @@ class PlayerWallSlideState(PlayerBaseState):
         self.entity.apply_horizontal_movement(delta_time)
         if self.entity.on_surface["floor"]:
             return "idle"
-        if not self.entity._is_wall_sliding():
+        if not self.entity.is_wall_sliding():
             return "fall"
         return None
 
@@ -197,7 +197,7 @@ class PlayerBlockState(PlayerBaseState):
         """Update the current state, draining stamina and checking conditions."""
         self.entity.velocity.x = 0.0
         self.entity.block_stamina -= (
-            delta_time if self.entity.on_surface["floor"] else delta_time * 2.0
+            delta_time if self.entity.on_surface["floor"] else delta_time * CombatSettings.BLOCK_AIR_DRAIN_MULT
         )
         if self.entity.block_stamina < 0:
             self.entity.block_stamina = 0.0
@@ -215,7 +215,7 @@ class PlayerHurtState(PlayerBaseState):
 
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state and apply light knockback if provided."""
-        self.entity._dash_requested = False
+        self.entity.dash_requested = False
 
         knockback_dir = kwargs.get("knockback_direction", 0)
         knockback_force = kwargs.get("knockback_force", 0)
@@ -224,7 +224,7 @@ class PlayerHurtState(PlayerBaseState):
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state, applying friction until hurt duration ends."""
-        lerp_velocity(self.entity, 0.0, min(1.0, 5.0 * delta_time), delta_time)
+        lerp_velocity(self.entity, 0.0, min(1.0, Physics.HURT_FRICTION * delta_time), delta_time)
         if not self.entity.combat.is_hurt:
             if self.entity.stagger_timer > 0:
                 return "stagger"
@@ -241,7 +241,7 @@ class PlayerKnockbackState(PlayerBaseState):
 
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state and apply strong launch velocity."""
-        self.entity._dash_requested = False
+        self.entity.dash_requested = False
 
         knockback_dir = kwargs.get("knockback_direction", 0)
         knockback_force = kwargs.get("knockback_force", 0)
@@ -256,7 +256,7 @@ class PlayerKnockbackState(PlayerBaseState):
         """Update the current state, applying gravity and friction until landing."""
         if self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, min(
-                1.0, 8.0 * delta_time), delta_time)
+                1.0, Physics.KNOCKBACK_FRICTION * delta_time), delta_time)
             if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
                 self.entity.velocity.x = 0.0
                 if self.entity.combat.is_hurt:
@@ -275,7 +275,7 @@ class PlayerDashState(PlayerBaseState):
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.dash_charges -= 1
-        self.entity._dash_requested = False
+        self.entity.dash_requested = False
         if self.entity.dash_recharge_timer <= 0:
             self.entity.dash_recharge_timer = getattr(
                 self.entity,
@@ -311,9 +311,9 @@ class PlayerDashState(PlayerBaseState):
         friction = max(0.0, 1.0 - self.entity.dash_friction * delta_time)
         apply_velocity_friction(self.entity, friction, delta_time)
         if self.entity.left_held:
-            self.entity.velocity.x -= 100.0 * delta_time
+            self.entity.velocity.x -= Physics.DASH_AIR_CONTROL * delta_time
         if self.entity.right_held:
-            self.entity.velocity.x += 100.0 * delta_time
+            self.entity.velocity.x += Physics.DASH_AIR_CONTROL * delta_time
         dash_gravity = getattr(
             self.entity, "dash_gravity_mult", Physics.DASH_GRAVITY_MULT
         )
@@ -337,11 +337,11 @@ class PlayerStaggerState(PlayerBaseState):
         """Enter the state."""
         pass
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the current state, applying friction until stagger ends."""
         if self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, min(
-                1.0, 8.0 * delta_time), delta_time)
+                1.0, Physics.STAGGER_FRICTION * delta_time), delta_time)
 
         if self.entity.stagger_timer <= 0:
             return self.ground_return()

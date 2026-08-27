@@ -68,12 +68,6 @@ dependencies = [
     { name = "pytmx" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -83,11 +77,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pygame-ce", specifier = ">=2.5.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pytmx", specifier = ">=3.32" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [

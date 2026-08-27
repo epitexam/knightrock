@@ -1,18 +1,12 @@
 [project]
 name = "knightrock"
 version = "0.1.0"
-description = "Add your description here"
+description = "Un jeu de plateforme Hack 'n' Slash 2D développé en Python avec pygame-ce."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "pygame-ce>=2.5.7",
     "pytmx>=3.32",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=4.0",
 ]
 
 [tool.pytest.ini_options]
