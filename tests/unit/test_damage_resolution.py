@@ -12,7 +12,8 @@ from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.combat.knockback import KnockbackConfig
-from src.entities.entity import HEAVY_KNOCKBACK_THRESHOLD, Entity
+from src.core.settings import Combat as CombatSettings
+from src.entities.entity import Entity
 from src.entities.player import Player
 
 
@@ -144,7 +145,7 @@ def test_heavy_knockback_threshold_is_inclusive_and_uses_magnitude() -> None:
     at_threshold = target.receive_damage(
         1.0,
         knockback=KnockbackConfig(
-            power=(0.0, -HEAVY_KNOCKBACK_THRESHOLD)
+            power=(0.0, -CombatSettings.HEAVY_KNOCKBACK_THRESHOLD)
         ),
     )
 

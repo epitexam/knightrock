@@ -5,7 +5,7 @@ from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
 
 
 class PanelRenderer:
-    """Gère le rendu visuel des panneaux et le cache des polices."""
+    """Render debug panels and cache fonts."""
 
     def __init__(self, display_surface: pygame.Surface) -> None:
         self.display_surface = display_surface
@@ -79,7 +79,7 @@ class PanelRenderer:
         return panel_h + 12
 
     def get_panel_width(self, lines: list[str]) -> int:
-        """Calcule la largeur d'un panneau pour le positionnement (ex: panel de performance à droite)."""
+        """Compute panel width for positioning (e.g., performance panel on the right)."""
         max_w = max(self.render_text(line, self.debug_font,
                     TEXT_MUTED).get_width() for line in lines)
         return max_w + 24

@@ -3,7 +3,7 @@ from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_TITLE, TEXT_CRIT, TEXT_WARN, TEXT_OK
 
 class PlayerUI:
-    """Gère la collecte et l'affichage des données du joueur."""
+    """Collect and display player data."""
     
     def __init__(self, renderer: PanelRenderer):
         self.renderer = renderer
@@ -25,7 +25,7 @@ class PlayerUI:
             f"Axis   {player.move_axis:+.2f}",
             f"Jump   buf {player.jump_buffer_timer:.2f}s  coy {player.coyote_timer:.2f}s",
             f"Jumps  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
-            f"Dash   req {player._dash_requested!s:5}  dur {player._dash_duration_timer:.2f}s",
+            f"Dash   req {player.dash_requested!s:5}  dur {player._dash_duration_timer:.2f}s",
         ]
 
         line_colors = {}
@@ -40,7 +40,7 @@ class PlayerUI:
             lines.append(f"Combat {attack_name}  phase {phase_text}")
 
             hurt_idx = len(lines)
-            hurt_timer = getattr(combat, "_hurt_timer", 0.0)
+            hurt_timer = getattr(combat, "hurt_timer", 0.0)
             is_hurt = getattr(combat, "is_hurt", False)
             lines.append(f"Hurt   {is_hurt!s:5} {hurt_timer:.2f}s")
             if is_hurt: line_colors[hurt_idx] = TEXT_CRIT
@@ -51,7 +51,7 @@ class PlayerUI:
                 lines.append(f"Charge {charging.attack_name} {charging.charge_timer:.2f}s")
                 line_colors[idx] = TEXT_WARN
 
-            cooldowns_dict = getattr(combat, "_cooldowns", {})
+            cooldowns_dict = getattr(combat, "cooldowns", {})
             cooldowns = [f"{name}:{cd:.2f}s" for name, cd in cooldowns_dict.items() if cd > 0]
             if cooldowns: lines.append("CDs    " + ", ".join(cooldowns[:4]))
 
@@ -84,9 +84,9 @@ class PlayerUI:
             f"Dash   spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s  fric {player.dash_friction:.1f}",
         ]
 
-        combo = getattr(getattr(player, "combat", None), "combo", None)
-        if combo:
-            lines.append(f"Combo  x{getattr(combo, 'count', 0)}   {getattr(combo, '_timer', 0.0):.2f}s")
+        combat = getattr(player, "combat", None)
+        if combat:
+            lines.append(f"Combo  x{getattr(combat, 'combo_count', 0)}   {getattr(combat, 'combo_timer', 0.0):.2f}s")
         else:
             lines.append("Combo  x0   0.00s")
 

@@ -39,12 +39,12 @@ class Physics:
     COYOTE_DURATION = 0.12
     JUMP_BUFFER_DURATION = 0.10
     MAX_BLOCK_STAMINA = 0.75
-    
+
     # Drag coefficients
     DRAG_COEFFICIENT = 0.08
     FALL_DRAG_COEFFICIENT = 0.12
     MAX_SLIDE_SPEED = 80.0
-    
+
     HURT_FRICTION = 5.0
     KNOCKBACK_FRICTION = 8.0
     STAGGER_FRICTION = 8.0
@@ -68,9 +68,12 @@ class Combat:
     STAGGER_DURATION = 0.25
     PLAYER_STAGGER_DURATION = 0.15
     SUPER_ARMOR_THRESHOLD = 3
-    DAMAGE_TYPES = ["slash", "blunt", "pierce", "magic", "fire", "ice"]
     COMBO_WINDOW = 0.5
     CONTACT_DAMAGE_THRESHOLD = 300.0
+    CONTACT_DAMAGE_AMOUNT = 5.0
+    HEAVY_KNOCKBACK_THRESHOLD = 400.0
+    ENEMY_FLOOR_CONTROL = 20.0
+    ENEMY_AIR_CONTROL = 10.0
 
 
 class Separation:

@@ -4,8 +4,9 @@ from pygame.math import Vector2
 def apply_entity_gravity(entity, delta_time: float) -> None:
     """
     Apply gravity with air resistance (drag) for smoother fall.
-    Les coefficients de drag sont lus depuis l'entité (attributs drag_coefficient
-    et fall_drag_coefficient). Ajustez-les pour modifier la courbe de chute.
+
+    Drag coefficients are read from the entity (drag_coefficient and
+    fall_drag_coefficient attributes). Adjust them to modify the fall curve.
     """
     if entity.is_wall_sliding():
 

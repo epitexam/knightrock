@@ -20,7 +20,7 @@ class Registry(Generic[T]):
 
     def __init__(self, kind: str):
         """
-        Initialise the registry.
+        Initialize the registry.
 
         Args:
             kind: A descriptive name for the kind of items handled

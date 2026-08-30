@@ -8,7 +8,7 @@ from src.ui.styles import TEXT_MUTED, TEXT_WARN, TEXT_CRIT, TEXT_OK
 
 
 class UIManager:
-    """Fait office de Façade (Facade pattern) pour l'Interface Utilisateur."""
+    """Facade pattern for the user interface."""
 
     def __init__(self, display_surface: pygame.Surface) -> None:
         self.renderer = PanelRenderer(display_surface)

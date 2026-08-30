@@ -12,7 +12,8 @@ VELOCITY_EPSILON = 0.01
 
 
 class MovementCombat(Protocol):
-    movement_multiplier: float
+    @property
+    def movement_multiplier(self) -> float: ...
 
 
 class HorizontalMovementEntity(Protocol):
@@ -22,7 +23,9 @@ class HorizontalMovementEntity(Protocol):
     floor_control: float
     air_control: float
     on_surface: dict[str, bool]
-    combat: MovementCombat
+
+    @property
+    def combat(self) -> MovementCombat: ...
 
 
 @runtime_checkable

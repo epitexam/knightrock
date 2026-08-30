@@ -143,8 +143,8 @@ class Enemy(Entity):
         self.passive_friction = config.passive_friction
 
         self.speed = self.chase_speed
-        self.floor_control = 20.0
-        self.air_control = 10.0
+        self.floor_control = CombatSettings.ENEMY_FLOOR_CONTROL
+        self.air_control = CombatSettings.ENEMY_AIR_CONTROL
 
         self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
         self.patrol_timer = 0.0

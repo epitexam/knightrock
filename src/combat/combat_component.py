@@ -154,12 +154,27 @@ class CombatComponent:
         self._hurt_timer = max(0.0, value)
 
     @property
+    def cooldowns(self) -> dict[str, float]:
+        """Active cooldowns for all registered attacks."""
+        return dict(self._cooldowns)
+
+    @property
+    def combo_count(self) -> int:
+        """Current combo counter."""
+        return self.combo.count
+
+    @property
+    def combo_timer(self) -> float:
+        """Remaining combo window time."""
+        return self.combo.timer
+
+    @property
     def movement_multiplier(self) -> float:
         """Movement speed multiplier to apply to the entity this frame."""
         if self.charging.is_charging:
             return self.charging.movement_multiplier
 
-        # NOUVEAU : Si on attaque, on prend la vitesse de déplacement de l'attaque
+        # If attacking, use the attack's movement multiplier
         if self.state.is_attacking:
             attack = self.state.current_attack_def
             if attack is not None:
@@ -413,6 +428,21 @@ class NullCombatComponent:
     def movement_multiplier(self) -> float:
         """Always returns ``1.0``."""
         return 1.0
+
+    @property
+    def cooldowns(self) -> dict[str, float]:
+        """Always returns an empty dict."""
+        return {}
+
+    @property
+    def combo_count(self) -> int:
+        """Always returns ``0``."""
+        return 0
+
+    @property
+    def combo_timer(self) -> float:
+        """Always returns ``0.0``."""
+        return 0.0
 
     def add_attack(self, name: str, definition: AttackDefinition) -> None:
         """No-op."""

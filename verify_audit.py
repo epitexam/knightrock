@@ -84,16 +84,16 @@ class AuditVerifier:
         player_file = self._read_file("entities/player.py")
         enemy_file = self._read_file("entities/enemies/enemy.py")
         
-        # Vérifie que Player et Enemy créent CombatComponent avant super()
-        player_has_combat_init = "combat_component = CombatComponent(" in player_file
-        enemy_has_combat_init = "combat_component = CombatComponent(" in enemy_file
+        # Vérifie que Player et Enemy passent des attaques à super()
+        player_passes_attacks = "attacks=attacks" in player_file
+        enemy_passes_attacks = "attacks=config.attacks" in enemy_file
         
-        # Vérifie que combat est passé à super()
-        player_passes_combat = "combat=combat_component" in player_file
-        enemy_passes_combat = "combat=combat_component" in enemy_file
+        # Vérifie que Entity crée CombatComponent quand des attaques sont fournies
+        entity_creates_combat = "elif attacks:" in entity_file
+        entity_uses_null = "self.combat = NullCombatComponent()" in entity_file
         
-        if player_has_combat_init and enemy_has_combat_init and player_passes_combat and enemy_passes_combat:
-            self.results["🔴 Architecture"]["2. Pas de NullCombatComponent gaspillé"] = (True, "✅ CombatComponent créé avant super().__init__()")
+        if player_passes_attacks and enemy_passes_attacks and entity_creates_combat and entity_uses_null:
+            self.results["🔴 Architecture"]["2. Pas de NullCombatComponent gaspillé"] = (True, "✅ CombatComponent créé uniquement quand des attaques sont fournies")
         else:
             self.results["🔴 Architecture"]["2. Pas de NullCombatComponent gaspillé"] = (False, "❌ NullCombatComponent peut être créé et jeté")
     
@@ -286,11 +286,14 @@ class AuditVerifier:
         # Vérifie que les variables internes ont _ prefix
         has_private_dash = "_dash_duration_timer" in player_file
         has_private_original = "_original_hitbox_width" in player_file
-        has_private_requested = "_dash_requested" in player_file
         has_private_input = "_space_held" in player_file and "_left_held" in player_file
         
-        if has_private_dash and has_private_original and has_private_requested and has_private_input:
-            self.results["🔵 Style"]["14. Variables privées cohérentes"] = (True, "✅ Variables privées avec _ prefix")
+        # Vérifie que dash_requested est public (pas de _ prefix)
+        has_public_requested = "dash_requested" in player_file
+        has_no_private_requested = "_dash_requested" not in player_file
+        
+        if has_private_dash and has_private_original and has_private_input and has_public_requested and has_no_private_requested:
+            self.results["🔵 Style"]["14. Variables privées cohérentes"] = (True, "✅ Variables privées avec _ prefix, dash_requested public")
         else:
             self.results["🔵 Style"]["14. Variables privées cohérentes"] = (False, "❌ Variables privées sans _ prefix")
     

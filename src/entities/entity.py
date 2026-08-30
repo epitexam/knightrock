@@ -2,8 +2,8 @@
 
 import random
 import uuid
-from collections.abc import Iterable, Sequence
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Literal, cast
 
 import pygame
 from pygame.math import Vector2
@@ -23,11 +23,8 @@ from src.physics import (
     resolve_collisions,
     update_contact_state,
 )
+from src.physics.collisions import CollisionSprite
 from src.states.null_state_machine import NullStateMachine
-
-
-HEAVY_KNOCKBACK_THRESHOLD = 400.0
-
 
 
 def compute_knockback_direction(
@@ -95,7 +92,7 @@ class Entity(Sprite):
         faction: str = "neutral",
         spawn_pos: Sequence[float] | Vector2 | None = None,
         combat: CombatComponent | None = None,
-        attacks: dict[str, Any] | None = None,
+        attacks: Mapping[str, Any] | None = None,
         hurt_duration: float | None = None,
         invincibility_duration: float = 0.0,
         rng: random.Random | None = None,
@@ -128,7 +125,7 @@ class Entity(Sprite):
             Respawn position; defaults to `pos`.
         combat : CombatComponent | None
             Optional custom combat component; otherwise NullCombatComponent.
-        attacks : dict[str, Any] | None
+        attacks : Mapping[str, Any] | None
             Dictionary of attack definitions to load into the combat component.
         hurt_duration : float | None
             Duration of the hurt state. Defaults to standard combat settings.
@@ -146,14 +143,16 @@ class Entity(Sprite):
         self.image = pygame.Surface(size)
         self.image.fill(color)
 
-        self.rect = self.image.get_frect(topleft=pos)
+        self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
         self.hitbox = self.rect.inflate(*hitbox_inflate)
         self.hitbox.midbottom = self.rect.midbottom
         self.old_hitbox = self.hitbox.copy()
         self._hurtbox_inflate = tuple(hurtbox_inflate)
         self._hurtbox = self.hitbox.inflate(*self._hurtbox_inflate)
 
-        self.collision_sprites = collision_sprites
+        self.collision_sprites: Iterable[CollisionSprite] = cast(
+            Iterable[CollisionSprite], collision_sprites
+        )
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.velocity = Vector2(0, 0)
 
@@ -345,7 +344,9 @@ class Entity(Sprite):
         """Update surface contact flags."""
         update_contact_state(self, self.collision_sprites)
 
-    def handle_collisions(self, axis: str) -> None:
+    def handle_collisions(
+        self, axis: Literal["horizontal", "vertical"]
+    ) -> None:
         """Resolve collisions along a given axis."""
         resolve_collisions(self, axis)
 
@@ -452,7 +453,7 @@ class Entity(Sprite):
         """
         kb_power_x, kb_power_y = knockback.power
         magnitude = Vector2(kb_power_x, kb_power_y).length()
-        if magnitude < HEAVY_KNOCKBACK_THRESHOLD:
+        if magnitude < CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
             return False
 
         # Cancel an active action before selecting knockback as the definitive

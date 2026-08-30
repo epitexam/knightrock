@@ -32,7 +32,7 @@ class Level:
         input_manager,
     ) -> None:
         """
-        Initialise the level from parsed TMX data and build the world.
+        Initialize the level from parsed TMX data and build the world.
 
         Args:
             display_surface: The Pygame surface to draw on.
@@ -70,7 +70,7 @@ class Level:
         """
         Advance the level simulation by one tick.
 
-        Handles hit‑stop, moving platforms, hazards, entity updates,
+        Handles hit-stop, moving platforms, hazards, entity updates,
         combat, contact damage, respawning, camera follow, and exit detection.
         """
         self.debug_controller.update(delta_time, self.player)

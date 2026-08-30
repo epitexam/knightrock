@@ -37,11 +37,10 @@ class ContactDamageSystem:
     def _apply_contact_damage(self, receiver, source):
         """Internal helper for apply contact damage."""
         null_knockback = KnockbackConfig(power=(0.0, 0.0))
-        contact_damage = 5
 
         if not receiver.combat.is_hurt:
             receiver.receive_damage(
-                amount=contact_damage,
+                amount=CombatSettings.CONTACT_DAMAGE_AMOUNT,
                 source_center_x=source.hitbox.centerx,
                 knockback=null_knockback,
                 interrupt=False
