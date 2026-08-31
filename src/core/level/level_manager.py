@@ -2,6 +2,7 @@
 Manages level loading and caching with automatic progression.
 """
 
+from pathlib import Path
 from typing import Optional
 
 from pytmx.util_pygame import load_pygame
@@ -44,6 +45,13 @@ class LevelManager:
         """
         if level_id not in self._cache:
             absolute_path = resource_path(self.level_paths[level_id])
+            if not Path(absolute_path).exists():
+                raise FileNotFoundError(
+                    f"Level file not found: {absolute_path}. "
+                    "The 'assets/' directory is required at runtime and must "
+                    "be present (clone the repository with assets, or restore "
+                    "the missing file)."
+                )
             tmx_map = load_pygame(absolute_path)
             self._cache[level_id] = LevelData.from_tmx(tmx_map)
         return self._cache[level_id]

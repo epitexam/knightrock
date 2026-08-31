@@ -13,6 +13,7 @@ from src.core.rendering.camera import Camera
 from src.core.sprite_groups import SpriteGroups
 from src.core.level.level_data import LevelData
 from src.physics.contact_damage import ContactDamageSystem
+from src.physics.hazard_damage import HazardDamageSystem
 from src.physics.movement import apply_moving_platform
 
 
@@ -57,6 +58,7 @@ class Level:
                                  self.camera, level_data.config)
         self.debug_controller = DebugController(self.groups)
         self.contact_damage_system = ContactDamageSystem()
+        self.hazard_damage_system = HazardDamageSystem()
 
         self.world_builder = WorldBuilder(level_data)
         self.player = self.world_builder.build(self.groups, self.input_manager)
@@ -93,6 +95,8 @@ class Level:
                 self.groups.entity_sprites,
             )
             self.contact_damage_system.process(self.groups.entity_sprites)
+            self.hazard_damage_system.process(
+                self.groups.entity_sprites, self.groups.hazard_sprites)
             self.gameplay_loop.remove_dead_entities(
                 self.groups.entity_sprites, self.player)
 
@@ -123,10 +127,10 @@ class Level:
         Args:
             fps: Current frames per second, used for debug display.
         """
-        self.renderer.draw(self.groups, Debug.ENABLED)
+        self.renderer.draw(self.groups, Debug.is_enabled())
         self.renderer.draw_health_bars(self.groups.entity_sprites)
 
-        if Debug.ENABLED:
+        if Debug.is_enabled():
             self.renderer.draw_debug_panels(
                 player=self.player,
                 fps=fps,

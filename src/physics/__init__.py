@@ -7,6 +7,7 @@ from .collisions import (
     update_contact_state,
 )
 from .contact_damage import ContactDamageSystem
+from .hazard_damage import HazardDamageSystem
 from .gravity import apply_entity_gravity
 from .movement import (
     apply_horizontal_movement,
@@ -20,6 +21,7 @@ from .velocity import apply_velocity_friction, lerp_velocity
 
 __all__ = [
     "ContactDamageSystem",
+    "HazardDamageSystem",
     "SeparationSystem",
     "apply_entity_gravity",
     "apply_horizontal_movement",

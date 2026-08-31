@@ -8,6 +8,7 @@ import pygame
 import pytest
 
 from src.core.game import Game
+from src.core.level.level_manager import LevelManager
 from src.core.paths import PROJECT_ROOT, resource_path
 
 
@@ -29,6 +30,16 @@ def test_resource_path_uses_pyinstaller_bundle_root(
     assert Path(resource_path("assets/example.dat")) == (
         tmp_path / "assets/example.dat"
     ).resolve()
+
+
+def test_level_manager_raises_clear_error_for_missing_level() -> None:
+    manager = LevelManager()
+    manager.register(99, "assets/data/levels/does_not_exist.tmx")
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        manager.get(99)
+
+    assert "Level file not found" in str(exc_info.value)
 
 
 def test_run_handles_initialization_errors_and_always_quits(

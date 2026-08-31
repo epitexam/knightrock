@@ -3,10 +3,12 @@ import math
 import pygame
 
 from src.core.sprites import Sprite
+from src.physics.hazard_damage import HazardDamageSystem
 
 
 class OrbitingHazard(Sprite):
-    def __init__(self, pos, surf, radius, start_angle, end_angle, speed, groups=None):
+    def __init__(self, pos, surf, radius, start_angle, end_angle, speed, groups=None,
+                 damage: float = HazardDamageSystem.DEFAULT_DAMAGE):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.center = pygame.math.Vector2(pos[0], pos[1])
         self.radius = radius
@@ -14,6 +16,7 @@ class OrbitingHazard(Sprite):
         self.full_loop = end_angle < 0
         self.end_angle = self.start_angle if self.full_loop else math.radians(end_angle)
         self.speed = speed
+        self.damage = damage
         self.angle = self.start_angle
         self.direction = 1
         self._place()
@@ -40,7 +43,8 @@ class OrbitingHazard(Sprite):
 
 
 class SpanHazard(Sprite):
-    def __init__(self, pos, surf, speed, flip, groups=None):
+    def __init__(self, pos, surf, speed, flip, groups=None,
+                 damage: float = HazardDamageSystem.DEFAULT_DAMAGE):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         start = pygame.math.Vector2(self.rect.topleft)
         if self.rect.width >= self.rect.height:
@@ -50,6 +54,7 @@ class SpanHazard(Sprite):
         self.point_a = end if flip else start
         self.point_b = start if flip else end
         self.speed = speed
+        self.damage = damage
         self.progress = 0.0
         self.direction = 1
 

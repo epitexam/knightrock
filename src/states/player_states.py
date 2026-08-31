@@ -142,7 +142,7 @@ class PlayerAttackState(PlayerBaseState):
         if next_state != "attack":
             self.entity.combat.state.end()
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
         """Update the current state and check for buffered combo inputs."""
         self.entity.apply_horizontal_movement(delta_time)
 
@@ -224,7 +224,7 @@ class PlayerHurtState(PlayerBaseState):
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state, applying friction until hurt duration ends."""
-        lerp_velocity(self.entity, 0.0, min(1.0, Physics.HURT_FRICTION * delta_time), delta_time)
+        lerp_velocity(self.entity, 0.0, Physics.HURT_FRICTION, delta_time)
         if not self.entity.combat.is_hurt:
             if self.entity.stagger_timer > 0:
                 return "stagger"
@@ -255,8 +255,7 @@ class PlayerKnockbackState(PlayerBaseState):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state, applying gravity and friction until landing."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(
-                1.0, Physics.KNOCKBACK_FRICTION * delta_time), delta_time)
+            lerp_velocity(self.entity, 0.0, Physics.KNOCKBACK_FRICTION, delta_time)
             if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
                 self.entity.velocity.x = 0.0
                 if self.entity.combat.is_hurt:
@@ -340,8 +339,7 @@ class PlayerStaggerState(PlayerBaseState):
     def update(self, delta_time: float) -> str | None:
         """Update the current state, applying friction until stagger ends."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(
-                1.0, Physics.STAGGER_FRICTION * delta_time), delta_time)
+            lerp_velocity(self.entity, 0.0, Physics.STAGGER_FRICTION, delta_time)
 
         if self.entity.stagger_timer <= 0:
             return self.ground_return()

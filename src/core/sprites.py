@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 import pygame
 
@@ -9,7 +9,7 @@ from src.physics.platforms import update_moving_platform
 class Sprite(pygame.sprite.Sprite):
     def __init__(
         self,
-        pos: tuple[int, int],
+        pos: tuple[float, float],
         color: tuple[int, int, int] | None = None,
         surf: pygame.Surface | None = None,
         groups: pygame.sprite.AbstractGroup | Iterable[pygame.sprite.AbstractGroup] | None = None,
@@ -35,9 +35,9 @@ class Sprite(pygame.sprite.Sprite):
 class MovingPlatform(Sprite):
     def __init__(
         self,
-        pos: tuple[int, int],
+        pos: tuple[float, float],
         surf: pygame.Surface,
-        waypoints: list[tuple[int, int]],
+        waypoints: Sequence[tuple[float, float]],
         speed: float,
         groups=None,
     ):
@@ -56,6 +56,6 @@ class MovingPlatform(Sprite):
 
 
 class LevelExit(Sprite):
-    def __init__(self, pos: tuple[int, int], groups=None):
+    def __init__(self, pos: tuple[float, float], groups=None):
         surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE), pygame.SRCALPHA)
         super().__init__(pos, color=None, surf=surf, groups=groups)

@@ -116,7 +116,7 @@ class WorldUI:
             bar_height = 6
             bar_x = screen_rect.centerx - bar_width / 2
             base_offset = 8
-            if Debug.ENABLED:
+            if Debug.is_enabled():
                 base_offset += self.renderer.label_font.get_height() + 4
             bar_y = screen_rect.top - base_offset - bar_height
             background_rect = (bar_x, bar_y, bar_width, bar_height)

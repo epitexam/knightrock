@@ -86,9 +86,19 @@ class Separation:
 
 class Debug:
     """Debug overlay settings."""
-    ENABLED = os.getenv("DEBUG", "0") == "1"
+
     FONT_SIZE = 24
     LABEL_FONT_SIZE = 16
+
+    @staticmethod
+    def is_enabled() -> bool:
+        """Return True when the debug overlay is enabled.
+
+        The environment variable is read at call time (not at import time)
+        so that ``main_debug()`` can enable the overlay after the module
+        hierarchy has already been imported (BUG-02).
+        """
+        return os.getenv("DEBUG", "0") == "1"
 
 
 class Simulation:

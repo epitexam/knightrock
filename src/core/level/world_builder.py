@@ -14,6 +14,7 @@ from src.core.hazards import OrbitingHazard, SpanHazard
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
 from src.core.sprite_groups import SpriteGroups
+from src.physics.hazard_damage import HazardDamageSystem
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
 
@@ -108,8 +109,10 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     surf.fill(Colors.red)
     speed = float(obj.properties.get("speed", 100))
     flip = bool(obj.properties.get("flip", False))
+    damage = float(obj.properties.get(
+        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
     hazard = SpanHazard(
-        (obj.x, obj.y), surf, speed, flip, groups.all_sprites
+        (obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage
     )
     groups.hazard_sprites.add(hazard)
 
@@ -123,6 +126,8 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     start_angle = float(obj.properties.get("start_angle", 0))
     end_angle = float(obj.properties.get("end_angle", 360))
     speed = float(obj.properties.get("speed", 50))
+    damage = float(obj.properties.get(
+        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
     hazard = OrbitingHazard(
         (obj.x, obj.y),
         surf,
@@ -131,6 +136,21 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         end_angle,
         speed,
         groups.all_sprites,
+        damage=damage,
+    )
+    groups.hazard_sprites.add(hazard)
+
+
+def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
+    """Create an immobile hazard (e.g. floor spikes) from a placed image."""
+    surf = obj.image
+    if surf is None:
+        surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
+        surf.fill(Colors.red)
+    damage = float(obj.properties.get(
+        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    hazard = SpanHazard(
+        (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage
     )
     groups.hazard_sprites.add(hazard)
 
@@ -144,6 +164,7 @@ OBJECT_FACTORIES.register("helicopter")(_build_moving_platform)
 OBJECT_FACTORIES.register("boat")(_build_moving_platform)
 OBJECT_FACTORIES.register("saw")(_build_span_hazard)
 OBJECT_FACTORIES.register("spike")(_build_orbiting_hazard)
+OBJECT_FACTORIES.register("floor_spike")(_build_static_hazard)
 OBJECT_FACTORIES.register("flag")(_build_exit)
 
 

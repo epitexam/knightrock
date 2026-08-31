@@ -5,7 +5,12 @@ from typing import Protocol, runtime_checkable
 import pygame
 from pygame.math import Vector2
 from src.core.settings import Separation
-from src.physics.collisions import CollisionSprite, resolve_collisions
+from src.physics.collisions import (
+    CollisionSprite,
+    get_nearby_sprites,
+    resolve_collisions,
+    update_contact_state,
+)
 from src.physics.gravity import apply_entity_gravity
 
 VELOCITY_EPSILON = 0.01
@@ -153,7 +158,14 @@ def resolve_jump(entity: JumpEntity) -> None:
 def move_entity(
     entity: MovableEntity, delta_time: float, apply_gravity: bool = True
 ) -> None:
-    """Move an entity according to its velocity and the environment."""
+    """Move an entity according to its velocity and the environment.
+
+    Nearby collision sprites are resolved once per call and reused across
+    every horizontal/vertical substep and the contact-state pass, instead of
+    re-scanning the full terrain for each substep (PERF-01).
+    """
+    nearby_sprites = get_nearby_sprites(entity, entity.collision_sprites)
+
     move_x = entity.velocity.x * delta_time
     steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))
     step_move_x = move_x / steps_x
@@ -161,7 +173,7 @@ def move_entity(
     for _ in range(steps_x):
         entity.old_hitbox = entity.hitbox.copy()
         entity.hitbox.x += step_move_x
-        resolve_collisions(entity, "horizontal")
+        resolve_collisions(entity, "horizontal", nearby_sprites)
 
         if abs(entity.velocity.x) < VELOCITY_EPSILON:
             entity.velocity.x = 0.0
@@ -177,12 +189,12 @@ def move_entity(
     for _ in range(steps_y):
         entity.old_hitbox = entity.hitbox.copy()
         entity.hitbox.y += step_move_y
-        resolve_collisions(entity, "vertical")
+        resolve_collisions(entity, "vertical", nearby_sprites)
         if abs(entity.velocity.y) < VELOCITY_EPSILON:
             entity.velocity.y = 0.0
             break
 
-    entity.check_contact()
+    update_contact_state(entity, nearby_sprites)
 
 
 def apply_moving_platform(

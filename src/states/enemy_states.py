@@ -4,6 +4,7 @@ State machine states for enemies (AI).
 
 from typing import Optional, Any
 from src.states.state_machine import State
+from src.core.settings import Physics
 from src.physics import lerp_velocity
 
 
@@ -162,8 +163,7 @@ class EnemyKnockbackState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the state, applying friction until the enemy lands and stops."""
         if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, min(
-                1.0, 8.0 * delta_time), delta_time)
+            lerp_velocity(self.entity, 0.0, Physics.KNOCKBACK_FRICTION, delta_time)
             if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
                 self.entity.velocity.x = 0.0
                 if self.entity.combat.is_hurt:

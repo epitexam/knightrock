@@ -50,13 +50,14 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     )
 
     level = Level.__new__(Level)
-    level.player = player
-    level.groups = groups
+    level.player = player  # type: ignore[assignment]
+    level.groups = groups  # type: ignore[assignment]
     level.exit_reached = False
     level.respawn_timer = 0.75
-    level.debug_controller = SimpleNamespace(update=Mock())
-    level.camera = SimpleNamespace(follow=Mock())
-    level.contact_damage_system = SimpleNamespace(process=Mock())
+    level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
+    level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
+    level.contact_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.hazard_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
     level.gameplay_loop = GameplayLoop()
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
     level.gameplay_loop.separation_system.process = Mock()
@@ -67,15 +68,18 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
 
     level.update(0.016)
 
-    level.debug_controller.update.assert_called_once_with(0.016, player)
-    level.camera.follow.assert_called_once_with(player.hitbox, 0.016)
+    level.debug_controller.update.assert_called_once_with(  # type: ignore[attr-defined]
+        0.016, player)
+    level.camera.follow.assert_called_once_with(  # type: ignore[attr-defined]
+        player.hitbox, 0.016)
     groups.moving_platforms.update.assert_not_called()
     groups.hazard_sprites.update.assert_not_called()
     groups.entity_sprites.update.assert_not_called()
     groups.fx_sprites.update.assert_not_called()
     level.gameplay_loop.separation_system.process.assert_not_called()
     level.gameplay_loop.combat_system.process_attacks.assert_not_called()
-    level.contact_damage_system.process.assert_not_called()
+    level.contact_damage_system.process.assert_not_called()  # type: ignore[attr-defined]
+    level.hazard_damage_system.process.assert_not_called()  # type: ignore[attr-defined]
     dead_enemy.kill.assert_not_called()
     player.respawn.assert_not_called()
     exit_check.assert_not_called()
@@ -100,7 +104,7 @@ def test_wall_jump_uses_entity_configuration() -> None:
         midair_jumps_left=1,
     )
 
-    resolve_jump(entity)
+    resolve_jump(entity)  # type: ignore[arg-type]
 
     assert entity.velocity.y == pytest.approx(-612.0)
     assert entity.velocity.x == pytest.approx(560.0)
