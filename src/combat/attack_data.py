@@ -71,7 +71,7 @@ PLAYER_ATTACKS = {
                 hitbox_offset=(18.0, -30.0),
                 hit=HitProperties(
                     damage=16,
-                    knockback=KnockbackConfig(power=(400.0, -2500.0)),
+                    knockback=KnockbackConfig(power=(400.0, -550.0)),
                     damage_type=DamageType.BLUNT,
                     stagger=0.4,
                     super_armor_break=True,

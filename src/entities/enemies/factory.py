@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
+from pygame.math import Vector2
 from pygame.sprite import Group
 
 from src.entities.enemies.configs import ENEMY_CONFIGS
@@ -26,7 +27,7 @@ def is_enemy_type(name: str) -> bool:
 
 def create_enemy(
     name: str,
-    pos: Sequence[float],
+    pos: Sequence[float] | Vector2,
     groups: Group | Sequence[Group],
     collision_sprites: Group,
     player_reference: PlayerReference | None = None,
@@ -40,8 +41,9 @@ def create_enemy(
     ----------
     name : str
         The enemy type name (e.g., "goblin", "dummy", "slime").
-    pos : Sequence[float]
-        Starting top-left position.
+    pos : Sequence[float] | Vector2
+        Starting top-left position. Normalized to a tuple of floats
+        before being handed to :class:`Enemy`.
     groups : Group | Sequence[Group]
         Sprite group(s) to add this enemy to.
     collision_sprites : Group
@@ -60,8 +62,9 @@ def create_enemy(
         If the enemy type name is not found in ENEMY_CONFIGS.
     """
     config = ENEMY_CONFIGS[name]
+    spawn_pos = (float(pos[0]), float(pos[1]))
     return Enemy(
-        pos=pos,
+        pos=spawn_pos,
         groups=groups,
         collision_sprites=collision_sprites,
         player_reference=player_reference,

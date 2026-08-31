@@ -28,8 +28,8 @@ def test_player_initialization(player_setup):
 
 def test_player_dash_charges(player_setup):
     player, _ = player_setup
-    assert player.dash_charges == player.max_dash_charges
+    assert player.dash.charges == player.dash.max_charges
     
     # Dash request should be allowed in idle/fall state
-    player.dash_requested = True
+    player.dash.requested = True
     assert player._can_dash() == True

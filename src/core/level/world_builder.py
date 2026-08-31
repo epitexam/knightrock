@@ -106,7 +106,7 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
 def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     """Create a linearly moving hazard (saw)."""
     surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
-    surf.fill(Colors.red)
+    surf.fill(Colors.black)
     speed = float(obj.properties.get("speed", 100))
     flip = bool(obj.properties.get("flip", False))
     damage = float(obj.properties.get(

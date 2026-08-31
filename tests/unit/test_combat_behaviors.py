@@ -83,16 +83,16 @@ def test_combat_system_consumes_blocked_contact_once() -> None:
     player.state_machine.current_state_name = "block"
     attacker = make_active_attacker(player)
     system = CombatSystem()
-    initial_stamina = player.block_stamina
+    initial_stamina = player.block.block_stamina
 
     combatants = [attacker, player]  # type: ignore[list-item]
     system.process_attacks(combatants)
-    stamina_after_first_contact = player.block_stamina
+    stamina_after_first_contact = player.block.block_stamina
     system.hit_stop_timer = 0.0
     system.process_attacks(combatants)
 
     assert stamina_after_first_contact < initial_stamina
-    assert player.block_stamina == stamina_after_first_contact
+    assert player.block.block_stamina == stamina_after_first_contact
     assert player.id in attacker.combat.targets_hit
 
 
@@ -174,7 +174,7 @@ def test_player_copies_all_behavioral_configuration() -> None:
         config=config,
     )
 
-    assert player.block_cooldown_normal == 0.9
-    assert player.block_cooldown_broken == 3.4
-    assert player.dash_recharge_time == 0.85
-    assert player.dash_gravity_mult == 0.4
+    assert player.block.block_cooldown_normal == 0.9
+    assert player.block.block_cooldown_broken == 3.4
+    assert player.dash.recharge_time == 0.85
+    assert player.dash.gravity_mult == 0.4

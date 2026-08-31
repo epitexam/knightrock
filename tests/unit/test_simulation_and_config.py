@@ -10,6 +10,7 @@ from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.level.level import Level
 from src.core.settings import Combat, Physics
 from src.entities.player_config import PlayerConfig
+from src.entities.player_controllers import BlockController, DashController
 from src.physics.movement import resolve_jump
 from src.states.player_states import PlayerBlockState, PlayerDashState
 
@@ -114,61 +115,60 @@ def test_wall_jump_uses_entity_configuration() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stamina", "attribute", "expected"),
+    ("stamina", "expected"),
     [
-        (0.5, "block_cooldown_normal", 0.9),
-        (0.0, "block_cooldown_broken", 3.4),
+        (0.5, 0.9),
+        (0.0, 3.4),
     ],
 )
 def test_block_exit_uses_exposed_cooldown_configuration(
-    stamina: float, attribute: str, expected: float
+    stamina: float, expected: float
 ) -> None:
     entity = SimpleNamespace(
-        block_stamina=stamina,
-        block_cooldown_timer=0.0,
-        block_cooldown_normal=0.9,
-        block_cooldown_broken=3.4,
+        block=BlockController(
+            PlayerConfig(block_cooldown_normal=0.9, block_cooldown_broken=3.4)
+        ),
         hitbox=pygame.FRect(0, 0, 48, 40),
         handle_collisions=Mock(),
         sync_rects=Mock(),
     )
+    entity.block.block_stamina = stamina
 
     PlayerBlockState(entity).exit()
 
-    assert getattr(entity, attribute) == expected
-    assert entity.block_cooldown_timer == pytest.approx(expected)
+    assert entity.block.block_cooldown_timer == pytest.approx(expected)
     entity.handle_collisions.assert_called_once_with("vertical")
 
 
 def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
     entity = SimpleNamespace(
-        dash_charges=2,
-        dash_recharge_timer=0.0,
-        dash_recharge_time=0.85,
-        dash_penalty_timer=0.0,
-        dash_penalty_duration=2.0,
-        dash_speed=1200.0,
-        dash_duration=0.5,
-        dash_friction=2.0,
-        dash_gravity_mult=0.4,
-        normal_gravity=2000.0,
-        _dash_requested=True,
-        _dash_duration_timer=0.0,
-        _original_hitbox_width=0.0,
+        dash=DashController(
+            PlayerConfig(
+                dash_speed=1200.0,
+                dash_duration=0.5,
+                dash_friction=2.0,
+                dash_recharge_time=0.85,
+                dash_gravity_mult=0.4,
+            ),
+            original_hitbox_width=50.0,
+        ),
         facing_right=True,
         left_held=False,
         right_held=False,
         velocity=pygame.Vector2(),
         hitbox=pygame.FRect(0, 0, 50, 60),
-        on_surface={"floor": False, "left": False, "right": False},
+        normal_gravity=2000.0,
     )
+    entity.dash.charges = 2
     state = PlayerDashState(entity)
 
     state.enter()
     next_state = state.update(0.1)
 
-    assert entity.dash_charges == 1
-    assert entity.dash_recharge_timer == pytest.approx(0.85)
+    assert entity.dash.charges == 1
+    assert entity.dash.recharge_timer == pytest.approx(0.85)
+    assert entity.dash.duration_timer == pytest.approx(0.4)
+    assert entity.hitbox.width == pytest.approx(30.0)
     assert entity.velocity.y == pytest.approx(80.0)
     assert next_state is None
 

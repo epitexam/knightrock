@@ -35,24 +35,78 @@ class HorizontalMovementEntity(Protocol):
 
 @runtime_checkable
 class WallJumpLock(Protocol):
-    wall_jump_lock_timer: float
-    wall_jump_lock_duration: float
-    wall_jump_min_lock: float
+    """Surface consumed to damp horizontal control after a wall jump.
+
+    ``wall_jump_lock_timer`` is mutated by :func:`apply_horizontal_movement`;
+    the two tuning mirrors are read-only.
+    """
+
+    @property
+    def wall_jump_lock_timer(self) -> float: ...
+
+    @wall_jump_lock_timer.setter
+    def wall_jump_lock_timer(self, value: float) -> None: ...
+
+    @property
+    def wall_jump_lock_duration(self) -> float: ...
+
+    @property
+    def wall_jump_min_lock(self) -> float: ...
 
 
 class JumpEntity(Protocol):
+    """Surface consumed by :func:`resolve_jump`.
+
+    Members the resolver mutates are declared as read/write properties;
+    tuning mirrors are read-only. Concrete entities expose them through
+    flat delegation properties backed by their controllers.
+    """
+
     velocity: Vector2
     speed: float
     on_surface: dict[str, bool]
-    jump_buffer_timer: float
-    coyote_timer: float
-    jump_height: float
-    wall_jump_height: float
-    wall_jump_push_multiplier: float
-    wall_jump_lock_timer: float
-    wall_jump_lock_duration: float
-    wall_jumps_left: int | float
-    midair_jumps_left: int
+
+    @property
+    def jump_buffer_timer(self) -> float: ...
+
+    @jump_buffer_timer.setter
+    def jump_buffer_timer(self, value: float) -> None: ...
+
+    @property
+    def coyote_timer(self) -> float: ...
+
+    @coyote_timer.setter
+    def coyote_timer(self, value: float) -> None: ...
+
+    @property
+    def wall_jump_lock_timer(self) -> float: ...
+
+    @wall_jump_lock_timer.setter
+    def wall_jump_lock_timer(self, value: float) -> None: ...
+
+    @property
+    def wall_jump_lock_duration(self) -> float: ...
+
+    @property
+    def jump_height(self) -> float: ...
+
+    @property
+    def wall_jump_height(self) -> float: ...
+
+    @property
+    def wall_jump_push_multiplier(self) -> float: ...
+
+    @property
+    def wall_jumps_left(self) -> float: ...
+
+    @wall_jumps_left.setter
+    def wall_jumps_left(self, value: float) -> None: ...
+
+    @property
+    def midair_jumps_left(self) -> int: ...
+
+    @midair_jumps_left.setter
+    def midair_jumps_left(self, value: int) -> None: ...
 
 
 class MovableEntity(Protocol):

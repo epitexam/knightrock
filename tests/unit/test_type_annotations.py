@@ -133,7 +133,7 @@ class TestPosTypeAnnotations:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         assert player is not None
         assert hasattr(player, 'hitbox')
@@ -151,7 +151,7 @@ class TestPosTypeAnnotations:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         assert player is not None
         assert hasattr(player, 'hitbox')
@@ -174,9 +174,10 @@ class TestPlayerReferenceTyping:
             player_reference=player_ref,
         )
         
-        assert enemy.player is player_ref
-        assert hasattr(enemy.player, 'hitbox')
-        assert isinstance(enemy.player.hitbox, pygame.FRect)
+        bound_ref = enemy.player
+        assert bound_ref is not None
+        assert bound_ref is player_ref
+        assert isinstance(bound_ref.hitbox, pygame.FRect)
 
     def test_enemy_player_reference_can_be_none(self):
         """Test that Enemy player reference can be None."""
@@ -254,13 +255,13 @@ class TestPrivateVariables:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         
-        # Check that private variables exist and have _ prefix
-        assert hasattr(player, '_dash_duration_timer')
-        assert hasattr(player, '_original_hitbox_width')
-        assert hasattr(player, 'dash_requested')
+        # Check that mechanic controllers own their runtime state
+        assert hasattr(player, 'dash')
+        assert hasattr(player.dash, 'duration_timer')
+        assert hasattr(player.dash, 'original_hitbox_width')
         
         # Check that input state variables are private
         assert hasattr(player, '_space_held')
@@ -280,7 +281,7 @@ class TestPrivateVariables:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         
         # Check that public variables don't have _ prefix

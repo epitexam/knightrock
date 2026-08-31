@@ -25,7 +25,7 @@ class PlayerUI:
             f"Axis   {player.move_axis:+.2f}",
             f"Jump   buf {player.jump_buffer_timer:.2f}s  coy {player.coyote_timer:.2f}s",
             f"Jumps  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
-            f"Dash   req {player.dash_requested!s:5}  dur {player._dash_duration_timer:.2f}s",
+            f"Dash   req {player.dash.requested!s:5}  dur {player.dash.duration_timer:.2f}s",
         ]
 
         line_colors = {}

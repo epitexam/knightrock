@@ -114,7 +114,12 @@ class Combatant(Protocol):
     hitbox: pygame.FRect
     faction: str
     facing_right: bool
-    is_dead: bool
+
+    @property
+    def is_dead(self) -> bool:
+        """True if the entity's health has reached zero."""
+        ...
+
     @property
     def combat(self) -> CombatPort:
         """Combat operations exposed to gameplay systems."""

@@ -78,7 +78,7 @@ def test_block_prevents_damage_and_all_hit_reactions() -> None:
     )
     player.state_machine.current_state_name = "block"
     initial_health = player.health
-    initial_stamina = player.block_stamina
+    initial_stamina = player.block.block_stamina
 
     result = HitResolver.resolve(
         AttackerStub(centerx=80.0),  # type: ignore[arg-type]
@@ -93,7 +93,7 @@ def test_block_prevents_damage_and_all_hit_reactions() -> None:
 
     assert result == DamageResult(blocked=True)
     assert player.health == initial_health
-    assert player.block_stamina < initial_stamina
+    assert player.block.block_stamina < initial_stamina
     assert player.velocity.x == 60.0
     assert player.combat.is_hurt is False
     assert player.stagger_timer == 0.0

@@ -184,18 +184,7 @@ class PlayerBlockState(PlayerBaseState):
 
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state, restore hitbox height, and apply block cooldown."""
-        if self.entity.block_stamina <= 0:
-            self.entity.block_cooldown_timer = getattr(
-                self.entity,
-                "block_cooldown_broken",
-                CombatSettings.BLOCK_COOLDOWN_BROKEN,
-            )
-        else:
-            self.entity.block_cooldown_timer = getattr(
-                self.entity,
-                "block_cooldown_normal",
-                CombatSettings.BLOCK_COOLDOWN_NORMAL,
-            )
+        self.entity.block.apply_exit_cooldown()
         old_bottom = self.entity.hitbox.bottom
         self.entity.hitbox.height += CombatSettings.BLOCK_HEIGHT_REDUCTION
         self.entity.hitbox.bottom = old_bottom
@@ -205,12 +194,11 @@ class PlayerBlockState(PlayerBaseState):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state, draining stamina and checking conditions."""
         self.entity.velocity.x = 0.0
-        self.entity.block_stamina -= (
-            delta_time if self.entity.on_surface["floor"] else delta_time * CombatSettings.BLOCK_AIR_DRAIN_MULT
-        )
-        if self.entity.block_stamina < 0:
-            self.entity.block_stamina = 0.0
-        if not self.entity.block_held or self.entity.block_stamina <= 0:
+        drain = delta_time
+        if not self.entity.on_surface["floor"]:
+            drain = delta_time * CombatSettings.BLOCK_AIR_DRAIN_MULT
+        self.entity.block.consume(drain)
+        if not self.entity.block_held or self.entity.block.block_stamina <= 0:
             return self.ground_return()
         return None
 
@@ -229,7 +217,7 @@ class PlayerHurtState(HurtState):
 
     def _hurt_enter(self, **kwargs: Any) -> None:
         """Clear the dash request and apply the light knockback impulse."""
-        self.entity.dash_requested = False
+        self.entity.dash.cancel_request()
 
         knockback_dir = kwargs.get("knockback_direction", 0)
         knockback_force = kwargs.get("knockback_force", 0)
@@ -256,7 +244,7 @@ class PlayerKnockbackState(KnockbackState):
 
     def _knockback_enter(self, **kwargs: Any) -> None:
         """Clear the dash request before the launch velocity is applied."""
-        self.entity.dash_requested = False
+        self.entity.dash.cancel_request()
 
     def _knockback_exit(self) -> str:
         """Recover through hurt if still hurt, otherwise to the ground state."""
@@ -274,53 +262,37 @@ class PlayerDashState(PlayerBaseState):
 
     def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
-        self.entity.dash_charges -= 1
-        self.entity.dash_requested = False
-        if self.entity.dash_recharge_timer <= 0:
-            self.entity.dash_recharge_timer = getattr(
-                self.entity,
-                "dash_recharge_time",
-                Physics.DASH_RECHARGE_TIME,
-            )
-        if self.entity.dash_charges == 0:
-            self.entity.dash_penalty_timer = self.entity.dash_penalty_duration
-        self.entity._original_hitbox_width = self.entity.hitbox.width
-        new_width = self.entity._original_hitbox_width * 0.6
-        self.entity.hitbox.x += (self.entity._original_hitbox_width -
-                                 new_width) / 2
-        self.entity.hitbox.width = new_width
+        self.entity.dash.consume_charge()
+        self.entity.dash.apply_squish(self.entity.hitbox)
         direction = 1 if self.entity.facing_right else -1
-        self.entity.velocity.x = self.entity.dash_speed * direction
+        self.entity.velocity.x = self.entity.dash.speed * direction
         self.entity.velocity.y = 0.0
-        self.entity._dash_duration_timer = self.entity.dash_duration
+        self.entity.dash.duration_timer = self.entity.dash.duration
 
     def exit(self, next_state: Optional[str] = None) -> None:
         """Exit the state and restore the original hitbox width."""
-        current = self.entity.hitbox.width
-        if current != self.entity._original_hitbox_width:
-            self.entity.hitbox.x -= (
-                self.entity._original_hitbox_width - current
-            ) / 2
-            self.entity.hitbox.width = self.entity._original_hitbox_width
+        if self.entity.dash.restore_hitbox(self.entity.hitbox):
             self.entity.handle_collisions("horizontal")
             self.entity.sync_rects()
 
     def update(self, delta_time: float) -> Optional[str]:
         """Update the current state, applying dash friction and air control."""
-        self.entity._dash_duration_timer -= delta_time
-        friction = max(0.0, 1.0 - self.entity.dash_friction * delta_time)
+        self.entity.dash.duration_timer -= delta_time
+        friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
         apply_velocity_friction(self.entity, friction, delta_time)
         if self.entity.left_held:
             self.entity.velocity.x -= Physics.DASH_AIR_CONTROL * delta_time
         if self.entity.right_held:
             self.entity.velocity.x += Physics.DASH_AIR_CONTROL * delta_time
-        dash_gravity = getattr(
-            self.entity, "dash_gravity_mult", Physics.DASH_GRAVITY_MULT
-        )
         self.entity.velocity.y += (
-            self.entity.normal_gravity * dash_gravity * delta_time
+            self.entity.normal_gravity
+            * self.entity.dash.gravity_mult
+            * delta_time
         )
-        if self.entity._dash_duration_timer <= 0 or abs(self.entity.velocity.x) < 10.0:
+        if (
+            self.entity.dash.duration_timer <= 0
+            or abs(self.entity.velocity.x) < 10.0
+        ):
             self.entity.velocity.x = 0.0
             return self.ground_return()
         return None

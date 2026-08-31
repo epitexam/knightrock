@@ -196,15 +196,15 @@ class TestResetPosition:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         
         # Modify player state
         player.hitbox.x = 200
         player.velocity.x = 100
         player.health = 50
-        player.dash_charges = 0
-        player.block_stamina = 0
+        player.dash.charges = 0
+        player.block.block_stamina = 0
         
         # Reset position
         player.reset_position()
@@ -217,10 +217,10 @@ class TestResetPosition:
         assert player.health == player.max_health
         
         # Check that dash charges are reset
-        assert player.dash_charges == player.max_dash_charges
+        assert player.dash.charges == player.dash.max_charges
         
         # Check that block stamina is reset
-        assert player.block_stamina == player.max_block_stamina
+        assert player.block.block_stamina == player.block.max_block_stamina
 
     def test_player_reset_position_resets_state_machine(self):
         """Test that Player.reset_position resets state machine to idle."""
@@ -234,7 +234,7 @@ class TestResetPosition:
             groups=groups,
             collision_sprites=collision_sprites,
             moving_platforms=moving_platforms,
-            input_manager=input_manager,
+            input_manager=input_manager,  # type: ignore[arg-type]
         )
         
         # Player should have a state machine

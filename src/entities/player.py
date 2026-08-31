@@ -17,6 +17,11 @@ from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
 from src.entities.entity import Entity, compute_knockback_direction
 from src.entities.player_config import PlayerConfig
+from src.entities.player_controllers import (
+    BlockController,
+    DashController,
+    JumpController,
+)
 from src.physics import resolve_jump
 from src.states.player_states import (
     PlayerAttackState,
@@ -64,7 +69,7 @@ ATTACK_FORBIDDEN_STATES = {
 
 DEFAULT_PLAYER_CONFIG = PlayerConfig(
     size=(48.0, 56.0),
-    color=Colors.green,
+    color=Colors.pink,
     health=100.0,
     max_health=100.0,
     hitbox_inflate=(-8.0, 0.0),
@@ -113,101 +118,24 @@ class Player(Entity):
         Horizontal control when on the ground.
     air_control : float
         Horizontal control when airborne.
-    jump_height : float
-        Vertical impulse for a normal jump.
-    wall_jump_height : float
-        Vertical impulse for a wall jump.
-    wall_jump_push_multiplier : float
-        Horizontal push multiplier for wall jumps.
-    wall_jump_lock_duration : float
-        Duration to lock controls after a wall jump.
-    wall_jump_min_lock : float
-        Minimum lock duration after a wall jump.
-    wall_slide_speed : float
-        Descent speed when sliding down a wall.
-    max_midair_jumps : int
-        Maximum number of jumps allowed while airborne.
-    midair_jumps_left : int
-        Remaining midair jumps.
-    max_wall_jumps : int | float
-        Maximum number of wall jumps allowed.
-    wall_jumps_left : int | float
-        Remaining wall jumps.
-    coyote_timer : float
-        Time remaining for coyote jump.
-    coyote_duration : float
-        Duration after leaving a surface where jump is still allowed.
-    jump_buffer_timer : float
-        Time remaining for jump buffer.
-    jump_buffer_duration : float
-        Duration to buffer a jump input before landing.
-    moving_platforms : list
-        Platforms that can carry the player.
-    max_block_stamina : float
-        Maximum stamina for blocking.
-    block_stamina : float
-        Current block stamina.
-    block_cooldown_timer : float
-        Time remaining before blocking can be used again.
-    max_dash_charges : int
-        Maximum number of dash charges.
-    dash_charges : int
-        Current dash charges available.
-    dash_recharge_timer : float
-        Time remaining to recharge next dash.
-    dash_penalty_timer : float
-        Time remaining of dash penalty.
-    dash_speed : float
-        Horizontal speed during a dash.
-    dash_duration : float
-        Duration of a dash in seconds.
-    dash_friction : float
-        Friction applied during a dash.
-    dash_penalty_duration : float
-        Duration of penalty after a dash.
-    _dash_duration_timer : float
-        Internal timer for current dash duration.
-    _original_hitbox_width : float
-        Original hitbox width for dash hitbox modification.
-    dash_requested : bool
-        Whether a dash was requested this frame.
+    jump : JumpController
+        Owns jump resources: buffer, coyote time, wall lock, and jump stocks.
+    block : BlockController
+        Owns block resources: stamina pool and post-block cooldown.
+    dash : DashController
+        Owns dash resources: charges, recharge, penalty, and squished hitbox.
     """
 
     input_manager: InputManager
     speed: float
     floor_control: float
     air_control: float
-    jump_height: float
-    wall_jump_height: float
-    wall_jump_push_multiplier: float
-    wall_jump_lock_duration: float
-    wall_jump_min_lock: float
-    wall_slide_speed: float
-    max_midair_jumps: int
-    midair_jumps_left: int
-    max_wall_jumps: int | float
-    wall_jumps_left: int | float
-    coyote_timer: float
-    coyote_duration: float
-    jump_buffer_timer: float
-    jump_buffer_duration: float
-    wall_jump_lock_timer: float
-    moving_platforms: Iterable[Any]
-    max_block_stamina: float
-    block_stamina: float
-    block_cooldown_timer: float
-    max_dash_charges: int
-    dash_charges: int
-    dash_recharge_timer: float
-    dash_penalty_timer: float
-    dash_speed: float
-    dash_duration: float
-    dash_friction: float
-    dash_penalty_duration: float
 
-    _dash_duration_timer: float
-    _original_hitbox_width: float
-    dash_requested: bool
+    jump: JumpController
+    block: BlockController
+    dash: DashController
+
+    moving_platforms: Iterable[Any]
 
     _space_held: bool
     _left_held: bool
@@ -269,46 +197,14 @@ class Player(Entity):
         self.floor_control = config.floor_control
         self.air_control = config.air_control
 
-        self.jump_height = config.jump_height
-        self.wall_jump_height = config.wall_jump_height
-        self.wall_jump_push_multiplier = config.wall_jump_push_multiplier
-        self.wall_jump_lock_duration = config.wall_jump_lock_duration
-        self.wall_jump_lock_timer = 0.0
-        self.wall_jump_min_lock = config.wall_jump_min_lock
-        self.wall_slide_speed = config.wall_slide_speed
-
-        self.max_midair_jumps = config.max_midair_jumps
-        self.midair_jumps_left = self.max_midair_jumps
-        self.max_wall_jumps = config.max_wall_jumps
-        self.wall_jumps_left = self.max_wall_jumps
-
-        self.coyote_timer = 0.0
-        self.coyote_duration = config.coyote_duration
-        self.jump_buffer_timer = 0.0
-        self.jump_buffer_duration = config.jump_buffer_duration
+        self.jump = JumpController(config)
+        self.block = BlockController(config)
+        self.dash = DashController(
+            config, original_hitbox_width=self.hitbox.width
+        )
 
         self.moving_platforms = moving_platforms
 
-        self.max_block_stamina = config.max_block_stamina
-        self.block_stamina = self.max_block_stamina
-        self.block_cooldown_timer = 0.0
-        self.block_cooldown_normal = config.block_cooldown_normal
-        self.block_cooldown_broken = config.block_cooldown_broken
-
-        self.max_dash_charges = config.max_dash_charges
-        self.dash_charges = self.max_dash_charges
-        self.dash_recharge_timer = 0.0
-        self.dash_penalty_timer = 0.0
-        self.dash_speed = config.dash_speed
-        self.dash_duration = config.dash_duration
-        self.dash_friction = config.dash_friction
-        self.dash_penalty_duration = config.dash_penalty_duration
-        self.dash_recharge_time = config.dash_recharge_time
-        self.dash_gravity_mult = config.dash_gravity_mult
-        self._dash_duration_timer = 0.0
-        self._original_hitbox_width = self.hitbox.width
-
-        self.dash_requested = False
         self._buffered_attack_name: str | None = None
 
         self._space_held = False
@@ -346,8 +242,7 @@ class Player(Entity):
     def _can_dash(self) -> bool:
         """Check if the player can currently interrupt to dash."""
         return (
-            self.dash_requested
-            and self.dash_charges > 0
+            self.dash.can_use()
             and self.state_machine.current_state_name not in (
                 PlayerState.DASH, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER
             )
@@ -358,8 +253,7 @@ class Player(Entity):
         return (
             self.on_surface["floor"]
             and self.block_held
-            and self.block_cooldown_timer <= 0
-            and self.block_stamina > 0.3
+            and self.block.can_use()
             and self.state_machine.current_state_name not in (
                 PlayerState.WALL_SLIDE, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.DASH, PlayerState.STAGGER
             )
@@ -434,6 +328,165 @@ class Player(Entity):
         """Set block held state."""
         self._block_held = value
 
+    # ------------------------------------------------------------------
+    # Flat delegation to the jump controller. resolve_jump (physics
+    # protocols) and the debug UI read/mutate these on the entity.
+    # ------------------------------------------------------------------
+    @property
+    def jump_buffer_timer(self) -> float:
+        """Flat view of :attr:`JumpController.jump_buffer_timer`."""
+        return self.jump.jump_buffer_timer
+
+    @jump_buffer_timer.setter
+    def jump_buffer_timer(self, value: float) -> None:
+        self.jump.jump_buffer_timer = value
+
+    @property
+    def coyote_timer(self) -> float:
+        """Flat view of :attr:`JumpController.coyote_timer`."""
+        return self.jump.coyote_timer
+
+    @coyote_timer.setter
+    def coyote_timer(self, value: float) -> None:
+        self.jump.coyote_timer = value
+
+    @property
+    def wall_jump_lock_timer(self) -> float:
+        """Flat view of :attr:`JumpController.wall_jump_lock_timer`."""
+        return self.jump.wall_jump_lock_timer
+
+    @wall_jump_lock_timer.setter
+    def wall_jump_lock_timer(self, value: float) -> None:
+        self.jump.wall_jump_lock_timer = value
+
+    @property
+    def midair_jumps_left(self) -> int:
+        """Flat view of :attr:`JumpController.midair_jumps_left`."""
+        return self.jump.midair_jumps_left
+
+    @midair_jumps_left.setter
+    def midair_jumps_left(self, value: int) -> None:
+        self.jump.midair_jumps_left = value
+
+    @property
+    def wall_jumps_left(self) -> int | float:
+        """Flat view of :attr:`JumpController.wall_jumps_left`."""
+        return self.jump.wall_jumps_left
+
+    @wall_jumps_left.setter
+    def wall_jumps_left(self, value: int | float) -> None:
+        self.jump.wall_jumps_left = value
+
+    @property
+    def jump_height(self) -> float:
+        """Flat view of :attr:`JumpController.jump_height`."""
+        return self.jump.jump_height
+
+    @property
+    def wall_jump_height(self) -> float:
+        """Flat view of :attr:`JumpController.wall_jump_height`."""
+        return self.jump.wall_jump_height
+
+    @property
+    def wall_jump_push_multiplier(self) -> float:
+        """Flat view of :attr:`JumpController.wall_jump_push_multiplier`."""
+        return self.jump.wall_jump_push_multiplier
+
+    @property
+    def wall_jump_lock_duration(self) -> float:
+        """Flat view of :attr:`JumpController.wall_jump_lock_duration`."""
+        return self.jump.wall_jump_lock_duration
+
+    @property
+    def wall_jump_min_lock(self) -> float:
+        """Flat view of :attr:`JumpController.wall_jump_min_lock`."""
+        return self.jump.wall_jump_min_lock
+
+    # ------------------------------------------------------------------
+    # Flat delegation to the block controller (debug UI, hit resolver).
+    # ------------------------------------------------------------------
+    @property
+    def block_stamina(self) -> float:
+        """Flat view of :attr:`BlockController.block_stamina`."""
+        return self.block.block_stamina
+
+    @block_stamina.setter
+    def block_stamina(self, value: float) -> None:
+        self.block.block_stamina = value
+
+    @property
+    def max_block_stamina(self) -> float:
+        """Flat view of :attr:`BlockController.max_block_stamina`."""
+        return self.block.max_block_stamina
+
+    @property
+    def block_cooldown_timer(self) -> float:
+        """Flat view of :attr:`BlockController.block_cooldown_timer`."""
+        return self.block.block_cooldown_timer
+
+    @block_cooldown_timer.setter
+    def block_cooldown_timer(self, value: float) -> None:
+        self.block.block_cooldown_timer = value
+
+    # ------------------------------------------------------------------
+    # Flat delegation to the dash controller (debug UI).
+    # ------------------------------------------------------------------
+    @property
+    def dash_charges(self) -> int:
+        """Flat view of :attr:`DashController.charges`."""
+        return self.dash.charges
+
+    @dash_charges.setter
+    def dash_charges(self, value: int) -> None:
+        self.dash.charges = value
+
+    @property
+    def max_dash_charges(self) -> int:
+        """Flat view of :attr:`DashController.max_charges`."""
+        return self.dash.max_charges
+
+    @property
+    def dash_recharge_timer(self) -> float:
+        """Flat view of :attr:`DashController.recharge_timer`."""
+        return self.dash.recharge_timer
+
+    @dash_recharge_timer.setter
+    def dash_recharge_timer(self, value: float) -> None:
+        self.dash.recharge_timer = value
+
+    @property
+    def dash_penalty_timer(self) -> float:
+        """Flat view of :attr:`DashController.penalty_timer`."""
+        return self.dash.penalty_timer
+
+    @dash_penalty_timer.setter
+    def dash_penalty_timer(self, value: float) -> None:
+        self.dash.penalty_timer = value
+
+    @property
+    def dash_requested(self) -> bool:
+        """Flat view of :attr:`DashController.requested`."""
+        return self.dash.requested
+
+    @dash_requested.setter
+    def dash_requested(self, value: bool) -> None:
+        self.dash.requested = value
+
+    @property
+    def dash_speed(self) -> float:
+        """Flat view of :attr:`DashController.speed`."""
+        return self.dash.speed
+
+    @property
+    def dash_duration(self) -> float:
+        """Flat view of :attr:`DashController.duration`."""
+        return self.dash.duration
+
+    @property
+    def dash_friction(self) -> float:
+        """Flat view of :attr:`DashController.friction`."""
+        return self.dash.friction
+
     def can_attack(self) -> bool:
         """Return True if an attack can be started from the current state."""
         return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
@@ -450,12 +503,11 @@ class Player(Entity):
 
     def _on_floor_contact(self) -> None:
         """Reset midair and wall jumps when landing."""
-        self.midair_jumps_left = self.max_midair_jumps
-        self.wall_jumps_left = self.max_wall_jumps
+        self.jump.restore_ground_jumps()
 
     def _on_wall_contact(self) -> None:
         """Reset midair jumps when touching a wall."""
-        self.midair_jumps_left = self.max_midair_jumps
+        self.jump.restore_midair_jumps()
 
     def get_input(self) -> None:
         """Read all input and update facing direction and buffers."""
@@ -468,12 +520,10 @@ class Player(Entity):
         self.face_movement()
 
         if im.jump_just_pressed:
-            self.jump_buffer_timer = self.jump_buffer_duration
+            self.jump.buffer_press()
 
         if im.dash_just_pressed:
-            self.dash_requested = (
-                self.dash_charges > 0 and self.dash_penalty_timer <= 0
-            )
+            self.dash.request()
 
         if im.reset_just_pressed:
             self.reset_position()
@@ -512,43 +562,14 @@ class Player(Entity):
         elif im.attack4_just_pressed:
             self.combat.start_attack("dash_attack")
 
-    def _update_jump_timers(self, delta_time: float) -> None:
-        """Update jump buffer and coyote timers."""
-        if self.jump_buffer_timer > 0:
-            self.jump_buffer_timer -= delta_time
-
-        if self.on_surface["floor"]:
-            self.coyote_timer = self.coyote_duration
-        elif self.coyote_timer > 0:
-            self.coyote_timer -= delta_time
-
-    def _update_block_stamina(self, delta_time: float) -> None:
-        """Update block cooldown and stamina regeneration."""
-        if self.block_cooldown_timer > 0:
-            self.block_cooldown_timer -= delta_time
-
-        if self.state_machine.current_state_name != PlayerState.BLOCK:
-            if self.block_stamina < self.max_block_stamina:
-                self.block_stamina += delta_time * 0.5
-                self.block_stamina = min(
-                    self.block_stamina, self.max_block_stamina)
-
-    def _update_dash_recharge(self, delta_time: float) -> None:
-        """Update dash penalty and recharge timers."""
-        if self.dash_penalty_timer > 0:
-            self.dash_penalty_timer -= delta_time
-        else:
-            if self.dash_charges < self.max_dash_charges:
-                self.dash_recharge_timer -= delta_time
-                if self.dash_recharge_timer <= 0:
-                    self.dash_charges += 1
-                    self.dash_recharge_timer = self.dash_recharge_time
-
     def update_timers(self, delta_time: float) -> None:
-        """Update all player-specific timers."""
-        self._update_jump_timers(delta_time)
-        self._update_block_stamina(delta_time)
-        self._update_dash_recharge(delta_time)
+        """Update every controller's timers (buffer, coyote, stamina, dash)."""
+        is_blocking = (
+            self.state_machine.current_state_name == PlayerState.BLOCK
+        )
+        self.jump.update(delta_time, self.on_surface["floor"])
+        self.block.update(delta_time, is_blocking)
+        self.dash.update(delta_time)
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""
@@ -559,7 +580,7 @@ class Player(Entity):
     def _post_update(self, delta_time: float) -> None:
         """Clear consumed inputs after state machine and physics updates."""
         if self.state_machine.current_state_name == PlayerState.DASH:
-            self.dash_requested = False
+            self.dash.cancel_request()
 
     def handle_jump(self) -> None:
         """Process jump input with coyote time, wall jumps, and midair jumps."""
@@ -567,19 +588,12 @@ class Player(Entity):
 
     def _on_reset(self) -> None:
         """Full reset of all player-specific state."""
-        self.jump_buffer_timer = 0.0
-        self.coyote_timer = 0.0
+        self.jump.reset()
+        self.block.reset()
+        self.dash.reset()
         self.move_axis = 0.0
-        self.midair_jumps_left = self.max_midair_jumps
-        self.wall_jumps_left = self.max_wall_jumps
-        self.block_stamina = self.max_block_stamina
-        self.block_cooldown_timer = 0.0
-        self.dash_charges = self.max_dash_charges
-        self.dash_recharge_timer = 0.0
-        self.dash_penalty_timer = 0.0
-        self.dash_requested = False
         self._buffered_attack_name = None
-        self.hitbox.width = self._original_hitbox_width
+        self.hitbox.width = self.dash.original_hitbox_width
 
         self._space_held = False
         self._left_held = False
@@ -617,9 +631,7 @@ class Player(Entity):
             if knockback is not None
             else KnockbackConfig(power=(0.0, 0.0))
         )
-        self.block_stamina -= amount * CombatSettings.BLOCK_STAMINA_COST_RATIO
-        if self.block_stamina < 0:
-            self.block_stamina = 0.0
+        self.block.consume(amount * CombatSettings.BLOCK_STAMINA_COST_RATIO)
 
         direction = compute_knockback_direction(
             self.hitbox.centerx, source_center_x, self.facing_right

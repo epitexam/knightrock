@@ -280,20 +280,24 @@ class AuditVerifier:
             self.results["🔵 Style"]["13. Annotations de classe"] = (False, "❌ Annotations de classe manquantes")
     
     def _check_14_private_variables_consistency(self):
-        """Vérifie que les variables privées utilisent _ prefix de manière cohérente."""
+        """Vérifie la cohérence privée/public après ARCH-03 (contrôleurs)."""
         player_file = self._read_file("entities/player.py")
+        controllers_file = self._read_file("entities/player_controllers.py")
         
-        # Vérifie que les variables internes ont _ prefix
-        has_private_dash = "_dash_duration_timer" in player_file
-        has_private_original = "_original_hitbox_width" in player_file
+        # ARCH-03 : l'état interne du dash vit dans DashController
+        dash_state_in_controller = (
+            "duration_timer" in controllers_file
+            and "original_hitbox_width" in controllers_file
+        )
+        # Les flags d'input restent privés sur Player
         has_private_input = "_space_held" in player_file and "_left_held" in player_file
         
         # Vérifie que dash_requested est public (pas de _ prefix)
         has_public_requested = "dash_requested" in player_file
         has_no_private_requested = "_dash_requested" not in player_file
         
-        if has_private_dash and has_private_original and has_private_input and has_public_requested and has_no_private_requested:
-            self.results["🔵 Style"]["14. Variables privées cohérentes"] = (True, "✅ Variables privées avec _ prefix, dash_requested public")
+        if dash_state_in_controller and has_private_input and has_public_requested and has_no_private_requested:
+            self.results["🔵 Style"]["14. Variables privées cohérentes"] = (True, "✅ État dash dans DashController, inputs privés, dash_requested public")
         else:
             self.results["🔵 Style"]["14. Variables privées cohérentes"] = (False, "❌ Variables privées sans _ prefix")
     
