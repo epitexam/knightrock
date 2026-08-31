@@ -11,6 +11,7 @@ from src.states.player_states import (
     PlayerKnockbackState,
     PlayerStaggerState,
 )
+from src.states.reaction_states import KnockbackState
 
 
 def make_grounded_player() -> SimpleNamespace:
@@ -68,24 +69,44 @@ def test_enemy_knockback_recovers_under_one_second() -> None:
         velocity=pygame.Vector2(400.0, 0.0),
         on_surface={"floor": True, "left": False, "right": False},
         combat=SimpleNamespace(is_hurt=False),
-        state_machine=SimpleNamespace(change_state=Mock()),
     )
     state = EnemyKnockbackState(entity)
 
+    next_state = None
     frames = 0
-    while frames < 120 and not entity.state_machine.change_state.called:
+    while frames < 120:
         frames += 1
-        state.update(1 / 60)
+        next_state = state.update(1 / 60)
+        if next_state is not None:
+            break
 
-    assert entity.state_machine.change_state.called
-    assert entity.state_machine.change_state.call_args.args[0] == "idle"
+    assert next_state == "idle"
     assert frames <= 60
 
 
 def test_enemy_knockback_uses_central_friction_constant() -> None:
-    """Friction must come from settings, not a magic number (enemy_states)."""
+    """Friction must come from settings, not a magic number."""
     import inspect
 
-    source = inspect.getsource(EnemyKnockbackState.update)
-    assert "Physics.KNOCKBACK_FRICTION" in source
-    assert "8.0 * delta_time" not in source
+    source = inspect.getsource(EnemyKnockbackState.__init__)
+    assert "Physics.KNOCKBACK_FRICTION" not in source  # inherited default
+    reaction_source = inspect.getsource(KnockbackState.__init__)
+    assert "Physics.KNOCKBACK_FRICTION" in reaction_source
+    assert "8.0 * delta_time" not in reaction_source
+
+
+def test_player_knockback_recovers_through_hurt_when_still_hurt() -> None:
+    entity = make_grounded_player()
+    entity.combat.is_hurt = True
+    state = PlayerKnockbackState(entity)
+
+    next_state = None
+    frames = 0
+    while frames < 120:
+        frames += 1
+        next_state = state.update(1 / 60)
+        if next_state is not None:
+            break
+
+    assert next_state == "hurt"
+    assert frames <= 60

@@ -1,11 +1,12 @@
-"""
-State machine states for enemies (AI).
-"""
+"""State machine states for enemies (AI)."""
 
 from typing import Optional, Any
 from src.states.state_machine import State
-from src.core.settings import Physics
-from src.physics import lerp_velocity
+from src.states.reaction_states import (
+    HurtState,
+    KnockbackState,
+    StaggerState,
+)
 
 
 class EnemyIdleState(State):
@@ -128,60 +129,34 @@ class EnemyChargeState(State):
         return None
 
 
-class EnemyHurtState(State):
-    """Hurt state: reaction to taking damage."""
+class EnemyHurtState(HurtState):
+    """Hurt reaction: return to idle when the hurt timer clears.
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state. Can accept knockback_direction from kwargs."""
-        pass
+    Shares the generic :class:`HurtState` logic (ARCH-05); enemies hold no
+    knockback impulse and no friction on hurt.
+    """
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the state and return to idle when hurt duration ends."""
-        if not self.entity.combat.is_hurt:
-            self.entity.state_machine.change_state("idle")
-        return None
+    def __init__(self, entity: Any):
+        super().__init__(entity, exit_resolver=lambda: "idle", tags=[])
 
 
-class EnemyKnockbackState(State):
-    """Knockback state: the enemy is being projected by a strong force."""
+class EnemyKnockbackState(KnockbackState):
+    """Knockback reaction: return to hurt/idle when the enemy stops sliding."""
 
-    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
-        """Initialize the EnemyKnockbackState instance."""
-        super().__init__(entity, tags or ["knockback", "busy"])
+    def __init__(self, entity: Any):
+        super().__init__(
+            entity,
+            exit_resolver=self._resolve_exit,
+            tags=["knockback", "busy"],
+        )
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state and apply launch velocity."""
-        knockback_dir = kwargs.get("knockback_direction", 0)
-        knockback_force = kwargs.get("knockback_force", 0)
-        knockback_up = kwargs.get("knockback_up_force", 0)
-
-        if knockback_dir != 0 and knockback_force > 0:
-            self.entity.velocity.x = knockback_dir * knockback_force
-        if knockback_up > 0:
-            self.entity.velocity.y = -knockback_up
-
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the state, applying friction until the enemy lands and stops."""
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, Physics.KNOCKBACK_FRICTION, delta_time)
-            if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
-                self.entity.velocity.x = 0.0
-                if self.entity.combat.is_hurt:
-                    self.entity.state_machine.change_state("hurt")
-                else:
-                    self.entity.state_machine.change_state("idle")
-        return None
+    def _resolve_exit(self) -> str:
+        """Recover through hurt if still hurt, otherwise to idle."""
+        return "hurt" if self.entity.combat.is_hurt else "idle"
 
 
-class EnemyStaggerState(State):
-    """Stagger state: stunned and unable to act."""
+class EnemyStaggerState(StaggerState):
+    """Stagger reaction: return to idle when the stagger timer clears."""
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state."""
-        pass
-
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the state and return to idle when stagger timer ends."""
-        if self.entity.stagger_timer <= 0:
-            self.entity.state_machine.change_state("idle")
-        return None
+    def __init__(self, entity: Any):
+        super().__init__(entity, exit_resolver=lambda: "idle", tags=[])

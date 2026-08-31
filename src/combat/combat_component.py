@@ -283,7 +283,7 @@ class CombatComponent:
         has ``uninterruptible`` set to True, the interruption is ignored
         entirely: no hurt state is entered, the attack is not ended, and
         the charge is not cancelled. Damage itself is unaffected, since
-        it is applied separately via ``take_damage``.
+        it is applied separately via ``receive_damage``.
         """
         if not interrupt:
             return
@@ -299,25 +299,6 @@ class CombatComponent:
         self.state.end()
         self.hitbox.clear()
         self.charging.cancel()
-
-    def take_damage(
-        self,
-        amount: float,
-        source_center_x: float | None = None,
-        knockback: KnockbackConfig | None = None,
-    ) -> None:
-        """Forward damage to the entity's ``receive_damage`` method.
-
-        Parameters
-        ----------
-        amount : float
-            Hit points to subtract.
-        source_center_x : float | None
-            X centre of the damage source for knockback direction.
-        knockback : KnockbackConfig | None
-            Knockback impulse configuration.
-        """
-        self._entity.receive_damage(amount, source_center_x, knockback)
 
     def save_state(self) -> CombatSnapshot:
         """Capture the full combat state for a rollback frame.
@@ -465,14 +446,6 @@ class NullCombatComponent:
 
     def on_hit(
         self, duration: float | None = None, interrupt: bool = True
-    ) -> None:
-        """No-op."""
-
-    def take_damage(
-        self,
-        amount: float,
-        source_center_x: float | None = None,
-        knockback: KnockbackConfig | None = None,
     ) -> None:
         """No-op."""
 

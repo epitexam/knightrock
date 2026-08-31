@@ -2,7 +2,21 @@ from typing import Optional, Any
 
 from src.states.state_machine import State
 from src.core.settings import Combat as CombatSettings, Physics
-from src.physics import apply_velocity_friction, lerp_velocity
+from src.physics import apply_velocity_friction
+from src.states.reaction_states import HurtState, KnockbackState, StaggerState
+
+
+def player_ground_return(entity: Any) -> str:
+    """Return the landing state name for the player.
+
+    Shared by every reaction state so the landing decision lives in one
+    place (archived duplication from ARCH-05).
+    """
+    if entity.on_surface["floor"]:
+        return (
+            "run" if (entity.left_held or entity.right_held) else "idle"
+        )
+    return "fall"
 
 
 class PlayerBaseState(State):
@@ -14,12 +28,7 @@ class PlayerBaseState(State):
 
     def ground_return(self) -> str:
         """Determine the next state when returning to the ground."""
-        if self.entity.on_surface["floor"]:
-            return (
-                "run" if (
-                    self.entity.left_held or self.entity.right_held) else "idle"
-            )
-        return "fall"
+        return player_ground_return(self.entity)
 
 
 class PlayerIdleState(PlayerBaseState):
@@ -206,15 +215,20 @@ class PlayerBlockState(PlayerBaseState):
         return None
 
 
-class PlayerHurtState(PlayerBaseState):
-    """Represent the PlayerHurt state."""
+class PlayerHurtState(HurtState):
+    """Player hurt reaction: light knockback, then recover on the ground."""
 
     def __init__(self, entity: Any):
-        """Initialize the PlayerHurtState instance with invincibility tags."""
-        super().__init__(entity, tags=["hurt", "invincible"])
+        super().__init__(
+            entity,
+            exit_resolver=self._hurt_exit,
+            friction=Physics.HURT_FRICTION,
+            tags=["hurt", "invincible"],
+            on_enter=self._hurt_enter,
+        )
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state and apply light knockback if provided."""
+    def _hurt_enter(self, **kwargs: Any) -> None:
+        """Clear the dash request and apply the light knockback impulse."""
         self.entity.dash_requested = False
 
         knockback_dir = kwargs.get("knockback_direction", 0)
@@ -222,46 +236,33 @@ class PlayerHurtState(PlayerBaseState):
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force
 
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state, applying friction until hurt duration ends."""
-        lerp_velocity(self.entity, 0.0, Physics.HURT_FRICTION, delta_time)
-        if not self.entity.combat.is_hurt:
-            if self.entity.stagger_timer > 0:
-                return "stagger"
-            return self.ground_return()
-        return None
+    def _hurt_exit(self) -> Optional[str]:
+        """Transition to stagger if pending, otherwise to the ground state."""
+        if self.entity.stagger_timer > 0:
+            return "stagger"
+        return player_ground_return(self.entity)
 
 
-class PlayerKnockbackState(PlayerBaseState):
-    """Represent the PlayerKnockback state."""
+class PlayerKnockbackState(KnockbackState):
+    """Player knockback reaction: strong launch, then ground recovery."""
 
     def __init__(self, entity: Any):
-        """Initialize the PlayerKnockbackState instance with knockback tags."""
-        super().__init__(entity, tags=["knockback", "invincible"])
+        super().__init__(
+            entity,
+            exit_resolver=self._knockback_exit,
+            tags=["knockback", "invincible"],
+            on_enter=self._knockback_enter,
+        )
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state and apply strong launch velocity."""
+    def _knockback_enter(self, **kwargs: Any) -> None:
+        """Clear the dash request before the launch velocity is applied."""
         self.entity.dash_requested = False
 
-        knockback_dir = kwargs.get("knockback_direction", 0)
-        knockback_force = kwargs.get("knockback_force", 0)
-        knockback_up = kwargs.get("knockback_up_force", 0)
-
-        if knockback_dir != 0 and knockback_force > 0:
-            self.entity.velocity.x = knockback_dir * knockback_force
-        if knockback_up > 0:
-            self.entity.velocity.y = -knockback_up
-
-    def update(self, delta_time: float) -> Optional[str]:
-        """Update the current state, applying gravity and friction until landing."""
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, Physics.KNOCKBACK_FRICTION, delta_time)
-            if abs(self.entity.velocity.x) < 20.0 and abs(self.entity.velocity.y) < 1.0:
-                self.entity.velocity.x = 0.0
-                if self.entity.combat.is_hurt:
-                    return "hurt"
-                return self.ground_return()
-        return None
+    def _knockback_exit(self) -> str:
+        """Recover through hurt if still hurt, otherwise to the ground state."""
+        if self.entity.combat.is_hurt:
+            return "hurt"
+        return player_ground_return(self.entity)
 
 
 class PlayerDashState(PlayerBaseState):
@@ -325,22 +326,14 @@ class PlayerDashState(PlayerBaseState):
         return None
 
 
-class PlayerStaggerState(PlayerBaseState):
+class PlayerStaggerState(StaggerState):
     """Represent the PlayerStagger state."""
 
     def __init__(self, entity: Any):
         """Initialize the PlayerStaggerState instance with stagger tags."""
-        super().__init__(entity, tags=["stagger", "busy"])
-
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
-        """Enter the state."""
-        pass
-
-    def update(self, delta_time: float) -> str | None:
-        """Update the current state, applying friction until stagger ends."""
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, Physics.STAGGER_FRICTION, delta_time)
-
-        if self.entity.stagger_timer <= 0:
-            return self.ground_return()
-        return None
+        super().__init__(
+            entity,
+            exit_resolver=lambda: player_ground_return(self.entity),
+            friction=Physics.STAGGER_FRICTION,
+            tags=["stagger", "busy"],
+        )

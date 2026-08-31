@@ -1,7 +1,7 @@
 """Base module for game entities with physics, health, and combat capabilities."""
 
 import random
-import uuid
+from itertools import count
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal, cast
 
@@ -14,6 +14,7 @@ from src.combat.combatant_protocol import DamageResult
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.attack_loading import load_attacks
 from src.combat.damage_types import DamageType
+from src.entities.vitals import Vitals
 from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import (
     apply_entity_gravity,
@@ -25,6 +26,11 @@ from src.physics import (
 )
 from src.physics.collisions import CollisionSprite
 from src.states.null_state_machine import NullStateMachine
+
+# Deterministic entity identifier source (ARCH-08).  A sequential counter
+# yields identical IDs for identically-ordered simulations, which keeps
+# rollback and future netcode in sync (unlike a random UUID).
+_ENTITY_ID_SEQUENCE = count()
 
 
 def compute_knockback_direction(
@@ -96,6 +102,7 @@ class Entity(Sprite):
         hurt_duration: float | None = None,
         invincibility_duration: float = 0.0,
         rng: random.Random | None = None,
+        entity_id: str | None = None,
     ) -> None:
         """Initialize the entity.
 
@@ -135,7 +142,9 @@ class Entity(Sprite):
             Optional random number generator instance for deterministic behaviors.
         """
         super().__init__(groups)
-        self.id: str = uuid.uuid4().hex
+        self.id: str = (
+            entity_id if entity_id is not None else f"e{next(_ENTITY_ID_SEQUENCE)}"
+        )
         self.pushable: bool = True
         self.faction: str = faction
         self.rng = rng or random.Random()
@@ -170,16 +179,14 @@ class Entity(Sprite):
         self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
 
-        self._health: float = health
-        self._max_health: float = max_health
-        self.is_dead: bool = False
-
-        self.spawn_pos: Vector2 = Vector2(
-            spawn_pos if spawn_pos is not None else pos)
         self.moving_platforms: list = []
-
-        self.invincibility_timer: float = 0.0
-        self.invincibility_duration: float = invincibility_duration
+        self.vitals = Vitals(
+            health=health,
+            max_health=max_health,
+            invincibility_duration=invincibility_duration,
+            spawn_pos=Vector2(spawn_pos if spawn_pos is not None else pos),
+            on_death=self._handle_death,
+        )
 
         if combat is not None:
             self.combat = combat
@@ -196,10 +203,6 @@ class Entity(Sprite):
         self.state_machine = NullStateMachine()
         self.facing_right: bool = True
 
-        self.stagger_timer: float = 0.0
-        self.super_armor: bool = False
-        self.super_armor_count: int = 0
-
     def _setup_state_machine(self) -> None:
         """Initialize the state machine. Override in subclasses for specific states."""
         pass
@@ -212,45 +215,102 @@ class Entity(Sprite):
             priority=100,
         )
 
+    # ------------------------------------------------------------------
+    # Health and status timers are owned by ``self.vitals`` and exposed
+    # here as delegating attributes to preserve the historical Entity API.
+    # ------------------------------------------------------------------
+
     @property
     def health(self) -> float:
         """Current health, clamped to [0, max_health]."""
-        return self._health
+        return self.vitals.health
 
     @health.setter
     def health(self, value: float) -> None:
-        """Set health, clamping to valid range and triggering death if needed.
-
-        Parameters
-        ----------
-        value : float
-            New health value.
-        """
-        old = self._health
-        self._health = max(0.0, min(value, self._max_health))
-        if old > 0 and self._health == 0 and not self.is_dead:
-            self.die()
+        """Set health, clamping to valid range and triggering death if needed."""
+        self.vitals.health = value
 
     @property
     def max_health(self) -> float:
         """Maximum health cap."""
-        return self._max_health
+        return self.vitals.max_health
 
     @max_health.setter
     def max_health(self, value: float) -> None:
-        """Set maximum health, ensuring it's at least 1.0.
+        """Set maximum health, ensuring it's at least 1.0."""
+        self.vitals.max_health = value
 
-        Parameters
-        ----------
-        value : float
-            New maximum health value.
-        """
-        self._max_health = max(1.0, value)
+    @property
+    def is_dead(self) -> bool:
+        """Whether the entity has been defeated."""
+        return self.vitals.is_dead
+
+    @is_dead.setter
+    def is_dead(self, value: bool) -> None:
+        self.vitals.is_dead = value
+
+    @property
+    def spawn_pos(self) -> Vector2:
+        """Position used to reset the entity after death."""
+        return self.vitals.spawn_pos
+
+    @spawn_pos.setter
+    def spawn_pos(self, value: Vector2) -> None:
+        self.vitals.spawn_pos = value
+
+    @property
+    def invincibility_timer(self) -> float:
+        """Remaining invincibility time in seconds."""
+        return self.vitals.invincibility_timer
+
+    @invincibility_timer.setter
+    def invincibility_timer(self, value: float) -> None:
+        self.vitals.invincibility_timer = value
+
+    @property
+    def invincibility_duration(self) -> float:
+        """Duration of invincibility frames after taking damage."""
+        return self.vitals.invincibility_duration
+
+    @invincibility_duration.setter
+    def invincibility_duration(self, value: float) -> None:
+        self.vitals.invincibility_duration = value
+
+    @property
+    def stagger_timer(self) -> float:
+        """Remaining stagger time in seconds."""
+        return self.vitals.stagger_timer
+
+    @stagger_timer.setter
+    def stagger_timer(self, value: float) -> None:
+        self.vitals.stagger_timer = value
+
+    @property
+    def super_armor(self) -> bool:
+        """Whether the entity currently ignores stagger."""
+        return self.vitals.super_armor
+
+    @super_armor.setter
+    def super_armor(self, value: bool) -> None:
+        self.vitals.super_armor = value
+
+    @property
+    def super_armor_count(self) -> int:
+        """Consecutive hits absorbed by super armor."""
+        return self.vitals.super_armor_count
+
+    @super_armor_count.setter
+    def super_armor_count(self, value: int) -> None:
+        self.vitals.super_armor_count = value
+
+    def _handle_death(self) -> None:
+        """Entity-level cleanup triggered when health reaches zero."""
+        self.combat.reset()
 
     def die(self) -> None:
         """Mark the entity as dead and clear transient offensive state."""
-        self.is_dead = True
-        self.combat.reset()
+        self.vitals.is_dead = True
+        self._handle_death()
 
     @property
     def hurtbox(self) -> pygame.FRect:
@@ -368,12 +428,7 @@ class Entity(Sprite):
         self.sync_rects()
         self.velocity = Vector2(0, 0)
         self.old_hitbox = self.hitbox.copy()
-        self.is_dead = False
-        self.stagger_timer = 0.0
-        self.super_armor = False
-        self.super_armor_count = 0
-        self.invincibility_timer = 0.0
-        self.health = self.max_health
+        self.vitals.reset()
 
         self.combat.reset()
 
@@ -388,7 +443,7 @@ class Entity(Sprite):
 
     def _can_receive_damage(self) -> bool:
         """Check if the entity can currently receive damage. Override to add immunities."""
-        return not self.is_dead and self.invincibility_timer <= 0
+        return self.vitals.can_receive_damage()
 
     def _apply_damage(self, amount: float) -> float:
         """Subtract health points and return actual damage dealt.
@@ -403,9 +458,7 @@ class Entity(Sprite):
         float
             Actual damage dealt.
         """
-        old_health = self._health
-        self.health -= amount
-        return old_health - self.health
+        return self.vitals.apply_damage(amount)
 
     def _apply_knockback(
         self,
@@ -506,8 +559,7 @@ class Entity(Sprite):
         if knockback is not None:
             self._apply_knockback(knockback, source_center_x)
 
-        if self.invincibility_duration > 0:
-            self.invincibility_timer = self.invincibility_duration
+        self.vitals.set_invincibility()
 
         heavy_knockback = False
         if interrupt and not self.is_dead and knockback is not None:
@@ -571,16 +623,7 @@ class Entity(Sprite):
             return
 
         self.old_hitbox = self.hitbox.copy()
-
-        if self.stagger_timer > 0:
-            self.stagger_timer -= delta_time
-            if self.stagger_timer < 0:
-                self.stagger_timer = 0.0
-
-        if self.invincibility_timer > 0:
-            self.invincibility_timer -= delta_time
-            if self.invincibility_timer < 0:
-                self.invincibility_timer = 0.0
+        self.vitals.tick_timers(delta_time)
 
         self._pre_update(delta_time)
         self._update_state_machine(delta_time)

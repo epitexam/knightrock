@@ -26,8 +26,6 @@ class DebugController:
                 self.spawn_cooldowns[enemy_name] = cooldown - delta_time
 
         keys = pygame.key.get_pressed()
-        if player is None:
-            return
 
         for key, enemy_name in DEBUG_SPAWNS.items():
             if keys[key] and self.spawn_cooldowns[enemy_name] <= 0:

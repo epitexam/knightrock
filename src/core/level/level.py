@@ -12,6 +12,7 @@ from src.core.settings import Display, Debug
 from src.core.rendering.camera import Camera
 from src.core.sprite_groups import SpriteGroups
 from src.core.level.level_data import LevelData
+from src.entities.player import Player
 from src.physics.contact_damage import ContactDamageSystem
 from src.physics.hazard_damage import HazardDamageSystem
 from src.physics.movement import apply_moving_platform
@@ -61,7 +62,8 @@ class Level:
         self.hazard_damage_system = HazardDamageSystem()
 
         self.world_builder = WorldBuilder(level_data)
-        self.player = self.world_builder.build(self.groups, self.input_manager)
+        self.player: Player = self.world_builder.build(
+            self.groups, self.input_manager)
 
     @property
     def completed(self) -> bool:
@@ -100,7 +102,7 @@ class Level:
             self.gameplay_loop.remove_dead_entities(
                 self.groups.entity_sprites, self.player)
 
-            if self.player is not None and self.player.is_dead:
+            if self.player.is_dead:
                 self.respawn_timer += effective_delta
                 if self.respawn_timer >= 2.0:
                     self.player.respawn()
@@ -109,15 +111,14 @@ class Level:
                 self.respawn_timer = 0.0
 
             if (
-                self.player is not None
-                and not self.player.is_dead
+                not self.player.is_dead
                 and pygame.sprite.spritecollide(
                     self.player, self.groups.exit_sprites, False
                 )
             ):
                 self.exit_reached = True
 
-        if self.player is not None and not self.player.is_dead:
+        if not self.player.is_dead:
             self.camera.follow(self.player.hitbox, delta_time)
 
     def draw(self, fps: float) -> None:

@@ -195,6 +195,11 @@ class WorldBuilder:
             TILE_LAYER_HANDLERS.dispatch(layer.name, layer.tiles, groups)
 
         player = self._build_player(groups, input_manager)
+        if player is None:
+            raise ValueError(
+                "Level has no 'player' object. Every level must define a "
+                "player spawn object in one of its object layers."
+            )
 
         for layer in self.level_data.object_layers.values():
             if layer.name == "Data":
