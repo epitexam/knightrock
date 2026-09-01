@@ -52,8 +52,8 @@ def get_nearby_sprites(
     Uses spatial hash for O(1) lookup when available, otherwise falls back
     to the original O(n) search (PERF-01).
     """
-    if spatial_hash is not None:
-        # Use spatial hash for O(1) lookup
+    # Only use spatial_hash if it's actually a SpatialHash instance
+    if isinstance(spatial_hash, SpatialHash):
         return spatial_hash.get_nearby(sprite.hitbox)
     
     # Fallback to original O(n) search for backward compatibility
@@ -112,7 +112,8 @@ def resolve_collisions(
 ) -> None:
     """Resolve collisions between an entity and nearby collidable sprites."""
     if nearby_sprites is None:
-        nearby_sprites = get_nearby_sprites(entity, entity.collision_sprites)
+        # Pass collision_sprites as positional arg for backward compatibility
+        nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
     for sprite in nearby_sprites:
         if not hasattr(sprite, "rect") or sprite.rect is None:
