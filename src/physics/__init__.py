@@ -17,7 +17,13 @@ from .movement import (
 )
 from .platforms import update_moving_platform
 from .separation import SeparationSystem
-from .spatial_hash import SpatialHash
+from .spatial_hash import (
+    QUERY_MARGIN_PX,
+    SpatialHash,
+    SpatialHashable,
+    RectHashable,
+    SpatialHashMember,
+)
 from .velocity import apply_velocity_friction, lerp_velocity
 
 __all__ = [
@@ -25,6 +31,10 @@ __all__ = [
     "HazardDamageSystem",
     "SeparationSystem",
     "SpatialHash",
+    "SpatialHashable",
+    "RectHashable",
+    "SpatialHashMember",
+    "QUERY_MARGIN_PX",
     "apply_entity_gravity",
     "apply_horizontal_movement",
     "apply_moving_platform",

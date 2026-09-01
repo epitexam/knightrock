@@ -19,6 +19,15 @@ Lifecycle
 real collision tests) but must not return false negatives: the query box is
 inflated by ``QUERY_MARGIN_PX`` so a sprite resting exactly on a surface, or
 reached within one tick of movement, is still found.
+
+Cell-size selection
+-------------------
+A cell size of roughly ``1.5×`` to ``2×`` the largest expected object works
+well: large enough that most objects touch few cells (cheap inserts/queries),
+small enough that each cell holds few members (cheap per-cell scans).  The
+default **128 px** suits 64 px tiles and 48×56 px entities, while keeping
+``QUERY_MARGIN_PX`` (32) below one cell so a single-cell query still captures
+the margin band.
 """
 
 from collections import defaultdict
@@ -26,6 +35,14 @@ from math import ceil, floor
 from typing import Iterable, Protocol
 
 import pygame
+
+__all__ = [
+    "QUERY_MARGIN_PX",
+    "SpatialHash",
+    "SpatialHashable",
+    "RectHashable",
+    "SpatialHashMember",
+]
 
 # Cell-coverage margin for queries. Must stay >= the maximum distance an
 # entity travels in one tick (MAX_FALL_SPEED 1500 px/s / 60 Hz ~= 25 px) plus
@@ -52,8 +69,12 @@ class RectHashable(Protocol):
         ...
 
 
-# Anything bucketable in the grid: a hitbox or a rect (the runtime derives
-# the box with getattr, preferring ``hitbox``).
+# Anything bucketable in the grid: a hitbox or a rect.  The runtime derives
+# the box with ``getattr(sprite, 'hitbox', getattr(sprite, 'rect', None))``,
+# preferring a ``hitbox`` attribute (which carries the entity's precise
+# hurtbox) and falling back to the sprite's coarse ``rect`` for terrain
+# tiles.  Both protocols are accepted at insertion so tiles and entities share
+# one grid without adapter wrappers.
 SpatialHashMember = SpatialHashable | RectHashable
 
 
