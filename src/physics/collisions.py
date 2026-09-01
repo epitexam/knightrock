@@ -1,11 +1,11 @@
 from collections.abc import Iterable
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 import pygame
 from pygame.math import Vector2
 
 from src.core.settings import Separation
-from src.physics.spatial_hash import SpatialHash, SpatialHashable
+from src.physics.spatial_hash import SpatialHash
 
 
 class CollisionSprite(Protocol):
@@ -54,7 +54,11 @@ def get_nearby_sprites(
     """
     # Only use spatial_hash if it's actually a SpatialHash instance
     if isinstance(spatial_hash, SpatialHash):
-        return spatial_hash.get_nearby(sprite.hitbox)
+        # The grid stores heterogeneous members (rect-only tiles as well as
+        # hitbox-bearing sprites); every consumer re-derives the box with
+        # getattr, so narrowing the member type back to CollisionSprite is
+        # safe here.
+        return cast(list[CollisionSprite], spatial_hash.get_nearby(sprite.hitbox))
     
     # Fallback to original O(n) search for backward compatibility
     if collision_sprites is None:

@@ -1,27 +1,20 @@
 import pygame
 from src.core.settings import Separation as Sep
-from src.physics.spatial_hash import SpatialHash
 
 
 class SeparationSystem:
-    def process(self, entity_sprites: pygame.sprite.Group, spatial_hash: SpatialHash | None = None) -> None:
-        """Process entity separation, optionally using spatial hash for optimization.
-        
-        If spatial_hash is provided, only checks entities in nearby cells.
-        Falls back to O(n^2) check if spatial_hash is None (PERF-02).
+    def process(self, entity_sprites: pygame.sprite.Group) -> None:
+        """Push overlapping entities apart on the dominant overlap axis.
+
+        Pairs are tested exhaustively (O(n²) over entities). The spatial hash
+        buckets the *environment* (tiles, platforms), not entities, so it
+        cannot prune entity pairs: filtering entities through it used to
+        silently disable this system entirely (see ContactDamageSystem).
+        Entity counts are small; a per-tick entity hash is the PERF-02
+        follow-up if enemy populations grow.
         """
         entities = [e for e in entity_sprites if hasattr(
             e, "hitbox") and hasattr(e, "on_surface")]
-
-        # If spatial hash is available, only check entities in nearby cells
-        if spatial_hash is not None:
-            # Get all entities from spatial hash cells
-            all_entities_in_hash = []
-            for cell, sprites in spatial_hash.grid.items():
-                for sprite in sprites:
-                    if sprite in entities and sprite not in all_entities_in_hash:
-                        all_entities_in_hash.append(sprite)
-            entities = all_entities_in_hash
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1:]:

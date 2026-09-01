@@ -2,6 +2,7 @@ import pygame
 
 from src.entities.enemies.factory import create_enemy
 from src.core.sprite_groups import SpriteGroups
+from src.physics.spatial_hash import SpatialHash
 
 
 DEBUG_SPAWNS = {
@@ -12,8 +13,9 @@ DEBUG_SPAWNS = {
 
 
 class DebugController:
-    def __init__(self, groups: SpriteGroups):
+    def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash | None = None):
         self.groups = groups
+        self.spatial_hash = spatial_hash
         self.spawn_cooldowns = {enemy_name: 0.0 for enemy_name in DEBUG_SPAWNS.values()}
 
     @property
@@ -42,4 +44,7 @@ class DebugController:
         )
         self.groups.combat_sprites.add(enemy)
         self.groups.entity_sprites.add(enemy)
+        # Runtime-spawned enemies must join the collision grid too (PERF-01).
+        if self.spatial_hash is not None:
+            enemy.spatial_hash = self.spatial_hash
         self.spawn_cooldowns[enemy_name] = 0.5

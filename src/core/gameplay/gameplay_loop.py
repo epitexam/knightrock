@@ -6,14 +6,13 @@ import pygame
 
 from src.combat.combat_system import CombatSystem
 from src.combat.combatant_protocol import Combatant
-from src.physics import SeparationSystem, SpatialHash
+from src.physics import SeparationSystem
 
 
 class GameplayLoop:
     def __init__(self) -> None:
         self.combat_system: CombatSystem = CombatSystem()
         self.separation_system: SeparationSystem = SeparationSystem()
-        self.spatial_hash: SpatialHash | None = None
 
     def begin_tick(self, delta_time: float) -> float:
         """Advance hit-stop timing and return the simulation delta."""
@@ -30,12 +29,11 @@ class GameplayLoop:
         if effective_delta <= 0.0:
             return
 
-        # Use spatial hash if available for O(1) collision lookup (PERF-01/02)
-        self.separation_system.process(entity_sprites, self.spatial_hash)
+        self.separation_system.process(entity_sprites)
         combatants = tuple(combat_sprites)
         for combatant in combatants:
             combatant.combat.sync_attack_box()
-        self.combat_system.process_attacks(combatants, self.spatial_hash)
+        self.combat_system.process_attacks(combatants)
 
     def remove_dead_entities(
         self,

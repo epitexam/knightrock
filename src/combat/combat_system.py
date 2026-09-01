@@ -7,7 +7,6 @@ from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
-from src.physics.spatial_hash import SpatialHash
 
 
 @dataclass(frozen=True)
@@ -36,41 +35,30 @@ class CombatSystem:
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
 
-    def process_attacks(self, combat_sprites: Iterable[Combatant], spatial_hash: SpatialHash | None = None) -> None:
+    def process_attacks(self, combat_sprites: Iterable[Combatant]) -> None:
         """Resolve contacts from a stable snapshot of active hitboxes.
 
         Detection is completed before damage reactions are applied. This allows
         simultaneous attacks to trade instead of depending on sprite insertion
         order. The iterable is materialized once, avoiding repeated Pygame group
         copies and supporting generators safely.
-        
-        If spatial_hash is provided, only checks combatants in nearby cells
-        for O(1) lookup instead of O(n^2) (PERF-02).
+
+        Attacker-target pairs are tested exhaustively (O(n²) over combatants):
+        the spatial hash buckets the *environment*, not combatants, so it
+        cannot prune pair candidates (see ContactDamageSystem).
         """
         self.metrics = CombatMetrics()
         if self.in_hit_stop:
             return
 
         combatants = tuple(combat_sprites)
-        candidates = self._collect_candidates(combatants, spatial_hash)
+        candidates = self._collect_candidates(combatants)
         self._resolve_candidates(candidates)
 
     def _collect_candidates(
-        self, combatants: tuple[Combatant, ...], spatial_hash: SpatialHash | None = None
+        self, combatants: tuple[Combatant, ...]
     ) -> tuple[HitCandidate, ...]:
         candidates: list[HitCandidate] = []
-
-        # If spatial hash is available, only check combatants in nearby cells
-        if spatial_hash is not None:
-            # Get all combatants from spatial hash cells
-            combatants_in_hash = []
-            for cell, sprites in spatial_hash.grid.items():
-                for sprite in sprites:
-                    if sprite in combatants and sprite not in combatants_in_hash:
-                        combatants_in_hash.append(sprite)
-            combatants_to_check = combatants_in_hash
-        else:
-            combatants_to_check = combatants
 
         for attacker in combatants:
             if attacker.is_dead:
@@ -82,7 +70,7 @@ class CombatSystem:
             if not combat.state.is_active or attack_box is None or phase is None:
                 continue
 
-            for target in combatants_to_check:
+            for target in combatants:
                 if attacker is target or target.is_dead:
                     continue
                 if attacker.faction == target.faction:

@@ -58,22 +58,23 @@ class Level:
         self.gameplay_loop = GameplayLoop()
         self.renderer = Renderer(self.display_surface,
                                  self.camera, level_data.config)
-        self.debug_controller = DebugController(self.groups)
+        # Spatial hash for O(1) collision lookups (PERF-01/02): created before
+        # the debug controller so runtime-spawned enemies join the grid too.
+        self.spatial_hash = SpatialHash(cell_size=128)
+        self.debug_controller = DebugController(self.groups, self.spatial_hash)
         self.contact_damage_system = ContactDamageSystem()
         self.hazard_damage_system = HazardDamageSystem()
 
-        # Initialize spatial hash for O(1) collision lookup (PERF-01/02)
-        self.spatial_hash = SpatialHash(cell_size=128)
-        
         self.world_builder = WorldBuilder(level_data)
         self.player: Player = self.world_builder.build(
             self.groups, self.input_manager)
-        
-        # Add static collision sprites to spatial hash
+
+        # Bucket the static collidables once; entities query the grid every
+        # tick, so each one must know it (moving platforms are re-bucketed
+        # per tick in update()).
         self.spatial_hash.add_all(self.groups.collision_sprites)
-        
-        # Pass spatial hash to gameplay loop
-        self.gameplay_loop.spatial_hash = self.spatial_hash
+        for entity in self.groups.entity_sprites:
+            entity.spatial_hash = self.spatial_hash
 
     @property
     def completed(self) -> bool:
@@ -93,6 +94,9 @@ class Level:
 
         if effective_delta > 0.0:
             self.groups.moving_platforms.update(effective_delta)
+            # Platforms moved this tick: re-bucket them so entity collision
+            # queries keep finding them at their current position (PERF-01).
+            self.spatial_hash.update_all(self.groups.moving_platforms)
             self.groups.hazard_sprites.update(effective_delta)
 
             for entity in self.groups.entity_sprites:
@@ -106,7 +110,7 @@ class Level:
                 self.groups.combat_sprites,
                 self.groups.entity_sprites,
             )
-            self.contact_damage_system.process(self.groups.entity_sprites, self.spatial_hash)
+            self.contact_damage_system.process(self.groups.entity_sprites)
             self.hazard_damage_system.process(
                 self.groups.entity_sprites, self.groups.hazard_sprites)
             self.gameplay_loop.remove_dead_entities(

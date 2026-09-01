@@ -17,6 +17,7 @@ from src.combat.damage_types import DamageType
 from src.entities.vitals import Vitals
 from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import (
+    SpatialHash,
     apply_entity_gravity,
     apply_horizontal_movement,
     apply_moving_platform,
@@ -82,6 +83,9 @@ class Entity(Sprite):
         Whether the entity has been defeated.
     facing_right : bool
         Current facing direction (True = right, False = left).
+    spatial_hash : SpatialHash | None
+        Collision grid shared with the level; queried by ``move`` for O(1)
+        neighbor lookups. Assigned by the level after the world is built.
     """
 
     def __init__(
@@ -162,6 +166,9 @@ class Entity(Sprite):
         self.collision_sprites: Iterable[CollisionSprite] = cast(
             Iterable[CollisionSprite], collision_sprites
         )
+        # Shared collision grid (PERF-01): assigned by the Level after the
+        # world is built; ``move_entity`` queries it for O(1) neighbor lookups.
+        self.spatial_hash: SpatialHash | None = None
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.velocity = Vector2(0, 0)
 
