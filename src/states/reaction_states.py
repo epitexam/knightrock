@@ -88,8 +88,8 @@ class KnockbackState(State):
 
         if knockback_dir != 0 and knockback_force > 0:
             self.entity.velocity.x = knockback_dir * knockback_force
-        if knockback_up > 0:
-            self.entity.velocity.y = -knockback_up
+        if knockback_up != 0:
+            self.entity.velocity.y = knockback_up
 
     def update(self, delta_time: float) -> Optional[str]:
         """Apply ground friction and resolve once the entity stops sliding."""

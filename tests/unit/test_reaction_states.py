@@ -46,7 +46,7 @@ def test_knockback_state_applies_launch_on_enter() -> None:
     )
 
     assert entity.velocity.x == -200.0
-    assert entity.velocity.y == -150.0
+    assert entity.velocity.y == 150.0  # BUG-04: knockback_up_force is applied as-is (no inversion)
 
 
 def test_knockback_state_exits_when_landed_and_slowed() -> None:

@@ -110,6 +110,13 @@ class Level:
             else:
                 self.respawn_timer = 0.0
 
+            # Check for death by falling below the death border (BUG-06)
+            if (
+                self.player.hitbox.top > self.level_data.config.death_border_bottom
+                and self.level_data.config.death_border_bottom > 0
+            ):
+                self.player.die()
+
             if (
                 not self.player.is_dead
                 and pygame.sprite.spritecollide(

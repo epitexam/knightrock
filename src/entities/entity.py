@@ -556,13 +556,13 @@ class Entity(Sprite):
 
         actual_damage = self._apply_damage(amount)
 
-        if knockback is not None:
+        if actual_damage > 0 and knockback is not None:
             self._apply_knockback(knockback, source_center_x)
 
         self.vitals.set_invincibility()
 
         heavy_knockback = False
-        if interrupt and not self.is_dead and knockback is not None:
+        if interrupt and not self.is_dead and actual_damage > 0 and knockback is not None:
             heavy_knockback = self._handle_heavy_knockback(
                 knockback, source_center_x
             )
