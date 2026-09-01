@@ -12,6 +12,7 @@ from src.physics.collisions import (
     update_contact_state,
 )
 from src.physics.gravity import apply_entity_gravity
+from src.physics.spatial_hash import SpatialHash
 
 VELOCITY_EPSILON = 0.01
 
@@ -116,6 +117,7 @@ class MovableEntity(Protocol):
     old_hitbox: pygame.FRect
     on_surface: dict[str, bool]
     collision_sprites: Iterable[CollisionSprite]
+    spatial_hash: SpatialHash | None
     normal_gravity: float
     fall_gravity: float
     slide_gravity: float
@@ -214,11 +216,16 @@ def move_entity(
 ) -> None:
     """Move an entity according to its velocity and the environment.
 
-    Nearby collision sprites are resolved once per call and reused across
-    every horizontal/vertical substep and the contact-state pass, instead of
-    re-scanning the full terrain for each substep (PERF-01).
+    Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
+    the original O(n) search if spatial_hash is not available.
     """
-    nearby_sprites = get_nearby_sprites(entity, entity.collision_sprites)
+    # Use spatial hash if available, otherwise fall back to collision_sprites
+    spatial_hash = getattr(entity, 'spatial_hash', None)
+    collision_sprites = getattr(entity, 'collision_sprites', None)
+    if spatial_hash is not None:
+        nearby_sprites = get_nearby_sprites(entity, spatial_hash=spatial_hash)
+    else:
+        nearby_sprites = get_nearby_sprites(entity, collision_sprites=collision_sprites)
 
     move_x = entity.velocity.x * delta_time
     steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))

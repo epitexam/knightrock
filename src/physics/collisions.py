@@ -4,8 +4,8 @@ from typing import Literal, Protocol
 import pygame
 from pygame.math import Vector2
 
-
 from src.core.settings import Separation
+from src.physics.spatial_hash import SpatialHash, SpatialHashable
 
 
 class CollisionSprite(Protocol):
@@ -44,9 +44,21 @@ def hitbox_collide(a: CollisionSprite, b: CollisionSprite) -> bool:
 
 def get_nearby_sprites(
     sprite: CollisionEntity,
-    collision_sprites: Iterable[CollisionSprite],
+    spatial_hash: SpatialHash | None = None,
+    collision_sprites: Iterable[CollisionSprite] | None = None,
 ) -> list[CollisionSprite]:
-    """Return the collision sprites near the given sprite."""
+    """Return the collision sprites near the given sprite.
+    
+    Uses spatial hash for O(1) lookup when available, otherwise falls back
+    to the original O(n) search (PERF-01).
+    """
+    if spatial_hash is not None:
+        # Use spatial hash for O(1) lookup
+        return spatial_hash.get_nearby(sprite.hitbox)
+    
+    # Fallback to original O(n) search for backward compatibility
+    if collision_sprites is None:
+        return []
     search_area = sprite.hitbox.inflate(
         Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
     return [

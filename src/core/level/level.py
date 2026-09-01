@@ -16,6 +16,7 @@ from src.entities.player import Player
 from src.physics.contact_damage import ContactDamageSystem
 from src.physics.hazard_damage import HazardDamageSystem
 from src.physics.movement import apply_moving_platform
+from src.physics.spatial_hash import SpatialHash
 
 
 class Level:
@@ -61,9 +62,18 @@ class Level:
         self.contact_damage_system = ContactDamageSystem()
         self.hazard_damage_system = HazardDamageSystem()
 
+        # Initialize spatial hash for O(1) collision lookup (PERF-01/02)
+        self.spatial_hash = SpatialHash(cell_size=128)
+        
         self.world_builder = WorldBuilder(level_data)
         self.player: Player = self.world_builder.build(
             self.groups, self.input_manager)
+        
+        # Add static collision sprites to spatial hash
+        self.spatial_hash.add_all(self.groups.collision_sprites)
+        
+        # Pass spatial hash to gameplay loop
+        self.gameplay_loop.spatial_hash = self.spatial_hash
 
     @property
     def completed(self) -> bool:
@@ -96,7 +106,7 @@ class Level:
                 self.groups.combat_sprites,
                 self.groups.entity_sprites,
             )
-            self.contact_damage_system.process(self.groups.entity_sprites)
+            self.contact_damage_system.process(self.groups.entity_sprites, self.spatial_hash)
             self.hazard_damage_system.process(
                 self.groups.entity_sprites, self.groups.hazard_sprites)
             self.gameplay_loop.remove_dead_entities(

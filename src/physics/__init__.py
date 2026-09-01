@@ -17,12 +17,14 @@ from .movement import (
 )
 from .platforms import update_moving_platform
 from .separation import SeparationSystem
+from .spatial_hash import SpatialHash
 from .velocity import apply_velocity_friction, lerp_velocity
 
 __all__ = [
     "ContactDamageSystem",
     "HazardDamageSystem",
     "SeparationSystem",
+    "SpatialHash",
     "apply_entity_gravity",
     "apply_horizontal_movement",
     "apply_moving_platform",

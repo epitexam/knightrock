@@ -1,14 +1,29 @@
 import pygame
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.physics.spatial_hash import SpatialHash
 
 
 class ContactDamageSystem:
     """Applies contact damage when entities overlap, based on momentum threshold."""
 
-    def process(self, entity_sprites: pygame.sprite.Group) -> None:
-        """Process the current state."""
+    def process(self, entity_sprites: pygame.sprite.Group, spatial_hash: SpatialHash | None = None) -> None:
+        """Process the current state.
+        
+        If spatial_hash is provided, only checks entities in nearby cells.
+        Falls back to O(n^2) check if spatial_hash is None (PERF-02).
+        """
         entities = list(entity_sprites)
+
+        # If spatial hash is available, only check entities in nearby cells
+        if spatial_hash is not None:
+            # Get all entities from spatial hash cells
+            all_entities_in_hash = []
+            for cell, sprites in spatial_hash.grid.items():
+                for sprite in sprites:
+                    if sprite in entities and sprite not in all_entities_in_hash:
+                        all_entities_in_hash.append(sprite)
+            entities = all_entities_in_hash
 
         for i, ent_a in enumerate(entities):
             for ent_b in entities[i + 1:]:
