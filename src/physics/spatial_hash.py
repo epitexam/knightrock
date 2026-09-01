@@ -55,9 +55,13 @@ class SpatialHash:
         """Add a sprite to the grid.
 
         Args:
-            sprite: A sprite with a hitbox property to add to the grid.
+            sprite: A sprite with a hitbox or rect property to add to the grid.
         """
-        cell = self._get_cell(sprite.hitbox)
+        # Use hitbox if available, otherwise fall back to rect
+        box = getattr(sprite, 'hitbox', getattr(sprite, 'rect', None))
+        if box is None:
+            return  # Skip sprites without hitbox or rect
+        cell = self._get_cell(box)
         self.grid[cell].append(sprite)
 
     def add_all(self, sprites: Iterable[SpatialHashable]) -> None:
