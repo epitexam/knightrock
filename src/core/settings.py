@@ -108,3 +108,9 @@ class Simulation:
     TIMESTEP = TICK_DURATION
     MAX_PREDICTION_FRAMES = 8
     ROLLBACK_FRAMES = 4
+    MAX_FRAME_TIME = 0.1  # Maximum frame time to prevent spiral of death
+
+
+class StateMachineConfig:
+    """State machine configuration constants."""
+    HISTORY_MAXLEN = 16  # Maximum number of states to keep in history

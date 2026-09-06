@@ -13,6 +13,13 @@ from src.core.level.level_manager import LevelManager
 from src.core.settings import Display, Simulation
 
 
+# Configure logging at module level
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
 class Game:
     def __init__(self) -> None:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
@@ -63,7 +70,7 @@ class Game:
 
         while True:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
-            self._accumulator += min(raw_delta, 0.1)
+            self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME)
 
             self._handle_events()
 
