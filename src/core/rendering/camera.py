@@ -37,3 +37,20 @@ class Camera:
 
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
         return rect.move(-self.offset.x, -self.offset.y)
+
+    def is_visible(self, rect: pygame.FRect) -> bool:
+        """Check if a rectangle is visible within the camera viewport.
+        
+        Args:
+            rect: The world-space rectangle to check.
+            
+        Returns:
+            True if the rectangle intersects the camera viewport, False otherwise.
+        """
+        camera_rect = pygame.FRect(
+            self.offset.x,
+            self.offset.y,
+            self.width,
+            self.height
+        )
+        return camera_rect.colliderect(rect)

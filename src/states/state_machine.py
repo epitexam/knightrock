@@ -2,6 +2,8 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+from src.core.settings import StateMachineConfig
+
 
 class State:
     """Abstract base for all states."""
@@ -37,7 +39,7 @@ class StateMachine:
         self.previous_state_name: str | None = None
 
         self._interrupts: list[tuple[int, str, Callable[[], bool]]] = []
-        self.history: deque[str] = deque(maxlen=16)
+        self.history: deque[str] = deque(maxlen=StateMachineConfig.HISTORY_MAXLEN)
 
         self._input_buffer: dict[str, float] = {}
 

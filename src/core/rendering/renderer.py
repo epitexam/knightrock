@@ -25,12 +25,14 @@ class Renderer:
         self.display_surface.fill(self.background_color)
 
         for sprite in groups.all_sprites:
-            rect = self.camera.apply(sprite.rect)
-            self.display_surface.blit(sprite.image, rect)
+            if self.camera.is_visible(sprite.rect):
+                rect = self.camera.apply(sprite.rect)
+                self.display_surface.blit(sprite.image, rect)
 
         for sprite in groups.fg_sprites:
-            rect = self.camera.apply(sprite.rect)
-            self.display_surface.blit(sprite.image, rect)
+            if self.camera.is_visible(sprite.rect):
+                rect = self.camera.apply(sprite.rect)
+                self.display_surface.blit(sprite.image, rect)
 
         if debug_enabled:
             self.ui_manager.draw_debug_overlays(groups.all_sprites, self.camera)
