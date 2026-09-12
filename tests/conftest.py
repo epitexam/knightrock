@@ -32,6 +32,9 @@ def mock_input_manager():
             self.attack1_just_pressed = False
             self.attack2_just_pressed = False
             self.attack2_just_released = False
+            self.attack3_just_pressed = False
+            self.attack4_just_pressed = False
+            self.special_attack_just_pressed = False
 
     return MockInputManager()
 
