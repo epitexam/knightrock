@@ -168,7 +168,12 @@ class Level:
 
         if self.exit_reached and not self._completed_emitted:
             self._completed_emitted = True
-            self.events.emit(LevelCompleted(level_id=self.level_id))
+            self.events.emit(
+                LevelCompleted(
+                    level_id=self.level_id,
+                    unlock_level_id=self.level_data.config.level_unlock,
+                )
+            )
 
     def draw(self, fps: float) -> list[pygame.Rect] | None:
         """

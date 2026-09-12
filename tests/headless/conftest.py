@@ -63,11 +63,11 @@ def build_level(mock_input_manager):
 
 
 @pytest.fixture()
-def game_runtime():
+def game_runtime(tmp_path):
     """Un ``Game`` initialisé (affichage dummy) sans exécuter la boucle."""
     from src.core.game import Game
 
-    game = Game()
+    game = Game(save_path=tmp_path / "savegame.json")
     game.display_surface = pygame.display.get_surface()
     game.clock = pygame.time.Clock()
     return game

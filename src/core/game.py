@@ -2,11 +2,13 @@ import logging
 import os
 import sys
 import traceback
+from pathlib import Path
 
 import pygame
 from pygame.joystick import JoystickType
 
 from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
 from src.core.input.input_manager import InputManager
@@ -28,13 +30,15 @@ class Game:
     (Phase 2 #5) — subscribers must never mutate the simulation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, save_path: Path | None = None) -> None:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
         self.display_surface: pygame.Surface | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.input_provider = LocalInputProvider()
         self.input_manager = InputManager(self.input_provider)
         self.level_manager = LevelManager(LEVEL_PATHS)
+        self._save_path = save_path if save_path is not None else default_save_path()
+        self.save_game = SaveGame.load(self._save_path)
         self.events = EventBus()
         self._subscribe_notifications()
         self.scene_manager = SceneManager(self)
@@ -52,13 +56,19 @@ class Game:
     def _on_level_started(event: LevelStarted) -> None:
         logger.info("Level %s started", event.level_id)
 
-    @staticmethod
-    def _on_player_died(event: PlayerDied) -> None:
+    def _on_player_died(self, event: PlayerDied) -> None:
         logger.info("Player died (death #%s)", event.deaths + 1)
 
-    @staticmethod
-    def _on_level_completed(event: LevelCompleted) -> None:
+    def _on_level_completed(self, event: LevelCompleted) -> None:
+        """Persist progression: unlock the TMX-declared level (F8.1)."""
         logger.info("Level %s completed", event.level_id)
+        self.save_game.last_level_id = event.level_id
+        if event.unlock_level_id is not None and self.save_game.unlock(event.unlock_level_id):
+            logger.info("Level %s unlocked", event.unlock_level_id)
+        try:
+            self.save_game.save(self._save_path)
+        except OSError:
+            logger.exception("Unable to persist the save at %s", self._save_path)
 
     def _initialize(self) -> None:
         pygame.init()

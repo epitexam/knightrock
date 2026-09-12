@@ -39,9 +39,14 @@ class PlayerDied(Event):
 
 @dataclass(frozen=True)
 class LevelCompleted(Event):
-    """The player reached the exit flag."""
+    """The player reached the exit flag.
+
+    ``unlock_level_id`` carries the ``level_unlock`` value declared in the
+    level's TMX *Data* layer (0 = nothing new to unlock).
+    """
 
     level_id: int
+    unlock_level_id: int | None = None
 
 
 GameEvent = LevelStarted | PlayerDied | LevelCompleted

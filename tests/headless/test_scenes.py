@@ -3,6 +3,7 @@
 import pygame
 import pytest
 
+from src.application.save_game import SaveGame
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
 from src.application.scenes.gameover_scene import GameOverScene
@@ -153,3 +154,62 @@ def test_game_over_retry_restarts_the_level(manager: SceneManager):
 
     assert isinstance(manager.current, GameplayScene)
     assert manager.current.level_id == 0
+
+
+def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
+    """LevelCompleted → unlock level_unlock + écriture du JSON (Phase 2 #6)."""
+    from src.application.events import LevelCompleted
+
+    game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
+
+    save = game_runtime.save_game
+    assert save.is_unlocked(1)
+    assert save.last_level_id == 0
+    assert game_runtime._save_path.exists()  # noqa: SLF001 - test du store interne
+    assert SaveGame.load(game_runtime._save_path) == save  # noqa: SLF001
+
+
+def test_completed_level_without_unlock_value_still_persists_last_level(game_runtime):
+    from src.application.events import LevelCompleted
+
+    game_runtime.events.emit(LevelCompleted(level_id=0))
+
+    assert game_runtime.save_game.last_level_id == 0
+    assert game_runtime.save_game.unlocked_levels == [0]
+
+
+def test_menu_offers_continue_when_progress_exists(game_runtime):
+    from src.application.events import LevelCompleted
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
+    game_runtime.scene_manager.switch(MenuScene(game_runtime))
+    menu = game_runtime.scene_manager.current
+
+    assert "continuer" in menu.options[0]
+    assert len(menu.options) == 3
+
+    menu.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
+
+    assert isinstance(game_runtime.scene_manager.current, GameplayScene)
+    assert game_runtime.scene_manager.current.level_id == 0
+
+
+def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
+    from src.application.events import LevelCompleted
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from tests.headless.conftest import make_programmatic_level_data
+
+    # Le niveau 1 n'a pas encore de TMX : on stub le chargement du manager.
+    monkeypatch.setattr(
+        game_runtime.level_manager, "get", lambda _level_id: make_programmatic_level_data()
+    )
+    game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
+    game_runtime.save_game.last_level_id = 1
+    game_runtime.scene_manager.switch(MenuScene(game_runtime))
+
+    menu = game_runtime.scene_manager.current
+    menu.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(game_runtime.scene_manager.current, GameplayScene)
+    assert game_runtime.scene_manager.current.level_id == 1
