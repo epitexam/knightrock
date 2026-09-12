@@ -1,5 +1,6 @@
 """Player configuration dataclass for data-driven player initialization."""
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -119,3 +120,38 @@ class PlayerConfig:
     hurt_duration: float = Combat.PLAYER_HURT_DURATION
     invincibility_duration: float = Combat.INVINCIBILITY_DURATION
     faction: str = "player"
+
+
+DEFAULT_PLAYER_CONFIG = PlayerConfig(
+    size=(48.0, 56.0),
+    color=Colors.pink,
+    health=100.0,
+    max_health=100.0,
+    hitbox_inflate=(-8.0, 0.0),
+    speed=Physics.PLAYER_SPEED,
+    floor_control=Physics.FLOOR_CONTROL,
+    air_control=Physics.AIR_CONTROL,
+    jump_height=Physics.JUMP_FORCE,
+    wall_jump_height=Physics.JUMP_FORCE * 0.90 * 1.15,
+    wall_jump_push_multiplier=1.3,
+    wall_jump_lock_duration=0.18,
+    wall_jump_min_lock=0.08,
+    wall_slide_speed=Physics.WALL_SLIDE_SPEED,
+    max_midair_jumps=1,
+    max_wall_jumps=math.inf,
+    coyote_duration=Physics.COYOTE_DURATION,
+    jump_buffer_duration=Physics.JUMP_BUFFER_DURATION,
+    max_block_stamina=Physics.MAX_BLOCK_STAMINA,
+    block_cooldown_normal=Combat.BLOCK_COOLDOWN_NORMAL,
+    block_cooldown_broken=Combat.BLOCK_COOLDOWN_BROKEN,
+    max_dash_charges=Physics.DASH_MAX_CHARGES,
+    dash_speed=Physics.DASH_SPEED,
+    dash_duration=Physics.DASH_DURATION,
+    dash_friction=Physics.DASH_FRICTION,
+    dash_penalty_duration=Physics.DASH_PENALTY_TIME,
+    dash_recharge_time=Physics.DASH_RECHARGE_TIME,
+    dash_gravity_mult=Physics.DASH_GRAVITY_MULT,
+    hurt_duration=Combat.PLAYER_HURT_DURATION,
+    invincibility_duration=Combat.INVINCIBILITY_DURATION,
+    faction="player",
+)

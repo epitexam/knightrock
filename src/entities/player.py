@@ -1,9 +1,7 @@
 """Player entity with full state machine, input reading, and combat mechanics."""
 
-import math
 from collections.abc import Iterable, Sequence
-from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 import pygame
 from pygame.sprite import Group
@@ -11,149 +9,46 @@ from pygame.sprite import Group
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
-from src.core.animation.animator import AnimationSpec, Animator
+from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
-from src.core.colors import Colors
 from src.core.input.input_manager import InputManager
-from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Input as InputSettings
-from src.core.settings import Physics
+from src.entities.controller_view import ControllerView
 from src.entities.entity import Entity, compute_knockback_direction
-from src.entities.player_config import PlayerConfig
+from src.entities.player_animation import PLAYER_ANIMATIONS
+from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
 from src.entities.player_controllers import (
     BlockController,
     DashController,
     JumpController,
 )
+from src.entities.player_input import PlayerInputHandler
 from src.physics import resolve_jump
 from src.states.player_states import (
-    PlayerAttackState,
-    PlayerBlockState,
-    PlayerChargeState,
-    PlayerDashState,
-    PlayerFallState,
-    PlayerHurtState,
-    PlayerIdleState,
-    PlayerJumpState,
-    PlayerKnockbackState,
-    PlayerRunState,
-    PlayerStaggerState,
-    PlayerWallSlideState,
-)
-from src.states.state_machine import StateMachine
-
-
-class PlayerState(str, Enum):
-    """Enumeration of player states for type safety and refactoring reliability."""
-
-    IDLE = "idle"
-    RUN = "run"
-    JUMP = "jump"
-    FALL = "fall"
-    WALL_SLIDE = "wall_slide"
-    ATTACK = "attack"
-    BLOCK = "block"
-    HURT = "hurt"
-    DASH = "dash"
-    STAGGER = "stagger"
-    CHARGE = "charge"
-    KNOCKBACK = "knockback"
-
-
-ATTACK_FORBIDDEN_STATES = {
-    PlayerState.WALL_SLIDE,
-    PlayerState.BLOCK,
-    PlayerState.HURT,
-    PlayerState.DASH,
-    PlayerState.STAGGER,
-    PlayerState.KNOCKBACK,
-}
-"""Set of states where initiating an attack is forbidden."""
-
-PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
-    spec.name: spec
-    for spec in (
-        AnimationSpec(
-            "idle", "assets/graphics/player/idle", AnimationSettings.FRAME_DURATION * 1.2
-        ),
-        AnimationSpec("run", "assets/graphics/player/run", AnimationSettings.RUN_FRAME_DURATION),
-        AnimationSpec(
-            "jump", "assets/graphics/player/jump", AnimationSettings.FRAME_DURATION, loop=False
-        ),
-        AnimationSpec("fall", "assets/graphics/player/fall", AnimationSettings.FRAME_DURATION),
-        AnimationSpec("wall", "assets/graphics/player/wall", AnimationSettings.FRAME_DURATION),
-        AnimationSpec(
-            "attack",
-            "assets/graphics/player/attack",
-            AnimationSettings.ATTACK_FRAME_DURATION,
-            loop=False,
-        ),
-        AnimationSpec(
-            "air_attack",
-            "assets/graphics/player/air_attack",
-            AnimationSettings.ATTACK_FRAME_DURATION,
-            loop=False,
-        ),
-        AnimationSpec(
-            "hit", "assets/graphics/player/hit", AnimationSettings.HIT_FRAME_DURATION, loop=False
-        ),
-    )
-}
-"""Sprite-sheet animations shipped under ``assets/graphics/player/``.
-
-States without dedicated art (block, charge, dash, stagger) keep playing
-the previous animation: :meth:`Player._animation_name` returns None for
-them.  The animator is attached in ``Player.__init__`` so the hundred
-shipped artworks are actually rendered (audit F4.1, Phase 2 #1).
-"""
-
-
-DEFAULT_PLAYER_CONFIG = PlayerConfig(
-    size=(48.0, 56.0),
-    color=Colors.pink,
-    health=100.0,
-    max_health=100.0,
-    hitbox_inflate=(-8.0, 0.0),
-    speed=Physics.PLAYER_SPEED,
-    floor_control=Physics.FLOOR_CONTROL,
-    air_control=Physics.AIR_CONTROL,
-    jump_height=Physics.JUMP_FORCE,
-    wall_jump_height=Physics.JUMP_FORCE * 0.90 * 1.15,
-    wall_jump_push_multiplier=1.3,
-    wall_jump_lock_duration=0.18,
-    wall_jump_min_lock=0.08,
-    wall_slide_speed=Physics.WALL_SLIDE_SPEED,
-    max_midair_jumps=1,
-    max_wall_jumps=math.inf,
-    coyote_duration=Physics.COYOTE_DURATION,
-    jump_buffer_duration=Physics.JUMP_BUFFER_DURATION,
-    max_block_stamina=Physics.MAX_BLOCK_STAMINA,
-    block_cooldown_normal=CombatSettings.BLOCK_COOLDOWN_NORMAL,
-    block_cooldown_broken=CombatSettings.BLOCK_COOLDOWN_BROKEN,
-    max_dash_charges=Physics.DASH_MAX_CHARGES,
-    dash_speed=Physics.DASH_SPEED,
-    dash_duration=Physics.DASH_DURATION,
-    dash_friction=Physics.DASH_FRICTION,
-    dash_penalty_duration=Physics.DASH_PENALTY_TIME,
-    dash_recharge_time=Physics.DASH_RECHARGE_TIME,
-    dash_gravity_mult=Physics.DASH_GRAVITY_MULT,
-    hurt_duration=CombatSettings.PLAYER_HURT_DURATION,
-    invincibility_duration=CombatSettings.INVINCIBILITY_DURATION,
-    faction="player",
+    ATTACK_FORBIDDEN_STATES,
+    PlayerState,
+    configure_player_state_machine,
 )
 
 
-class Player(Entity):
+class Player(ControllerView, Entity):
     """Playable character with full state machine, input reading, and combat.
 
     Extends Entity with movement, jumping, dashing, blocking, and attacks.
     Utilizes the enhanced StateMachine with Input Buffering and State Tags.
 
+    The class is a thin aggregate (audit F1.1, Phase 2 #3): capability
+    resources live in the ``jump``/``block``/``dash`` controllers, input
+    reading lives in the ``input_handler``, and flat attribute access to
+    controller fields is provided by :class:`ControllerView` instead of
+    ~50 hand-written delegating properties.
+
     Attributes
     ----------
     input_manager : InputManager
         Source of player input.
+    input_handler : PlayerInputHandler
+        Reads the input manager each tick and drives abilities/attacks.
     speed : float
         Base movement speed.
     floor_control : float
@@ -176,12 +71,40 @@ class Player(Entity):
     jump: JumpController
     block: BlockController
     dash: DashController
+    input_handler: PlayerInputHandler
 
     moving_platforms: Iterable[Any]
 
-    _left_held: bool
-    _right_held: bool
-    _block_held: bool
+    left_held: bool
+    right_held: bool
+    block_held: bool
+
+    CONTROLLER_VIEWS: ClassVar[dict[str, tuple[str, str]]] = {
+        # Jump controller (physics protocols JumpEntity/WallJumpLock, debug UI)
+        "jump_buffer_timer": ("jump", "jump_buffer_timer"),
+        "coyote_timer": ("jump", "coyote_timer"),
+        "wall_jump_lock_timer": ("jump", "wall_jump_lock_timer"),
+        "midair_jumps_left": ("jump", "midair_jumps_left"),
+        "wall_jumps_left": ("jump", "wall_jumps_left"),
+        "jump_height": ("jump", "jump_height"),
+        "wall_jump_height": ("jump", "wall_jump_height"),
+        "wall_jump_push_multiplier": ("jump", "wall_jump_push_multiplier"),
+        "wall_jump_lock_duration": ("jump", "wall_jump_lock_duration"),
+        "wall_jump_min_lock": ("jump", "wall_jump_min_lock"),
+        # Block controller (debug UI, hit resolver)
+        "block_stamina": ("block", "block_stamina"),
+        "max_block_stamina": ("block", "max_block_stamina"),
+        "block_cooldown_timer": ("block", "block_cooldown_timer"),
+        # Dash controller (debug UI)
+        "dash_charges": ("dash", "charges"),
+        "max_dash_charges": ("dash", "max_charges"),
+        "dash_recharge_timer": ("dash", "recharge_timer"),
+        "dash_penalty_timer": ("dash", "penalty_timer"),
+        "dash_requested": ("dash", "requested"),
+        "dash_speed": ("dash", "speed"),
+        "dash_duration": ("dash", "duration"),
+        "dash_friction": ("dash", "friction"),
+    }
 
     def __init__(
         self,
@@ -244,83 +167,24 @@ class Player(Entity):
 
         self.moving_platforms = moving_platforms
 
-        self._buffered_attack_name: str | None = None
-
-        self._left_held = False
-        self._right_held = False
-        self._block_held = False
+        self.left_held = False
+        self.right_held = False
+        self.block_held = False
 
         self.input_manager = input_manager
+        self.input_handler = PlayerInputHandler(self)
 
         self.animator = Animator(shared_library(), PLAYER_ANIMATIONS, default="idle")
         self._setup_state_machine()
 
     def _setup_state_machine(self) -> None:
-        """Initialize the player-specific state machine and registers interrupts."""
-        self.state_machine = StateMachine(self)
-        self.state_machine.add_state(PlayerState.IDLE, PlayerIdleState(self))
-        self.state_machine.add_state(PlayerState.RUN, PlayerRunState(self))
-        self.state_machine.add_state(PlayerState.JUMP, PlayerJumpState(self))
-        self.state_machine.add_state(PlayerState.FALL, PlayerFallState(self))
-        self.state_machine.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(self))
-        self.state_machine.add_state(PlayerState.ATTACK, PlayerAttackState(self))
-        self.state_machine.add_state(PlayerState.CHARGE, PlayerChargeState(self))
-        self.state_machine.add_state(PlayerState.BLOCK, PlayerBlockState(self))
-        self.state_machine.add_state(PlayerState.HURT, PlayerHurtState(self))
-        self.state_machine.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(self))
-        self.state_machine.add_state(PlayerState.DASH, PlayerDashState(self))
-        self.state_machine.add_state(PlayerState.STAGGER, PlayerStaggerState(self))
-        self.state_machine.set_initial_state(PlayerState.IDLE)
+        """Build the 12-state machine; states and interrupts live in player_states."""
+        configure_player_state_machine(self)
         self._setup_interrupts()
 
-    def _can_dash(self) -> bool:
-        """Check if the player can currently interrupt to dash."""
-        return self.dash.can_use() and self.state_machine.current_state_name not in (
-            PlayerState.DASH,
-            PlayerState.HURT,
-            PlayerState.KNOCKBACK,
-            PlayerState.STAGGER,
-        )
-
-    def _can_block(self) -> bool:
-        """Check if the player can currently interrupt to block."""
-        return (
-            self.on_surface["floor"]
-            and self.block_held
-            and self.block.can_use()
-            and self.state_machine.current_state_name
-            not in (
-                PlayerState.WALL_SLIDE,
-                PlayerState.HURT,
-                PlayerState.KNOCKBACK,
-                PlayerState.DASH,
-                PlayerState.STAGGER,
-            )
-        )
-
-    def _can_attack_interrupt(self) -> bool:
-        """Check if the player can currently interrupt to attack."""
-        return self.combat.is_attacking and self.can_attack()
-
     def _setup_interrupts(self) -> None:
-        """Register player-specific state machine interrupts."""
+        """Register the shared hurt interrupt (dash/block/attack in player_states)."""
         super()._setup_interrupts()
-        sm = self.state_machine
-        sm.add_interrupt(
-            PlayerState.DASH,
-            self._can_dash,
-            priority=80,
-        )
-        sm.add_interrupt(
-            PlayerState.BLOCK,
-            self._can_block,
-            priority=60,
-        )
-        sm.add_interrupt(
-            PlayerState.ATTACK,
-            self._can_attack_interrupt,
-            priority=40,
-        )
 
     @property
     def is_blocking(self) -> bool:
@@ -328,193 +192,13 @@ class Player(Entity):
         return self.state_machine.current_state_name == PlayerState.BLOCK
 
     @property
-    def left_held(self) -> bool:
-        """Whether left movement is currently held."""
-        return self._left_held
+    def _buffered_attack_name(self) -> str | None:
+        """Attack buffered when a start request was refused (combos)."""
+        return self.input_handler.buffered_attack_name
 
-    @left_held.setter
-    def left_held(self, value: bool) -> None:
-        """Set left held state."""
-        self._left_held = value
-
-    @property
-    def right_held(self) -> bool:
-        """Whether right movement is currently held."""
-        return self._right_held
-
-    @right_held.setter
-    def right_held(self, value: bool) -> None:
-        """Set right held state."""
-        self._right_held = value
-
-    @property
-    def block_held(self) -> bool:
-        """Whether block is currently held."""
-        return self._block_held
-
-    @block_held.setter
-    def block_held(self, value: bool) -> None:
-        """Set block held state."""
-        self._block_held = value
-
-    # ------------------------------------------------------------------
-    # Flat delegation to the jump controller. resolve_jump (physics
-    # protocols) and the debug UI read/mutate these on the entity.
-    # ------------------------------------------------------------------
-    @property
-    def jump_buffer_timer(self) -> float:
-        """Flat view of :attr:`JumpController.jump_buffer_timer`."""
-        return self.jump.jump_buffer_timer
-
-    @jump_buffer_timer.setter
-    def jump_buffer_timer(self, value: float) -> None:
-        self.jump.jump_buffer_timer = value
-
-    @property
-    def coyote_timer(self) -> float:
-        """Flat view of :attr:`JumpController.coyote_timer`."""
-        return self.jump.coyote_timer
-
-    @coyote_timer.setter
-    def coyote_timer(self, value: float) -> None:
-        self.jump.coyote_timer = value
-
-    @property
-    def wall_jump_lock_timer(self) -> float:
-        """Flat view of :attr:`JumpController.wall_jump_lock_timer`."""
-        return self.jump.wall_jump_lock_timer
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None:
-        self.jump.wall_jump_lock_timer = value
-
-    @property
-    def midair_jumps_left(self) -> int:
-        """Flat view of :attr:`JumpController.midair_jumps_left`."""
-        return self.jump.midair_jumps_left
-
-    @midair_jumps_left.setter
-    def midair_jumps_left(self, value: int) -> None:
-        self.jump.midair_jumps_left = value
-
-    @property
-    def wall_jumps_left(self) -> int | float:
-        """Flat view of :attr:`JumpController.wall_jumps_left`."""
-        return self.jump.wall_jumps_left
-
-    @wall_jumps_left.setter
-    def wall_jumps_left(self, value: int | float) -> None:
-        self.jump.wall_jumps_left = value
-
-    @property
-    def jump_height(self) -> float:
-        """Flat view of :attr:`JumpController.jump_height`."""
-        return self.jump.jump_height
-
-    @property
-    def wall_jump_height(self) -> float:
-        """Flat view of :attr:`JumpController.wall_jump_height`."""
-        return self.jump.wall_jump_height
-
-    @property
-    def wall_jump_push_multiplier(self) -> float:
-        """Flat view of :attr:`JumpController.wall_jump_push_multiplier`."""
-        return self.jump.wall_jump_push_multiplier
-
-    @property
-    def wall_jump_lock_duration(self) -> float:
-        """Flat view of :attr:`JumpController.wall_jump_lock_duration`."""
-        return self.jump.wall_jump_lock_duration
-
-    @property
-    def wall_jump_min_lock(self) -> float:
-        """Flat view of :attr:`JumpController.wall_jump_min_lock`."""
-        return self.jump.wall_jump_min_lock
-
-    # ------------------------------------------------------------------
-    # Flat delegation to the block controller (debug UI, hit resolver).
-    # ------------------------------------------------------------------
-    @property
-    def block_stamina(self) -> float:
-        """Flat view of :attr:`BlockController.block_stamina`."""
-        return self.block.block_stamina
-
-    @block_stamina.setter
-    def block_stamina(self, value: float) -> None:
-        self.block.block_stamina = value
-
-    @property
-    def max_block_stamina(self) -> float:
-        """Flat view of :attr:`BlockController.max_block_stamina`."""
-        return self.block.max_block_stamina
-
-    @property
-    def block_cooldown_timer(self) -> float:
-        """Flat view of :attr:`BlockController.block_cooldown_timer`."""
-        return self.block.block_cooldown_timer
-
-    @block_cooldown_timer.setter
-    def block_cooldown_timer(self, value: float) -> None:
-        self.block.block_cooldown_timer = value
-
-    # ------------------------------------------------------------------
-    # Flat delegation to the dash controller (debug UI).
-    # ------------------------------------------------------------------
-    @property
-    def dash_charges(self) -> int:
-        """Flat view of :attr:`DashController.charges`."""
-        return self.dash.charges
-
-    @dash_charges.setter
-    def dash_charges(self, value: int) -> None:
-        self.dash.charges = value
-
-    @property
-    def max_dash_charges(self) -> int:
-        """Flat view of :attr:`DashController.max_charges`."""
-        return self.dash.max_charges
-
-    @property
-    def dash_recharge_timer(self) -> float:
-        """Flat view of :attr:`DashController.recharge_timer`."""
-        return self.dash.recharge_timer
-
-    @dash_recharge_timer.setter
-    def dash_recharge_timer(self, value: float) -> None:
-        self.dash.recharge_timer = value
-
-    @property
-    def dash_penalty_timer(self) -> float:
-        """Flat view of :attr:`DashController.penalty_timer`."""
-        return self.dash.penalty_timer
-
-    @dash_penalty_timer.setter
-    def dash_penalty_timer(self, value: float) -> None:
-        self.dash.penalty_timer = value
-
-    @property
-    def dash_requested(self) -> bool:
-        """Flat view of :attr:`DashController.requested`."""
-        return self.dash.requested
-
-    @dash_requested.setter
-    def dash_requested(self, value: bool) -> None:
-        self.dash.requested = value
-
-    @property
-    def dash_speed(self) -> float:
-        """Flat view of :attr:`DashController.speed`."""
-        return self.dash.speed
-
-    @property
-    def dash_duration(self) -> float:
-        """Flat view of :attr:`DashController.duration`."""
-        return self.dash.duration
-
-    @property
-    def dash_friction(self) -> float:
-        """Flat view of :attr:`DashController.friction`."""
-        return self.dash.friction
+    @_buffered_attack_name.setter
+    def _buffered_attack_name(self, value: str | None) -> None:
+        self.input_handler.buffered_attack_name = value
 
     def can_attack(self) -> bool:
         """Return True if an attack can be started from the current state."""
@@ -535,59 +219,6 @@ class Player(Entity):
     def _on_wall_contact(self) -> None:
         """Reset midair jumps when touching a wall."""
         self.jump.restore_midair_jumps()
-
-    def get_input(self) -> None:
-        """Read all input and update facing direction and buffers."""
-        im = self.input_manager
-        self.move_axis = im.move_axis
-        self.left_held = im.left_held
-        self.right_held = im.right_held
-        self.block_held = im.block_held
-
-        self.face_movement()
-
-        if im.jump_just_pressed:
-            self.jump.buffer_press()
-
-        if im.dash_just_pressed:
-            self.dash.request()
-
-        if im.reset_just_pressed:
-            self.reset_position()
-
-    def _handle_attack_input(self) -> None:
-        """Process attack input with support for charge attacks, input buffering, and combos."""
-        im = self.input_manager
-
-        if self.combat.charging.is_charging:
-            if not self.can_attack():
-                self.combat.charging.cancel()
-                return
-            if im.attack2_just_released:
-                self.combat.release_charge()
-            return
-
-        if not self.can_attack():
-            return
-
-        if im.special_attack_just_pressed:
-            self.combat.start_attack("special_attack")
-            return
-
-        if im.attack1_just_pressed:
-            attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
-            if not self.combat.start_attack(attack_name):
-                self._buffered_attack_name = attack_name
-                self.state_machine.buffer_input("attack", window=InputSettings.ATTACK_BUFFER_WINDOW)
-        elif im.attack2_just_pressed:
-            if self.combat.start_charge("heavy_attack"):
-                self.state_machine.change_state(PlayerState.CHARGE, force=True)
-            else:
-                self.combat.start_attack("heavy_attack")
-        elif im.attack3_just_pressed:
-            self.combat.start_attack("uppercut")
-        elif im.attack4_just_pressed:
-            self.combat.start_attack("dash_attack")
 
     def update_timers(self, delta_time: float) -> None:
         """Update every controller's timers (buffer, coyote, stamina, dash)."""
@@ -616,8 +247,7 @@ class Player(Entity):
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""
-        self.get_input()
-        self._handle_attack_input()
+        self.input_handler.update()
         self.update_timers(delta_time)
 
     def _post_update(self, delta_time: float) -> None:
@@ -635,12 +265,12 @@ class Player(Entity):
         self.block.reset()
         self.dash.reset()
         self.move_axis = 0.0
-        self._buffered_attack_name = None
+        self.input_handler.buffered_attack_name = None
         self.hitbox.width = self.dash.original_hitbox_width
 
-        self._left_held = False
-        self._right_held = False
-        self._block_held = False
+        self.left_held = False
+        self.right_held = False
+        self.block_held = False
 
     def respawn(self) -> None:
         """Alias for reset_position, used after death."""

@@ -1,10 +1,11 @@
+from enum import Enum
 from typing import Any
 
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Locomotion, Physics
 from src.physics import apply_velocity_friction
 from src.states.reaction_states import HurtState, KnockbackState, StaggerState
-from src.states.state_machine import State
+from src.states.state_machine import State, StateMachine
 
 
 def player_ground_return(entity: Any) -> str:
@@ -303,3 +304,86 @@ class PlayerStaggerState(StaggerState):
             friction=Physics.STAGGER_FRICTION,
             tags=["stagger", "busy"],
         )
+
+
+class PlayerState(str, Enum):
+    """Enumeration of player states for type safety and refactoring reliability."""
+
+    IDLE = "idle"
+    RUN = "run"
+    JUMP = "jump"
+    FALL = "fall"
+    WALL_SLIDE = "wall_slide"
+    ATTACK = "attack"
+    BLOCK = "block"
+    HURT = "hurt"
+    DASH = "dash"
+    STAGGER = "stagger"
+    CHARGE = "charge"
+    KNOCKBACK = "knockback"
+
+
+ATTACK_FORBIDDEN_STATES = {
+    PlayerState.WALL_SLIDE,
+    PlayerState.BLOCK,
+    PlayerState.HURT,
+    PlayerState.DASH,
+    PlayerState.STAGGER,
+    PlayerState.KNOCKBACK,
+}
+"""Set of states where initiating an attack is forbidden."""
+
+
+def _can_dash(player: Any) -> bool:
+    """Check if the player can currently interrupt to dash."""
+    return player.dash.can_use() and player.state_machine.current_state_name not in (
+        PlayerState.DASH,
+        PlayerState.HURT,
+        PlayerState.KNOCKBACK,
+        PlayerState.STAGGER,
+    )
+
+
+def _can_block(player: Any) -> bool:
+    """Check if the player can currently interrupt to block."""
+    return (
+        player.on_surface["floor"]
+        and player.block_held
+        and player.block.can_use()
+        and player.state_machine.current_state_name
+        not in (
+            PlayerState.WALL_SLIDE,
+            PlayerState.HURT,
+            PlayerState.KNOCKBACK,
+            PlayerState.DASH,
+            PlayerState.STAGGER,
+        )
+    )
+
+
+def _can_attack_interrupt(player: Any) -> bool:
+    """Check if the player can currently interrupt to attack."""
+    is_attacking: bool = player.combat.is_attacking
+    return is_attacking and player.can_attack()
+
+
+def configure_player_state_machine(player: Any) -> None:
+    """Build the 12-state player machine (moved from Player, audit F1.1)."""
+    sm = StateMachine(player)
+    player.state_machine = sm
+    sm.add_state(PlayerState.IDLE, PlayerIdleState(player))
+    sm.add_state(PlayerState.RUN, PlayerRunState(player))
+    sm.add_state(PlayerState.JUMP, PlayerJumpState(player))
+    sm.add_state(PlayerState.FALL, PlayerFallState(player))
+    sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))
+    sm.add_state(PlayerState.ATTACK, PlayerAttackState(player))
+    sm.add_state(PlayerState.CHARGE, PlayerChargeState(player))
+    sm.add_state(PlayerState.BLOCK, PlayerBlockState(player))
+    sm.add_state(PlayerState.HURT, PlayerHurtState(player))
+    sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
+    sm.add_state(PlayerState.DASH, PlayerDashState(player))
+    sm.add_state(PlayerState.STAGGER, PlayerStaggerState(player))
+    sm.set_initial_state(PlayerState.IDLE)
+    sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
+    sm.add_interrupt(PlayerState.BLOCK, lambda: _can_block(player), priority=60)
+    sm.add_interrupt(PlayerState.ATTACK, lambda: _can_attack_interrupt(player), priority=40)

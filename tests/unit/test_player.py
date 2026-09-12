@@ -3,6 +3,7 @@ import pytest
 
 from src.core.input.input_manager import InputManager
 from src.entities.player import Player
+from src.states.player_states import _can_dash
 
 
 @pytest.fixture
@@ -35,4 +36,4 @@ def test_player_dash_charges(player_setup):
 
     # Dash request should be allowed in idle/fall state
     player.dash.requested = True
-    assert player._can_dash()
+    assert _can_dash(player)

@@ -266,10 +266,11 @@ class TestPrivateVariables:
         assert hasattr(player.dash, "duration_timer")
         assert hasattr(player.dash, "original_hitbox_width")
 
-        # Check that input state variables are private
-        assert hasattr(player, "_left_held")
-        assert hasattr(player, "_right_held")
-        assert hasattr(player, "_block_held")
+        # Input state is now public and driven by the input handler (Phase 2 #3)
+        assert hasattr(player, "input_handler")
+        assert hasattr(player, "left_held")
+        assert hasattr(player, "right_held")
+        assert hasattr(player, "block_held")
 
     def test_player_public_variables_no_underscore(self):
         """Test that Player public variables don't have _ prefix."""
