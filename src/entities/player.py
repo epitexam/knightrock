@@ -137,7 +137,6 @@ class Player(Entity):
 
     moving_platforms: Iterable[Any]
 
-    _space_held: bool
     _left_held: bool
     _right_held: bool
     _block_held: bool
@@ -207,7 +206,6 @@ class Player(Entity):
 
         self._buffered_attack_name: str | None = None
 
-        self._space_held = False
         self._left_held = False
         self._right_held = False
         self._block_held = False
@@ -287,16 +285,6 @@ class Player(Entity):
     def is_blocking(self) -> bool:
         """Return True if the player is currently blocking."""
         return self.state_machine.current_state_name == PlayerState.BLOCK
-
-    @property
-    def space_held(self) -> bool:
-        """Whether space is currently held."""
-        return self._space_held
-
-    @space_held.setter
-    def space_held(self, value: bool) -> None:
-        """Set space held state."""
-        self._space_held = value
 
     @property
     def left_held(self) -> bool:
@@ -595,7 +583,6 @@ class Player(Entity):
         self._buffered_attack_name = None
         self.hitbox.width = self.dash.original_hitbox_width
 
-        self._space_held = False
         self._left_held = False
         self._right_held = False
         self._block_held = False

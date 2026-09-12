@@ -264,7 +264,6 @@ class TestPrivateVariables:
         assert hasattr(player.dash, 'original_hitbox_width')
         
         # Check that input state variables are private
-        assert hasattr(player, '_space_held')
         assert hasattr(player, '_left_held')
         assert hasattr(player, '_right_held')
         assert hasattr(player, '_block_held')
