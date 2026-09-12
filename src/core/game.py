@@ -77,8 +77,13 @@ class Game:
             if self.current_stage.completed:
                 self._advance_level()
 
-            self.current_stage.draw(self.clock.get_fps())
-            pygame.display.update()
+            dirty_rects = self.current_stage.draw(self.clock.get_fps())
+            if dirty_rects is None:
+                pygame.display.update()
+            else:
+                # Dirty-rect presentation (Phase 2 #2): only refresh the
+                # region that changed since the last presented frame.
+                pygame.display.update(dirty_rects)
 
     def _advance_level(self) -> None:
         next_id = self.level_manager.next_id(self.current_level_id)

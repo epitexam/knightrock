@@ -136,24 +136,32 @@ class Level:
         if not self.player.is_dead:
             self.camera.follow(self.player.hitbox, delta_time)
 
-    def draw(self, fps: float) -> None:
+    def draw(self, fps: float) -> list[pygame.Rect] | None:
         """
         Render the level and all overlays.
+
+        Returns the dirty screen rects to present, or ``None`` when the
+        whole display must be refreshed (debug mode draws panels over the
+        full screen).
 
         Args:
             fps: Current frames per second, used for debug display.
         """
-        self.renderer.draw(self.groups, Debug.is_enabled())
+        debug_enabled = Debug.is_enabled()
+        dirty: list[pygame.Rect] | None = self.renderer.draw(self.groups, debug_enabled)
         self.renderer.draw_health_bars(self.groups.entity_sprites)
 
-        if Debug.is_enabled():
-            self.renderer.draw_debug_panels(
-                player=self.player,
-                fps=fps,
-                sprite_count=len(self.groups.all_sprites),
-                combat_count=len(self.groups.combat_sprites),
-                entity_count=len(self.groups.entity_sprites),
-                collision_count=len(self.groups.collision_sprites),
-                hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-                spawn_cooldown=self.debug_controller.spawn_cooldown_max,
-            )
+        if not debug_enabled:
+            return dirty
+
+        self.renderer.draw_debug_panels(
+            player=self.player,
+            fps=fps,
+            sprite_count=len(self.groups.all_sprites),
+            combat_count=len(self.groups.combat_sprites),
+            entity_count=len(self.groups.entity_sprites),
+            collision_count=len(self.groups.collision_sprites),
+            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
+            spawn_cooldown=self.debug_controller.spawn_cooldown_max,
+        )
+        return None
