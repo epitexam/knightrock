@@ -5,17 +5,15 @@ This module converts design intent into precise frame data using the new
 architecture. Balancing can be done here without modifying core systems.
 """
 
+from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     AttackDefinition,
     HitProperties,
     PhaseDefinition,
 )
-from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
 
-
 PLAYER_ATTACKS = {
-
     "light_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -35,7 +33,6 @@ PLAYER_ATTACKS = {
         cooldown=0.30,
         lock_direction=True,
     ),
-
     "heavy_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -58,9 +55,8 @@ PLAYER_ATTACKS = {
         combo_reset=True,
         chargeable=True,
         max_charge_time=1.0,
-        charge_move_multiplier=0.4
+        charge_move_multiplier=0.4,
     ),
-
     "uppercut": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -82,7 +78,6 @@ PLAYER_ATTACKS = {
         lock_direction=True,
         combo_reset=True,
     ),
-
     "dash_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -103,7 +98,6 @@ PLAYER_ATTACKS = {
         cooldown=0.60,
         lock_direction=True,
     ),
-
     "air_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -123,7 +117,6 @@ PLAYER_ATTACKS = {
         cooldown=0.35,
         lock_direction=False,
     ),
-
     "special_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
@@ -171,7 +164,6 @@ PLAYER_ATTACKS = {
                 ),
                 reset_targets=True,
             ),
-
             PhaseDefinition(
                 startup_frames=6,
                 active_frames=8,

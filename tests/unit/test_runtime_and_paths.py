@@ -17,9 +17,10 @@ def test_resource_path_is_independent_from_current_working_directory(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    assert Path(resource_path("assets/data/levels/1.tmx")) == (
-        PROJECT_ROOT / "assets/data/levels/1.tmx"
-    ).resolve()
+    assert (
+        Path(resource_path("assets/data/levels/1.tmx"))
+        == (PROJECT_ROOT / "assets/data/levels/1.tmx").resolve()
+    )
 
 
 def test_resource_path_uses_pyinstaller_bundle_root(
@@ -27,9 +28,7 @@ def test_resource_path_uses_pyinstaller_bundle_root(
 ) -> None:
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
 
-    assert Path(resource_path("assets/example.dat")) == (
-        tmp_path / "assets/example.dat"
-    ).resolve()
+    assert Path(resource_path("assets/example.dat")) == (tmp_path / "assets/example.dat").resolve()
 
 
 def test_level_manager_raises_clear_error_for_missing_level() -> None:

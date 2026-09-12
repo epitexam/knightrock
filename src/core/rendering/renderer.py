@@ -1,13 +1,11 @@
-from typing import Optional
-
 from src.core.colors import BG_COLORS, Colors
-from src.core.sprite_groups import SpriteGroups
 from src.core.level.level_data import LevelConfig
+from src.core.sprite_groups import SpriteGroups
 from src.ui.ui_manager import UIManager
 
 
 class Renderer:
-    def __init__(self, display_surface, camera, config: Optional[LevelConfig] = None):
+    def __init__(self, display_surface, camera, config: LevelConfig | None = None):
         self.display_surface = display_surface
         self.camera = camera
         self.ui_manager = UIManager(display_surface)
@@ -40,8 +38,17 @@ class Renderer:
     def draw_health_bars(self, entities) -> None:
         self.ui_manager.draw_health_bars(entities, self.camera)
 
-    def draw_debug_panels(self, player, fps, sprite_count, combat_count,
-                          entity_count, collision_count, hit_stop, spawn_cooldown):
+    def draw_debug_panels(
+        self,
+        player,
+        fps,
+        sprite_count,
+        combat_count,
+        entity_count,
+        collision_count,
+        hit_stop,
+        spawn_cooldown,
+    ):
         x, y = 10, 10
         y += self.ui_manager.draw_state_panel(x, y, player) + 8
         self.ui_manager.draw_stats_panel(x, y, player)

@@ -51,9 +51,7 @@ def test_hazard_uses_default_damage_when_unspecified() -> None:
 
     system.process([entity], [hazard])
 
-    assert entity.receive_damage.call_args.kwargs["amount"] == (
-        HazardDamageSystem.DEFAULT_DAMAGE
-    )
+    assert entity.receive_damage.call_args.kwargs["amount"] == (HazardDamageSystem.DEFAULT_DAMAGE)
 
 
 def test_hazard_ignores_non_overlapping_entities() -> None:

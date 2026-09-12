@@ -62,28 +62,20 @@ class HitResolver:
         if final_damage <= 0:
             return DamageResult()
 
-        if (
-            hit.is_finisher
-            and target.health - final_damage <= target.max_health * 0.2
-        ):
+        if hit.is_finisher and target.health - final_damage <= target.max_health * 0.2:
             final_damage = target.health
 
         scaled_power = (
             hit.knockback.power[0] * charge_multiplier,
             hit.knockback.power[1] * charge_multiplier,
         )
-        effective_knockback = KnockbackConfig(
-            power=scaled_power, mode=hit.knockback.mode)
+        effective_knockback = KnockbackConfig(power=scaled_power, mode=hit.knockback.mode)
 
         source_x: float = attacker.hitbox.centerx
 
-        armor_absorbs_reaction = (
-            target.has_super_armor and not hit.super_armor_break
-        )
+        armor_absorbs_reaction = target.has_super_armor and not hit.super_armor_break
         applied_knockback = None if armor_absorbs_reaction else effective_knockback
-        result = target.receive_damage(
-            final_damage, source_x, applied_knockback
-        )
+        result = target.receive_damage(final_damage, source_x, applied_knockback)
 
         # Blocking, invincibility, death, or any future immunity is authoritative:
         # no interruption, stagger, armor break, or finisher may leak through.
@@ -93,12 +85,7 @@ class HitResolver:
         if target.has_super_armor and hit.super_armor_break:
             target.break_super_armor()
 
-
-        if (
-            not result.killed
-            and not armor_absorbs_reaction
-            and not result.heavy_knockback
-        ):
+        if not result.killed and not armor_absorbs_reaction and not result.heavy_knockback:
             target.combat.on_hit(interrupt=True)
             if hit.stagger > 0:
                 target.stagger(hit.stagger)

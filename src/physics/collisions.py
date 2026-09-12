@@ -48,7 +48,7 @@ def get_nearby_sprites(
     collision_sprites: Iterable[CollisionSprite] | None = None,
 ) -> list[CollisionSprite]:
     """Return the collision sprites near the given sprite.
-    
+
     Uses spatial hash for O(1) lookup when available, otherwise falls back
     to the original O(n) search (PERF-01).
     """
@@ -59,14 +59,14 @@ def get_nearby_sprites(
         # getattr, so narrowing the member type back to CollisionSprite is
         # safe here.
         return cast(list[CollisionSprite], spatial_hash.get_nearby(sprite.hitbox))
-    
+
     # Fallback to original O(n) search for backward compatibility
     if collision_sprites is None:
         return []
-    search_area = sprite.hitbox.inflate(
-        Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
+    search_area = sprite.hitbox.inflate(Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
     return [
-        other for other in collision_sprites
+        other
+        for other in collision_sprites
         if (box := getattr(other, "hitbox", getattr(other, "rect", None))) is not None
         and search_area.colliderect(box)
     ]
@@ -80,15 +80,15 @@ def update_contact_state(
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
 
-    floor_rect = pygame.FRect(entity.hitbox.bottomleft,
-                              (entity.hitbox.width, Collision.PROBE_THICKNESS_PX))
+    floor_rect = pygame.FRect(
+        entity.hitbox.bottomleft, (entity.hitbox.width, Collision.PROBE_THICKNESS_PX)
+    )
     right_rect = pygame.FRect(
         Vector2(entity.hitbox.topright) + Vector2(0, hq),
         (Collision.PROBE_WIDTH_PX, hh),
     )
     left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft)
-        + Vector2(-Collision.WALL_PROBE_OFFSET_PX, hq),
+        Vector2(entity.hitbox.topleft) + Vector2(-Collision.WALL_PROBE_OFFSET_PX, hq),
         (Collision.PROBE_WIDTH_PX, hh),
     )
 
@@ -125,18 +125,17 @@ def resolve_collisions(
         nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
     for sprite in nearby_sprites:
-        if not hasattr(sprite, "rect") or sprite.rect is None:
-            continue
-        if not hitbox_collide(entity, sprite):
+        if not hasattr(sprite, "rect") or sprite.rect is None or not hitbox_collide(entity, sprite):
             continue
 
-        sprite_old = getattr(sprite, "old_hitbox", getattr(
-            sprite, "old_rect", sprite.rect))
+        sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
 
-        if axis == "horizontal":
-            if entity.hitbox.bottom <= sprite_box.top + Collision.CONTACT_SKIN_PX:
-                continue
+        if (
+            axis == "horizontal"
+            and entity.hitbox.bottom <= sprite_box.top + Collision.CONTACT_SKIN_PX
+        ):
+            continue
 
         was_overlapping = entity.old_hitbox.colliderect(sprite_old)
 
@@ -145,7 +144,9 @@ def resolve_collisions(
                 entity.hitbox.right = sprite_box.left
             elif not was_overlapping and entity.old_hitbox.left >= sprite_old.right:
                 entity.hitbox.left = sprite_box.right
-            elif abs(entity.hitbox.right - sprite_box.left) < abs(entity.hitbox.left - sprite_box.right):
+            elif abs(entity.hitbox.right - sprite_box.left) < abs(
+                entity.hitbox.left - sprite_box.right
+            ):
                 entity.hitbox.right = sprite_box.left
             else:
                 entity.hitbox.left = sprite_box.right
@@ -155,7 +156,9 @@ def resolve_collisions(
                 entity.hitbox.bottom = sprite_box.top
             elif not was_overlapping and entity.old_hitbox.top >= sprite_old.bottom:
                 entity.hitbox.top = sprite_box.bottom
-            elif abs(entity.hitbox.bottom - sprite_box.top) < abs(entity.hitbox.top - sprite_box.bottom):
+            elif abs(entity.hitbox.bottom - sprite_box.top) < abs(
+                entity.hitbox.top - sprite_box.bottom
+            ):
                 entity.hitbox.bottom = sprite_box.top
             else:
                 entity.hitbox.top = sprite_box.bottom

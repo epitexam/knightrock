@@ -6,13 +6,11 @@ Provides classes responsible for reading raw input data from local devices
 isolates Pygame dependencies from the core game logic and state machine.
 """
 
-from typing import Optional
-
 import pygame
 from pygame.joystick import JoystickType
 
-from src.core.input.input_state import InputState
 from src.core.input.input_bindings import InputBindings
+from src.core.input.input_state import InputState
 
 
 class InputProvider:
@@ -38,7 +36,7 @@ class LocalInputProvider(InputProvider):
     raw hardware states into the generic InputState structure.
     """
 
-    def __init__(self, bindings: Optional[InputBindings] = None) -> None:
+    def __init__(self, bindings: InputBindings | None = None) -> None:
         """Initialize the LocalInputProvider with custom or default bindings.
 
         Parameters
@@ -47,7 +45,7 @@ class LocalInputProvider(InputProvider):
             The hardware codes mapping. Defaults to InputBindings() if not provided.
         """
         self._bindings: InputBindings = bindings or InputBindings()
-        self._joystick: Optional[JoystickType] = None
+        self._joystick: JoystickType | None = None
         self._current_joy_buttons: dict[int, bool] = {}
         self._current_joy_axes: dict[int, float] = {}
 
@@ -97,26 +95,21 @@ class LocalInputProvider(InputProvider):
 
         if self._joystick:
             for i in range(self._joystick.get_numbuttons()):
-                self._current_joy_buttons[i] = bool(
-                    self._joystick.get_button(i))
+                self._current_joy_buttons[i] = bool(self._joystick.get_button(i))
             for i in range(self._joystick.get_numaxes()):
                 self._current_joy_axes[i] = self._joystick.get_axis(i)
 
         state = InputState()
         state.move_axis = self._calculate_move_axis(keys, kb, axes)
-        state.block_held = keys[kb["block"]] or self._current_joy_buttons.get(
-            btns["block"], False)
-        state.jump_held = keys[kb["jump"]] or self._current_joy_buttons.get(
-            btns["jump"], False)
-        state.dash_held = keys[kb["dash"]] or self._current_joy_axes.get(
-            axes["dash"], 0.0) > 0.5
-        state.reset_held = keys[kb["reset"]] or self._current_joy_buttons.get(
-            btns["reset"], False)
+        state.block_held = keys[kb["block"]] or self._current_joy_buttons.get(btns["block"], False)
+        state.jump_held = keys[kb["jump"]] or self._current_joy_buttons.get(btns["jump"], False)
+        state.dash_held = keys[kb["dash"]] or self._current_joy_axes.get(axes["dash"], 0.0) > 0.5
+        state.reset_held = keys[kb["reset"]] or self._current_joy_buttons.get(btns["reset"], False)
 
-        special_kb_held = all(keys[k]
-                              for k in kb_combos.get("special_attack", []))
-        special_joy_held = all(self._current_joy_buttons.get(
-            b, False) for b in joy_combos.get("special_attack", []))
+        special_kb_held = all(keys[k] for k in kb_combos.get("special_attack", []))
+        special_joy_held = all(
+            self._current_joy_buttons.get(b, False) for b in joy_combos.get("special_attack", [])
+        )
 
         if special_kb_held or special_joy_held:
             state.special_attack_held = True
@@ -126,13 +119,17 @@ class LocalInputProvider(InputProvider):
             state.attack4_held = False
         else:
             state.attack1_held = keys[kb["attack1"]] or self._current_joy_buttons.get(
-                btns["attack1"], False)
+                btns["attack1"], False
+            )
             state.attack2_held = keys[kb["attack2"]] or self._current_joy_buttons.get(
-                btns["attack2"], False)
+                btns["attack2"], False
+            )
             state.attack3_held = keys[kb["attack3"]] or self._current_joy_buttons.get(
-                btns["attack3"], False)
+                btns["attack3"], False
+            )
             state.attack4_held = keys[kb["attack4"]] or self._current_joy_buttons.get(
-                btns["attack4"], False)
+                btns["attack4"], False
+            )
 
         return state
 

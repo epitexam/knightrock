@@ -100,7 +100,6 @@ class StateMachine:
             next_state_info = self.current_state.update(delta_time)
 
             if next_state_info:
-
                 if isinstance(next_state_info, tuple):
                     next_name, kwargs = next_state_info
                     if next_name in self.states:

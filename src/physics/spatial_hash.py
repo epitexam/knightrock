@@ -31,8 +31,10 @@ the margin band.
 """
 
 from collections import defaultdict
+from collections.abc import Iterable
+from contextlib import suppress
 from math import ceil, floor
-from typing import Iterable, Protocol
+from typing import Protocol
 
 import pygame
 
@@ -145,10 +147,8 @@ class SpatialHash:
             bucket = self.grid.get(cell)
             if bucket is None:
                 continue
-            try:
+            with suppress(ValueError):
                 bucket.remove(sprite)
-            except ValueError:
-                pass
             if not bucket:
                 del self.grid[cell]
 
@@ -212,9 +212,7 @@ class SpatialHash:
         """Return a sprite's hitbox, falling back to its rect."""
         return getattr(sprite, "hitbox", getattr(sprite, "rect", None))
 
-    def _cells_for_box(
-        self, box: pygame.Rect | pygame.FRect
-    ) -> tuple[tuple[int, int], ...]:
+    def _cells_for_box(self, box: pygame.Rect | pygame.FRect) -> tuple[tuple[int, int], ...]:
         """Return every cell the box overlaps, column-major.
 
         Args:
@@ -231,6 +229,4 @@ class SpatialHash:
             x1 = x0
         if y1 < y0:  # zero-height box: keep a single row
             y1 = y0
-        return tuple(
-            (cx, cy) for cy in range(y0, y1 + 1) for cx in range(x0, x1 + 1)
-        )
+        return tuple((cx, cy) for cy in range(y0, y1 + 1) for cx in range(x0, x1 + 1))

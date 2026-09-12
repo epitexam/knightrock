@@ -1,10 +1,12 @@
 from typing import Any
+
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import TEXT_TITLE, TEXT_CRIT, TEXT_WARN, TEXT_OK
+from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+
 
 class PlayerUI:
     """Collect and display player data."""
-    
+
     def __init__(self, renderer: PanelRenderer):
         self.renderer = renderer
 
@@ -34,16 +36,21 @@ class PlayerUI:
         if combat:
             attack_name = combat.state.attack_name if hasattr(combat.state, "attack_name") else "-"
             phase_idx = getattr(combat.state, "phase_index", 0)
-            total_phases = len(combat.state.current_attack_def.phases) if getattr(combat.state, "current_attack_def", None) else 0
+            total_phases = (
+                len(combat.state.current_attack_def.phases)
+                if getattr(combat.state, "current_attack_def", None)
+                else 0
+            )
 
-            phase_text = f"{phase_idx}/{total_phases-1}" if total_phases > 0 else "idle"
+            phase_text = f"{phase_idx}/{total_phases - 1}" if total_phases > 0 else "idle"
             lines.append(f"Combat {attack_name}  phase {phase_text}")
 
             hurt_idx = len(lines)
             hurt_timer = getattr(combat, "hurt_timer", 0.0)
             is_hurt = getattr(combat, "is_hurt", False)
             lines.append(f"Hurt   {is_hurt!s:5} {hurt_timer:.2f}s")
-            if is_hurt: line_colors[hurt_idx] = TEXT_CRIT
+            if is_hurt:
+                line_colors[hurt_idx] = TEXT_CRIT
 
             charging = getattr(combat, "charging", None)
             if charging and getattr(charging, "is_charging", False) and charging.attack_name:
@@ -53,7 +60,8 @@ class PlayerUI:
 
             cooldowns_dict = getattr(combat, "cooldowns", {})
             cooldowns = [f"{name}:{cd:.2f}s" for name, cd in cooldowns_dict.items() if cd > 0]
-            if cooldowns: lines.append("CDs    " + ", ".join(cooldowns[:4]))
+            if cooldowns:
+                lines.append("CDs    " + ", ".join(cooldowns[:4]))
 
         stagger_timer = getattr(player, "stagger_timer", 0.0)
         if stagger_timer > 0:
@@ -70,7 +78,8 @@ class PlayerUI:
         return self.renderer.draw_panel(x, y, lines, title="PLAYER STATE", line_colors=line_colors)
 
     def draw_stats_panel(self, x: int, y: int, player: Any) -> int:
-        if not player: return 0
+        if not player:
+            return 0
 
         hp_ratio = player.health / player.max_health if player.max_health else 0
         hp_color = TEXT_OK if hp_ratio > 0.5 else TEXT_WARN if hp_ratio > 0.25 else TEXT_CRIT
@@ -86,7 +95,9 @@ class PlayerUI:
 
         combat = getattr(player, "combat", None)
         if combat:
-            lines.append(f"Combo  x{getattr(combat, 'combo_count', 0)}   {getattr(combat, 'combo_timer', 0.0):.2f}s")
+            lines.append(
+                f"Combo  x{getattr(combat, 'combo_count', 0)}   {getattr(combat, 'combo_timer', 0.0):.2f}s"
+            )
         else:
             lines.append("Combo  x0   0.00s")
 

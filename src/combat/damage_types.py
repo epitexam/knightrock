@@ -20,6 +20,7 @@ class DamageType(Enum):
     PIERCE : str
         Penetrating damage — spears, arrows, thrusts.
     """
+
     SLASH = "slash"
     BLUNT = "blunt"
     PIERCE = "pierce"

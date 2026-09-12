@@ -56,9 +56,7 @@ class WorldUI:
                 continue
 
             label = self._debug_label(sprite, state_machine, combat)
-            label_surface = self.renderer.render_text(
-                label, self.renderer.label_font, TEXT_MUTED
-            )
+            label_surface = self.renderer.render_text(label, self.renderer.label_font, TEXT_MUTED)
             reference = collider or getattr(sprite, "rect", None)
             if reference is None:
                 continue
@@ -97,9 +95,7 @@ class WorldUI:
             f"{sub_state_name}:{frame_counter} hits:{target_count}"
         )
 
-    def draw_health_bars(
-        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
-    ) -> None:
+    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite], camera: Camera) -> None:
         for entity in entities:
             if getattr(entity, "is_dead", False):
                 continue
@@ -126,11 +122,7 @@ class WorldUI:
             health_ratio = max(0.0, min(1.0, health / max_health))
             health_width = bar_width * health_ratio
             color = (
-                TEXT_OK
-                if health_ratio > 0.5
-                else TEXT_WARN
-                if health_ratio > 0.25
-                else TEXT_CRIT
+                TEXT_OK if health_ratio > 0.5 else TEXT_WARN if health_ratio > 0.25 else TEXT_CRIT
             )
             if health_width > 0:
                 pygame.draw.rect(
@@ -138,6 +130,4 @@ class WorldUI:
                     color,
                     (bar_x, bar_y, health_width, bar_height),
                 )
-            pygame.draw.rect(
-                self.display_surface, PANEL_BORDER, background_rect, width=1
-            )
+            pygame.draw.rect(self.display_surface, PANEL_BORDER, background_rect, width=1)

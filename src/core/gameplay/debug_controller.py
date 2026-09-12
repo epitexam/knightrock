@@ -1,10 +1,9 @@
 import pygame
 
 from src.core.settings import Respawn
-from src.entities.enemies.factory import create_enemy
 from src.core.sprite_groups import SpriteGroups
+from src.entities.enemies.factory import create_enemy
 from src.physics.spatial_hash import SpatialHash
-
 
 DEBUG_SPAWNS = {
     pygame.K_g: "goblin",
@@ -17,7 +16,7 @@ class DebugController:
     def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash | None = None):
         self.groups = groups
         self.spatial_hash = spatial_hash
-        self.spawn_cooldowns = {enemy_name: 0.0 for enemy_name in DEBUG_SPAWNS.values()}
+        self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
 
     @property
     def spawn_cooldown_max(self) -> float:

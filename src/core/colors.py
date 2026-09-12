@@ -6,6 +6,7 @@ Shared color constants and palettes.
 two diverging sources of truth, the theme aliases below re-export the
 same values.
 """
+
 from typing import ClassVar
 
 Color = tuple[int, int, int]

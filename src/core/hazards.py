@@ -7,8 +7,17 @@ from src.physics.hazard_damage import HazardDamageSystem
 
 
 class OrbitingHazard(Sprite):
-    def __init__(self, pos, surf, radius, start_angle, end_angle, speed, groups=None,
-                 damage: float = HazardDamageSystem.DEFAULT_DAMAGE):
+    def __init__(
+        self,
+        pos,
+        surf,
+        radius,
+        start_angle,
+        end_angle,
+        speed,
+        groups=None,
+        damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
+    ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.center = pygame.math.Vector2(pos[0], pos[1])
         self.radius = radius
@@ -43,8 +52,9 @@ class OrbitingHazard(Sprite):
 
 
 class SpanHazard(Sprite):
-    def __init__(self, pos, surf, speed, flip, groups=None,
-                 damage: float = HazardDamageSystem.DEFAULT_DAMAGE):
+    def __init__(
+        self, pos, surf, speed, flip, groups=None, damage: float = HazardDamageSystem.DEFAULT_DAMAGE
+    ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         start = pygame.math.Vector2(self.rect.topleft)
         if self.rect.width >= self.rect.height:

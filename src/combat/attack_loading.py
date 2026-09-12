@@ -4,8 +4,8 @@ Utility for loading attack definitions into a combat component.
 
 from collections.abc import Mapping
 
-from src.combat.frame_data import AttackDefinition
 from src.combat.combat_component import CombatComponent
+from src.combat.frame_data import AttackDefinition
 
 
 def load_attacks(combat: CombatComponent, attacks: Mapping[str, AttackDefinition]) -> None:
@@ -24,9 +24,7 @@ def load_attacks(combat: CombatComponent, attacks: Mapping[str, AttackDefinition
             unknown_cancels = set(phase.cancel_into) - attack_names
             if unknown_cancels:
                 unknown = ", ".join(sorted(unknown_cancels))
-                raise ValueError(
-                    f"Attack {name!r} references unknown cancels: {unknown}"
-                )
+                raise ValueError(f"Attack {name!r} references unknown cancels: {unknown}")
 
     for name, definition in attacks.items():
         combat.add_attack(name, definition)

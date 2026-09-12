@@ -8,7 +8,10 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group
 
+from src.core.settings import Combat as CombatSettings
 from src.entities.enemies.schema import EnemyConfig
+from src.entities.entity import Entity
+from src.physics import lerp_velocity
 from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChargeState,
@@ -20,10 +23,7 @@ from src.states.enemy_states import (
     EnemyStaggerState,
     EnemyState,
 )
-from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
-from src.physics import lerp_velocity
-from src.core.settings import Combat as CombatSettings
 
 
 class PlayerReference(Protocol):
@@ -32,6 +32,7 @@ class PlayerReference(Protocol):
     This protocol defines the minimal interface that a player reference
     must provide for enemy AI to function correctly.
     """
+
     hitbox: pygame.FRect
 
 
@@ -113,9 +114,7 @@ class Enemy(Entity):
         rng : random.Random | None
             Optional random number generator instance for deterministic behaviors.
         """
-        max_health = (
-            config.max_health if config.max_health is not None else config.health
-        )
+        max_health = config.max_health if config.max_health is not None else config.health
 
         super().__init__(
             pos=pos,
@@ -204,8 +203,7 @@ class Enemy(Entity):
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
-            lerp_velocity(self, 0.0, min(
-                1.0, self.passive_friction * delta_time), delta_time)
+            lerp_velocity(self, 0.0, min(1.0, self.passive_friction * delta_time), delta_time)
 
     def can_see_player(self) -> bool:
         """Check if the player is within vision range.

@@ -1,23 +1,25 @@
 """Pytest configuration and fixtures for knightrock tests."""
 
-import pytest
 import pygame
+import pytest
 from pygame.sprite import Group
 
 
 @pytest.fixture
 def mock_player():
     """Fixture providing a mock player with hitbox."""
+
     class MockPlayer:
         def __init__(self):
             self.hitbox = pygame.FRect(0, 0, 48, 56)
-    
+
     return MockPlayer()
 
 
 @pytest.fixture
 def mock_input_manager():
     """Fixture providing a mock input manager."""
+
     class MockInputManager:
         def __init__(self):
             self.move_axis = 0.0
@@ -30,7 +32,7 @@ def mock_input_manager():
             self.attack1_just_pressed = False
             self.attack2_just_pressed = False
             self.attack2_just_released = False
-    
+
     return MockInputManager()
 
 

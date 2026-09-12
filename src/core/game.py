@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import sys
 import traceback
 
@@ -12,12 +12,8 @@ from src.core.level.level import Level
 from src.core.level.level_manager import LevelManager
 from src.core.settings import Display, Simulation
 
-
 # Configure logging at module level
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class Game:
@@ -106,13 +102,12 @@ class Game:
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
-            elif event.type == pygame.JOYDEVICEREMOVED:
-                if event.instance_id in self.joysticks:
-                    disconnected_joy = self.joysticks[event.instance_id]
-                    logging.info(f"Controller disconnected : {disconnected_joy.get_name()}")
-                    self.input_provider.disconnect_joystick(event.instance_id)
-                    del self.joysticks[event.instance_id]
-                    self.input_provider.reassign_joystick(self.joysticks)
+            elif event.type == pygame.JOYDEVICEREMOVED and event.instance_id in self.joysticks:
+                disconnected_joy = self.joysticks[event.instance_id]
+                logging.info(f"Controller disconnected : {disconnected_joy.get_name()}")
+                self.input_provider.disconnect_joystick(event.instance_id)
+                del self.joysticks[event.instance_id]
+                self.input_provider.reassign_joystick(self.joysticks)
 
     def _handle_fatal_error(self, error: Exception) -> None:
         logging.error(f"FATAL ERROR: {error}")

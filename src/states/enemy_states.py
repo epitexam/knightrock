@@ -1,14 +1,15 @@
 """State machine states for enemies (AI)."""
 
 from enum import Enum
-from typing import Optional, Any
+from typing import Any
+
 from src.core.settings import AI
-from src.states.state_machine import State
 from src.states.reaction_states import (
     HurtState,
     KnockbackState,
     StaggerState,
 )
+from src.states.state_machine import State
 
 
 class EnemyState(str, Enum):
@@ -30,11 +31,11 @@ class EnemyState(str, Enum):
 class EnemyIdleState(State):
     """Idle state: the enemy stands still for a short duration."""
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state and initialize the idle timer."""
         self.timer = self.entity.idle_duration
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the state and transition to patrol or chase."""
         self.timer -= delta_time
         if self.timer <= 0:
@@ -48,12 +49,12 @@ class EnemyIdleState(State):
 class EnemyPatrolState(State):
     """Patrol state: the enemy moves back and forth in a single direction."""
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state and initialize patrol direction and timer."""
         self.patrol_timer = self.entity.patrol_interval
         self.direction = self.entity.patrol_direction
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the state, move the enemy, and check for player detection."""
         self.entity.move_axis = self.direction
         self.entity.apply_horizontal_movement(delta_time)
@@ -69,7 +70,7 @@ class EnemyPatrolState(State):
             self.entity.facing_right = self.direction > 0
         return None
 
-    def exit(self, next_state: Optional[str] = None) -> None:
+    def exit(self, next_state: str | None = None) -> None:
         """Exit the state and reset movement axis."""
         self.entity.move_axis = 0.0
 
@@ -77,11 +78,11 @@ class EnemyPatrolState(State):
 class EnemyChaseState(State):
     """Chase state: the enemy moves towards the player."""
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state and face the player."""
         self.entity.face_player()
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the state, move towards the player, and check attack range."""
         if self.entity.player is None:
             self.entity.state_machine.change_state(EnemyState.IDLE)
@@ -107,11 +108,11 @@ class EnemyChaseState(State):
 class EnemyAttackState(State):
     """Attack state: the enemy performs its attack."""
 
-    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
+    def __init__(self, entity: Any, tags: list[str] | None = None):
         """Initialize the EnemyAttackState instance."""
         super().__init__(entity, tags or ["attack", "busy"])
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state, face the player, and start the attack."""
         self.entity.face_player()
 
@@ -119,13 +120,13 @@ class EnemyAttackState(State):
             self.entity.combat.start_attack(self.entity.attack_name)
         self._started = True
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the state and return to idle when the attack finishes."""
         if not self.entity.combat.is_attacking:
             self.entity.state_machine.change_state(EnemyState.IDLE)
         return None
 
-    def exit(self, next_state: Optional[str] = None) -> None:
+    def exit(self, next_state: str | None = None) -> None:
         """Exit the state."""
         self._started = False
 
@@ -133,11 +134,11 @@ class EnemyAttackState(State):
 class EnemyChargeState(State):
     """Charge state: the enemy is charging an attack."""
 
-    def __init__(self, entity: Any, tags: Optional[list[str]] = None):
+    def __init__(self, entity: Any, tags: list[str] | None = None):
         """Initialize the EnemyChargeState instance."""
         super().__init__(entity, tags or ["charge", "busy"])
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Update the state and transition to attack when charge is released."""
         if not self.entity.combat.charging.is_charging:
             if self.entity.combat.is_attacking:

@@ -1,11 +1,13 @@
 """
 Centralized game configuration and constants.
 """
+
 import os
 
 
 class Display:
     """Display and rendering settings."""
+
     WIDTH = 1440
     HEIGHT = 900
     SIZE = (WIDTH, HEIGHT)
@@ -18,11 +20,13 @@ class Display:
 
 class World:
     """World and tilemap dimensions."""
+
     TILE_SIZE = 64
 
 
 class Physics:
     """Physics and movement constants."""
+
     PLAYER_SPEED = 450
     GRAVITY = 2000.0
     FALL_GRAVITY = 2800.0
@@ -56,6 +60,7 @@ class Physics:
 
 class Combat:
     """Combat, damage, and stagger mechanics."""
+
     HURT_DURATION = 0.4
     PLAYER_HURT_DURATION = 0.12
     INVINCIBILITY_DURATION = 0.18
@@ -81,6 +86,7 @@ class Combat:
 
 class Separation:
     """Collision separation and resolution constants."""
+
     SEARCH_INFLATE = 400
     SUB_STEP_SIZE = 16.0
     STRENGTH = 0.65
@@ -106,6 +112,7 @@ class Debug:
 
 class Simulation:
     """Fixed timestep and simulation loop settings."""
+
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION
@@ -165,4 +172,5 @@ class Respawn:
 
 class StateMachineConfig:
     """State machine configuration constants."""
+
     HISTORY_MAXLEN = 16  # Maximum number of states to keep in history

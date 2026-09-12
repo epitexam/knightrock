@@ -1,4 +1,5 @@
 import pygame
+
 from src.combat.knockback import NULL_KNOCKBACK
 from src.core.settings import Combat as CombatSettings
 
@@ -18,7 +19,7 @@ class ContactDamageSystem:
         entities = list(entity_sprites)
 
         for i, ent_a in enumerate(entities):
-            for ent_b in entities[i + 1:]:
+            for ent_b in entities[i + 1 :]:
                 if ent_a.is_dead or ent_b.is_dead:
                     continue
                 if ent_a.faction == ent_b.faction:
@@ -37,7 +38,6 @@ class ContactDamageSystem:
                 elif speed_b > speed_a:
                     self._apply_contact_damage(ent_a, ent_b)
                 else:
-
                     self._apply_contact_damage(ent_a, ent_b)
                     self._apply_contact_damage(ent_b, ent_a)
 
@@ -48,5 +48,5 @@ class ContactDamageSystem:
                 amount=CombatSettings.CONTACT_DAMAGE_AMOUNT,
                 source_center_x=source.hitbox.centerx,
                 knockback=NULL_KNOCKBACK,
-                interrupt=False
+                interrupt=False,
             )

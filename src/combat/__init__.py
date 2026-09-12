@@ -19,29 +19,27 @@ Example
 """
 
 # ── Data Structures & Enums ───────────────────────────────────────────
-from src.combat.damage_types import DamageType
-from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
-from src.combat.frame_data import (
-    FRAME_RATE,
-    PhaseState,
-    HitProperties,
-    PhaseDefinition,
-    AttackDefinition,
-)
+# ── Attack Database ───────────────────────────────────────────────────
+from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 
-# ── Protocols ─────────────────────────────────────────────────────────
-from src.combat.combatant_protocol import Combatant, BlockingCombatant
+# ── Utilities ─────────────────────────────────────────────────────────
+from src.combat.attack_loading import load_attacks
 
 # ── Core Components ───────────────────────────────────────────────────
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.combat_system import CombatSystem
 
-# ── Utilities ─────────────────────────────────────────────────────────
-from src.combat.attack_loading import load_attacks
-
-# ── Attack Database ───────────────────────────────────────────────────
-from src.combat.attack_data import PLAYER_ATTACKS, GOBLIN_ATTACKS, SLIME_ATTACKS
-
+# ── Protocols ─────────────────────────────────────────────────────────
+from src.combat.combatant_protocol import BlockingCombatant, Combatant
+from src.combat.damage_types import DamageType
+from src.combat.frame_data import (
+    FRAME_RATE,
+    AttackDefinition,
+    HitProperties,
+    PhaseDefinition,
+    PhaseState,
+)
+from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 
 __all__ = [
     # Data & Enums

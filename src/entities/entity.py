@@ -1,21 +1,22 @@
 """Base module for game entities with physics, health, and combat capabilities."""
 
 import random
-from itertools import count
 from collections.abc import Iterable, Mapping, Sequence
+from itertools import count
 from typing import Any, Literal, cast
 
 import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
-from src.combat.knockback import KnockbackConfig
-from src.combat.combatant_protocol import DamageResult
-from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.attack_loading import load_attacks
+from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
+from src.combat.knockback import KnockbackConfig
+from src.core.settings import Combat as CombatSettings
+from src.core.settings import Physics
 from src.entities.vitals import Vitals
-from src.core.settings import Combat as CombatSettings, Physics
 from src.physics import (
     SpatialHash,
     apply_entity_gravity,
@@ -27,6 +28,7 @@ from src.physics import (
 )
 from src.physics.collisions import CollisionSprite
 from src.states.null_state_machine import NullStateMachine
+from src.states.state_machine import StateMachine
 
 # Deterministic entity identifier source (ARCH-08).  A sequential counter
 # yields identical IDs for identically-ordered simulations, which keeps
@@ -146,9 +148,7 @@ class Entity(Sprite):
             Optional random number generator instance for deterministic behaviors.
         """
         super().__init__(groups)
-        self.id: str = (
-            entity_id if entity_id is not None else f"e{next(_ENTITY_ID_SEQUENCE)}"
-        )
+        self.id: str = entity_id if entity_id is not None else f"e{next(_ENTITY_ID_SEQUENCE)}"
         self.pushable: bool = True
         self.faction: str = faction
         self.rng = rng or random.Random()
@@ -186,7 +186,7 @@ class Entity(Sprite):
         self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
 
-        self.moving_platforms: list = []
+        self.moving_platforms: Iterable[Any] = []
         self.vitals = Vitals(
             health=health,
             max_health=max_health,
@@ -196,7 +196,7 @@ class Entity(Sprite):
         )
 
         if combat is not None:
-            self.combat = combat
+            self.combat: CombatComponent | NullCombatComponent = combat
         elif attacks:
             self.combat = CombatComponent(
                 self,
@@ -207,7 +207,7 @@ class Entity(Sprite):
         else:
             self.combat = NullCombatComponent()
 
-        self.state_machine = NullStateMachine()
+        self.state_machine: StateMachine | NullStateMachine = NullStateMachine()
         self.facing_right: bool = True
 
     def _setup_state_machine(self) -> None:
@@ -411,9 +411,7 @@ class Entity(Sprite):
         """Update surface contact flags."""
         update_contact_state(self, self.collision_sprites)
 
-    def handle_collisions(
-        self, axis: Literal["horizontal", "vertical"]
-    ) -> None:
+    def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""
         resolve_collisions(self, axis)
 
@@ -439,7 +437,7 @@ class Entity(Sprite):
 
         self.combat.reset()
 
-        if hasattr(self.state_machine, 'change_state'):
+        if hasattr(self.state_machine, "change_state"):
             self.state_machine.change_state("idle", force=True)
 
         self._on_reset()
@@ -570,9 +568,7 @@ class Entity(Sprite):
 
         heavy_knockback = False
         if interrupt and not self.is_dead and actual_damage > 0 and knockback is not None:
-            heavy_knockback = self._handle_heavy_knockback(
-                knockback, source_center_x
-            )
+            heavy_knockback = self._handle_heavy_knockback(knockback, source_center_x)
 
         return DamageResult(
             applied=actual_damage > 0,

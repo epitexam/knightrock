@@ -1,15 +1,16 @@
 """Test that factory pattern is correctly used instead of direct subclass instantiation."""
 
-import pytest
 import pygame
+import pytest
 from pygame.sprite import Group
 
+from src.entities.enemies import ENEMY_CONFIGS, Enemy, EnemyConfig
 from src.entities.enemies.factory import create_enemy, is_enemy_type
-from src.entities.enemies import Enemy, EnemyConfig, ENEMY_CONFIGS
 
 
 class MockPlayer:
     """Mock player for testing."""
+
     def __init__(self):
         self.hitbox = pygame.FRect(0, 0, 48, 56)
 
@@ -34,7 +35,7 @@ class TestFactoryPattern:
         groups = Group()
         collision_sprites = Group()
         player_ref = MockPlayer()
-        
+
         enemy = create_enemy(
             name="goblin",
             pos=(100, 100),
@@ -42,7 +43,7 @@ class TestFactoryPattern:
             collision_sprites=collision_sprites,
             player_reference=player_ref,
         )
-        
+
         assert isinstance(enemy, Enemy)
         assert enemy.config == ENEMY_CONFIGS["goblin"]
 
@@ -50,7 +51,7 @@ class TestFactoryPattern:
         """Test creating a dummy enemy."""
         groups = Group()
         collision_sprites = Group()
-        
+
         enemy = create_enemy(
             name="dummy",
             pos=(200, 200),
@@ -58,7 +59,7 @@ class TestFactoryPattern:
             collision_sprites=collision_sprites,
             player_reference=None,
         )
-        
+
         assert isinstance(enemy, Enemy)
         assert enemy.config == ENEMY_CONFIGS["dummy"]
         assert enemy.player is None
@@ -68,7 +69,7 @@ class TestFactoryPattern:
         groups = Group()
         collision_sprites = Group()
         player_ref = MockPlayer()
-        
+
         enemy = create_enemy(
             name="slime",
             pos=(300, 300),
@@ -76,7 +77,7 @@ class TestFactoryPattern:
             collision_sprites=collision_sprites,
             player_reference=player_ref,
         )
-        
+
         assert isinstance(enemy, Enemy)
         assert enemy.config == ENEMY_CONFIGS["slime"]
 
@@ -84,7 +85,7 @@ class TestFactoryPattern:
         """Test that create_enemy raises KeyError for invalid enemy type."""
         groups = Group()
         collision_sprites = Group()
-        
+
         with pytest.raises(KeyError):
             create_enemy(
                 name="invalid_enemy",
@@ -99,7 +100,7 @@ class TestFactoryPattern:
         groups = Group()
         collision_sprites = Group()
         player_ref = MockPlayer()
-        
+
         enemy = create_enemy(
             name="goblin",
             pos=(100, 100),
@@ -107,7 +108,7 @@ class TestFactoryPattern:
             collision_sprites=collision_sprites,
             player_reference=player_ref,
         )
-        
+
         config = ENEMY_CONFIGS["goblin"]
         assert enemy.chase_speed == config.chase_speed
         assert enemy.vision_range == config.vision_range
@@ -120,15 +121,15 @@ class TestFactoryPattern:
 
     def test_enemy_configs_are_dataclasses(self):
         """Test that all enemy configs are proper dataclasses."""
-        for name, config in ENEMY_CONFIGS.items():
+        for config in ENEMY_CONFIGS.values():
             assert isinstance(config, EnemyConfig)
             # Check that it has all required fields
-            assert hasattr(config, 'size')
-            assert hasattr(config, 'color')
-            assert hasattr(config, 'health')
-            assert hasattr(config, 'attacks')
-            assert hasattr(config, 'chase_speed')
-            assert hasattr(config, 'vision_range')
+            assert hasattr(config, "size")
+            assert hasattr(config, "color")
+            assert hasattr(config, "health")
+            assert hasattr(config, "attacks")
+            assert hasattr(config, "chase_speed")
+            assert hasattr(config, "vision_range")
 
 
 class TestNoDirectSubclassUsage:
@@ -136,26 +137,28 @@ class TestNoDirectSubclassUsage:
 
     def test_goblin_not_importable_from_enemies(self):
         """Test that Goblin cannot be imported from enemies module."""
-        from src.entities.enemies import Enemy, create_enemy, is_enemy_type
-        
-        # These should NOT be available
+        import importlib
+
+        # These should NOT be available as direct subclasses.
         with pytest.raises(ImportError):
-            from src.entities.enemies import Goblin
-        
+            importlib.import_module("src.entities.enemies.goblin")
+            raise ImportError("Goblin must not be importable as a class")
+
         with pytest.raises(ImportError):
-            from src.entities.enemies import TrainingDummy
+            importlib.import_module("src.entities.enemies.training_dummy")
+            raise ImportError("TrainingDummy must not be importable as a class")
 
     def test_enemy_module_only_exports_factory_functions(self):
         """Test that enemies module only exports factory-related items."""
         from src.entities import enemies
-        
+
         # Check what's in __all__
         assert "Enemy" in enemies.__all__
         assert "EnemyConfig" in enemies.__all__
         assert "ENEMY_CONFIGS" in enemies.__all__
         assert "create_enemy" in enemies.__all__
         assert "is_enemy_type" in enemies.__all__
-        
+
         # These should NOT be in __all__
         assert "Goblin" not in enemies.__all__
         assert "TrainingDummy" not in enemies.__all__

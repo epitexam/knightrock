@@ -1,7 +1,7 @@
-from src.entities.enemies.schema import EnemyConfig
-from src.combat.frame_data import AttackDefinition, PhaseDefinition, HitProperties
-from src.combat.knockback import NULL_KNOCKBACK
 from src.combat.damage_types import DamageType
+from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.combat.knockback import NULL_KNOCKBACK
+from src.entities.enemies.schema import EnemyConfig
 
 DUMMY_ATTACKS = {
     "test": AttackDefinition(

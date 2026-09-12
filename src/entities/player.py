@@ -9,8 +9,8 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.combat.combatant_protocol import DamageResult
+from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.core.colors import Colors
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
@@ -43,6 +43,7 @@ from src.states.state_machine import StateMachine
 
 class PlayerState(str, Enum):
     """Enumeration of player states for type safety and refactoring reliability."""
+
     IDLE = "idle"
     RUN = "run"
     JUMP = "jump"
@@ -171,7 +172,7 @@ class Player(Entity):
         config = config or DEFAULT_PLAYER_CONFIG
 
         attacks = None
-        if hasattr(config, 'attacks') and config.attacks:
+        if hasattr(config, "attacks") and config.attacks:
             attacks = dict(config.attacks)
         elif PLAYER_ATTACKS:
             attacks = PLAYER_ATTACKS
@@ -199,9 +200,7 @@ class Player(Entity):
 
         self.jump = JumpController(config)
         self.block = BlockController(config)
-        self.dash = DashController(
-            config, original_hitbox_width=self.hitbox.width
-        )
+        self.dash = DashController(config, original_hitbox_width=self.hitbox.width)
 
         self.moving_platforms = moving_platforms
 
@@ -222,29 +221,24 @@ class Player(Entity):
         self.state_machine.add_state(PlayerState.RUN, PlayerRunState(self))
         self.state_machine.add_state(PlayerState.JUMP, PlayerJumpState(self))
         self.state_machine.add_state(PlayerState.FALL, PlayerFallState(self))
-        self.state_machine.add_state(
-            PlayerState.WALL_SLIDE, PlayerWallSlideState(self))
-        self.state_machine.add_state(
-            PlayerState.ATTACK, PlayerAttackState(self))
-        self.state_machine.add_state(
-            PlayerState.CHARGE, PlayerChargeState(self))
+        self.state_machine.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(self))
+        self.state_machine.add_state(PlayerState.ATTACK, PlayerAttackState(self))
+        self.state_machine.add_state(PlayerState.CHARGE, PlayerChargeState(self))
         self.state_machine.add_state(PlayerState.BLOCK, PlayerBlockState(self))
         self.state_machine.add_state(PlayerState.HURT, PlayerHurtState(self))
-        self.state_machine.add_state(
-            PlayerState.KNOCKBACK, PlayerKnockbackState(self))
+        self.state_machine.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(self))
         self.state_machine.add_state(PlayerState.DASH, PlayerDashState(self))
-        self.state_machine.add_state(
-            PlayerState.STAGGER, PlayerStaggerState(self))
+        self.state_machine.add_state(PlayerState.STAGGER, PlayerStaggerState(self))
         self.state_machine.set_initial_state(PlayerState.IDLE)
         self._setup_interrupts()
 
     def _can_dash(self) -> bool:
         """Check if the player can currently interrupt to dash."""
-        return (
-            self.dash.can_use()
-            and self.state_machine.current_state_name not in (
-                PlayerState.DASH, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER
-            )
+        return self.dash.can_use() and self.state_machine.current_state_name not in (
+            PlayerState.DASH,
+            PlayerState.HURT,
+            PlayerState.KNOCKBACK,
+            PlayerState.STAGGER,
         )
 
     def _can_block(self) -> bool:
@@ -253,8 +247,13 @@ class Player(Entity):
             self.on_surface["floor"]
             and self.block_held
             and self.block.can_use()
-            and self.state_machine.current_state_name not in (
-                PlayerState.WALL_SLIDE, PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.DASH, PlayerState.STAGGER
+            and self.state_machine.current_state_name
+            not in (
+                PlayerState.WALL_SLIDE,
+                PlayerState.HURT,
+                PlayerState.KNOCKBACK,
+                PlayerState.DASH,
+                PlayerState.STAGGER,
             )
         )
 
@@ -485,9 +484,7 @@ class Player(Entity):
         on_left_wall = self.on_surface["left"] and self.left_held
         on_right_wall = self.on_surface["right"] and self.right_held
         return (
-            not self.on_surface["floor"]
-            and (on_left_wall or on_right_wall)
-            and self.velocity.y > 0
+            not self.on_surface["floor"] and (on_left_wall or on_right_wall) and self.velocity.y > 0
         )
 
     def _on_floor_contact(self) -> None:
@@ -540,9 +537,7 @@ class Player(Entity):
             attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
             if not self.combat.start_attack(attack_name):
                 self._buffered_attack_name = attack_name
-                self.state_machine.buffer_input(
-                    "attack", window=InputSettings.ATTACK_BUFFER_WINDOW
-                )
+                self.state_machine.buffer_input("attack", window=InputSettings.ATTACK_BUFFER_WINDOW)
         elif im.attack2_just_pressed:
             if self.combat.start_charge("heavy_attack"):
                 self.state_machine.change_state(PlayerState.CHARGE, force=True)
@@ -555,9 +550,7 @@ class Player(Entity):
 
     def update_timers(self, delta_time: float) -> None:
         """Update every controller's timers (buffer, coyote, stamina, dash)."""
-        is_blocking = (
-            self.state_machine.current_state_name == PlayerState.BLOCK
-        )
+        is_blocking = self.state_machine.current_state_name == PlayerState.BLOCK
         self.jump.update(delta_time, self.on_surface["floor"])
         self.block.update(delta_time, is_blocking)
         self.dash.update(delta_time)
@@ -624,11 +617,9 @@ class Player(Entity):
         )
 
         if _kb.mode == "fixed":
-            self.velocity.x = _kb.power[0] * \
-                CombatSettings.BLOCK_KNOCKBACK_FACTOR
+            self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR
         else:
-            self.velocity.x = _kb.power[0] * \
-                CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
+            self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
 
         return DamageResult(blocked=True)
 
@@ -668,9 +659,7 @@ class Player(Entity):
             return DamageResult()
 
         if self.is_blocking:
-            return self._apply_block_damage_reaction(
-                amount, knockback, source_center_x
-            )
+            return self._apply_block_damage_reaction(amount, knockback, source_center_x)
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 
@@ -681,4 +670,3 @@ class Player(Entity):
             )
 
         return result
-

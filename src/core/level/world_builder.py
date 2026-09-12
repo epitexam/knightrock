@@ -8,15 +8,15 @@ import logging
 import pygame
 
 from src.core.colors import Colors
-from src.core.settings import World
-from src.core.sprites import Sprite, MovingPlatform, LevelExit
 from src.core.hazards import OrbitingHazard, SpanHazard
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
+from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
-from src.physics.hazard_damage import HazardDamageSystem
+from src.core.sprites import LevelExit, MovingPlatform, Sprite
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
+from src.physics.hazard_damage import HazardDamageSystem
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +46,9 @@ def _build_decor(tiles, groups: SpriteGroups, *, foreground: bool) -> None:
 
 
 TILE_LAYER_HANDLERS.register("Terrain")(_build_terrain)
-TILE_LAYER_HANDLERS.register("BG")(
-    functools.partial(_build_decor, foreground=False))
-TILE_LAYER_HANDLERS.register("Platforms")(
-    functools.partial(_build_decor, foreground=False)
-)
-TILE_LAYER_HANDLERS.register("FG")(
-    functools.partial(_build_decor, foreground=True))
+TILE_LAYER_HANDLERS.register("BG")(functools.partial(_build_decor, foreground=False))
+TILE_LAYER_HANDLERS.register("Platforms")(functools.partial(_build_decor, foreground=False))
+TILE_LAYER_HANDLERS.register("FG")(functools.partial(_build_decor, foreground=True))
 
 
 def _parse_waypoints(obj: ObjectData) -> list[tuple[float, float]]:
@@ -109,11 +105,8 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     surf.fill(Colors.black)
     speed = float(obj.properties.get("speed", 100))
     flip = bool(obj.properties.get("flip", False))
-    damage = float(obj.properties.get(
-        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
-    hazard = SpanHazard(
-        (obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage
-    )
+    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    hazard = SpanHazard((obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage)
     groups.hazard_sprites.add(hazard)
 
 
@@ -126,8 +119,7 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     start_angle = float(obj.properties.get("start_angle", 0))
     end_angle = float(obj.properties.get("end_angle", 360))
     speed = float(obj.properties.get("speed", 50))
-    damage = float(obj.properties.get(
-        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
     hazard = OrbitingHazard(
         (obj.x, obj.y),
         surf,
@@ -147,11 +139,8 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     if surf is None:
         surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
         surf.fill(Colors.red)
-    damage = float(obj.properties.get(
-        "damage", HazardDamageSystem.DEFAULT_DAMAGE))
-    hazard = SpanHazard(
-        (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage
-    )
+    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    hazard = SpanHazard((obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage)
     groups.hazard_sprites.add(hazard)
 
 
@@ -201,10 +190,10 @@ class WorldBuilder:
                 "player spawn object in one of its object layers."
             )
 
-        for layer in self.level_data.object_layers.values():
-            if layer.name == "Data":
+        for object_layer in self.level_data.object_layers.values():
+            if object_layer.name == "Data":
                 continue
-            for obj in layer.objects:
+            for obj in object_layer.objects:
                 self._build_object(obj, groups, player)
 
         return player
@@ -248,8 +237,6 @@ class WorldBuilder:
         elif OBJECT_FACTORIES.has(obj.name):
             OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
         elif obj.image is not None:
-            Sprite(pos=(obj.x, obj.y), surf=obj.image,
-                   groups=groups.all_sprites)
+            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=groups.all_sprites)
         else:
-            logger.debug(
-                "Object '%s' has no factory or image, ignored", obj.name)
+            logger.debug("Object '%s' has no factory or image, ignored", obj.name)

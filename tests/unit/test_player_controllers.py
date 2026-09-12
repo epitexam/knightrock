@@ -100,9 +100,7 @@ class TestBlockController:
         block.block_cooldown_timer = 0.5
         assert not block.can_use()
 
-    def test_update_regenerates_stamina_while_not_blocking(
-        self, config
-    ) -> None:
+    def test_update_regenerates_stamina_while_not_blocking(self, config) -> None:
         block = BlockController(config)
         block.block_stamina = 2.0
 
@@ -149,9 +147,7 @@ class TestBlockController:
 
         assert block.block_cooldown_timer == pytest.approx(3.4)
 
-    def test_reset_restores_stamina_and_clears_cooldown(
-        self, config
-    ) -> None:
+    def test_reset_restores_stamina_and_clears_cooldown(self, config) -> None:
         block = BlockController(config)
         block.block_stamina = 0.0
         block.block_cooldown_timer = 1.0
@@ -177,9 +173,7 @@ class TestDashController:
         dash.request()
         assert not dash.requested
 
-    def test_consume_charge_arms_recharge_then_penalty(
-        self, config
-    ) -> None:
+    def test_consume_charge_arms_recharge_then_penalty(self, config) -> None:
         dash = DashController(config)
 
         dash.consume_charge()
@@ -204,9 +198,7 @@ class TestDashController:
         assert dash.charges == 2
         assert dash.recharge_timer == pytest.approx(1.0)
 
-    def test_update_waits_for_penalty_before_recharging(
-        self, config
-    ) -> None:
+    def test_update_waits_for_penalty_before_recharging(self, config) -> None:
         dash = DashController(config)
         dash.charges = 1
         dash.consume_charge()
@@ -231,9 +223,7 @@ class TestDashController:
         assert hitbox.centerx == pytest.approx(125.0)
         assert not dash.restore_hitbox(hitbox)
 
-    def test_reset_refills_charges_and_clears_request(
-        self, config
-    ) -> None:
+    def test_reset_refills_charges_and_clears_request(self, config) -> None:
         dash = DashController(config)
         dash.charges = 0
         dash.penalty_timer = 1.0

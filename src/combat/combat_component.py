@@ -16,11 +16,10 @@ import pygame
 
 from src.combat.attack_state import AttackStateMachine, AttackStateSnapshot
 from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
+from src.combat.combatant_protocol import Combatant
 from src.combat.combo_tracker import ComboTracker
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
-from src.combat.knockback import KnockbackConfig
-from src.combat.combatant_protocol import Combatant
 
 
 @dataclass
@@ -40,6 +39,7 @@ class CombatSnapshot:
     combo_timer : float
         Remaining time for the combo window.
     """
+
     attack_state: AttackStateSnapshot
     is_hurt: bool
     hurt_timer: float
@@ -444,9 +444,7 @@ class NullCombatComponent:
         """Always returns ``False``."""
         return False
 
-    def on_hit(
-        self, duration: float | None = None, interrupt: bool = True
-    ) -> None:
+    def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """No-op."""
 
     def update(self, delta_time: float) -> None:
@@ -489,7 +487,7 @@ class NullCombatComponent:
                 targets_hit=(),
                 locked_facing=None,
                 charge_multiplier=1.0,
-                accumulator=0.0
+                accumulator=0.0,
             ),
             is_hurt=False,
             hurt_timer=0.0,
@@ -528,6 +526,7 @@ class _NullAttackState:
     is_attacking : bool
         Always False.
     """
+
     is_active: bool = False
     is_attacking: bool = False
 
@@ -543,6 +542,7 @@ class _NullComboTracker:
     count : int
         Always 0.
     """
+
     count = 0
 
     def on_attack_started(self, resets_combo: bool) -> None:

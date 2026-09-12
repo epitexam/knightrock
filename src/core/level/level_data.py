@@ -3,7 +3,6 @@ Data structures for parsed TMX level data.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import pygame
 import pytmx
@@ -12,6 +11,7 @@ import pytmx
 @dataclass
 class TileLayerData:
     """Represents a single tile layer with its tiles."""
+
     name: str
     tiles: list[tuple[int, int, pygame.Surface]]
 
@@ -19,20 +19,22 @@ class TileLayerData:
 @dataclass
 class ObjectData:
     """Represents a single object from an object layer."""
+
     name: str
     x: float
     y: float
     width: float
     height: float
-    gid: Optional[int]
-    image: Optional[pygame.Surface]
-    points: Optional[list[tuple[float, float]]]
+    gid: int | None
+    image: pygame.Surface | None
+    points: list[tuple[float, float]] | None
     properties: dict
 
 
 @dataclass
 class ObjectLayerData:
     """Represents an object layer containing multiple objects."""
+
     name: str
     objects: list[ObjectData]
 
@@ -40,6 +42,7 @@ class ObjectLayerData:
 @dataclass
 class LevelConfig:
     """Configuration metadata extracted from the special 'Data' layer."""
+
     bg: str = ""
     top_limit: float = 0.0
     bottom_limit: float = 0.0
@@ -55,6 +58,7 @@ class LevelData:
 
     Contains tile layers, object layers, and configuration metadata.
     """
+
     width: int
     height: int
     tile_size: int
@@ -73,7 +77,7 @@ class LevelData:
         return self.height * self.tile_size
 
     @classmethod
-    def from_tmx(cls, tmx_map) -> "LevelData":
+    def from_tmx(cls, tmx_map) -> LevelData:
         """
         Build a LevelData instance from a pytmx TiledMap.
 
@@ -89,14 +93,10 @@ class LevelData:
 
         for layer in tmx_map.layers:
             if isinstance(layer, pytmx.TiledTileLayer):
-                tile_layers[layer.name] = TileLayerData(
-                    name=layer.name, tiles=list(layer.tiles())
-                )
+                tile_layers[layer.name] = TileLayerData(name=layer.name, tiles=list(layer.tiles()))
             elif isinstance(layer, pytmx.TiledObjectGroup):
                 objects = [_object_from_tmx(obj) for obj in layer]
-                object_layers[layer.name] = ObjectLayerData(
-                    name=layer.name, objects=objects
-                )
+                object_layers[layer.name] = ObjectLayerData(name=layer.name, objects=objects)
                 if layer.name == "Data" and objects:
                     config = _config_from_properties(objects[0].properties)
 
@@ -113,8 +113,7 @@ class LevelData:
 def _object_from_tmx(obj) -> ObjectData:
     """Convert a pytmx object to our ObjectData structure."""
     raw_points = getattr(obj, "points", None)
-    points = [(float(px), float(py))
-              for px, py in raw_points] if raw_points else None
+    points = [(float(px), float(py)) for px, py in raw_points] if raw_points else None
     return ObjectData(
         name=obj.name or "",
         x=obj.x,

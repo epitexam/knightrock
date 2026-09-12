@@ -13,7 +13,8 @@ logic is now parameterized by:
 - ``tags``: state-machine tags preserved from the original classes.
 """
 
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from src.core.settings import Physics
 from src.physics import lerp_velocity
@@ -34,20 +35,20 @@ class HurtState(State):
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = 0.0,
-        tags: Optional[list[str]] = None,
-        on_enter: Optional[Callable[..., None]] = None,
+        tags: list[str] | None = None,
+        on_enter: Callable[..., None] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["hurt", "busy"])
         self.exit_resolver = exit_resolver
         self.friction = friction
         self.on_enter = on_enter
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Run the optional setup hook with the transition kwargs."""
         if self.on_enter is not None:
             self.on_enter(**kwargs)
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Apply friction and leave the state once the hurt timer clears.
 
         Friction is applied unconditionally (even airborne) to match the
@@ -69,15 +70,15 @@ class KnockbackState(State):
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = Physics.KNOCKBACK_FRICTION,
-        tags: Optional[list[str]] = None,
-        on_enter: Optional[Callable[..., None]] = None,
+        tags: list[str] | None = None,
+        on_enter: Callable[..., None] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["knockback", "busy"])
         self.exit_resolver = exit_resolver
         self.friction = friction
         self.on_enter = on_enter
 
-    def enter(self, previous: Optional[str] = None, **kwargs: Any) -> None:
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Run the optional setup hook, then apply the launch velocity."""
         if self.on_enter is not None:
             self.on_enter(**kwargs)
@@ -91,7 +92,7 @@ class KnockbackState(State):
         if knockback_up != 0:
             self.entity.velocity.y = knockback_up
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Apply ground friction and resolve once the entity stops sliding."""
         if self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, self.friction, delta_time)
@@ -113,13 +114,13 @@ class StaggerState(State):
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = 0.0,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["stagger", "busy"])
         self.exit_resolver = exit_resolver
         self.friction = friction
 
-    def update(self, delta_time: float) -> Optional[str]:
+    def update(self, delta_time: float) -> str | None:
         """Apply ground friction and leave the state when the timer clears."""
         if self.friction > 0 and self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, self.friction, delta_time)

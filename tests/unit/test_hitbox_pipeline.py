@@ -35,9 +35,7 @@ def phase(
     )
 
 
-def attack(
-    *phases: PhaseDefinition, lock_direction: bool = True
-) -> AttackDefinition:
+def attack(*phases: PhaseDefinition, lock_direction: bool = True) -> AttackDefinition:
     return AttackDefinition(
         phases=phases,
         cooldown=0.0,
@@ -117,9 +115,7 @@ def test_entity_update_syncs_attack_box_after_movement() -> None:
     owner.update(1 / 60)
 
     assert owner.combat.attack_box is not None
-    assert owner.combat.attack_box.centerx == pytest.approx(
-        owner.hitbox.centerx + 20.0
-    )
+    assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
 
 
 def test_attack_box_is_resynchronized_after_entity_separation() -> None:
@@ -179,9 +175,7 @@ def test_rollback_restore_synchronizes_derived_attack_geometry() -> None:
     owner.combat.load_state(snapshot)
 
     assert owner.combat.attack_box is not None
-    assert owner.combat.attack_box.centerx == pytest.approx(
-        owner.hitbox.centerx + 20.0
-    )
+    assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
 
 
 def test_death_clears_active_offensive_state() -> None:
@@ -210,9 +204,7 @@ def test_hurtbox_is_distinct_and_synchronized_with_collider() -> None:
     ("reset_targets", "expected_contact"),
     [(False, True), (True, False)],
 )
-def test_phase_policy_controls_repeat_contacts(
-    reset_targets: bool, expected_contact: bool
-) -> None:
+def test_phase_policy_controls_repeat_contacts(reset_targets: bool, expected_contact: bool) -> None:
     machine = AttackStateMachine(
         {
             "test": attack(

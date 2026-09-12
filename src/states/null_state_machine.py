@@ -4,6 +4,7 @@ from typing import Any
 
 class NullStateMachine:
     """A dummy state machine used for entities that don't need state logic."""
+
     current_state_name: str | None = None
 
     def update(self, delta_time: float) -> None:
@@ -14,9 +15,15 @@ class NullStateMachine:
         """Change the current state."""
         pass
 
-    def add_interrupt(
-        self, target: str, condition: Callable[[], bool], priority: int = 0
-    ) -> None:
+    def add_state(self, name: str, state: Any) -> None:
+        """Register a state (no-op: keeps the StateMachine interface)."""
+        pass
+
+    def set_initial_state(self, name: str) -> None:
+        """Set the initial state (no-op for the null state machine)."""
+        self.current_state_name = name
+
+    def add_interrupt(self, target: str, condition: Callable[[], bool], priority: int = 0) -> None:
         """Register an interrupt (no-op for the null state machine)."""
         pass
 

@@ -1,7 +1,6 @@
 """BUG-01: knockback/hurt/stagger friction must decay quickly (no double-dt)."""
 
 from types import SimpleNamespace
-from unittest.mock import Mock
 
 import pygame
 

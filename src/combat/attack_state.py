@@ -44,6 +44,7 @@ class AttackStateSnapshot:
     accumulator : float
         Time accumulator for the fixed-timestep update loop.
     """
+
     attack_name: str | None
     phase_index: int
     sub_state: str
@@ -267,15 +268,12 @@ class AttackStateMachine:
             self.end()
             return
 
-        if self.sub_state == PhaseState.STARTUP:
-            if self.frame_counter >= phase.startup_frames:
-                self._enter_sub_state(PhaseState.ACTIVE)
-        elif self.sub_state == PhaseState.ACTIVE:
-            if self.frame_counter >= phase.active_frames:
-                self._enter_sub_state(PhaseState.RECOVERY)
-        elif self.sub_state == PhaseState.RECOVERY:
-            if self.frame_counter >= phase.recovery_frames:
-                self._advance_phase()
+        if self.sub_state == PhaseState.STARTUP and self.frame_counter >= phase.startup_frames:
+            self._enter_sub_state(PhaseState.ACTIVE)
+        elif self.sub_state == PhaseState.ACTIVE and self.frame_counter >= phase.active_frames:
+            self._enter_sub_state(PhaseState.RECOVERY)
+        elif self.sub_state == PhaseState.RECOVERY and self.frame_counter >= phase.recovery_frames:
+            self._advance_phase()
 
     def _enter_sub_state(self, new_state: PhaseState) -> None:
         """Transition to a new sub-state within the current phase.

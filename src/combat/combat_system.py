@@ -55,9 +55,7 @@ class CombatSystem:
         candidates = self._collect_candidates(combatants)
         self._resolve_candidates(candidates)
 
-    def _collect_candidates(
-        self, combatants: tuple[Combatant, ...]
-    ) -> tuple[HitCandidate, ...]:
+    def _collect_candidates(self, combatants: tuple[Combatant, ...]) -> tuple[HitCandidate, ...]:
         candidates: list[HitCandidate] = []
 
         for attacker in combatants:

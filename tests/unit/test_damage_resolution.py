@@ -144,9 +144,7 @@ def test_heavy_knockback_threshold_is_inclusive_and_uses_magnitude() -> None:
 
     at_threshold = target.receive_damage(
         1.0,
-        knockback=KnockbackConfig(
-            power=(0.0, -CombatSettings.HEAVY_KNOCKBACK_THRESHOLD)
-        ),
+        knockback=KnockbackConfig(power=(0.0, -CombatSettings.HEAVY_KNOCKBACK_THRESHOLD)),
     )
 
     assert at_threshold.heavy_knockback is True

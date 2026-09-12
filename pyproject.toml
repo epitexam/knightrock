@@ -16,8 +16,54 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
 
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",
+    # (str, Enum) is the codebase convention for state names
+    # (PlayerState, EnemyState): drop-in compatible with StateMachine keys.
+    "UP042",
+    # Generic[T] subclass keeps the Registry compatible on 3.14 + mypy.
+    "UP046",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+disallow_untyped_defs = true
+# Dette de typage existante (audit F3.2 : 50+ getattr/hasattr non types) :
+# mypy est informatif en CI pour l'instant (run avec `|| true`).
+# Rendre ces modules stricts un par un, sans baisser le gate a zero.
+
+[[tool.mypy.overrides]]
+module = [
+    "src.core.gameplay.*",
+    "src.core.level.*",
+    "src.core.rendering.*",
+    "src.core.sprites",
+    "src.core.hazards",
+    "src.entities.*",
+    "src.states.*",
+    "src.ui.*",
+    "src.physics.*",
+    "src.combat.*",
+]
+disallow_untyped_defs = false
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "ruff>=0.14.0",
+    "mypy>=1.18.0",
 ]

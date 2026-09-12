@@ -8,7 +8,6 @@ input originates from a local keyboard, a gamepad, or a network packet.
 """
 
 from copy import copy
-from typing import Optional
 
 from src.core.input.input_provider import InputProvider, NullInputProvider
 from src.core.input.input_state import InputState
@@ -24,7 +23,7 @@ class InputManager:
     multiplayer architectures.
     """
 
-    def __init__(self, provider: Optional[InputProvider] = None) -> None:
+    def __init__(self, provider: InputProvider | None = None) -> None:
         """Initialize the InputManager with a default state and provider.
 
         Parameters

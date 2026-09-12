@@ -35,6 +35,7 @@ class InputState:
     special_attack_held : bool
         Whether the special attack combination is currently held.
     """
+
     move_axis: float = 0.0
     block_held: bool = False
     jump_held: bool = False

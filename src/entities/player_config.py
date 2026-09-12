@@ -17,7 +17,7 @@ def _default_attacks() -> dict[str, AttackDefinition]:
 @dataclass(frozen=True)
 class PlayerConfig:
     """Reusable data needed to create and configure the player entity.
-    
+
     Attributes
     ----------
     size : tuple[float, float]
@@ -85,6 +85,7 @@ class PlayerConfig:
     faction : str
         Faction identifier for combat targeting.
     """
+
     size: tuple[float, float] = (48.0, 56.0)
     color: tuple[int, int, int] = Colors.green
     health: float = 100.0
@@ -102,7 +103,7 @@ class PlayerConfig:
     wall_jump_min_lock: float = 0.08
     wall_slide_speed: float = Physics.WALL_SLIDE_SPEED
     max_midair_jumps: int = 1
-    max_wall_jumps: int | float = float('inf')
+    max_wall_jumps: int | float = float("inf")
     coyote_duration: float = Physics.COYOTE_DURATION
     jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
     max_block_stamina: float = Physics.MAX_BLOCK_STAMINA

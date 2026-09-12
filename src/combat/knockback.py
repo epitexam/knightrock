@@ -38,6 +38,7 @@ class KnockbackConfig:
     >>> KnockbackConfig(power=(0, -800), mode="fixed")
     KnockbackConfig(power=(0.0, -800.0), mode='fixed')
     """
+
     power: tuple[float, float] = (250.0, -150.0)
     mode: Literal["from_attacker", "fixed"] = "from_attacker"
 

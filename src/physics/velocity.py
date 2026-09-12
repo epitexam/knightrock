@@ -1,12 +1,12 @@
 import math
-import pygame
+
 
 def apply_velocity_friction(entity, friction: float, delta_time: float) -> None:
     """Apply framerate-independent friction to an entity's horizontal velocity."""
     if abs(entity.velocity.x) < 0.01:
         entity.velocity.x = 0.0
         return
-        
+
     alpha = 1.0 - math.exp(-friction * delta_time)
     entity.velocity.x += (0 - entity.velocity.x) * alpha
 

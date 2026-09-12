@@ -38,6 +38,7 @@ class PhaseState(Enum):
         Cool-down frames after the hitbox deactivates, before returning
         to IDLE or advancing to the next phase.
     """
+
     IDLE = "idle"
     STARTUP = "startup"
     ACTIVE = "active"
@@ -76,6 +77,7 @@ class HitProperties:
         If True, instantly kills a target whose HP is below 20%.
         Use sparingly — best on slow, high-risk moves.
     """
+
     damage: float
     knockback: KnockbackConfig = field(default_factory=KnockbackConfig)
     damage_type: DamageType = DamageType.SLASH
@@ -141,6 +143,7 @@ class PhaseDefinition:
     total_frames : int
         Total number of frames in this phase (startup + active + recovery).
     """
+
     startup_frames: int
     active_frames: int
     recovery_frames: int
@@ -210,6 +213,7 @@ class AttackDefinition:
     total_frames : int
         Total frame count across all phases.
     """
+
     phases: tuple[PhaseDefinition, ...]
     cooldown: float
     lock_direction: bool = False

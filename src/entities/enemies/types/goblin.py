@@ -1,5 +1,5 @@
-from src.entities.enemies.schema import EnemyConfig
 from src.combat.attack_data import GOBLIN_ATTACKS
+from src.entities.enemies.schema import EnemyConfig
 
 GOBLIN_CONFIG = EnemyConfig(
     size=(36.0, 48.0),

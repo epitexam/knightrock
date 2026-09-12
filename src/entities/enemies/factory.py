@@ -1,12 +1,10 @@
 from collections.abc import Sequence
-from typing import Any
 
 from pygame.math import Vector2
 from pygame.sprite import Group
 
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy, PlayerReference
-from src.entities.enemies.schema import EnemyConfig
 
 
 def is_enemy_type(name: str) -> bool:

@@ -1,10 +1,12 @@
-import pygame
 from typing import Any
+
+import pygame
+
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.player_ui import PlayerUI
+from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 from src.ui.world_ui import WorldUI
-from src.ui.styles import TEXT_MUTED, TEXT_WARN, TEXT_CRIT, TEXT_OK
 
 
 class UIManager:
@@ -22,8 +24,13 @@ class UIManager:
         return self.player_ui.draw_stats_panel(x, y, player)
 
     def draw_performance_panel(
-        self, fps: float, sprite_count: int, combat_count: int,
-        entity_count: int, collision_count: int, hit_stop: float,
+        self,
+        fps: float,
+        sprite_count: int,
+        combat_count: int,
+        entity_count: int,
+        collision_count: int,
+        hit_stop: float,
         spawn_cooldown: float,
     ) -> None:
         fps_color = TEXT_OK if fps >= 55 else TEXT_WARN if fps >= 30 else TEXT_CRIT
@@ -41,7 +48,8 @@ class UIManager:
         panel_x = self.renderer.display_surface.get_width() - panel_w - 12
 
         self.renderer.draw_panel(
-            panel_x, 12, lines, title="PERFORMANCE", line_colors={0: fps_color})
+            panel_x, 12, lines, title="PERFORMANCE", line_colors={0: fps_color}
+        )
 
     def draw_debug_overlays(self, all_sprites: pygame.sprite.Group, camera: Camera) -> None:
         self.world_ui.draw_debug_overlays(all_sprites, camera)

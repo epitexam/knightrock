@@ -38,8 +38,7 @@ def test_move_entity_queries_nearby_sprites_once(monkeypatch) -> None:
         query_count["value"] += 1
         return []
 
-    monkeypatch.setattr(
-        "src.physics.movement.get_nearby_sprites", counting_get_nearby)
+    monkeypatch.setattr("src.physics.movement.get_nearby_sprites", counting_get_nearby)
 
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]
 

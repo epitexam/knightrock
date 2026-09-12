@@ -1,5 +1,5 @@
-from src.entities.enemies.schema import EnemyConfig
 from src.combat.attack_data import SLIME_ATTACKS
+from src.entities.enemies.schema import EnemyConfig
 
 SLIME_CONFIG = EnemyConfig(
     size=(32.0, 32.0),

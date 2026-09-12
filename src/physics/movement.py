@@ -4,7 +4,8 @@ from typing import Protocol, runtime_checkable
 
 import pygame
 from pygame.math import Vector2
-from src.core.settings import Collision, Input, Locomotion, PlatformRide, Separation, Simulation
+
+from src.core.settings import Input, Locomotion, PlatformRide, Separation, Simulation
 from src.physics.collisions import (
     CollisionSprite,
     get_nearby_sprites,
@@ -150,17 +151,14 @@ class PlatformRider(Protocol):
     def sync_rects(self) -> None: ...
 
 
-def apply_horizontal_movement(
-    entity: HorizontalMovementEntity, delta_time: float
-) -> None:
+def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: float) -> None:
     """Apply horizontal movement with acceleration and damping."""
     if isinstance(entity, WallJumpLock) and entity.wall_jump_lock_timer > 0:
         elapsed = entity.wall_jump_lock_duration - entity.wall_jump_lock_timer
         entity.wall_jump_lock_timer -= delta_time
 
-        opposing = (
-            (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0)
-            or (entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0)
+        opposing = (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0) or (
+            entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0
         )
 
         if elapsed >= entity.wall_jump_min_lock and opposing:
@@ -170,9 +168,7 @@ def apply_horizontal_movement(
             entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
             return
 
-    target_speed = (
-        entity.move_axis * entity.speed * entity.combat.movement_multiplier
-    )
+    target_speed = entity.move_axis * entity.speed * entity.combat.movement_multiplier
 
     if target_speed == 0 and abs(entity.velocity.x) < Locomotion.STOP_SPEED_PX_S:
         entity.velocity.x = 0.0
@@ -180,8 +176,7 @@ def apply_horizontal_movement(
 
     control = entity.floor_control if entity.on_surface["floor"] else entity.air_control
     alpha = 1.0 - math.exp(-control * delta_time)
-    entity.velocity.x = entity.velocity.x + \
-        (target_speed - entity.velocity.x) * alpha
+    entity.velocity.x = entity.velocity.x + (target_speed - entity.velocity.x) * alpha
 
     if abs(entity.velocity.x) < VELOCITY_EPSILON:
         entity.velocity.x = 0.0
@@ -196,9 +191,7 @@ def resolve_jump(entity: JumpEntity) -> None:
         entity.velocity.y = -entity.jump_height
         entity.jump_buffer_timer = 0.0
         entity.coyote_timer = 0.0
-    elif (
-        entity.on_surface["left"] or entity.on_surface["right"]
-    ) and entity.wall_jumps_left > 0:
+    elif (entity.on_surface["left"] or entity.on_surface["right"]) and entity.wall_jumps_left > 0:
         entity.velocity.y = -entity.wall_jump_height
         push = entity.speed * entity.wall_jump_push_multiplier
         entity.velocity.x = push if entity.on_surface["left"] else -push
@@ -211,17 +204,15 @@ def resolve_jump(entity: JumpEntity) -> None:
         entity.jump_buffer_timer = 0.0
 
 
-def move_entity(
-    entity: MovableEntity, delta_time: float, apply_gravity: bool = True
-) -> None:
+def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = True) -> None:
     """Move an entity according to its velocity and the environment.
 
     Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
     the original O(n) search if spatial_hash is not available.
     """
     # Use spatial hash if available, otherwise fall back to collision_sprites
-    spatial_hash = getattr(entity, 'spatial_hash', None)
-    collision_sprites = getattr(entity, 'collision_sprites', None)
+    spatial_hash = getattr(entity, "spatial_hash", None)
+    collision_sprites = getattr(entity, "collision_sprites", None)
     if spatial_hash is not None:
         nearby_sprites = get_nearby_sprites(entity, spatial_hash=spatial_hash)
     else:

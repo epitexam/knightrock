@@ -3,7 +3,6 @@ Manages level loading and caching with automatic progression.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from pytmx.util_pygame import load_pygame
 
@@ -56,7 +55,7 @@ class LevelManager:
             self._cache[level_id] = LevelData.from_tmx(tmx_map)
         return self._cache[level_id]
 
-    def next_id(self, level_id: int) -> Optional[int]:
+    def next_id(self, level_id: int) -> int | None:
         """
         Return the next registered level ID in ascending order.
 

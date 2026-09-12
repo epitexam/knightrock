@@ -70,9 +70,11 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level.update(0.016)
 
     level.debug_controller.update.assert_called_once_with(  # type: ignore[attr-defined]
-        0.016, player)
+        0.016, player
+    )
     level.camera.follow.assert_called_once_with(  # type: ignore[attr-defined]
-        player.hitbox, 0.016)
+        player.hitbox, 0.016
+    )
     groups.moving_platforms.update.assert_not_called()
     groups.hazard_sprites.update.assert_not_called()
     groups.entity_sprites.update.assert_not_called()
@@ -121,13 +123,9 @@ def test_wall_jump_uses_entity_configuration() -> None:
         (0.0, 3.4),
     ],
 )
-def test_block_exit_uses_exposed_cooldown_configuration(
-    stamina: float, expected: float
-) -> None:
+def test_block_exit_uses_exposed_cooldown_configuration(stamina: float, expected: float) -> None:
     entity = SimpleNamespace(
-        block=BlockController(
-            PlayerConfig(block_cooldown_normal=0.9, block_cooldown_broken=3.4)
-        ),
+        block=BlockController(PlayerConfig(block_cooldown_normal=0.9, block_cooldown_broken=3.4)),
         hitbox=pygame.FRect(0, 0, 48, 40),
         handle_collisions=Mock(),
         sync_rects=Mock(),

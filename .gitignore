@@ -34,3 +34,6 @@ htmlcov/
 
 # MyPy cache
 .mypy_cache/
+
+# Assets 
+assets/

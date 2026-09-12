@@ -4,14 +4,14 @@ Level class orchestrating the game world, entities, and simulation loop.
 
 import pygame
 
-from src.core.level.world_builder import WorldBuilder
-from src.core.gameplay.gameplay_loop import GameplayLoop
-from src.core.rendering.renderer import Renderer
 from src.core.gameplay.debug_controller import DebugController
-from src.core.settings import Display, Debug, Respawn
-from src.core.rendering.camera import Camera
-from src.core.sprite_groups import SpriteGroups
+from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.level.level_data import LevelData
+from src.core.level.world_builder import WorldBuilder
+from src.core.rendering.camera import Camera
+from src.core.rendering.renderer import Renderer
+from src.core.settings import Debug, Display, Respawn
+from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.contact_damage import ContactDamageSystem
 from src.physics.hazard_damage import HazardDamageSystem
@@ -49,15 +49,13 @@ class Level:
         self.groups = SpriteGroups()
 
         self.camera = Camera(Display.WIDTH, Display.HEIGHT)
-        self.camera.set_world_size(
-            level_data.pixel_width, level_data.pixel_height)
+        self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         self.exit_reached = False
         self.respawn_timer = 0.0
 
         self.gameplay_loop = GameplayLoop()
-        self.renderer = Renderer(self.display_surface,
-                                 self.camera, level_data.config)
+        self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
         # Spatial hash for O(1) collision lookups (PERF-01/02): created before
         # the debug controller so runtime-spawned enemies join the grid too.
         self.spatial_hash = SpatialHash(cell_size=128)
@@ -66,8 +64,7 @@ class Level:
         self.hazard_damage_system = HazardDamageSystem()
 
         self.world_builder = WorldBuilder(level_data)
-        self.player: Player = self.world_builder.build(
-            self.groups, self.input_manager)
+        self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed
@@ -112,9 +109,9 @@ class Level:
             )
             self.contact_damage_system.process(self.groups.entity_sprites)
             self.hazard_damage_system.process(
-                self.groups.entity_sprites, self.groups.hazard_sprites)
-            self.gameplay_loop.remove_dead_entities(
-                self.groups.entity_sprites, self.player)
+                self.groups.entity_sprites, self.groups.hazard_sprites
+            )
+            self.gameplay_loop.remove_dead_entities(self.groups.entity_sprites, self.player)
 
             if self.player.is_dead:
                 self.respawn_timer += effective_delta
@@ -131,11 +128,8 @@ class Level:
             ):
                 self.player.die()
 
-            if (
-                not self.player.is_dead
-                and pygame.sprite.spritecollide(
-                    self.player, self.groups.exit_sprites, False
-                )
+            if not self.player.is_dead and pygame.sprite.spritecollide(
+                self.player, self.groups.exit_sprites, False
             ):
                 self.exit_reached = True
 

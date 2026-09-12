@@ -36,9 +36,7 @@ class HitboxManager:
         """Remove offensive geometry immediately."""
         self.rect = None
 
-    def _position_rect(
-        self, phase: PhaseDefinition, facing_right: bool
-    ) -> None:
+    def _position_rect(self, phase: PhaseDefinition, facing_right: bool) -> None:
         """Create or reposition the rectangle without per-tick allocation."""
         if self.rect is None:
             self.rect = pygame.FRect((0, 0), phase.hitbox_size)

@@ -109,10 +109,7 @@ class BlockController:
 
     def can_use(self) -> bool:
         """Whether blocking may be entered (off cooldown, enough stamina)."""
-        return (
-            self.block_cooldown_timer <= 0
-            and self.block_stamina > BLOCK_MIN_STAMINA
-        )
+        return self.block_cooldown_timer <= 0 and self.block_stamina > BLOCK_MIN_STAMINA
 
     def update(self, delta_time: float, is_blocking: bool) -> None:
         """Decay the cooldown and regenerate stamina while not blocking."""

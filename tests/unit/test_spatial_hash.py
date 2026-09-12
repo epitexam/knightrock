@@ -108,9 +108,7 @@ def test_sprite_without_box_is_skipped():
     grid.add(cast(SpatialHashMember, Naked()))
     assert grid.get_nearby(pygame.FRect(0, 0, 64, 64)) == []
 
-    naked_and_box = cast(
-        list[SpatialHashMember], [Naked(), BoxSprite(pygame.FRect(0, 0, 10, 10))]
-    )
+    naked_and_box = cast(list[SpatialHashMember], [Naked(), BoxSprite(pygame.FRect(0, 0, 10, 10))])
     grid.add_all(naked_and_box)
     assert len(grid.get_nearby(pygame.FRect(0, 0, 64, 64))) == 1
 
