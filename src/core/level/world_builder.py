@@ -8,7 +8,7 @@ import logging
 import pygame
 
 from src.core.colors import Colors
-from src.core.hazards import OrbitingHazard, SpanHazard
+from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
 from src.core.settings import World
@@ -106,7 +106,13 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     speed = float(obj.properties.get("speed", 100))
     flip = bool(obj.properties.get("flip", False))
     damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
-    hazard = SpanHazard((obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage)
+    try:
+        animator = build_hazard_animator({"spin": "assets/graphics/enemies/saw/animation"}, "spin")
+    except FileNotFoundError:
+        animator = None
+    hazard = SpanHazard(
+        (obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage, animator=animator
+    )
     groups.hazard_sprites.add(hazard)
 
 
@@ -140,7 +146,15 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
         surf.fill(Colors.red)
     damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
-    hazard = SpanHazard((obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage)
+    try:
+        animator = build_hazard_animator(
+            {"spikes": "assets/graphics/enemies/floor_spikes"}, "spikes"
+        )
+    except FileNotFoundError:
+        animator = None
+    hazard = SpanHazard(
+        (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
+    )
     groups.hazard_sprites.add(hazard)
 
 

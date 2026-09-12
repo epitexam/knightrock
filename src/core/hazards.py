@@ -1,9 +1,41 @@
 import math
+from collections.abc import Mapping
+from typing import Protocol
 
 import pygame
 
+from src.core.animation.animator import AnimationSpec, Animator
+from src.core.asset_library import shared_library
 from src.core.sprites import Sprite
 from src.physics.hazard_damage import HazardDamageSystem
+
+
+class AnimatedSprite(Protocol):
+    """Minimal surface a sprite must expose to be animation-tickable."""
+
+    animator: Animator | None
+    rect: pygame.FRect
+    image: pygame.Surface
+
+
+def build_hazard_animator(animations: Mapping[str, str], default: str) -> Animator:
+    """Create an Animator for hazard sprite sheets (Phase 2 #1)."""
+    specs = {
+        name: AnimationSpec(name, directory, frame_duration=0.12, loop=True)
+        for name, directory in animations.items()
+    }
+    return Animator(shared_library(), specs, default=default)
+
+
+def _tick_animation(sprite: AnimatedSprite, delta_time: float, facing_right: bool = True) -> None:
+    """Advance a sprite's optional animator and publish its surface."""
+    animator = sprite.animator
+    if animator is None:
+        return
+    animator.update(delta_time)
+    surface = animator.surface((round(sprite.rect.width), round(sprite.rect.height)), facing_right)
+    if surface is not None:
+        sprite.image = surface
 
 
 class OrbitingHazard(Sprite):
@@ -17,8 +49,10 @@ class OrbitingHazard(Sprite):
         speed,
         groups=None,
         damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
+        animator: Animator | None = None,
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
+        self.animator = animator
         self.center = pygame.math.Vector2(pos[0], pos[1])
         self.radius = radius
         self.start_angle = math.radians(start_angle)
@@ -49,13 +83,22 @@ class OrbitingHazard(Sprite):
             elif self.angle < low:
                 self.angle, self.direction = low, 1
         self._place()
+        _tick_animation(self, delta_time)
 
 
 class SpanHazard(Sprite):
     def __init__(
-        self, pos, surf, speed, flip, groups=None, damage: float = HazardDamageSystem.DEFAULT_DAMAGE
+        self,
+        pos,
+        surf,
+        speed,
+        flip,
+        groups=None,
+        damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
+        animator: Animator | None = None,
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
+        self.animator = animator
         start = pygame.math.Vector2(self.rect.topleft)
         if self.rect.width >= self.rect.height:
             end = start + pygame.math.Vector2(self.rect.width, 0)
@@ -80,3 +123,4 @@ class SpanHazard(Sprite):
         elif self.progress <= 0.0:
             self.progress, self.direction = 0.0, 1
         self.rect.topleft = self.point_a.lerp(self.point_b, self.progress)
+        _tick_animation(self, delta_time)

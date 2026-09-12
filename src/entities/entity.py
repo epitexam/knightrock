@@ -14,6 +14,7 @@ from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
+from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
 from src.entities.vitals import Vitals
@@ -209,6 +210,9 @@ class Entity(Sprite):
 
         self.state_machine: StateMachine | NullStateMachine = NullStateMachine()
         self.facing_right: bool = True
+        # Optional sprite animation (Phase 2 #1): subclasses attach an
+        # Animator; entities without one keep their flat colored surface.
+        self.animator: Animator | None = None
 
     def _setup_state_machine(self) -> None:
         """Initialize the state machine. Override in subclasses for specific states."""
@@ -606,6 +610,35 @@ class Entity(Sprite):
         """Hook called at the beginning of the update loop, before combat and physics."""
         pass
 
+    def _animation_name(self) -> str | None:
+        """Animation key matching the current state, or None to keep it.
+
+        Override in subclasses that attach an :class:`Animator`; returning
+        None lets the current animation keep playing (e.g. states without
+        dedicated art reuse the last shown animation).
+        """
+        return None
+
+    def _update_animator(self, delta_time: float) -> None:
+        """Tick the optional animator and publish its surface as ``image``.
+
+        The display surface is scaled to the sprite rect so the physics
+        rect stays authoritative (audit F2.2); entities without an
+        animator keep their flat colored surface.
+        """
+        if self.animator is None:
+            return
+        name = self._animation_name()
+        if name is not None:
+            self.animator.play(name)
+        self.animator.update(delta_time)
+        surface = self.animator.surface(
+            (round(self.rect.width), round(self.rect.height)),
+            self.facing_right,
+        )
+        if surface is not None:
+            self.image = surface
+
     def _update_state_machine(self, delta_time: float) -> None:
         """Update the state machine. Can be overridden to disable AI dynamically."""
         self.state_machine.update(delta_time)
@@ -634,3 +667,4 @@ class Entity(Sprite):
         self.move(delta_time, apply_gravity=True)
         self.combat.sync_attack_box()
         self._post_update(delta_time)
+        self._update_animator(delta_time)

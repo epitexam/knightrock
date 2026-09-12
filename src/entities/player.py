@@ -11,8 +11,11 @@ from pygame.sprite import Group
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
+from src.core.animation.animator import AnimationSpec, Animator
+from src.core.asset_library import shared_library
 from src.core.colors import Colors
 from src.core.input.input_manager import InputManager
+from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Input as InputSettings
 from src.core.settings import Physics
@@ -67,6 +70,43 @@ ATTACK_FORBIDDEN_STATES = {
     PlayerState.KNOCKBACK,
 }
 """Set of states where initiating an attack is forbidden."""
+
+PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
+    spec.name: spec
+    for spec in (
+        AnimationSpec(
+            "idle", "assets/graphics/player/idle", AnimationSettings.FRAME_DURATION * 1.2
+        ),
+        AnimationSpec("run", "assets/graphics/player/run", AnimationSettings.RUN_FRAME_DURATION),
+        AnimationSpec(
+            "jump", "assets/graphics/player/jump", AnimationSettings.FRAME_DURATION, loop=False
+        ),
+        AnimationSpec("fall", "assets/graphics/player/fall", AnimationSettings.FRAME_DURATION),
+        AnimationSpec("wall", "assets/graphics/player/wall", AnimationSettings.FRAME_DURATION),
+        AnimationSpec(
+            "attack",
+            "assets/graphics/player/attack",
+            AnimationSettings.ATTACK_FRAME_DURATION,
+            loop=False,
+        ),
+        AnimationSpec(
+            "air_attack",
+            "assets/graphics/player/air_attack",
+            AnimationSettings.ATTACK_FRAME_DURATION,
+            loop=False,
+        ),
+        AnimationSpec(
+            "hit", "assets/graphics/player/hit", AnimationSettings.HIT_FRAME_DURATION, loop=False
+        ),
+    )
+}
+"""Sprite-sheet animations shipped under ``assets/graphics/player/``.
+
+States without dedicated art (block, charge, dash, stagger) keep playing
+the previous animation: :meth:`Player._animation_name` returns None for
+them.  The animator is attached in ``Player.__init__`` so the hundred
+shipped artworks are actually rendered (audit F4.1, Phase 2 #1).
+"""
 
 
 DEFAULT_PLAYER_CONFIG = PlayerConfig(
@@ -212,6 +252,7 @@ class Player(Entity):
 
         self.input_manager = input_manager
 
+        self.animator = Animator(shared_library(), PLAYER_ANIMATIONS, default="idle")
         self._setup_state_machine()
 
     def _setup_state_machine(self) -> None:
@@ -554,6 +595,24 @@ class Player(Entity):
         self.jump.update(delta_time, self.on_surface["floor"])
         self.block.update(delta_time, is_blocking)
         self.dash.update(delta_time)
+
+    def _animation_name(self) -> str | None:
+        """Map the current player state to its sprite-sheet animation."""
+        state: str | None = self.state_machine.current_state_name
+        if state is None:
+            return None
+        if state == PlayerState.ATTACK:
+            return "air_attack" if not self.on_surface["floor"] else "attack"
+        if state in (PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER):
+            return "hit"
+        mapping: dict[str, str] = {
+            PlayerState.IDLE: "idle",
+            PlayerState.RUN: "run",
+            PlayerState.JUMP: "jump",
+            PlayerState.FALL: "fall",
+            PlayerState.WALL_SLIDE: "wall",
+        }
+        return mapping.get(state)
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""

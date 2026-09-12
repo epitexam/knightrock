@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.combat.frame_data import AttackDefinition
 
@@ -25,3 +25,7 @@ class EnemyConfig:
     pushable: bool = True
     super_armor: bool = False
     passive_friction: float = 10.0
+    # State name (lowercase EnemyState key) -> sprite-sheet directory of
+    # numbered PNG frames, e.g. {"idle": "assets/graphics/enemies/shell/idle"}.
+    # States without an entry keep the last shown animation (Phase 2 #1).
+    animations: Mapping[str, str] = field(default_factory=dict)

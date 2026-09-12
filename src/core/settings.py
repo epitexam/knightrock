@@ -174,3 +174,13 @@ class StateMachineConfig:
     """State machine configuration constants."""
 
     HISTORY_MAXLEN = 16  # Maximum number of states to keep in history
+
+
+class Animation:
+    """Sprite animation tuning (Phase 2 #1: AssetLibrary + Animator)."""
+
+    FRAME_DURATION = 0.10
+    RUN_FRAME_DURATION = 0.08
+    ATTACK_FRAME_DURATION = 0.07
+    HIT_FRAME_DURATION = 0.08
+    HAZARD_FRAME_DURATION = 0.12

@@ -8,6 +8,9 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group
 
+from src.core.animation.animator import AnimationSpec, Animator
+from src.core.asset_library import shared_library
+from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.entity import Entity
@@ -153,6 +156,13 @@ class Enemy(Entity):
         self.pushable = config.pushable
         self.super_armor = config.super_armor
 
+        if config.animations:
+            specs = {
+                name: AnimationSpec(name, directory, AnimationSettings.FRAME_DURATION, loop=True)
+                for name, directory in config.animations.items()
+            }
+            self.animator = Animator(shared_library(), specs, default=next(iter(specs)))
+
         if self.player is not None:
             self.facing_right = self.player.hitbox.centerx > self.hitbox.centerx
         else:
@@ -184,6 +194,13 @@ class Enemy(Entity):
         if self.player is None or self.is_dead:
             return
         self.face_towards(self.player.hitbox.centerx)
+
+    def _animation_name(self) -> str | None:
+        """Map the current EnemyState to the config-provided animation."""
+        if not self.config.animations:
+            return None
+        name = str(self.state_machine.current_state_name)
+        return name if name in self.config.animations else None
 
     def _pre_update(self, delta_time: float) -> None:
         """Update facing direction before combat updates."""

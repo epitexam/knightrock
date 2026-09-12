@@ -83,3 +83,57 @@ def test_missing_file_raises_error(tmp_path: Path) -> None:
 
     with pytest.raises(OSError):
         library.image(tmp_path / "missing.png")
+
+
+@pytest.fixture()
+def frame_directory(tmp_path: Path) -> Path:
+    """Create a directory of numbered PNG frames (2.png before 10.png)."""
+    directory = tmp_path / "anim"
+    directory.mkdir()
+    for index in (0, 2, 10):
+        frame = pygame.Surface((6, 6), pygame.SRCALPHA)
+        frame.fill((index * 10, 0, 0, 255))
+        pygame.image.save(frame, directory / f"{index}.png")
+    return directory
+
+
+def test_frames_load_in_numeric_order(frame_directory: Path) -> None:
+    library = AssetLibrary()
+    frames = library.frames(frame_directory)
+
+    # Numbered frames must come back 0, 2, 10 — not the lexicographic 0, 10, 2.
+    assert len(frames) == 3
+    assert frames[0] is library.image(frame_directory / "0.png")
+    assert frames[1] is library.image(frame_directory / "2.png")
+    assert frames[2] is library.image(frame_directory / "10.png")
+
+
+def test_frames_are_cached(frame_directory: Path) -> None:
+    library = AssetLibrary()
+
+    assert library.frames(frame_directory) is library.frames(frame_directory)
+
+
+def test_frames_missing_directory_raises(tmp_path: Path) -> None:
+    library = AssetLibrary()
+
+    with pytest.raises(FileNotFoundError):
+        library.frames(tmp_path / "nope")
+
+
+def test_frames_directory_without_png_raises(tmp_path: Path) -> None:
+    directory = tmp_path / "empty"
+    directory.mkdir()
+    library = AssetLibrary()
+
+    with pytest.raises(FileNotFoundError):
+        library.frames(directory)
+
+
+def test_shared_library_is_lazy_singleton() -> None:
+    import src.core.asset_library as module
+
+    first = module.shared_library()
+    second = module.shared_library()
+
+    assert first is second
