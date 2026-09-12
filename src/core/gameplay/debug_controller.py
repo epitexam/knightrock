@@ -1,5 +1,6 @@
 import pygame
 
+from src.core.settings import Respawn
 from src.entities.enemies.factory import create_enemy
 from src.core.sprite_groups import SpriteGroups
 from src.physics.spatial_hash import SpatialHash
@@ -19,7 +20,8 @@ class DebugController:
         self.spawn_cooldowns = {enemy_name: 0.0 for enemy_name in DEBUG_SPAWNS.values()}
 
     @property
-    def spawn_cooldown(self):
+    def spawn_cooldown_max(self) -> float:
+        """Longest remaining debug-spawn cooldown (audit F5.2)."""
         return max(self.spawn_cooldowns.values())
 
     def update(self, delta_time, player):
@@ -47,4 +49,4 @@ class DebugController:
         # Runtime-spawned enemies must join the collision grid too (PERF-01).
         if self.spatial_hash is not None:
             enemy.spatial_hash = self.spatial_hash
-        self.spawn_cooldowns[enemy_name] = 0.5
+        self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

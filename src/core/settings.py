@@ -9,7 +9,10 @@ class Display:
     WIDTH = 1440
     HEIGHT = 900
     SIZE = (WIDTH, HEIGHT)
-    FPS = 180
+    # Simulation runs at 60 Hz (Simulation.TICK_RATE); rendering at 120 FPS
+    # keeps motion smooth without redrawing the same state 2 frames out of 3
+    # as the previous 180 FPS setting did (audit F1.4/F6.1).
+    FPS = 120
     TITLE = "Knightrock"
 
 
@@ -106,9 +109,58 @@ class Simulation:
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION
+    # Netcode-ready rollback tuning (audit F2.5): kept as documented
+    # constants until the rollback decision (branch or remove) is taken.
     MAX_PREDICTION_FRAMES = 8
     ROLLBACK_FRAMES = 4
     MAX_FRAME_TIME = 0.1  # Maximum frame time to prevent spiral of death
+    MAX_SUBSTEPS_PER_AXIS = 8  # Guard: dash spikes must not spiral (F3.4)
+
+
+class Input:
+    """Input thresholds and buffering windows."""
+
+    AXIS_DEADZONE = 0.1
+    ATTACK_BUFFER_WINDOW = 0.2
+
+
+class Collision:
+    """Collision probes and contact tolerances (F3.1)."""
+
+    CONTACT_SKIN_PX = 4.0
+    PROBE_THICKNESS_PX = 2.0
+    PROBE_WIDTH_PX = 2.0
+    WALL_PROBE_OFFSET_PX = 2.0
+
+
+class PlatformRide:
+    """Moving-platform mount tolerances (F3.1)."""
+
+    SNAP_EPSILON_TOP_PX = 4.0
+    SNAP_EPSILON_BOTTOM_PX = 2.0
+
+
+class Locomotion:
+    """Movement damping and stop thresholds."""
+
+    TURN_DEADZONE = 0.1
+    STOP_SPEED_PX_S = 0.5
+    RUN_STOP_SPEED_PX_S = 0.1
+    WALL_JUMP_DAMPING = 10.0
+    VELOCITY_EPSILON = 0.01
+
+
+class AI:
+    """Enemy perception thresholds."""
+
+    CHASE_STOP_DISTANCE_PX = 10.0
+
+
+class Respawn:
+    """Player respawn and debug spawn tuning."""
+
+    DELAY_S = 2.0
+    DEBUG_SPAWN_COOLDOWN_S = 0.5
 
 
 class StateMachineConfig:

@@ -1,6 +1,6 @@
 from src.entities.enemies.schema import EnemyConfig
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, HitProperties
-from src.combat.knockback import KnockbackConfig
+from src.combat.knockback import NULL_KNOCKBACK
 from src.combat.damage_types import DamageType
 
 DUMMY_ATTACKS = {
@@ -14,7 +14,7 @@ DUMMY_ATTACKS = {
                 hitbox_offset=(0.0, 0.0),
                 hit=HitProperties(
                     damage=0,
-                    knockback=KnockbackConfig(power=(0.0, 0.0)),
+                    knockback=NULL_KNOCKBACK,
                     damage_type=DamageType.BLUNT,
                     stagger=0.0,
                 ),

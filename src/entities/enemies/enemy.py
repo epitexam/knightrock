@@ -18,6 +18,7 @@ from src.states.enemy_states import (
     EnemyKnockbackState,
     EnemyPatrolState,
     EnemyStaggerState,
+    EnemyState,
 )
 from src.entities.entity import Entity
 from src.states.state_machine import StateMachine
@@ -164,15 +165,15 @@ class Enemy(Entity):
     def _setup_state_machine(self) -> None:
         """Create the shared melee enemy state machine."""
         self.state_machine = StateMachine(self)
-        self.state_machine.add_state("idle", EnemyIdleState(self))
-        self.state_machine.add_state("patrol", EnemyPatrolState(self))
-        self.state_machine.add_state("chase", EnemyChaseState(self))
-        self.state_machine.add_state("attack", EnemyAttackState(self))
-        self.state_machine.add_state("charge", EnemyChargeState(self))
-        self.state_machine.add_state("hurt", EnemyHurtState(self))
-        self.state_machine.add_state("knockback", EnemyKnockbackState(self))
-        self.state_machine.add_state("stagger", EnemyStaggerState(self))
-        self.state_machine.set_initial_state("idle")
+        self.state_machine.add_state(EnemyState.IDLE, EnemyIdleState(self))
+        self.state_machine.add_state(EnemyState.PATROL, EnemyPatrolState(self))
+        self.state_machine.add_state(EnemyState.CHASE, EnemyChaseState(self))
+        self.state_machine.add_state(EnemyState.ATTACK, EnemyAttackState(self))
+        self.state_machine.add_state(EnemyState.CHARGE, EnemyChargeState(self))
+        self.state_machine.add_state(EnemyState.HURT, EnemyHurtState(self))
+        self.state_machine.add_state(EnemyState.KNOCKBACK, EnemyKnockbackState(self))
+        self.state_machine.add_state(EnemyState.STAGGER, EnemyStaggerState(self))
+        self.state_machine.set_initial_state(EnemyState.IDLE)
         self._setup_interrupts()
 
     def _setup_interrupts(self) -> None:
@@ -189,7 +190,13 @@ class Enemy(Entity):
         """Update facing direction before combat updates."""
         if self.config.has_ai and self.player is not None:
             current = self.state_machine.current_state_name
-            if current not in ("attack", "hurt", "knockback", "stagger"):
+            busy = (
+                EnemyState.ATTACK,
+                EnemyState.HURT,
+                EnemyState.KNOCKBACK,
+                EnemyState.STAGGER,
+            )
+            if current not in busy:
                 self.face_player()
 
     def _update_state_machine(self, delta_time: float) -> None:

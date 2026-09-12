@@ -9,11 +9,12 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.knockback import KnockbackConfig
+from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.combat.combatant_protocol import DamageResult
 from src.core.colors import Colors
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Input as InputSettings
 from src.core.settings import Physics
 from src.entities.entity import Entity, compute_knockback_direction
 from src.entities.player_config import PlayerConfig
@@ -539,7 +540,9 @@ class Player(Entity):
             attack_name = "light_attack" if self.on_surface["floor"] else "air_attack"
             if not self.combat.start_attack(attack_name):
                 self._buffered_attack_name = attack_name
-                self.state_machine.buffer_input("attack", window=0.2)
+                self.state_machine.buffer_input(
+                    "attack", window=InputSettings.ATTACK_BUFFER_WINDOW
+                )
         elif im.attack2_just_pressed:
             if self.combat.start_charge("heavy_attack"):
                 self.state_machine.change_state(PlayerState.CHARGE, force=True)
@@ -613,11 +616,7 @@ class Player(Entity):
         DamageResult
             A dataclass detailing the outcome of the blocked damage.
         """
-        _kb = (
-            knockback
-            if knockback is not None
-            else KnockbackConfig(power=(0.0, 0.0))
-        )
+        _kb = knockback if knockback is not None else NULL_KNOCKBACK
         self.block.consume(amount * CombatSettings.BLOCK_STAMINA_COST_RATIO)
 
         direction = compute_knockback_direction(

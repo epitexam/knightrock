@@ -41,7 +41,7 @@ class Renderer:
         self.ui_manager.draw_health_bars(entities, self.camera)
 
     def draw_debug_panels(self, player, fps, sprite_count, combat_count,
-                          entity_count, collision_count, hit_stop, spawn_cd):
+                          entity_count, collision_count, hit_stop, spawn_cooldown):
         x, y = 10, 10
         y += self.ui_manager.draw_state_panel(x, y, player) + 8
         self.ui_manager.draw_stats_panel(x, y, player)
@@ -52,5 +52,5 @@ class Renderer:
             entity_count=entity_count,
             collision_count=collision_count,
             hit_stop=hit_stop,
-            spawn_cd=spawn_cd,
+            spawn_cooldown=spawn_cooldown,
         )

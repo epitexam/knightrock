@@ -40,3 +40,8 @@ class KnockbackConfig:
     """
     power: tuple[float, float] = (250.0, -150.0)
     mode: Literal["from_attacker", "fixed"] = "from_attacker"
+
+
+#: Shared null impulse reused instead of allocating ``(0, 0)`` per hit
+#: (audit F3.7). Frozen dataclass: safe to share between systems.
+NULL_KNOCKBACK: KnockbackConfig = KnockbackConfig(power=(0.0, 0.0))

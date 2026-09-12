@@ -1,5 +1,5 @@
 import pygame
-from src.combat.knockback import KnockbackConfig
+from src.combat.knockback import NULL_KNOCKBACK
 from src.core.settings import Combat as CombatSettings
 
 
@@ -43,12 +43,10 @@ class ContactDamageSystem:
 
     def _apply_contact_damage(self, receiver, source):
         """Internal helper for apply contact damage."""
-        null_knockback = KnockbackConfig(power=(0.0, 0.0))
-
         if not receiver.combat.is_hurt:
             receiver.receive_damage(
                 amount=CombatSettings.CONTACT_DAMAGE_AMOUNT,
                 source_center_x=source.hitbox.centerx,
-                knockback=null_knockback,
+                knockback=NULL_KNOCKBACK,
                 interrupt=False
             )

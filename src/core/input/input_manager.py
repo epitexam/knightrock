@@ -12,6 +12,7 @@ from typing import Optional
 
 from src.core.input.input_provider import InputProvider, NullInputProvider
 from src.core.input.input_state import InputState
+from src.core.settings import Input as InputSettings
 
 
 class InputManager:
@@ -72,12 +73,12 @@ class InputManager:
     @property
     def left_held(self) -> bool:
         """Return True if the movement axis is towards the left."""
-        return self._current_state.move_axis < -0.1
+        return self._current_state.move_axis < -InputSettings.AXIS_DEADZONE
 
     @property
     def right_held(self) -> bool:
         """Return True if the movement axis is towards the right."""
-        return self._current_state.move_axis > 0.1
+        return self._current_state.move_axis > InputSettings.AXIS_DEADZONE
 
     @property
     def block_held(self) -> bool:

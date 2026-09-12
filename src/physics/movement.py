@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 import pygame
 from pygame.math import Vector2
-from src.core.settings import Separation
+from src.core.settings import Collision, Input, Locomotion, PlatformRide, Separation, Simulation
 from src.physics.collisions import (
     CollisionSprite,
     get_nearby_sprites,
@@ -14,7 +14,7 @@ from src.physics.collisions import (
 from src.physics.gravity import apply_entity_gravity
 from src.physics.spatial_hash import SpatialHash
 
-VELOCITY_EPSILON = 0.01
+VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 
 
 class MovementCombat(Protocol):
@@ -159,14 +159,14 @@ def apply_horizontal_movement(
         entity.wall_jump_lock_timer -= delta_time
 
         opposing = (
-            (entity.move_axis > 0.1 and entity.velocity.x < 0)
-            or (entity.move_axis < -0.1 and entity.velocity.x > 0)
+            (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0)
+            or (entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0)
         )
 
         if elapsed >= entity.wall_jump_min_lock and opposing:
             entity.wall_jump_lock_timer = 0.0
         else:
-            damp_alpha = 1.0 - math.exp(-10.0 * delta_time)
+            damp_alpha = 1.0 - math.exp(-Locomotion.WALL_JUMP_DAMPING * delta_time)
             entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
             return
 
@@ -174,7 +174,7 @@ def apply_horizontal_movement(
         entity.move_axis * entity.speed * entity.combat.movement_multiplier
     )
 
-    if target_speed == 0 and abs(entity.velocity.x) < 0.5:
+    if target_speed == 0 and abs(entity.velocity.x) < Locomotion.STOP_SPEED_PX_S:
         entity.velocity.x = 0.0
         return
 
@@ -228,7 +228,10 @@ def move_entity(
         nearby_sprites = get_nearby_sprites(entity, collision_sprites=collision_sprites)
 
     move_x = entity.velocity.x * delta_time
-    steps_x = max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE))
+    steps_x = min(
+        Simulation.MAX_SUBSTEPS_PER_AXIS,
+        max(1, math.ceil(abs(move_x) / Separation.SUB_STEP_SIZE)),
+    )
     step_move_x = move_x / steps_x
 
     for _ in range(steps_x):
@@ -244,7 +247,10 @@ def move_entity(
         apply_entity_gravity(entity, delta_time)
 
     move_y = entity.velocity.y * delta_time
-    steps_y = max(1, math.ceil(abs(move_y) / Separation.SUB_STEP_SIZE))
+    steps_y = min(
+        Simulation.MAX_SUBSTEPS_PER_AXIS,
+        max(1, math.ceil(abs(move_y) / Separation.SUB_STEP_SIZE)),
+    )
     step_move_y = move_y / steps_y
 
     for _ in range(steps_y):
@@ -271,7 +277,11 @@ def apply_moving_platform(
 
         vertical_dist = entity.hitbox.bottom - p_old_box.top
 
-        if not (-2 <= vertical_dist <= 4):
+        if not (
+            -PlatformRide.SNAP_EPSILON_BOTTOM_PX
+            <= vertical_dist
+            <= PlatformRide.SNAP_EPSILON_TOP_PX
+        ):
             continue
 
         overlap = min(entity.hitbox.right, p_old_box.right) - max(

@@ -20,7 +20,7 @@ Example
 
 # ── Data Structures & Enums ───────────────────────────────────────────
 from src.combat.damage_types import DamageType
-from src.combat.knockback import KnockbackConfig
+from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.combat.frame_data import (
     FRAME_RATE,
     PhaseState,
@@ -47,6 +47,7 @@ __all__ = [
     # Data & Enums
     "DamageType",
     "KnockbackConfig",
+    "NULL_KNOCKBACK",
     "FRAME_RATE",
     "PhaseState",
     "HitProperties",

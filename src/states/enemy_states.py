@@ -1,12 +1,30 @@
 """State machine states for enemies (AI)."""
 
+from enum import Enum
 from typing import Optional, Any
+from src.core.settings import AI
 from src.states.state_machine import State
 from src.states.reaction_states import (
     HurtState,
     KnockbackState,
     StaggerState,
 )
+
+
+class EnemyState(str, Enum):
+    """Enemy state names: typed equivalent of the player PlayerState.
+
+    String-based for drop-in compatibility with StateMachine keys.
+    """
+
+    IDLE = "idle"
+    PATROL = "patrol"
+    CHASE = "chase"
+    ATTACK = "attack"
+    CHARGE = "charge"
+    HURT = "hurt"
+    KNOCKBACK = "knockback"
+    STAGGER = "stagger"
 
 
 class EnemyIdleState(State):
@@ -21,9 +39,9 @@ class EnemyIdleState(State):
         self.timer -= delta_time
         if self.timer <= 0:
             if self.entity.can_see_player():
-                self.entity.state_machine.change_state("chase")
+                self.entity.state_machine.change_state(EnemyState.CHASE)
             else:
-                self.entity.state_machine.change_state("patrol")
+                self.entity.state_machine.change_state(EnemyState.PATROL)
         return None
 
 
@@ -41,7 +59,7 @@ class EnemyPatrolState(State):
         self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.can_see_player():
-            self.entity.state_machine.change_state("chase")
+            self.entity.state_machine.change_state(EnemyState.CHASE)
             return None
 
         self.patrol_timer -= delta_time
@@ -66,12 +84,12 @@ class EnemyChaseState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the state, move towards the player, and check attack range."""
         if self.entity.player is None:
-            self.entity.state_machine.change_state("idle")
+            self.entity.state_machine.change_state(EnemyState.IDLE)
             return None
 
         player_center = self.entity.player.hitbox.centerx
         enemy_center = self.entity.hitbox.centerx
-        if abs(player_center - enemy_center) < 10:
+        if abs(player_center - enemy_center) < AI.CHASE_STOP_DISTANCE_PX:
             self.entity.move_axis = 0.0
         else:
             self.entity.move_axis = 1.0 if player_center > enemy_center else -1.0
@@ -80,9 +98,9 @@ class EnemyChaseState(State):
         self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.is_player_in_range():
-            self.entity.state_machine.change_state("attack")
+            self.entity.state_machine.change_state(EnemyState.ATTACK)
         elif not self.entity.can_see_player():
-            self.entity.state_machine.change_state("idle")
+            self.entity.state_machine.change_state(EnemyState.IDLE)
         return None
 
 
@@ -104,7 +122,7 @@ class EnemyAttackState(State):
     def update(self, delta_time: float) -> Optional[str]:
         """Update the state and return to idle when the attack finishes."""
         if not self.entity.combat.is_attacking:
-            self.entity.state_machine.change_state("idle")
+            self.entity.state_machine.change_state(EnemyState.IDLE)
         return None
 
     def exit(self, next_state: Optional[str] = None) -> None:
@@ -123,9 +141,9 @@ class EnemyChargeState(State):
         """Update the state and transition to attack when charge is released."""
         if not self.entity.combat.charging.is_charging:
             if self.entity.combat.is_attacking:
-                self.entity.state_machine.change_state("attack")
+                self.entity.state_machine.change_state(EnemyState.ATTACK)
             else:
-                self.entity.state_machine.change_state("idle")
+                self.entity.state_machine.change_state(EnemyState.IDLE)
         return None
 
 
@@ -137,7 +155,7 @@ class EnemyHurtState(HurtState):
     """
 
     def __init__(self, entity: Any):
-        super().__init__(entity, exit_resolver=lambda: "idle", tags=[])
+        super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
 class EnemyKnockbackState(KnockbackState):
@@ -152,11 +170,11 @@ class EnemyKnockbackState(KnockbackState):
 
     def _resolve_exit(self) -> str:
         """Recover through hurt if still hurt, otherwise to idle."""
-        return "hurt" if self.entity.combat.is_hurt else "idle"
+        return EnemyState.HURT if self.entity.combat.is_hurt else EnemyState.IDLE
 
 
 class EnemyStaggerState(StaggerState):
     """Stagger reaction: return to idle when the stagger timer clears."""
 
     def __init__(self, entity: Any):
-        super().__init__(entity, exit_resolver=lambda: "idle", tags=[])
+        super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])

@@ -8,7 +8,7 @@ from src.core.level.world_builder import WorldBuilder
 from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.rendering.renderer import Renderer
 from src.core.gameplay.debug_controller import DebugController
-from src.core.settings import Display, Debug
+from src.core.settings import Display, Debug, Respawn
 from src.core.rendering.camera import Camera
 from src.core.sprite_groups import SpriteGroups
 from src.core.level.level_data import LevelData
@@ -118,7 +118,7 @@ class Level:
 
             if self.player.is_dead:
                 self.respawn_timer += effective_delta
-                if self.respawn_timer >= 2.0:
+                if self.respawn_timer >= Respawn.DELAY_S:
                     self.player.respawn()
                     self.respawn_timer = 0.0
             else:
@@ -161,5 +161,5 @@ class Level:
                 entity_count=len(self.groups.entity_sprites),
                 collision_count=len(self.groups.collision_sprites),
                 hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-                spawn_cd=self.debug_controller.spawn_cooldown,
+                spawn_cooldown=self.debug_controller.spawn_cooldown_max,
             )

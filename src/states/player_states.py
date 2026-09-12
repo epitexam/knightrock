@@ -1,7 +1,7 @@
 from typing import Optional, Any
 
 from src.states.state_machine import State
-from src.core.settings import Combat as CombatSettings, Physics
+from src.core.settings import Combat as CombatSettings, Locomotion, Physics
 from src.physics import apply_velocity_friction
 from src.states.reaction_states import HurtState, KnockbackState, StaggerState
 
@@ -63,7 +63,7 @@ class PlayerRunState(PlayerBaseState):
             return "fall"
         if (
             not (self.entity.left_held or self.entity.right_held)
-            and abs(self.entity.velocity.x) < 0.1
+            and abs(self.entity.velocity.x) < Locomotion.RUN_STOP_SPEED_PX_S
         ):
             return "idle"
         return None

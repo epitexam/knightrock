@@ -23,7 +23,8 @@ class UIManager:
 
     def draw_performance_panel(
         self, fps: float, sprite_count: int, combat_count: int,
-        entity_count: int, collision_count: int, hit_stop: float, spawn_cd: float
+        entity_count: int, collision_count: int, hit_stop: float,
+        spawn_cooldown: float,
     ) -> None:
         fps_color = TEXT_OK if fps >= 55 else TEXT_WARN if fps >= 30 else TEXT_CRIT
         lines = [
@@ -33,7 +34,7 @@ class UIManager:
             f"Entities   {entity_count}",
             f"Collision  {collision_count}",
             f"Hit Stop   {hit_stop:.3f}",
-            f"Spawn CD   {spawn_cd:.3f}",
+            f"Spawn CD   {spawn_cooldown:.3f}",
         ]
 
         panel_w = self.renderer.get_panel_width(lines)

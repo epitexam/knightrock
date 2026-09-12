@@ -4,7 +4,7 @@ from typing import Literal, Protocol, cast
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Separation
+from src.core.settings import Collision, Separation
 from src.physics.spatial_hash import SpatialHash
 
 
@@ -81,11 +81,16 @@ def update_contact_state(
     hh = entity.hitbox.height / 2
 
     floor_rect = pygame.FRect(entity.hitbox.bottomleft,
-                              (entity.hitbox.width, 2))
+                              (entity.hitbox.width, Collision.PROBE_THICKNESS_PX))
     right_rect = pygame.FRect(
-        Vector2(entity.hitbox.topright) + Vector2(0, hq), (2, hh))
+        Vector2(entity.hitbox.topright) + Vector2(0, hq),
+        (Collision.PROBE_WIDTH_PX, hh),
+    )
     left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft) + Vector2(-2, hq), (2, hh))
+        Vector2(entity.hitbox.topleft)
+        + Vector2(-Collision.WALL_PROBE_OFFSET_PX, hq),
+        (Collision.PROBE_WIDTH_PX, hh),
+    )
 
     on = entity.on_surface
     on["floor"] = on["right"] = on["left"] = False
@@ -130,7 +135,7 @@ def resolve_collisions(
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
 
         if axis == "horizontal":
-            if entity.hitbox.bottom <= sprite_box.top + 4:
+            if entity.hitbox.bottom <= sprite_box.top + Collision.CONTACT_SKIN_PX:
                 continue
 
         was_overlapping = entity.old_hitbox.colliderect(sprite_old)
