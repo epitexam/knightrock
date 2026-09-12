@@ -55,6 +55,10 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level.groups = groups  # type: ignore[assignment]
     level.exit_reached = False
     level.respawn_timer = 0.75
+    level.deaths = 0
+    level.events = None  # type: ignore[assignment]
+    level._player_dead_emitted = False
+    level._completed_emitted = False
     level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
     level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
     level.contact_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]

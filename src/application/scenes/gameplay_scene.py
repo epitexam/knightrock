@@ -37,7 +37,13 @@ class GameplayScene(Scene):
         if self.game.display_surface is None:
             raise RuntimeError("The game display is not initialized")
         level_data = self.game.level_manager.get(self.level_id)
-        self.level = Level(self.game.display_surface, level_data, self.game.input_manager)
+        self.level = Level(
+            self.game.display_surface,
+            level_data,
+            self.game.input_manager,
+            level_id=self.level_id,
+            events=self.game.events,
+        )
 
     def update(self, delta_time: float) -> None:
         if self.level is None:

@@ -4,6 +4,7 @@ Level class orchestrating the game world, entities, and simulation loop.
 
 import pygame
 
+from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.core.gameplay.debug_controller import DebugController
 from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.level.level_data import LevelData
@@ -33,6 +34,8 @@ class Level:
         display_surface: pygame.Surface,
         level_data: LevelData,
         input_manager,
+        level_id: int = 0,
+        events: EventBus | None = None,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -41,6 +44,9 @@ class Level:
             display_surface: The Pygame surface to draw on.
             level_data: Parsed level data containing tile layers and objects.
             input_manager: The input manager used by the player.
+            level_id: Numeric id of the level (event payloads, Phase 2 #5).
+            events: Optional event bus; emissions are notifications only
+                (subscribers must never mutate the simulation).
         """
         self.display_surface = display_surface
         self.input_manager = input_manager
@@ -56,6 +62,10 @@ class Level:
         # Number of respawns performed; GameplayScene turns this into a
         # Game Over transition after Gameplay.MAX_DEATHS (Phase 2 #4).
         self.deaths = 0
+        self.level_id = level_id
+        self.events = events
+        self._player_dead_emitted = False
+        self._completed_emitted = False
 
         self.gameplay_loop = GameplayLoop()
         self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
@@ -75,6 +85,9 @@ class Level:
         self.spatial_hash.add_all(self.groups.collision_sprites)
         for entity in self.groups.entity_sprites:
             entity.spatial_hash = self.spatial_hash
+
+        if self.events is not None:
+            self.events.emit(LevelStarted(level_id=self.level_id))
 
     @property
     def completed(self) -> bool:
@@ -139,6 +152,23 @@ class Level:
 
         if not self.player.is_dead:
             self.camera.follow(self.player.hitbox, delta_time)
+
+        self._emit_notifications()
+
+    def _emit_notifications(self) -> None:
+        """Publish bus events for the app layer (never mutates simulation)."""
+        if self.events is None:
+            return
+
+        if self.player.is_dead and not self._player_dead_emitted:
+            self._player_dead_emitted = True
+            self.events.emit(PlayerDied(entity_id=self.player.id, deaths=self.deaths))
+        elif not self.player.is_dead:
+            self._player_dead_emitted = False
+
+        if self.exit_reached and not self._completed_emitted:
+            self._completed_emitted = True
+            self.events.emit(LevelCompleted(level_id=self.level_id))
 
     def draw(self, fps: float) -> list[pygame.Rect] | None:
         """
