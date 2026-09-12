@@ -15,10 +15,13 @@ def update_moving_platform(platform, delta_time: float) -> None:
 
     if distance < 1.0:
         platform.pos = pygame.math.Vector2(target)
-        platform.current_target += platform.direction
-        if platform.current_target in (len(platform.waypoints), -1):
+        new_target = platform.current_target + platform.direction
+        if new_target < 0 or new_target >= len(platform.waypoints):
+            # Bounce: reverse direction and target the adjacent waypoint,
+            # not the one just arrived at (avoids a double-arrive stall).
             platform.direction *= -1
-            platform.current_target += platform.direction
+            new_target = platform.current_target + platform.direction
+        platform.current_target = new_target
     else:
         direction.normalize_ip()
         platform.pos += direction * platform.speed * delta_time
