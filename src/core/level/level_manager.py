@@ -2,12 +2,23 @@
 Manages level loading and caching with automatic progression.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from pytmx.util_pygame import load_pygame
 
 from src.core.level.level_data import LevelData
 from src.core.paths import resource_path
+
+LEVEL_PATHS: dict[int, str] = {
+    0: "assets/data/levels/1.tmx",
+}
+"""Déclaration des niveaux : map ``id -> chemin TMX`` (audit F8.1, Phase 2 #4).
+
+Remplace les appels impératifs ``level_manager.register(0, ...)`` : un
+nouveau niveau se déclare ici (et sa progression ``level_unlock`` dans
+les propriétés TMX du calque *Data*), sans toucher au code du jeu.
+"""
 
 
 class LevelManager:
@@ -18,8 +29,8 @@ class LevelManager:
     Provides a mechanism to advance to the next level in registration order.
     """
 
-    def __init__(self):
-        self.level_paths: dict[int, str] = {}
+    def __init__(self, level_paths: Mapping[int, str] | None = None):
+        self.level_paths: dict[int, str] = dict(level_paths) if level_paths else {}
         self._cache: dict[int, LevelData] = {}
 
     def register(self, level_id: int, path: str) -> None:

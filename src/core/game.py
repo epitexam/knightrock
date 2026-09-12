@@ -6,26 +6,34 @@ import traceback
 import pygame
 from pygame.joystick import JoystickType
 
+from src.application.scene_manager import SceneManager
+from src.application.scenes.menu_scene import MenuScene
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
-from src.core.level.level import Level
-from src.core.level.level_manager import LevelManager
+from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
 
 logger = logging.getLogger(__name__)
 
 
 class Game:
+    """Application runtime: display, input, and the scene stack.
+
+    The loop itself no longer owns gameplay state (audit F8.1, Phase 2
+    #4): :class:`SceneManager` holds Menu/Play/Pause/GameOver scenes and
+    the loop simply feeds it fixed ticks, events, and presents the dirty
+    rects returned by the active scene.
+    """
+
     def __init__(self) -> None:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
         self.display_surface: pygame.Surface | None = None
         self.joysticks: dict[int, JoystickType] = {}
-        self.level_manager = LevelManager()
-        self.level_manager.register(0, "assets/data/levels/1.tmx")
         self.input_provider = LocalInputProvider()
         self.input_manager = InputManager(self.input_provider)
-        self.current_level_id = 0
-        self.current_stage: Level | None = None
+        self.level_manager = LevelManager(LEVEL_PATHS)
+        self.scene_manager = SceneManager(self)
+        self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
 
@@ -36,16 +44,9 @@ class Game:
         self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
         pygame.display.set_caption(Display.TITLE)
 
-        self.current_stage = self._load_level(self.current_level_id)
-
         self.clock = pygame.time.Clock()
         self._accumulator = 0.0
-
-    def _load_level(self, level_id: int) -> Level:
-        if self.display_surface is None:
-            raise RuntimeError("The game display is not initialized")
-        level_data = self.level_manager.get(level_id)
-        return Level(self.display_surface, level_data, self.input_manager)
+        self.scene_manager.switch(MenuScene(self))
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -59,46 +60,37 @@ class Game:
         finally:
             pygame.quit()
 
+    def quit(self) -> None:
+        """Stop the loop at the end of the current frame."""
+        self.running = False
+
     def _run_loop(self) -> None:
-        if self.clock is None or self.current_stage is None:
+        if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
 
-        while True:
+        while self.running:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
             self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME)
 
             self._handle_events()
 
             while self._accumulator >= Simulation.TIMESTEP:
-                self.input_manager.update()
-                self.current_stage.update(Simulation.TIMESTEP)
+                self.scene_manager.update(Simulation.TIMESTEP)
                 self._accumulator -= Simulation.TIMESTEP
 
-            if self.current_stage.completed:
-                self._advance_level()
-
-            dirty_rects = self.current_stage.draw(self.clock.get_fps())
+            dirty_rects = self.scene_manager.draw()
             if dirty_rects is None:
                 pygame.display.update()
             else:
-                # Dirty-rect presentation (Phase 2 #2): only refresh the
-                # region that changed since the last presented frame.
                 pygame.display.update(dirty_rects)
-
-    def _advance_level(self) -> None:
-        next_id = self.level_manager.next_id(self.current_level_id)
-        if next_id is None:
-            return
-        self.current_level_id = next_id
-        self.current_stage = self._load_level(next_id)
-        self._accumulator = 0.0
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                raise SystemExit
+                self.running = False
+                return
 
-            elif event.type == pygame.JOYDEVICEADDED:
+            if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
@@ -112,6 +104,8 @@ class Game:
                 self.input_provider.disconnect_joystick(event.instance_id)
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
+
+            self.scene_manager.handle_event(event)
 
     def _handle_fatal_error(self, error: Exception) -> None:
         logger.error(f"FATAL ERROR: {error}")

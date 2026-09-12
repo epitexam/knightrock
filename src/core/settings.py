@@ -184,3 +184,9 @@ class Animation:
     ATTACK_FRAME_DURATION = 0.07
     HIT_FRAME_DURATION = 0.08
     HAZARD_FRAME_DURATION = 0.12
+
+
+class Gameplay:
+    """App-level gameplay rules (Phase 2 #4: SceneManager)."""
+
+    MAX_DEATHS = 3

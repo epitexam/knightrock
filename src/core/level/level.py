@@ -53,6 +53,9 @@ class Level:
 
         self.exit_reached = False
         self.respawn_timer = 0.0
+        # Number of respawns performed; GameplayScene turns this into a
+        # Game Over transition after Gameplay.MAX_DEATHS (Phase 2 #4).
+        self.deaths = 0
 
         self.gameplay_loop = GameplayLoop()
         self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
@@ -118,6 +121,7 @@ class Level:
                 if self.respawn_timer >= Respawn.DELAY_S:
                     self.player.respawn()
                     self.respawn_timer = 0.0
+                    self.deaths += 1
             else:
                 self.respawn_timer = 0.0
 

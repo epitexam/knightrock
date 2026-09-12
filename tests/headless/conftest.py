@@ -60,3 +60,14 @@ def build_level(mock_input_manager):
         return level
 
     return _build
+
+
+@pytest.fixture()
+def game_runtime():
+    """Un ``Game`` initialisé (affichage dummy) sans exécuter la boucle."""
+    from src.core.game import Game
+
+    game = Game()
+    game.display_surface = pygame.display.get_surface()
+    game.clock = pygame.time.Clock()
+    return game
