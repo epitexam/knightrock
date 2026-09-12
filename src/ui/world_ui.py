@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 import pygame
 
+from src.core.colors import Colors
 from src.core.rendering.camera import Camera
 from src.core.settings import Debug
 from src.ui.panel_renderer import PanelRenderer
@@ -31,21 +32,21 @@ class WorldUI:
             if collider is not None:
                 pygame.draw.rect(
                     self.display_surface,
-                    (80, 140, 210),
+                    Colors.debug_hitbox,
                     camera.apply(collider),
                     width=1,
                 )
             if hurtbox is not None:
                 pygame.draw.rect(
                     self.display_surface,
-                    (80, 210, 120),
+                    Colors.debug_hurtbox,
                     camera.apply(hurtbox),
                     width=1,
                 )
             if attack_box is not None:
                 pygame.draw.rect(
                     self.display_surface,
-                    (230, 120, 60),
+                    Colors.debug_attack_box,
                     camera.apply(attack_box),
                     width=2,
                 )

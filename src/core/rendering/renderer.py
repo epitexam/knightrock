@@ -1,6 +1,6 @@
 from typing import Optional
 
-from src.core.colors import Colors
+from src.core.colors import BG_COLORS, Colors
 from src.core.sprite_groups import SpriteGroups
 from src.core.level.level_data import LevelConfig
 from src.ui.ui_manager import UIManager
@@ -16,10 +16,10 @@ class Renderer:
     @staticmethod
     def _resolve_background_color(config):
         if config is not None and config.bg:
-            color = getattr(Colors, config.bg, None)
+            color = BG_COLORS.get(config.bg)
             if color is not None:
                 return color
-        return Colors.red
+        return Colors.sky_blue
 
     def draw(self, groups: SpriteGroups, debug_enabled: bool = False) -> None:
         self.display_surface.fill(self.background_color)

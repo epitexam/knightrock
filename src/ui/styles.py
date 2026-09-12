@@ -1,9 +1,12 @@
 # ui/styles.py
+"""Debug/HUD theme. Values mirror src.core.colors.Colors (audit F6.2)."""
 
-PANEL_BG = (20, 22, 26, 220)
-PANEL_BORDER = (90, 100, 110)
-TEXT_MUTED = (185, 192, 198)
-TEXT_TITLE = (215, 220, 224)
-TEXT_WARN = (200, 150, 90)
-TEXT_CRIT = (190, 100, 100)
-TEXT_OK = (120, 170, 140)
+from src.core.colors import Colors
+
+PANEL_BG = Colors.panel_bg
+PANEL_BORDER = Colors.panel_border
+TEXT_MUTED = Colors.text_muted
+TEXT_TITLE = Colors.text_title
+TEXT_WARN = Colors.text_warn
+TEXT_CRIT = Colors.text_crit
+TEXT_OK = Colors.text_ok
