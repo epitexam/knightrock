@@ -6,68 +6,10 @@ from pygame.sprite import Group
 from src.combat.attack_state import AttackStateMachine
 from src.combat.combat_system import CombatSystem
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
-from src.combat.knockback import KnockbackConfig
 from src.core.gameplay.gameplay_loop import GameplayLoop
-from src.entities.entity import Entity
-
-
-def phase(
-    *,
-    startup: int = 1,
-    active: int = 2,
-    recovery: int = 1,
-    size: tuple[float, float] = (30.0, 20.0),
-    offset: tuple[float, float] = (20.0, 0.0),
-    damage: int = 10,
-    reset_targets: bool = True,
-) -> PhaseDefinition:
-    return PhaseDefinition(
-        startup_frames=startup,
-        active_frames=active,
-        recovery_frames=recovery,
-        hitbox_size=size,
-        hitbox_offset=offset,
-        hit=HitProperties(
-            damage=damage,
-            knockback=KnockbackConfig(power=(0.0, 0.0)),
-        ),
-        reset_targets=reset_targets,
-    )
-
-
-def attack(*phases: PhaseDefinition, lock_direction: bool = True) -> AttackDefinition:
-    return AttackDefinition(
-        phases=phases,
-        cooldown=0.0,
-        lock_direction=lock_direction,
-    )
-
-
-def entity_at(
-    x: float,
-    *,
-    faction: str = "neutral",
-    definition: AttackDefinition | None = None,
-    hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
-) -> Entity:
-    attacks = {"test": definition} if definition is not None else None
-    return Entity(
-        pos=(x, 0.0),
-        size=(40.0, 40.0),
-        color=(255, 255, 255),
-        groups=Group(),
-        collision_sprites=Group(),
-        faction=faction,
-        attacks=attacks,
-        hurtbox_inflate=hurtbox_inflate,
-    )
-
-
-def activate(entity: Entity) -> None:
-    assert entity.combat.start_attack("test")
-    entity.combat.update(1 / 60)
-    entity.combat.sync_attack_box()
-    assert entity.combat.attack_box is not None
+from tests.unit.helpers import activate, entity_at
+from tests.unit.helpers import make_attack as attack
+from tests.unit.helpers import make_phase as phase
 
 
 def test_attack_state_never_skips_an_active_window_on_large_delta() -> None:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import pygame
 from pygame.sprite import Group
 
@@ -15,54 +13,13 @@ from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
 from src.entities.entity import Entity
 from src.entities.player import Player
-
-
-@dataclass
-class SpyCombat:
-    """Minimal combat component recording explicit interruptions."""
-
-    hit_interrupts: list[bool] = field(default_factory=list)
-    is_hurt: bool = False
-
-    def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
-        del duration
-        self.hit_interrupts.append(interrupt)
-        self.is_hurt = interrupt
-
-    def reset(self) -> None:
-        self.is_hurt = False
-
-
-@dataclass
-class SpyStateMachine:
-    """Record forced state changes without requiring concrete game states."""
-
-    changes: list[tuple[str, dict[str, object]]] = field(default_factory=list)
-
-    def change_state(self, name: str, **kwargs: object) -> None:
-        self.changes.append((name, kwargs))
-
-
-class InputStub:
-    """Input surface needed to construct a player."""
-
-
-class AttackerStub:
-    def __init__(self, centerx: float = 0.0) -> None:
-        self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
+from tests.unit.helpers import AttackerStub, InputStub, SpyCombat, SpyStateMachine
+from tests.unit.helpers import make_entity as build_entity
 
 
 def make_entity(*, health: float = 100.0, invincibility: float = 0.0) -> Entity:
-    entity = Entity(
-        pos=(100.0, 100.0),
-        size=(40.0, 40.0),
-        color=(255, 255, 255),
-        groups=Group(),
-        collision_sprites=Group(),
-        health=health,
-        max_health=100.0,
-        invincibility_duration=invincibility,
-    )
+    """Build an entity instrumented with spy combat/state-machine hooks."""
+    entity = build_entity(health=health, invincibility=invincibility)
     entity.combat = SpyCombat()  # type: ignore[assignment]
     entity.state_machine = SpyStateMachine()  # type: ignore[assignment]
     return entity

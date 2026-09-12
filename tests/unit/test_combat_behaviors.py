@@ -11,52 +11,10 @@ from pygame.sprite import Group
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.combat_system import CombatSystem
-from src.combat.frame_data import HitProperties
-from src.combat.knockback import KnockbackConfig
-from src.entities.entity import Entity
 from src.entities.player import Player
 from src.entities.player_config import PlayerConfig
 from src.states.player_states import PlayerAttackState
-
-
-class InputStub:
-    """Constructor-only input provider used by Player tests."""
-
-
-def make_entity(*, attacks=None, invincibility: float = 0.0) -> Entity:
-    return Entity(
-        pos=(0.0, 0.0),
-        size=(40.0, 40.0),
-        color=(255, 255, 255),
-        groups=Group(),
-        collision_sprites=Group(),
-        attacks=attacks,
-        invincibility_duration=invincibility,
-    )
-
-
-def make_active_attacker(target: Entity):
-    hit = HitProperties(
-        damage=10,
-        knockback=KnockbackConfig(power=(100.0, 0.0)),
-    )
-    targets_hit: set[str] = set()
-    combat = SimpleNamespace(
-        state=SimpleNamespace(is_active=True),
-        attack_box=target.hurtbox.copy(),
-        current_phase=SimpleNamespace(hit=hit),
-        charge_multiplier=1.0,
-        targets_hit=targets_hit,
-        can_contact=lambda target_id: target_id not in targets_hit,
-        record_contact=targets_hit.add,
-    )
-    return SimpleNamespace(
-        id="attacker",
-        is_dead=False,
-        faction="enemy",
-        hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
-        combat=combat,
-    )
+from tests.unit.helpers import InputStub, make_active_attacker, make_entity
 
 
 def test_combat_system_ignores_immune_contact_without_hit_stop() -> None:
