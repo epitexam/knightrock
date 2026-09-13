@@ -10,18 +10,18 @@ from src.physics.gravity import apply_entity_gravity
 
 def make_entity(**overrides) -> SimpleNamespace:
     """Build a minimal entity matching the gravity protocol."""
-    defaults = dict(
-        velocity=pygame.Vector2(0, 0),
-        on_surface={"floor": False, "left": False, "right": False},
-        normal_gravity=2000.0,
-        fall_gravity=2800.0,
-        slide_gravity=300.0,
-        max_slide_speed=80.0,
-        max_fall_speed=1500.0,
-        drag_coefficient=0.08,
-        fall_drag_coefficient=0.12,
-        is_wall_sliding=lambda: False,
-    )
+    defaults = {
+        "velocity": pygame.Vector2(0, 0),
+        "on_surface": {"floor": False, "left": False, "right": False},
+        "normal_gravity": 2000.0,
+        "fall_gravity": 2800.0,
+        "slide_gravity": 300.0,
+        "max_slide_speed": 80.0,
+        "max_fall_speed": 1500.0,
+        "drag_coefficient": 0.08,
+        "fall_drag_coefficient": 0.12,
+        "is_wall_sliding": lambda: False,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 

@@ -43,7 +43,9 @@ def floor_tile() -> SimpleNamespace:
 def test_hitbox_collide_compares_hitboxes() -> None:
     a = SimpleNamespace(rect=pygame.FRect(0, 0, 10, 10), hitbox=pygame.FRect(0, 0, 10, 10))
     b = SimpleNamespace(rect=pygame.FRect(5, 5, 10, 10), hitbox=pygame.FRect(5, 5, 10, 10))
-    far = SimpleNamespace(rect=pygame.FRect(500, 500, 10, 10), hitbox=pygame.FRect(500, 500, 10, 10))
+    far = SimpleNamespace(
+        rect=pygame.FRect(500, 500, 10, 10), hitbox=pygame.FRect(500, 500, 10, 10)
+    )
 
     assert hitbox_collide(a, b)
     assert not hitbox_collide(a, far)
@@ -90,7 +92,9 @@ def test_horizontal_run_into_wall_stops_at_its_edge() -> None:
 def test_get_nearby_sprites_falls_back_to_linear_search() -> None:
     entity = StubEntity(pygame.FRect(0, 0, 48, 56))
     near = SimpleNamespace(rect=pygame.FRect(10, 10, 64, 64), hitbox=pygame.FRect(10, 10, 64, 64))
-    far = SimpleNamespace(rect=pygame.FRect(5000, 5000, 64, 64), hitbox=pygame.FRect(5000, 5000, 64, 64))
+    far = SimpleNamespace(
+        rect=pygame.FRect(5000, 5000, 64, 64), hitbox=pygame.FRect(5000, 5000, 64, 64)
+    )
     entity.collision_sprites = [near, far]
 
     nearby = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)

@@ -37,42 +37,42 @@ def _make_player(**overrides) -> SimpleNamespace:
     sm.add_state("idle", _mock_state())
     sm.set_initial_state("idle")
 
-    defaults = dict(
-        state_machine=sm,
-        velocity=pygame.Vector2(10.0, 0.0),
-        on_surface={"floor": True, "left": False, "right": False},
-        move_axis=0.0,
-        jump_buffer_timer=0.0,
-        coyote_timer=0.0,
-        midair_jumps_left=1,
-        wall_jumps_left=2,
-        dash=DashController(PlayerConfig()),
-    )
+    defaults = {
+        "state_machine": sm,
+        "velocity": pygame.Vector2(10.0, 0.0),
+        "on_surface": {"floor": True, "left": False, "right": False},
+        "move_axis": 0.0,
+        "jump_buffer_timer": 0.0,
+        "coyote_timer": 0.0,
+        "midair_jumps_left": 1,
+        "wall_jumps_left": 2,
+        "dash": DashController(PlayerConfig()),
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
 
 def _make_full_player(**overrides) -> SimpleNamespace:
     """Player with all stats attributes for draw_stats_panel."""
-    base = dict(
-        health=100.0,
-        max_health=100.0,
-        block_stamina=0.5,
-        max_block_stamina=0.75,
-        block_cooldown_timer=0.0,
-        dash_charges=2,
-        max_dash_charges=2,
-        dash_penalty_timer=0.0,
-        dash_recharge_timer=0.0,
-        speed=450,
-        floor_control=25.0,
-        air_control=12.0,
-        jump_height=750.0,
-        wall_jump_height=612.0,
-        dash_speed=1500,
-        dash_duration=0.12,
-        dash_friction=15.0,
-    )
+    base = {
+        "health": 100.0,
+        "max_health": 100.0,
+        "block_stamina": 0.5,
+        "max_block_stamina": 0.75,
+        "block_cooldown_timer": 0.0,
+        "dash_charges": 2,
+        "max_dash_charges": 2,
+        "dash_penalty_timer": 0.0,
+        "dash_recharge_timer": 0.0,
+        "speed": 450,
+        "floor_control": 25.0,
+        "air_control": 12.0,
+        "jump_height": 750.0,
+        "wall_jump_height": 612.0,
+        "dash_speed": 1500,
+        "dash_duration": 0.12,
+        "dash_friction": 15.0,
+    }
     base.update(overrides)
     return _make_player(**base)
 
@@ -115,9 +115,7 @@ def test_draw_state_panel_with_combat(player_ui: PlayerUI) -> None:
 def test_draw_state_panel_is_hurt_shows_line(player_ui: PlayerUI) -> None:
     player = _make_full_player(
         combat=SimpleNamespace(
-            state=SimpleNamespace(
-                attack_name="-", phase_index=0, current_attack_def=None
-            ),
+            state=SimpleNamespace(attack_name="-", phase_index=0, current_attack_def=None),
             hurt_timer=0.2,
             is_hurt=True,
             charging=None,

@@ -21,20 +21,20 @@ def _mock_state():
 
 
 def _make_entity(**overrides) -> SimpleNamespace:
-    defaults = dict(
-        on_surface={"floor": True, "left": False, "right": False},
-        velocity=pygame.Vector2(0, 0),
-        move_axis=0.0,
-        left_held=False,
-        right_held=False,
-        dash=SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None),
-        block=SimpleNamespace(can_use=lambda: True, apply_exit_cooldown=lambda: None),
-        block_stamina=0.5,
-        max_block_stamina=0.75,
-        block_held=False,
-        combat=SimpleNamespace(is_attacking=False),
-        state_machine=SimpleNamespace(current_state_name=None),
-    )
+    defaults = {
+        "on_surface": {"floor": True, "left": False, "right": False},
+        "velocity": pygame.Vector2(0, 0),
+        "move_axis": 0.0,
+        "left_held": False,
+        "right_held": False,
+        "dash": SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None),
+        "block": SimpleNamespace(can_use=lambda: True, apply_exit_cooldown=lambda: None),
+        "block_stamina": 0.5,
+        "max_block_stamina": 0.75,
+        "block_held": False,
+        "combat": SimpleNamespace(is_attacking=False),
+        "state_machine": SimpleNamespace(current_state_name=None),
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 

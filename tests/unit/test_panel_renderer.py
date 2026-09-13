@@ -6,7 +6,7 @@ import pygame
 import pytest
 
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import PANEL_BG, TEXT_MUTED, TEXT_TITLE
+from src.ui.styles import TEXT_MUTED, TEXT_TITLE
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -47,9 +47,7 @@ def test_draw_panel_with_title_returns_height(renderer: PanelRenderer) -> None:
 
 
 def test_draw_panel_with_line_colors(renderer: PanelRenderer) -> None:
-    height = renderer.draw_panel(
-        10, 10, ["a", "b"], line_colors={0: (255, 0, 0)}
-    )
+    height = renderer.draw_panel(10, 10, ["a", "b"], line_colors={0: (255, 0, 0)})
     assert height > 0
 
 

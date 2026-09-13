@@ -55,9 +55,7 @@ def test_platform_snap_remains_deterministic(platform: MovingPlatform) -> None:
 
 
 def test_platform_without_waypoints_is_static() -> None:
-    platform = MovingPlatform(
-        (10.0, 10.0), pygame.Surface((64, 32)), waypoints=[], speed=100.0
-    )
+    platform = MovingPlatform((10.0, 10.0), pygame.Surface((64, 32)), waypoints=[], speed=100.0)
 
     update_moving_platform(platform, 1 / 60)
 
