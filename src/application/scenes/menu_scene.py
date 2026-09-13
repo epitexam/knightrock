@@ -8,7 +8,9 @@ import pygame
 
 from src.application.scene import Scene
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.core.colors import Colors
+from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_OK
 
 if TYPE_CHECKING:
@@ -59,17 +61,8 @@ class MenuScene(Scene):
         if surface is None:  # pragma: no cover - requires a broken display
             return None
         surface.fill(Colors.dark_grey)
-        title_font = pygame.font.Font(None, 96)
-        option_font = pygame.font.Font(None, 40)
-
-        title = title_font.render(self.TITLE, True, Colors.gold)
-        title_rect = title.get_rect(midtop=(surface.get_width() // 2, 180))
-        surface.blit(title, title_rect)
-
-        y = title_rect.bottom + 60
-        for option in self.options:
-            text = option_font.render(option, True, TEXT_OK)
-            text_rect = text.get_rect(midtop=(surface.get_width() // 2, y))
-            surface.blit(text, text_rect)
-            y += text_rect.height + 16
+        renderer = PanelRenderer(surface)
+        draw_centered_menu_panel(
+            renderer, surface, self.TITLE, list(self.options), top=180, text_color=TEXT_OK
+        )
         return None

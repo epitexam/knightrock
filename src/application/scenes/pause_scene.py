@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
+from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.application.scenes.menu_scene import MenuScene
+from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_OK, TEXT_WARN
 
 if TYPE_CHECKING:
@@ -43,18 +45,14 @@ class PauseScene(Scene):
         overlay.fill((8, 10, 14, 190))
         surface.blit(overlay, (0, 0))
 
-        title_font = pygame.font.Font(None, 72)
-        option_font = pygame.font.Font(None, 36)
-        center = surface.get_width() // 2
-
-        title = title_font.render(self.TITLE, True, TEXT_WARN)
-        title_rect = title.get_rect(midtop=(center, 220))
-        surface.blit(title, title_rect)
-
-        y = title_rect.bottom + 40
-        for option in self.OPTIONS:
-            text = option_font.render(option, True, TEXT_OK)
-            text_rect = text.get_rect(midtop=(center, y))
-            surface.blit(text, text_rect)
-            y += text_rect.height + 12
+        renderer = PanelRenderer(surface)
+        draw_centered_menu_panel(
+            renderer,
+            surface,
+            self.TITLE,
+            list(self.OPTIONS),
+            top=220,
+            title_color=TEXT_WARN,
+            text_color=TEXT_OK,
+        )
         return None

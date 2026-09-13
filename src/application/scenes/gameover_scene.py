@@ -8,7 +8,9 @@ import pygame
 
 from src.application.scene import Scene
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.application.scenes.menu_scene import MenuScene
+from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK
 
 if TYPE_CHECKING:
@@ -42,18 +44,14 @@ class GameOverScene(Scene):
             return None
         surface.fill((16, 8, 10))
 
-        title_font = pygame.font.Font(None, 88)
-        option_font = pygame.font.Font(None, 40)
-        center = surface.get_width() // 2
-
-        title = title_font.render(self.TITLE, True, TEXT_CRIT)
-        title_rect = title.get_rect(midtop=(center, 240))
-        surface.blit(title, title_rect)
-
-        y = title_rect.bottom + 60
-        for option in self.OPTIONS:
-            text = option_font.render(option, True, TEXT_OK)
-            text_rect = text.get_rect(midtop=(center, y))
-            surface.blit(text, text_rect)
-            y += text_rect.height + 16
+        renderer = PanelRenderer(surface)
+        draw_centered_menu_panel(
+            renderer,
+            surface,
+            self.TITLE,
+            list(self.OPTIONS),
+            top=240,
+            title_color=TEXT_CRIT,
+            text_color=TEXT_OK,
+        )
         return None
