@@ -17,16 +17,10 @@ from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
+from src.entities.components import MovementComponent, ReactionComponent
+from src.entities.components.reaction import compute_knockback_direction
 from src.entities.vitals import Vitals
-from src.physics import (
-    SpatialHash,
-    apply_entity_gravity,
-    apply_horizontal_movement,
-    apply_moving_platform,
-    move_entity,
-    resolve_collisions,
-    update_contact_state,
-)
+from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine
@@ -36,31 +30,10 @@ from src.states.state_machine import StateMachine
 # rollback and future netcode in sync (unlike a random UUID).
 _ENTITY_ID_SEQUENCE = count()
 
-
-def compute_knockback_direction(
-    hitbox_centerx: float,
-    source_center_x: float | None,
-    facing_right: bool,
-) -> float:
-    """Compute the horizontal direction of a knockback impulse.
-
-    Parameters
-    ----------
-    hitbox_centerx : float
-        The center X coordinate of the receiving entity.
-    source_center_x : float | None
-        The center X coordinate of the damage source.
-    facing_right : bool
-        The current facing direction of the entity.
-
-    Returns
-    -------
-    float
-        1.0 for right, -1.0 for left.
-    """
-    if source_center_x is not None:
-        return 1.0 if hitbox_centerx >= source_center_x else -1.0
-    return 1.0 if facing_right else -1.0
+# ``compute_knockback_direction`` now lives in the reaction component; it is
+# re-exported here so the historical ``from src.entities.entity import
+# compute_knockback_direction`` (used by ``Player``) keeps working.
+__all__ = ["Entity", "compute_knockback_direction"]
 
 
 class Entity(Sprite):
@@ -90,6 +63,12 @@ class Entity(Sprite):
         Collision grid shared with the level; queried by ``move`` for O(1)
         neighbor lookups. Assigned by the level after the world is built.
     """
+
+    # Kinematic state is owned by ``self._movement`` (MovementComponent) and
+    # exposed through delegating properties below; these class-level
+    # annotations document the public contract on the entity facade.
+    velocity: Vector2
+    on_surface: dict[str, bool]
 
     def __init__(
         self,
@@ -170,8 +149,12 @@ class Entity(Sprite):
         # Shared collision grid (PERF-01): assigned by the Level after the
         # world is built; ``move_entity`` queries it for O(1) neighbor lookups.
         self.spatial_hash: SpatialHash | None = None
-        self.on_surface = {"floor": False, "left": False, "right": False}
-        self.velocity = Vector2(0, 0)
+        # Kinematic state (velocity, surface contacts) is owned by the
+        # MovementComponent (Phase 3 #2); ``Entity`` exposes it via delegating
+        # properties so the historical ``entity.velocity``/``entity.on_surface``
+        # API — and the pure ``src.physics`` functions that read them off the
+        # entity — keep working unchanged.
+        self._movement = MovementComponent(self)
 
         self.move_axis: float = 0.0
         self.speed: float = 0.0
@@ -210,6 +193,10 @@ class Entity(Sprite):
 
         self.state_machine: StateMachine | NullStateMachine = NullStateMachine()
         self.facing_right: bool = True
+        # Hit-reaction rules (knockback, heavy launch, stagger) live in the
+        # ReactionComponent (Phase 3 #2), wired in like ``vitals``/``combat``.
+        # It is built after them because it drives both on reaction.
+        self._reaction = ReactionComponent(self)
         # Optional sprite animation (Phase 2 #1): subclasses attach an
         # Animator; entities without one keep their flat colored surface.
         self.animator: Animator | None = None
@@ -314,6 +301,33 @@ class Entity(Sprite):
     def super_armor_count(self, value: int) -> None:
         self.vitals.super_armor_count = value
 
+    # ------------------------------------------------------------------
+    # Kinematic state is owned by ``self._movement`` and exposed here as
+    # delegating properties. The getter returns the component's live, mutable
+    # object so in-place writes (``entity.velocity.x = ...``,
+    # ``entity.on_surface["floor"] = ...`` — used throughout ``src.physics``
+    # and the state machine) reach the single source of truth; the setter
+    # supports whole-object replacement (``entity.velocity = Vector2(...)``).
+    # ------------------------------------------------------------------
+
+    @property
+    def velocity(self) -> Vector2:
+        """Current velocity vector, owned by the movement component."""
+        return self._movement.velocity
+
+    @velocity.setter
+    def velocity(self, value: Vector2) -> None:
+        self._movement.velocity = value
+
+    @property
+    def on_surface(self) -> dict[str, bool]:
+        """Floor/left/right contact flags, owned by the movement component."""
+        return self._movement.on_surface
+
+    @on_surface.setter
+    def on_surface(self, value: dict[str, bool]) -> None:
+        self._movement.on_surface = value
+
     def _handle_death(self) -> None:
         """Entity-level cleanup triggered when health reaches zero."""
         self.combat.reset()
@@ -405,27 +419,27 @@ class Entity(Sprite):
 
     def apply_gravity(self, delta_time: float) -> None:
         """Apply gravity with drag, respecting wall sliding."""
-        apply_entity_gravity(self, delta_time)
+        self._movement.apply_gravity(delta_time)
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal acceleration and control based on move_axis."""
-        apply_horizontal_movement(self, delta_time)
+        self._movement.apply_horizontal_movement(delta_time)
 
     def check_contact(self) -> None:
         """Update surface contact flags."""
-        update_contact_state(self, self.collision_sprites)
+        self._movement.check_contact()
 
     def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""
-        resolve_collisions(self, axis)
+        self._movement.handle_collisions(axis)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
         """Move the entity based on velocity, resolving collisions."""
-        move_entity(self, delta_time, apply_gravity=apply_gravity)
+        self._movement.move(delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
         """Carry the entity along moving platforms."""
-        apply_moving_platform(self, moving_platforms)
+        self._movement.apply_moving_platform(moving_platforms)
 
     def reset_position(self) -> None:
         """Reset the entity to its spawn position and clear all states.
@@ -435,7 +449,7 @@ class Entity(Sprite):
         """
         self.hitbox.center = self.spawn_pos
         self.sync_rects()
-        self.velocity = Vector2(0, 0)
+        self._movement.stop()
         self.old_hitbox = self.hitbox.copy()
         self.vitals.reset()
 
@@ -483,18 +497,7 @@ class Entity(Sprite):
         source_center_x : float | None
             X-coordinate of the damage source for knockback direction.
         """
-        if knockback.power == (0.0, 0.0):
-            return
-
-        if knockback.mode == "fixed":
-            self.velocity.x = knockback.power[0]
-            self.velocity.y = knockback.power[1]
-        else:
-            direction = compute_knockback_direction(
-                self.hitbox.centerx, source_center_x, self.facing_right
-            )
-            self.velocity.x = knockback.power[0] * direction
-            self.velocity.y = knockback.power[1]
+        self._reaction.apply_knockback(knockback, source_center_x)
 
     def _handle_heavy_knockback(
         self,
@@ -513,27 +516,7 @@ class Entity(Sprite):
         source_center_x : float | None
             X-coordinate of the damage source for knockback direction.
         """
-        kb_power_x, kb_power_y = knockback.power
-        magnitude = Vector2(kb_power_x, kb_power_y).length()
-        if magnitude < CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
-            return False
-
-        # Cancel an active action before selecting knockback as the definitive
-        # reaction. This avoids a simultaneous hurt/knockback state.
-        self.combat.on_hit(interrupt=True)
-        direction = compute_knockback_direction(
-            self.hitbox.centerx, source_center_x, self.facing_right
-        )
-        self.state_machine.change_state(
-            "knockback",
-            force=True,
-            knockback_direction=direction,
-            knockback_force=kb_power_x,
-            knockback_up_force=kb_power_y,
-        )
-        if hasattr(self.combat, "is_hurt"):
-            self.combat.is_hurt = False
-        return True
+        return self._reaction.handle_heavy_knockback(knockback, source_center_x)
 
     def receive_damage(
         self,
@@ -584,7 +567,7 @@ class Entity(Sprite):
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.
 
-        Super armor is consumed after `SUPER_ARMOR_THRESHOLD` hits.
+        Super armor is consumed after ``SUPER_ARMOR_THRESHOLD`` hits.
         If the entity has super armor and the threshold is not reached,
         no stagger is applied.
 
@@ -593,18 +576,7 @@ class Entity(Sprite):
         duration : float
             The duration of the stagger in seconds.
         """
-        if self.is_dead or self.stagger_timer > 0:
-            return
-
-        if self.super_armor:
-            self.super_armor_count += 1
-            if self.super_armor_count < CombatSettings.SUPER_ARMOR_THRESHOLD:
-                return
-            self.super_armor = False
-
-        self.stagger_timer = duration
-        self.combat.reset_hurt_state()
-        self.state_machine.change_state("stagger", force=True)
+        self._reaction.stagger(duration)
 
     def _pre_update(self, delta_time: float) -> None:
         """Hook called at the beginning of the update loop, before combat and physics."""
