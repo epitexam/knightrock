@@ -269,6 +269,16 @@ et remplacer `level_manager.register(0, ...)` par un `LevelRegistryConfig` (map 
 3. **Rollback netcode réel** (on tire enfin les snapshots existants) **ou** suppression du code mort associé.
 4. Externalisation finale des données de gameplay en **JSON data-driven** (attaques, enemies, levels) — actuellement en dataclasses Python, très bien pour l'instant ; JSON optionnel quand l'éditeur/designers arrivent.
 
+**Phase 4 — Couche cinématique & narrative (features, après Phase 2/3)**
+| # | Chantier | Bénéfice |
+|---|---------|----------|
+| 1 | **CinematicScene** (`application/scenes/cinematic_scene.py`) : scène jouant une séquence scriptée (caméra, spawns, fades, dialogue) en réutilisant `Renderer`/`Camera` existants ; l'input ne sert qu'à skipper. Enchaîne via `SceneManager` (Menu → Intro → Gameplay, intro de boss, transitions de fin de niveau) | Narration / direction artistique |
+| 2 | **Timeline data-driven** : script JSON (ou dataclass list) d'événements horodatés — `wait`, `camera_to`, `spawn`, `dialog`, `fade`, `play_music`, `goto_scene` — chargé via `resource_path`, tické en fixed timestep pour rester déterministe | Séquences éditables sans coder |
+| 3 | **DialogueRenderer** : boîte de dialogue / sous-titres via `PanelRenderer` (effet machine à écrire optionnel) — prérequis des cinématiques, réutilisable pour PNJ/tutoriels en jeu | UI narrative |
+| 4 | **AudioBus minimal** (musique + SFX via `pygame.mixer`), déclenché par l'`EventBus` existant (`LevelStarted`, `PlayerDied`, `LevelCompleted`) et par la timeline cinématique — l'audit note l'absence totale d'audio (F8.1) ; les cinématiques en sont le premier vrai consommateur | Immersion |
+
+Dépendances : Phase 2 #4 (SceneManager) et #5 (EventBus) doivent être livrés avant ; #2 et #3 de cette phase sont les prérequis de #1.
+
 ---
 
 ## 4. Architecture cible recommandée
@@ -284,6 +294,7 @@ main.py                     # bootstrap : pygame.init, dictConfig, run(scene_man
    └── paths.py             # resource_path (existant) + registry PATHS
    └── scenes/
         ├── menu_scene.py / pause_scene.py / gameover_scene.py
+        ├── cinematic_scene.py   # Phase 4: séquences scriptées (timeline + dialogue)
         └── gameplay_scene.py  # contient level + hud + pause via overlay
 └── core/
    ├── game.py              # = Application (iojit, Game.run → scene_manager)
