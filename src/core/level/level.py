@@ -2,6 +2,8 @@
 Level class orchestrating the game world, entities, and simulation loop.
 """
 
+from typing import Any
+
 import pygame
 
 from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
@@ -175,7 +177,12 @@ class Level:
                 )
             )
 
-    def draw(self, fps: float) -> list[pygame.Rect] | None:
+    def draw(
+        self,
+        fps: float,
+        game: Any = None,
+        frame_time: float = 0.0,
+    ) -> list[pygame.Rect] | None:
         """
         Render the level and all overlays.
 
@@ -185,6 +192,8 @@ class Level:
 
         Args:
             fps: Current frames per second, used for debug display.
+            game: The Game instance (used by the debug SCENE panel).
+            frame_time: Last frame duration in ms (debug PERFORMANCE panel).
         """
         debug_enabled = Debug.is_enabled()
         dirty: list[pygame.Rect] | None = self.renderer.draw(self.groups, debug_enabled)
@@ -202,5 +211,7 @@ class Level:
             collision_count=len(self.groups.collision_sprites),
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
             spawn_cooldown=self.debug_controller.spawn_cooldown_max,
+            game=game,
+            frame_time=frame_time,
         )
         return None

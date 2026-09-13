@@ -1,3 +1,5 @@
+from typing import Any
+
 import pygame
 
 from src.core.colors import BG_COLORS, Colors
@@ -93,10 +95,15 @@ class Renderer:
         collision_count,
         hit_stop,
         spawn_cooldown,
+        game: Any = None,
+        frame_time: float = 0.0,
+        cache_size: int = 0,
     ):
         x, y = 10, 10
         y += self.ui_manager.draw_state_panel(x, y, player) + 8
-        self.ui_manager.draw_stats_panel(x, y, player)
+        y += self.ui_manager.draw_stats_panel(x, y, player) + 8
+        if game is not None:
+            y += self.ui_manager.draw_scene_panel(x, y, game) + 8
         self.ui_manager.draw_performance_panel(
             fps=fps,
             sprite_count=sprite_count,
@@ -105,4 +112,6 @@ class Renderer:
             collision_count=collision_count,
             hit_stop=hit_stop,
             spawn_cooldown=spawn_cooldown,
+            frame_time=frame_time,
+            cache_size=cache_size,
         )

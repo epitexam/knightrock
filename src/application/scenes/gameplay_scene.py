@@ -78,4 +78,7 @@ class GameplayScene(Scene):
     def draw(self) -> list[pygame.Rect] | None:
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
-        return self.level.draw(self.game.clock.get_fps() if self.game.clock else 0.0)
+        clock = self.game.clock
+        fps = clock.get_fps() if clock else 0.0
+        frame_time = clock.get_time() if clock else 0.0
+        return self.level.draw(fps, game=self.game, frame_time=frame_time)
