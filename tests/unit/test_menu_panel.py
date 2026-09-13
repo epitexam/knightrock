@@ -9,7 +9,7 @@ import pytest
 from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.application.scenes.menu_scene import MenuScene
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import TEXT_MUTED, TEXT_TITLE
+from src.ui.styles import TEXT_MUTED
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -50,12 +50,20 @@ def test_menu_panel_uses_debug_theme_colors(renderer: PanelRenderer) -> None:
     draw_centered_menu_panel(renderer, surface, "TITLE", ["one"])
 
     assert surface.get_width() > 0
-    assert renderer.render_text("TITLE", renderer.title_font, TEXT_TITLE) is renderer.render_text(
-        "TITLE", renderer.title_font, TEXT_TITLE
-    )
     assert renderer.render_text("one", renderer.debug_font, TEXT_MUTED) is renderer.render_text(
         "one", renderer.debug_font, TEXT_MUTED
     )
+
+
+def test_menu_panel_lines_are_spaced_out(renderer: PanelRenderer) -> None:
+    """Le panneau de menu aère ses lignes (interligne 40 px, pas 22 px)."""
+    surface = pygame.display.get_surface()
+    compact = renderer.draw_panel(0, 0, ["a", "b"])
+    spaced = draw_centered_menu_panel(renderer, surface, "TITLE", ["a", "b"])
+
+    assert spaced.height > 0
+    # plus d'une ligne de surplus d'interligne par rapport au panneau compact
+    assert spaced.height >= compact + 2 * 18
 
 
 def test_menu_scene_draw_uses_panel_theme() -> None:

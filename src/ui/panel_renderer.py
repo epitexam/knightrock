@@ -34,12 +34,20 @@ class PanelRenderer:
         text_color: tuple[int, int, int] = TEXT_MUTED,
         title: str | None = None,
         line_colors: dict[int, tuple[int, int, int]] | None = None,
+        title_font: pygame.font.Font | None = None,
+        line_height: int = 22,
+        padding: int = 12,
+        title_gap: int = 8,
     ) -> int:
-        """Draw a semi-transparent debug panel with optional title and colored lines."""
+        """Draw a semi-transparent debug panel with optional title and colored lines.
+
+        The ``title_font`` / ``line_height`` / ``padding`` / ``title_gap``
+        parameters let menu scenes breathe: the debug overlays keep the
+        compact defaults while full-screen menus use larger spacing and a
+        dedicated title font.
+        """
         line_colors = line_colors or {}
-        padding = 12
-        line_height = 22
-        title_gap = 8
+        title_font = title_font or self.title_font
 
         rendered_lines = [
             self.render_text(line, self.debug_font, line_colors.get(i, text_color))
@@ -51,7 +59,7 @@ class PanelRenderer:
         title_block_h = 0
 
         if title:
-            title_surf = self.render_text(title, self.title_font, TEXT_TITLE)
+            title_surf = self.render_text(title, title_font, TEXT_TITLE)
             max_w = max(max_w, title_surf.get_width())
             title_block_h = title_surf.get_height() + title_gap + 1 + title_gap
 
@@ -79,7 +87,7 @@ class PanelRenderer:
         for i, surf in enumerate(rendered_lines):
             self.display_surface.blit(surf, (x + padding, content_y + i * line_height))
 
-        return panel_h + 12
+        return panel_h + padding
 
     def get_panel_width(self, lines: list[str]) -> int:
         """Compute panel width for positioning (e.g., performance panel on the right)."""
