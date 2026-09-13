@@ -13,6 +13,8 @@ Each controller is deliberately ignorant of the state machine and of
 are passed in by the caller, mirroring the ``Vitals`` design.
 """
 
+from dataclasses import dataclass
+
 import pygame
 
 from src.entities.player_config import PlayerConfig
@@ -25,6 +27,37 @@ BLOCK_STAMINA_REGEN_RATE = 0.5
 
 DASH_HITBOX_SQUISH = 0.6
 """Hitbox width multiplier applied while dashing."""
+
+
+@dataclass(frozen=True)
+class JumpSnapshot:
+    """Serializable capture of the jump controller's runtime state."""
+
+    jump_buffer_timer: float
+    coyote_timer: float
+    wall_jump_lock_timer: float
+    midair_jumps_left: int
+    wall_jumps_left: int | float
+
+
+@dataclass(frozen=True)
+class BlockSnapshot:
+    """Serializable capture of the block controller's runtime state."""
+
+    block_stamina: float
+    block_cooldown_timer: float
+
+
+@dataclass(frozen=True)
+class DashSnapshot:
+    """Serializable capture of the dash controller's runtime state."""
+
+    charges: int
+    recharge_timer: float
+    penalty_timer: float
+    requested: bool
+    duration_timer: float
+    original_hitbox_width: float
 
 
 class JumpController:
@@ -89,6 +122,24 @@ class JumpController:
         self.midair_jumps_left = self.max_midair_jumps
         self.wall_jumps_left = self.max_wall_jumps
 
+    def save_state(self) -> JumpSnapshot:
+        """Capture runtime state for rollback (Phase 3 #3)."""
+        return JumpSnapshot(
+            jump_buffer_timer=self.jump_buffer_timer,
+            coyote_timer=self.coyote_timer,
+            wall_jump_lock_timer=self.wall_jump_lock_timer,
+            midair_jumps_left=self.midair_jumps_left,
+            wall_jumps_left=self.wall_jumps_left,
+        )
+
+    def load_state(self, snapshot: JumpSnapshot) -> None:
+        """Restore runtime state from a rollback snapshot."""
+        self.jump_buffer_timer = snapshot.jump_buffer_timer
+        self.coyote_timer = snapshot.coyote_timer
+        self.wall_jump_lock_timer = snapshot.wall_jump_lock_timer
+        self.midair_jumps_left = snapshot.midair_jumps_left
+        self.wall_jumps_left = snapshot.wall_jumps_left
+
 
 class BlockController:
     """Own block resources: stamina pool and post-block cooldown.
@@ -143,6 +194,18 @@ class BlockController:
         """Restore the stamina pool and clear the cooldown."""
         self.block_stamina = self.max_block_stamina
         self.block_cooldown_timer = 0.0
+
+    def save_state(self) -> BlockSnapshot:
+        """Capture runtime state for rollback (Phase 3 #3)."""
+        return BlockSnapshot(
+            block_stamina=self.block_stamina,
+            block_cooldown_timer=self.block_cooldown_timer,
+        )
+
+    def load_state(self, snapshot: BlockSnapshot) -> None:
+        """Restore runtime state from a rollback snapshot."""
+        self.block_stamina = snapshot.block_stamina
+        self.block_cooldown_timer = snapshot.block_cooldown_timer
 
 
 class DashController:
@@ -230,3 +293,23 @@ class DashController:
         self.recharge_timer = 0.0
         self.penalty_timer = 0.0
         self.requested = False
+
+    def save_state(self) -> DashSnapshot:
+        """Capture runtime state for rollback (Phase 3 #3)."""
+        return DashSnapshot(
+            charges=self.charges,
+            recharge_timer=self.recharge_timer,
+            penalty_timer=self.penalty_timer,
+            requested=self.requested,
+            duration_timer=self.duration_timer,
+            original_hitbox_width=self.original_hitbox_width,
+        )
+
+    def load_state(self, snapshot: DashSnapshot) -> None:
+        """Restore runtime state from a rollback snapshot."""
+        self.charges = snapshot.charges
+        self.recharge_timer = snapshot.recharge_timer
+        self.penalty_timer = snapshot.penalty_timer
+        self.requested = snapshot.requested
+        self.duration_timer = snapshot.duration_timer
+        self.original_hitbox_width = snapshot.original_hitbox_width

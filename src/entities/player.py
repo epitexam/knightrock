@@ -14,7 +14,7 @@ from src.core.asset_library import shared_library
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.entities.controller_view import ControllerView
-from src.entities.entity import Entity, compute_knockback_direction
+from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
 from src.entities.player_controllers import (
@@ -359,3 +359,35 @@ class Player(ControllerView, Entity):
             )
 
         return result
+
+    def save_state(self) -> EntitySnapshot:
+        """Extend the entity snapshot with controller and input runtime state.
+
+        ``jump``/``block``/``dash`` hold the timers and stocks that drive
+        locomotion, and ``input_handler.buffered_attack_name`` is the second
+        half of the attack buffer — both must round-trip for a bit-exact
+        rollback (Phase 3 #3).
+        """
+        snapshot = super().save_state()
+        snapshot.extra = {
+            "jump": self.jump.save_state(),
+            "block": self.block.save_state(),
+            "dash": self.dash.save_state(),
+            "buffered_attack_name": self.input_handler.buffered_attack_name,
+            "left_held": self.left_held,
+            "right_held": self.right_held,
+            "block_held": self.block_held,
+        }
+        return snapshot
+
+    def load_state(self, snapshot: EntitySnapshot) -> None:
+        """Restore controllers and input state after a rollback."""
+        super().load_state(snapshot)
+        extra = snapshot.extra
+        self.jump.load_state(extra["jump"])
+        self.block.load_state(extra["block"])
+        self.dash.load_state(extra["dash"])
+        self.input_handler.buffered_attack_name = extra["buffered_attack_name"]
+        self.left_held = extra["left_held"]
+        self.right_held = extra["right_held"]
+        self.block_held = extra["block_held"]

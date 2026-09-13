@@ -1,8 +1,41 @@
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.settings import StateMachineConfig
+
+# Transient per-state attributes worth capturing for rollback: plain
+# scalars (timers, counters, flags, directions).  Callables (``exit_resolver``,
+# ``on_enter``), the back-reference ``entity``, and mutable containers
+# (``tags``) are configuration or shared objects that never change between
+# ticks — excluding them keeps snapshots small and side-effect free.
+_SNAPSHOTABLE_TYPES = (bool, int, float, str)
+
+
+@dataclass(frozen=True)
+class StateMachineSnapshot:
+    """Serializable capture of the machine and its states' transient scalars.
+
+    Restoring is a *teleport*: ``current_state`` is rebound directly and
+    scalar attributes are written back without firing ``exit()``/``enter()``,
+    so a rollback never re-runs state entry side-effects (which would reset
+    the very timers the snapshot preserves).
+    """
+
+    current_state_name: str | None
+    previous_state_name: str | None
+    input_buffer: dict[str, float]
+    state_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+def _capture_state_attrs(state: State) -> dict[str, Any]:
+    """Copy the snapshotable scalar attributes of one state instance."""
+    return {
+        name: value
+        for name, value in vars(state).items()
+        if name != "entity" and isinstance(value, _SNAPSHOTABLE_TYPES)
+    }
 
 
 class State:
@@ -126,3 +159,42 @@ class StateMachine:
 
         if self.on_state_change:
             self.on_state_change(prev, new_name)
+
+    def save_state(self) -> StateMachineSnapshot:
+        """Capture the machine position and every state's transient scalars.
+
+        Used by the rollback system (Phase 3 #3).  ``history`` is
+        deliberately not captured: it is debug/telemetry only and never
+        read by simulation logic.
+        """
+        return StateMachineSnapshot(
+            current_state_name=self.current_state_name,
+            previous_state_name=self.previous_state_name,
+            input_buffer=dict(self._input_buffer),
+            state_attrs={
+                name: _capture_state_attrs(state) for name, state in self.states.items()
+            },
+        )
+
+    def load_state(self, snapshot: StateMachineSnapshot) -> None:
+        """Teleport the machine back to a captured position.
+
+        Binds ``current_state`` directly instead of calling
+        ``change_state``: firing ``exit()``/``enter()`` on restore would
+        re-run entry side-effects (timers reset to their initial value,
+        velocities re-applied) and diverge from the captured simulation.
+        """
+        self.current_state_name = snapshot.current_state_name
+        self.previous_state_name = snapshot.previous_state_name
+        self._input_buffer = dict(snapshot.input_buffer)
+        self.current_state = (
+            self.states[snapshot.current_state_name]
+            if snapshot.current_state_name is not None
+            else None
+        )
+        for name, attrs in snapshot.state_attrs.items():
+            state = self.states.get(name)
+            if state is None:
+                continue
+            for attr_name, value in attrs.items():
+                setattr(state, attr_name, value)

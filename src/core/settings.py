@@ -116,8 +116,9 @@ class Simulation:
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION
-    # Netcode-ready rollback tuning (audit F2.5): kept as documented
-    # constants until the rollback decision (branch or remove) is taken.
+    # Rollback tuning (audit F2.5, Phase 3 #3): MAX_PREDICTION_FRAMES sizes
+    # the local RollbackSystem ring buffer; ROLLBACK_FRAMES is the per-request
+    # rewind depth a future netcode transport will cap re-simulation at.
     MAX_PREDICTION_FRAMES = 8
     ROLLBACK_FRAMES = 4
     MAX_FRAME_TIME = 0.1  # Maximum frame time to prevent spiral of death

@@ -34,3 +34,16 @@ class NullStateMachine:
     def consume_input(self, action: str) -> bool:
         """Consume a buffered input."""
         return False
+
+    def save_state(self) -> Any:
+        """Return a neutral snapshot (rollback, Phase 3 #3)."""
+        from src.states.state_machine import StateMachineSnapshot
+
+        return StateMachineSnapshot(
+            current_state_name=None,
+            previous_state_name=None,
+            input_buffer={},
+        )
+
+    def load_state(self, snapshot: Any) -> None:
+        """No-op: a null machine has no simulation state to restore."""

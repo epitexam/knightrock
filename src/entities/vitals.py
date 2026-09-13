@@ -7,8 +7,24 @@ delegates its health/status attributes to it.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from pygame.math import Vector2
+
+
+@dataclass(frozen=True)
+class VitalsSnapshot:
+    """Serializable capture of every vitals field (rollback, Phase 3 #3)."""
+
+    health: float
+    max_health: float
+    is_dead: bool
+    invincibility_timer: float
+    invincibility_duration: float
+    stagger_timer: float
+    super_armor: bool
+    super_armor_count: int
+    spawn_pos: tuple[float, float]
 
 
 class Vitals:
@@ -103,3 +119,34 @@ class Vitals:
         self.super_armor_count = 0
         self.invincibility_timer = 0.0
         self.health = self._max_health
+
+    def save_state(self) -> VitalsSnapshot:
+        """Capture every field for rollback (Phase 3 #3)."""
+        return VitalsSnapshot(
+            health=self._health,
+            max_health=self._max_health,
+            is_dead=self.is_dead,
+            invincibility_timer=self.invincibility_timer,
+            invincibility_duration=self.invincibility_duration,
+            stagger_timer=self.stagger_timer,
+            super_armor=self.super_armor,
+            super_armor_count=self.super_armor_count,
+            spawn_pos=(self.spawn_pos.x, self.spawn_pos.y),
+        )
+
+    def load_state(self, snapshot: VitalsSnapshot) -> None:
+        """Restore every field from a rollback snapshot.
+
+        ``_health`` is written directly (not through the ``health``
+        property) so a restore never re-triggers the death hook: the
+        snapshot already carries the authoritative ``is_dead`` flag.
+        """
+        self._health = snapshot.health
+        self._max_health = snapshot.max_health
+        self.is_dead = snapshot.is_dead
+        self.invincibility_timer = snapshot.invincibility_timer
+        self.invincibility_duration = snapshot.invincibility_duration
+        self.stagger_timer = snapshot.stagger_timer
+        self.super_armor = snapshot.super_armor
+        self.super_armor_count = snapshot.super_armor_count
+        self.spawn_pos = Vector2(snapshot.spawn_pos)

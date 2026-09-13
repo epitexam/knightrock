@@ -2,6 +2,7 @@
 
 import random
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from itertools import count
 from typing import Any, Literal, cast
 
@@ -10,7 +11,7 @@ from pygame.math import Vector2
 from pygame.sprite import Group, Sprite
 
 from src.combat.attack_loading import load_attacks
-from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCombatComponent
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
@@ -19,11 +20,11 @@ from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics
 from src.entities.components import MovementComponent, ReactionComponent
 from src.entities.components.reaction import compute_knockback_direction
-from src.entities.vitals import Vitals
+from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite
 from src.states.null_state_machine import NullStateMachine
-from src.states.state_machine import StateMachine
+from src.states.state_machine import StateMachine, StateMachineSnapshot
 
 # Deterministic entity identifier source (ARCH-08).  A sequential counter
 # yields identical IDs for identically-ordered simulations, which keeps
@@ -34,6 +35,34 @@ _ENTITY_ID_SEQUENCE = count()
 # re-exported here so the historical ``from src.entities.entity import
 # compute_knockback_direction`` (used by ``Player``) keeps working.
 __all__ = ["Entity", "compute_knockback_direction"]
+
+
+@dataclass
+class EntitySnapshot:
+    """Serializable capture of an entity's full simulation state (Phase 3 #3).
+
+    Holds a direct reference to the live entity so a *local* rollback
+    (``RollbackSystem``) can resurrect a sprite that has since been
+    ``kill()``-ed and re-add it to its recorded groups.  The data fields are
+    plain/pickle-free scalars and tuples — the parts a future network
+    rollback would serialize — while ``entity`` and ``groups`` are local-only.
+    """
+
+    entity: Any
+    entity_id: str
+    hitbox: tuple[float, float, float, float]
+    old_hitbox: tuple[float, float, float, float]
+    velocity: tuple[float, float]
+    on_surface: dict[str, bool]
+    facing_right: bool
+    move_axis: float
+    pushable: bool
+    rng_state: tuple[Any, ...]
+    vitals: VitalsSnapshot
+    combat: CombatSnapshot
+    state_machine: StateMachineSnapshot
+    groups: list[Any] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class Entity(Sprite):
@@ -640,3 +669,56 @@ class Entity(Sprite):
         self.combat.sync_attack_box()
         self._post_update(delta_time)
         self._update_animator(delta_time)
+
+    def save_state(self) -> EntitySnapshot:
+        """Capture the full simulation state for rollback (Phase 3 #3).
+
+        ``rng`` is captured so any entity that consumes randomness during a
+        tick stays bit-identical across a rollback.  Subclasses (``Player``)
+        extend ``extra`` with their own controllers' runtime state.
+        """
+        snap = EntitySnapshot(
+            entity=self,
+            entity_id=self.id,
+            hitbox=(self.hitbox.x, self.hitbox.y, self.hitbox.width, self.hitbox.height),
+            old_hitbox=(
+                self.old_hitbox.x,
+                self.old_hitbox.y,
+                self.old_hitbox.width,
+                self.old_hitbox.height,
+            ),
+            velocity=(self.velocity.x, self.velocity.y),
+            on_surface=dict(self.on_surface),
+            facing_right=self.facing_right,
+            move_axis=self.move_axis,
+            pushable=self.pushable,
+            rng_state=self.rng.getstate(),
+            vitals=self.vitals.save_state(),
+            combat=self.combat.save_state(),
+            state_machine=self.state_machine.save_state(),
+        )
+        snap.groups = list(self.groups())
+        return snap
+
+    def load_state(self, snapshot: EntitySnapshot) -> None:
+        """Restore the full simulation state from a rollback snapshot.
+
+        Geometry is written to the live ``hitbox``/``old_hitbox`` objects and
+        ``sync_rects`` re-derives ``rect``/``hurtbox``; ``velocity`` and
+        ``on_surface`` route through their delegating properties into the
+        movement component.
+        """
+        self.hitbox.x, self.hitbox.y, self.hitbox.width, self.hitbox.height = snapshot.hitbox
+        self.old_hitbox.x, self.old_hitbox.y, self.old_hitbox.width, self.old_hitbox.height = (
+            snapshot.old_hitbox
+        )
+        self.sync_rects()
+        self.velocity = Vector2(snapshot.velocity)
+        self.on_surface = dict(snapshot.on_surface)
+        self.facing_right = snapshot.facing_right
+        self.move_axis = snapshot.move_axis
+        self.pushable = snapshot.pushable
+        self.rng.setstate(snapshot.rng_state)
+        self.vitals.load_state(snapshot.vitals)
+        self.combat.load_state(snapshot.combat)
+        self.state_machine.load_state(snapshot.state_machine)

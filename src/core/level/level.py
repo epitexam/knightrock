@@ -13,8 +13,10 @@ from src.core.level.level_data import LevelData
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
 from src.core.settings import Debug, Display, Respawn
 from src.core.sprite_groups import SpriteGroups
+from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
 from src.physics.contact_damage import ContactDamageSystem
 from src.physics.hazard_damage import HazardDamageSystem
@@ -38,6 +40,7 @@ class Level:
         input_manager,
         level_id: int = 0,
         events: EventBus | None = None,
+        rollback_enabled: bool = False,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -49,6 +52,10 @@ class Level:
             level_id: Numeric id of the level (event payloads, Phase 2 #5).
             events: Optional event bus; emissions are notifications only
                 (subscribers must never mutate the simulation).
+            rollback_enabled: Opt-in per-tick snapshot recording for the
+                local rollback core (Phase 3 #3). Off by default: recording
+                costs a full state capture each tick and only netcode,
+                rewind-the-tape, or tests need it.
         """
         self.display_surface = display_surface
         self.input_manager = input_manager
@@ -68,6 +75,13 @@ class Level:
         self.events = events
         self._player_dead_emitted = False
         self._completed_emitted = False
+
+        # Local rollback core (Phase 3 #3): monotonic fixed-tick counter and
+        # the ring buffer that captures a snapshot at the end of each tick.
+        # Recording is opt-in because a capture costs a full state copy.
+        self.tick = 0
+        self.rollback_enabled = rollback_enabled
+        self.rollback = RollbackSystem()
 
         self.gameplay_loop = GameplayLoop()
         self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
@@ -158,6 +172,94 @@ class Level:
             self.camera.follow(self.player.hitbox, delta_time)
 
         self._emit_notifications()
+
+        # One snapshot per fixed tick, recorded even when hit-stop suspended
+        # the simulation (the hit-stop timer itself advances every tick), so
+        # ``rollback_to(tick)`` restores the exact end-of-tick world state.
+        if self.rollback_enabled:
+            self.rollback.record(self)
+        self.tick += 1
+
+    def save_state(self) -> LevelSnapshot:
+        """Capture the whole level's simulation state for rollback (Phase 3 #3).
+
+        Groups the per-entity snapshots (keyed by deterministic ``entity_id``)
+        with the level's own transient state and the moving-platform
+        kinematics.  The entity grid and camera are *derived* state — rebuilt
+        from entity positions / player position — so they are not captured.
+        """
+        entities: dict[str, EntitySnapshot] = {}
+        for entity in self.groups.entity_sprites:
+            save = getattr(entity, "save_state", None)
+            if save is None:
+                continue
+            snapshot = save()
+            entities[snapshot.entity_id] = snapshot
+
+        platforms = [
+            PlatformSnapshot(
+                platform=platform,
+                pos=(platform.pos.x, platform.pos.y),
+                current_target=platform.current_target,
+                direction=platform.direction,
+            )
+            for platform in self.groups.moving_platforms
+        ]
+
+        return LevelSnapshot(
+            tick=self.tick,
+            hit_stop_timer=self.gameplay_loop.combat_system.hit_stop_timer,
+            respawn_timer=self.respawn_timer,
+            deaths=self.deaths,
+            exit_reached=self.exit_reached,
+            player_dead_emitted=self._player_dead_emitted,
+            completed_emitted=self._completed_emitted,
+            entities=entities,
+            platforms=platforms,
+        )
+
+    def load_state(self, snapshot: LevelSnapshot) -> None:
+        """Rewind the level to a captured tick.
+
+        Repairs the live sprite groups as it restores: entities absent from
+        the snapshot (spawned later) are reaped, and entities killed since
+        capture are re-added to their recorded groups before their state is
+        loaded.  The entity grid is left untouched — it is rebuilt from
+        entity positions at the start of the next tick.
+        """
+        self.tick = snapshot.tick
+        self.gameplay_loop.combat_system.hit_stop_timer = snapshot.hit_stop_timer
+        self.respawn_timer = snapshot.respawn_timer
+        self.deaths = snapshot.deaths
+        self.exit_reached = snapshot.exit_reached
+        self._player_dead_emitted = snapshot.player_dead_emitted
+        self._completed_emitted = snapshot.completed_emitted
+
+        # Reap entities that did not exist at capture time (e.g. a debug
+        # spawn after the target tick) — they must not pollute the restored
+        # simulation.  Only snapshottable entities are candidates: a plain
+        # sprite without ``save_state`` was never captured and must stay.
+        for entity in list(self.groups.entity_sprites):
+            if not hasattr(entity, "save_state"):
+                continue
+            if getattr(entity, "id", None) not in snapshot.entities:
+                entity.kill()
+
+        for entity_snapshot in snapshot.entities.values():
+            entity = entity_snapshot.entity
+            if entity not in self.groups.entity_sprites:
+                entity.add(*entity_snapshot.groups)
+            entity.load_state(entity_snapshot)
+
+        for platform_snapshot in snapshot.platforms:
+            platform = platform_snapshot.platform
+            platform.pos.x, platform.pos.y = platform_snapshot.pos
+            platform.current_target = platform_snapshot.current_target
+            platform.direction = platform_snapshot.direction
+            platform.rect.topleft = platform.pos
+            platform.hitbox.topleft = platform.pos
+            platform.old_rect = platform.rect.copy()
+            platform.old_hitbox = platform.hitbox.copy()
 
     def _emit_notifications(self) -> None:
         """Publish bus events for the app layer (never mutates simulation)."""
