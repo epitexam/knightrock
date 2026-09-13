@@ -2,11 +2,13 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import cast
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
+from src.physics.entity_grid import EntityGrid
 
 
 @dataclass(frozen=True)
@@ -35,7 +37,11 @@ class CombatSystem:
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
 
-    def process_attacks(self, combat_sprites: Iterable[Combatant]) -> None:
+    def process_attacks(
+        self,
+        combat_sprites: Iterable[Combatant],
+        entity_grid: EntityGrid | None = None,
+    ) -> None:
         """Resolve contacts from a stable snapshot of active hitboxes.
 
         Detection is completed before damage reactions are applied. This allows
@@ -43,20 +49,27 @@ class CombatSystem:
         order. The iterable is materialized once, avoiding repeated Pygame group
         copies and supporting generators safely.
 
-        Attacker-target pairs are tested exhaustively (O(n²) over combatants):
-        the spatial hash buckets the *environment*, not combatants, so it
-        cannot prune pair candidates (see ContactDamageSystem).
+        When ``entity_grid`` is provided, target candidates are pruned through
+        it (query around each active attack box, O(n · k) instead of the legacy
+        exhaustive O(n²)); candidates are then sorted back into group order so
+        hit resolution happens exactly like the exhaustive loop. Without a
+        grid the pairs are tested exhaustively — still correct, just slower.
         """
         self.metrics = CombatMetrics()
         if self.in_hit_stop:
             return
 
         combatants = tuple(combat_sprites)
-        candidates = self._collect_candidates(combatants)
+        candidates = self._collect_candidates(combatants, entity_grid)
         self._resolve_candidates(candidates)
 
-    def _collect_candidates(self, combatants: tuple[Combatant, ...]) -> tuple[HitCandidate, ...]:
+    def _collect_candidates(
+        self,
+        combatants: tuple[Combatant, ...],
+        entity_grid: EntityGrid | None = None,
+    ) -> tuple[HitCandidate, ...]:
         candidates: list[HitCandidate] = []
+        order = {id(combatant): index for index, combatant in enumerate(combatants)}
 
         for attacker in combatants:
             if attacker.is_dead:
@@ -68,7 +81,22 @@ class CombatSystem:
             if not combat.state.is_active or attack_box is None or phase is None:
                 continue
 
-            for target in combatants:
+            if entity_grid is not None:
+                # Query around the attack box (not the attacker's hitbox: the
+                # weapon reach is what matters), then restore group order so
+                # hit resolution matches the exhaustive loop deterministically.
+                # Only combatants have an entry in `order`, so the cast is safe.
+                targets = cast(
+                    list[Combatant],
+                    sorted(
+                        (m for m in entity_grid.near(attack_box) if id(m) in order),
+                        key=lambda m: order[id(m)],
+                    ),
+                )
+            else:
+                targets = list(combatants)
+
+            for target in targets:
                 if attacker is target or target.is_dead:
                     continue
                 if attacker.faction == target.faction:

@@ -7,6 +7,7 @@ from .collisions import (
     update_contact_state,
 )
 from .contact_damage import ContactDamageSystem
+from .entity_grid import EntityGrid, overlapping_pairs
 from .gravity import apply_entity_gravity
 from .hazard_damage import HazardDamageSystem
 from .movement import (
@@ -28,6 +29,7 @@ from .velocity import apply_velocity_friction, lerp_velocity
 
 __all__ = [
     "ContactDamageSystem",
+    "EntityGrid",
     "HazardDamageSystem",
     "SeparationSystem",
     "SpatialHash",
@@ -43,6 +45,7 @@ __all__ = [
     "hitbox_collide",
     "lerp_velocity",
     "move_entity",
+    "overlapping_pairs",
     "resolve_collisions",
     "resolve_jump",
     "update_contact_state",

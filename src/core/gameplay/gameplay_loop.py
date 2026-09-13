@@ -7,12 +7,18 @@ import pygame
 from src.combat.combat_system import CombatSystem
 from src.combat.combatant_protocol import Combatant
 from src.physics import SeparationSystem
+from src.physics.entity_grid import EntityGrid
 
 
 class GameplayLoop:
     def __init__(self) -> None:
         self.combat_system: CombatSystem = CombatSystem()
         self.separation_system: SeparationSystem = SeparationSystem()
+        # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
+        # pass at the start of process_combat_and_separation (positions are
+        # up to date there) and shared with every pairing system, turning
+        # the legacy O(n²) pair loops into O(n · k) local queries.
+        self.entity_grid: EntityGrid = EntityGrid(cell_size=128)
 
     def begin_tick(self, delta_time: float) -> float:
         """Advance hit-stop timing and return the simulation delta."""
@@ -29,11 +35,12 @@ class GameplayLoop:
         if effective_delta <= 0.0:
             return
 
-        self.separation_system.process(entity_sprites)
+        self.entity_grid.rebuild(entity_sprites)
+        self.separation_system.process(entity_sprites, self.entity_grid)
         combatants = tuple(combat_sprites)
         for combatant in combatants:
             combatant.combat.sync_attack_box()
-        self.combat_system.process_attacks(combatants)
+        self.combat_system.process_attacks(combatants, self.entity_grid)
 
     def remove_dead_entities(
         self,

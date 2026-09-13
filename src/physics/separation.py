@@ -1,55 +1,67 @@
 import pygame
 
 from src.core.settings import Separation as Sep
+from src.physics.entity_grid import EntityGrid, overlapping_pairs
 
 
 class SeparationSystem:
-    def process(self, entity_sprites: pygame.sprite.Group) -> None:
+    def process(
+        self,
+        entity_sprites: pygame.sprite.Group,
+        entity_grid: EntityGrid | None = None,
+    ) -> None:
         """Push overlapping entities apart on the dominant overlap axis.
 
-        Pairs are tested exhaustively (O(n²) over entities). The spatial hash
-        buckets the *environment* (tiles, platforms), not entities, so it
-        cannot prune entity pairs: filtering entities through it used to
-        silently disable this system entirely (see ContactDamageSystem).
-        Entity counts are small; a per-tick entity hash is the PERF-02
-        follow-up if enemy populations grow.
+        Pair candidates come from the per-tick :class:`EntityGrid` when one
+        is provided (O(n · k) instead of the legacy exhaustive O(n²)); pair
+        order is preserved, so behaviour is unchanged (see
+        :func:`overlapping_pairs`).  Without a grid the pairs are tested
+        exhaustively — still correct, just slower.
         """
         entities = [e for e in entity_sprites if hasattr(e, "hitbox") and hasattr(e, "on_surface")]
 
-        for i, ent_a in enumerate(entities):
-            for ent_b in entities[i + 1 :]:
-                if not (ent_a.pushable or ent_b.pushable):
-                    continue
+        if entity_grid is not None:
+            pairs = overlapping_pairs(entities, entity_grid)
+        else:
+            pairs = (
+                (ent_a, entities[j])
+                for i, ent_a in enumerate(entities)
+                for j in range(i + 1, len(entities))
+            )
 
-                if not ent_a.hitbox.colliderect(ent_b.hitbox):
-                    continue
+        for ent_a, ent_b in pairs:
+            if not (ent_a.pushable or ent_b.pushable):
+                continue
 
-                overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
-                    ent_a.hitbox.left, ent_b.hitbox.left
-                )
-                overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
-                    ent_a.hitbox.top, ent_b.hitbox.top
-                )
+            if not ent_a.hitbox.colliderect(ent_b.hitbox):
+                continue
 
-                if overlap_x <= 0 or overlap_y <= 0:
-                    continue
+            overlap_x = min(ent_a.hitbox.right, ent_b.hitbox.right) - max(
+                ent_a.hitbox.left, ent_b.hitbox.left
+            )
+            overlap_y = min(ent_a.hitbox.bottom, ent_b.hitbox.bottom) - max(
+                ent_a.hitbox.top, ent_b.hitbox.top
+            )
 
-                a_grounded = ent_a.on_surface.get("floor", False)
-                b_grounded = ent_b.on_surface.get("floor", False)
-                both_airborne = not a_grounded and not b_grounded
-                clearly_stacked = overlap_y < overlap_x * Sep.VERTICAL_STACK_RATIO
+            if overlap_x <= 0 or overlap_y <= 0:
+                continue
 
-                if clearly_stacked and both_airborne:
-                    push = overlap_y * Sep.STRENGTH
-                    dir_a = -1.0 if ent_a.hitbox.centery <= ent_b.hitbox.centery else 1.0
-                    self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="y")
-                else:
-                    push = overlap_x * Sep.STRENGTH
-                    dir_a = -1.0 if ent_a.hitbox.centerx <= ent_b.hitbox.centerx else 1.0
-                    self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="x")
+            a_grounded = ent_a.on_surface.get("floor", False)
+            b_grounded = ent_b.on_surface.get("floor", False)
+            both_airborne = not a_grounded and not b_grounded
+            clearly_stacked = overlap_y < overlap_x * Sep.VERTICAL_STACK_RATIO
 
-                ent_a.sync_rects()
-                ent_b.sync_rects()
+            if clearly_stacked and both_airborne:
+                push = overlap_y * Sep.STRENGTH
+                dir_a = -1.0 if ent_a.hitbox.centery <= ent_b.hitbox.centery else 1.0
+                self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="y")
+            else:
+                push = overlap_x * Sep.STRENGTH
+                dir_a = -1.0 if ent_a.hitbox.centerx <= ent_b.hitbox.centerx else 1.0
+                self._push(ent_a, ent_b, push * dir_a, push * -dir_a, axis="x")
+
+            ent_a.sync_rects()
+            ent_b.sync_rects()
 
     @staticmethod
     def _push(ent_a, ent_b, delta_a: float, delta_b: float, axis: str) -> None:

@@ -125,7 +125,9 @@ class Level:
                 self.groups.combat_sprites,
                 self.groups.entity_sprites,
             )
-            self.contact_damage_system.process(self.groups.entity_sprites)
+            self.contact_damage_system.process(
+                self.groups.entity_sprites, self.gameplay_loop.entity_grid
+            )
             self.hazard_damage_system.process(
                 self.groups.entity_sprites, self.groups.hazard_sprites
             )
