@@ -94,10 +94,10 @@ class Entity(Sprite):
     """
 
     # Kinematic state is owned by ``self._movement`` (MovementComponent) and
-    # exposed through delegating properties below; these class-level
-    # annotations document the public contract on the entity facade.
-    velocity: Vector2
-    on_surface: dict[str, bool]
+    # exposed through the ``velocity`` / ``on_surface`` delegating properties
+    # below.  Class-level annotations were removed: they collided with the
+    # same-named properties (mypy no-redef) and the property docstrings
+    # already document the public contract on the entity facade.
 
     def __init__(
         self,
