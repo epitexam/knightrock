@@ -9,11 +9,12 @@ import pytest
 from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.frame_data import AttackDefinition
 from src.core.level.level_manager import LEVEL_PATHS
-from src.data.attacks import attack_definition_to_dict, read_attacks_file
-from src.data.enemies import read_enemies_file
-from src.data.levels import levels_to_dict, read_levels_file
-from src.data.player import read_player_file
-from src.data.provider import GameplayData, load_gameplay_data
+from src.core.paths import PROJECT_ROOT
+from src.data.attacks import ATTACKS_FILENAME, attack_definition_to_dict, read_attacks_file
+from src.data.enemies import ENEMIES_FILENAME, read_enemies_file
+from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
+from src.data.player import PLAYER_FILENAME, read_player_file
+from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.enemies.types.dummy import DUMMY_CONFIG
 from src.entities.enemies.types.goblin import GOBLIN_CONFIG
@@ -256,14 +257,29 @@ def test_load_gameplay_data_fails_loudly_on_corrupt_json(tmp_path: Path) -> None
         load_gameplay_data(root)
 
 
-def test_load_gameplay_data_json_parity_with_builtin_values() -> None:
-    """Whatever the source, every value must equal the historical Python one.
+def test_shipped_gameplay_json_files_are_present() -> None:
+    """The tracked JSON must exist, else every other test only sees fallback."""
+    root = gameplay_data_root()
 
-    The invariant is checked on the *end state*, so it also holds in a
-    checkout where ``assets/`` (untracked by design) is absent and the
-    loader silently falls back: both layers must be indistinguishable.
+    # Locked-in layout decision: gameplay data lives in the tracked top-level
+    # ``data/gameplay/`` (``assets/`` is git-ignored, so it cannot carry it).
+    assert root == PROJECT_ROOT / "data" / "gameplay"
+    for name in (ATTACKS_FILENAME, ENEMIES_FILENAME, PLAYER_FILENAME, LEVELS_FILENAME):
+        assert (root / name).is_file(), f"missing tracked gameplay file: {name}"
+
+
+def test_load_gameplay_data_json_parity_with_builtin_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tracked JSON must reproduce the historical Python values exactly.
+
+    Asserted on the end state of the *default* root, so a transcription error
+    in the tracked files fails CI instead of silently shifting the balance.
     """
+    monkeypatch.delenv("KNIGHTROCK_DATA_DIR", raising=False)
     data = load_gameplay_data()
+
+    assert data.player is not None, "shipped player.json was not loaded"
 
     for name, builtin in (
         ("player", PLAYER_ATTACKS),
@@ -279,7 +295,6 @@ def test_load_gameplay_data_json_parity_with_builtin_values() -> None:
 
     # The JSON encodes DEFAULT_PLAYER_CONFIG (pink sprite), not the bare
     # PlayerConfig() defaults; Player uses the former when config is None.
-    if data.player is not None:
-        assert data.player == DEFAULT_PLAYER_CONFIG
+    assert data.player == DEFAULT_PLAYER_CONFIG
 
     assert dict(data.levels) == LEVEL_PATHS

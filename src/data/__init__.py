@@ -3,8 +3,8 @@
 Dataclasses Python (``AttackDefinition``, ``EnemyConfig``, ``PlayerConfig``)
 were the single source of truth — excellent for determinism, opaque for
 designers.  This package externalizes the *values* to JSON files under
-``assets/data/gameplay/`` while keeping the frozen dataclasses as the
-runtime model:
+``data/gameplay/`` (tracked in git, unlike ``assets/``) while keeping the
+frozen dataclasses as the runtime model:
 
 - files are **strict**: unknown keys, missing fields, bad versions and
   unknown attack references raise :class:`GameplayDataError`;

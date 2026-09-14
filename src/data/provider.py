@@ -1,10 +1,10 @@
 """Single entry point loading all gameplay data with fallback (Phase 3 #4).
 
 :class:`GameplayData` is a plain value bundle — attack sets, enemy configs,
-the player config and the level registry — built either from the JSON
-assets (when ``assets/data/gameplay/`` ships the four files) or from the
-historical in-code values (fallback, with a warning).  Both layers produce
-identical frozen dataclasses, so the simulation cannot tell them apart.
+the player config and the level registry — built either from the tracked
+JSON files in ``data/gameplay/`` or from the historical in-code values
+(fallback, with a warning).  Both layers produce identical frozen
+dataclasses, so the simulation cannot tell them apart.
 
 Resolution order per file (JSON errors vs absence):
 - file present and valid → use it;
@@ -37,6 +37,10 @@ from src.entities.player_config import PlayerConfig
 
 logger = logging.getLogger(__name__)
 
+# The gameplay JSON files are tracked in the repository (unlike ``assets/``,
+# which is git-ignored and only materialized at build time), so designers can
+# review and edit gameplay values in a pull request.
+DATA_ROOT = "data"
 GAMEPLAY_SUBDIR = "gameplay"
 
 BUILTIN_ATTACK_SETS: dict[str, dict[str, AttackDefinition]] = {
@@ -59,7 +63,7 @@ class GameplayData:
 def gameplay_data_root() -> Path:
     """Resolve the root holding ``gameplay/*.json``."""
     override = os.environ.get("KNIGHTROCK_DATA_DIR")
-    base = Path(override) if override else Path(resource_path("assets/data"))
+    base = Path(override) if override else Path(resource_path(DATA_ROOT))
     return base / GAMEPLAY_SUBDIR
 
 
