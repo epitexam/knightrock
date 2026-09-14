@@ -11,13 +11,13 @@ from src.core.colors import Colors
 from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
+from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit, MovingPlatform, Sprite
 from src.data.provider import GameplayData
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
-from src.physics.hazard_damage import HazardDamageSystem
 
 logger = logging.getLogger(__name__)
 

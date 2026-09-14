@@ -4,9 +4,9 @@ from collections.abc import Iterable
 
 import pygame
 
-from src.combat.combat_system import CombatSystem
 from src.combat.combatant_protocol import Combatant
-from src.physics import SeparationSystem
+from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.separation_system import SeparationSystem
 from src.physics.entity_grid import EntityGrid
 
 

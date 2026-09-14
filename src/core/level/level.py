@@ -7,9 +7,11 @@ from typing import Any
 import pygame
 
 from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
-from src.core.gameplay.debug_controller import DebugController
-from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.level.level_data import LevelData
+from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.hazard_damage import HazardDamageSystem
+from src.core.level.systems.spawn_system import DebugController
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
@@ -19,8 +21,6 @@ from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
-from src.physics.contact_damage import ContactDamageSystem
-from src.physics.hazard_damage import HazardDamageSystem
 from src.physics.movement import apply_moving_platform
 from src.physics.spatial_hash import SpatialHash
 

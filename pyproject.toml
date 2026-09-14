@@ -47,7 +47,6 @@ disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "src.core.gameplay.*",
     "src.core.level.*",
     "src.core.rendering.*",
     "src.core.sprites",

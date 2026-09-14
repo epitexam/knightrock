@@ -4,9 +4,9 @@ import pytest
 from pygame.sprite import Group
 
 from src.combat.attack_state import AttackStateMachine
-from src.combat.combat_system import CombatSystem
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
-from src.core.gameplay.gameplay_loop import GameplayLoop
+from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.gameplay_loop import GameplayLoop
 from tests.unit.helpers import activate, entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase

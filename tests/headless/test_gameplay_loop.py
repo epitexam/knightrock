@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.gameplay.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import GameplayLoop
 
 
 def test_hit_stop_suspends_simulation_for_its_duration() -> None:

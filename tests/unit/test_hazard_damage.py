@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pygame
 
-from src.physics.hazard_damage import HazardDamageSystem
+from src.core.level.systems.hazard_damage import HazardDamageSystem
 
 
 def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False) -> SimpleNamespace:

@@ -6,8 +6,8 @@ import pygame
 
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
+from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.sprites import Sprite
-from src.physics.hazard_damage import HazardDamageSystem
 
 
 class AnimatedSprite(Protocol):

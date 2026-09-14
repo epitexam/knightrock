@@ -15,7 +15,10 @@ needing to know the internal file structure.
 Example
 -------
 >>> from src.combat import CombatComponent, AttackDefinition
->>> from src.combat import CombatSystem, DamageType
+>>> from src.combat import DamageType, KnockbackConfig
+
+Note: the per-tick hit-detection *system* (``CombatSystem``) is a level
+pipeline stage and now lives in ``src.core.level.systems`` (audit §4).
 """
 
 # ── Data Structures & Enums ───────────────────────────────────────────
@@ -27,7 +30,6 @@ from src.combat.attack_loading import load_attacks
 
 # ── Core Components ───────────────────────────────────────────────────
 from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.combat.combat_system import CombatSystem
 
 # ── Protocols ─────────────────────────────────────────────────────────
 from src.combat.combatant_protocol import BlockingCombatant, Combatant
@@ -57,7 +59,6 @@ __all__ = [
     # Core
     "CombatComponent",
     "NullCombatComponent",
-    "CombatSystem",
     # Utilities
     "load_attacks",
     # Database

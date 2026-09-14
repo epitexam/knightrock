@@ -6,8 +6,8 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
-from src.core.gameplay.gameplay_loop import GameplayLoop
 from src.core.level.level import Level
+from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.settings import Combat, Physics
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import BlockController, DashController

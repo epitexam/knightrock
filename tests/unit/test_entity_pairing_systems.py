@@ -8,9 +8,9 @@ separation, and combat (every candidate list came back empty).
 
 import pygame
 
+from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.separation_system import SeparationSystem
 from src.core.settings import Combat as CombatSettings
-from src.physics.contact_damage import ContactDamageSystem
-from src.physics.separation import SeparationSystem
 
 
 class PairEntity(pygame.sprite.Sprite):

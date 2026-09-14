@@ -10,7 +10,7 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.combat.combat_system import CombatSystem
+from src.core.level.systems.combat_system import CombatSystem
 from src.entities.player import Player
 from src.entities.player_config import PlayerConfig
 from src.states.player_states import PlayerAttackState
