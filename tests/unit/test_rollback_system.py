@@ -18,9 +18,15 @@ def _fake_level(tick: int = 0) -> SimpleNamespace:
     captured: dict[str, SimpleNamespace] = {"snapshot": None}
 
     def save_state() -> LevelSnapshot:
-        snap = LevelSnapshot(tick=level.tick, hit_stop_timer=0.0, respawn_timer=0.0,
-                             deaths=0, exit_reached=False,
-                             player_dead_emitted=False, completed_emitted=False)
+        snap = LevelSnapshot(
+            tick=level.tick,
+            hit_stop_timer=0.0,
+            respawn_timer=0.0,
+            deaths=0,
+            exit_reached=False,
+            player_dead_emitted=False,
+            completed_emitted=False,
+        )
         captured["snapshot"] = snap
         return snap
 

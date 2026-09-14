@@ -17,7 +17,6 @@ import os
 
 import pygame
 import pytest
-from pygame.sprite import Group
 
 from src.core.level.level import Level
 from src.entities.enemies.factory import create_enemy
@@ -97,15 +96,13 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     rollback_tick = 9
 
     # First forward pass — record state at `rollback_tick` and at the end.
-    for t, inputs in enumerate(script[: rollback_tick + 1]):
+    for _t, inputs in enumerate(script[: rollback_tick + 1]):
         _script_tick(level, inputs)
-    state_at_rollback = {
-        k: _extract_entity_state(level.player) for k in ("player",)
-    }
+    state_at_rollback = {k: _extract_entity_state(level.player) for k in ("player",)}
     player_before = {k: dict(v) for k, v in state_at_rollback.items()}
 
     # Continue forward to the end of the script.
-    for inputs in script[rollback_tick + 1:]:
+    for inputs in script[rollback_tick + 1 :]:
         _script_tick(level, inputs)
     end_state_first_pass = _extract_entity_state(level.player)
 
@@ -113,7 +110,7 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     assert level.rollback.rollback_to(level, rollback_tick) is True
     assert _extract_entity_state(level.player) == player_before["player"]
 
-    for inputs in script[rollback_tick + 1:]:
+    for inputs in script[rollback_tick + 1 :]:
         _script_tick(level, inputs)
     end_state_second_pass = _extract_entity_state(level.player)
 

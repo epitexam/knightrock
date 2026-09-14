@@ -171,9 +171,7 @@ class StateMachine:
             current_state_name=self.current_state_name,
             previous_state_name=self.previous_state_name,
             input_buffer=dict(self._input_buffer),
-            state_attrs={
-                name: _capture_state_attrs(state) for name, state in self.states.items()
-            },
+            state_attrs={name: _capture_state_attrs(state) for name, state in self.states.items()},
         )
 
     def load_state(self, snapshot: StateMachineSnapshot) -> None:

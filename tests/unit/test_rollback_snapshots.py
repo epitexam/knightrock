@@ -14,8 +14,6 @@ import pytest
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.combat.knockback import KnockbackConfig
-from src.core.settings import Combat as CombatSettings
 from src.entities.entity import Entity
 from src.entities.player import Player
 from src.entities.player_controllers import (
