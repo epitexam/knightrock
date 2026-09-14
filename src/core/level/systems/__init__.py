@@ -14,6 +14,11 @@ from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
+from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.physics_system import PhysicsSystem
+from src.core.level.systems.platform_system import PlatformSystem
+from src.core.level.systems.progression_system import ProgressionSystem
+from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.level.systems.spawn_system import DebugController
 
@@ -23,5 +28,10 @@ __all__ = [
     "DebugController",
     "GameplayLoop",
     "HazardDamageSystem",
+    "HazardSystem",
+    "PhysicsSystem",
+    "PlatformSystem",
+    "PlayerRespawnSystem",
+    "ProgressionSystem",
     "SeparationSystem",
 ]
