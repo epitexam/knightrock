@@ -5,6 +5,7 @@ from pygame.sprite import Group
 
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy, PlayerReference
+from src.entities.enemies.schema import EnemyConfig
 
 
 def is_enemy_type(name: str) -> bool:
@@ -29,6 +30,7 @@ def create_enemy(
     groups: Group | Sequence[Group],
     collision_sprites: Group,
     player_reference: PlayerReference | None = None,
+    config: EnemyConfig | None = None,
 ) -> Enemy:
     """Create an enemy from the shared enemy registry.
 
@@ -59,7 +61,7 @@ def create_enemy(
     KeyError
         If the enemy type name is not found in ENEMY_CONFIGS.
     """
-    config = ENEMY_CONFIGS[name]
+    config = config if config is not None else ENEMY_CONFIGS[name]
     spawn_pos = (float(pos[0]), float(pos[1]))
     return Enemy(
         pos=spawn_pos,

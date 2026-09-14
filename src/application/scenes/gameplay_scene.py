@@ -43,6 +43,7 @@ class GameplayScene(Scene):
             self.game.input_manager,
             level_id=self.level_id,
             events=self.game.events,
+            gameplay_data=self.game.gameplay_data,
         )
 
     def update(self, delta_time: float) -> None:

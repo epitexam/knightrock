@@ -14,6 +14,7 @@ from src.core.level.level_registry import Registry
 from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit, MovingPlatform, Sprite
+from src.data.provider import GameplayData
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
 from src.physics.hazard_damage import HazardDamageSystem
@@ -180,8 +181,9 @@ class WorldBuilder:
     static images (if they have one) or logged as ignored.
     """
 
-    def __init__(self, level_data: LevelData):
+    def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None):
         self.level_data = level_data
+        self.gameplay_data = gameplay_data
 
     def build(self, groups: SpriteGroups, input_manager):
         """
@@ -214,6 +216,7 @@ class WorldBuilder:
 
     def _build_player(self, groups: SpriteGroups, input_manager):
         """Locate the player object and instantiate it."""
+        config = self.gameplay_data.player if self.gameplay_data is not None else None
         for layer in self.level_data.object_layers.values():
             for obj in layer.objects:
                 if obj.name == "player":
@@ -223,6 +226,7 @@ class WorldBuilder:
                         groups.collision_sprites,
                         groups.moving_platforms,
                         input_manager,
+                        config=config,
                     )
                     groups.combat_sprites.add(player)
                     groups.entity_sprites.add(player)
@@ -239,12 +243,16 @@ class WorldBuilder:
         if obj.name == "player":
             return
         if is_enemy_type(obj.name):
+            config = (
+                self.gameplay_data.enemies.get(obj.name) if self.gameplay_data is not None else None
+            )
             entity = create_enemy(
                 obj.name,
                 pos=(obj.x, obj.y),
                 groups=(groups.all_sprites,),
                 collision_sprites=groups.collision_sprites,
                 player_reference=player,
+                config=config,
             )
             groups.combat_sprites.add(entity)
             groups.entity_sprites.add(entity)

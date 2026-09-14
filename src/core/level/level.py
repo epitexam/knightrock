@@ -16,6 +16,7 @@ from src.core.rendering.renderer import Renderer
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
 from src.core.settings import Debug, Display, Respawn
 from src.core.sprite_groups import SpriteGroups
+from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
 from src.physics.contact_damage import ContactDamageSystem
@@ -41,6 +42,7 @@ class Level:
         level_id: int = 0,
         events: EventBus | None = None,
         rollback_enabled: bool = False,
+        gameplay_data: GameplayData | None = None,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -56,6 +58,10 @@ class Level:
                 local rollback core (Phase 3 #3). Off by default: recording
                 costs a full state capture each tick and only netcode,
                 rewind-the-tape, or tests need it.
+            gameplay_data: Optional gameplay-data bundle (Phase 3 #4).
+                When given, the player config, enemy configs and level
+                paths are taken from the JSON assets instead of the
+                built-in Python values.
         """
         self.display_surface = display_surface
         self.input_manager = input_manager
@@ -92,7 +98,7 @@ class Level:
         self.contact_damage_system = ContactDamageSystem()
         self.hazard_damage_system = HazardDamageSystem()
 
-        self.world_builder = WorldBuilder(level_data)
+        self.world_builder = WorldBuilder(level_data, gameplay_data)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         # Bucket the static collidables once; entities query the grid every

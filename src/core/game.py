@@ -15,6 +15,7 @@ from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
+from src.data.provider import GameplayData, load_gameplay_data
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,13 @@ class Game:
         self.joysticks: dict[int, JoystickType] = {}
         self.input_provider = LocalInputProvider()
         self.input_manager = InputManager(self.input_provider)
-        self.level_manager = LevelManager(LEVEL_PATHS)
+        # Gameplay data driven by JSON (Phase 3 #4): attack sets, enemy
+        # configs, player config and level registry. Falls back to the
+        # historical in-code values when the JSON assets are absent.
+        self.gameplay_data: GameplayData = load_gameplay_data()
+        self.level_manager = LevelManager(
+            self.gameplay_data.levels if self.gameplay_data.levels else LEVEL_PATHS
+        )
         self._save_path = save_path if save_path is not None else default_save_path()
         self.save_game = SaveGame.load(self._save_path)
         self.events = EventBus()
