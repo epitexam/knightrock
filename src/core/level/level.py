@@ -1,5 +1,5 @@
 """
-Level class orchestrating the game world, entities, and simulation loop.
+The Level facade: it builds a world and delegates its tick to the systems.
 """
 
 from typing import Any
@@ -11,27 +11,37 @@ from src.core.level.level_data import LevelData
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
+from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.physics_system import PhysicsSystem
+from src.core.level.systems.platform_system import PlatformSystem
+from src.core.level.systems.progression_system import ProgressionSystem
+from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.spawn_system import DebugController
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
-from src.core.settings import Debug, Display, Respawn
+from src.core.settings import Debug, Display
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
-from src.physics.movement import apply_moving_platform
 from src.physics.spatial_hash import SpatialHash
 
 
 class Level:
     """
-    Manages a single game level, including its entities, physics, combat,
-    camera, and rendering.
+    One game level: world assembly, simulation entry point and rendering.
 
-    The level owns all sprite groups, the camera, the gameplay loop,
-    and the debug controller. It processes updates and rendering each frame.
+    The level owns the world (sprite groups, camera, spatial hash), assembles
+    the systems that make up its tick, and re-exposes the state they hold
+    (``respawn_timer``/``deaths``/``exit_reached``) directly from them.
+
+    It is a *facade* over those systems (audit F1.2/§4): :meth:`update` drives
+    the debug spawner, delegates everything the simulation does to
+    :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update`, then
+    runs the cross-cutting tail — camera follow, event notifications and the
+    end-of-tick rollback snapshot.
     """
 
     def __init__(
@@ -72,11 +82,8 @@ class Level:
         self.camera = Camera(Display.WIDTH, Display.HEIGHT)
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
-        self.exit_reached = False
-        self.respawn_timer = 0.0
-        # Number of respawns performed; GameplayScene turns this into a
-        # Game Over transition after Gameplay.MAX_DEATHS (Phase 2 #4).
-        self.deaths = 0
+        # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
+        # systems assembled below and are re-exposed as properties (audit F1.2).
         self.level_id = level_id
         self.events = events
         self._player_dead_emitted = False
@@ -89,27 +96,77 @@ class Level:
         self.rollback_enabled = rollback_enabled
         self.rollback = RollbackSystem()
 
-        self.gameplay_loop = GameplayLoop()
         self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
         # Spatial hash for O(1) collision lookups (PERF-01/02): created before
         # the debug controller so runtime-spawned enemies join the grid too.
         self.spatial_hash = SpatialHash(cell_size=128)
         self.debug_controller = DebugController(self.groups, self.spatial_hash)
-        self.contact_damage_system = ContactDamageSystem()
-        self.hazard_damage_system = HazardDamageSystem()
 
         self.world_builder = WorldBuilder(level_data, gameplay_data)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed
-        # per tick in update()).
+        # each tick by PlatformSystem).
         self.spatial_hash.add_all(self.groups.collision_sprites)
         for entity in self.groups.entity_sprites:
             entity.spatial_hash = self.spatial_hash
 
+        # Systems assembled by the level (audit F1.2/§4): the level owns them
+        # and re-exposes the state they hold, while the gameplay loop owns the
+        # order in which they run (audit F1.6).  Each one takes its
+        # collaborators explicitly, so it stays independently testable.
+        self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
+        self.physics_system = PhysicsSystem(self.groups)
+        self.hazard_system = HazardSystem(self.groups)
+        self.contact_damage_system = ContactDamageSystem()
+        self.hazard_damage_system = HazardDamageSystem()
+        self.respawn_system = PlayerRespawnSystem(self.player, level_data)
+        self.progression_system = ProgressionSystem(self.groups.exit_sprites)
+
+        self.gameplay_loop = GameplayLoop(
+            platform_system=self.platform_system,
+            physics_system=self.physics_system,
+            hazard_system=self.hazard_system,
+            contact_damage_system=self.contact_damage_system,
+            hazard_damage_system=self.hazard_damage_system,
+            respawn_system=self.respawn_system,
+            progression_system=self.progression_system,
+        )
+
         if self.events is not None:
             self.events.emit(LevelStarted(level_id=self.level_id))
+
+    @property
+    def respawn_timer(self) -> float:
+        """Respawn countdown in seconds, owned by the respawn system."""
+        return self.respawn_system.respawn_timer
+
+    @respawn_timer.setter
+    def respawn_timer(self, value: float) -> None:
+        self.respawn_system.respawn_timer = value
+
+    @property
+    def deaths(self) -> int:
+        """Number of respawns performed, owned by the respawn system.
+
+        ``GameplayScene`` turns this into a Game Over transition after
+        ``Gameplay.MAX_DEATHS`` (Phase 2 #4).
+        """
+        return self.respawn_system.deaths
+
+    @deaths.setter
+    def deaths(self, value: int) -> None:
+        self.respawn_system.deaths = value
+
+    @property
+    def exit_reached(self) -> bool:
+        """True once the player touched the exit, owned by progression."""
+        return self.progression_system.exit_reached
+
+    @exit_reached.setter
+    def exit_reached(self, value: bool) -> None:
+        self.progression_system.exit_reached = value
 
     @property
     def completed(self) -> bool:
@@ -120,59 +177,15 @@ class Level:
         """
         Advance the level simulation by one tick.
 
-        Handles hit-stop, moving platforms, hazards, entity updates,
-        combat, contact damage, respawning, camera follow, and exit detection.
+        The level is a facade (audit F1.2/§4): it drives the debug spawner,
+        delegates everything the tick simulates to the gameplay loop's
+        pipeline, then runs the cross-cutting tail — camera follow, event
+        notifications and the end-of-tick rollback snapshot.
         """
         self.debug_controller.update(delta_time, self.player)
 
         effective_delta = self.gameplay_loop.begin_tick(delta_time)
-
-        if effective_delta > 0.0:
-            self.groups.moving_platforms.update(effective_delta)
-            # Platforms moved this tick: re-bucket them so entity collision
-            # queries keep finding them at their current position (PERF-01).
-            self.spatial_hash.update_all(self.groups.moving_platforms)
-            self.groups.hazard_sprites.update(effective_delta)
-
-            for entity in self.groups.entity_sprites:
-                apply_moving_platform(entity, self.groups.moving_platforms)
-
-            self.groups.entity_sprites.update(effective_delta)
-            self.groups.fx_sprites.update(effective_delta)
-
-            self.gameplay_loop.process_combat_and_separation(
-                effective_delta,
-                self.groups.combat_sprites,
-                self.groups.entity_sprites,
-            )
-            self.contact_damage_system.process(
-                self.groups.entity_sprites, self.gameplay_loop.entity_grid
-            )
-            self.hazard_damage_system.process(
-                self.groups.entity_sprites, self.groups.hazard_sprites
-            )
-            self.gameplay_loop.remove_dead_entities(self.groups.entity_sprites, self.player)
-
-            if self.player.is_dead:
-                self.respawn_timer += effective_delta
-                if self.respawn_timer >= Respawn.DELAY_S:
-                    self.player.respawn()
-                    self.respawn_timer = 0.0
-                    self.deaths += 1
-            else:
-                self.respawn_timer = 0.0
-
-            # Check for death by falling below the death border (BUG-06)
-            if (
-                self.player.hitbox.top > self.level_data.config.death_border_bottom
-                and self.level_data.config.death_border_bottom > 0
-            ):
-                self.player.die()
-
-            if not self.player.is_dead and pygame.sprite.spritecollide(
-                self.player, self.groups.exit_sprites, False
-            ):
-                self.exit_reached = True
+        self.gameplay_loop.update(effective_delta, self.groups, self.player)
 
         if not self.player.is_dead:
             self.camera.follow(self.player.hitbox, delta_time)

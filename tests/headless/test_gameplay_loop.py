@@ -1,5 +1,7 @@
 """Tests d'orchestration headless du GameplayLoop (Phase 1 #10)."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.core.level.systems.gameplay_loop import GameplayLoop
@@ -86,3 +88,69 @@ class SeparationStub:
 
     def process(self, entity_sprites) -> None:
         self.ran = True
+
+
+def _noop_stage(name: str, calls: list[str]):
+    """Stage double recording the order in which the loop runs it.
+
+    The stages have heterogeneous signatures (contact damage takes the entity
+    grid, hazard damage takes the hazard sprites), hence ``*_args``.
+    """
+    return SimpleNamespace(process=lambda *args: calls.append(name))
+
+
+def _empty_groups() -> SimpleNamespace:
+    return SimpleNamespace(
+        moving_platforms=[],
+        hazard_sprites=[],
+        entity_sprites=[],
+        combat_sprites=[],
+    )
+
+
+def test_update_sequences_the_stages_in_their_historical_order() -> None:
+    """The pipeline order is load-bearing: it must not drift (audit F1.6)."""
+    calls: list[str] = []
+    loop = GameplayLoop(
+        platform_system=_noop_stage("platform", calls),
+        hazard_system=_noop_stage("hazard", calls),
+        physics_system=_noop_stage("physics", calls),
+        contact_damage_system=_noop_stage("contact_damage", calls),
+        hazard_damage_system=_noop_stage("hazard_damage", calls),
+        respawn_system=_noop_stage("respawn", calls),
+        progression_system=_noop_stage("progression", calls),
+    )
+    loop.separation_system = SimpleNamespace(
+        process=lambda sprites, grid=None: calls.append("separation")
+    )
+    loop.combat_system = SimpleNamespace(
+        process_attacks=lambda combatants, grid=None: calls.append("combat")
+    )
+
+    loop.update(1 / 60, _empty_groups(), None)
+
+    assert calls == [
+        "platform",
+        "hazard",
+        "physics",
+        "separation",
+        "combat",
+        "contact_damage",
+        "hazard_damage",
+        "respawn",
+        "progression",
+    ]
+
+
+def test_update_is_a_noop_while_suspended_even_unwired() -> None:
+    """A hit-stop tick short-circuits before the staged wiring is resolved."""
+    loop = GameplayLoop()
+
+    loop.update(0.0, _empty_groups(), None)  # must not raise
+
+
+def test_update_without_the_world_stages_fails_fast() -> None:
+    loop = GameplayLoop()
+
+    with pytest.raises(RuntimeError, match="platform_system"):
+        loop.update(1 / 60, _empty_groups(), None)

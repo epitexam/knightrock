@@ -7,7 +7,13 @@ import pygame
 import pytest
 
 from src.core.level.level import Level
+from src.core.level.level_data import LevelConfig, LevelData
 from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.physics_system import PhysicsSystem
+from src.core.level.systems.platform_system import PlatformSystem
+from src.core.level.systems.progression_system import ProgressionSystem
+from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.settings import Combat, Physics
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import BlockController, DashController
@@ -34,11 +40,50 @@ def test_hit_stop_suspends_the_tick_that_expires_it() -> None:
     assert loop.begin_tick(0.02) == pytest.approx(0.02)
 
 
+def wire_world_systems(level: Level, groups, player) -> None:
+    """Attach the world stages to a ``__new__``-built level (no ``__init__``).
+
+    ``Level`` owns the systems and re-exposes their state, while the gameplay
+    loop owns the order in which they run (audit F1.2/F1.6) — both references
+    are wired here, with spies where the test asserts "never called".
+    """
+    level.spatial_hash = SimpleNamespace(update_all=Mock())  # type: ignore[assignment]
+    level_data = LevelData(
+        width=20,
+        height=10,
+        tile_size=64,
+        object_layers={},
+        config=LevelConfig(death_border_bottom=0.0),
+    )
+    level.respawn_system = PlayerRespawnSystem(player, level_data)  # type: ignore[assignment]
+    level.progression_system = ProgressionSystem(groups.exit_sprites)  # type: ignore[assignment]
+    level.contact_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.hazard_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.gameplay_loop = GameplayLoop(  # type: ignore[assignment]
+        platform_system=PlatformSystem(groups, level.spatial_hash),
+        physics_system=PhysicsSystem(groups),
+        hazard_system=HazardSystem(groups),
+        contact_damage_system=level.contact_damage_system,
+        hazard_damage_system=level.hazard_damage_system,
+        respawn_system=level.respawn_system,
+        progression_system=level.progression_system,
+    )
+    level.gameplay_loop.combat_system.hit_stop_timer = 0.1
+    level.gameplay_loop.separation_system.process = Mock()
+    level.gameplay_loop.combat_system.process_attacks = Mock()
+
+
 def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
+    """A suspended tick runs no stage of the pipeline (audit F1.6).
+
+    The level is built through ``__new__`` on purpose: the test injects world
+    doubles and spies on every stage instead of loading a TMX level.
+    """
     player = SimpleNamespace(
         is_dead=False,
         hitbox=pygame.FRect(0, 0, 48, 56),
         respawn=Mock(),
+        die=Mock(),
     )
     dead_enemy = SimpleNamespace(is_dead=True, kill=Mock())
     groups = SimpleNamespace(
@@ -53,9 +98,6 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level = Level.__new__(Level)
     level.player = player  # type: ignore[assignment]
     level.groups = groups  # type: ignore[assignment]
-    level.exit_reached = False
-    level.respawn_timer = 0.75
-    level.deaths = 0
     level.tick = 0
     level.rollback_enabled = False
     level.events = None  # type: ignore[assignment]
@@ -63,12 +105,11 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level._completed_emitted = False
     level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
     level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
-    level.contact_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
-    level.hazard_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
-    level.gameplay_loop = GameplayLoop()
-    level.gameplay_loop.combat_system.hit_stop_timer = 0.1
-    level.gameplay_loop.separation_system.process = Mock()
-    level.gameplay_loop.combat_system.process_attacks = Mock()
+    wire_world_systems(level, groups, player)
+
+    level.respawn_timer = 0.75
+    level.deaths = 0
+    level.exit_reached = False
 
     exit_check = Mock(return_value=[object()])
     monkeypatch.setattr(pygame.sprite, "spritecollide", exit_check)
@@ -85,15 +126,85 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     groups.hazard_sprites.update.assert_not_called()
     groups.entity_sprites.update.assert_not_called()
     groups.fx_sprites.update.assert_not_called()
+    level.spatial_hash.update_all.assert_not_called()  # type: ignore[attr-defined]
     level.gameplay_loop.separation_system.process.assert_not_called()
     level.gameplay_loop.combat_system.process_attacks.assert_not_called()
     level.contact_damage_system.process.assert_not_called()  # type: ignore[attr-defined]
     level.hazard_damage_system.process.assert_not_called()  # type: ignore[attr-defined]
     dead_enemy.kill.assert_not_called()
     player.respawn.assert_not_called()
+    player.die.assert_not_called()
     exit_check.assert_not_called()
     assert level.respawn_timer == pytest.approx(0.75)
     assert level.exit_reached is False
+
+
+def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> None:
+    """Once hit-stop expires the facade runs the whole pipeline (audit F1.6).
+
+    Mirror of the frozen-tick test: same spies, no hit-stop, so every stage
+    of ``GameplayLoop.update`` must have run exactly once.
+    """
+    player = SimpleNamespace(
+        is_dead=False,
+        hitbox=pygame.FRect(0, 0, 48, 56),
+        on_surface={"floor": False, "left": False, "right": False},
+        respawn=Mock(),
+        die=Mock(),
+    )
+    dead_enemy = SimpleNamespace(
+        is_dead=True,
+        hitbox=pygame.FRect(200, 0, 48, 56),
+        on_surface={"floor": False, "left": False, "right": False},
+        kill=Mock(),
+    )
+    groups = SimpleNamespace(
+        moving_platforms=TrackingGroup(),
+        hazard_sprites=TrackingGroup(),
+        entity_sprites=TrackingGroup(player, dead_enemy),
+        fx_sprites=TrackingGroup(),
+        combat_sprites=TrackingGroup(),
+        exit_sprites=TrackingGroup(),
+    )
+    level = Level.__new__(Level)
+    level.player = player  # type: ignore[assignment]
+    level.groups = groups  # type: ignore[assignment]
+    level.tick = 0
+    level.rollback_enabled = False
+    level.events = None  # type: ignore[assignment]
+    level._player_dead_emitted = False
+    level._completed_emitted = False
+    level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
+    level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
+    wire_world_systems(level, groups, player)
+    # No hit-stop: the tick is live.
+    level.gameplay_loop.combat_system.hit_stop_timer = 0.0
+    level.respawn_timer = 0.0
+    level.deaths = 0
+    level.exit_reached = False
+
+    exit_check = Mock(return_value=[object()])
+    monkeypatch.setattr(pygame.sprite, "spritecollide", exit_check)
+
+    level.update(0.016)
+
+    groups.moving_platforms.update.assert_called_once_with(pytest.approx(0.016))
+    groups.hazard_sprites.update.assert_called_once_with(pytest.approx(0.016))
+    groups.entity_sprites.update.assert_called_once_with(pytest.approx(0.016))
+    groups.fx_sprites.update.assert_called_once_with(pytest.approx(0.016))
+    level.spatial_hash.update_all.assert_called_once()  # type: ignore[attr-defined]
+    level.gameplay_loop.separation_system.process.assert_called_once()
+    level.gameplay_loop.combat_system.process_attacks.assert_called_once()
+    level.contact_damage_system.process.assert_called_once()  # type: ignore[attr-defined]
+    level.hazard_damage_system.process.assert_called_once()  # type: ignore[attr-defined]
+    # The corpse was reaped, the living player was spared and the exit probe ran.
+    dead_enemy.kill.assert_called_once()
+    player.die.assert_not_called()
+    player.respawn.assert_not_called()
+    exit_check.assert_called_once()
+    assert level.exit_reached is True
+    level.camera.follow.assert_called_once_with(player.hitbox, 0.016)  # type: ignore[attr-defined]
+    assert level.tick == 1
 
 
 def test_wall_jump_uses_entity_configuration() -> None:
