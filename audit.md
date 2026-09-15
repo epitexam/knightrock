@@ -279,6 +279,17 @@ et remplacer `level_manager.register(0, ...)` par un `LevelRegistryConfig` (map 
 
 Dépendances : Phase 2 #4 (SceneManager) et #5 (EventBus) doivent être livrés avant ; #2 et #3 de cette phase sont les prérequis de #1.
 
+**Phase 5 — Hitbox / combat avancé hack'n'slash (après Phase 3)**
+Constat : socle mêlée complet (`HitboxManager` 1 rect offensif, `hurtbox` distincte de la `hitbox` physique, frame data startup/active/recovery, `CombatSystem` two-pass déterministe, `HitResolver`, overlay debug `world_ui.py:28-50`). Limites relevées pour du contenu hack'n'slash :
+| # | Chantier | Bénéfice |
+|---|---------|----------|
+| 1 | **Multi-hitbox disjointe** : `HitboxManager.rect: FRect \| None` (`combat/hitbox_manager.py:17`) → `tuple[FRect, ...]` (ex : 2 lames, boss multi-zones) ; `CombatSystem` itère les sous-box, `targets_hit` par phase conservé | Boss / armes complexes |
+| 2 | **Hitbox animée par frame** : taille/offset fixes par phase (`combat/attack_data.py`) → courbe per-frame (liste de rects ou interpolation startup→active), éditée via JSON data-driven (Phase 3 #4) | Coups visuellement justes |
+| 3 | **Projectiles** : brancher `ObjectPool` (`core/object_pool.py:11`, inutilisé par la simulation) sur un `ProjectileSystem` (hitbox offensive volante + `hurtbox`, faction, durée de vie) réutilisant `HitResolver`/`EntityGrid` | Mages, archers, pièges |
+| 4 | **Juggle / hit-stun avancé** : au-delà de `heavy_knockback` + `stagger` — hitstun scalé aux dégâts, modificateur de gravité en juggle, invuln OTG, compteur de combo air | Profondeur combat |
+
+Dépendances : Phase 3 #1 (`EntityGrid` + `ObjectPool`) prérequis de #1/#3 ; #2 dépend de l'externalisation JSON Phase 3 #4.
+
 ---
 
 ## 4. Architecture cible recommandée
@@ -311,7 +322,7 @@ main.py                     # bootstrap : pygame.init, dictConfig, run(scene_man
    ├── player.py (Player(states + PlayerInputHandler + Controllers)
    └── enemies/ (factory, configs, types/*.py — déjà propre)
 └── physics/  (collisions, movement, separation, spatial_hash, gravity… — RAS)
-└── combat/   (frame_data, combat_system, assets validés ; purger netcode mort)
+└── combat/   (frame_data, combat_system, assets validés ; purger netcode mort ; Phase 5: multi-hitbox, projectiles, juggle)
 └── states/   (state_machine + reaction states ; EnemyState(Enum))
 └── ui/       (ui_manager, panel_renderer, styles, player_ui, world_ui)
 tests/
