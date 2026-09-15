@@ -1,4 +1,4 @@
-"""Tests pour les panneaux de debug enrichis (ui_manager)."""
+"""Tests for the enriched debug panels (ui_manager)."""
 
 import os
 from types import SimpleNamespace
@@ -23,7 +23,7 @@ def ui_manager() -> UIManager:
 
 
 def _make_game(scene_name: str = "GameplayScene", with_level: bool = False) -> SimpleNamespace:
-    """Construit un fake Game avec une scène active configurable."""
+    """Build a fake Game with a configurable active scene."""
     level = None
     if with_level:
         groups = SimpleNamespace(
@@ -75,12 +75,12 @@ def test_performance_panel_includes_frame_time(ui_manager: UIManager) -> None:
         frame_time=16.0,
         cache_size=42,
     )
-    # Vérifie que le panneau se dessine sans erreur (cache + polices prêts).
+    # Check the panel draws without error (cache + fonts ready).
     assert ui_manager.renderer.debug_font.get_height() > 0
 
 
 def test_performance_panel_defaults_backward_compatible(ui_manager: UIManager) -> None:
-    # Les nouveaux paramètres sont optionnels : l'appel historique reste valide.
+    # New params are optional: the historic call stays valid.
     ui_manager.draw_performance_panel(
         fps=30.0,
         sprite_count=1,

@@ -1,4 +1,4 @@
-"""Tests de l'EventBus (audit F8.1, Phase 2 #5)."""
+"""EventBus tests (audit F8.1, Phase 2 #5)."""
 
 import pytest
 
@@ -49,13 +49,13 @@ def test_unsubscribe_removes_the_handler() -> None:
 def test_unsubscribe_unknown_handler_is_a_noop() -> None:
     bus = EventBus()
 
-    bus.unsubscribe(PlayerDied, lambda _: None)  # ne lève pas
+    bus.unsubscribe(PlayerDied, lambda _: None)  # does not raise
 
 
 def test_emit_without_subscribers_is_a_noop() -> None:
     bus = EventBus()
 
-    bus.emit(PlayerDied(entity_id="e9", deaths=3))  # ne lève pas
+    bus.emit(PlayerDied(entity_id="e9", deaths=3))  # does not raise
 
 
 def test_clear_drops_every_subscription() -> None:

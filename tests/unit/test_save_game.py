@@ -1,4 +1,4 @@
-"""Tests de la sauvegarde JSON (audit F8.1, Phase 2 #6)."""
+"""JSON save tests (audit F8.1, Phase 2 #6)."""
 
 import json
 from pathlib import Path

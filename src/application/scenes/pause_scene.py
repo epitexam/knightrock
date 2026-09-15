@@ -1,4 +1,4 @@
-"""Scène de pause (overlay au-dessus du niveau gelé, Phase 2 #4)."""
+"""Pause scene (overlay above the frozen level, Phase 2 #4)."""
 
 from __future__ import annotations
 
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 
 class PauseScene(Scene):
-    """Overlay de pause : reprendre, revenir au menu, quitter."""
+    """Pause overlay: resume, back to menu, quit."""
 
     TITLE = "PAUSE"
-    OPTIONS = ("ENTRÉE / ÉCHAP : reprendre", "Q : menu", "ÉCHAP DU MENU : quitter")
+    OPTIONS = ("ENTER / ESC: resume", "Q: menu", "ESC FROM MENU: quit")
 
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)

@@ -1,9 +1,9 @@
-"""Partagés d'aides de test (audit F7.2).
+"""Shared test helpers (audit F7.2).
 
-`make_phase`/`make_attack`/`make_entity`/`entity_at`/`activate` étaient
-redéfinis dans plusieurs fichiers de test (test_hitbox_pipeline,
-test_damage_resolution, test_combat_behaviors). Une seule source,
-réutilisée via ``from tests.unit.helpers import ...``.
+`make_phase`/`make_attack`/`make_entity`/`entity_at`/`activate` used to be
+redefined across several test files (test_hitbox_pipeline,
+test_damage_resolution, test_combat_behaviors). Single source, reused via
+``from tests.unit.helpers import ...``.
 """
 
 from dataclasses import dataclass, field

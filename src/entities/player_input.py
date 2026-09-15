@@ -1,11 +1,10 @@
-"""Lecture d'input du joueur extraite de ``Player`` (audit F1.1, Phase 2 #3).
+"""Player input reading extracted from ``Player`` (audit F1.1, Phase 2 #3).
 
-``Player`` concentrait la lecture du clavier/manette (axes, buffers de
-saut/dash, attaques avec charge et combos) en plus de la physique, des
-états et du combat.  :class:`PlayerInputHandler` reprend cette unique
-responsabilité : il lit l':class:`InputManager` à chaque tick et pilote
-les controllers + le composant combat.  ``Player`` ne fait plus que
-l'orchestration (``_pre_update``).
+``Player`` used to concentrate keyboard/gamepad reading (axes, jump/dash
+buffers, charge attacks and combos) on top of physics, states and combat.
+:class:`PlayerInputHandler` takes over that single responsibility: it reads
+the :class:`InputManager` every tick and drives the controllers + the combat
+component.  ``Player`` only keeps orchestration (``_pre_update``).
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Tests d'intégration des événements Level → app (Phase 2 #5)."""
+"""Level → app event integration tests (Phase 2 #5)."""
 
 import pygame
 
@@ -8,7 +8,7 @@ from tests.headless.conftest import make_programmatic_level_data
 
 
 class MockInputManager:
-    """Stub d'input minimal (même contrat que la fixture conftest)."""
+    """Minimal input stub (same contract as the conftest fixture)."""
 
     def __init__(self) -> None:
         self.move_axis = 0.0
@@ -30,7 +30,7 @@ class MockInputManager:
 
 
 def build_level_with_bus(events: EventBus | None) -> Level:
-    """Construit un Level programmatique avec le bus fourni."""
+    """Build a programmatic Level with the given bus."""
     return Level(
         pygame.display.get_surface(),
         make_programmatic_level_data(),

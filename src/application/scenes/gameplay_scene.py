@@ -1,4 +1,4 @@
-"""Scène de jeu : un niveau, ses morts, ses transitions (Phase 2 #4)."""
+"""Gameplay scene: one level, its deaths, its transitions (Phase 2 #4)."""
 
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ if TYPE_CHECKING:
 
 
 class GameplayScene(Scene):
-    """Fait tourner un ``Level`` et déclenche les transitions de fin.
+    """Run a ``Level`` and trigger the end transitions.
 
-    Transitions :
-    - drapeau atteint → niveau suivant (ou menu si dernier niveau) ;
-    - ``Gameplay.MAX_DEATHS`` morts → scène Game Over ;
-    - ÉCHAP → pause (la scène est gelée sur la pile).
+    Transitions:
+    - exit flag reached → next level (or menu if last level);
+    - ``Gameplay.MAX_DEATHS`` deaths → Game Over scene;
+    - ESC → pause (the scene is frozen on the stack).
     """
 
     def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
-        """``level`` permet d'injecter un Level en test (sans TMX)."""
+        """``level`` allows injecting a Level in tests (no TMX)."""
         super().__init__(game)
         self.level_id = level_id
         self.level: Level | None = level

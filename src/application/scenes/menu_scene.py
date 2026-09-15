@@ -1,4 +1,4 @@
-"""Scène de menu principal (audit F8.1, Phase 2 #4)."""
+"""Main menu scene (audit F8.1, Phase 2 #4)."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 
 
 class MenuScene(Scene):
-    """Écran titre : continuer / nouveau jeu, ou quitter.
+    """Title screen: continue / new game, or quit.
 
-    Le rendu est volontairement textuel (scene minimal) : la priorité
-    est la machine d'états d'application, pas l'habillage du menu.
-    La progression affichée vient de :class:`SaveGame` (Phase 2 #6).
+    Rendering is deliberately textual (minimal scene): the priority is the
+    application state machine, not menu dressing.  The displayed progression
+    comes from :class:`SaveGame` (Phase 2 #6).
     """
 
     TITLE = "KNIGHTROCK"
@@ -34,12 +34,12 @@ class MenuScene(Scene):
         self.options: tuple[str, ...]
         if has_progress:
             self.options = (
-                f"ENTRÉE : continuer (niveau {save.last_level_id})",
-                "N : nouveau jeu",
-                "ÉCHAP : quitter",
+                f"ENTER: continue (level {save.last_level_id})",
+                "N: new game",
+                "ESC: quit",
             )
         else:
-            self.options = ("ENTRÉE : jouer", "ÉCHAP : quitter")
+            self.options = ("ENTER: play", "ESC: quit")
 
     def update(self, delta_time: float) -> None:
         """A menu is static: nothing to simulate."""

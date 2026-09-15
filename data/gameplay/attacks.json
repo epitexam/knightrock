@@ -31,7 +31,11 @@
               "is_finisher": false
             },
             "reset_targets": true,
-            "cancel_into": []
+            "cancel_into": [
+              "heavy_attack",
+              "uppercut",
+              "dash_attack"
+            ]
           }
         ],
         "cooldown": 0.3,
@@ -42,7 +46,7 @@
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
         "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "attack_move_multiplier": 0.5
       },
       "heavy_attack": {
         "phases": [
@@ -84,7 +88,7 @@
         "charge_move_multiplier": 0.4,
         "uninterruptible": false,
         "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "attack_move_multiplier": 0.15
       },
       "uppercut": {
         "phases": [
@@ -126,7 +130,7 @@
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
         "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "attack_move_multiplier": 0.2
       },
       "dash_attack": {
         "phases": [
@@ -157,7 +161,10 @@
               "is_finisher": false
             },
             "reset_targets": true,
-            "cancel_into": []
+            "cancel_into": [
+              "light_attack",
+              "heavy_attack"
+            ]
           }
         ],
         "cooldown": 0.6,
@@ -167,8 +174,8 @@
         "max_charge_time": 1.0,
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
-        "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "lunge_speed_multiplier": 0.9,
+        "attack_move_multiplier": 0.6
       },
       "air_attack": {
         "phases": [
@@ -199,7 +206,9 @@
               "is_finisher": false
             },
             "reset_targets": true,
-            "cancel_into": []
+            "cancel_into": [
+              "light_attack"
+            ]
           }
         ],
         "cooldown": 0.35,
@@ -210,7 +219,7 @@
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
         "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "attack_move_multiplier": 0.6
       },
       "special_attack": {
         "phases": [
@@ -354,21 +363,21 @@
               "damage_type": "pierce",
               "stagger": 0.8,
               "super_armor_break": true,
-              "is_finisher": false
+              "is_finisher": true
             },
             "reset_targets": true,
             "cancel_into": []
           }
         ],
-        "cooldown": 0.5,
+        "cooldown": 2.0,
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
         "max_charge_time": 1.0,
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
-        "lunge_speed_multiplier": 0.35,
-        "attack_move_multiplier": 0.3
+        "lunge_speed_multiplier": 0.0,
+        "attack_move_multiplier": 0.1
       }
     },
     "goblin": {

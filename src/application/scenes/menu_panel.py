@@ -1,13 +1,12 @@
-"""Panneaux de menu partagés par les scènes (Phase 2 #4 bis : UI unifiée).
+"""Menu panels shared by the scenes (Phase 2 #4b: unified UI).
 
-Les scènes applicatives (menu / pause / game over) dessinaient leur texte
-avec ``pygame.font.Font(None, ...)`` brut, alors que les outils de debug
-(``PanelRenderer``) ont un habillage dédié : fond semi-transparent,
-bordure, titre, cache de glyphes.  Ce module factorise un panneau de
-menu centré construit sur :class:`PanelRenderer` pour unifier le style —
-avec un espacement généreux (titre 48 px, interligne 40 px) afin que les
-options ne se chevauchent pas à la différence des panneaux debug
-compacts (24 px / 22 px).
+The application scenes (menu / pause / game over) used to draw their text
+with raw ``pygame.font.Font(None, ...)`` while the debug tools
+(``PanelRenderer``) have dedicated dressing: semi-transparent background,
+border, title, glyph cache.  This module factors a centered menu panel built
+on :class:`PanelRenderer` to unify the style — with generous spacing (48 px
+title, 40 px line height) so options never overlap, unlike the compact debug
+panels (24 px / 22 px).
 """
 
 from __future__ import annotations
@@ -32,16 +31,15 @@ def draw_centered_menu_panel(
     padding: int = 28,
     title_gap: int = 16,
 ) -> pygame.Rect:
-    """Dessine un panneau de menu centré (titre + lignes), thème debug.
+    """Draw a centered menu panel (title + lines), debug theme.
 
-    Le dimensionnement réutilise le cache de glyphes du renderer ; le
-    dessin effectif est délégué à :meth:`PanelRenderer.draw_panel` avec
-    un espacement plus aéré que les panneaux debug.
+    Sizing reuses the renderer glyph cache; the actual drawing is delegated
+    to :meth:`PanelRenderer.draw_panel` with airier spacing than debug panels.
 
     Returns
     -------
     pygame.Rect
-        Le rectangle occupé par le panneau (utile aux tests headless).
+        The rect occupied by the panel (useful for headless tests).
     """
     title_font = pygame.font.SysFont("Consolas", title_size, bold=True)
     title_surf = renderer.render_text(title, title_font, title_color)
@@ -49,7 +47,7 @@ def draw_centered_menu_panel(
 
     panel_w = max([s.get_width() for s in rendered] + [title_surf.get_width()]) + padding * 2
     if panel_w % 2:
-        panel_w += 1  # centrage exact : un rect pair donne centerx entier
+        panel_w += 1  # exact centering: an even rect gives an integer centerx
     x = (surface.get_width() - panel_w) // 2
     height = renderer.draw_panel(
         x,

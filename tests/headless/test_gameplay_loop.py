@@ -1,4 +1,4 @@
-"""Tests d'orchestration headless du GameplayLoop (Phase 1 #10)."""
+"""Headless orchestration tests of the GameplayLoop (Phase 1 #10)."""
 
 from types import SimpleNamespace
 
@@ -14,7 +14,7 @@ def test_hit_stop_suspends_simulation_for_its_duration() -> None:
     suspended_delta = loop.begin_tick(1 / 60)
 
     assert suspended_delta == 0.0
-    # update_timer a déjà consommé le dt pendant que la simulation était figée.
+    # update_timer already consumed dt while the simulation was frozen.
     assert loop.combat_system.hit_stop_timer < 0.05
 
     loop.combat_system.hit_stop_timer = 0.0
@@ -61,7 +61,7 @@ def test_process_combat_and_separation_is_noop_while_suspended() -> None:
 
 
 class PlayerStub:
-    """Joueur simulé : ne doit jamais être tué par le système."""
+    """Simulated player: the system must never kill it."""
 
     def __init__(self) -> None:
         self.is_dead = False
@@ -72,7 +72,7 @@ class PlayerStub:
 
 
 class CorpseStub:
-    """Sprite simulé dont le statut mort est piloté par le test."""
+    """Simulated sprite whose dead status is driven by the test."""
 
     def __init__(self, *, is_dead: bool = True) -> None:
         self.is_dead = is_dead

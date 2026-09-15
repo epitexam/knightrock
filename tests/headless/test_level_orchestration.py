@@ -1,7 +1,7 @@
-"""Tests d'orchestration headless d'un vrai ``Level`` (Phase 1 #10).
+"""Headless orchestration tests of a real ``Level`` (Phase 1 #10).
 
-Un Level complet (joueur, systèmes, camera) est construit à partir de
-données programmatiques — aucun asset TMX requis — et avancé tick par tick.
+A full Level (player, systems, camera) is built from programmatic data — no
+TMX asset required — and advanced tick by tick.
 """
 
 import pygame
@@ -51,7 +51,7 @@ def test_level_respawns_the_player_after_death_delay(build_level) -> None:
     level.player.die()
     assert level.player.is_dead
 
-    for _ in range(130):  # ~2,17 s simulées > Respawn.DELAY_S (2,0 s)
+    for _ in range(130):  # ~2.17 simulated s > Respawn.DELAY_S (2.0 s)
         level.update(1 / 60)
 
     assert level.player.is_dead is False
@@ -68,7 +68,7 @@ def test_level_data_round_trips_through_world_builder(build_level) -> None:
 
 
 def test_level_supports_draw_pass(build_level) -> None:
-    """Le rendu plein écran ne doit pas crasher (SDL dummy)."""
+    """Full-screen rendering must not crash (dummy SDL)."""
     level = build_level()
     player = level.player
     pygame.draw.rect(level.display_surface, (0, 0, 0), player.hitbox)
@@ -83,7 +83,7 @@ def test_programmatic_level_data_has_no_colliders(build_level) -> None:
 
     assert len(level.groups.collision_sprites) == 0
 
-    # Un niveau vide : le build ne produit que le joueur, pas de décor.
+    # An empty level: the build only produces the player, no scenery.
     assert len(level.groups.all_sprites) >= 1
 
 

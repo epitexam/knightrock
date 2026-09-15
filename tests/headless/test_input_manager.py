@@ -1,11 +1,11 @@
-"""Tests d'orchestration de l'InputManager avec un provider scripté (Phase 1 #10)."""
+"""InputManager orchestration tests with a scripted provider (Phase 1 #10)."""
 
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
 
 
 class ScriptedProvider:
-    """Provider renvoyant une séquence d'InputState, puis un état neutre."""
+    """Provider returning an InputState sequence, then a neutral state."""
 
     def __init__(self, states: list[InputState]) -> None:
         self._states = states
@@ -29,7 +29,7 @@ def test_input_manager_detects_just_pressed_edges() -> None:
     assert manager.jump_just_pressed is True
 
     manager.update()
-    # Le bouton est toujours maintenu : plus de front montant.
+    # The button is still held: no more rising edge.
     assert manager.jump_just_pressed is False
 
 
@@ -62,11 +62,11 @@ def test_input_manager_apply_remote_state_bypasses_provider() -> None:
 
     assert manager.move_axis == 0.7
     assert manager.attack1_held is True
-    # Transition depuis l'état vide initial : front montant détecté.
+    # Transition from the initial empty state: rising edge detected.
     assert manager.attack1_just_pressed is True
 
     manager.apply_remote_state(remote)
-    # État identique à l'état précédent : plus de front montant.
+    # State identical to the previous one: no more rising edge.
     assert manager.attack1_just_pressed is False
 
 

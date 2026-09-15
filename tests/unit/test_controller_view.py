@@ -1,4 +1,4 @@
-"""Tests du mixin ControllerView (audit F1.1, Phase 2 #3)."""
+"""ControllerView mixin tests (audit F1.1, Phase 2 #3)."""
 
 from types import SimpleNamespace
 
@@ -8,7 +8,7 @@ from src.entities.controller_view import ControllerView
 
 
 class Dummy(ControllerView):
-    """Agrégat minimal mimant Player + ses controllers."""
+    """Minimal aggregate mimicking Player + its controllers."""
 
     CONTROLLER_VIEWS = {
         "flat": ("ctrl", "real"),
@@ -55,8 +55,8 @@ def test_unknown_attribute_raises() -> None:
 def test_read_only_view_has_no_setter_effect() -> None:
     dummy = Dummy()
 
-    # Toute écriture d'une vue plate est relayée : ici on documente que
-    # "read_only" écrit bien l'attribut du controller (pas de blocage).
+    # Every write to a flat view is relayed: here we document that
+    # "read_only" does write the controller attribute (no blocking).
     dummy.read_only = 5
 
     assert dummy.ctrl.constant == 5
@@ -71,7 +71,7 @@ def test_missing_controller_falls_back_to_instance_attribute() -> None:
 
     partial = Partial()
 
-    # Le controller n'existe pas encore : l'attribut d'instance prime.
+    # The controller does not exist yet: the instance attribute wins.
     assert partial.flat == 12
     partial.flat = 13
     assert partial.flat == 13

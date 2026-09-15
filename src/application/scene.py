@@ -1,4 +1,4 @@
-"""Base commune des scènes d'application (audit F8.1, Phase 2 #4)."""
+"""Shared base of the application scenes (audit F8.1, Phase 2 #4)."""
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -10,13 +10,12 @@ if TYPE_CHECKING:
 
 
 class Scene(ABC):
-    """État d'application : Menu, Gameplay, Pause, Game Over.
+    """Application state: Menu, Gameplay, Pause, Game Over.
 
-    Une scène possède son cycle de vie (``enter``/``exit``), reçoit les
-    événements Pygame, avance la simulation à pas fixe via ``update`` et
-    produit son rendu via ``draw``.  Conformément au pattern des entités,
-    ``draw`` renvoie les rects sales à présenter, ou ``None`` pour un
-    rafraîchissement plein écran.
+    A scene owns its lifecycle (``enter``/``exit``), receives Pygame events,
+    advances the simulation at a fixed step via ``update`` and produces its
+    rendering via ``draw``.  Following the entity pattern, ``draw`` returns
+    the dirty rects to present, or ``None`` for a full-screen refresh.
     """
 
     def __init__(self, game: Game) -> None:

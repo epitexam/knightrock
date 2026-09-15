@@ -1,4 +1,4 @@
-"""Tests d'intégration de l'Animator sur les entités (Phase 2 #1)."""
+"""Animator-on-entity integration tests (Phase 2 #1)."""
 
 import pygame
 
@@ -13,8 +13,8 @@ def test_player_starts_on_idle_animation(mock_input_manager):
 
     assert player.animator is not None
     assert player.animator.current == "idle"
-    # L'image initiale est encore le rectangle de couleur : la frame
-    # animée n'est publiée qu'après le premier tick d'update.
+    # The initial image is still the color rectangle: the animated frame
+    # is only published after the first update tick.
     player.update(1 / 60)
     assert player.image.get_size() == (round(player.rect.width), round(player.rect.height))
     assert player.image is player.animator.surface(

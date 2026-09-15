@@ -1,4 +1,4 @@
-"""Tests des résolutions de collision (physics/collisions)."""
+"""Collision resolution tests (physics/collisions)."""
 
 from types import SimpleNamespace
 
@@ -9,7 +9,7 @@ from src.physics.collisions import get_nearby_sprites, hitbox_collide, resolve_c
 
 
 class StubEntity:
-    """Entité minimale compatible CollisionEntity."""
+    """Minimal entity compatible with CollisionEntity."""
 
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()

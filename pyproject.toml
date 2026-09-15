@@ -1,7 +1,7 @@
 [project]
 name = "knightrock"
 version = "0.1.0"
-description = "Un jeu de plateforme Hack 'n' Slash 2D développé en Python avec pygame-ce."
+description = "A 2D Hack 'n' Slash platformer developed in Python with pygame-ce."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -21,7 +21,7 @@ target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N"]
 ignore = [
     "E501",
     # (str, Enum) is the codebase convention for state names
@@ -41,9 +41,9 @@ warn_unused_configs = true
 ignore_missing_imports = true
 explicit_package_bases = true
 disallow_untyped_defs = true
-# Dette de typage existante (audit F3.2 : 50+ getattr/hasattr non types) :
-# mypy est informatif en CI pour l'instant (run avec `|| true`).
-# Rendre ces modules stricts un par un, sans baisser le gate a zero.
+# Existing typing debt (audit F3.2: 50+ untyped getattr/hasattr):
+# mypy is informational in CI for now (run with `|| true`).
+# Make these modules strict one by one, without lowering the gate to zero.
 
 [[tool.mypy.overrides]]
 module = [

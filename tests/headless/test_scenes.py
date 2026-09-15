@@ -1,4 +1,4 @@
-"""Tests de la machine à scènes d'application (audit F8.1, Phase 2 #4)."""
+"""Application scene machine tests (audit F8.1, Phase 2 #4)."""
 
 import pygame
 import pytest
@@ -16,7 +16,7 @@ from tests.headless.conftest import make_programmatic_level_data
 
 
 class RecordingScene(Scene):
-    """Scène factice qui trace son cycle de vie."""
+    """Fake scene tracing its lifecycle."""
 
     def __init__(self, game, name: str):
         super().__init__(game)
@@ -157,7 +157,7 @@ def test_game_over_retry_restarts_the_level(manager: SceneManager):
 
 
 def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
-    """LevelCompleted → unlock level_unlock + écriture du JSON (Phase 2 #6)."""
+    """LevelCompleted → unlock level_unlock + JSON write (Phase 2 #6)."""
     from src.application.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
@@ -165,7 +165,7 @@ def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
     save = game_runtime.save_game
     assert save.is_unlocked(1)
     assert save.last_level_id == 0
-    assert game_runtime._save_path.exists()  # noqa: SLF001 - test du store interne
+    assert game_runtime._save_path.exists()  # noqa: SLF001 - internal store check
     assert SaveGame.load(game_runtime._save_path) == save  # noqa: SLF001
 
 
@@ -186,7 +186,7 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
     game_runtime.scene_manager.switch(MenuScene(game_runtime))
     menu = game_runtime.scene_manager.current
 
-    assert "continuer" in menu.options[0]
+    assert "continue" in menu.options[0]
     assert len(menu.options) == 3
 
     menu.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
@@ -200,7 +200,7 @@ def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
     from src.application.scenes.gameplay_scene import GameplayScene
     from tests.headless.conftest import make_programmatic_level_data
 
-    # Le niveau 1 n'a pas encore de TMX : on stub le chargement du manager.
+    # Level 1 has no TMX yet: stub the manager loading.
     monkeypatch.setattr(
         game_runtime.level_manager, "get", lambda _level_id: make_programmatic_level_data()
     )

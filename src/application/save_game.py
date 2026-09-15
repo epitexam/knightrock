@@ -1,10 +1,9 @@
-"""Sauvegarde JSON de la progression (audit F8.1, Phase 2 #6).
+"""JSON save of the progression (audit F8.1, Phase 2 #6).
 
-``LevelConfig.level_unlock`` — défini dans le calque *Data* des TMX —
-était jamais lu : à la complétion d'un niveau, la couche application
-déverrouille l'identifiant qu'il désigne et persiste l'état dans un
-fichier JSON du dossier utilisateur (aucun fichier écrit dans le bundle
-PyInstaller, qui peut être en lecture seule).
+``LevelConfig.level_unlock`` — declared in the TMX *Data* layer — was never
+read: on level completion, the application layer unlocks the id it points to
+and persists the state to a JSON file in the user folder (no file is written
+inside the PyInstaller bundle, which may be read-only).
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ SAVE_FORMAT_VERSION = 1
 
 @dataclass
 class SaveGame:
-    """Progression persistée : niveaux déverrouillés et dernier niveau joué."""
+    """Persisted progression: unlocked levels and last played level."""
 
     unlocked_levels: list[int] = field(default_factory=lambda: [0])
     last_level_id: int = 0

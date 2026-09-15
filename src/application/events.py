@@ -1,10 +1,9 @@
-"""Event bus typé pour le découplage UI/combat (audit F8.1, Phase 2 #5).
+"""Typed event bus for UI/combat decoupling (audit F8.1, Phase 2 #5).
 
-Le bus est **synchrone et strictement ordonné** : ``emit`` invoque les
-abonnés immédiatement, dans l'ordre d'abonnement, sur le thread de la
-simulation.  Il n'introduit donc aucune non-déterminisme (pas de file
-asynchrone, pas de threads) — les abonnés sont des observateurs (UI,
-sauvegarde, audio, logs) et ne doivent **jamais muter l'état simulé**.
+The bus is **synchronous and strictly ordered**: ``emit`` invokes subscribers
+immediately, in subscription order, on the simulation thread.  It therefore
+introduces no non-determinism (no async queue, no threads) — subscribers are
+observers (UI, save, audio, logs) and must **never mutate simulated state**.
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ Handler = Callable[[GameEvent], None]
 
 
 class EventBus:
-    """Pub/sub minimal : ``subscribe(type, handler)`` puis ``emit(event)``."""
+    """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``."""
 
     def __init__(self) -> None:
         self._subscribers: dict[type[Event], list[Handler]] = {}

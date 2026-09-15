@@ -1,4 +1,4 @@
-"""Tests du panneau de menu partagé (Phase 2 #4 bis : UI unifiée)."""
+"""Shared menu panel tests (Phase 2 #4b: unified UI)."""
 
 import os
 from types import SimpleNamespace
@@ -26,7 +26,7 @@ def renderer() -> PanelRenderer:
 
 
 def _stub_game() -> SimpleNamespace:
-    """Game minimal : save_game + scene_manager (draw n'en a pas besoin)."""
+    """Minimal Game: save_game + scene_manager (draw needs neither)."""
     from src.application.save_game import SaveGame
 
     return SimpleNamespace(
@@ -40,7 +40,7 @@ def test_menu_panel_returns_centered_rect(renderer: PanelRenderer) -> None:
     rect = draw_centered_menu_panel(renderer, surface, "TITLE", ["one", "two"])
 
     assert rect.width > 0
-    # Centrage horizontal sur l'écran dummy (640px).
+    # Horizontal centering on the dummy screen (640px).
     assert rect.centerx == surface.get_width() // 2
     assert rect.top == 180
 
@@ -56,19 +56,19 @@ def test_menu_panel_uses_debug_theme_colors(renderer: PanelRenderer) -> None:
 
 
 def test_menu_panel_lines_are_spaced_out(renderer: PanelRenderer) -> None:
-    """Le panneau de menu aère ses lignes (interligne 40 px, pas 22 px)."""
+    """The menu panel spaces its lines out (40 px line height, not 22 px)."""
     surface = pygame.display.get_surface()
     compact = renderer.draw_panel(0, 0, ["a", "b"])
     spaced = draw_centered_menu_panel(renderer, surface, "TITLE", ["a", "b"])
 
     assert spaced.height > 0
-    # plus d'une ligne de surplus d'interligne par rapport au panneau compact
+    # more than one line of extra spacing vs the compact panel
     assert spaced.height >= compact + 2 * 18
 
 
 def test_menu_scene_draw_uses_panel_theme() -> None:
     menu = MenuScene(_stub_game())
-    assert menu.draw() is None  # plein écran : comme les outils debug
+    assert menu.draw() is None  # full screen: like the debug tools
 
 
 def test_pause_scene_draw_uses_panel_theme() -> None:

@@ -1,4 +1,4 @@
-"""Tests du rendu dirty-rects (Phase 2 #2)."""
+"""Dirty-rect rendering tests (Phase 2 #2)."""
 
 import os
 
@@ -12,7 +12,7 @@ from src.core.sprite_groups import SpriteGroups
 
 @pytest.fixture(scope="module", autouse=True)
 def _headless_display() -> None:
-    """Initialise un affichage SDL dummy pour toute la session."""
+    """Initialize a dummy SDL display for the whole session."""
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
@@ -20,7 +20,7 @@ def _headless_display() -> None:
 
 
 class StaticSprite(pygame.sprite.Sprite):
-    """Sprite minimal avec une image fixe et un rect déplaçable."""
+    """Minimal sprite with a fixed image and a movable rect."""
 
     def __init__(self, topleft: tuple[float, float], size: tuple[int, int] = (8, 8)):
         super().__init__()
@@ -60,13 +60,13 @@ def test_draw_keeps_previous_frame_region_to_avoid_ghosts():
     groups.all_sprites.add(sprite)
     renderer.draw(groups)
 
-    # La caméra suit le joueur : on simule un décalage de la vue.
+    # The camera follows the player: simulate a view offset.
     sprite.rect.topleft = (40, 40)
     dirty = renderer.draw(groups)
 
     positions = [tuple(r.topleft) for r in dirty]
-    assert any(10 in (x, x + 8) for x, _ in positions)  # ancienne position couverte
-    assert any(40 in (x, x + 8) for x, _ in positions)  # nouvelle position couverte
+    assert any(10 in (x, x + 8) for x, _ in positions)  # old position covered
+    assert any(40 in (x, x + 8) for x, _ in positions)  # new position covered
 
 
 def test_background_is_repainted_only_over_dirty_area():
@@ -75,8 +75,8 @@ def test_background_is_repainted_only_over_dirty_area():
     groups.all_sprites.add(sprite)
     renderer.draw(groups)
 
-    # Coin opposé jamais salit : il doit conserver la couleur de fond
-    # présente AVANT le second draw (aucun full-screen fill).
+    # Never-dirtied opposite corner: it must keep the background color
+    # present BEFORE the second draw (no full-screen fill).
     surface.set_at((63, 63), (1, 2, 3))
     sprite.rect.topleft = (40, 40)
     renderer.draw(groups)

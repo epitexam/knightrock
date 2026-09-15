@@ -1,4 +1,4 @@
-"""Tests du mouvement des plateformes mobiles (physics/platforms)."""
+"""Moving platform motion tests (physics/platforms)."""
 
 import pygame
 import pytest
@@ -28,13 +28,13 @@ def test_platform_moves_toward_the_next_waypoint(platform: MovingPlatform) -> No
 
 
 def test_platform_ping_pongs_between_waypoints(platform: MovingPlatform) -> None:
-    # Arrivée au dernier waypoint : la direction s'inverse.
+    # Arrival at the last waypoint: direction reverses.
     for _ in range(10):
         update_moving_platform(platform, 1.0)
     assert platform.current_target == 0
     assert platform.direction == -1
 
-    # Retour au départ : la direction s'inverse à nouveau.
+    # Back at the start: direction reverses again.
     for _ in range(10):
         update_moving_platform(platform, 1.0)
     assert platform.current_target == 1

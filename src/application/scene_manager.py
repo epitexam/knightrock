@@ -1,10 +1,10 @@
-"""Gestionnaire de scènes à pile (audit F8.1, Phase 2 #4).
+"""Stacked scene manager (audit F8.1, Phase 2 #4).
 
-Remplace la boucle infinie de ``Game.run`` par des états Menu / Play /
-Pause / Game Over : ``switch`` remplace toute la pile, ``push`` empile
-une scène transitoire (pause, game over) au-dessus de la scène gelée,
-``pop`` la retire.  Seule la scène du sommet est mise à jour ; le rendu
-empile toutes les scènes (overlay de pause par-dessus le monde gelé).
+Replaces the infinite ``Game.run`` loop with Menu / Play / Pause / Game Over
+states: ``switch`` replaces the whole stack, ``push`` piles a transient scene
+(pause, game over) above the frozen scene, ``pop`` removes it.  Only the top
+scene is updated; rendering stacks every scene (pause overlay above the
+frozen world).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class SceneManager:
-    """State machine d'application avec pile de scènes."""
+    """Application state machine with a scene stack."""
 
     def __init__(self, game: Game) -> None:
         self.game = game

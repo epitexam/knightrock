@@ -1,4 +1,4 @@
-"""Tests du package src/data : loaders JSON typés + fallback (Phase 3 #4)."""
+"""Tests of the src/data package: typed JSON loaders + fallback (Phase 3 #4)."""
 
 import json
 import logging
@@ -195,7 +195,7 @@ def test_read_levels_file_rejects_non_integer_id(tmp_path: Path) -> None:
         read_levels_file(path)
 
 
-# ── provider : fallback, parité, erreurs ─────────────────────────────────
+# ── provider: fallback, parity, errors ─────────────────────────────────
 
 
 def test_load_gameplay_data_falls_back_when_dir_is_empty(

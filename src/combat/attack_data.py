@@ -28,10 +28,12 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.1,
                 ),
+                cancel_into=("heavy_attack", "uppercut", "dash_attack"),
             ),
         ),
         cooldown=0.30,
         lock_direction=True,
+        attack_move_multiplier=0.5,
     ),
     "heavy_attack": AttackDefinition(
         phases=(
@@ -56,6 +58,7 @@ PLAYER_ATTACKS = {
         chargeable=True,
         max_charge_time=1.0,
         charge_move_multiplier=0.4,
+        attack_move_multiplier=0.15,
     ),
     "uppercut": AttackDefinition(
         phases=(
@@ -77,6 +80,7 @@ PLAYER_ATTACKS = {
         cooldown=0.90,
         lock_direction=True,
         combo_reset=True,
+        attack_move_multiplier=0.2,
     ),
     "dash_attack": AttackDefinition(
         phases=(
@@ -93,10 +97,13 @@ PLAYER_ATTACKS = {
                     stagger=0.2,
                     super_armor_break=True,
                 ),
+                cancel_into=("light_attack", "heavy_attack"),
             ),
         ),
         cooldown=0.60,
         lock_direction=True,
+        lunge_speed_multiplier=0.9,
+        attack_move_multiplier=0.6,
     ),
     "air_attack": AttackDefinition(
         phases=(
@@ -112,10 +119,12 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.1,
                 ),
+                cancel_into=("light_attack",),
             ),
         ),
         cooldown=0.35,
         lock_direction=False,
+        attack_move_multiplier=0.6,
     ),
     "special_attack": AttackDefinition(
         phases=(
@@ -191,12 +200,15 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.PIERCE,
                     stagger=0.8,
                     super_armor_break=True,
+                    is_finisher=True,
                 ),
             ),
         ),
-        cooldown=0.5,
+        cooldown=2.0,
         lock_direction=True,
         combo_reset=True,
+        lunge_speed_multiplier=0.0,
+        attack_move_multiplier=0.1,
     ),
 }
 

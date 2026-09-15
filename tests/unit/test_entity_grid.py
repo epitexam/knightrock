@@ -1,9 +1,9 @@
-"""EntityGrid + overlapping_pairs (Phase 3 #1 : SpatialHash des entités, PERF-02).
+"""EntityGrid + overlapping_pairs (Phase 3 #1: entity SpatialHash, PERF-02).
 
-Garanties testées :
-- zéro faux négatif (une paire qui se chevauche est toujours candidate) ;
-- ordre des paires identique à la boucle exhaustive (i < j, tri par index) ;
-- équivalence brute-force ↔ grid sur un cas seedé déterministe.
+Tested guarantees:
+- zero false negatives (an overlapping pair is always a candidate);
+- pair order identical to the exhaustive loop (i < j, sorted by index);
+- brute-force ↔ grid equivalence on a seeded deterministic case.
 """
 
 import random
@@ -49,7 +49,7 @@ def test_rebuild_buckets_every_entity_and_near_finds_them() -> None:
 
 def test_member_spanning_cells_is_returned_once() -> None:
     grid = EntityGrid(cell_size=64)
-    spanning = GridEntity(0, 60, 60, 8)  # à cheval sur 4 cellules
+    spanning = GridEntity(0, 60, 60, 8)  # straddling 4 cells
     grid.rebuild([spanning])
 
     nearby = grid.near(spanning.hitbox)
@@ -57,17 +57,17 @@ def test_member_spanning_cells_is_returned_once() -> None:
 
 
 def test_near_never_misses_an_overlapping_entity() -> None:
-    """Une entité qui chevauche la requête est toujours candidate (marge 32px)."""
+    """An entity overlapping the query is always a candidate (32px margin)."""
     grid = EntityGrid(cell_size=128)
     seeker = GridEntity(0, 120, 120)
-    touching = GridEntity(1, 158, 120)  # chevauche de 2px
+    touching = GridEntity(1, 158, 120)  # 2px overlap
     grid.rebuild([seeker, touching])
 
     assert touching in grid.near(seeker.hitbox)
 
 
 def test_overlapping_pairs_matches_brute_force_on_seeded_layout() -> None:
-    """Équivalence exacte (paires ET ordre) avec le brute-force, cas seedé."""
+    """Exact equivalence (pairs AND order) with brute force, seeded case."""
     rng = random.Random(42)
     entities = [GridEntity(index, rng.uniform(0, 600), rng.uniform(0, 600)) for index in range(40)]
     grid = EntityGrid(cell_size=128)
@@ -77,7 +77,7 @@ def test_overlapping_pairs_matches_brute_force_on_seeded_layout() -> None:
 
 
 def test_overlapping_pairs_yields_in_ascending_index_order() -> None:
-    """Pour un même i, les j sortent croissants — comme l'ancienne double boucle."""
+    """For a given i, j come out ascending — like the old double loop."""
     entities = [
         GridEntity(0, 0, 0),
         GridEntity(1, 10, 10),
@@ -90,12 +90,12 @@ def test_overlapping_pairs_yields_in_ascending_index_order() -> None:
     pairs = grid_pairs(entities, grid)
     assert (0, 1) in pairs and (0, 2) in pairs and (1, 2) in pairs
     assert all(i < j for i, j in pairs)
-    # aucun duo avec l'entité lointaine
+    # no pair with the far entity
     assert all(3 not in (i, j) for i, j in pairs)
 
 
 def test_overlapping_pairs_skips_members_outside_the_list() -> None:
-    """Les membres du grid absents de la séquence filtrée sont ignorés."""
+    """Grid members missing from the filtered sequence are ignored."""
     grid = EntityGrid(cell_size=128)
     listed = [GridEntity(0, 0, 0), GridEntity(1, 10, 10)]
     outsider = GridEntity(99, 5, 5)
@@ -116,7 +116,7 @@ def test_clear_empties_the_grid() -> None:
 
 
 def test_rebuild_after_movement_refreshes_buckets() -> None:
-    """Re-bucket après déplacement : l'ancienne cellule ne référence plus rien."""
+    """Re-bucket after moving: the old cell references nothing anymore."""
     grid = EntityGrid(cell_size=64)
     entity = GridEntity(0, 0, 0)
     grid.rebuild([entity])

@@ -1,8 +1,8 @@
-"""Fixtures partagées des tests headless (audit F7.1, Phase 1 #10).
+"""Shared headless test fixtures (audit F7.1, Phase 1 #10).
 
-Initialise SDL en mode dummy une seule fois par session et fournit
-un constructeur de ``Level`` orchestral à partir de données programmatiques
-(aucun asset TMX requis, donc fonctionne en CI sans le dossier ``assets/``).
+Initialize SDL in dummy mode once per session and provide an orchestral
+``Level`` builder from programmatic data (no TMX asset required, so it works
+in CI without the ``assets/`` folder).
 """
 
 import os
@@ -17,7 +17,7 @@ from src.core.settings import Display
 
 @pytest.fixture(scope="session", autouse=True)
 def _headless_pygame_display() -> None:
-    """Initialise pygame + une fenêtre SDL dummy pour toute la session."""
+    """Initialize pygame + a dummy SDL window for the whole session."""
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
@@ -25,7 +25,7 @@ def _headless_pygame_display() -> None:
 
 
 def make_programmatic_level_data() -> LevelData:
-    """Construit un LevelData minimal (1 joueur, rien d'autre)."""
+    """Build a minimal LevelData (1 player, nothing else)."""
     player_object = ObjectData(
         name="player",
         x=100.0,
@@ -49,7 +49,7 @@ def make_programmatic_level_data() -> LevelData:
 
 @pytest.fixture()
 def build_level(mock_input_manager):
-    """Factory renvoyant un vrai ``Level`` garni par le joueur."""
+    """Factory returning a real player-populated ``Level``."""
 
     def _build() -> Level:
         level = Level(
@@ -64,7 +64,7 @@ def build_level(mock_input_manager):
 
 @pytest.fixture()
 def game_runtime(tmp_path):
-    """Un ``Game`` initialisé (affichage dummy) sans exécuter la boucle."""
+    """An initialized ``Game`` (dummy display) without running the loop."""
     from src.core.game import Game
 
     game = Game(save_path=tmp_path / "savegame.json")

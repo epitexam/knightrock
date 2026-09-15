@@ -1,4 +1,4 @@
-"""Scène de Game Over (Phase 2 #4)."""
+"""Game Over scene (Phase 2 #4)."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
 
 class GameOverScene(Scene):
-    """Affichée après ``Gameplay.MAX_DEATHS`` morts : rejouer ou menu."""
+    """Shown after ``Gameplay.MAX_DEATHS`` deaths: retry or menu."""
 
     TITLE = "GAME OVER"
-    OPTIONS = ("ENTRÉE : réessayer", "Q : menu")
+    OPTIONS = ("ENTER: retry", "Q: menu")
 
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)
