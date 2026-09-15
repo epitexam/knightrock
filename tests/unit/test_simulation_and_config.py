@@ -59,6 +59,11 @@ def wire_world_systems(level: Level, groups, player) -> None:
     level.progression_system = ProgressionSystem(groups.exit_sprites)  # type: ignore[assignment]
     level.contact_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
     level.hazard_damage_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.spawn_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.camera_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.notification_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.tick_system = SimpleNamespace(process=Mock())  # type: ignore[assignment]
+    level.rollback = Mock()  # type: ignore[assignment]
     level.gameplay_loop = GameplayLoop(  # type: ignore[assignment]
         platform_system=PlatformSystem(groups, level.spatial_hash),
         physics_system=PhysicsSystem(groups),
@@ -67,6 +72,10 @@ def wire_world_systems(level: Level, groups, player) -> None:
         hazard_damage_system=level.hazard_damage_system,
         respawn_system=level.respawn_system,
         progression_system=level.progression_system,
+        spawn_system=level.spawn_system,
+        camera_system=level.camera_system,
+        notification_system=level.notification_system,
+        tick_system=level.tick_system,
     )
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
     level.gameplay_loop.separation_system.process = Mock()
@@ -101,10 +110,6 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level.tick = 0
     level.rollback_enabled = False
     level.events = None  # type: ignore[assignment]
-    level._player_dead_emitted = False
-    level._completed_emitted = False
-    level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
-    level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
     wire_world_systems(level, groups, player)
 
     level.respawn_timer = 0.75
@@ -116,12 +121,14 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
 
     level.update(0.016)
 
-    level.debug_controller.update.assert_called_once_with(  # type: ignore[attr-defined]
+    level.spawn_system.process.assert_called_once_with(  # type: ignore[attr-defined]
         0.016, player
     )
-    level.camera.follow.assert_called_once_with(  # type: ignore[attr-defined]
-        player.hitbox, 0.016
+    level.camera_system.process.assert_called_once_with(  # type: ignore[attr-defined]
+        0.016, player
     )
+    level.notification_system.process.assert_called_once()  # type: ignore[attr-defined]
+    level.tick_system.process.assert_called_once_with(level, level.rollback)  # type: ignore[attr-defined]
     groups.moving_platforms.update.assert_not_called()
     groups.hazard_sprites.update.assert_not_called()
     groups.entity_sprites.update.assert_not_called()
@@ -172,10 +179,6 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
     level.tick = 0
     level.rollback_enabled = False
     level.events = None  # type: ignore[assignment]
-    level._player_dead_emitted = False
-    level._completed_emitted = False
-    level.debug_controller = SimpleNamespace(update=Mock())  # type: ignore[assignment]
-    level.camera = SimpleNamespace(follow=Mock())  # type: ignore[assignment]
     wire_world_systems(level, groups, player)
     # No hit-stop: the tick is live.
     level.gameplay_loop.combat_system.hit_stop_timer = 0.0
@@ -203,8 +206,14 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
     player.respawn.assert_not_called()
     exit_check.assert_called_once()
     assert level.exit_reached is True
-    level.camera.follow.assert_called_once_with(player.hitbox, 0.016)  # type: ignore[attr-defined]
-    assert level.tick == 1
+    level.spawn_system.process.assert_called_once_with(  # type: ignore[attr-defined]
+        0.016, player
+    )
+    level.camera_system.process.assert_called_once_with(  # type: ignore[attr-defined]
+        0.016, player
+    )
+    level.notification_system.process.assert_called_once()  # type: ignore[attr-defined]
+    level.tick_system.process.assert_called_once_with(level, level.rollback)  # type: ignore[attr-defined]
 
 
 def test_wall_jump_uses_entity_configuration() -> None:

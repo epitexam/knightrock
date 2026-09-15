@@ -14,7 +14,7 @@ class Display:
     # Simulation runs at 60 Hz (Simulation.TICK_RATE); rendering at 120 FPS
     # keeps motion smooth without redrawing the same state 2 frames out of 3
     # as the previous 180 FPS setting did (audit F1.4/F6.1).
-    FPS = 120
+    FPS = 180
     TITLE = "Knightrock"
 
 

@@ -1,3 +1,13 @@
+"""SpawnSystem: debug-spawn head of the level pipeline (audit F1.2, Phase 3 #2).
+
+Runs first each tick, before the platforms move, so a runtime-spawned enemy
+joins the world before any stage reads it.  It owns the debug-spawn
+cooldowns and the spawn logic directly (moved here from the former
+``DebugController``), so the level no longer drives anything itself.
+"""
+
+from typing import TYPE_CHECKING
+
 import pygame
 
 from src.core.settings import Respawn
@@ -5,15 +15,22 @@ from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
 from src.physics.spatial_hash import SpatialHash
 
+if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
+    from src.entities.player import Player
+
 DEBUG_SPAWNS = {
     pygame.K_g: "goblin",
     pygame.K_p: "slime",
     pygame.K_t: "dummy",
 }
 
+__all__ = ["DEBUG_SPAWNS", "SpawnSystem"]
 
-class DebugController:
-    def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash | None = None):
+
+class SpawnSystem:
+    """Tick the debug spawner (cooldowns decay, key-triggered spawns)."""
+
+    def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash | None = None) -> None:
         self.groups = groups
         self.spatial_hash = spatial_hash
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
@@ -23,7 +40,8 @@ class DebugController:
         """Longest remaining debug-spawn cooldown (audit F5.2)."""
         return max(self.spawn_cooldowns.values())
 
-    def update(self, delta_time, player):
+    def process(self, delta_time: float, player: Player) -> None:
+        """Decay cooldowns, then spawn enemies for the debug keys held."""
         for enemy_name, cooldown in self.spawn_cooldowns.items():
             if cooldown > 0:
                 self.spawn_cooldowns[enemy_name] = cooldown - delta_time
@@ -34,7 +52,7 @@ class DebugController:
             if keys[key] and self.spawn_cooldowns[enemy_name] <= 0:
                 self._spawn_enemy(enemy_name, player)
 
-    def _spawn_enemy(self, enemy_name, player):
+    def _spawn_enemy(self, enemy_name: str, player: Player) -> None:
         offset_x = 100 if player.facing_right else -100
         enemy = create_enemy(
             enemy_name,

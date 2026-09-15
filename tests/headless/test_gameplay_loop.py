@@ -108,6 +108,46 @@ def _empty_groups() -> SimpleNamespace:
     )
 
 
+def _noop_spawn_stage(name: str, calls: list[str]):
+    """Spawner double: ``process(delta, player)`` head signature."""
+    return SimpleNamespace(process=lambda *args: calls.append(name))
+
+
+def _noop_camera_stage(name: str, calls: list[str]):
+    """Camera double: ``process(delta, player)`` tail signature."""
+    return SimpleNamespace(process=lambda *args: calls.append(name))
+
+
+def _noop_tail_stage(name: str, calls: list[str]):
+    """Notification double: ``process(player, *, deaths, exit_reached)``."""
+    return SimpleNamespace(process=lambda *args, **kwargs: calls.append(name))
+
+
+def _noop_respawn_stage(name: str, calls: list[str]):
+    """Respawn double: ``process(delta)`` with a ``deaths`` counter."""
+    return SimpleNamespace(deaths=0, process=lambda *args: calls.append(name))
+
+
+def _noop_progression_stage(name: str, calls: list[str]):
+    """Progression double: ``process(player)`` with an ``exit_reached`` flag."""
+    return SimpleNamespace(exit_reached=False, process=lambda *args: calls.append(name))
+
+
+def _noop_tick_stage(name: str, calls: list[str]):
+    """Tick double: ``process(level, rollback)`` bookkeeping signature."""
+    return SimpleNamespace(process=lambda *args: calls.append(name))
+
+
+def _noop_rollback() -> SimpleNamespace:
+    """Rollback double: recording is a no-op (tick-owner flag gates it)."""
+    return SimpleNamespace(record=lambda level: None)
+
+
+def _noop_level() -> SimpleNamespace:
+    """Tick-owner double: rollback disabled, counter ignored, snapshot hook."""
+    return SimpleNamespace(tick=0, rollback_enabled=False, save_state=lambda: SimpleNamespace())
+
+
 def test_update_sequences_the_stages_in_their_historical_order() -> None:
     """The pipeline order is load-bearing: it must not drift (audit F1.6)."""
     calls: list[str] = []
@@ -117,19 +157,26 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         physics_system=_noop_stage("physics", calls),
         contact_damage_system=_noop_stage("contact_damage", calls),
         hazard_damage_system=_noop_stage("hazard_damage", calls),
-        respawn_system=_noop_stage("respawn", calls),
-        progression_system=_noop_stage("progression", calls),
+        respawn_system=_noop_respawn_stage("respawn", calls),
+        progression_system=_noop_progression_stage("progression", calls),
+        spawn_system=_noop_spawn_stage("spawn", calls),
+        camera_system=_noop_camera_stage("camera", calls),
+        notification_system=_noop_tail_stage("notifications", calls),
+        tick_system=_noop_tick_stage("tick", calls),
     )
     loop.separation_system = SimpleNamespace(
         process=lambda sprites, grid=None: calls.append("separation")
     )
     loop.combat_system = SimpleNamespace(
-        process_attacks=lambda combatants, grid=None: calls.append("combat")
+        in_hit_stop=False,
+        update_timer=lambda delta_time: None,
+        process_attacks=lambda combatants, grid=None: calls.append("combat"),
     )
 
-    loop.update(1 / 60, _empty_groups(), None)
+    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
 
     assert calls == [
+        "spawn",
         "platform",
         "hazard",
         "physics",
@@ -139,18 +186,38 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         "hazard_damage",
         "respawn",
         "progression",
+        "camera",
+        "notifications",
+        "tick",
     ]
 
 
 def test_update_is_a_noop_while_suspended_even_unwired() -> None:
     """A hit-stop tick short-circuits before the staged wiring is resolved."""
     loop = GameplayLoop()
+    loop.combat_system.hit_stop_timer = 0.05
 
-    loop.update(0.0, _empty_groups(), None)  # must not raise
+    # The spawner still runs (raw frame delta: cooldown decay), the camera
+    # still tracks and the tick is still bookkept — only the world stages
+    # are skipped, so a bare loop needs just the cross-cutting stages.
+    calls: list[str] = []
+    loop.spawn_system = _noop_spawn_stage("spawn", calls)
+    loop.camera_system = _noop_camera_stage("camera", calls)
+    loop.notification_system = _noop_tail_stage("notifications", calls)
+    loop.tick_system = _noop_tick_stage("tick", calls)
+
+    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+
+    assert calls == ["spawn", "camera", "notifications", "tick"]
 
 
 def test_update_without_the_world_stages_fails_fast() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop(
+        spawn_system=_noop_spawn_stage("spawn", []),
+        camera_system=_noop_camera_stage("camera", []),
+        notification_system=_noop_tail_stage("notifications", []),
+        tick_system=_noop_tick_stage("tick", []),
+    )
 
     with pytest.raises(RuntimeError, match="platform_system"):
-        loop.update(1 / 60, _empty_groups(), None)
+        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())

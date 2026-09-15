@@ -10,28 +10,35 @@ ordered pipeline.  This package hosts:
 - :class:`GameplayLoop`, the extended pipeline that sequences everything.
 """
 
+from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.notification_system import NotificationSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
-from src.core.level.systems.spawn_system import DebugController
+from src.core.level.systems.spawn_system import DEBUG_SPAWNS, SpawnSystem
+from src.core.level.systems.tick_system import TickSystem
 
 __all__ = [
+    "DEBUG_SPAWNS",
+    "CameraSystem",
     "CombatSystem",
     "ContactDamageSystem",
-    "DebugController",
     "GameplayLoop",
     "HazardDamageSystem",
     "HazardSystem",
+    "NotificationSystem",
     "PhysicsSystem",
     "PlatformSystem",
     "PlayerRespawnSystem",
     "ProgressionSystem",
     "SeparationSystem",
+    "SpawnSystem",
+    "TickSystem",
 ]

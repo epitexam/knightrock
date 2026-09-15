@@ -3,8 +3,9 @@
 ``GameplayLoop`` owns the *order* in which a level's systems run; the systems
 themselves are assembled by :class:`~src.core.level.level.Level` and injected
 here, so each one stays independently testable (audit F1.2).  The level is
-then a facade: it drives the debug spawner, delegates the simulation to this
-pipeline, and runs its cross-cutting tail (camera, events, rollback).
+then a strict facade: :meth:`~src.core.level.level.Level.update` delegates
+its whole tick — debug spawner, simulation, camera, notifications and
+rollback bookkeeping — to :meth:`update` below.
 """
 
 from collections.abc import Iterable
@@ -13,15 +14,20 @@ from typing import TypeVar
 import pygame
 
 from src.combat.combatant_protocol import Combatant
+from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.notification_system import NotificationSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
+from src.core.level.systems.spawn_system import SpawnSystem
+from src.core.level.systems.tick_system import TickOwner, TickSystem
+from src.core.rollback import RollbackSystem
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
@@ -49,6 +55,10 @@ class GameplayLoop:
         hazard_damage_system: HazardDamageSystem | None = None,
         respawn_system: PlayerRespawnSystem | None = None,
         progression_system: ProgressionSystem | None = None,
+        spawn_system: SpawnSystem | None = None,
+        camera_system: CameraSystem | None = None,
+        notification_system: NotificationSystem | None = None,
+        tick_system: TickSystem | None = None,
     ) -> None:
         self.combat_system: CombatSystem = CombatSystem()
         self.separation_system: SeparationSystem = SeparationSystem()
@@ -66,6 +76,12 @@ class GameplayLoop:
         self.hazard_damage_system = hazard_damage_system
         self.respawn_system = respawn_system
         self.progression_system = progression_system
+        # Cross-cutting stages: head (debug spawner) and tail (camera,
+        # notifications, tick bookkeeping) of the same pipeline.
+        self.spawn_system = spawn_system
+        self.camera_system = camera_system
+        self.notification_system = notification_system
+        self.tick_system = tick_system
 
     def begin_tick(self, delta_time: float) -> float:
         """Advance hit-stop timing and return the simulation delta."""
@@ -75,45 +91,74 @@ class GameplayLoop:
 
     def update(
         self,
-        effective_delta: float,
+        raw_delta: float,
         groups: SpriteGroups,
         player: Player,
+        level: TickOwner,
+        rollback: RollbackSystem,
     ) -> None:
-        """Run every stage of one simulation tick, in their historical order.
+        """Run every stage of one tick, in their historical order.
 
-        A suspended tick (``effective_delta == 0``, i.e. hit-stop) runs no
-        stage at all — the level still advances its camera, notifications and
-        rollback outside this pipeline.  The order is load-bearing and matches
-        the pre-refactor ``Level.update`` exactly: platforms move, hazards
-        tick, entities integrate, pairings resolve, deaths are reaped, then
-        respawn and progression are evaluated.
+        The debug spawner runs first with the raw frame delta (it only
+        decays cooldowns and spawns), then hit-stop decides the simulation
+        delta: a suspended tick skips the world stages but still advances
+        the camera, notifications and tick bookkeeping — the level did the
+        same before it became a facade.  The order is load-bearing and
+        matches the pre-refactor ``Level.update`` exactly: spawner,
+        platforms, hazards, entity integration, pairings, deaths reaped,
+        respawn, progression, camera, notifications, tick counter.
         """
-        if effective_delta <= 0.0:
+        spawn = self._require(self.spawn_system, "spawn_system")
+        camera = self._require(self.camera_system, "camera_system")
+        notifications = self._require(self.notification_system, "notification_system")
+        tick = self._require(self.tick_system, "tick_system")
+        respawn = self.respawn_system
+        progression = self.progression_system
+
+        spawn.process(raw_delta, player)
+        effective_delta = self.begin_tick(raw_delta)
+
+        if effective_delta > 0.0:
+            # Resolve the stages up front: a half-wired loop must fail before
+            # it mutates the world, never halfway through the tick.
+            platform = self._require(self.platform_system, "platform_system")
+            hazard = self._require(self.hazard_system, "hazard_system")
+            physics = self._require(self.physics_system, "physics_system")
+            contact = self._require(self.contact_damage_system, "contact_damage_system")
+            hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
+            respawn = self._require(respawn, "respawn_system")
+            progression = self._require(progression, "progression_system")
+
+            platform.process(effective_delta)
+            hazard.process(effective_delta)
+            physics.process(effective_delta)
+
+            self.process_combat_and_separation(
+                effective_delta, groups.combat_sprites, groups.entity_sprites
+            )
+            contact.process(groups.entity_sprites, self.entity_grid)
+            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
+            self.remove_dead_entities(groups.entity_sprites, player)
+
+            respawn.process(effective_delta)
+            progression.process(player)
+
+            camera.process(raw_delta, player)
+            notifications.process(
+                player,
+                deaths=respawn.deaths,
+                exit_reached=progression.exit_reached,
+            )
+            tick.process(level, rollback)
             return
 
-        # Resolve the stages up front: a half-wired loop must fail before it
-        # mutates the world, never halfway through the tick.
-        platform = self._require(self.platform_system, "platform_system")
-        hazard = self._require(self.hazard_system, "hazard_system")
-        physics = self._require(self.physics_system, "physics_system")
-        contact = self._require(self.contact_damage_system, "contact_damage_system")
-        hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
-        respawn = self._require(self.respawn_system, "respawn_system")
-        progression = self._require(self.progression_system, "progression_system")
-
-        platform.process(effective_delta)
-        hazard.process(effective_delta)
-        physics.process(effective_delta)
-
-        self.process_combat_and_separation(
-            effective_delta, groups.combat_sprites, groups.entity_sprites
+        camera.process(raw_delta, player)
+        notifications.process(
+            player,
+            deaths=respawn.deaths if respawn is not None else 0,
+            exit_reached=progression.exit_reached if progression is not None else False,
         )
-        contact.process(groups.entity_sprites, self.entity_grid)
-        hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
-        self.remove_dead_entities(groups.entity_sprites, player)
-
-        respawn.process(effective_delta)
-        progression.process(player)
+        tick.process(level, rollback)
 
     @staticmethod
     def _require(system: _Stage | None, name: str) -> _Stage:

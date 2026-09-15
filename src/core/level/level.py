@@ -6,17 +6,20 @@ from typing import Any
 
 import pygame
 
-from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.application.events import EventBus, LevelStarted
 from src.core.level.level_data import LevelData
+from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
+from src.core.level.systems.notification_system import NotificationSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.level.systems.spawn_system import DebugController
+from src.core.level.systems.spawn_system import SpawnSystem
+from src.core.level.systems.tick_system import TickSystem
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
@@ -37,11 +40,12 @@ class Level:
     the systems that make up its tick, and re-exposes the state they hold
     (``respawn_timer``/``deaths``/``exit_reached``) directly from them.
 
-    It is a *facade* over those systems (audit F1.2/§4): :meth:`update` drives
-    the debug spawner, delegates everything the simulation does to
-    :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update`, then
-    runs the cross-cutting tail — camera follow, event notifications and the
-    end-of-tick rollback snapshot.
+    It is a *strict facade* over those systems (audit F1.2/§4): :meth:`update`
+    is a single delegation to
+    :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update` — the
+    debug spawner, every simulation stage, the camera follow, the event-bus
+    notifications and the end-of-tick rollback snapshot all run inside the
+    pipeline now.
     """
 
     def __init__(
@@ -86,8 +90,6 @@ class Level:
         # systems assembled below and are re-exposed as properties (audit F1.2).
         self.level_id = level_id
         self.events = events
-        self._player_dead_emitted = False
-        self._completed_emitted = False
 
         # Local rollback core (Phase 3 #3): monotonic fixed-tick counter and
         # the ring buffer that captures a snapshot at the end of each tick.
@@ -98,9 +100,9 @@ class Level:
 
         self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
         # Spatial hash for O(1) collision lookups (PERF-01/02): created before
-        # the debug controller so runtime-spawned enemies join the grid too.
+        # the spawner so runtime-spawned enemies join the grid too.
         self.spatial_hash = SpatialHash(cell_size=128)
-        self.debug_controller = DebugController(self.groups, self.spatial_hash)
+        self.spawn_system = SpawnSystem(self.groups, self.spatial_hash)
 
         self.world_builder = WorldBuilder(level_data, gameplay_data)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
@@ -123,6 +125,9 @@ class Level:
         self.hazard_damage_system = HazardDamageSystem()
         self.respawn_system = PlayerRespawnSystem(self.player, level_data)
         self.progression_system = ProgressionSystem(self.groups.exit_sprites)
+        self.camera_system = CameraSystem(self.camera)
+        self.notification_system = NotificationSystem(events, level_id, level_data)
+        self.tick_system = TickSystem()
 
         self.gameplay_loop = GameplayLoop(
             platform_system=self.platform_system,
@@ -132,6 +137,10 @@ class Level:
             hazard_damage_system=self.hazard_damage_system,
             respawn_system=self.respawn_system,
             progression_system=self.progression_system,
+            spawn_system=self.spawn_system,
+            camera_system=self.camera_system,
+            notification_system=self.notification_system,
+            tick_system=self.tick_system,
         )
 
         if self.events is not None:
@@ -177,27 +186,12 @@ class Level:
         """
         Advance the level simulation by one tick.
 
-        The level is a facade (audit F1.2/§4): it drives the debug spawner,
-        delegates everything the tick simulates to the gameplay loop's
-        pipeline, then runs the cross-cutting tail — camera follow, event
-        notifications and the end-of-tick rollback snapshot.
+        The level is a strict facade (audit F1.2/§4): the whole tick —
+        debug spawner, every simulation stage, camera follow, event-bus
+        notifications and the end-of-tick rollback snapshot — runs inside
+        the gameplay loop's pipeline.
         """
-        self.debug_controller.update(delta_time, self.player)
-
-        effective_delta = self.gameplay_loop.begin_tick(delta_time)
-        self.gameplay_loop.update(effective_delta, self.groups, self.player)
-
-        if not self.player.is_dead:
-            self.camera.follow(self.player.hitbox, delta_time)
-
-        self._emit_notifications()
-
-        # One snapshot per fixed tick, recorded even when hit-stop suspended
-        # the simulation (the hit-stop timer itself advances every tick), so
-        # ``rollback_to(tick)`` restores the exact end-of-tick world state.
-        if self.rollback_enabled:
-            self.rollback.record(self)
-        self.tick += 1
+        self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback (Phase 3 #3).
@@ -231,8 +225,8 @@ class Level:
             respawn_timer=self.respawn_timer,
             deaths=self.deaths,
             exit_reached=self.exit_reached,
-            player_dead_emitted=self._player_dead_emitted,
-            completed_emitted=self._completed_emitted,
+            player_dead_emitted=self.notification_system.player_dead_emitted,
+            completed_emitted=self.notification_system.completed_emitted,
             entities=entities,
             platforms=platforms,
         )
@@ -251,8 +245,8 @@ class Level:
         self.respawn_timer = snapshot.respawn_timer
         self.deaths = snapshot.deaths
         self.exit_reached = snapshot.exit_reached
-        self._player_dead_emitted = snapshot.player_dead_emitted
-        self._completed_emitted = snapshot.completed_emitted
+        self.notification_system.player_dead_emitted = snapshot.player_dead_emitted
+        self.notification_system.completed_emitted = snapshot.completed_emitted
 
         # Reap entities that did not exist at capture time (e.g. a debug
         # spawn after the target tick) — they must not pollute the restored
@@ -279,26 +273,6 @@ class Level:
             platform.hitbox.topleft = platform.pos
             platform.old_rect = platform.rect.copy()
             platform.old_hitbox = platform.hitbox.copy()
-
-    def _emit_notifications(self) -> None:
-        """Publish bus events for the app layer (never mutates simulation)."""
-        if self.events is None:
-            return
-
-        if self.player.is_dead and not self._player_dead_emitted:
-            self._player_dead_emitted = True
-            self.events.emit(PlayerDied(entity_id=self.player.id, deaths=self.deaths))
-        elif not self.player.is_dead:
-            self._player_dead_emitted = False
-
-        if self.exit_reached and not self._completed_emitted:
-            self._completed_emitted = True
-            self.events.emit(
-                LevelCompleted(
-                    level_id=self.level_id,
-                    unlock_level_id=self.level_data.config.level_unlock,
-                )
-            )
 
     def draw(
         self,
@@ -333,7 +307,7 @@ class Level:
             entity_count=len(self.groups.entity_sprites),
             collision_count=len(self.groups.collision_sprites),
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
-            spawn_cooldown=self.debug_controller.spawn_cooldown_max,
+            spawn_cooldown=self.spawn_system.spawn_cooldown_max,
             game=game,
             frame_time=frame_time,
         )
