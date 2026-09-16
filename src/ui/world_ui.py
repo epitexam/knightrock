@@ -27,7 +27,10 @@ class WorldUI:
             collider = getattr(sprite, "hitbox", None)
             hurtbox = getattr(sprite, "hurtbox", None)
             combat = getattr(sprite, "combat", None)
-            attack_box = getattr(combat, "attack_box", None)
+            attack_boxes = getattr(combat, "attack_boxes", None)
+            if attack_boxes is None:
+                legacy_box = getattr(combat, "attack_box", None)
+                attack_boxes = (legacy_box,) if legacy_box is not None else ()
 
             if collider is not None:
                 pygame.draw.rect(
@@ -43,7 +46,7 @@ class WorldUI:
                     camera.apply(hurtbox),
                     width=1,
                 )
-            if attack_box is not None:
+            for attack_box in attack_boxes:
                 pygame.draw.rect(
                     self.display_surface,
                     Colors.debug_attack_box,

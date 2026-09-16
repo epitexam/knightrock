@@ -59,6 +59,9 @@ class CombatPort(Protocol):
     def attack_box(self) -> pygame.FRect | None: ...
 
     @property
+    def attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
+
+    @property
     def current_phase(self) -> PhaseDefinition | None: ...
 
     @property

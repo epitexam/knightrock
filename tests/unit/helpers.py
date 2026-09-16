@@ -12,7 +12,12 @@ from types import SimpleNamespace
 import pygame
 from pygame.sprite import Group
 
-from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.combat.frame_data import (
+    AttackDefinition,
+    HitboxSpec,
+    HitProperties,
+    PhaseDefinition,
+)
 from src.combat.knockback import KnockbackConfig
 from src.entities.entity import Entity
 
@@ -24,6 +29,7 @@ def make_phase(
     recovery: int = 1,
     size: tuple[float, float] = (30.0, 20.0),
     offset: tuple[float, float] = (20.0, 0.0),
+    extra: tuple[tuple[tuple[float, float], tuple[float, float]], ...] = (),
     damage: int = 10,
     reset_targets: bool = True,
 ) -> PhaseDefinition:
@@ -34,6 +40,9 @@ def make_phase(
         recovery_frames=recovery,
         hitbox_size=size,
         hitbox_offset=offset,
+        extra_hitboxes=tuple(
+            HitboxSpec(size=box_size, offset=box_offset) for box_size, box_offset in extra
+        ),
         hit=HitProperties(
             damage=damage,
             knockback=KnockbackConfig(power=(0.0, 0.0)),
@@ -111,9 +120,11 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         knockback=KnockbackConfig(power=(100.0, 0.0)),
     )
     targets_hit: set[str] = set()
+    attack_box = target.hurtbox.copy()
     combat = SimpleNamespace(
         state=SimpleNamespace(is_active=True),
-        attack_box=target.hurtbox.copy(),
+        attack_box=attack_box,
+        attack_boxes=(attack_box,),
         current_phase=SimpleNamespace(hit=hit),
         charge_multiplier=1.0,
         targets_hit=targets_hit,

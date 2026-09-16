@@ -9,6 +9,7 @@ from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
 from src.physics.entity_grid import EntityGrid
+from src.physics.spatial_hash import SpatialHashMember
 
 
 @dataclass(frozen=True)
@@ -76,22 +77,27 @@ class CombatSystem:
                 continue
 
             combat = attacker.combat
-            attack_box = combat.attack_box
+            attack_boxes = combat.attack_boxes
             phase = combat.current_phase
-            if not combat.state.is_active or attack_box is None or phase is None:
+            if not combat.state.is_active or not attack_boxes or phase is None:
                 continue
 
             if entity_grid is not None:
-                # Query around the attack box (not the attacker's hitbox: the
-                # weapon reach is what matters), then restore group order so
-                # hit resolution matches the exhaustive loop deterministically.
-                # Only combatants have an entry in `order`, so the cast is safe.
+                # Query around every attack box (not the attacker's hitbox:
+                # the weapon reach is what matters), then restore group order
+                # so hit resolution matches the exhaustive loop
+                # deterministically. Only combatants have an entry in `order`,
+                # so the cast is safe.
+                seen: set[int] = set()
+                nearby: list[SpatialHashMember] = []
+                for attack_box in attack_boxes:
+                    for member in entity_grid.near(attack_box):
+                        if id(member) in order and id(member) not in seen:
+                            seen.add(id(member))
+                            nearby.append(member)
                 targets = cast(
                     list[Combatant],
-                    sorted(
-                        (m for m in entity_grid.near(attack_box) if id(m) in order),
-                        key=lambda m: order[id(m)],
-                    ),
+                    sorted(nearby, key=lambda m: order[id(m)]),
                 )
             else:
                 targets = list(combatants)
@@ -105,7 +111,7 @@ class CombatSystem:
                     continue
 
                 self.metrics.pairs_tested += 1
-                if not attack_box.colliderect(target.hurtbox):
+                if not any(attack_box.colliderect(target.hurtbox) for attack_box in attack_boxes):
                     continue
 
                 self.metrics.overlaps += 1

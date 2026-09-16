@@ -164,6 +164,56 @@ def test_phase_policy_controls_repeat_contacts(reset_targets: bool, expected_con
     assert ("target" in machine.targets_hit) is expected_contact
 
 
+def test_extra_box_hits_target_outside_primary_reach() -> None:
+    definition = attack(
+        phase(
+            size=(20.0, 20.0),
+            offset=(20.0, 0.0),
+            extra=[((20.0, 20.0), (-30.0, 0.0))],
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    # Only the rear extra box overlaps this target: the primary box misses.
+    target = entity_at(-30.0, faction="target")
+    activate(attacker)
+
+    assert len(attacker.combat.attack_boxes) == 2
+    assert attacker.combat.attack_boxes[0] is attacker.combat.attack_box
+
+    CombatSystem().process_attacks([attacker, target])
+
+    assert target.health == 90.0
+    assert target.id in attacker.combat.targets_hit
+
+
+def test_single_box_attack_exposes_only_the_primary_box() -> None:
+    owner = entity_at(0.0, definition=attack(phase()))
+    activate(owner)
+
+    assert owner.combat.attack_boxes == (owner.combat.attack_box,)
+
+
+def test_disjoint_boxes_share_one_contact_per_target() -> None:
+    definition = attack(
+        phase(
+            size=(20.0, 20.0),
+            offset=(0.0, 0.0),
+            extra=[((20.0, 20.0), (0.0, 0.0))],
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    target = entity_at(0.0, faction="target")
+    activate(attacker)
+    system = CombatSystem()
+
+    system.process_attacks([attacker, target])
+
+    # Both boxes overlap, but the per-phase `targets_hit` policy still
+    # records exactly one contact: no double damage from twin boxes.
+    assert target.health == 90.0
+    assert system.metrics.contacts == 1
+
+
 def test_invalid_frame_data_fails_fast() -> None:
     with pytest.raises(ValueError, match="active frame"):
         phase(active=0)

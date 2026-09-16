@@ -122,6 +122,11 @@ class CombatComponent:
         return self.hitbox.rect
 
     @property
+    def attack_boxes(self) -> tuple[pygame.FRect, ...]:
+        """Every live offensive rectangle: primary box first, then extras."""
+        return self.hitbox.rects
+
+    @property
     def current_phase(self) -> PhaseDefinition | None:
         """The ``PhaseDefinition`` for the current active phase, or ``None``."""
         return self.state.current_phase_def
@@ -392,6 +397,7 @@ class NullCombatComponent:
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
+        self.attack_boxes: tuple[pygame.FRect, ...] = ()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()
@@ -503,6 +509,7 @@ class NullCombatComponent:
 
 class _NullHitboxManager:
     rect = None
+    rects: tuple = ()
 
     def clear(self) -> None:
         """No-op."""

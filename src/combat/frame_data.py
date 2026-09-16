@@ -93,6 +93,32 @@ class HitProperties:
 
 
 @dataclass(frozen=True)
+class HitboxSpec:
+    """Size and offset of a single offensive rectangle within a phase.
+
+    A phase always carries its legacy primary box (``hitbox_size`` /
+    ``hitbox_offset``); each entry of ``PhaseDefinition.extra_hitboxes``
+    adds one disjoint box following the same convention: ``size`` is the
+    rectangle dimensions in pixels, ``offset`` its center relative to the
+    owner's hitbox center (mirrored on the x-axis when facing left).
+
+    Attributes
+    ----------
+    size : tuple[float, float]
+        Width and height in pixels, both strictly positive.
+    offset : tuple[float, float]
+        Center offset ``(x, y)`` relative to the owner's hitbox center.
+    """
+
+    size: tuple[float, float]
+    offset: tuple[float, float]
+
+    def __post_init__(self) -> None:
+        if not (self.size[0] > 0 and self.size[1] > 0):
+            raise ValueError("Hitbox dimensions must be strictly positive")
+
+
+@dataclass(frozen=True)
 class PhaseDefinition:
     """Immutable frame data and hitbox definition for a single hit event.
 
@@ -126,9 +152,14 @@ class PhaseDefinition:
         - wide swing      : (60-80, 30-45)
         - launcher / slam : (30-45, 50-70)
     hitbox_offset : tuple[float, float]
-        Offset from the attacker's hitbox centre (x, y) during the active
+        Offset from the attacker's hitbox center (x, y) during the active
         phase. Positive x shifts forward (auto-mirrored when facing left).
         Positive y shifts downward; negative y shifts upward.
+    extra_hitboxes : tuple[HitboxSpec, ...]
+        Additional disjoint boxes active alongside the primary box
+        (twin blades, boss weak points...). Empty by default: legacy
+        attacks keep a single rectangle. Each entry follows the same
+        size/offset convention as the primary box.
     hit : HitProperties
         Properties applied on successful hit during the active phase.
     reset_targets : bool
@@ -150,6 +181,7 @@ class PhaseDefinition:
     hitbox_size: tuple[float, float]
     hitbox_offset: tuple[float, float]
     hit: HitProperties
+    extra_hitboxes: tuple[HitboxSpec, ...] = ()
     reset_targets: bool = True
     cancel_into: tuple[str, ...] = ()
 

@@ -17,7 +17,12 @@ from pathlib import Path
 from typing import Any
 
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.combat.frame_data import (
+    AttackDefinition,
+    HitboxSpec,
+    HitProperties,
+    PhaseDefinition,
+)
 from src.combat.knockback import KnockbackConfig
 from src.data.errors import GameplayDataError, read_json_object
 
@@ -76,6 +81,28 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
 
 
+def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
+    """Parse one ``{"size": [...], "offset": [...]}`` extra box."""
+    if not isinstance(raw, dict):
+        raise GameplayDataError(f"{where}: extra hitbox must be an object, got {raw!r}")
+    try:
+        return HitboxSpec(
+            size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
+            offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: invalid extra hitbox: {exc}") from exc
+
+
+def _read_extra_hitboxes(raw: Any, where: str) -> tuple[HitboxSpec, ...]:
+    """Parse the optional ``extra_hitboxes`` list (empty when absent)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GameplayDataError(f"{where}: 'extra_hitboxes' must be a list")
+    return tuple(_read_hitbox_spec(entry, f"{where}[{index}]") for index, entry in enumerate(raw))
+
+
 def _read_phase(raw: Any, where: str) -> PhaseDefinition:
     """Parse one phase block into :class:`PhaseDefinition`."""
     if not isinstance(raw, dict):
@@ -92,6 +119,9 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 _required(raw, "hitbox_offset", where), f"{where}.hitbox_offset"
             ),
             hit=_read_hit(_required(raw, "hit", where), f"{where}.hit"),
+            extra_hitboxes=_read_extra_hitboxes(
+                raw.get("extra_hitboxes"), f"{where}.extra_hitboxes"
+            ),
             reset_targets=bool(raw.get("reset_targets", True)),
             cancel_into=tuple(raw.get("cancel_into", ())),
         )
@@ -164,6 +194,10 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "super_armor_break": phase.hit.super_armor_break,
                     "is_finisher": phase.hit.is_finisher,
                 },
+                "extra_hitboxes": [
+                    {"size": list(spec.size), "offset": list(spec.offset)}
+                    for spec in phase.extra_hitboxes
+                ],
                 "reset_targets": phase.reset_targets,
                 "cancel_into": list(phase.cancel_into),
             }

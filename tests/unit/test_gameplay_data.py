@@ -49,6 +49,34 @@ def test_read_attacks_file_roundtrips(tmp_path: Path) -> None:
     )
 
 
+def test_read_attacks_file_extra_hitboxes_roundtrip(tmp_path: Path) -> None:
+    doc = _attacks_doc()
+    doc["sets"]["test_set"]["punch"]["phases"][0]["extra_hitboxes"] = [
+        {"size": [20.0, 20.0], "offset": [-30.0, 0.0]}
+    ]
+    path = _write(tmp_path / "attacks.json", doc)
+
+    sets = read_attacks_file(path)
+    phase = sets["test_set"]["punch"].phases[0]
+
+    assert len(phase.extra_hitboxes) == 1
+    assert phase.extra_hitboxes[0].size == (20.0, 20.0)
+    assert phase.extra_hitboxes[0].offset == (-30.0, 0.0)
+    # Serializer keeps the JSON shape stable for JSON-driven tooling.
+    assert attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0]["extra_hitboxes"] == [
+        {"size": [20.0, 20.0], "offset": [-30.0, 0.0]}
+    ]
+
+
+def test_read_attacks_file_bad_extra_hitbox_raises(tmp_path: Path) -> None:
+    doc = _attacks_doc()
+    doc["sets"]["test_set"]["punch"]["phases"][0]["extra_hitboxes"] = [{"size": [20.0, 20.0]}]
+    path = _write(tmp_path / "attacks.json", doc)
+
+    with pytest.raises(ValueError, match="offset"):
+        read_attacks_file(path)
+
+
 def test_read_attacks_file_missing_required_field_raises(tmp_path: Path) -> None:
     doc = _attacks_doc()
     del doc["sets"]["test_set"]["punch"]["cooldown"]
