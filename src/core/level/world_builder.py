@@ -126,6 +126,7 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
         waypoints,
         speed,
         (groups.all_sprites, groups.collision_sprites),
+        collision_sprites=groups.collision_sprites,
     )
     groups.moving_platforms.add(platform)
 
