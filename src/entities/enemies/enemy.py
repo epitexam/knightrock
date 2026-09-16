@@ -14,7 +14,7 @@ from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.entity import Entity
-from src.physics import lerp_velocity
+from src.physics import apply_velocity_friction
 from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChargeState,
@@ -220,7 +220,11 @@ class Enemy(Entity):
         if self.config.has_ai:
             self.state_machine.update(delta_time)
         elif self.on_surface["floor"]:
-            lerp_velocity(self, 0.0, min(1.0, self.passive_friction * delta_time), delta_time)
+            # No AI means no KnockbackState: passive friction is the only
+            # thing stopping a launched dummy, so it must use the configured
+            # rate directly (not scaled by dt a second time) and snap to
+            # zero instead of sliding forever on an asymptote.
+            apply_velocity_friction(self, self.passive_friction, delta_time)
 
     def can_see_player(self) -> bool:
         """Check if the player is within vision range.

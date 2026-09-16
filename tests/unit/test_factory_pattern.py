@@ -162,3 +162,53 @@ class TestNoDirectSubclassUsage:
         # These should NOT be in __all__
         assert "Goblin" not in enemies.__all__
         assert "TrainingDummy" not in enemies.__all__
+
+
+class TestPassiveEnemyFriction:
+    """A no-AI enemy (dummy) must still come to a stop after a launch."""
+
+    def _dummy_on_floor(self):
+        dummy = create_enemy(
+            name="dummy",
+            pos=(0.0, 0.0),
+            groups=Group(),
+            collision_sprites=Group(),
+            player_reference=None,
+        )
+        floor = pygame.sprite.Sprite()
+        floor.rect = floor.hitbox = pygame.FRect(-2000, 48, 4000, 64)
+        dummy.collision_sprites = Group(floor)
+        return dummy
+
+    def test_dummy_stops_after_heavy_knockback(self):
+        """Regression: passive friction used dt twice, sliding ~40 s."""
+        from src.combat.knockback import KnockbackConfig
+
+        dummy = self._dummy_on_floor()
+        dummy.receive_damage(
+            10,
+            source_center_x=-50.0,
+            knockback=KnockbackConfig(power=(600.0, -100.0)),
+        )
+        assert dummy.velocity.x > 0
+
+        for _ in range(180):  # 3 s on the ground
+            dummy.update(1 / 60)
+
+        assert dummy.velocity.x == 0.0
+
+    def test_dummy_slows_down_quickly(self):
+        """Perceptual stop (< 20 px/s) in under a second, like AI knockback."""
+        from src.combat.knockback import KnockbackConfig
+
+        dummy = self._dummy_on_floor()
+        dummy.receive_damage(
+            10,
+            source_center_x=-50.0,
+            knockback=KnockbackConfig(power=(600.0, -100.0)),
+        )
+
+        for _ in range(60):
+            dummy.update(1 / 60)
+
+        assert abs(dummy.velocity.x) < 20.0

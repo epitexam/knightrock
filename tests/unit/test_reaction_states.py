@@ -85,3 +85,36 @@ def test_stagger_state_does_not_apply_friction_when_friction_zero() -> None:
     state.update(1 / 60)
 
     assert entity.velocity.x == 300.0
+
+
+def test_knockback_state_releases_without_floor_after_timeout() -> None:
+    """A launch over a pit exits instead of locking forever (infinite KB)."""
+    entity = make_entity()
+    entity.on_surface = {"floor": False, "left": False, "right": False}
+    state = KnockbackState(entity, lambda: "idle", max_duration=0.5)
+
+    state.enter(knockback_direction=1.0, knockback_force=600.0, knockback_up_force=-300.0)
+    for _ in range(29):
+        assert state.update(1 / 60) is None
+
+    exited = None
+    for _ in range(10):
+        exited = state.update(1 / 60)
+        if exited is not None:
+            break
+
+    assert exited == "idle"
+
+
+def test_knockback_reentry_resets_the_timeout() -> None:
+    """Juggling re-arms the safety cap instead of inheriting a stale timer."""
+    entity = make_entity()
+    entity.on_surface = {"floor": False, "left": False, "right": False}
+    state = KnockbackState(entity, lambda: "idle", max_duration=0.5)
+
+    state.enter(knockback_direction=1.0, knockback_force=600.0, knockback_up_force=0.0)
+    for _ in range(20):
+        state.update(1 / 60)
+    state.enter(knockback_direction=1.0, knockback_force=600.0, knockback_up_force=0.0)
+    for _ in range(20):
+        assert state.update(1 / 60) is None

@@ -16,7 +16,7 @@ logic is now parameterized by:
 from collections.abc import Callable
 from typing import Any
 
-from src.core.settings import Physics
+from src.core.settings import Combat, Physics
 from src.physics import lerp_velocity
 from src.states.state_machine import State
 
@@ -70,16 +70,20 @@ class KnockbackState(State):
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = Physics.KNOCKBACK_FRICTION,
+        max_duration: float = Combat.KNOCKBACK_MAX_DURATION,
         tags: list[str] | None = None,
         on_enter: Callable[..., None] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["knockback", "busy"])
         self.exit_resolver = exit_resolver
         self.friction = friction
+        self.max_duration = max_duration
         self.on_enter = on_enter
+        self._elapsed = 0.0
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Run the optional setup hook, then apply the launch velocity."""
+        self._elapsed = 0.0
         if self.on_enter is not None:
             self.on_enter(**kwargs)
 
@@ -93,7 +97,12 @@ class KnockbackState(State):
             self.entity.velocity.y = knockback_up
 
     def update(self, delta_time: float) -> str | None:
-        """Apply ground friction and resolve once the entity stops sliding."""
+        """Apply ground friction and resolve once the entity stops sliding.
+
+        A launch that never lands (pit fall) still releases after
+        ``max_duration`` instead of locking the state machine forever.
+        """
+        self._elapsed += delta_time
         if self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, self.friction, delta_time)
             if (
@@ -102,6 +111,8 @@ class KnockbackState(State):
             ):
                 self.entity.velocity.x = 0.0
                 return self.exit_resolver()
+        if self._elapsed >= self.max_duration:
+            return self.exit_resolver()
         return None
 
 

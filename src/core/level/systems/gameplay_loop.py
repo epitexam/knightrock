@@ -149,7 +149,7 @@ class GameplayLoop:
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
             self.remove_dead_entities(groups.entity_sprites, player)
 
-            respawn.process(effective_delta)
+            respawn.process(effective_delta, groups.entity_sprites)
             progression.process(player)
 
             camera.process(raw_delta, player)

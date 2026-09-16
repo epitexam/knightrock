@@ -25,8 +25,14 @@ class PlayerRespawnSystem:
         self.respawn_timer = 0.0
         self.deaths = 0
 
-    def process(self, delta_time: float) -> None:
-        """Advance the death/respawn state by one simulation tick."""
+    def process(self, delta_time: float, entity_sprites=None) -> None:
+        """Advance the death/respawn state by one simulation tick.
+
+        Fallen non-player entities below the death border die too: without
+        this, a launched enemy over a pit falls forever, locked in its
+        knockback state with its velocity intact (infinite knockback).
+        They are reaped by ``remove_dead_entities`` on the following tick.
+        """
         if self.player.is_dead:
             self.respawn_timer += delta_time
             if self.respawn_timer >= Respawn.DELAY_S:
@@ -37,6 +43,8 @@ class PlayerRespawnSystem:
             self.respawn_timer = 0.0
 
         self._check_death_border()
+        if entity_sprites is not None:
+            self._reap_fallen_entities(entity_sprites)
 
     def _check_death_border(self) -> None:
         """Kill the player when it falls below the level's death border (BUG-06).
@@ -47,3 +55,15 @@ class PlayerRespawnSystem:
         border = self.level_data.config.death_border_bottom
         if border > 0 and self.player.hitbox.top > border:
             self.player.die()
+
+    def _reap_fallen_entities(self, entity_sprites) -> None:
+        """Kill live non-player entities below the death border."""
+        border = self.level_data.config.death_border_bottom
+        if border <= 0:
+            return
+        for entity in tuple(entity_sprites):
+            if entity is self.player or getattr(entity, "is_dead", False):
+                continue
+            hitbox = getattr(entity, "hitbox", None)
+            if hitbox is not None and hitbox.top > border:
+                entity.die()

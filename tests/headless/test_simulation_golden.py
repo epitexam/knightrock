@@ -182,7 +182,10 @@ def build_respawn_level() -> Level:
 # inline).  A mismatch means the pipeline changed the simulation.
 PHYSICS_DIGEST = "440bce6ce349663baaa41e8ec4db3ba574ca8fc41ed140ccae00eee939aafef7"
 RIDE_DIGEST = "10f1cab300fa9142575f9e4c55acd7700fe17071f351f1a35758d7846219cb5d"
-RESPAWN_DIGEST = "c4ef67a917e9dc906ce752b2a060c3c84d6cf8beac8edb38809a6ca689c36ccd"
+# RESPAWN_DIGEST re-captured with the infinite-knockback fix: the pit rule now
+# also kills fallen enemies (the goblin below the border dies instead of
+# falling forever); the player death/respawn path is unchanged.
+RESPAWN_DIGEST = "4d9dd4c02b9ca2c84152ad6867c7bb57345d0d9d079936dd7d9cc5f78bba3963"
 
 
 @requires_assets

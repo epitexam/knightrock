@@ -82,11 +82,24 @@ class Combat:
     HEAVY_KNOCKBACK_THRESHOLD = 400.0
     ENEMY_FLOOR_CONTROL = 20.0
     ENEMY_AIR_CONTROL = 10.0
+    # Safety cap: a launch always releases, even if the floor never comes
+    # (pit falls). Normal ground knockbacks resolve well below this.
+    KNOCKBACK_MAX_DURATION = 2.0
     # Phase 5 #4 (juggle / hit-stun avancé): stagger scales with damage,
     # juggle gravity lasts one float window, OTG guards knockdown wakeup.
     HITSTUN_DAMAGE_FACTOR = 0.004
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
+
+
+class CameraShake:
+    """Deterministic impact shake (sine-based, fixed-timestep safe)."""
+
+    MAX_PX = 10.0
+    DECAY_PER_S = 2.5
+    FREQUENCY = 90.0
+    # Impact magnitude (px/s) mapping to full trauma.
+    HEAVY_DIV = 1200.0
 
 
 class Separation:

@@ -199,6 +199,46 @@ class TestPlayerRespawnSystem:
         assert player.died == 0
         assert not player.is_dead
 
+    def test_death_border_kills_a_fallen_enemy(self) -> None:
+        """A launched enemy over a pit dies instead of falling forever."""
+        player = PlayerStub(top=100.0)
+        system = PlayerRespawnSystem(player, make_level_data(death_border_bottom=400.0))
+        fallen = PlayerStub(top=500.0)
+
+        system.process(1 / 60, [player, fallen])
+
+        assert fallen.died == 1
+        assert fallen.is_dead
+        assert player.died == 0
+
+    def test_fallen_entities_are_ignored_without_sprites(self) -> None:
+        """The legacy single-argument call keeps working (no entity pass)."""
+        player = PlayerStub(top=100.0)
+        system = PlayerRespawnSystem(player, make_level_data(death_border_bottom=400.0))
+
+        system.process(1 / 60)
+
+        assert player.died == 0
+
+    def test_disabled_border_leaves_fallen_enemies_alive(self) -> None:
+        player = PlayerStub(top=100.0)
+        system = PlayerRespawnSystem(player, make_level_data(death_border_bottom=0.0))
+        fallen = PlayerStub(top=500.0)
+
+        system.process(1 / 60, [player, fallen])
+
+        assert fallen.died == 0
+        assert not fallen.is_dead
+
+    def test_already_dead_entities_are_not_killed_twice(self) -> None:
+        player = PlayerStub(top=100.0)
+        system = PlayerRespawnSystem(player, make_level_data(death_border_bottom=400.0))
+        corpse = PlayerStub(top=500.0, is_dead=True)
+
+        system.process(1 / 60, [player, corpse])
+
+        assert corpse.died == 0
+
 
 class PlayerSpriteStub(pygame.sprite.Sprite):
     """Sprite-shaped player double: the exit probe needs rect *and* is_dead."""
