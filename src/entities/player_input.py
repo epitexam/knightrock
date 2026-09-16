@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from src.core.settings import GameFeel
 from src.core.settings import Input as InputSettings
+from src.physics.movement import apply_jump_cut
 
 if TYPE_CHECKING:
     from src.entities.player import Player
@@ -42,6 +44,9 @@ class PlayerInputHandler:
 
         if im.jump_just_pressed:
             player.jump.buffer_press()
+
+        if getattr(im, "jump_just_released", False):
+            apply_jump_cut(player, GameFeel.JUMP_CUT_DIVISOR)
 
         if im.dash_just_pressed:
             player.dash.request()

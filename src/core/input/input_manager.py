@@ -90,6 +90,11 @@ class InputManager:
         return self._current_state.jump_held and not self._prev_state.jump_held
 
     @property
+    def jump_just_released(self) -> bool:
+        """Return True if jump was released this tick (variable jump cut)."""
+        return not self._current_state.jump_held and self._prev_state.jump_held
+
+    @property
     def dash_just_pressed(self) -> bool:
         """Return True if dash was pressed this tick."""
         return self._current_state.dash_held and not self._prev_state.dash_held

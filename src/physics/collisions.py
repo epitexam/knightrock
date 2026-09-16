@@ -4,7 +4,7 @@ from typing import Literal, Protocol, cast
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, Separation
+from src.core.settings import Collision, GameFeel, Separation
 from src.physics.spatial_hash import SpatialHash
 
 
@@ -29,6 +29,22 @@ class CollisionEntity(Protocol):
     def _on_floor_contact(self) -> None: ...
 
     def _on_wall_contact(self) -> None: ...
+
+
+def _shift_is_free(
+    entity: CollisionEntity,
+    shifted: pygame.FRect,
+    nearby_sprites: Iterable[CollisionSprite],
+    ignore: CollisionSprite | None = None,
+) -> bool:
+    """Whether ``shifted`` overlaps no nearby collider (except ``ignore``)."""
+    for other in nearby_sprites:
+        if other is ignore:
+            continue
+        box = getattr(other, "hitbox", getattr(other, "rect", None))
+        if box is not None and shifted.colliderect(box):
+            return False
+    return True
 
 
 def hitbox_collide(a: CollisionSprite, b: CollisionSprite) -> bool:
@@ -120,6 +136,64 @@ def update_contact_state(
         entity._on_wall_contact()
 
 
+def _flag_crushed(entity: CollisionEntity) -> None:
+    """Mark a deep-overlap correction (guarded for foreign test stubs)."""
+    if hasattr(entity, "crushed"):
+        entity.crushed = True
+
+
+def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:
+    """Clamp an axis-nearest fallback correction, flagging crush when capped."""
+    if abs(correction) <= Collision.MAX_RESOLVE_PX:
+        return current + correction
+    _flag_crushed(entity)
+    capped = Collision.MAX_RESOLVE_PX if correction > 0 else -Collision.MAX_RESOLVE_PX
+    return current + capped
+
+
+def _try_step_up(
+    entity: CollisionEntity,
+    sprite: CollisionSprite,
+    sprite_box: pygame.Rect | pygame.FRect,
+    nearby_sprites: list[CollisionSprite],
+) -> bool:
+    """Mount a small ledge while grounded instead of stopping (GameFeel)."""
+    step_up = GameFeel.STEP_UP_PX
+    if step_up <= 0 or not entity.on_surface.get("floor", False):
+        return False
+    rise = entity.hitbox.bottom - sprite_box.top
+    if rise <= 0 or rise > step_up:
+        return False
+    shifted = entity.hitbox.copy()
+    shifted.y -= rise
+    if _shift_is_free(entity, shifted, nearby_sprites, ignore=sprite):
+        entity.hitbox.y -= rise
+        return True
+    return False
+
+
+def _try_corner_correct(
+    entity: CollisionEntity,
+    sprite_box: pygame.Rect | pygame.FRect,
+    nearby_sprites: list[CollisionSprite],
+) -> bool:
+    """Nudge aside when jumping into a ceiling corner (GameFeel)."""
+    corner = GameFeel.CORNER_CORRECT_PX
+    if corner <= 0 or entity.velocity.y >= 0:
+        return False
+    move_axis = float(getattr(entity, "move_axis", 0.0) or 0.0)
+    direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else 0.0
+    if direction == 0.0:
+        return False
+    for offset in (direction * corner, -direction * corner):
+        shifted = entity.hitbox.copy()
+        shifted.x += offset
+        if not shifted.colliderect(sprite_box) and _shift_is_free(entity, shifted, nearby_sprites):
+            entity.hitbox.x += offset
+            return True
+    return False
+
+
 def resolve_collisions(
     entity: CollisionEntity,
     axis: Literal["horizontal", "vertical"],
@@ -155,6 +229,11 @@ def resolve_collisions(
         was_overlapping = entity.old_hitbox.colliderect(sprite_old)
 
         if axis == "horizontal":
+            if _try_step_up(entity, sprite, sprite_box, nearby_sprites):
+                continue
+            penetration = min(entity.hitbox.right, sprite_box.right) - max(
+                entity.hitbox.left, sprite_box.left
+            )
             if not was_overlapping and entity.old_hitbox.right <= sprite_old.left:
                 entity.hitbox.right = sprite_box.left
             elif not was_overlapping and entity.old_hitbox.left >= sprite_old.right:
@@ -162,11 +241,21 @@ def resolve_collisions(
             elif abs(entity.hitbox.right - sprite_box.left) < abs(
                 entity.hitbox.left - sprite_box.right
             ):
-                entity.hitbox.right = sprite_box.left
+                entity.hitbox.right = _resolve_with_cap(
+                    entity, sprite_box.left - entity.hitbox.right, entity.hitbox.right
+                )
             else:
-                entity.hitbox.left = sprite_box.right
-            entity.velocity.x = 0
+                entity.hitbox.left = _resolve_with_cap(
+                    entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
+                )
+            if penetration >= Collision.MIN_PENETRATION_PX:
+                entity.velocity.x = 0
         else:
+            if _try_corner_correct(entity, sprite_box, nearby_sprites):
+                continue
+            penetration = min(entity.hitbox.bottom, sprite_box.bottom) - max(
+                entity.hitbox.top, sprite_box.top
+            )
             if not was_overlapping and entity.old_hitbox.bottom <= sprite_old.top:
                 entity.hitbox.bottom = sprite_box.top
             elif not was_overlapping and entity.old_hitbox.top >= sprite_old.bottom:
@@ -174,9 +263,14 @@ def resolve_collisions(
             elif abs(entity.hitbox.bottom - sprite_box.top) < abs(
                 entity.hitbox.top - sprite_box.bottom
             ):
-                entity.hitbox.bottom = sprite_box.top
+                entity.hitbox.bottom = _resolve_with_cap(
+                    entity, sprite_box.top - entity.hitbox.bottom, entity.hitbox.bottom
+                )
             else:
-                entity.hitbox.top = sprite_box.bottom
-            entity.velocity.y = 0
+                entity.hitbox.top = _resolve_with_cap(
+                    entity, sprite_box.bottom - entity.hitbox.top, entity.hitbox.top
+                )
+            if penetration >= Collision.MIN_PENETRATION_PX:
+                entity.velocity.y = 0
 
     entity.sync_rects()

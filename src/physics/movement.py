@@ -5,7 +5,15 @@ from typing import Protocol, runtime_checkable
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Input, Locomotion, PlatformRide, Separation, Simulation
+from src.core.settings import (
+    Collision,
+    GameFeel,
+    Input,
+    Locomotion,
+    PlatformRide,
+    Separation,
+    Simulation,
+)
 from src.physics.collisions import (
     CollisionSprite,
     get_nearby_sprites,
@@ -147,6 +155,7 @@ class PlatformRider(Protocol):
     on_surface: dict[str, bool]
     hitbox: pygame.FRect
     old_hitbox: pygame.FRect
+    carry_backup: tuple[float, float, float, float] | None
 
     def sync_rects(self) -> None: ...
 
@@ -204,12 +213,24 @@ def resolve_jump(entity: JumpEntity) -> None:
         entity.jump_buffer_timer = 0.0
 
 
+def apply_jump_cut(entity, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:
+    """Cut a rising jump short on button release (variable jump height).
+
+    Neutral at the default divisor (1.0): the velocity is untouched.
+    """
+    if divisor <= 1.0 or entity.velocity.y >= 0:
+        return
+    entity.velocity.y /= divisor
+
+
 def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = True) -> None:
     """Move an entity according to its velocity and the environment.
 
     Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
     the original O(n) search if spatial_hash is not available.
     """
+    if hasattr(entity, "crushed"):
+        entity.crushed = False
     # Use spatial hash if available, otherwise fall back to collision_sprites
     spatial_hash = getattr(entity, "spatial_hash", None)
     collision_sprites = getattr(entity, "collision_sprites", None)
@@ -252,7 +273,90 @@ def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = 
             entity.velocity.y = 0.0
             break
 
+    _snap_to_ground(entity, nearby_sprites)
+    _revert_carry_crush(entity)
     update_contact_state(entity, nearby_sprites)
+
+
+def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
+    """Stick to ground within a few pixels instead of floating off edges.
+
+    Neutral at the default distance (0.0): nothing is probed.
+    """
+    snap = GameFeel.GROUND_SNAP_PX
+    if snap <= 0 or entity.velocity.y < 0:
+        return
+
+    best: float | None = None
+    for sprite in nearby_sprites:
+        if getattr(sprite, "one_way", False):
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is None or entity.old_hitbox.bottom > box.top + Collision.CONTACT_SKIN_PX:
+                continue
+            gap = box.top - entity.hitbox.bottom
+            if 0 <= gap <= snap and (best is None or gap < best):
+                best = gap
+            continue
+        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        if box is None:
+            continue
+        overlap_x = min(entity.hitbox.right, box.right) - max(entity.hitbox.left, box.left)
+        if overlap_x <= 0:
+            continue
+        gap = box.top - entity.hitbox.bottom
+        if 0 <= gap <= snap and (best is None or gap < best):
+            best = gap
+    if best is not None:
+        entity.hitbox.bottom += best
+        entity.velocity.y = 0.0
+
+
+def _revert_carry_crush(entity: MovableEntity) -> None:
+    """Restore the pre-carry position when a platform crushed the entity."""
+    crushed = bool(getattr(entity, "crushed", False))
+    backup = getattr(entity, "carry_backup", None)
+    if hasattr(entity, "carry_backup"):
+        entity.carry_backup = None
+    if not crushed or backup is None:
+        return
+    entity.hitbox.x, entity.hitbox.y, entity.hitbox.width, entity.hitbox.height = backup
+    entity.velocity.x = 0.0
+    entity.velocity.y = 0.0
+    entity.sync_rects()
+
+
+def _sticky_snap(
+    entity: PlatformRider,
+    platform: MovingPlatform,
+    vertical_dist: float,
+    platform_dy: float,
+) -> bool:
+    """Catch a fast-descending platform's new top instead of detaching.
+
+    Neutral at the default factor (0.0): never engages. When engaged, the
+    entity drops exactly onto the new surface (never embedded in the pad).
+    """
+    sticky = PlatformRide.STICKY_FACTOR * max(0.0, platform_dy)
+    if sticky <= 0:
+        return False
+    if not (
+        PlatformRide.SNAP_EPSILON_TOP_PX
+        < vertical_dist
+        <= PlatformRide.SNAP_EPSILON_TOP_PX + sticky
+    ):
+        return False
+    snap = min(platform_dy, platform.hitbox.top - entity.hitbox.bottom)
+    if snap <= 0:
+        return False
+    entity.carry_backup = (
+        entity.hitbox.x,
+        entity.hitbox.y,
+        entity.hitbox.width,
+        entity.hitbox.height,
+    )
+    entity.hitbox.x += platform.hitbox.x - platform.old_hitbox.x
+    entity.hitbox.y += snap
+    return True
 
 
 def apply_moving_platform(
@@ -267,13 +371,18 @@ def apply_moving_platform(
         p_old_box = platform.old_hitbox
 
         vertical_dist = entity.hitbox.bottom - p_old_box.top
+        platform_dy = p_box.y - p_old_box.y
 
         if not (
             -PlatformRide.SNAP_EPSILON_BOTTOM_PX
             <= vertical_dist
             <= PlatformRide.SNAP_EPSILON_TOP_PX
         ):
-            continue
+            if not _sticky_snap(entity, platform, vertical_dist, platform_dy):
+                continue
+            entity.old_hitbox = entity.hitbox.copy()
+            entity.sync_rects()
+            break
 
         overlap = min(entity.hitbox.right, p_old_box.right) - max(
             entity.hitbox.left, p_old_box.left
@@ -287,6 +396,12 @@ def apply_moving_platform(
         if platform_dx == 0 and platform_dy == 0:
             continue
 
+        entity.carry_backup = (
+            entity.hitbox.x,
+            entity.hitbox.y,
+            entity.hitbox.width,
+            entity.hitbox.height,
+        )
         entity.hitbox.x += platform_dx
         entity.hitbox.y += platform_dy
 

@@ -66,6 +66,17 @@ L'overlay ne dessine que ce qui est à l'écran (culling viewport) :
 - `F1`/`F2`/`F3`/`F4` = on/off box / labels / vitesses / statiques
   (rappelés dans le panneau `DEBUG KEYS` en jeu).
 
+## Moteur physique (assists, tous neutres par défaut)
+
+Réglages dans `src/core/settings.py` (`GameFeel`, `Collision`, `PlatformRide`) :
+
+- `JUMP_CUT_DIVISOR` — saut variable (relâcher coupe la montée) ;
+- `GROUND_SNAP_PX` — colle au sol en bout de plateforme ;
+- `STEP_UP_PX` / `CORNER_CORRECT_PX` — monte les marches, glisse les coins ;
+- `MIN_PENETRATION_PX` — frôlements qui glissent au lieu de stopper ;
+- `MAX_RESOLVE_PX` — garde anti-téléportation + flag `crushed` ;
+- `STICKY_FACTOR` — suivi des plateformes descendantes rapides.
+
 ## Tests
 
 ```bash

@@ -144,6 +144,12 @@ class Collision:
     PROBE_THICKNESS_PX = 2.0
     PROBE_WIDTH_PX = 2.0
     WALL_PROBE_OFFSET_PX = 2.0
+    # Robustness (Phase B): only zero the velocity on the resolved axis when
+    # the penetration exceeds this depth; grazes keep sliding. 0.0 = legacy.
+    MIN_PENETRATION_PX = 0.0
+    # Clamp the axis-nearest fallback correction (deep-overlap teleport guard);
+    # beyond it the entity is flagged crushed instead. inf = legacy.
+    MAX_RESOLVE_PX = float("inf")
 
 
 class PlatformRide:
@@ -151,6 +157,22 @@ class PlatformRide:
 
     SNAP_EPSILON_TOP_PX = 4.0
     SNAP_EPSILON_BOTTOM_PX = 2.0
+    # Sticky carry on fast-descending platforms: the mount window grows with
+    # the platform's downward step. 0.0 = legacy fixed window.
+    STICKY_FACTOR = 0.0
+
+
+class GameFeel:
+    """Game-feel assists. Every default is neutral (legacy behavior)."""
+
+    # Rising velocity is divided by this on jump release (variable jump).
+    JUMP_CUT_DIVISOR = 1.0
+    # Snap down to ground within this distance instead of floating off edges.
+    GROUND_SNAP_PX = 0.0
+    # Auto-mount ledges this tall while grounded (no jump needed).
+    STEP_UP_PX = 0.0
+    # Lateral nudge when jumping into a ceiling corner.
+    CORNER_CORRECT_PX = 0.0
 
 
 class Locomotion:

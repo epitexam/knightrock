@@ -200,6 +200,10 @@ class Entity(Sprite):
         self.gravity_scale: float = 1.0
         self.juggle_timer: float = 0.0
         self.otg_timer: float = 0.0
+        # Physics robustness: crush flag set by the bounded resolver and
+        # pre-carry backup for crush revert (both tick in ``update``).
+        self.crushed: bool = False
+        self.carry_backup: tuple[float, float, float, float] | None = None
 
         self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT

@@ -10,6 +10,7 @@ from .entity_grid import EntityGrid, overlapping_pairs
 from .gravity import apply_entity_gravity
 from .movement import (
     apply_horizontal_movement,
+    apply_jump_cut,
     apply_moving_platform,
     move_entity,
     resolve_jump,
@@ -33,6 +34,7 @@ __all__ = [
     "QUERY_MARGIN_PX",
     "apply_entity_gravity",
     "apply_horizontal_movement",
+    "apply_jump_cut",
     "apply_moving_platform",
     "apply_velocity_friction",
     "get_nearby_sprites",
