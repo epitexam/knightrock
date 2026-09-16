@@ -16,11 +16,13 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Sprite
 
+from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
+from src.combat.knockback import KnockbackConfig
 
 _PROJECTILE_ID_SEQUENCE = count()
 
-__all__ = ["Projectile", "ProjectileConfig"]
+__all__ = ["FIREBOLT_CONFIG", "PIERCING_BOLT_CONFIG", "Projectile", "ProjectileConfig"]
 
 
 @dataclass(frozen=True)
@@ -119,3 +121,30 @@ class Projectile(Sprite):
             "life": self.life,
             "active": self.active,
         }
+
+
+#: Straight firebolt for debug key V (Phase 5 #3 showcase).
+FIREBOLT_CONFIG = ProjectileConfig(
+    size=(12.0, 12.0),
+    lifetime=2.0,
+    hit=HitProperties(
+        damage=10,
+        knockback=KnockbackConfig(power=(250.0, -100.0)),
+        damage_type=DamageType.PIERCE,
+        stagger=0.15,
+    ),
+    pierce=False,
+)
+
+#: Piercing bolt for debug key B (Phase 5 #3 showcase).
+PIERCING_BOLT_CONFIG = ProjectileConfig(
+    size=(14.0, 14.0),
+    lifetime=2.5,
+    hit=HitProperties(
+        damage=8,
+        knockback=KnockbackConfig(power=(200.0, -80.0)),
+        damage_type=DamageType.PIERCE,
+        stagger=0.1,
+    ),
+    pierce=True,
+)

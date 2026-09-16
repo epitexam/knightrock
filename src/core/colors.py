@@ -65,6 +65,10 @@ class Colors:
     debug_hitbox: ClassVar[Color] = (80, 140, 210)
     debug_hurtbox: ClassVar[Color] = (80, 210, 120)
     debug_attack_box: ClassVar[Color] = (230, 120, 60)
+    debug_static: ClassVar[Color] = (140, 145, 155)
+    debug_velocity: ClassVar[Color] = (245, 230, 90)
+    debug_otg: ClassVar[Color] = (80, 220, 230)
+    debug_juggle: ClassVar[Color] = (170, 85, 235)
 
 
 #: Valid ``LevelConfig.bg`` names: avoids ``getattr(Colors, cfg.bg)``

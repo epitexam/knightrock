@@ -104,6 +104,7 @@ class Renderer:
         y += self.ui_manager.draw_stats_panel(x, y, player) + 8
         if game is not None:
             y += self.ui_manager.draw_scene_panel(x, y, game) + 8
+        y += self.ui_manager.draw_help_panel(x, y) + 8
         self.ui_manager.draw_performance_panel(
             fps=fps,
             sprite_count=sprite_count,

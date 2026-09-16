@@ -46,8 +46,23 @@ class UIManager:
                 f"  enemies {len([e for e in level.groups.entity_sprites if getattr(e, 'faction', None) == 'enemy'])}"
             )
             lines.append(f"Hazards  {len(level.groups.hazard_sprites)}")
+            projectiles = getattr(level.groups, "projectile_sprites", None)
+            if projectiles is not None:
+                lines.append(f"Shots    {len(projectiles)}")
 
         return self.renderer.draw_panel(x, y, lines, title="SCENE")
+
+    def draw_help_panel(self, x: int, y: int) -> int:
+        """List the debug test-bench keys and overlay toggles."""
+        lines = [
+            "1-4  test attacks",
+            "V/B  firebolt / pierce",
+            "C    juggle dummy",
+            "G/P/T spawn foe",
+            "F1-4 boxes/labels/",
+            "     veloc./statics",
+        ]
+        return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS")
 
     def draw_performance_panel(
         self,

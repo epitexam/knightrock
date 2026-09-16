@@ -25,6 +25,47 @@ Mode debug (overlay FPS / états / hitbox) :
 DEBUG=1 uv run python main.py
 ```
 
+## Contrôles
+
+Déplacement : `←`/`→`, saut `Espace`, dash `Shift`, bloc `Q`, reset `R`.
+
+Attaques : `A` (légère / aérienne en l'air), `S` (lourde chargeable, maintenir puis
+relâcher), `D` (uppercut), `F` (dash attack), `G`+`H` (spéciale).
+
+Debug spawn : `G` gobelin, `P` slime, `T` dummy.
+
+## Banc d'essai Phase 5 (hitbox / combat avancé)
+
+Touches disponibles en jeu, sans rien recompiler :
+
+| Touche | Feature testée | Détail |
+|---|---|---|
+| `1` | Multi-hitbox (#1) | `twin_fangs` : lame + 2ᵉ box disjointe |
+| `2` | Hitbox animée (#2) | `sweeping_arc` : la box grandit le long de la courbe |
+| `3` | Juggle (#4) | `sky_launcher` : lance en l'air, gravité adoucie (`x0.5`) |
+| `4` | OTG (#4) | `otg_slam` : seul coup autorisé pendant la garde OTG |
+| `V` | Projectile (#3) | `firebolt` simple, réutilise `HitResolver` |
+| `B` | Projectile perçant (#3) | traverse et touche chaque cible une fois |
+| `C` | Dummy de juggle | pop un dummy en l'air devant le joueur |
+
+Protocole suggéré : `C` puis `3` sous le dummy (neutre en l'air), jongler en
+l'air (`A` en saut), finir au sol avec `4` pendant la garde OTG. L'overlay
+debug (`DEBUG=1`) montre les box offensives, `Combo (air xN)`, `Juggle`,
+`OTG guard` et le compteur `Shots` du panneau SCENE.
+
+## Debug visuel (`DEBUG=1`)
+
+L'overlay ne dessine que ce qui est à l'écran (culling viewport) :
+
+- hitbox **bleue** = joueur, **rouge** = ennemi, **grise** = neutre ;
+  hurtbox verte, box offensive orange, vecteur vitesse jaune ;
+- contour **cyan** = garde OTG, **violet** = gravité de juggle ;
+- labels courts (`Goblin chase 75/100`), 2ᵉ ligne seulement en attaque
+  ou avec un flag (`STAG`, `OTG`, `JGx`, `AIR`) ; projectiles labellisés
+  (vitesse, vie, perçant) ; tuiles ignorées, statiques sans texte ;
+- `F1`/`F2`/`F3`/`F4` = on/off box / labels / vitesses / statiques
+  (rappelés dans le panneau `DEBUG KEYS` en jeu).
+
 ## Tests
 
 ```bash

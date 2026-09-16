@@ -14,6 +14,15 @@ if TYPE_CHECKING:
     from src.core.game import Game
 
 
+#: Debug overlay layers toggled by function keys (F1-F4).
+_OVERLAY_TOGGLES = {
+    pygame.K_F1: "boxes",
+    pygame.K_F2: "labels",
+    pygame.K_F3: "velocities",
+    pygame.K_F4: "statics",
+}
+
+
 class GameplayScene(Scene):
     """Run a ``Level`` and trigger the end transitions.
 
@@ -75,6 +84,12 @@ class GameplayScene(Scene):
             from src.application.scenes.pause_scene import PauseScene
 
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+            return
+        if event.type == pygame.KEYDOWN and self.level is not None:
+            toggle = _OVERLAY_TOGGLES.get(event.key)
+            if toggle is not None:
+                world_ui = self.level.renderer.ui_manager.world_ui
+                world_ui.toggle(toggle)
 
     def draw(self) -> list[pygame.Rect] | None:
         if self.level is None:

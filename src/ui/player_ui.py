@@ -96,9 +96,26 @@ class PlayerUI:
         combat = getattr(player, "combat", None)
         if combat:
             lines.append(
-                f"Combo  x{getattr(combat, 'combo_count', 0)}   {getattr(combat, 'combo_timer', 0.0):.2f}s"
+                f"Combo  x{getattr(combat, 'combo_count', 0)}"
+                f" (air x{getattr(combat, 'air_combo_count', 0)})"
+                f"   {getattr(combat, 'combo_timer', 0.0):.2f}s"
             )
         else:
             lines.append("Combo  x0   0.00s")
 
-        return self.renderer.draw_panel(x, y, lines, title="STATS", line_colors={0: hp_color})
+        gravity_scale = getattr(player, "gravity_scale", 1.0)
+        line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
+        if gravity_scale != 1.0:
+            idx = len(lines)
+            lines.append(
+                f"Juggle grav x{gravity_scale:.2f} {getattr(player, 'juggle_timer', 0.0):.2f}s"
+            )
+            line_colors[idx] = TEXT_WARN
+
+        otg_timer = getattr(player, "otg_timer", 0.0)
+        if otg_timer > 0:
+            idx = len(lines)
+            lines.append(f"OTG guard {otg_timer:.2f}s")
+            line_colors[idx] = TEXT_OK
+
+        return self.renderer.draw_panel(x, y, lines, title="STATS", line_colors=line_colors)

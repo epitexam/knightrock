@@ -130,6 +130,7 @@ class Level:
         self.notification_system = NotificationSystem(events, level_id, level_data)
         self.tick_system = TickSystem()
         self.projectile_system = ProjectileSystem(self.groups, spatial_hash=self.spatial_hash)
+        self.spawn_system.projectile_system = self.projectile_system
 
         self.gameplay_loop = GameplayLoop(
             platform_system=self.platform_system,

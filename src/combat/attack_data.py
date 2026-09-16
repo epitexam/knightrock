@@ -8,6 +8,8 @@ architecture. Balancing can be done here without modifying core systems.
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     AttackDefinition,
+    HitboxKeyframe,
+    HitboxSpec,
     HitProperties,
     PhaseDefinition,
 )
@@ -125,6 +127,101 @@ PLAYER_ATTACKS = {
         cooldown=0.35,
         lock_direction=False,
         attack_move_multiplier=0.6,
+    ),
+    # ── Phase 5 showcase (testables via les touches debug 1-4) ──
+    "twin_fangs": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=4,
+                active_frames=6,
+                recovery_frames=6,
+                hitbox_size=(45.0, 22.0),
+                hitbox_offset=(26.0, -4.0),
+                extra_hitboxes=(HitboxSpec(size=(30.0, 18.0), offset=(20.0, -24.0)),),
+                hit=HitProperties(
+                    damage=8,
+                    knockback=KnockbackConfig(power=(180.0, -80.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.15,
+                ),
+                cancel_into=("light_attack", "heavy_attack"),
+            ),
+        ),
+        cooldown=0.50,
+        lock_direction=True,
+        attack_move_multiplier=0.5,
+    ),
+    "sweeping_arc": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=6,
+                active_frames=6,
+                recovery_frames=5,
+                hitbox_size=(40.0, 22.0),
+                hitbox_offset=(24.0, -4.0),
+                hitbox_keyframes=(
+                    HitboxKeyframe(frame=0, size=(28.0, 14.0), offset=(16.0, -2.0)),
+                    HitboxKeyframe(frame=6, size=(55.0, 28.0), offset=(30.0, -6.0)),
+                    HitboxKeyframe(frame=12, size=(70.0, 34.0), offset=(38.0, -8.0)),
+                ),
+                hit=HitProperties(
+                    damage=12,
+                    knockback=KnockbackConfig(power=(220.0, -100.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.2,
+                ),
+                cancel_into=("light_attack",),
+            ),
+        ),
+        cooldown=0.70,
+        lock_direction=True,
+        attack_move_multiplier=0.4,
+    ),
+    "sky_launcher": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=7,
+                active_frames=5,
+                recovery_frames=10,
+                hitbox_size=(32.0, 48.0),
+                hitbox_offset=(16.0, -28.0),
+                hit=HitProperties(
+                    damage=14,
+                    knockback=KnockbackConfig(power=(250.0, -650.0)),
+                    damage_type=DamageType.BLUNT,
+                    stagger=0.35,
+                    super_armor_break=True,
+                    juggle_gravity_mult=0.5,
+                ),
+            ),
+        ),
+        cooldown=1.0,
+        lock_direction=True,
+        combo_reset=False,
+        attack_move_multiplier=0.2,
+    ),
+    "otg_slam": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=9,
+                active_frames=4,
+                recovery_frames=12,
+                hitbox_size=(60.0, 30.0),
+                hitbox_offset=(30.0, 10.0),
+                hit=HitProperties(
+                    damage=20,
+                    knockback=KnockbackConfig(power=(200.0, 450.0)),
+                    damage_type=DamageType.BLUNT,
+                    stagger=0.4,
+                    super_armor_break=True,
+                    otg_allowed=True,
+                ),
+            ),
+        ),
+        cooldown=1.2,
+        lock_direction=True,
+        combo_reset=True,
+        attack_move_multiplier=0.15,
     ),
     "special_attack": AttackDefinition(
         phases=(
