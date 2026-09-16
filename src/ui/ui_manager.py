@@ -61,6 +61,7 @@ class UIManager:
             "G/P/T spawn foe",
             "F1-4 boxes/labels/",
             "     veloc./statics",
+            "F5   panels on/off",
         ]
         return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS")
 

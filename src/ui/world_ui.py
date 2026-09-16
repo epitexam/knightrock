@@ -31,8 +31,8 @@ VELOCITY_MIN_SPEED = 60.0
 #: World margin around the viewport: sprites grazing the edge still draw.
 CULL_MARGIN_PX = 64.0
 
-#: Toggleable overlay layers (F1-F4).
-OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics")
+#: Toggleable overlay layers (F1-F5).
+OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics", "panels")
 
 
 class WorldUI:
@@ -183,8 +183,12 @@ class WorldUI:
             return
         start = camera.apply(origin).center
         end = (start[0] + vx * VELOCITY_PREVIEW_S, start[1] + vy * VELOCITY_PREVIEW_S)
-        pygame.draw.line(self.display_surface, Colors.debug_velocity, start, end, width=2)
-        pygame.draw.circle(self.display_surface, Colors.debug_velocity, end, 2)
+        color = Colors.debug_velocity
+        state_machine = getattr(sprite, "state_machine", None)
+        if getattr(state_machine, "current_state_name", None) == "knockback":
+            color = Colors.red  # launched: reaction vector, not locomotion
+        pygame.draw.line(self.display_surface, color, start, end, width=2)
+        pygame.draw.circle(self.display_surface, color, end, 2)
 
     def _label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
         state_machine = getattr(sprite, "state_machine", None)

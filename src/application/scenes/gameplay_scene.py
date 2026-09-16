@@ -14,12 +14,13 @@ if TYPE_CHECKING:
     from src.core.game import Game
 
 
-#: Debug overlay layers toggled by function keys (F1-F4).
+#: Debug overlay layers toggled by function keys (F1-F5).
 _OVERLAY_TOGGLES = {
     pygame.K_F1: "boxes",
     pygame.K_F2: "labels",
     pygame.K_F3: "velocities",
     pygame.K_F4: "statics",
+    pygame.K_F5: "panels",
 }
 
 

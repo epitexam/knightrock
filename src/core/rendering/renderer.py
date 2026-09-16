@@ -99,6 +99,8 @@ class Renderer:
         frame_time: float = 0.0,
         cache_size: int = 0,
     ):
+        if not self.ui_manager.world_ui.layers.get("panels", True):
+            return
         x, y = 10, 10
         y += self.ui_manager.draw_state_panel(x, y, player) + 8
         y += self.ui_manager.draw_stats_panel(x, y, player) + 8

@@ -147,6 +147,22 @@ def test_stationary_sprites_draw_no_velocity_vector(world_ui: WorldUI, camera: C
     assert surface.get_at((120, 124))[:3] == (0, 0, 0)
 
 
+def test_locomotion_vector_is_yellow(world_ui: WorldUI, camera: Camera) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.red
+
+
 def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:
     assert world_ui.toggle("labels") is False
     assert world_ui.toggle("labels") is True
@@ -183,3 +199,23 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
     assert world_ui.layers["labels"] is True
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F1))
     assert world_ui.layers["boxes"] is False
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F5))
+    assert world_ui.layers["panels"] is False
+
+
+def test_debug_panels_can_be_hidden() -> None:
+    from src.core.rendering.camera import Camera as _Camera
+    from src.core.rendering.renderer import Renderer
+
+    camera = _Camera(1024, 768)
+    renderer = Renderer(pygame.display.get_surface(), camera)
+    surface = pygame.display.get_surface()
+    assert surface is not None
+
+    renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
+    assert surface.get_at((20, 60))[:3] != (0, 0, 0)
+
+    surface.fill((0, 0, 0))
+    renderer.ui_manager.world_ui.toggle("panels")
+    renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
+    assert surface.get_at((20, 60))[:3] == (0, 0, 0)
