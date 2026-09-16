@@ -58,16 +58,16 @@ debug (`DEBUG=1`) montre les box offensives, `Combo (air xN)`, `Juggle`,
 L'overlay ne dessine que ce qui est à l'écran (culling viewport) :
 
 - hitbox **bleue** = joueur, **rouge** = ennemi, **grise** = neutre ;
-  hurtbox verte, box offensive orange, vecteur vitesse jaune ;
+  hurtbox verte, box offensive orange, vecteur vitesse jaune (**rouge** en
+  knockback) ;
 - contour **cyan** = garde OTG, **violet** = gravité de juggle ;
 - labels courts (`Goblin chase 75/100`), 2ᵉ ligne seulement en attaque
   ou avec un flag (`STAG`, `OTG`, `JGx`, `AIR`) ; projectiles labellisés
   (vitesse, vie, perçant) ; tuiles ignorées, statiques sans texte ;
-- `F1`/`F2`/`F3`/`F4` = on/off box / labels / vitesses / statiques
-  (rappelés dans le panneau `DEBUG KEYS` en jeu).
+- `F1`/`F2`/`F3`/`F4` = on/off box / labels / vitesses / statiques,
+  `F5` = on/off des panneaux (rappelés dans `DEBUG KEYS` en jeu).
 
 ## Moteur physique (assists, tous neutres par défaut)
-
 Réglages dans `src/core/settings.py` (`GameFeel`, `Collision`, `PlatformRide`) :
 
 - `JUMP_CUT_DIVISOR` — saut variable (relâcher coupe la montée) ;
@@ -76,6 +76,17 @@ Réglages dans `src/core/settings.py` (`GameFeel`, `Collision`, `PlatformRide`) 
 - `MIN_PENETRATION_PX` — frôlements qui glissent au lieu de stopper ;
 - `MAX_RESOLVE_PX` — garde anti-téléportation + flag `crushed` ;
 - `STICKY_FACTOR` — suivi des plateformes descendantes rapides.
+
+## Knockback (feel + profondeur)
+
+Réglages dans `src/core/settings.py` (`Combat`, `CameraShake`) :
+
+- `WALL_BOUNCE_FACTOR` — rebond aux murs en plein launch (flèche rouge en debug) ;
+- `KNOCKBACK_MAX_DURATION` — sécurité anti-lock (fosses), `KNOCKBACK_DI_ACCEL/CAP` —
+  le joueur steer sa trajectoire en l'air, les ennemis non ;
+- `JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` — rendements dégressifs des juggles ;
+- `HITSTOP_KNOCKBACK_FACTOR`, `CameraShake` — hitstop et shake scalés à l'impact
+  (launches ≥ 400 déclenchent le trauma).
 
 ## Tests
 
