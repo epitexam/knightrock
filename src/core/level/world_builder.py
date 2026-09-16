@@ -52,12 +52,12 @@ TILE_LAYER_HANDLERS.register("Platforms")(functools.partial(_build_decor, foregr
 TILE_LAYER_HANDLERS.register("FG")(functools.partial(_build_decor, foreground=True))
 
 
-def _parse_waypoints(obj: ObjectData) -> list[tuple[float, float]]:
+def _explicit_waypoints(obj: ObjectData) -> list[tuple[float, float]] | None:
     """
-    Extract waypoints from an object's points or properties.
+    Waypoints authored on the object itself, or None when absent.
 
     Prefers the 'points' attribute, then the 'waypoints' string property,
-    and falls back to an implied end point from 'end_x'/'end_y' or a default.
+    then 'end_x'/'end_y'.  When None, the object rectangle is the path.
     """
     if obj.points:
         return obj.points
@@ -68,32 +68,62 @@ def _parse_waypoints(obj: ObjectData) -> list[tuple[float, float]]:
             x_str, y_str = point.split(",")
             points.append((float(x_str), float(y_str)))
         return points
-    end_x = float(obj.properties.get("end_x", obj.x + 100))
-    end_y = float(obj.properties.get("end_y", obj.y))
-    return [(obj.x, obj.y), (end_x, end_y)]
+    if "end_x" in obj.properties or "end_y" in obj.properties:
+        end_x = float(obj.properties.get("end_x", obj.x))
+        end_y = float(obj.properties.get("end_y", obj.y))
+        return [(obj.x, obj.y), (end_x, end_y)]
+    return None
 
 
-def _sized_surface(obj: ObjectData, color) -> pygame.Surface:
-    """Create a surface for a moving platform with a minimum thickness."""
-    min_thickness = World.TILE_SIZE // 2
-    width, height = obj.width, obj.height
-    if height < min_thickness:
-        width, height = max(width, min_thickness), min_thickness
-    elif width < min_thickness:
-        width, height = min_thickness, max(height, min_thickness)
-    surf = pygame.Surface((width, height))
-    surf.fill(color)
-    return surf
+def _rect_path(obj: ObjectData) -> tuple[pygame.math.Vector2, pygame.math.Vector2]:
+    """The object rectangle's centre line: the full back-and-forth range.
+
+    The rectangle drawn in Tiled is the travel distance, not the sprite:
+    horizontal when the rectangle is at least as wide as tall, vertical
+    otherwise, running edge to edge through the rectangle's middle.
+    """
+    centre_x = obj.x + obj.width / 2
+    centre_y = obj.y + obj.height / 2
+    if obj.width >= obj.height:
+        return (
+            pygame.math.Vector2(obj.x, centre_y),
+            pygame.math.Vector2(obj.x + obj.width, centre_y),
+        )
+    return (
+        pygame.math.Vector2(centre_x, obj.y),
+        pygame.math.Vector2(centre_x, obj.y + obj.height),
+    )
 
 
 def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
-    """Create a MovingPlatform from object data and add it to groups."""
-    surf = _sized_surface(obj, Colors.gold)
+    """Create a MovingPlatform patrolling the object rectangle.
+
+    The Tiled rectangle is the travel range (back and forth), not the
+    platform: the pad is a small surface launched at the rectangle's
+    centre, then patrolling between the rectangle's ends at the 'speed'
+    property (default 100 px/s).  Pad size: 'platform_width'/
+    'platform_height' properties, default 2 tiles x half a tile.
+    """
+    half_tile = World.TILE_SIZE // 2
+    width = max(float(obj.properties.get("platform_width", World.TILE_SIZE * 2)), half_tile)
+    height = max(float(obj.properties.get("platform_height", half_tile)), half_tile)
+    surf = pygame.Surface((width, height))
+    surf.fill(Colors.gold)
     speed = float(obj.properties.get("speed", 100))
+    half = pygame.math.Vector2(width / 2, height / 2)
+    start, end = _rect_path(obj)
+    waypoints = _explicit_waypoints(obj)
+    if waypoints is None:
+        # Waypoints are top-left targets: offset them so the pad's *centre*
+        # travels the rectangle from end to end.
+        waypoint_a = (start.x - half.x, start.y - half.y)
+        waypoint_b = (end.x - half.x, end.y - half.y)
+        waypoints = [waypoint_a, waypoint_b]
+    middle = start.lerp(end, 0.5)
     platform = MovingPlatform(
-        (obj.x, obj.y),
+        (middle.x - half.x, middle.y - half.y),
         surf,
-        _parse_waypoints(obj),
+        waypoints,
         speed,
         (groups.all_sprites, groups.collision_sprites),
     )
@@ -101,9 +131,13 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
 
 
 def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
-    """Create a linearly moving hazard (saw)."""
-    surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
-    surf.fill(Colors.black)
+    """Create a linearly moving hazard (saw) patrolling the object rectangle.
+
+    The Tiled rectangle is the travel range, not the hazard: the saw sprite
+    launches at the rectangle's centre and sweeps the full range back and
+    forth at the 'speed' property (default 100 px/s).  Sprite size: 'size'
+    property, else the animation's natural frame size, else one tile.
+    """
     speed = float(obj.properties.get("speed", 100))
     flip = bool(obj.properties.get("flip", False))
     damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
@@ -111,8 +145,28 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         animator = build_hazard_animator({"spin": "assets/graphics/enemies/saw/animation"}, "spin")
     except FileNotFoundError:
         animator = None
+    if "size" in obj.properties:
+        side = float(obj.properties["size"])
+        size = (side, side)
+    elif animator is not None:
+        size = animator.frame_size
+    else:
+        size = (World.TILE_SIZE, World.TILE_SIZE)
+    surf = pygame.Surface((max(size[0], 1), max(size[1], 1)))
+    surf.fill(Colors.black)
+    half = pygame.math.Vector2(size[0] / 2, size[1] / 2)
+    start, end = _rect_path(obj)
+    span_a = (start.x - half.x, start.y - half.y)
+    span_b = (end.x - half.x, end.y - half.y)
     hazard = SpanHazard(
-        (obj.x, obj.y), surf, speed, flip, groups.all_sprites, damage=damage, animator=animator
+        span_a,
+        surf,
+        speed,
+        flip,
+        groups.all_sprites,
+        damage=damage,
+        animator=animator,
+        span=(span_a, span_b),
     )
     groups.hazard_sprites.add(hazard)
 

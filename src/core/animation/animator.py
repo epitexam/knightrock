@@ -91,6 +91,17 @@ class Animator:
         """True once a non-looping animation reached its last frame."""
         return self._finished
 
+    @property
+    def frame_size(self) -> tuple[int, int]:
+        """Natural pixel size of the current animation's frames.
+
+        Useful to size a sprite rect so the art renders at its native
+        scale instead of being stretched by :meth:`surface`.
+        """
+        spec = self._specs[self._current]
+        frames = self._library.frames(spec.directory)
+        return frames[0].get_width(), frames[0].get_height()
+
     def play(self, name: str) -> bool:
         """Switch to ``name``; return True when the animation changed.
 

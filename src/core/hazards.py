@@ -1,5 +1,5 @@
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 import pygame
@@ -96,20 +96,33 @@ class SpanHazard(Sprite):
         groups=None,
         damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
         animator: Animator | None = None,
+        span: Sequence[Sequence[float]] | None = None,
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.animator = animator
-        start = pygame.math.Vector2(self.rect.topleft)
-        if self.rect.width >= self.rect.height:
-            end = start + pygame.math.Vector2(self.rect.width, 0)
+        if span is not None:
+            point_a, point_b = (pygame.math.Vector2(p) for p in span)
         else:
-            end = start + pygame.math.Vector2(0, self.rect.height)
-        self.point_a = end if flip else start
-        self.point_b = start if flip else end
+            # No explicit path: the sprite's own rect *is* the span (legacy
+            # placement, used by immobile hazards such as floor spikes).
+            start = pygame.math.Vector2(self.rect.topleft)
+            if self.rect.width >= self.rect.height:
+                point_b = start + pygame.math.Vector2(self.rect.width, 0)
+            else:
+                point_b = start + pygame.math.Vector2(0, self.rect.height)
+            point_a = start
+        if flip:
+            point_a, point_b = point_b, point_a
+        self.point_a = point_a
+        self.point_b = point_b
         self.speed = speed
         self.damage = damage
-        self.progress = 0.0
+        # Span-driven hazards launch centred on their path; rect-derived
+        # ones keep the position they were placed at.
+        self.progress = 0.5 if span is not None else 0.0
         self.direction = 1
+        if span is not None:
+            self.rect.topleft = self.point_a.lerp(self.point_b, self.progress)
 
     def update(self, delta_time: float) -> None:
         if delta_time == 0.0:

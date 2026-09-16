@@ -42,6 +42,14 @@ def specs(tmp_path: Path) -> dict[str, AnimationSpec]:
     }
 
 
+def test_frame_size_reports_natural_frame_dimensions(
+    specs: dict[str, AnimationSpec], library: AssetLibrary
+) -> None:
+    animator = Animator(library, specs, default="loop")
+
+    assert animator.frame_size == (4, 4)
+
+
 def test_play_switches_and_restarts(specs: dict[str, AnimationSpec], library: AssetLibrary) -> None:
     animator = Animator(library, specs, default="loop")
     animator.update(0.25)
