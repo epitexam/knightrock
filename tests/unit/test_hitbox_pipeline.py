@@ -193,6 +193,90 @@ def test_single_box_attack_exposes_only_the_primary_box() -> None:
     assert owner.combat.attack_boxes == (owner.combat.attack_box,)
 
 
+def test_animated_box_interpolates_along_startup_curve() -> None:
+    owner = entity_at(
+        0.0,
+        definition=attack(
+            phase(
+                startup=4,
+                active=4,
+                offset=(10.0, 0.0),
+                keyframes=(
+                    (0, (20.0, 20.0), (10.0, 0.0)),
+                    (4, (40.0, 20.0), (30.0, 0.0)),
+                ),
+            )
+        ),
+    )
+    assert owner.combat.start_attack("test")
+    # One attack frame per tick by design: a single update advances the
+    # machine by one frame, landing mid-curve (frame 1 of 0->4).
+    owner.combat.update(1 / 60)
+    owner.combat.sync_attack_box()
+
+    box = owner.combat.attack_box
+    assert box is not None
+    assert box.size == (25.0, 20.0)
+    assert box.centerx == owner.hitbox.centerx + 15.0
+
+
+def test_animated_box_holds_last_keyframe_through_active() -> None:
+    owner = entity_at(
+        0.0,
+        definition=attack(
+            phase(
+                startup=2,
+                active=4,
+                offset=(10.0, 0.0),
+                keyframes=((0, (20.0, 20.0), (10.0, 0.0)),),
+            )
+        ),
+    )
+    activate(owner)  # startup done, first active frame
+    owner.combat.update(1 / 60)
+    owner.combat.sync_attack_box()
+
+    box = owner.combat.attack_box
+    assert box is not None
+    assert box.size == (20.0, 20.0)
+    assert box.centerx == owner.hitbox.centerx + 10.0
+
+
+def test_animated_hit_connects_only_when_curve_reaches_target() -> None:
+    definition = attack(
+        phase(
+            startup=4,
+            active=4,
+            size=(10.0, 10.0),
+            offset=(10.0, 0.0),
+            keyframes=(
+                (0, (10.0, 10.0), (10.0, 0.0)),
+                (4, (10.0, 10.0), (60.0, 0.0)),
+            ),
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    target = entity_at(60.0, faction="target")
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+
+    early_box = attacker.combat.attack_box
+    assert early_box is not None
+    assert not early_box.colliderect(target.hurtbox)
+
+    for _ in range(3):
+        attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+
+    late_box = attacker.combat.attack_box
+    assert late_box is not None
+    assert late_box.colliderect(target.hurtbox)
+
+    CombatSystem().process_attacks([attacker, target])
+    assert target.health == 90.0
+
+
 def test_disjoint_boxes_share_one_contact_per_target() -> None:
     definition = attack(
         phase(

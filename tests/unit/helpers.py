@@ -14,6 +14,7 @@ from pygame.sprite import Group
 
 from src.combat.frame_data import (
     AttackDefinition,
+    HitboxKeyframe,
     HitboxSpec,
     HitProperties,
     PhaseDefinition,
@@ -30,6 +31,7 @@ def make_phase(
     size: tuple[float, float] = (30.0, 20.0),
     offset: tuple[float, float] = (20.0, 0.0),
     extra: tuple[tuple[tuple[float, float], tuple[float, float]], ...] = (),
+    keyframes: tuple[tuple[int, tuple[float, float], tuple[float, float]], ...] = (),
     damage: int = 10,
     reset_targets: bool = True,
 ) -> PhaseDefinition:
@@ -42,6 +44,10 @@ def make_phase(
         hitbox_offset=offset,
         extra_hitboxes=tuple(
             HitboxSpec(size=box_size, offset=box_offset) for box_size, box_offset in extra
+        ),
+        hitbox_keyframes=tuple(
+            HitboxKeyframe(frame=frame, size=box_size, offset=box_offset)
+            for frame, box_size, box_offset in keyframes
         ),
         hit=HitProperties(
             damage=damage,

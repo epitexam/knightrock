@@ -19,6 +19,7 @@ from typing import Any
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     AttackDefinition,
+    HitboxKeyframe,
     HitboxSpec,
     HitProperties,
     PhaseDefinition,
@@ -103,6 +104,31 @@ def _read_extra_hitboxes(raw: Any, where: str) -> tuple[HitboxSpec, ...]:
     return tuple(_read_hitbox_spec(entry, f"{where}[{index}]") for index, entry in enumerate(raw))
 
 
+def _read_hitbox_keyframe(raw: Any, where: str) -> HitboxKeyframe:
+    """Parse one ``{"frame": N, "size": [...], "offset": [...]}`` sample."""
+    if not isinstance(raw, dict):
+        raise GameplayDataError(f"{where}: hitbox keyframe must be an object, got {raw!r}")
+    try:
+        return HitboxKeyframe(
+            frame=int(_required(raw, "frame", where)),
+            size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
+            offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: invalid hitbox keyframe: {exc}") from exc
+
+
+def _read_hitbox_keyframes(raw: Any, where: str) -> tuple[HitboxKeyframe, ...]:
+    """Parse the optional ``hitbox_keyframes`` list (empty when absent)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GameplayDataError(f"{where}: 'hitbox_keyframes' must be a list")
+    return tuple(
+        _read_hitbox_keyframe(entry, f"{where}[{index}]") for index, entry in enumerate(raw)
+    )
+
+
 def _read_phase(raw: Any, where: str) -> PhaseDefinition:
     """Parse one phase block into :class:`PhaseDefinition`."""
     if not isinstance(raw, dict):
@@ -121,6 +147,9 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             hit=_read_hit(_required(raw, "hit", where), f"{where}.hit"),
             extra_hitboxes=_read_extra_hitboxes(
                 raw.get("extra_hitboxes"), f"{where}.extra_hitboxes"
+            ),
+            hitbox_keyframes=_read_hitbox_keyframes(
+                raw.get("hitbox_keyframes"), f"{where}.hitbox_keyframes"
             ),
             reset_targets=bool(raw.get("reset_targets", True)),
             cancel_into=tuple(raw.get("cancel_into", ())),
@@ -197,6 +226,14 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                 "extra_hitboxes": [
                     {"size": list(spec.size), "offset": list(spec.offset)}
                     for spec in phase.extra_hitboxes
+                ],
+                "hitbox_keyframes": [
+                    {
+                        "frame": keyframe.frame,
+                        "size": list(keyframe.size),
+                        "offset": list(keyframe.offset),
+                    }
+                    for keyframe in phase.hitbox_keyframes
                 ],
                 "reset_targets": phase.reset_targets,
                 "cancel_into": list(phase.cancel_into),

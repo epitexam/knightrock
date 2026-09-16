@@ -30,8 +30,14 @@ class HitboxManager:
         return tuple(self._pool)
 
     def update(self, state: AttackStateMachine) -> None:
-        """Synchronize geometry from attack state and owner position."""
-        if not state.is_active or state.attack_name is None:
+        """Synchronize geometry from attack state and owner position.
+
+        Geometry is live during startup *and* active: the animated curve
+        starts at phase frame 0 (windup), so the debug overlay and the
+        per-frame sweep both track the swing from its first frame.
+        Recovery clears the box, as before.
+        """
+        if not state.is_attacking or state.attack_name is None:
             self.clear()
             return
 
@@ -43,17 +49,21 @@ class HitboxManager:
         facing_right = state.effective_facing
         if facing_right is None:
             facing_right = self._entity.facing_right
-        self._position_rects(phase, facing_right)
+        self._position_rects(phase, facing_right, state.animation_frame)
 
     def clear(self) -> None:
         """Remove offensive geometry immediately."""
         self.rect = None
         self._pool.clear()
 
-    def _position_rects(self, phase: PhaseDefinition, facing_right: bool) -> None:
-        """Create or reposition every rectangle without per-tick allocation."""
+    def _position_rects(self, phase: PhaseDefinition, facing_right: bool, frame: int) -> None:
+        """Create or reposition every rectangle without per-tick allocation.
+
+        The primary box follows the phase's animated curve
+        (``hitbox_at``); extra boxes stay static by design (#1 scope).
+        """
         specs = (
-            (phase.hitbox_size, phase.hitbox_offset),
+            (phase.hitbox_at(frame)),
             *((spec.size, spec.offset) for spec in phase.extra_hitboxes),
         )
         while len(self._pool) < len(specs):

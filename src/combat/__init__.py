@@ -37,6 +37,7 @@ from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
+    HitboxKeyframe,
     HitboxSpec,
     HitProperties,
     PhaseDefinition,
@@ -51,6 +52,7 @@ __all__ = [
     "NULL_KNOCKBACK",
     "FRAME_RATE",
     "PhaseState",
+    "HitboxKeyframe",
     "HitboxSpec",
     "HitProperties",
     "PhaseDefinition",

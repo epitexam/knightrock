@@ -122,6 +122,23 @@ class AttackStateMachine:
             return None
         return attack.phases[self.phase_index]
 
+    @property
+    def animation_frame(self) -> int:
+        """Phase-relative frame index driving hitbox animation.
+
+        Counts from the start of startup (``0`` = phase start) through
+        the end of the active window, so ``PhaseDefinition.hitbox_at``
+        can interpolate the curve at the current tick: startup frames
+        contribute their counter, active frames add the startup span.
+        Recovery has no live box (``HitboxManager`` clears on exit).
+        """
+        phase = self.current_phase_def
+        if phase is None or self.sub_state == PhaseState.IDLE:
+            return 0
+        if self.sub_state == PhaseState.ACTIVE:
+            return phase.startup_frames + self.frame_counter
+        return self.frame_counter
+
     def resolve_facing(self, entity_facing: bool) -> None:
         """Lock the facing direction on the first frame of the attack.
 

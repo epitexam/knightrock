@@ -68,6 +68,47 @@ def test_read_attacks_file_extra_hitboxes_roundtrip(tmp_path: Path) -> None:
     ]
 
 
+def test_read_attacks_file_hitbox_keyframes_roundtrip(tmp_path: Path) -> None:
+    doc = _attacks_doc()
+    doc["sets"]["test_set"]["punch"]["phases"][0]["hitbox_keyframes"] = [
+        {"frame": 0, "size": [20.0, 20.0], "offset": [10.0, 0.0]},
+        {"frame": 9, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
+    ]
+    path = _write(tmp_path / "attacks.json", doc)
+
+    sets = read_attacks_file(path)
+    phase = sets["test_set"]["punch"].phases[0]
+
+    assert len(phase.hitbox_keyframes) == 2
+    assert phase.hitbox_keyframes[1].frame == 9
+    # A third of the way along the 0->9 curve interpolates linearly.
+    size, offset = phase.hitbox_at(3)
+    assert size[0] == pytest.approx(20.0 + 20.0 / 3)
+    assert size[1] == 20.0
+    assert offset[0] == pytest.approx(10.0 + 20.0 / 3)
+    assert offset[1] == 0.0
+    assert attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0][
+        "hitbox_keyframes"
+    ] == [
+        {"frame": 0, "size": [20.0, 20.0], "offset": [10.0, 0.0]},
+        {"frame": 9, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
+    ]
+
+
+def test_read_attacks_file_keyframe_beyond_active_span_raises(
+    tmp_path: Path,
+) -> None:
+    doc = _attacks_doc()
+    # light_attack spans 3 startup + 6 active = 9 frames: frame 10 is out.
+    doc["sets"]["test_set"]["punch"]["phases"][0]["hitbox_keyframes"] = [
+        {"frame": 10, "size": [20.0, 20.0], "offset": [10.0, 0.0]}
+    ]
+    path = _write(tmp_path / "attacks.json", doc)
+
+    with pytest.raises(ValueError, match="exceeds"):
+        read_attacks_file(path)
+
+
 def test_read_attacks_file_bad_extra_hitbox_raises(tmp_path: Path) -> None:
     doc = _attacks_doc()
     doc["sets"]["test_set"]["punch"]["phases"][0]["extra_hitboxes"] = [{"size": [20.0, 20.0]}]

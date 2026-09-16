@@ -119,6 +119,39 @@ class HitboxSpec:
 
 
 @dataclass(frozen=True)
+class HitboxKeyframe:
+    """One animated hitbox sample on the startup-to-active curve.
+
+    ``frame`` is counted from the start of the phase's startup
+    (``0`` = phase start, ``startup_frames + active_frames`` = end of
+    the active window). ``size``/``offset`` follow the same convention
+    as the phase's primary box. ``HitboxManager`` linearly interpolates
+    between the surrounding keyframes at the current ``frame_counter``.
+
+    Attributes
+    ----------
+    frame : int
+        Frame index of this sample, within
+        ``0..startup_frames + active_frames``.
+    size : tuple[float, float]
+        Box dimensions in pixels, both strictly positive.
+    offset : tuple[float, float]
+        Box center offset ``(x, y)`` relative to the owner's hitbox
+        center (x auto-mirrored when facing left).
+    """
+
+    frame: int
+    size: tuple[float, float]
+    offset: tuple[float, float]
+
+    def __post_init__(self) -> None:
+        if self.frame < 0:
+            raise ValueError("Hitbox keyframe index cannot be negative")
+        if not (self.size[0] > 0 and self.size[1] > 0):
+            raise ValueError("Hitbox dimensions must be strictly positive")
+
+
+@dataclass(frozen=True)
 class PhaseDefinition:
     """Immutable frame data and hitbox definition for a single hit event.
 
@@ -160,6 +193,12 @@ class PhaseDefinition:
         (twin blades, boss weak points...). Empty by default: legacy
         attacks keep a single rectangle. Each entry follows the same
         size/offset convention as the primary box.
+    hitbox_keyframes : tuple[HitboxKeyframe, ...]
+        Optional animated curve for the primary box: samples of
+        ``(frame, size, offset)`` interpolated linearly over the phase's
+        startup-to-active frames. Empty by default (static legacy box).
+        Entries must be sorted by strictly increasing ``frame`` within
+        ``0..startup_frames + active_frames``.
     hit : HitProperties
         Properties applied on successful hit during the active phase.
     reset_targets : bool
@@ -182,6 +221,7 @@ class PhaseDefinition:
     hitbox_offset: tuple[float, float]
     hit: HitProperties
     extra_hitboxes: tuple[HitboxSpec, ...] = ()
+    hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
     cancel_into: tuple[str, ...] = ()
 
@@ -192,6 +232,47 @@ class PhaseDefinition:
             raise ValueError("An attack phase requires at least one active frame")
         if any(size <= 0 for size in self.hitbox_size):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        span = self.startup_frames + self.active_frames
+        previous = -1
+        for keyframe in self.hitbox_keyframes:
+            if keyframe.frame <= previous:
+                raise ValueError("Hitbox keyframes must use strictly increasing frames")
+            if keyframe.frame > span:
+                raise ValueError("Hitbox keyframe exceeds the startup-to-active frame span")
+            previous = keyframe.frame
+
+    def hitbox_at(self, frame: int) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Interpolate the primary ``(size, offset)`` at a phase ``frame``.
+
+        ``frame`` counts from the start of startup (``0`` = phase start),
+        matching ``AttackStateMachine.frame_counter`` within each
+        sub-state. With no keyframes the static legacy box is returned.
+        Otherwise the surrounding keyframes are interpolated linearly;
+        outside their range the nearest endpoint is held.
+        """
+        if not self.hitbox_keyframes:
+            return (self.hitbox_size, self.hitbox_offset)
+        keyframes = self.hitbox_keyframes
+        if frame <= keyframes[0].frame:
+            first = keyframes[0]
+            return (first.size, first.offset)
+        # Pairwise walk over offset slices: the second slice is one shorter
+        # by construction, so strict=True would always raise (B905 exempt).
+        for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
+            if frame <= after.frame:
+                span = after.frame - before.frame
+                blend = (frame - before.frame) / span
+                size = (
+                    before.size[0] + (after.size[0] - before.size[0]) * blend,
+                    before.size[1] + (after.size[1] - before.size[1]) * blend,
+                )
+                offset = (
+                    before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
+                    before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
+                )
+                return (size, offset)
+        last = keyframes[-1]
+        return (last.size, last.offset)
 
     @property
     def total_frames(self) -> int:
