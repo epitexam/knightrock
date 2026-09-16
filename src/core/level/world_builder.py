@@ -46,9 +46,25 @@ def _build_decor(tiles, groups: SpriteGroups, *, foreground: bool) -> None:
         )
 
 
+def _build_one_way_platforms(tiles, groups: SpriteGroups) -> None:
+    """Create one-way platform tiles: solid on top, pass-through elsewhere.
+
+    An entity standing on top is supported (floor contact); jumping from
+    below or walking into the side phases through, which is what a Tiled
+    "Platforms" layer means in a platformer.
+    """
+    for x, y, surf in tiles:
+        sprite = Sprite(
+            pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
+            surf=surf,
+            groups=(groups.all_sprites, groups.collision_sprites),
+        )
+        sprite.one_way = True
+
+
 TILE_LAYER_HANDLERS.register("Terrain")(_build_terrain)
 TILE_LAYER_HANDLERS.register("BG")(functools.partial(_build_decor, foreground=False))
-TILE_LAYER_HANDLERS.register("Platforms")(functools.partial(_build_decor, foreground=False))
+TILE_LAYER_HANDLERS.register("Platforms")(_build_one_way_platforms)
 TILE_LAYER_HANDLERS.register("FG")(functools.partial(_build_decor, foreground=True))
 
 

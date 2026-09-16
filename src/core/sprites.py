@@ -8,6 +8,8 @@ from src.physics.platforms import update_moving_platform
 
 
 class Sprite(pygame.sprite.Sprite):
+    one_way: bool = False
+
     def __init__(
         self,
         pos: tuple[float, float],

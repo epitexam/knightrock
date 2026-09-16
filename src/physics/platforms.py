@@ -22,7 +22,7 @@ def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Ve
             (box := getattr(s, "hitbox", getattr(s, "rect", None))) is not None
             and box.colliderect(candidate)
             for s in static_sprites
-            if not hasattr(s, "waypoints")
+            if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
         )
         if not blocked:
             return step / divisor, False

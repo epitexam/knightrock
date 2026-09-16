@@ -99,12 +99,18 @@ def update_contact_state(
         box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
         if box is None:
             continue
-        if floor_rect.colliderect(box):
+        one_way = getattr(sprite, "one_way", False)
+        # A one-way platform only supports an entity resting on its top:
+        # an entity inside its body (jumping through) gets no contact.
+        if floor_rect.colliderect(box) and (
+            not one_way or entity.hitbox.bottom <= box.top + Collision.CONTACT_SKIN_PX
+        ):
             on["floor"] = True
-        if right_rect.colliderect(box):
-            on["right"] = True
-        if left_rect.colliderect(box):
-            on["left"] = True
+        if not one_way:
+            if right_rect.colliderect(box):
+                on["right"] = True
+            if left_rect.colliderect(box):
+                on["left"] = True
         if on["floor"] and on["right"] and on["left"]:
             break
 
@@ -130,6 +136,15 @@ def resolve_collisions(
 
         sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
         sprite_box = getattr(sprite, "hitbox", sprite.rect)
+
+        # One-way platforms only catch an entity falling onto their top:
+        # never a wall from the side, never a ceiling from below.
+        if getattr(sprite, "one_way", False) and (
+            axis == "horizontal"
+            or entity.velocity.y < 0
+            or entity.old_hitbox.bottom > sprite_old.top + Collision.CONTACT_SKIN_PX
+        ):
+            continue
 
         if (
             axis == "horizontal"
