@@ -38,6 +38,8 @@ class CombatSnapshot:
         Current combo count.
     combo_timer : float
         Remaining time for the combo window.
+    air_combo_count : int
+        Air-juggle hits in the current window (Phase 5 #4).
     """
 
     attack_state: AttackStateSnapshot
@@ -47,6 +49,7 @@ class CombatSnapshot:
     combo_timer: float
     cooldowns: dict[str, float]
     charge_state: ChargeSnapshot
+    air_combo_count: int = 0
 
 
 class CombatComponent:
@@ -172,6 +175,15 @@ class CombatComponent:
     def combo_timer(self) -> float:
         """Remaining combo window time."""
         return self.combo.timer
+
+    @property
+    def air_combo_count(self) -> int:
+        """Air-juggle hits landed in the current window (Phase 5 #4)."""
+        return self.combo.air_count
+
+    def record_hit_landed(self, airborne: bool) -> None:
+        """Count a connected hit, tracking air juggles (Phase 5 #4)."""
+        self.combo.on_hit_landed(airborne)
 
     @property
     def movement_multiplier(self) -> float:
@@ -321,6 +333,7 @@ class CombatComponent:
             combo_timer=self.combo.timer,
             cooldowns=dict(self._cooldowns),
             charge_state=self.charging.save_state(),
+            air_combo_count=self.combo.air_count,
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
@@ -334,7 +347,7 @@ class CombatComponent:
         self.state.load_state(snapshot.attack_state)
         self.is_hurt = snapshot.is_hurt
         self._hurt_timer = snapshot.hurt_timer
-        self.combo.restore(snapshot.combo_count, snapshot.combo_timer)
+        self.combo.restore(snapshot.combo_count, snapshot.combo_timer, snapshot.air_combo_count)
         self._cooldowns = dict(snapshot.cooldowns)
         self.charging.load_state(snapshot.charge_state)
         self.sync_attack_box()
@@ -380,7 +393,7 @@ class CombatComponent:
         self.state.end()
         self.hitbox.clear()
         self.charging.cancel()
-        self.combo.restore(0, 0.0)
+        self.combo.restore(0, 0.0, 0)
         for name in self._cooldowns:
             self._cooldowns[name] = 0.0
 
@@ -430,6 +443,15 @@ class NullCombatComponent:
     def combo_timer(self) -> float:
         """Always returns ``0.0``."""
         return 0.0
+
+    @property
+    def air_combo_count(self) -> int:
+        """Always returns ``0``."""
+        return 0
+
+    def record_hit_landed(self, airborne: bool) -> None:
+        """No-op."""
+        del airborne
 
     def add_attack(self, name: str, definition: AttackDefinition) -> None:
         """No-op."""
@@ -551,9 +573,14 @@ class _NullComboTracker:
     """
 
     count = 0
+    air_count = 0
 
     def on_attack_started(self, resets_combo: bool) -> None:
         """No-op."""
+
+    def on_hit_landed(self, airborne: bool) -> None:
+        """No-op."""
+        del airborne
 
     def update(self, delta_time: float) -> None:
         """No-op."""

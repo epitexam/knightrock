@@ -20,11 +20,14 @@ class ComboTracker:
     ----------
     count : int
         Current number of consecutive hits in the combo.  0 when idle.
+    air_count : int
+        Hits landed on an airborne victim in the current window (Phase 5 #4).
     """
 
     def __init__(self, window_duration: float) -> None:
         self._window_duration: float = window_duration
         self.count: int = 0
+        self.air_count: int = 0
         self._timer: float = 0.0
 
     @property
@@ -37,10 +40,11 @@ class ComboTracker:
         """Remaining combo window, exposed for deterministic snapshots."""
         return self._timer
 
-    def restore(self, count: int, timer: float) -> None:
+    def restore(self, count: int, timer: float, air_count: int = 0) -> None:
         """Restore deterministic combo state from a validated snapshot."""
         self.count = max(0, count)
         self._timer = max(0.0, timer)
+        self.air_count = max(0, air_count)
 
     def on_attack_started(self, resets_combo: bool) -> None:
         """Notify the tracker that a new attack has been started.
@@ -79,3 +83,9 @@ class ComboTracker:
             if self._timer <= 0.0:
                 self._timer = 0.0
                 self.count = 0
+                self.air_count = 0
+
+    def on_hit_landed(self, airborne: bool) -> None:
+        """Record a connected hit, counting air juggles separately (Phase 5 #4)."""
+        if airborne:
+            self.air_count += 1

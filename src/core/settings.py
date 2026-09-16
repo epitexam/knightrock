@@ -82,6 +82,11 @@ class Combat:
     HEAVY_KNOCKBACK_THRESHOLD = 400.0
     ENEMY_FLOOR_CONTROL = 20.0
     ENEMY_AIR_CONTROL = 10.0
+    # Phase 5 #4 (juggle / hit-stun avancé): stagger scales with damage,
+    # juggle gravity lasts one float window, OTG guards knockdown wakeup.
+    HITSTUN_DAMAGE_FACTOR = 0.004
+    JUGGLE_GRAVITY_TIME = 0.45
+    OTG_INVULN_DURATION = 0.5
 
 
 class Separation:

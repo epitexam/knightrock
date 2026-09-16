@@ -76,6 +76,13 @@ class HitProperties:
     is_finisher : bool
         If True, instantly kills a target whose HP is below 20%.
         Use sparingly — best on slow, high-risk moves.
+    juggle_gravity_mult : float
+        Gravity multiplier applied to an airborne victim (Phase 5 #4):
+        < 1.0 floats the juggle, > 1.0 slams it down. 1.0 = untouched.
+    otg_allowed : bool
+        If True, this hit may connect during the OTG protection window
+        granted on landing from a juggle (Phase 5 #4). Ground hits
+        otherwise bounce off a recently knocked-down victim.
     """
 
     damage: float
@@ -84,12 +91,16 @@ class HitProperties:
     stagger: float = 0.0
     super_armor_break: bool = False
     is_finisher: bool = False
+    juggle_gravity_mult: float = 1.0
+    otg_allowed: bool = False
 
     def __post_init__(self) -> None:
         if self.damage < 0:
             raise ValueError("Hit damage cannot be negative")
         if self.stagger < 0:
             raise ValueError("Hit stagger cannot be negative")
+        if self.juggle_gravity_mult <= 0:
+            raise ValueError("Juggle gravity multiplier must be strictly positive")
 
 
 @dataclass(frozen=True)

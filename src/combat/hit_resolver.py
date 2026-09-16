@@ -11,6 +11,15 @@ from __future__ import annotations
 from src.combat.combatant_protocol import Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
+from src.core.settings import Combat as CombatSettings
+
+
+def _is_grounded(target: Combatant) -> bool:
+    """Grounded victim: no juggle, OTG rules may apply (Phase 5 #4)."""
+    surface = getattr(target, "on_surface", None)
+    if isinstance(surface, dict):
+        return bool(surface.get("floor", False))
+    return True
 
 
 class HitResolver:
@@ -62,6 +71,12 @@ class HitResolver:
         if final_damage <= 0:
             return DamageResult()
 
+        grounded_before = _is_grounded(target)
+        was_airborne = not grounded_before
+        otg_timer = float(getattr(target, "otg_timer", 0.0) or 0.0)
+        if grounded_before and otg_timer > 0.0 and not hit.otg_allowed:
+            return DamageResult()
+
         if hit.is_finisher and target.health - final_damage <= target.max_health * 0.2:
             final_damage = target.health
 
@@ -85,9 +100,27 @@ class HitResolver:
         if target.has_super_armor and hit.super_armor_break:
             target.break_super_armor()
 
+        if was_airborne and hit.juggle_gravity_mult != 1.0:
+            setter = getattr(target, "set_juggle", None)
+            if callable(setter):
+                setter(hit.juggle_gravity_mult, CombatSettings.JUGGLE_GRAVITY_TIME)
+
+        attacker_combat = getattr(attacker, "combat", None)
+        recorder = getattr(attacker_combat, "record_hit_landed", None)
+        if callable(recorder):
+            recorder(was_airborne)
+        else:
+            tracker = getattr(attacker_combat, "combo", None)
+            callback = getattr(tracker, "on_hit_landed", None)
+            if callable(callback):
+                callback(was_airborne)
+
         if not result.killed and not armor_absorbs_reaction and not result.heavy_knockback:
             target.combat.on_hit(interrupt=True)
             if hit.stagger > 0:
-                target.stagger(hit.stagger)
+                effective_stagger = (
+                    hit.stagger + final_damage * CombatSettings.HITSTUN_DAMAGE_FACTOR
+                )
+                target.stagger(effective_stagger)
 
         return result

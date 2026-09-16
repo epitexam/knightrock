@@ -77,6 +77,8 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             stagger=float(raw.get("stagger", 0.0)),
             super_armor_break=bool(raw.get("super_armor_break", False)),
             is_finisher=bool(raw.get("is_finisher", False)),
+            juggle_gravity_mult=float(raw.get("juggle_gravity_mult", 1.0)),
+            otg_allowed=bool(raw.get("otg_allowed", False)),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -222,6 +224,8 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "stagger": phase.hit.stagger,
                     "super_armor_break": phase.hit.super_armor_break,
                     "is_finisher": phase.hit.is_finisher,
+                    "juggle_gravity_mult": phase.hit.juggle_gravity_mult,
+                    "otg_allowed": phase.hit.otg_allowed,
                 },
                 "extra_hitboxes": [
                     {"size": list(spec.size), "offset": list(spec.offset)}

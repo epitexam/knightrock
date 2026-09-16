@@ -195,6 +195,11 @@ class Entity(Sprite):
         self.slide_gravity: float = Physics.GRAVITY * 0.15
         self.max_slide_speed: float = Physics.MAX_SLIDE_SPEED
         self.max_fall_speed: float = Physics.MAX_FALL_SPEED
+        # Phase 5 #4 (juggle): gravity multiplier while juggled, OTG guard
+        # granted on landing from a juggle. Timers tick in ``update``.
+        self.gravity_scale: float = 1.0
+        self.juggle_timer: float = 0.0
+        self.otg_timer: float = 0.0
 
         self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
@@ -607,6 +612,27 @@ class Entity(Sprite):
         """
         self._reaction.stagger(duration)
 
+    def set_juggle(self, gravity_mult: float, duration: float) -> None:
+        """Float or slam an airborne victim for ``duration`` (Phase 5 #4)."""
+        self.gravity_scale = gravity_mult
+        self.juggle_timer = max(0.0, duration)
+
+    def _tick_juggle(self, delta_time: float, was_grounded: bool) -> None:
+        """Decay juggle/OTG timers; landing from a juggle grants OTG guard."""
+        if self.juggle_timer > 0.0:
+            self.juggle_timer -= delta_time
+            if self.juggle_timer <= 0.0:
+                self.juggle_timer = 0.0
+                self.gravity_scale = 1.0
+        if self.otg_timer > 0.0:
+            self.otg_timer = max(0.0, self.otg_timer - delta_time)
+        now_grounded = bool(self.on_surface.get("floor", False))
+        if now_grounded and not was_grounded:
+            self.gravity_scale = 1.0
+            self.juggle_timer = 0.0
+            if self.stagger_timer > 0.0 or self.combat.is_hurt:
+                self.otg_timer = CombatSettings.OTG_INVULN_DURATION
+
     def _pre_update(self, delta_time: float) -> None:
         """Hook called at the beginning of the update loop, before combat and physics."""
         pass
@@ -665,7 +691,9 @@ class Entity(Sprite):
         self._pre_update(delta_time)
         self._update_state_machine(delta_time)
         self.combat.update(delta_time)
+        was_grounded = bool(self.on_surface.get("floor", False))
         self.move(delta_time, apply_gravity=True)
+        self._tick_juggle(delta_time, was_grounded)
         self.combat.sync_attack_box()
         self._post_update(delta_time)
         self._update_animator(delta_time)
@@ -698,6 +726,11 @@ class Entity(Sprite):
             state_machine=self.state_machine.save_state(),
         )
         snap.groups = list(self.groups())
+        snap.extra = {
+            "gravity_scale": self.gravity_scale,
+            "juggle_timer": self.juggle_timer,
+            "otg_timer": self.otg_timer,
+        }
         return snap
 
     def load_state(self, snapshot: EntitySnapshot) -> None:
@@ -722,3 +755,7 @@ class Entity(Sprite):
         self.vitals.load_state(snapshot.vitals)
         self.combat.load_state(snapshot.combat)
         self.state_machine.load_state(snapshot.state_machine)
+        extra = snapshot.extra or {}
+        self.gravity_scale = float(extra.get("gravity_scale", 1.0))
+        self.juggle_timer = float(extra.get("juggle_timer", 0.0))
+        self.otg_timer = float(extra.get("otg_timer", 0.0))

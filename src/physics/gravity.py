@@ -11,6 +11,7 @@ def apply_entity_gravity(entity, delta_time: float) -> None:
             entity.velocity.y = entity.max_slide_speed
     else:
         grav = entity.fall_gravity if entity.velocity.y > 0 else entity.normal_gravity
+        grav *= getattr(entity, "gravity_scale", 1.0)
 
         drag = getattr(entity, "drag_coefficient", 0.08)
         fall_drag = getattr(entity, "fall_drag_coefficient", 0.12)
