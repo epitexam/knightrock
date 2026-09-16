@@ -17,6 +17,7 @@ from src.core.level.systems.notification_system import NotificationSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
+from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickSystem
@@ -128,6 +129,7 @@ class Level:
         self.camera_system = CameraSystem(self.camera)
         self.notification_system = NotificationSystem(events, level_id, level_data)
         self.tick_system = TickSystem()
+        self.projectile_system = ProjectileSystem(self.groups, spatial_hash=self.spatial_hash)
 
         self.gameplay_loop = GameplayLoop(
             platform_system=self.platform_system,
@@ -141,6 +143,7 @@ class Level:
             camera_system=self.camera_system,
             notification_system=self.notification_system,
             tick_system=self.tick_system,
+            projectile_system=self.projectile_system,
         )
 
         if self.events is not None:

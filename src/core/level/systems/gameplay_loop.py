@@ -8,8 +8,10 @@ its whole tick — debug spawner, simulation, camera, notifications and
 rollback bookkeeping — to :meth:`update` below.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 import pygame
 
@@ -27,6 +29,9 @@ from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickOwner, TickSystem
+
+if TYPE_CHECKING:
+    from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
@@ -59,6 +64,7 @@ class GameplayLoop:
         camera_system: CameraSystem | None = None,
         notification_system: NotificationSystem | None = None,
         tick_system: TickSystem | None = None,
+        projectile_system: ProjectileSystem | None = None,
     ) -> None:
         self.combat_system: CombatSystem = CombatSystem()
         self.separation_system: SeparationSystem = SeparationSystem()
@@ -82,6 +88,7 @@ class GameplayLoop:
         self.camera_system = camera_system
         self.notification_system = notification_system
         self.tick_system = tick_system
+        self.projectile_system = projectile_system
 
     def begin_tick(self, delta_time: float) -> float:
         """Advance hit-stop timing and return the simulation delta."""
@@ -136,6 +143,8 @@ class GameplayLoop:
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
+            if self.projectile_system is not None:
+                self.projectile_system.process(effective_delta, self.entity_grid)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
             self.remove_dead_entities(groups.entity_sprites, player)

@@ -12,5 +12,6 @@ class SpriteGroups:
     entity_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     fx_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     hazard_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
+    projectile_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     fg_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     exit_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
