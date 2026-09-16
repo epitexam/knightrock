@@ -21,3 +21,7 @@ class CameraSystem:
         """Track the player when alive; freeze the frame when dead."""
         if not player.is_dead:
             self.camera.follow(player.hitbox, delta_time)
+
+    def add_trauma(self, amount: float) -> None:
+        """Feed impact shake to the camera (heavy launches shake the most)."""
+        self.camera.add_trauma(amount)

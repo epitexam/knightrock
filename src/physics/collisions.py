@@ -4,7 +4,7 @@ from typing import Literal, Protocol, cast
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, GameFeel, Separation
+from src.core.settings import Collision, Combat, GameFeel, Separation
 from src.physics.spatial_hash import SpatialHash
 
 
@@ -142,6 +142,12 @@ def _flag_crushed(entity: CollisionEntity) -> None:
         entity.crushed = True
 
 
+def _is_knocked(entity: CollisionEntity) -> bool:
+    """Whether the entity is flying in its knockback reaction state."""
+    state_machine = getattr(entity, "state_machine", None)
+    return getattr(state_machine, "current_state_name", None) == "knockback"
+
+
 def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:
     """Clamp an axis-nearest fallback correction, flagging crush when capped."""
     if abs(correction) <= Collision.MAX_RESOLVE_PX:
@@ -248,7 +254,9 @@ def resolve_collisions(
                 entity.hitbox.left = _resolve_with_cap(
                     entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
                 )
-            if penetration >= Collision.MIN_PENETRATION_PX:
+            if _is_knocked(entity) and Combat.WALL_BOUNCE_FACTOR > 0:
+                entity.velocity.x = -entity.velocity.x * Combat.WALL_BOUNCE_FACTOR
+            elif penetration >= Collision.MIN_PENETRATION_PX:
                 entity.velocity.x = 0
         else:
             if _try_corner_correct(entity, sprite_box, nearby_sprites):

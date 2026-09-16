@@ -167,7 +167,12 @@ class EnemyKnockbackState(KnockbackState):
             entity,
             exit_resolver=self._resolve_exit,
             tags=["knockback", "busy"],
+            on_enter=self._clear_steering,
         )
+
+    def _clear_steering(self, **kwargs: Any) -> None:
+        """Drop the stale chase axis so corpses don't steer their own flight."""
+        self.entity.move_axis = 0.0
 
     def _resolve_exit(self) -> str:
         """Recover through hurt if still hurt, otherwise to idle."""

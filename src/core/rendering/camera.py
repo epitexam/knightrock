@@ -1,4 +1,8 @@
+import math
+
 import pygame
+
+from src.core.settings import CameraShake
 
 
 class Camera:
@@ -8,6 +12,8 @@ class Camera:
         self.height = height
         self.world_width = 0.0
         self.world_height = 0.0
+        self.trauma = 0.0
+        self._shake_time = 0.0
 
     def set_world_size(self, world_width: float, world_height: float) -> None:
         self.world_width = world_width
@@ -21,7 +27,22 @@ class Camera:
         self.offset.x += (target_x - self.offset.x) * smoothing_factor
         self.offset.y += (target_y - self.offset.y) * smoothing_factor
 
+        self._shake_time += delta_time
+        self.trauma = max(0.0, self.trauma - CameraShake.DECAY_PER_S * delta_time)
+
         self._clamp_to_world()
+
+    def add_trauma(self, amount: float) -> None:
+        """Feed impact shake (clamped); heavy launches shake the most."""
+        self.trauma = min(1.0, self.trauma + max(0.0, amount))
+
+    def shake_offset(self) -> pygame.math.Vector2:
+        """Deterministic sine offset: same ticks always give same pixels."""
+        magnitude = self.trauma * self.trauma * CameraShake.MAX_PX
+        return pygame.math.Vector2(
+            magnitude * math.sin(self._shake_time * CameraShake.FREQUENCY),
+            magnitude * math.cos(self._shake_time * CameraShake.FREQUENCY * 1.31),
+        )
 
     def _clamp_to_world(self) -> None:
         if self.world_width <= 0 or self.world_height <= 0:
@@ -36,7 +57,8 @@ class Camera:
             self.offset.y = -(self.height - self.world_height) / 2.0
 
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
-        return rect.move(-self.offset.x, -self.offset.y)
+        shake = self.shake_offset()
+        return rect.move(-self.offset.x + shake.x, -self.offset.y + shake.y)
 
     def is_visible(self, rect: pygame.FRect) -> bool:
         """Check if a rectangle is visible within the camera viewport.

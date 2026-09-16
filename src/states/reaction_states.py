@@ -80,6 +80,7 @@ class KnockbackState(State):
         self.max_duration = max_duration
         self.on_enter = on_enter
         self._elapsed = 0.0
+        self._launch_vx = 0.0
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Run the optional setup hook, then apply the launch velocity."""
@@ -95,12 +96,15 @@ class KnockbackState(State):
             self.entity.velocity.x = knockback_dir * knockback_force
         if knockback_up != 0:
             self.entity.velocity.y = knockback_up
+        self._launch_vx = self.entity.velocity.x
 
     def update(self, delta_time: float) -> str | None:
         """Apply ground friction and resolve once the entity stops sliding.
 
         A launch that never lands (pit fall) still releases after
         ``max_duration`` instead of locking the state machine forever.
+        Airborne, the held direction steers the flight (directional
+        influence), capped around the launch speed.
         """
         self._elapsed += delta_time
         if self.entity.on_surface["floor"]:
@@ -111,9 +115,20 @@ class KnockbackState(State):
             ):
                 self.entity.velocity.x = 0.0
                 return self.exit_resolver()
+        else:
+            self._apply_directional_influence(delta_time)
         if self._elapsed >= self.max_duration:
             return self.exit_resolver()
         return None
+
+    def _apply_directional_influence(self, delta_time: float) -> None:
+        """Steer an airborne launch toward the held direction (DI)."""
+        move_axis = float(getattr(self.entity, "move_axis", 0.0) or 0.0)
+        if move_axis == 0.0 or Combat.KNOCKBACK_DI_ACCEL <= 0:
+            return
+        cap = abs(self._launch_vx) + Combat.KNOCKBACK_DI_CAP
+        vx = self.entity.velocity.x + move_axis * Combat.KNOCKBACK_DI_ACCEL * delta_time
+        self.entity.velocity.x = max(-cap, min(cap, vx))
 
 
 class StaggerState(State):

@@ -85,6 +85,17 @@ class Combat:
     # Safety cap: a launch always releases, even if the floor never comes
     # (pit falls). Normal ground knockbacks resolve well below this.
     KNOCKBACK_MAX_DURATION = 2.0
+    # Wall bounce: launched entities rebound instead of stopping dead.
+    # 0.0 = legacy full stop.
+    WALL_BOUNCE_FACTOR = 0.4
+    # Extra hit-stop per knockback magnitude unit (px/s).
+    HITSTOP_KNOCKBACK_FACTOR = 0.0002
+    # Directional influence while airborne in knockback (hold to steer).
+    KNOCKBACK_DI_ACCEL = 500.0
+    KNOCKBACK_DI_CAP = 200.0
+    # Juggle scaling: consecutive air hits decay toward this floor.
+    JUGGLE_DECAY_STEP = 0.1
+    JUGGLE_DAMAGE_FLOOR = 0.5
     # Phase 5 #4 (juggle / hit-stun avancé): stagger scales with damage,
     # juggle gravity lasts one float window, OTG guards knockdown wakeup.
     HITSTUN_DAMAGE_FACTOR = 0.004

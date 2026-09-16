@@ -66,13 +66,22 @@ class HitResolver:
             Combined outcome, including any finisher damage.
         """
         type_mult = target.get_damage_modifier(hit.damage_type)
-        final_damage = hit.damage * charge_multiplier * type_mult
+        grounded_before = _is_grounded(target)
+        was_airborne = not grounded_before
+        juggle_scale = 1.0
+        if was_airborne:
+            # Diminishing returns on juggles: consecutive air hits decay
+            # toward a floor so infinite air locks cost pressure, not HP.
+            attacker_air = getattr(getattr(attacker, "combat", None), "air_combo_count", 0)
+            juggle_scale = max(
+                CombatSettings.JUGGLE_DAMAGE_FLOOR,
+                1.0 - float(attacker_air or 0) * CombatSettings.JUGGLE_DECAY_STEP,
+            )
+        final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
 
         if final_damage <= 0:
             return DamageResult()
 
-        grounded_before = _is_grounded(target)
-        was_airborne = not grounded_before
         otg_timer = float(getattr(target, "otg_timer", 0.0) or 0.0)
         if grounded_before and otg_timer > 0.0 and not hit.otg_allowed:
             return DamageResult()
@@ -81,8 +90,8 @@ class HitResolver:
             final_damage = target.health
 
         scaled_power = (
-            hit.knockback.power[0] * charge_multiplier,
-            hit.knockback.power[1] * charge_multiplier,
+            hit.knockback.power[0] * charge_multiplier * juggle_scale,
+            hit.knockback.power[1] * charge_multiplier * juggle_scale,
         )
         effective_knockback = KnockbackConfig(power=scaled_power, mode=hit.knockback.mode)
 
@@ -119,7 +128,7 @@ class HitResolver:
             target.combat.on_hit(interrupt=True)
             if hit.stagger > 0:
                 effective_stagger = (
-                    hit.stagger + final_damage * CombatSettings.HITSTUN_DAMAGE_FACTOR
+                    hit.stagger * juggle_scale + final_damage * CombatSettings.HITSTUN_DAMAGE_FACTOR
                 )
                 target.stagger(effective_stagger)
 

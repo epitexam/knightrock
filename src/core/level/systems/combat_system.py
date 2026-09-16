@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import cast
 
+import pygame
+
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
@@ -37,6 +39,7 @@ class CombatSystem:
     def __init__(self) -> None:
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
+        self.impact: float = 0.0
 
     def process_attacks(
         self,
@@ -57,6 +60,7 @@ class CombatSystem:
         grid the pairs are tested exhaustively — still correct, just slower.
         """
         self.metrics = CombatMetrics()
+        self.impact = 0.0
         if self.in_hit_stop:
             return
 
@@ -139,9 +143,15 @@ class CombatSystem:
 
             candidate.attacker.combat.record_contact(candidate.target.id)
             self.metrics.contacts += 1
+            magnitude = (
+                pygame.math.Vector2(candidate.hit.knockback.power).length()
+                * candidate.charge_multiplier
+            )
+            self.impact = max(self.impact, magnitude)
             hitstop_duration = (
                 CombatSettings.HITSTOP_BASE
                 + candidate.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
+                + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
             )
             self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
 

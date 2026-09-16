@@ -33,6 +33,8 @@ from src.core.level.systems.tick_system import TickOwner, TickSystem
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
+from src.core.settings import CameraShake
+from src.core.settings import Combat as CombatSettings
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
@@ -143,6 +145,9 @@ class GameplayLoop:
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
+            impact = float(getattr(self.combat_system, "impact", 0.0) or 0.0)
+            if impact >= CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
+                camera.add_trauma(impact / CameraShake.HEAVY_DIV)
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
             contact.process(groups.entity_sprites, self.entity_grid)
