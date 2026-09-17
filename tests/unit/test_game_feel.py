@@ -46,6 +46,7 @@ class WallEntity(FeelEntity):
         self.max_fall_speed = 1500.0
         self.drag_coefficient = 0.08
         self.fall_drag_coefficient = 0.12
+        self.gravity_scale = 1.0
         self.spatial_hash = None
 
     def sync_rects(self) -> None:

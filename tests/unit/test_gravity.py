@@ -20,6 +20,7 @@ def make_entity(**overrides) -> SimpleNamespace:
         "max_fall_speed": 1500.0,
         "drag_coefficient": 0.08,
         "fall_drag_coefficient": 0.12,
+        "gravity_scale": 1.0,
         "is_wall_sliding": lambda: False,
     }
     defaults.update(overrides)
