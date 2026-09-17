@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.ui.panel_renderer import PanelRenderer
+from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 
 
@@ -10,7 +10,9 @@ class PlayerUI:
     def __init__(self, renderer: PanelRenderer):
         self.renderer = renderer
 
-    def draw_state_panel(self, x: int, y: int, player: Any) -> int:
+    def draw_state_panel(
+        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+    ) -> int:
         if not player or not getattr(player, "state_machine", None):
             return 0
 
@@ -75,9 +77,13 @@ class PlayerUI:
             lines.append(f"Invincible {inv_timer:.2f}s")
             line_colors[idx] = TEXT_OK
 
-        return self.renderer.draw_panel(x, y, lines, title="PLAYER STATE", line_colors=line_colors)
+        return self.renderer.draw_panel(
+            x, y, lines, title="PLAYER STATE", line_colors=line_colors, layout=layout
+        )
 
-    def draw_stats_panel(self, x: int, y: int, player: Any) -> int:
+    def draw_stats_panel(
+        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+    ) -> int:
         if not player:
             return 0
 
@@ -118,4 +124,6 @@ class PlayerUI:
             lines.append(f"OTG guard {otg_timer:.2f}s")
             line_colors[idx] = TEXT_OK
 
-        return self.renderer.draw_panel(x, y, lines, title="STATS", line_colors=line_colors)
+        return self.renderer.draw_panel(
+            x, y, lines, title="STATS", line_colors=line_colors, layout=layout
+        )

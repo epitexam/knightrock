@@ -3,7 +3,7 @@ from typing import Any
 import pygame
 
 from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelRenderer
+from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.player_ui import PlayerUI
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 from src.ui.world_ui import WorldUI
@@ -17,13 +17,17 @@ class UIManager:
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
 
-    def draw_state_panel(self, x: int, y: int, player: Any) -> int:
-        return self.player_ui.draw_state_panel(x, y, player)
+    def draw_state_panel(
+        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+    ) -> int:
+        return self.player_ui.draw_state_panel(x, y, player, layout=layout)
 
-    def draw_stats_panel(self, x: int, y: int, player: Any) -> int:
-        return self.player_ui.draw_stats_panel(x, y, player)
+    def draw_stats_panel(
+        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+    ) -> int:
+        return self.player_ui.draw_stats_panel(x, y, player, layout=layout)
 
-    def draw_scene_panel(self, x: int, y: int, game: Any) -> int:
+    def draw_scene_panel(self, x: int, y: int, game: Any, layout: PanelLayout | None = None) -> int:
         """Show active scene, current level, deaths and live entity counts."""
         current = game.scene_manager.current
         scene_name = type(current).__name__ if current else "None"
@@ -50,9 +54,9 @@ class UIManager:
             if projectiles is not None:
                 lines.append(f"Shots    {len(projectiles)}")
 
-        return self.renderer.draw_panel(x, y, lines, title="SCENE")
+        return self.renderer.draw_panel(x, y, lines, title="SCENE", layout=layout)
 
-    def draw_help_panel(self, x: int, y: int) -> int:
+    def draw_help_panel(self, x: int, y: int, layout: PanelLayout | None = None) -> int:
         """List the debug test-bench keys and overlay toggles."""
         lines = [
             "1-4  test attacks",
@@ -63,7 +67,7 @@ class UIManager:
             "     veloc./statics",
             "F5   panels on/off",
         ]
-        return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS")
+        return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS", layout=layout)
 
     def draw_performance_panel(
         self,
@@ -76,6 +80,7 @@ class UIManager:
         spawn_cooldown: float,
         frame_time: float = 0.0,
         cache_size: int = 0,
+        layout: PanelLayout | None = None,
     ) -> None:
         fps_color = TEXT_OK if fps >= 55 else TEXT_WARN if fps >= 30 else TEXT_CRIT
         frame_color = TEXT_OK if frame_time <= 18 else TEXT_WARN if frame_time <= 33 else TEXT_CRIT
@@ -92,11 +97,16 @@ class UIManager:
         ]
 
         panel_w = self.renderer.get_panel_width(lines)
-        panel_x = self.renderer.display_surface.get_width() - panel_w - 12
+        if layout is not None:
+            panel_w, panel_h = self.renderer.measure_panel(lines, title="PERFORMANCE")
+            panel_x, panel_y = layout.place_top_right(panel_w, panel_h)
+        else:
+            panel_x = self.renderer.display_surface.get_width() - panel_w - 12
+            panel_y = 12
 
         self.renderer.draw_panel(
             panel_x,
-            12,
+            panel_y,
             lines,
             title="PERFORMANCE",
             line_colors={0: fps_color, 1: frame_color},

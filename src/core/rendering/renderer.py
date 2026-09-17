@@ -6,6 +6,7 @@ from src.core.colors import BG_COLORS, Colors
 from src.core.level.level_data import LevelConfig
 from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
+from src.ui.panel_renderer import PanelLayout
 from src.ui.ui_manager import UIManager
 
 HEALTH_BAR_CLEARANCE_PX = 18
@@ -195,12 +196,13 @@ class Renderer:
     ):
         if not self.ui_manager.world_ui.layers.get("panels", True):
             return
-        x, y = 10, 10
-        y += self.ui_manager.draw_state_panel(x, y, player) + 8
-        y += self.ui_manager.draw_stats_panel(x, y, player) + 8
+        surface = self.ui_manager.renderer.display_surface
+        layout = PanelLayout(surface.get_width(), surface.get_height())
+        self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
+        self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
         if game is not None:
-            y += self.ui_manager.draw_scene_panel(x, y, game) + 8
-        y += self.ui_manager.draw_help_panel(x, y) + 8
+            self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
+        self.ui_manager.draw_help_panel(10, 10, layout=layout)
         self.ui_manager.draw_performance_panel(
             fps=fps,
             sprite_count=sprite_count,
@@ -211,4 +213,5 @@ class Renderer:
             spawn_cooldown=spawn_cooldown,
             frame_time=frame_time,
             cache_size=cache_size,
+            layout=layout,
         )

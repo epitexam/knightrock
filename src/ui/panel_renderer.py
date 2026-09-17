@@ -4,6 +4,48 @@ from src.core.settings import Debug
 from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
 
 
+class PanelLayout:
+    """Column-flow placement for debug panels (responsive by construction).
+
+    Panels stack downward from the top-left margin; a panel that would
+    overflow the bottom edge wraps to a new column on the right instead
+    of being cut off. Every position is clamped inside the display, so
+    the stack stays fully visible at any window size and with any amount
+    of panel content (combat lines come and go during play).
+    """
+
+    def __init__(self, width: int, height: int, *, margin: int = 10, gutter: int = 8) -> None:
+        self.width = max(1, int(width))
+        self.height = max(1, int(height))
+        self.margin = margin
+        self.gutter = gutter
+        self._column_x = margin
+        self._cursor_y = margin
+        self._column_right = margin
+
+    def _clamp_x(self, x: int, w: int) -> int:
+        """Keep a panel inside the display horizontally."""
+        max_x = self.width - self.margin - w
+        if max_x <= self.margin:
+            return self.margin
+        return max(self.margin, min(x, max_x))
+
+    def place(self, w: int, h: int) -> tuple[int, int]:
+        """Reserve the next stacked slot for a ``w`` x ``h`` panel."""
+        x, y = self._column_x, self._cursor_y
+        if y > self.margin and y + h > self.height - self.margin:
+            self._column_x = self._column_right + self.gutter
+            x, y = self._column_x, self.margin
+        x = self._clamp_x(x, w)
+        self._column_right = max(self._column_right, x + w)
+        self._cursor_y = y + h + self.gutter
+        return x, y
+
+    def place_top_right(self, w: int, h: int) -> tuple[int, int]:
+        """Pin a panel (performance) to the top-right corner, clamped."""
+        return self._clamp_x(self.width - self.margin - w, w), self.margin
+
+
 class PanelRenderer:
     """Render debug panels and cache fonts."""
 
@@ -25,6 +67,32 @@ class PanelRenderer:
             self._text_cache[key] = font.render(text, True, color)
         return self._text_cache[key]
 
+    def measure_panel(
+        self,
+        lines: list[str],
+        title: str | None = None,
+        title_font: pygame.font.Font | None = None,
+        line_height: int | None = None,
+        padding: int = 12,
+        title_gap: int = 8,
+    ) -> tuple[int, int]:
+        """Measure a panel without drawing it (layout pass before ``draw``)."""
+        title_font = title_font or self.title_font
+        line_height = line_height if line_height is not None else self.debug_font.get_linesize()
+
+        max_w = 0
+        for line in lines:
+            max_w = max(max_w, self.render_text(line, self.debug_font, TEXT_MUTED).get_width())
+        title_block_h = 0
+        if title:
+            title_surf = self.render_text(title, title_font, TEXT_TITLE)
+            max_w = max(max_w, title_surf.get_width())
+            title_block_h = title_surf.get_height() + title_gap + 1 + title_gap
+
+        panel_w = max_w + padding * 2
+        panel_h = title_block_h + len(lines) * line_height + padding * 2
+        return panel_w, panel_h
+
     def draw_panel(
         self,
         x: int,
@@ -35,19 +103,35 @@ class PanelRenderer:
         title: str | None = None,
         line_colors: dict[int, tuple[int, int, int]] | None = None,
         title_font: pygame.font.Font | None = None,
-        line_height: int = 22,
+        line_height: int | None = None,
         padding: int = 12,
         title_gap: int = 8,
+        layout: PanelLayout | None = None,
     ) -> int:
         """Draw a semi-transparent debug panel with optional title and colored lines.
 
         The ``title_font`` / ``line_height`` / ``padding`` / ``title_gap``
         parameters let menu scenes breathe: the debug overlays keep the
         compact defaults while full-screen menus use larger spacing and a
-        dedicated title font.
+        dedicated title font. ``line_height`` defaults to the font's own
+        line advance so rows never overlap. With ``layout``, the ``x``/``y``
+        hint is ignored: the panel is measured, placed by the column flow,
+        and drawn there.
         """
         line_colors = line_colors or {}
         title_font = title_font or self.title_font
+        line_height = line_height if line_height is not None else self.debug_font.get_linesize()
+
+        if layout is not None:
+            panel_w, panel_h = self.measure_panel(
+                lines,
+                title=title,
+                title_font=title_font,
+                line_height=line_height,
+                padding=padding,
+                title_gap=title_gap,
+            )
+            x, y = layout.place(panel_w, panel_h)
 
         rendered_lines = [
             self.render_text(line, self.debug_font, line_colors.get(i, text_color))
