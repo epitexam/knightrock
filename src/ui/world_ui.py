@@ -232,6 +232,9 @@ class WorldUI:
         surface = getattr(sprite, "on_surface", None)
         if isinstance(surface, dict) and not surface.get("floor"):
             flags.append("AIR")
+        ledge_probe = getattr(sprite, "is_at_ledge", None)
+        if callable(ledge_probe) and ledge_probe():
+            flags.append("LEDGE")
         if flags:
             detail.append(" ".join(flags))
         return [head, *detail]

@@ -17,12 +17,12 @@ from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import HitFlash, Physics
+from src.core.settings import HitFlash, Ledge, Physics
 from src.entities.components import MovementComponent, ReactionComponent
 from src.entities.components.reaction import compute_knockback_direction
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
-from src.physics.collisions import CollisionSprite
+from src.physics.collisions import CollisionSprite, get_nearby_sprites
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
 
@@ -448,6 +448,49 @@ class Entity(Sprite):
         """
         if abs(x - self.hitbox.centerx) > threshold:
             self.facing_right = x > self.hitbox.centerx
+
+    def turn_around(self) -> None:
+        """Face the opposite direction (void avoidance, AI turns)."""
+        self.facing_right = not self.facing_right
+
+    def is_at_ledge(self) -> bool:
+        """Return True when grounded with no ground ahead of the walk.
+
+        A probe hangs off the front foot (``Ledge.PROBE_AHEAD_PX`` wide,
+        ``Ledge.PROBE_DROP_PX`` deep): any collider inside means ground,
+        nothing inside means void. The walk direction leads (locomotion
+        states set ``move_axis`` before probing); facing is only the idle
+        fallback. Airborne entities are falling, not at a ledge.
+        Deterministic (no randomness); shared by every entity, only the
+        enemy AI acts on it.
+        """
+        if not self.on_surface.get("floor", False):
+            return False
+        if self.move_axis > 0.0:
+            ahead_right = True
+        elif self.move_axis < 0.0:
+            ahead_right = False
+        else:
+            ahead_right = self.facing_right
+        ahead = Ledge.PROBE_AHEAD_PX
+        skin = Ledge.PROBE_SKIN_PX
+        drop = Ledge.PROBE_DROP_PX
+        if ahead_right:
+            probe = pygame.FRect(self.hitbox.right, self.hitbox.bottom - skin, ahead, skin + drop)
+        else:
+            probe = pygame.FRect(
+                self.hitbox.left - ahead, self.hitbox.bottom - skin, ahead, skin + drop
+            )
+        nearby = get_nearby_sprites(
+            self,
+            spatial_hash=self.spatial_hash,
+            collision_sprites=self.collision_sprites,
+        )
+        for sprite in nearby:
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is not None and probe.colliderect(box):
+                return False
+        return True
 
     def is_wall_sliding(self) -> bool:
         """Return True if the entity is currently sliding down a wall."""

@@ -26,6 +26,7 @@ class EnemyState(str, Enum):
     HURT = "hurt"
     KNOCKBACK = "knockback"
     STAGGER = "stagger"
+    LEDGE = "ledge"
 
 
 class EnemyIdleState(State):
@@ -56,7 +57,12 @@ class EnemyPatrolState(State):
 
     def update(self, delta_time: float) -> str | None:
         """Update the state, move the enemy, and check for player detection."""
+        # The axis leads: the ledge probe reads it, so it is set before
+        # probing (facing may lag a turn behind and must not steer this).
         self.entity.move_axis = self.direction
+        if self.entity.is_at_ledge():
+            self.entity.state_machine.change_state(EnemyState.LEDGE)
+            return None
         self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.can_see_player():
@@ -95,6 +101,10 @@ class EnemyChaseState(State):
         else:
             self.entity.move_axis = 1.0 if player_center > enemy_center else -1.0
             self.entity.facing_right = self.entity.move_axis > 0
+
+        if self.entity.is_at_ledge():
+            self.entity.state_machine.change_state(EnemyState.LEDGE)
+            return None
 
         self.entity.apply_horizontal_movement(delta_time)
 

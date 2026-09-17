@@ -27,15 +27,15 @@ class World:
 class Physics:
     """Physics and movement constants."""
 
-    PLAYER_SPEED = 450
+    PLAYER_SPEED = 350
     GRAVITY = 2000.0
     FALL_GRAVITY = 2800.0
     JUMP_FORCE = 750.0
     MAX_FALL_SPEED = 1500.0
-    DASH_SPEED = 1500
+    DASH_SPEED = 800
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
-    DASH_MAX_CHARGES = 2
+    DASH_MAX_CHARGES = 90
     DASH_RECHARGE_TIME = 0.40
     DASH_PENALTY_TIME = 2.20
     DASH_GRAVITY_MULT = 0.0
@@ -140,6 +140,19 @@ class Dust:
     TTL = 0.4
     COUNT = 6
     MIN_FALL_SPEED = 500.0
+
+
+class Ledge:
+    """Ledge (void-edge) detection and avoidance tuning."""
+
+    # Probe ahead of the front foot: no collider inside means void below.
+    PROBE_AHEAD_PX = 14.0
+    PROBE_DROP_PX = 30.0
+    PROBE_SKIN_PX = 4.0
+    # Beat held in the shared ledge state after turning from the void.
+    HOLD_DURATION = 0.3
+    # Horizontal friction stopping the entity during that beat.
+    STOP_FRICTION = 25.0
 
 
 class Separation:

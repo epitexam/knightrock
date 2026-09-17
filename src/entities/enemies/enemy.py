@@ -26,6 +26,7 @@ from src.states.enemy_states import (
     EnemyStaggerState,
     EnemyState,
 )
+from src.states.ledge_state import LedgeState
 from src.states.state_machine import StateMachine
 
 
@@ -182,6 +183,9 @@ class Enemy(Entity):
         self.state_machine.add_state(EnemyState.HURT, EnemyHurtState(self))
         self.state_machine.add_state(EnemyState.KNOCKBACK, EnemyKnockbackState(self))
         self.state_machine.add_state(EnemyState.STAGGER, EnemyStaggerState(self))
+        self.state_machine.add_state(
+            EnemyState.LEDGE, LedgeState(self, exit_resolver=lambda: EnemyState.IDLE)
+        )
         self.state_machine.set_initial_state(EnemyState.IDLE)
         self._setup_interrupts()
 
@@ -194,6 +198,11 @@ class Enemy(Entity):
         if self.player is None or self.is_dead:
             return
         self.face_towards(self.player.hitbox.centerx)
+
+    def turn_around(self) -> None:
+        """Face away, keeping the patrol leg in sync with the new facing."""
+        super().turn_around()
+        self.patrol_direction *= -1
 
     def _animation_name(self) -> str | None:
         """Map the current EnemyState to the config-provided animation."""
