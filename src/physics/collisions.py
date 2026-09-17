@@ -31,8 +31,26 @@ class CollisionEntity(Protocol):
     def _on_wall_contact(self) -> None: ...
 
 
+def _extract_collider(
+    sprite: CollisionSprite,
+    box: pygame.Rect | pygame.FRect,
+) -> tuple[pygame.Rect | pygame.FRect, bool]:
+    """Derive ``(old_box, one_way)`` for an actually-colliding sprite.
+
+    Only called after the overlap test has passed, so the expensive
+    ``old_hitbox``/``old_rect`` fallback chains never run for the many
+    non-overlapping sprites in the query result.
+    """
+    old_box = getattr(sprite, "old_hitbox", None)
+    if old_box is None:
+        old_box = getattr(sprite, "old_rect", None)
+    if old_box is None:
+        rect = getattr(sprite, "rect", None)
+        old_box = rect if rect is not None else box
+    return old_box, bool(getattr(sprite, "one_way", False))
+
+
 def _shift_is_free(
-    entity: CollisionEntity,
     shifted: pygame.FRect,
     nearby_sprites: Iterable[CollisionSprite],
     ignore: CollisionSprite | None = None,
@@ -172,7 +190,7 @@ def _try_step_up(
         return False
     shifted = entity.hitbox.copy()
     shifted.y -= rise
-    if _shift_is_free(entity, shifted, nearby_sprites, ignore=sprite):
+    if _shift_is_free(shifted, nearby_sprites, ignore=sprite):
         entity.hitbox.y -= rise
         return True
     return False
@@ -194,7 +212,7 @@ def _try_corner_correct(
     for offset in (direction * corner, -direction * corner):
         shifted = entity.hitbox.copy()
         shifted.x += offset
-        if not shifted.colliderect(sprite_box) and _shift_is_free(entity, shifted, nearby_sprites):
+        if not shifted.colliderect(sprite_box) and _shift_is_free(shifted, nearby_sprites):
             entity.hitbox.x += offset
             return True
     return False
@@ -211,15 +229,25 @@ def resolve_collisions(
         nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
     for sprite in nearby_sprites:
-        if not hasattr(sprite, "rect") or sprite.rect is None or not hitbox_collide(entity, sprite):
+        if not hasattr(sprite, "rect") or sprite.rect is None:
+            continue
+        # Cheap box derivation + overlap test first (PERF step 3): the
+        # expensive old_hitbox/one_way extraction below only runs for the
+        # sprites this entity actually collides with, not for the whole
+        # query result on every sub-step.
+        sprite_box = getattr(sprite, "hitbox", None)
+        if sprite_box is None:
+            sprite_box = sprite.rect
+        if not isinstance(sprite_box, (pygame.Rect, pygame.FRect)) or not sprite_box.colliderect(
+            entity.hitbox
+        ):
             continue
 
-        sprite_old = getattr(sprite, "old_hitbox", getattr(sprite, "old_rect", sprite.rect))
-        sprite_box = getattr(sprite, "hitbox", sprite.rect)
+        sprite_old, one_way = _extract_collider(sprite, sprite_box)
 
         # One-way platforms only catch an entity falling onto their top:
         # never a wall from the side, never a ceiling from below.
-        if getattr(sprite, "one_way", False) and (
+        if one_way and (
             axis == "horizontal"
             or entity.velocity.y < 0
             or entity.old_hitbox.bottom > sprite_old.top + Collision.CONTACT_SKIN_PX
