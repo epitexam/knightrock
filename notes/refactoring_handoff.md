@@ -1,5 +1,16 @@
 # Plan de refactoring Knightrock — transmission au prochain agent
 
+> **État au 2026-09-17 (rev `eb1f89e`, branche `feature/core-rework`) :**
+> points vérifiés un par un contre le code. RF-0 supprimé (réalisé),
+> nuances §1 expirées élaguées, §2 règle 5 durcie (goldens recapturés
+> deux fois depuis l'audit : en tenir le journal), RF-4 re-mesuré
+> (complexité 18 → 20 après le hot loop paresseux `629b835`), RF-6
+> re-mesuré (3/4 cibles encore valides, `_collect_candidates` passé de
+> 13 à ~11 après la suppression du slow-mo), RF-8 recalibré (CI :
+> 120 fichiers mypy propres, seuil coverage 50, 598 tests / 5 échecs
+> connus : 3 goldens + 2 enemy_jump). Le reste (RF-1/2/3/5/7 + fond de
+> RF-8) est toujours pertinent et inchangé.
+
 ## 1. Objectif et périmètre
 
 Réduire le couplage du gameplay, expliciter ses contrats et renforcer les garde-fous sans changer les règles du jeu. Ce plan décrit des travaux à réaliser, pas des changements déjà implémentés.
@@ -8,59 +19,31 @@ Réduire le couplage du gameplay, expliciter ses contrats et renforcer les garde
 
 **Chemins :** relatifs à la racine du dépôt. Exécuter les commandes depuis cette racine.
 
-Baseline historique de l'audit : 511 tests passants, 89 % de couverture des instructions, mypy sans erreur sur 118 fichiers, une erreur d'import Ruff et un fichier non formaté. Remesurer avant intervention. Les performances runtime et la couverture des branches n'ont pas été mesurées.
-
-### Nuances indispensables
-
-- Les quatre composantes cycliques détectées incluaient `TYPE_CHECKING` et les imports locaux. Ce ne sont PAS quatre cycles d'import bloquants démontrés. Le script exploratoire avait aussi des limites sur les imports relatifs : ne pas reprendre son graphe comme preuve définitive.
-- Les 61 définitions de méthodes d'Entity incluent beaucoup de propriétés et délégations. Les 773 lignes du fichier ne prouvent pas une « god-class » ; cibler les responsabilités et accès croisés réels.
-- Aucun doublon exact de corps de fonction d'au moins 12 lignes détecté ne signifie pas absence de duplication proche.
-- Un arbre Git modifié n'est pas un défaut de qualité. Ne jamais committer, stasher ou supprimer le travail de l'utilisateur pour améliorer une note.
-- La note de 76/100 est subjective ; les comparaisons avec d'autres projets et gains de points annoncés ne sont pas des benchmarks vérifiés ni des critères de réception.
-
-### Préserver le travail existant
-
-Modifications locales présentes avant l'audit :
-
-- `src/core/level/level.py`
-- `src/core/rendering/renderer.py`
-- `src/core/settings.py`
-- `src/entities/entity.py`
-
-Lire leur diff et conserver leurs fonctionnalités. Un plan antérieur existe dans `notes/refactoring_plan.md` : le lire et réconcilier les travaux déjà effectués, sans écrasement aveugle. Les numéros de lignes de l'audit sont indicatifs ; chercher les symboles.
+Baseline historique de l'audit : 511 tests passants, 89 % de couverture des instructions, mypy sans erreur sur 118 fichiers, une erreur d'import Ruff et un fichier non formaté. Remesurer avant intervention (voir l'état 2026-09-17 ci-dessus : les chiffres ont bougé). Les performances runtime et la couverture des branches n'ont pas été mesurées.
 
 ## 2. Règles et ordre d'exécution
 
-1. Baseline, puis un lot à la fois, avec tests de caractérisation avant déplacement des règles.
+1. Nouvelle baseline 2026-09-17 (rev `eb1f89e`) : 598 tests (5 échecs connus : 3 goldens simulation + 2 `enemy_jump` balistique), mypy propre sur 120 fichiers, Ruff check + format OK sur `src tests`. Puis un lot à la fois, avec tests de caractérisation avant déplacement des règles.
 2. Préserver ordre des événements, collisions, mises à jour et résultats de simulation/rollback.
 3. Pas de nouveau framework, ECS, service locator ou dépendance pour ce chantier.
 4. Pas de nouveaux `Any`, `cast`, `type: ignore` ou replis silencieux pour contourner un contrat.
-5. Ne pas actualiser les résultats golden uniquement pour masquer une régression.
+5. Goldens déjà recapturés deux fois depuis l'audit (`0c15a6d` apex hang/fast-fall, `7a01218` assists) : toute nouvelle recapture exige un journal (rev, raison physique, procédure) et reste interdite pour masquer une régression. Les 3 goldens simulation actuellement rouges sont la baseline connue, pas une excuse pour recapturer.
 6. Après chaque lot : tests ciblés, suite complète, Ruff, format check, mypy et revue du diff. Consigner les résultats réels.
 
-| Lot | Priorité | Dépendance | Livrable |
-|---|---|---|---|
-| RF-0 | Préparation | Aucune | Baseline et corrections mécaniques |
-| RF-1 | Haute | RF-0 | Contrats de combat explicites |
-| RF-2 | Haute | RF-0 | Assemblage valide avant mutation |
-| RF-3 | Haute | RF-1 | Responsabilités des réactions clarifiées |
-| RF-4 | Moyenne | RF-0 | Collisions lisibles |
-| RF-5 | Moyenne | RF-1 | Résolution des coups simplifiée |
-| RF-6 | Moyenne | RF-1 pour le combat | Autres fonctions complexes clarifiées |
-| RF-7 | Moyenne | RF-1 à RF-3 | Dépendances et contrat rollback vérifiés |
-| RF-8 | Moyenne | Baseline puis autres lots | CI et typage renforcés |
+| Lot | Priorité | Dépendance | Livrable | État 2026-09-17 |
+|---|---|---|---|---|
+| RF-1 | Haute | — | Contrats de combat explicites | À faire (inchangé) |
+| RF-2 | Haute | — | Assemblage valide avant mutation | À faire (inchangé) |
+| RF-3 | Haute | RF-1 | Responsabilités des réactions clarifiées | À faire (inchangé ; `ReactionComponent` extrait mais `hasattr` §6 toujours présent) |
+| RF-4 | Moyenne | — | Collisions lisibles | À faire (re-mesuré : C901 = 20, helpers `629b835` déjà extraits) |
+| RF-5 | Moyenne | RF-1 | Résolution des coups simplifiée | À faire (inchangé, C901 = 13) |
+| RF-6 | Moyenne | RF-1 pour le combat | Autres fonctions complexes clarifiées | Partiel : `_collect_candidates` ≈ 11 (était 13), `SpawnSystem.process` = 12 et `_handle_attack_input` = 12 toujours valides |
+| RF-7 | Moyenne | RF-1 à RF-3 | Dépendances et contrat rollback vérifiés | À faire (inchangé, `type: ignore[arg-type]` présent) |
+| RF-8 | Moyenne | Baseline puis autres lots | CI et typage renforcés | Partiel : 120 fichiers mypy propres mais `|| true` toujours là, seuil CI = 50 (pas 80) |
 
 RF-2 et RF-4 sont indépendants de RF-1. Éviter néanmoins de modifier simultanément les mêmes fichiers ou fixtures. Chaque lot doit rester un diff revuable, pas une réécriture globale.
 
-## 3. RF-0 — Baseline et hygiène
-
-Dans `src/entities/entity.py`, corriger uniquement Ruff I001 si encore présent. Dans `src/core/rendering/renderer.py`, reformater l'ajout d'afterimage dans `_ghosts` si nécessaire.
-
-Ne pas convertir les 272 diagnostics exploratoires issus de règles Ruff non activées en corrections automatiques : beaucoup sont stylistiques ou intentionnels.
-
-**Réception :** baseline enregistrée, Ruff et formatage passent, diff mécanique isolé et aucun travail utilisateur perdu.
-
-## 4. RF-1 — Contrats explicites du combat
+## 3. RF-1 — Contrats explicites du combat
 
 ### Fichiers
 
@@ -94,7 +77,7 @@ Ne pas convertir les 272 diagnostics exploratoires issus de règles Ruff non act
 
 Vérifier combo enregistré une seule fois, sol/air, OTG autorisé/interdit, composant neutre, projectile normal/perçant, immunité et blocage sans effets secondaires. Les contrats doivent être vérifiables statiquement ; un test runtime seul ne suffit pas. Aucun fallback supprimé sans migration des appelants.
 
-## 5. RF-2 — Assemblage valide de GameplayLoop
+## 4. RF-2 — Assemblage valide de GameplayLoop
 
 ### Fichiers
 
@@ -122,7 +105,7 @@ Si une transition impose une boucle partielle, valider complètement à l'entré
 
 **Réception :** câblage invalide rejeté avant mutation, ordre inchangé, tests headless et rollback passants, aucun assemblage implicite uniquement destiné aux tests.
 
-## 6. RF-3 — Réactions : propriété et mutations
+## 5. RF-3 — Réactions : propriété et mutations
 
 ### Fichiers
 
@@ -133,11 +116,11 @@ Si une transition impose une boucle partielle, valider complètement à l'entré
 - `src/states/reaction_states.py`
 - `src/entities/player.py`
 
-`ReactionComponent` reçoit l'Entity entière et intervient sur vélocité, protections, temporisateurs, combat et machine à états. La séparation en fichier n'a pas entièrement séparé les responsabilités.
+`ReactionComponent` (`src/entities/components/reaction.py`, extrait depuis — le point « séparation en fichier » est fait) reçoit toujours l'Entity entière et intervient sur vélocité, protections, temporisateurs, combat et machine à états. Reste à faire : la séparation des responsabilités.
 
 1. Documenter pour chaque donnée son propriétaire, ses écrivains autorisés, son reset et son snapshot : vélocité/contacts, santé/protections, stagger, juggle/OTG, états de combat et de réaction.
 2. Définir une vue étroite basée sur les opérations nécessaires. Un protocole recopiant toute Entity ne réduit pas le couplage.
-3. Remplacer l'écriture directe `owner.combat.is_hurt = False` protégée par `hasattr` par une opération métier. Vérifier si `reset_hurt_state` a les mêmes effets sur les timers avant de l'utiliser.
+3. Remplacer l'écriture directe `owner.combat.is_hurt = False` protégée par `hasattr` (`reaction.py:138-139`, toujours présent au 2026-09-17) par une opération métier. Vérifier si `reset_hurt_state` (déjà appelé ligne 165) a les mêmes effets sur les timers avant de l'utiliser.
 4. Conserver `receive_damage` comme entrée publique et le blocage spécifique à Player. Garantir une autorité claire pour interruption, lancement lourd et stagger.
 5. Conserver les façades utiles ; ne pas viser arbitrairement moins de lignes. Ne déplacer juggle/OTG qu'avec reset et restauration cohérents.
 
@@ -153,9 +136,9 @@ Si une transition impose une boucle partielle, valider complètement à l'entré
 
 Réception : propriété documentée, interface limitée, aucun état dupliqué, blocage/super-armure/lancement/stagger préservés, round-trip save/load et reset cohérents. Séparer tout correctif fonctionnel découvert du déplacement structurel.
 
-## 7. RF-4 — Résolution des collisions
+## 6. RF-4 — Résolution des collisions
 
-**Cible :** `src/physics/collisions.py`, fonction `resolve_collisions`, complexité Ruff historique 18.
+**Cible :** `src/physics/collisions.py`, fonction `resolve_collisions` — complexité Ruff C901 = **20** au 2026-09-17 (était 18 à l'audit : le hot loop paresseux `629b835`, −37 % mesuré, a ajouté une branche ; les helpers `_extract_collider`, `_shift_is_free`, `_resolve_with_cap`, `_try_step_up`, `_try_corner_correct`, `_flag_crushed` sont déjà extraits — ne pas les ré-extraire).
 
 1. Lire aussi `src/physics/movement.py` : sous-pas et cache des voisins conditionnent la résolution.
 2. Caractériser les deux axes, signes de vélocité, contact marginal, chevauchement profond, sol/plafond/murs, plateformes one-way et ordre de plusieurs obstacles.
@@ -176,9 +159,9 @@ Réception : propriété documentée, interface limitée, aucun état dupliqué,
 
 **Réception :** mêmes positions, vélocités et contacts pour les scénarios caractérisés ; complexité réduite dans les fonctions ET logique plus compréhensible. Viser C901 <= 10 par fonction, mais documenter une exception justifiée plutôt que découper artificiellement. Pas de promesse de gain de FPS sans mesure.
 
-## 8. RF-5 — Décomposer HitResolver sans changer les règles
+## 7. RF-5 — Décomposer HitResolver sans changer les règles
 
-**Cible :** `src/combat/hit_resolver.py`, `resolve`, complexité Ruff historique 13. Dépend de RF-1.
+**Cible :** `src/combat/hit_resolver.py`, `resolve`, complexité Ruff C901 = **13** au 2026-09-17 (inchangée depuis l'audit). Dépend de RF-1.
 
 Séparer calculs purs et application des effets lorsque cela clarifie les règles : admissibilité OTG, modificateurs de dégâts/knockback, puis réactions après résultat. Garder une orchestration linéaire explicite plutôt qu'une chaîne de stratégies générique.
 
@@ -194,17 +177,17 @@ Séparer calculs purs et application des effets lorsque cela clarifie les règle
 **Validation :** tests RF-1 plus `tests/unit/test_combat_behaviors.py`. Ajouter des cas combinés et limites numériques avec pytest, sans dépendance supplémentaire. Réception : résultat identique, fonctions nommées par leur rôle métier, aucun sondage dynamique réintroduit.
 
 
-## 9. RF-6 — Trois autres points de complexité
+## 8. RF-6 — Trois autres points de complexité (re-mesuré 2026-09-17 : 3/4 cibles valides)
 
-### CombatSystem._collect_candidates — C901 historique 13
+### CombatSystem._collect_candidates — C901 ≈ 11 (était 13 à l'audit)
 
-Fichier : `src/core/level/systems/combat_system.py`.
+Fichier : `src/core/level/systems/combat_system.py` (allégé par `eb1f89e` : suppression du slow-mo — `slowmo_timer`, `slowmo_scale`, settings `SlowMo` — et de ses tests juice ; vérifier que le ≈ 11 mesuré vient bien de là avant de découper).
 
 Séparer filtres d'éligibilité et collecte géométrique sans changer les deux passes collecte/résolution. Préserver ordre déterministe, factions, auto-exclusion, plusieurs hitbox, déduplication des cibles et suivi par phase. Vérifier métriques et collisions simultanées ; conserver les recherches locales via EntityGrid.
 
 Tests : `tests/unit/test_hitbox_pipeline.py`, `tests/unit/test_entity_pairing_systems.py` et `tests/headless/test_entity_grid_integration.py`.
 
-### SpawnSystem.process — C901 historique 12
+### SpawnSystem.process — C901 = 12 au 2026-09-17 (inchangé)
 
 Fichier : `src/core/level/systems/spawn_system.py`.
 
@@ -212,7 +195,7 @@ Séparer décrément des cooldowns, spawn d'ennemis et commandes de démonstrati
 
 Tests : `tests/unit/test_debug_commands.py` et `tests/unit/test_level_world_systems.py`. Ajouter les cas de cooldown et d'actions simultanées manquants.
 
-### PlayerInputHandler._handle_attack_input — C901 historique 12
+### PlayerInputHandler._handle_attack_input — C901 = 12 au 2026-09-17 (inchangé)
 
 Fichier : `src/entities/player_input.py`.
 
@@ -222,9 +205,9 @@ Tests : `tests/unit/test_player.py`, `tests/unit/test_player_states.py` et `test
 
 **Réception commune :** branches métier couvertes, ordre inchangé, complexité réduite sans indirection superflue.
 
-## 10. RF-7 — Frontières et contrat rollback
+## 9. RF-7 — Frontières et contrat rollback
 
-Dans `src/core/level/systems/tick_system.py`, `TickOwner` expose `save_state`, mais `rollback.record(level)` porte `type: ignore[arg-type]` car `src/core/rollback/rollback.py` attend un `Level` concret.
+Dans `src/core/level/systems/tick_system.py:38`, `TickOwner` expose `save_state`, mais `rollback.record(level)` porte toujours `type: ignore[arg-type]` au 2026-09-17 car `src/core/rollback/rollback.py` attend un `Level` concret.
 
 Faire accepter à `record` la capacité minimale de capture nécessaire. Placer un éventuel protocole partagé dans une couche de contrats adaptée, sans importer le système de tick dans le rollback. Ne pas imposer les besoins de restauration à une opération de capture. Supprimer l'ignore après vérification statique et tests `tests/unit/test_rollback_system.py` et headless rollback.
 
@@ -234,7 +217,7 @@ Si l'analyse d'import est reprise, distinguer imports runtime au premier niveau,
 
 **Réception :** contrat de capture cohérent, ignore supprimé sans dépendance inversée artificielle, démarrage sans rupture d'import. Documenter les dépendances intentionnelles plutôt que promettre « zéro cycle » sans qualification.
 
-## 11. RF-8 — CI, couverture et typage progressif
+## 10. RF-8 — CI, couverture et typage progressif
 
 Fichiers :
 
@@ -242,17 +225,17 @@ Fichiers :
 - `.github/workflows/build.yml`
 - `README.md`
 
-1. Après baseline mypy verte dans l'environnement CI, retirer `|| true`. Ce changement peut être livré tôt.
-2. Renforcer module par module : contrats/resolver, boucle, réactions, collisions. Réduire les exceptions larges `disallow_untyped_defs = false`, en conservant celles des modules non migrés. Vérifier l'effet des overrides plutôt que supposer une couverture complète du typage.
+1. Après baseline mypy verte dans l'environnement CI, retirer `|| true` (`build.yml`, toujours présent au 2026-09-17 malgré 120 fichiers propres en local — vérifier d'abord que la CI est verte sans, vu les 5 échecs tests connus). Ce changement peut être livré tôt.
+2. Renforcer module par module : contrats/resolver, boucle, réactions, collisions. Les overrides `disallow_untyped_defs = false` restants (`pyproject.toml:60`, modules non migrés) se réduisent en conservant ceux des modules non migrés. Vérifier l'effet des overrides plutôt que supposer une couverture complète du typage.
 3. Mesurer séparément instructions et branches : les 89 % historiques ne sont pas directement comparables au pourcentage combiné de `--cov-branch`.
-4. Proposer un seuil initial d'instructions de 80 % après confirmation de la baseline. Pour la métrique avec branches, choisir un seuil à partir du résultat mesuré puis l'augmenter progressivement.
+4. Seuil CI actuel `--cov-fail-under=50` (2026-09-17) : le porter à 80 % pour les instructions après confirmation de la baseline locale (la règle historique « proposer 80 % » devient une montée 50 → 80). Pour la métrique avec branches, choisir un seuil à partir du résultat mesuré puis l'augmenter progressivement.
 5. Tester les branches métier manquantes ; ne pas exclure du code ou ajouter des assertions artificielles pour le score.
 6. Envisager C901 comme garde-fou après RF-4 à RF-6 ; justifier les exceptions plutôt qu'utiliser une mesure AST maison.
 7. Actualiser commandes, seuils et commentaires de dette dans le README et la configuration.
 
 **Réception :** erreur mypy bloquante, seuil cohérent avec la métrique publiée, Ruff/format/tests bloquants, instructions locales alignées avec la CI.
 
-## 12. Commandes de validation
+## 11. Commandes de validation
 
 Utiliser l'environnement déjà synchronisé, sans nouvelle dépendance. `uv run` peut remplacer les exécutables de l'environnement selon les conventions du projet.
 
@@ -276,11 +259,10 @@ uv run pytest tests --cov=src --cov-branch --cov-report=term-missing
 uv run ruff check src --select C901
 ```
 
-C901 est diagnostique tant que les cinq écarts historiques ne sont pas traités. Pour chaque lot, exécuter aussi pytest sur les fichiers de tests indiqués dans sa section. Utiliser les fixtures headless existantes ; ne pas assimiler une erreur de dépendance ou d'affichage à une régression métier.
+C901 est diagnostique tant que les écarts ci-dessus ne sont pas traités (2026-09-17 : 5 fonctions — `resolve` 13, `_collect_candidates` ≈ 11, `SpawnSystem.process` 12, `_handle_attack_input` 12, `resolve_collisions` 20). Pour chaque lot, exécuter aussi pytest sur les fichiers de tests indiqués dans sa section. Utiliser les fixtures headless existantes ; ne pas assimiler une erreur de dépendance ou d'affichage à une régression métier.
 
-## 13. Réception globale et transmission
+## 12. Réception globale et transmission
 
-- [ ] RF-0 : baseline enregistrée, modifications utilisateur préservées.
 - [ ] RF-1 : capacités de combat explicites, appelants et doubles migrés.
 - [ ] RF-2 : câblage invalide rejeté avant mutation, ordre du tick préservé.
 - [ ] RF-3 : propriété des états documentée, interface des réactions limitée.
@@ -288,9 +270,11 @@ C901 est diagnostique tant que les cinq écarts historiques ne sont pas traités
 - [ ] RF-5 : règles du resolver caractérisées, calculs et effets clarifiés.
 - [ ] RF-6 : trois autres points de complexité traités ou exception motivée.
 - [ ] RF-7 : contrat rollback cohérent, dépendances qualifiées sans faux diagnostic.
-- [ ] RF-8 : mypy bloquant, typage progressif, couverture et documentation alignées.
-- [ ] Suite complète verte, résultats golden et rollback préservés ; aucun test désactivé pour masquer une régression.
+- [ ] RF-8 : mypy bloquant, typage progressif, couverture (50 → 80) et documentation alignées.
+- [ ] Suite complète verte hors baseline connue (2026-09-17 : 3 goldens simulation + 2 `enemy_jump` balistique), résultats golden et rollback préservés ; aucun test désactivé pour masquer une régression.
 - [ ] Revue finale des fichiers modifiés et du diff effectuée.
+
+> Historique : RF-0 réalisé et supprimé le 2026-09-17 (Ruff I001 absent, `renderer.py` + `entity.py` formatés, `ruff check`/`format --check` verts sur `src tests`). Le renvoi au plan antérieur `notes/refactoring_plan.md` est supprimé : le fichier n'existe pas dans `notes/` (seuls `audit.md`, `audit_phase5.md` et ce document y sont).
 
 Si un affichage est disponible, tester manuellement déplacement/saut/dash, blocage, charge, juggle/OTG, projectiles, plateformes, mort/respawn, pause et overlays/afterimages. Sinon noter « validation manuelle non réalisée ». Les tests headless ne démontrent ni le confort de jeu ni les performances à 60 Hz. Un profilage éventuel est une validation complémentaire, pas une optimisation obligatoire sans mesure.
 
