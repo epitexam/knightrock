@@ -16,11 +16,12 @@ import pygame
 from pygame.math import Vector2
 
 from src.core.colors import Colors
-from src.core.settings import Dust
+from src.core.settings import Dust, Sweat
 
 __all__ = [
     "DustParticle",
     "StreakParticle",
+    "SweatParticle",
     "dash_direction",
     "iter_landing_entities",
     "particle_frames",
@@ -28,6 +29,7 @@ __all__ = [
     "spawn_dash_dust",
     "spawn_dash_streak",
     "spawn_landing_dust",
+    "spawn_sweat_drops",
 ]
 
 #: Puff base size (px) before the per-particle jitter.
@@ -47,6 +49,23 @@ PARTICLE_FRAME_SCALE = 2.0
 #: Speed-streak look: near-white cyan lines, short and fast.
 STREAK_COLOR = (200, 240, 255)
 STREAK_TTL = 0.22
+#: Sweat look: comic-book teardrops beading off an exhausted dasher.
+SWEAT_COLOR = (150, 240, 245)
+#: Bold ink outline around the bead, comic-panel style.
+SWEAT_OUTLINE = (20, 60, 90)
+SWEAT_OUTLINE_WIDTH = 2
+#: Glossy glint on the bead, so it reads as liquid and not a ball.
+SWEAT_SHINE = (240, 255, 255)
+#: Fat comic beads: they must read at gameplay distance.
+SWEAT_RADIUS = 5.0
+#: Headroom so the teardrop tip and its outline stay inside the surface.
+SWEAT_MARGIN = 2
+#: Initial upward pop before gravity takes the droplet down.
+SWEAT_POP_UP = -110.0
+#: Droplets are heavier than dust: they arc down instead of hanging.
+SWEAT_GRAVITY = 620.0
+#: Lateral jitter as a fraction of the hitbox width: hug the crown.
+SWEAT_SPREAD = 0.12
 
 
 class DustParticle(pygame.sprite.Sprite):
@@ -140,6 +159,85 @@ class StreakParticle(pygame.sprite.Sprite):
         if self.ttl <= 0.0:
             self.kill()
             return
+        self.pos += self.velocity * delta_time
+        self.rect.center = self.pos
+        assert self.image is not None
+        self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
+
+
+class SweatParticle(pygame.sprite.Sprite):
+    """A single sweat droplet: pops off the head, arcs down, fades, dies.
+
+    Heavier than dust — the pop impulse is immediately fought by gravity
+    so the droplet traces a short nervous fountain before winking out.
+    """
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        ttl: float = Sweat.TTL,
+        radius: float = SWEAT_RADIUS,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.velocity = Vector2(velocity)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        self.radius = float(radius)
+        self.image = self._render()
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def _render(self) -> pygame.Surface:
+        """The comic-book droplet: fat teardrop, bold ink outline, glint."""
+        radius = int(self.radius)
+        outline = SWEAT_OUTLINE_WIDTH
+        tip = radius  # tapered top rises one radius above the bulb
+        margin = SWEAT_MARGIN
+        width = 2 * (radius + outline + margin)
+        height = tip + 2 * radius + 2 * outline + 2 * margin
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        cx = width // 2
+        bulb_cy = height - margin - outline - radius
+        # Ink silhouette: round bulb plus a pointed top, oversized so the
+        # fill leaves an ink rim all around (classic comic inking).
+        pygame.draw.circle(surface, SWEAT_OUTLINE, (cx, bulb_cy), radius + outline)
+        pygame.draw.polygon(
+            surface,
+            SWEAT_OUTLINE,
+            [
+                (cx, margin - outline),
+                (cx + radius + outline, bulb_cy - radius // 2),
+                (cx - radius - outline, bulb_cy - radius // 2),
+            ],
+        )
+        # Fill, inset by the outline width.
+        pygame.draw.circle(surface, SWEAT_COLOR, (cx, bulb_cy), radius)
+        pygame.draw.polygon(
+            surface,
+            SWEAT_COLOR,
+            [
+                (cx, margin),
+                (cx + radius - outline // 2, bulb_cy - radius // 2),
+                (cx - radius + outline // 2, bulb_cy - radius // 2),
+            ],
+        )
+        # Glossy glint, upper-left of the bulb: liquid shine, not a ball.
+        pygame.draw.circle(
+            surface,
+            SWEAT_SHINE,
+            (cx - radius // 2, bulb_cy - radius // 3),
+            max(1, radius // 3),
+        )
+        return surface
+
+    def update(self, delta_time: float) -> None:
+        """Fall under gravity, fade out, and reap the droplet once done."""
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+        self.velocity.y += SWEAT_GRAVITY * delta_time
         self.pos += self.velocity * delta_time
         self.rect.center = self.pos
         assert self.image is not None
@@ -290,6 +388,35 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     )
     fx_group.add(streak)
     return streak
+
+
+def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:
+    """Pop ``Sweat.COUNT`` comic teardrops off the entity's head.
+
+    Emitted while the entity sits out its dash penalty (every charge
+    spent): each fat teardrop beades just above the crown with a slight
+    jittered sideways kick and pops briefly up before gravity drags it
+    down.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or Sweat.COUNT <= 0:
+        return []
+    rng = _puff_rng(entity)
+    drops: list[SweatParticle] = []
+    for _ in range(Sweat.COUNT):
+        drop = SweatParticle(
+            (
+                hitbox.centerx + rng.uniform(-SWEAT_SPREAD, SWEAT_SPREAD) * hitbox.width,
+                hitbox.top + 1.0,
+            ),
+            (
+                rng.uniform(-70.0, 70.0),
+                SWEAT_POP_UP * rng.uniform(0.5, 1.0),
+            ),
+        )
+        fx_group.add(drop)
+        drops.append(drop)
+    return drops
 
 
 def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:

@@ -8,8 +8,9 @@ from src.core.fx import (
     spawn_dash_burst,
     spawn_dash_streak,
     spawn_landing_dust,
+    spawn_sweat_drops,
 )
-from src.core.settings import Dust
+from src.core.settings import Dust, Sweat
 from src.core.sprite_groups import SpriteGroups
 from src.physics.movement import apply_moving_platform
 
@@ -20,6 +21,16 @@ def _is_dashing(entity: object) -> bool:
     """Whether the entity is currently in its dash state (dash streaks)."""
     state_machine = getattr(entity, "state_machine", None)
     return getattr(state_machine, "current_state_name", None) == "dash"
+
+
+def _in_dash_penalty(entity: object) -> bool:
+    """Whether the entity drained every dash charge and sits out the penalty."""
+    dash = getattr(entity, "dash", None)
+    return (
+        dash is not None
+        and getattr(dash, "charges", 1) <= 0
+        and getattr(dash, "penalty_timer", 0.0) > 0.0
+    )
 
 
 class PhysicsSystem:
@@ -34,27 +45,31 @@ class PhysicsSystem:
         self.groups = groups
         # Dashers seen on the previous tick (rising-edge burst, once per dash).
         self._dashing_ids: set[int] = set()
+        # Per-entity sweat emission countdown (droplets every SPAWN_EVERY).
+        self._sweat_timers: dict[int, float] = {}
 
     def process(self, delta_time: float) -> None:
         """Apply the platform carry, then integrate entities and effects."""
         for entity in self.groups.entity_sprites:
             apply_moving_platform(entity, self.groups.moving_platforms)
         self.groups.entity_sprites.update(delta_time)
-        self._spawn_impact_fx()
+        self._spawn_impact_fx(delta_time)
         self.groups.fx_sprites.update(delta_time)
 
-    def _spawn_impact_fx(self) -> None:
-        """Turn hard landings and dashes into render-only dust puffs.
+    def _spawn_impact_fx(self, delta_time: float) -> None:
+        """Turn hard landings, dashes, and dash penalties into render-only FX.
 
         The puffs join ``fx_sprites`` (no collision, never snapshotted):
         landing fans use the fall speed ``Entity`` recorded on the landing
-        tick, dash streaks trail dashing entities one puff per tick, and a
-        burst kicks out once when a dash starts. The landing hint is
-        consumed here so a dead-or-frozen entity cannot re-emit it on later
-        ticks; spawning stops past ``MAX_FX_SPRITES`` as a particle-budget
-        guard.
+        tick, dash streaks trail dashing entities one puff per tick, a
+        burst kicks out once when a dash starts, and a fully drained
+        dasher sweats droplets every ``Sweat.SPAWN_EVERY`` seconds while
+        its penalty runs. The landing hint is consumed here so a
+        dead-or-frozen entity cannot re-emit it on later ticks; spawning
+        stops past ``MAX_FX_SPRITES`` as a particle-budget guard.
         """
         dashing_ids: set[int] = set()
+        sweating_ids: set[int] = set()
         for entity in self.groups.entity_sprites:
             dashing = _is_dashing(entity)
             if dashing:
@@ -68,6 +83,27 @@ class PhysicsSystem:
                         spawn_dash_burst(self.groups.fx_sprites, entity)
                     else:
                         spawn_dash_streak(self.groups.fx_sprites, entity)
+            if _in_dash_penalty(entity):
+                sweating_ids.add(id(entity))
+                self._tick_sweat(entity, delta_time)
             if hasattr(entity, "landed_impact"):
                 entity.landed_impact = 0.0
         self._dashing_ids = dashing_ids
+        # Drop timers of entities no longer sweating (or gone) so stale ids
+        # cannot leak into a later entity reusing the same memory address.
+        self._sweat_timers = {
+            entity_id: timer
+            for entity_id, timer in self._sweat_timers.items()
+            if entity_id in sweating_ids
+        }
+
+    def _tick_sweat(self, entity: object, delta_time: float) -> None:
+        """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
+        timer = self._sweat_timers.get(id(entity), 0.0) - delta_time
+        if timer <= 0.0:
+            # The budget guard runs outside the shared impact check so a
+            # full fx group delays drops instead of dropping the cadence.
+            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+                spawn_sweat_drops(self.groups.fx_sprites, entity)
+            timer = Sweat.SPAWN_EVERY
+        self._sweat_timers[id(entity)] = timer

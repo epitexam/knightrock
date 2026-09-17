@@ -35,7 +35,7 @@ class Physics:
     DASH_SPEED = 800
     DASH_DURATION = 0.12
     DASH_FRICTION = 15.0
-    DASH_MAX_CHARGES = 90
+    DASH_MAX_CHARGES = 5
     DASH_RECHARGE_TIME = 0.40
     DASH_PENALTY_TIME = 2.20
     DASH_GRAVITY_MULT = 0.0
@@ -140,6 +140,14 @@ class Dust:
     TTL = 0.4
     COUNT = 6
     MIN_FALL_SPEED = 500.0
+
+
+class Sweat:
+    """Sweat droplets squeezed out while a drained dasher sits in penalty."""
+
+    TTL = 0.55
+    COUNT = 1
+    SPAWN_EVERY = 0.22
 
 
 class Ledge:

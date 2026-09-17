@@ -9,14 +9,20 @@ import pytest
 from src.core.fx import (
     DASH_BURST_COUNT,
     MAX_FX_SPRITES,
+    SWEAT_COLOR,
+    SWEAT_OUTLINE,
+    SWEAT_OUTLINE_WIDTH,
+    SWEAT_SHINE,
     DustParticle,
     StreakParticle,
+    SweatParticle,
     dash_direction,
     iter_landing_entities,
     spawn_dash_burst,
     spawn_dash_dust,
     spawn_dash_streak,
     spawn_landing_dust,
+    spawn_sweat_drops,
 )
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.physics_system import PhysicsSystem
@@ -28,7 +34,7 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, HitFlash, SlowMo
+from src.core.settings import Afterimage, Dust, HitFlash, SlowMo, Sweat
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_active_attacker, make_entity
 
@@ -278,7 +284,7 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
     groups.entity_sprites.add(lander, dasher)
     system = PhysicsSystem(groups)
 
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
 
     # Landing fan plus the one-shot dash-start burst.
     assert len(groups.fx_sprites) == Dust.COUNT + DASH_BURST_COUNT
@@ -291,19 +297,19 @@ def test_dash_burst_fires_once_per_dash() -> None:
     groups.entity_sprites.add(dasher)
     system = PhysicsSystem(groups)
 
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
     assert len(groups.fx_sprites) == DASH_BURST_COUNT
 
     # Still dashing: only the single trail puff from now on.
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
     assert len(groups.fx_sprites) == DASH_BURST_COUNT + 1
 
     # Dash over, then re-dash: the burst fires again.
     dasher.state_machine = SimpleNamespace(current_state_name="run")
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
     before = len(groups.fx_sprites)
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
     assert len(groups.fx_sprites) == before + DASH_BURST_COUNT
 
 
@@ -317,7 +323,7 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
         groups.fx_sprites.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
     system = PhysicsSystem(groups)
 
-    system._spawn_impact_fx()
+    system._spawn_impact_fx(1 / 60)
 
     assert len(groups.fx_sprites) == MAX_FX_SPRITES
     # The landing hint is still consumed: no debt for later ticks.
@@ -427,3 +433,162 @@ def test_light_impacts_spawn_no_dust() -> None:
     assert list(iter_landing_entities([SimpleNamespace(landed_impact=100.0)])) == []
     entity = SimpleNamespace(landed_impact=Dust.MIN_FALL_SPEED)
     assert list(iter_landing_entities([entity])) == [(entity, Dust.MIN_FALL_SPEED)]
+
+
+# --- Dash-penalty sweat ---------------------------------------------------
+
+
+class DashStateStub:
+    """Minimal dash-controller stand-in for sweat gating."""
+
+    def __init__(self, charges: int = 0, penalty_timer: float = 1.0) -> None:
+        self.charges = charges
+        self.penalty_timer = penalty_timer
+
+
+_NO_DASH = object()
+
+
+class PenaltySprite(pygame.sprite.Sprite):
+    """Minimal player-like sprite with a switchable dash resource."""
+
+    def __init__(
+        self,
+        dash: DashStateStub | None | object = _NO_DASH,
+    ) -> None:
+        super().__init__()
+        self.hitbox = pygame.FRect(100.0, 100.0, 24.0, 40.0)
+        self.on_surface = {"floor": False}
+        # ``_NO_DASH`` defaults to a drained controller; ``None`` drops the
+        # dash resource entirely (enemies never sweat).
+        if dash is _NO_DASH:
+            dash = DashStateStub()
+        self.dash = dash
+
+
+def test_sweat_drops_pop_off_the_head_and_fall() -> None:
+    entity = make_entity(pos=(100.0, 100.0))
+    group = pygame.sprite.Group()
+
+    drops = spawn_sweat_drops(group, entity)
+
+    assert len(drops) == Sweat.COUNT
+    assert all(isinstance(drop, SweatParticle) for drop in drops)
+    # Beading from the top of the hitbox, kicked sideways and briefly up.
+    for drop in drops:
+        assert drop.rect.centery <= entity.hitbox.top + 2.0
+        assert drop.velocity.y < 0.0
+        # Hugging the crown: droplets stay near the hitbox centerline.
+        assert abs(drop.pos.x - entity.hitbox.centerx) <= 0.13 * entity.hitbox.width
+    # Heavier than dust: gravity turns the pop into a fall.
+    drops[0].update(0.2)
+    assert drops[0].velocity.y > 0.0
+    falling_from = drops[0].pos.y
+    drops[0].update(0.2)
+    assert drops[0].pos.y > falling_from
+
+
+def test_sweat_beads_read_as_thick_comic_teardrops() -> None:
+    drop = SweatParticle((50.0, 50.0), (0.0, -10.0))
+    image = drop.image
+    width, height = image.get_size()
+
+    # A teardrop, not a dot: the tapered tip makes it taller than wide.
+    assert height > width
+    # Fat bead: the whole inked sprite is several pixels across.
+    assert width >= 3 * SWEAT_OUTLINE_WIDTH
+    # Comic palette: pale fill, bold ink outline, glossy white glint.
+    colors = {tuple(image.get_at((x, y)))[:3] for x in range(width) for y in range(height)}
+    assert tuple(SWEAT_COLOR)[:3] in colors
+    assert tuple(SWEAT_OUTLINE)[:3] in colors
+    assert tuple(SWEAT_SHINE)[:3] in colors
+    # Ink rim under the fill: scanning the center column, the bulb bottoms
+    # out on a bold outline row with pale fill sitting just above it.
+    column = [tuple(image.get_at((width // 2, y))) for y in range(height)]
+    opaque_rows = [y for y, pixel in enumerate(column) if pixel[:3] != (0, 0, 0)]
+    assert column[max(opaque_rows)][:3] == tuple(SWEAT_OUTLINE)[:3]
+    assert column[max(opaque_rows) - 2][:3] == tuple(SWEAT_COLOR)[:3]
+
+
+def test_sweat_droplet_arcs_then_reaps_itself() -> None:
+    group = pygame.sprite.Group()
+    drop = SweatParticle((50.0, 50.0), (20.0, -60.0))
+    group.add(drop)
+
+    drop.update(0.2)
+    assert drop.alive()
+    assert drop.pos.y > 50.0 - 60.0 * 0.2  # gravity ate part of the pop
+    drop.update(Sweat.TTL)
+    assert not drop.alive()
+
+
+def test_sweat_needs_a_hitbox_to_bead_from() -> None:
+    group = pygame.sprite.Group()
+
+    assert spawn_sweat_drops(group, SimpleNamespace()) == []
+    assert list(group) == []
+
+
+def test_penalty_dashers_sweat_on_a_cadence() -> None:
+    entity = PenaltySprite()
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(entity),
+        moving_platforms=[],
+        fx_sprites=pygame.sprite.Group(),
+    )
+    system = PhysicsSystem(groups)
+
+    system.process(1 / 60)  # penalty begins: the first drop fires immediately
+    first_drop = system.groups.fx_sprites.sprites()[0]
+    assert isinstance(first_drop, SweatParticle)
+
+    system.process(1 / 60)  # cadence holds: no extra drop until SPAWN_EVERY
+    assert len(system.groups.fx_sprites) == 1
+
+    system.process(Sweat.SPAWN_EVERY)
+    assert len(system.groups.fx_sprites) == 2
+
+
+def test_dash_pools_stop_sweating_when_penalty_ends() -> None:
+    entity = PenaltySprite(dash=DashStateStub(charges=2, penalty_timer=0.0))
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(entity),
+        moving_platforms=[],
+        fx_sprites=pygame.sprite.Group(),
+    )
+    system = PhysicsSystem(groups)
+
+    system.process(1 / 60)
+
+    assert len(groups.fx_sprites) == 0
+
+
+def test_sweat_stops_when_the_dasher_leaves_the_level() -> None:
+    entity = PenaltySprite()
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(entity),
+        moving_platforms=[],
+        fx_sprites=pygame.sprite.Group(),
+    )
+    system = PhysicsSystem(groups)
+    system.process(1 / 60)
+
+    entity.kill()  # groups.entity_sprites is now empty
+    system.process(Sweat.SPAWN_EVERY * 2)
+
+    # The stale per-entity timer was pruned with its entity.
+    assert system._sweat_timers == {}
+
+
+def test_dash_only_entities_never_sweat() -> None:
+    entity = PenaltySprite(dash=None)
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(entity),
+        moving_platforms=[],
+        fx_sprites=pygame.sprite.Group(),
+    )
+    system = PhysicsSystem(groups)
+
+    system.process(1 / 60)
+
+    assert len(groups.fx_sprites) == 0
