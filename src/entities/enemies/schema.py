@@ -25,6 +25,14 @@ class EnemyConfig:
     pushable: bool = True
     super_armor: bool = False
     passive_friction: float = 10.0
+    # Per-type jump kit: only types with can_jump hop, and only while
+    # chasing (wall ahead, player above). 0.0 height never jumps.
+    can_jump: bool = False
+    jump_height: float = 500.0
+    jump_cooldown: float = 1.0
+    # Sprint multiplier applied to the horizontal flight of gap leaps
+    # (1.0 = no boost): this is what turns hops into real running jumps.
+    leap_speed_mult: float = 1.0
     # State name (lowercase EnemyState key) -> sprite-sheet directory of
     # numbered PNG frames, e.g. {"idle": "assets/graphics/enemies/shell/idle"}.
     # States without an entry keep the last shown animation (Phase 2 #1).

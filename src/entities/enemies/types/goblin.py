@@ -16,4 +16,7 @@ GOBLIN_CONFIG = EnemyConfig(
     pushable=True,
     super_armor=False,
     passive_friction=10.0,
+    can_jump=True,
+    jump_height=650.0,
+    leap_speed_mult=1.6,
 )

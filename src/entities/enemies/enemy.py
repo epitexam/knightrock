@@ -91,6 +91,10 @@ class Enemy(Entity):
     patrol_interval: float
     pushable: bool
     super_armor: bool
+    can_jump: bool
+    jump_height: float
+    jump_cooldown: float
+    leap_speed_mult: float
 
     def __init__(
         self,
@@ -157,6 +161,11 @@ class Enemy(Entity):
         self.pushable = config.pushable
         self.super_armor = config.super_armor
 
+        self.can_jump = config.can_jump
+        self.jump_height = config.jump_height
+        self.jump_cooldown = config.jump_cooldown
+        self.leap_speed_mult = config.leap_speed_mult
+
         if config.animations:
             specs = {
                 name: AnimationSpec(name, directory, AnimationSettings.FRAME_DURATION, loop=True)
@@ -203,6 +212,33 @@ class Enemy(Entity):
         """Face away, keeping the patrol leg in sync with the new facing."""
         super().turn_around()
         self.patrol_direction *= -1
+
+    def jump_apex(self) -> float:
+        """Reachable height above the feet for the configured hop."""
+        if self.jump_height <= 0.0 or self.normal_gravity <= 0.0:
+            return 0.0
+        return self.jump_height * self.jump_height / (2.0 * self.normal_gravity)
+
+    def leap_air_time(self) -> float:
+        """Flight seconds of the configured leap back to takeoff height."""
+        if self.jump_height <= 0.0 or self.normal_gravity <= 0.0:
+            return 0.0
+        rise_time = self.jump_height / self.normal_gravity
+        if self.fall_gravity <= 0.0:
+            return rise_time
+        return float(rise_time + (2.0 * self.jump_apex() / self.fall_gravity) ** 0.5)
+
+    def jump_range(self) -> float:
+        """Horizontal reach of the configured leap at sprint speed.
+
+        Closed-form flight (rise on ``normal_gravity``, fall on
+        ``fall_gravity``) times the boosted leap speed — and the leap
+        glides ballistically (no air steering, see the chase state), so
+        the estimate matches the flight instead of guessing.
+        """
+        if self.jump_height <= 0.0 or self.normal_gravity <= 0.0:
+            return 0.0
+        return float(self.speed * self.leap_speed_mult * self.leap_air_time())
 
     def _animation_name(self) -> str | None:
         """Map the current EnemyState to the config-provided animation."""

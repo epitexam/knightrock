@@ -155,6 +155,26 @@ class Ledge:
     STOP_FRICTION = 25.0
 
 
+class EnemyJump:
+    """Chase-hop triggers for jump-capable enemy types (Goblin)."""
+
+    # Player feet this far above the enemy head count as "above".
+    PLAYER_ABOVE_MARGIN_PX = 16.0
+    # Horizontal window inside which the enemy hops toward the player.
+    SEEK_RANGE_PX = 220.0
+    # Gap jumps: scan step, level tolerance with the player, deepest
+    # landing below the feet, and safety margins on the physics range.
+    GAP_SCAN_STEP_PX = 8.0
+    GAP_LEVEL_PX = 80.0
+    MAX_LANDING_DROP_PX = 160.0
+    RANGE_SAFETY = 0.8
+    RISE_SAFETY = 0.7
+    # Bold moves (jumpers only): drop after a player below when a floor
+    # catches the fall, or leap a slightly-too-wide/too-deep gap.
+    DROP_SEEK_PX = 320.0
+    RISK_DROP_PX = 320.0
+
+
 class Separation:
     """Collision separation and resolution constants."""
 

@@ -104,6 +104,10 @@ def read_enemy_config(
             pushable=bool(raw.get("pushable", True)),
             super_armor=bool(raw.get("super_armor", False)),
             passive_friction=float(raw.get("passive_friction", 10.0)),
+            can_jump=bool(raw.get("can_jump", False)),
+            jump_height=float(raw.get("jump_height", 500.0)),
+            jump_cooldown=float(raw.get("jump_cooldown", 1.0)),
+            leap_speed_mult=float(raw.get("leap_speed_mult", 1.0)),
             animations=_read_animations(raw.get("animations"), f"{where}.animations"),
         )
     except (TypeError, ValueError) as exc:
@@ -155,5 +159,9 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "pushable": config.pushable,
         "super_armor": config.super_armor,
         "passive_friction": config.passive_friction,
+        "can_jump": config.can_jump,
+        "jump_height": config.jump_height,
+        "jump_cooldown": config.jump_cooldown,
+        "leap_speed_mult": config.leap_speed_mult,
         "animations": dict(config.animations),
     }

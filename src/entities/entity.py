@@ -17,7 +17,7 @@ from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import HitFlash, Ledge, Physics
+from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
 from src.entities.components import MovementComponent, ReactionComponent
 from src.entities.components.reaction import compute_knockback_direction
 from src.entities.vitals import Vitals, VitalsSnapshot
@@ -453,6 +453,18 @@ class Entity(Sprite):
         """Face the opposite direction (void avoidance, AI turns)."""
         self.facing_right = not self.facing_right
 
+    def _walk_direction(self) -> float:
+        """Signed walk direction: the locomotion axis leads, facing follows.
+
+        Locomotion states set ``move_axis`` before probing, so a stale
+        facing never steers a directional query.
+        """
+        if self.move_axis > 0.0:
+            return 1.0
+        if self.move_axis < 0.0:
+            return -1.0
+        return 1.0 if self.facing_right else -1.0
+
     def is_at_ledge(self) -> bool:
         """Return True when grounded with no ground ahead of the walk.
 
@@ -466,12 +478,7 @@ class Entity(Sprite):
         """
         if not self.on_surface.get("floor", False):
             return False
-        if self.move_axis > 0.0:
-            ahead_right = True
-        elif self.move_axis < 0.0:
-            ahead_right = False
-        else:
-            ahead_right = self.facing_right
+        ahead_right = self._walk_direction() > 0.0
         ahead = Ledge.PROBE_AHEAD_PX
         skin = Ledge.PROBE_SKIN_PX
         drop = Ledge.PROBE_DROP_PX
@@ -491,6 +498,48 @@ class Entity(Sprite):
             if box is not None and probe.colliderect(box):
                 return False
         return True
+
+    def find_landing_ahead(
+        self, max_dist: float, max_rise: float, max_drop: float
+    ) -> tuple[float, float] | None:
+        """Next landable ground ahead: (distance from the front foot, drop).
+
+        Samples forward in ``GAP_SCAN_STEP_PX`` increments: the first
+        collider whose top sits between ``max_rise`` above and ``max_drop``
+        below the feet wins, and its depth below the feet is returned
+        alongside the distance. Walls (tops out of band) never match.
+        Returns None past ``max_dist``. Deterministic; shared by every
+        entity.
+        """
+        if max_dist <= 0.0:
+            return None
+        direction = self._walk_direction()
+        front = self.hitbox.right if direction > 0.0 else self.hitbox.left
+        boxes: list[Any] = []
+        for sprite in get_nearby_sprites(
+            self,
+            spatial_hash=self.spatial_hash,
+            collision_sprites=self.collision_sprites,
+        ):
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is not None:
+                boxes.append(box)
+        step = EnemyJump.GAP_SCAN_STEP_PX
+        distance = max(step, Ledge.PROBE_AHEAD_PX + step)
+        while distance <= max_dist:
+            center = front + direction * distance
+            sample = pygame.FRect(
+                center - 2.0, self.hitbox.bottom - max_rise, 4.0, max_rise + max_drop
+            )
+            for box in boxes:
+                if (
+                    sample.colliderect(box)
+                    and box.top >= self.hitbox.bottom - max_rise
+                    and box.top <= self.hitbox.bottom + max_drop
+                ):
+                    return distance, box.top - self.hitbox.bottom
+            distance += step
+        return None
 
     def is_wall_sliding(self) -> bool:
         """Return True if the entity is currently sliding down a wall."""

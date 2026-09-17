@@ -32,6 +32,10 @@
       "pushable": true,
       "super_armor": false,
       "passive_friction": 10.0,
+      "can_jump": true,
+      "jump_height": 650.0,
+      "jump_cooldown": 1.0,
+      "leap_speed_mult": 1.6,
       "animations": {}
     },
     "slime": {
