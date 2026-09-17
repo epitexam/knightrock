@@ -16,6 +16,7 @@ class MockInputManager:
         self.left_held = False
         self.right_held = False
         self.block_held = False
+        self.down_held = False
         self.jump_just_pressed = False
         self.dash_just_pressed = False
         self.reset_just_pressed = False

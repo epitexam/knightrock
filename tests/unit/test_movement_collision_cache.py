@@ -24,6 +24,7 @@ def make_entity() -> SimpleNamespace:
         drag_coefficient=0.08,
         fall_drag_coefficient=0.12,
         gravity_scale=1.0,
+        fast_fall=False,
         is_wall_sliding=lambda: False,
         sync_rects=Mock(),
         _on_floor_contact=Mock(),

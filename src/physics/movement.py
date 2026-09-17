@@ -133,6 +133,7 @@ class MovableEntity(Protocol):
     max_slide_speed: float
     max_fall_speed: float
     gravity_scale: float
+    fast_fall: bool
     drag_coefficient: float
     fall_drag_coefficient: float
 

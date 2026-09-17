@@ -198,6 +198,8 @@ class Entity(Sprite):
         # Phase 5 #4 (juggle): gravity multiplier while juggled, OTG guard
         # granted on landing from a juggle. Timers tick in ``update``.
         self.gravity_scale: float = 1.0
+        # Fast fall: set from the down action while airborne (GameFeel).
+        self.fast_fall: bool = False
         self.juggle_timer: float = 0.0
         self.otg_timer: float = 0.0
         # Render-only damage flash (never snapshotted, never in goldens).

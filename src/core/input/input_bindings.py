@@ -32,6 +32,7 @@ class InputBindings:
         default_factory=lambda: {
             "move_left": pygame.K_LEFT,
             "move_right": pygame.K_RIGHT,
+            "move_down": pygame.K_DOWN,
             "jump": pygame.K_SPACE,
             "dash": pygame.K_LSHIFT,
             "attack1": pygame.K_a,

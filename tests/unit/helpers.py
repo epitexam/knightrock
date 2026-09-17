@@ -175,6 +175,8 @@ class SpyStateMachine:
 class InputStub:
     """Constructor-only input provider used by player-based tests."""
 
+    down_held: bool = False
+
 
 class AttackerStub:
     def __init__(self, centerx: float = 0.0) -> None:

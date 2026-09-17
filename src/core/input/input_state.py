@@ -16,6 +16,8 @@ class InputState:
     ----------
     move_axis : float
         Horizontal movement axis, typically ranging from -1.0 to 1.0.
+    down_held : bool
+        Whether the down action is currently held (fast fall).
     block_held : bool
         Whether the block action is currently held.
     jump_held : bool
@@ -37,6 +39,7 @@ class InputState:
     """
 
     move_axis: float = 0.0
+    down_held: bool = False
     block_held: bool = False
     jump_held: bool = False
     dash_held: bool = False

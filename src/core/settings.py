@@ -261,6 +261,17 @@ class GameFeel:
     STEP_UP_PX = 8.0
     # Lateral nudge when jumping into a ceiling corner.
     CORNER_CORRECT_PX = 12.0
+    # Reduced gravity while |velocity.y| stays under this threshold at the
+    # jump apex: a longer hang to fine-tune edge crossings.  Set the divisor
+    # to 1.0 to disable the apex hang entirely.
+    APEX_GRAVITY_DIVISOR = 2.0
+    APEX_VELOCITY_THRESHOLD_PX_S = 120.0
+    # Falling acceleration is multiplied by this while the down action is
+    # held (fast fall); 1.0 keeps the legacy single fall curve.
+    FAST_FALL_GRAVITY_MULTIPLIER = 1.5
+    # Edge drift range at the apex (px/s) granted by the reduced gravity:
+    # derived as threshold / (1 - 1/divisor); documented in tests.
+    APEX_DRIFT_BUDGET_PX_S = 120.0 / (1.0 - 1.0 / 2.0)
 
 
 class Locomotion:

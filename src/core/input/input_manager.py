@@ -85,6 +85,11 @@ class InputManager:
         return self._current_state.block_held
 
     @property
+    def down_held(self) -> bool:
+        """Return True if the down action is held (fast fall)."""
+        return self._current_state.down_held
+
+    @property
     def jump_just_pressed(self) -> bool:
         """Return True if jump was pressed this tick."""
         return self._current_state.jump_held and not self._prev_state.jump_held

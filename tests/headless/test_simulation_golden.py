@@ -47,7 +47,7 @@ class InputStub:
     """Same minimal contract as the headless test fixture."""
 
     move_axis = 1.0
-    left_held = right_held = block_held = False
+    left_held = right_held = block_held = down_held = False
     jump_just_pressed = dash_just_pressed = reset_just_pressed = False
     attack1_just_pressed = attack2_just_pressed = attack2_just_released = False
     attack3_just_pressed = attack4_just_pressed = special_attack_just_pressed = False
@@ -185,9 +185,13 @@ def build_respawn_level() -> Level:
 # RESPAWN were also already stale on HEAD (pre-existing drift before this
 # retune); the recapture is the documented procedure for intentional
 # gameplay changes (see the module docstring).
-PHYSICS_DIGEST = "97aad785b71d2c80727296894cbceb7ce6163e9c482059983f0e7ae1d302e40f"
-RIDE_DIGEST = "976417ab7e5910bfbf75156502a172847ec6db8667cc134b35d71005ce226a38"
-RESPAWN_DIGEST = "8d37256f3e8c4cf1484f14fabb1f96e318a2cdf1f5795ee22eb856192c177e7b"
+# Re-captured again for the apex-hang/fast-fall gravity (commit
+# "feat(physics-gravity): apex hang and fast fall"): GameFeel
+# APEX_GRAVITY_DIVISOR 2.0 around |vy| < 120 px/s, and the new down
+# action (InputState.down_held, KB_DOWN) multiplying fall gravity x1.5.
+PHYSICS_DIGEST = "79a9ff26167a9f82194d52ad66c1437e6ee49ac2035bf6105d8bcc8f3c2300ae"
+RIDE_DIGEST = "3205fca59d654f936af6cf99c6a51e7cb5546cd2376e82e17f6123e879a07c50"
+RESPAWN_DIGEST = "dcedaf8302bf08ee64052dffa24730d5f5512ccd474ac655eeabe01eea91a2ae"
 
 
 @requires_assets
