@@ -186,11 +186,6 @@ class Level:
         """Return True if the player has reached the level exit flag."""
         return self.exit_reached
 
-    @property
-    def slowmo_scale(self) -> float:
-        """Real-time scale for the Game loop (kill slow-motion dip)."""
-        return self.gameplay_loop.combat_system.slowmo_scale
-
     def update(self, delta_time: float) -> None:
         """
         Advance the level simulation by one tick.

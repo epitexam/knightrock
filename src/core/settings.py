@@ -119,13 +119,6 @@ class HitFlash:
     DURATION = 0.09
 
 
-class SlowMo:
-    """Kill slow-motion: real-time dip driving fewer fixed ticks."""
-
-    DURATION = 0.35
-    SCALE = 0.3
-
-
 class Afterimage:
     """Dash ghost trail (render-only)."""
 

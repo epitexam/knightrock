@@ -39,13 +39,6 @@ class GameplayScene(Scene):
         self.level_id = level_id
         self.level: Level | None = level
 
-    @property
-    def time_scale(self) -> float:
-        """Real-time scale for the Game loop (kill slow-motion dip)."""
-        if self.level is None:
-            return 1.0
-        return self.level.slowmo_scale
-
     def enter(self) -> None:
         if self.level is None:
             self._load_level()

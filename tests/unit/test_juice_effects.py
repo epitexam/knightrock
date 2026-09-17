@@ -1,4 +1,4 @@
-"""Game-feel juice: hit flash, dash afterimages, kill slow-mo, dust puffs."""
+"""Game-feel juice: hit flash, dash afterimages, sweat drops, dust puffs."""
 
 import os
 from types import SimpleNamespace
@@ -24,7 +24,6 @@ from src.core.fx import (
     spawn_landing_dust,
     spawn_sweat_drops,
 )
-from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import (
@@ -34,9 +33,9 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, HitFlash, SlowMo, Sweat
+from src.core.settings import Afterimage, Dust, HitFlash, Sweat
 from src.core.sprite_groups import SpriteGroups
-from tests.unit.helpers import make_active_attacker, make_entity
+from tests.unit.helpers import make_entity
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -143,43 +142,6 @@ def test_idle_player_spawns_no_ghosts() -> None:
     renderer.draw(groups, dt=1.0)
 
     assert renderer._ghosts == []
-
-
-# --- Kill slow-motion ------------------------------------------------------
-
-
-def test_killing_blow_arms_slowmo_while_chip_damage_does_not() -> None:
-    system = CombatSystem()
-    victim = make_entity(pos=(100.0, 100.0), faction="player", health=5.0)
-    system.process_attacks([make_active_attacker(victim), victim])
-
-    assert victim.is_dead
-    assert system.slowmo_timer == pytest.approx(SlowMo.DURATION)
-    assert system.slowmo_scale == pytest.approx(SlowMo.SCALE)
-
-    system.update_timer(SlowMo.DURATION)
-    assert system.slowmo_timer == pytest.approx(0.0)
-    assert system.slowmo_scale == pytest.approx(1.0)
-
-    fresh = CombatSystem()
-    healthy = make_entity(pos=(100.0, 100.0), faction="player", health=100.0)
-    fresh.process_attacks([make_active_attacker(healthy), healthy])
-
-    assert not healthy.is_dead
-    assert fresh.slowmo_timer == pytest.approx(0.0)
-    assert fresh.slowmo_scale == pytest.approx(1.0)
-
-
-def test_scene_time_scale_follows_the_level_slowmo() -> None:
-    from src.application.scenes.gameplay_scene import GameplayScene  # noqa: PLC0415
-
-    slow_scene = GameplayScene(None, level=SimpleNamespace(slowmo_scale=SlowMo.SCALE))  # type: ignore[arg-type]
-    calm_scene = GameplayScene(None, level=SimpleNamespace(slowmo_scale=1.0))  # type: ignore[arg-type]
-    no_level_scene = GameplayScene(None, level=None)  # type: ignore[arg-type]
-
-    assert slow_scene.time_scale == pytest.approx(SlowMo.SCALE)
-    assert calm_scene.time_scale == pytest.approx(1.0)
-    assert no_level_scene.time_scale == pytest.approx(1.0)
 
 
 # --- Dust puffs -------------------------------------------------------------

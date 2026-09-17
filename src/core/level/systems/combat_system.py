@@ -10,7 +10,6 @@ from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import SlowMo
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
 
@@ -39,10 +38,6 @@ class CombatSystem:
 
     def __init__(self) -> None:
         self.hit_stop_timer: float = 0.0
-        # Kill slow-motion: armed on a killing blow, decayed with hit-stop.
-        # Pacing-only (the Game loop runs fewer fixed ticks while armed);
-        # never snapshotted, never in goldens.
-        self.slowmo_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
 
@@ -148,8 +143,6 @@ class CombatSystem:
 
             candidate.attacker.combat.record_contact(candidate.target.id)
             self.metrics.contacts += 1
-            if result.killed:
-                self.slowmo_timer = max(self.slowmo_timer, SlowMo.DURATION)
             magnitude = (
                 pygame.math.Vector2(candidate.hit.knockback.power).length()
                 * candidate.charge_multiplier
@@ -163,18 +156,11 @@ class CombatSystem:
             self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
 
     def update_timer(self, delta_time: float) -> None:
-        """Advance the global hit-stop and kill slow-motion timers."""
+        """Advance the global hit-stop timer."""
         if self.hit_stop_timer > 0:
             self.hit_stop_timer = max(0.0, self.hit_stop_timer - delta_time)
-        if self.slowmo_timer > 0:
-            self.slowmo_timer = max(0.0, self.slowmo_timer - delta_time)
 
     @property
     def in_hit_stop(self) -> bool:
         """Whether combat simulation is currently suspended."""
         return self.hit_stop_timer > 0
-
-    @property
-    def slowmo_scale(self) -> float:
-        """Real-time scale for the Game loop: dipped while slow-mo is armed."""
-        return SlowMo.SCALE if self.slowmo_timer > 0.0 else 1.0
