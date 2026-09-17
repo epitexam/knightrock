@@ -70,10 +70,18 @@ def _tile(box: pygame.FRect):
     return SimpleNamespace(rect=box, hitbox=box.copy(), old_hitbox=box.copy())
 
 
-def test_jump_cut_is_neutral_by_default() -> None:
+def test_jump_cut_cuts_the_rise_by_default() -> None:
     entity = FeelEntity()
     entity.velocity.y = -600.0
     apply_jump_cut(entity)
+    assert entity.velocity.y == -240.0  # -600 / JUMP_CUT_DIVISOR
+
+
+def test_jump_cut_neutral_at_divisor_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GameFeel, "JUMP_CUT_DIVISOR", 1.0)
+    entity = FeelEntity()
+    entity.velocity.y = -600.0
+    apply_jump_cut(entity, GameFeel.JUMP_CUT_DIVISOR)
     assert entity.velocity.y == -600.0
 
 
@@ -101,7 +109,8 @@ def test_resolve_jump_still_launches() -> None:
     assert entity.velocity.y == -entity.jump_height
 
 
-def test_ground_snap_off_by_default() -> None:
+def test_ground_snap_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GameFeel, "GROUND_SNAP_PX", 0.0)
     entity = WallEntity(pygame.FRect(50, 140, 40, 48))
     entity.velocity.y = 100.0
     floor = _tile(pygame.FRect(0, 191, 400, 64))  # 3 px gap, unreachable this tick
@@ -112,11 +121,10 @@ def test_ground_snap_off_by_default() -> None:
     assert entity.hitbox.bottom < 191.0  # still falling
 
 
-def test_ground_snap_sticks_to_close_floor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(GameFeel, "GROUND_SNAP_PX", 6.0)
+def test_ground_snap_sticks_to_close_floor_by_default() -> None:
     entity = WallEntity(pygame.FRect(50, 140, 40, 48))
     entity.velocity.y = 100.0
-    floor = _tile(pygame.FRect(0, 191, 400, 64))
+    floor = _tile(pygame.FRect(0, 191, 400, 64))  # 3 px gap
     entity.collision_sprites = [floor]
 
     move_entity(entity, 1 / 60)
@@ -125,9 +133,10 @@ def test_ground_snap_sticks_to_close_floor(monkeypatch: pytest.MonkeyPatch) -> N
     assert entity.velocity.y == 0.0
 
 
-def test_step_up_off_by_default() -> None:
+def test_step_up_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.physics.collisions import resolve_collisions
 
+    monkeypatch.setattr(GameFeel, "STEP_UP_PX", 0.0)
     entity = WallEntity(pygame.FRect(60, 152, 40, 48))  # feet at 200
     entity.old_hitbox = entity.hitbox.copy()
     entity.on_surface["floor"] = True
@@ -140,10 +149,9 @@ def test_step_up_off_by_default() -> None:
     assert entity.velocity.x == 0.0
 
 
-def test_step_up_mounts_small_ledge(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_up_mounts_small_ledge_by_default() -> None:
     from src.physics.collisions import resolve_collisions
 
-    monkeypatch.setattr(GameFeel, "STEP_UP_PX", 8.0)
     entity = WallEntity(pygame.FRect(60, 152, 40, 48))
     entity.old_hitbox = entity.hitbox.copy()
     entity.on_surface["floor"] = True
@@ -156,9 +164,10 @@ def test_step_up_mounts_small_ledge(monkeypatch: pytest.MonkeyPatch) -> None:
     assert entity.velocity.x == 300.0
 
 
-def test_corner_correction_off_by_default() -> None:
+def test_corner_correction_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.physics.collisions import resolve_collisions
 
+    monkeypatch.setattr(GameFeel, "CORNER_CORRECT_PX", 0.0)
     entity = WallEntity(pygame.FRect(90, 120, 40, 48))
     entity.old_hitbox = entity.hitbox.copy()
     entity.velocity.y = -500.0
@@ -171,10 +180,9 @@ def test_corner_correction_off_by_default() -> None:
     assert entity.velocity.y == 0.0
 
 
-def test_corner_correction_nudges_past_the_edge(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_corner_correction_nudges_past_the_edge_by_default() -> None:
     from src.physics.collisions import resolve_collisions
 
-    monkeypatch.setattr(GameFeel, "CORNER_CORRECT_PX", 12.0)
     entity = WallEntity(pygame.FRect(90, 120, 40, 48))
     entity.old_hitbox = entity.hitbox.copy()
     entity.velocity.y = -500.0

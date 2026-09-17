@@ -237,6 +237,9 @@ def resolve_collisions(
         if axis == "horizontal":
             if _try_step_up(entity, sprite, sprite_box, nearby_sprites):
                 continue
+            # Pre-clamp penetration: how deep the entity drove into the
+            # collider this step. A graze (< MIN_PENETRATION_PX) keeps its
+            # momentum; a real hit stops dead.
             penetration = min(entity.hitbox.right, sprite_box.right) - max(
                 entity.hitbox.left, sprite_box.left
             )

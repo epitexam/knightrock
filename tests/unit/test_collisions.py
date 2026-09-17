@@ -51,9 +51,9 @@ def test_hitbox_collide_compares_hitboxes() -> None:
     assert not hitbox_collide(a, far)
 
 
-def test_vertical_landing_snaps_to_the_tile_top(floor_tile) -> None:
+def test_vertical_landing_snaps_to_the_tile_top(floor_tile: SimpleNamespace) -> None:
     entity = StubEntity(pygame.FRect(50, 190, 48, 56))
-    entity.old_hitbox = pygame.FRect(50, 180, 48, 56)
+    entity.old_hitbox = pygame.FRect(50, 144, 48, 56)  # was fully above
     entity.velocity.y = 500.0
 
     resolve_collisions(entity, "vertical", [floor_tile])
@@ -62,9 +62,9 @@ def test_vertical_landing_snaps_to_the_tile_top(floor_tile) -> None:
     assert entity.velocity.y == 0.0
 
 
-def test_ceiling_bump_snaps_to_the_tile_bottom(floor_tile) -> None:
+def test_ceiling_bump_snaps_to_the_tile_bottom(floor_tile: SimpleNamespace) -> None:
     entity = StubEntity(pygame.FRect(50, 230, 48, 56))
-    entity.old_hitbox = pygame.FRect(50, 240, 48, 56)
+    entity.old_hitbox = pygame.FRect(50, 264, 48, 56)  # was fully below
     entity.velocity.y = -500.0
 
     resolve_collisions(entity, "vertical", [floor_tile])
@@ -80,7 +80,7 @@ def test_horizontal_run_into_wall_stops_at_its_edge() -> None:
         old_hitbox=pygame.FRect(100, 100, 32, 200),
     )
     entity = StubEntity(pygame.FRect(70, 150, 48, 56))
-    entity.old_hitbox = pygame.FRect(60, 150, 48, 56)
+    entity.old_hitbox = pygame.FRect(40, 150, 48, 56)  # was fully left of the wall
     entity.velocity.x = 400.0
 
     resolve_collisions(entity, "horizontal", [wall])

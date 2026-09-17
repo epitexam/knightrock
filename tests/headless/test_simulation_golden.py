@@ -178,14 +178,16 @@ def build_respawn_level() -> Level:
     )
 
 
-# Captured on the pre-refactor commit 033c9d1 (Level.update drove every stage
-# inline).  A mismatch means the pipeline changed the simulation.
-PHYSICS_DIGEST = "440bce6ce349663baaa41e8ec4db3ba574ca8fc41ed140ccae00eee939aafef7"
-RIDE_DIGEST = "10f1cab300fa9142575f9e4c55acd7700fe17071f351f1a35758d7846219cb5d"
-# RESPAWN_DIGEST re-captured with the infinite-knockback fix: the pit rule now
-# also kills fallen enemies (the goblin below the border dies instead of
-# falling forever); the player death/respawn path is unchanged.
-RESPAWN_DIGEST = "4d9dd4c02b9ca2c84152ad6867c7bb57345d0d9d079936dd7d9cc5f78bba3963"
+# Re-captured with the tuned physics assists (commit "feat(physics-feel):
+# activate the GameFeel/Collision/PlatformRide assists"): jump cut 2.5,
+# ground snap 3 px, step-up 8 px, corner correct 12 px, graze threshold
+# 2 px, deep-overlap resolve cap 16 px, sticky carry 0.5.  PHYSICS and
+# RESPAWN were also already stale on HEAD (pre-existing drift before this
+# retune); the recapture is the documented procedure for intentional
+# gameplay changes (see the module docstring).
+PHYSICS_DIGEST = "97aad785b71d2c80727296894cbceb7ce6163e9c482059983f0e7ae1d302e40f"
+RIDE_DIGEST = "976417ab7e5910bfbf75156502a172847ec6db8667cc134b35d71005ce226a38"
+RESPAWN_DIGEST = "8d37256f3e8c4cf1484f14fabb1f96e318a2cdf1f5795ee22eb856192c177e7b"
 
 
 @requires_assets

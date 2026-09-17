@@ -77,7 +77,20 @@ def test_wall_graze_slides_when_threshold_raised(monkeypatch: pytest.MonkeyPatch
     assert entity.velocity.x == 500.0  # but momentum kept: slides
 
 
-def test_deep_overlap_teleports_by_default() -> None:
+def test_shallow_graze_keeps_momentum_by_default() -> None:
+    entity = RobustEntity(pygame.FRect(60.5, 150, 40, 48))
+    entity.old_hitbox = pygame.FRect(60, 150, 40, 48)  # right edge at the wall line
+    entity.velocity.x = 500.0
+    wall = _tile(pygame.FRect(100, 100, 32, 200))
+
+    resolve_collisions(entity, "horizontal", [wall])
+
+    assert entity.hitbox.right == pytest.approx(100.0)  # pushed out
+    assert entity.velocity.x == 500.0  # 0.5 px graze: slides instead of stopping
+
+
+def test_deep_overlap_teleports_when_unbounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Collision, "MAX_RESOLVE_PX", float("inf"))
     entity = RobustEntity(pygame.FRect(105, 150, 40, 48))
     entity.old_hitbox = pygame.FRect(105, 150, 40, 48)
     wall = _tile(pygame.FRect(100, 100, 32, 200))
@@ -88,15 +101,14 @@ def test_deep_overlap_teleports_by_default() -> None:
     assert entity.crushed is False
 
 
-def test_deep_overlap_clamps_and_flags_crush(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(Collision, "MAX_RESOLVE_PX", 8.0)
+def test_deep_overlap_clamps_and_flags_crush_by_default() -> None:
     entity = RobustEntity(pygame.FRect(105, 150, 40, 48))
     entity.old_hitbox = pygame.FRect(105, 150, 40, 48)
     wall = _tile(pygame.FRect(100, 100, 32, 200))
 
     resolve_collisions(entity, "horizontal", [wall])
 
-    assert entity.hitbox.left == pytest.approx(113.0)  # 105 + capped 8
+    assert entity.hitbox.left == pytest.approx(121.0)  # 105 + capped 16
     assert entity.crushed is True
 
 
@@ -137,7 +149,10 @@ def test_carry_stores_backup_for_crush_recovery() -> None:
     assert entity.hitbox.y == pytest.approx(152.0)
 
 
-def test_fast_descending_platform_detaches_by_default() -> None:
+def test_fast_descending_platform_detaches_when_sticky_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(PlatformRide, "STICKY_FACTOR", 0.0)
     entity = RobustEntity(pygame.FRect(50, 158, 40, 48))  # 10 px under old top
     entity.old_hitbox = entity.hitbox.copy()
     entity.on_surface["floor"] = True
@@ -149,13 +164,12 @@ def test_fast_descending_platform_detaches_by_default() -> None:
     assert entity.hitbox.y == pytest.approx(158.0)  # left behind
 
 
-def test_sticky_carry_follows_fast_descent(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(PlatformRide, "STICKY_FACTOR", 1.0)
-    entity = RobustEntity(pygame.FRect(50, 158, 40, 48))
+def test_sticky_carry_follows_fast_descent_by_default() -> None:
+    entity = RobustEntity(pygame.FRect(50, 158, 40, 48))  # 10 px under old top
     entity.old_hitbox = entity.hitbox.copy()
     entity.on_surface["floor"] = True
     platform = _tile(pygame.FRect(40, 216, 120, 16))
-    platform.old_hitbox = pygame.FRect(40, 196, 120, 16)
+    platform.old_hitbox = pygame.FRect(40, 196, 120, 16)  # dropped 20
 
     apply_moving_platform(entity, [platform])
 
