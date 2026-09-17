@@ -113,6 +113,35 @@ class CameraShake:
     HEAVY_DIV = 1200.0
 
 
+class HitFlash:
+    """White damage flash overlay (render-only, never in snapshots)."""
+
+    DURATION = 0.09
+
+
+class SlowMo:
+    """Kill slow-motion: real-time dip driving fewer fixed ticks."""
+
+    DURATION = 0.35
+    SCALE = 0.3
+
+
+class Afterimage:
+    """Dash ghost trail (render-only)."""
+
+    MAX = 8
+    TTL = 0.25
+    SPAWN_EVERY = 0.04
+
+
+class Dust:
+    """Landing dust puffs and dash streaks (fx sprites, no collision)."""
+
+    TTL = 0.4
+    COUNT = 6
+    MIN_FALL_SPEED = 500.0
+
+
 class Separation:
     """Collision separation and resolution constants."""
 

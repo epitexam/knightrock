@@ -17,7 +17,7 @@ from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Physics
+from src.core.settings import HitFlash, Physics
 from src.entities.components import MovementComponent, ReactionComponent
 from src.entities.components.reaction import compute_knockback_direction
 from src.entities.vitals import Vitals, VitalsSnapshot
@@ -200,6 +200,12 @@ class Entity(Sprite):
         self.gravity_scale: float = 1.0
         self.juggle_timer: float = 0.0
         self.otg_timer: float = 0.0
+        # Render-only damage flash (never snapshotted, never in goldens).
+        self.flash_timer: float = 0.0
+        # Render-only landing hint: pre-move fall speed captured on the
+        # landing tick (PhysicsSystem turns hard landings into dust puffs).
+        # Never snapshotted, never in goldens.
+        self.landed_impact: float = 0.0
         # Physics robustness: crush flag set by the bounded resolver and
         # pre-carry backup for crush revert (both tick in ``update``).
         self.crushed: bool = False
@@ -586,6 +592,9 @@ class Entity(Sprite):
 
         actual_damage = self._apply_damage(amount)
 
+        if actual_damage > 0:
+            self.flash_timer = HitFlash.DURATION
+
         if actual_damage > 0 and knockback is not None:
             self._apply_knockback(knockback, source_center_x)
 
@@ -691,12 +700,19 @@ class Entity(Sprite):
 
         self.old_hitbox = self.hitbox.copy()
         self.vitals.tick_timers(delta_time)
+        if self.flash_timer > 0.0:
+            self.flash_timer = max(0.0, self.flash_timer - delta_time)
 
         self._pre_update(delta_time)
         self._update_state_machine(delta_time)
         self.combat.update(delta_time)
         was_grounded = bool(self.on_surface.get("floor", False))
+        fall_speed = float(self.velocity.y)
         self.move(delta_time, apply_gravity=True)
+        now_grounded = bool(self.on_surface.get("floor", False))
+        # Landing edge with the pre-move fall speed: hard landings become
+        # dust puffs in PhysicsSystem; anything else zeroes the hint.
+        self.landed_impact = fall_speed if now_grounded and not was_grounded else 0.0
         self._tick_juggle(delta_time, was_grounded)
         self.combat.sync_attack_box()
         self._post_update(delta_time)

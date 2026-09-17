@@ -110,7 +110,11 @@ class Game:
 
         while self.running:
             raw_delta = self.clock.tick(Display.FPS) / 1000.0
-            self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME)
+            # Kill slow-motion: the active scene dips real time, so the
+            # accumulator fills slower and fewer fixed ticks run per frame.
+            # Scenes without juice (menu/pause) default to full speed.
+            time_scale = float(getattr(self.scene_manager.current, "time_scale", 1.0) or 1.0)
+            self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME) * time_scale
 
             self._handle_events()
 

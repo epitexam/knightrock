@@ -186,6 +186,11 @@ class Level:
         """Return True if the player has reached the level exit flag."""
         return self.exit_reached
 
+    @property
+    def slowmo_scale(self) -> float:
+        """Real-time scale for the Game loop (kill slow-motion dip)."""
+        return self.gameplay_loop.combat_system.slowmo_scale
+
     def update(self, delta_time: float) -> None:
         """
         Advance the level simulation by one tick.
@@ -297,7 +302,9 @@ class Level:
             frame_time: Last frame duration in ms (debug PERFORMANCE panel).
         """
         debug_enabled = Debug.is_enabled()
-        dirty: list[pygame.Rect] | None = self.renderer.draw(self.groups, debug_enabled)
+        dirty: list[pygame.Rect] | None = self.renderer.draw(
+            self.groups, debug_enabled, dt=frame_time / 1000.0
+        )
         self.renderer.draw_health_bars(self.groups.entity_sprites)
 
         if not debug_enabled:
