@@ -28,7 +28,7 @@ class Physics:
     """Physics and movement constants."""
 
     PLAYER_SPEED = 350
-    GRAVITY = 2000.0
+    GRAVITY = 1500.0
     FALL_GRAVITY = 2800.0
     JUMP_FORCE = 750.0
     MAX_FALL_SPEED = 1500.0
