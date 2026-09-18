@@ -218,6 +218,91 @@ def _try_corner_correct(
     return False
 
 
+def _is_eligible(
+    entity: CollisionEntity,
+    axis: Literal["horizontal", "vertical"],
+    sprite_box: pygame.Rect | pygame.FRect,
+    sprite_old: pygame.Rect | pygame.FRect,
+    one_way: bool,
+) -> bool:
+    """Éligibilité d'un obstacle (RF-4) : one-way et survol de dessus."""
+    # One-way platforms only catch an entity falling onto their top:
+    # never a wall from the side, never a ceiling from below.
+    if one_way and (
+        axis == "horizontal"
+        or entity.velocity.y < 0
+        or entity.old_hitbox.bottom > sprite_old.top + Collision.CONTACT_SKIN_PX
+    ):
+        return False
+    return not (
+        axis == "horizontal" and entity.hitbox.bottom <= sprite_box.top + Collision.CONTACT_SKIN_PX
+    )
+
+
+def _resolve_horizontal(
+    entity: CollisionEntity,
+    sprite: CollisionSprite,
+    sprite_box: pygame.Rect | pygame.FRect,
+    sprite_old: pygame.Rect | pygame.FRect,
+    was_overlapping: bool,
+    nearby_sprites: list[CollisionSprite],
+) -> None:
+    """Résolution horizontale (RF-4) : step-up puis correction latérale."""
+    if _try_step_up(entity, sprite, sprite_box, nearby_sprites):
+        return
+    # Pre-clamp penetration: how deep the entity drove into the
+    # collider this step. A graze (< MIN_PENETRATION_PX) keeps its
+    # momentum; a real hit stops dead.
+    penetration = min(entity.hitbox.right, sprite_box.right) - max(
+        entity.hitbox.left, sprite_box.left
+    )
+    if not was_overlapping and entity.old_hitbox.right <= sprite_old.left:
+        entity.hitbox.right = sprite_box.left
+    elif not was_overlapping and entity.old_hitbox.left >= sprite_old.right:
+        entity.hitbox.left = sprite_box.right
+    elif abs(entity.hitbox.right - sprite_box.left) < abs(entity.hitbox.left - sprite_box.right):
+        entity.hitbox.right = _resolve_with_cap(
+            entity, sprite_box.left - entity.hitbox.right, entity.hitbox.right
+        )
+    else:
+        entity.hitbox.left = _resolve_with_cap(
+            entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
+        )
+    if _is_knocked(entity) and Combat.WALL_BOUNCE_FACTOR > 0:
+        entity.velocity.x = -entity.velocity.x * Combat.WALL_BOUNCE_FACTOR
+    elif penetration >= Collision.MIN_PENETRATION_PX:
+        entity.velocity.x = 0
+
+
+def _resolve_vertical(
+    entity: CollisionEntity,
+    sprite_box: pygame.Rect | pygame.FRect,
+    sprite_old: pygame.Rect | pygame.FRect,
+    was_overlapping: bool,
+    nearby_sprites: list[CollisionSprite],
+) -> None:
+    """Résolution verticale (RF-4) : corner-correct puis correction haute/basse."""
+    if _try_corner_correct(entity, sprite_box, nearby_sprites):
+        return
+    penetration = min(entity.hitbox.bottom, sprite_box.bottom) - max(
+        entity.hitbox.top, sprite_box.top
+    )
+    if not was_overlapping and entity.old_hitbox.bottom <= sprite_old.top:
+        entity.hitbox.bottom = sprite_box.top
+    elif not was_overlapping and entity.old_hitbox.top >= sprite_old.bottom:
+        entity.hitbox.top = sprite_box.bottom
+    elif abs(entity.hitbox.bottom - sprite_box.top) < abs(entity.hitbox.top - sprite_box.bottom):
+        entity.hitbox.bottom = _resolve_with_cap(
+            entity, sprite_box.top - entity.hitbox.bottom, entity.hitbox.bottom
+        )
+    else:
+        entity.hitbox.top = _resolve_with_cap(
+            entity, sprite_box.bottom - entity.hitbox.top, entity.hitbox.top
+        )
+    if penetration >= Collision.MIN_PENETRATION_PX:
+        entity.velocity.y = 0
+
+
 def resolve_collisions(
     entity: CollisionEntity,
     axis: Literal["horizontal", "vertical"],
@@ -244,72 +329,16 @@ def resolve_collisions(
             continue
 
         sprite_old, one_way = _extract_collider(sprite, sprite_box)
-
-        # One-way platforms only catch an entity falling onto their top:
-        # never a wall from the side, never a ceiling from below.
-        if one_way and (
-            axis == "horizontal"
-            or entity.velocity.y < 0
-            or entity.old_hitbox.bottom > sprite_old.top + Collision.CONTACT_SKIN_PX
-        ):
-            continue
-
-        if (
-            axis == "horizontal"
-            and entity.hitbox.bottom <= sprite_box.top + Collision.CONTACT_SKIN_PX
-        ):
+        if not _is_eligible(entity, axis, sprite_box, sprite_old, one_way):
             continue
 
         was_overlapping = entity.old_hitbox.colliderect(sprite_old)
 
         if axis == "horizontal":
-            if _try_step_up(entity, sprite, sprite_box, nearby_sprites):
-                continue
-            # Pre-clamp penetration: how deep the entity drove into the
-            # collider this step. A graze (< MIN_PENETRATION_PX) keeps its
-            # momentum; a real hit stops dead.
-            penetration = min(entity.hitbox.right, sprite_box.right) - max(
-                entity.hitbox.left, sprite_box.left
+            _resolve_horizontal(
+                entity, sprite, sprite_box, sprite_old, was_overlapping, nearby_sprites
             )
-            if not was_overlapping and entity.old_hitbox.right <= sprite_old.left:
-                entity.hitbox.right = sprite_box.left
-            elif not was_overlapping and entity.old_hitbox.left >= sprite_old.right:
-                entity.hitbox.left = sprite_box.right
-            elif abs(entity.hitbox.right - sprite_box.left) < abs(
-                entity.hitbox.left - sprite_box.right
-            ):
-                entity.hitbox.right = _resolve_with_cap(
-                    entity, sprite_box.left - entity.hitbox.right, entity.hitbox.right
-                )
-            else:
-                entity.hitbox.left = _resolve_with_cap(
-                    entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
-                )
-            if _is_knocked(entity) and Combat.WALL_BOUNCE_FACTOR > 0:
-                entity.velocity.x = -entity.velocity.x * Combat.WALL_BOUNCE_FACTOR
-            elif penetration >= Collision.MIN_PENETRATION_PX:
-                entity.velocity.x = 0
         else:
-            if _try_corner_correct(entity, sprite_box, nearby_sprites):
-                continue
-            penetration = min(entity.hitbox.bottom, sprite_box.bottom) - max(
-                entity.hitbox.top, sprite_box.top
-            )
-            if not was_overlapping and entity.old_hitbox.bottom <= sprite_old.top:
-                entity.hitbox.bottom = sprite_box.top
-            elif not was_overlapping and entity.old_hitbox.top >= sprite_old.bottom:
-                entity.hitbox.top = sprite_box.bottom
-            elif abs(entity.hitbox.bottom - sprite_box.top) < abs(
-                entity.hitbox.top - sprite_box.bottom
-            ):
-                entity.hitbox.bottom = _resolve_with_cap(
-                    entity, sprite_box.top - entity.hitbox.bottom, entity.hitbox.bottom
-                )
-            else:
-                entity.hitbox.top = _resolve_with_cap(
-                    entity, sprite_box.bottom - entity.hitbox.top, entity.hitbox.top
-                )
-            if penetration >= Collision.MIN_PENETRATION_PX:
-                entity.velocity.y = 0
+            _resolve_vertical(entity, sprite_box, sprite_old, was_overlapping, nearby_sprites)
 
     entity.sync_rects()
