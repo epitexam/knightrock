@@ -15,9 +15,15 @@ would transmit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from src.entities.entity import EntitySnapshot
+
+
+class SnapshotCapable(Protocol):
+    """Anything ``RollbackSystem.record`` can capture: ``save_state`` only."""
+
+    def save_state(self) -> LevelSnapshot: ...
 
 
 @dataclass(frozen=True)

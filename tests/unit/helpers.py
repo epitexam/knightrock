@@ -119,24 +119,40 @@ def activate(entity: Entity) -> None:
     assert entity.combat.attack_box is not None
 
 
+class _ActiveAttackerCombat(SimpleNamespace):
+    """Active attacker double whose box overlaps the target."""
+
+    def __init__(self, attack_box: pygame.FRect, hit: HitProperties) -> None:
+        targets_hit: set[str] = set()
+        super().__init__(
+            state=SimpleNamespace(is_active=True),
+            attack_box=attack_box,
+            attack_boxes=(attack_box,),
+            current_phase=SimpleNamespace(hit=hit),
+            charge_multiplier=1.0,
+            targets_hit=targets_hit,
+            can_contact=lambda target_id: target_id not in targets_hit,
+            record_contact=targets_hit.add,
+        )
+        self._air_count = 0
+
+    @property
+    def air_combo_count(self) -> int:
+        return self._air_count
+
+    def record_hit_landed(self, airborne: bool) -> None:
+        if airborne:
+            self._air_count += 1
+
+
 def make_active_attacker(target: Entity) -> SimpleNamespace:
     """Build a lightweight active attacker whose box overlaps the target."""
     hit = HitProperties(
         damage=10,
         knockback=KnockbackConfig(power=(100.0, 0.0)),
     )
-    targets_hit: set[str] = set()
     attack_box = target.hurtbox.copy()
-    combat = SimpleNamespace(
-        state=SimpleNamespace(is_active=True),
-        attack_box=attack_box,
-        attack_boxes=(attack_box,),
-        current_phase=SimpleNamespace(hit=hit),
-        charge_multiplier=1.0,
-        targets_hit=targets_hit,
-        can_contact=lambda target_id: target_id not in targets_hit,
-        record_contact=targets_hit.add,
-    )
+    combat = _ActiveAttackerCombat(attack_box, hit)
     return SimpleNamespace(
         id="attacker",
         is_dead=False,
@@ -152,14 +168,20 @@ class SpyCombat:
 
     hit_interrupts: list[bool] = field(default_factory=list)
     is_hurt: bool = False
+    hurt_timer: float = 0.0
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
-        del duration
         self.hit_interrupts.append(interrupt)
         self.is_hurt = interrupt
+        if interrupt:
+            self.hurt_timer = duration if duration is not None else 0.25
+
+    def reset_hurt_state(self) -> None:
+        self.is_hurt = False
+        self.hurt_timer = 0.0
 
     def reset(self) -> None:
-        self.is_hurt = False
+        self.reset_hurt_state()
 
 
 @dataclass
@@ -179,8 +201,11 @@ class InputStub:
 
 
 class AttackerStub:
+    """Minimal hit carrier: hitbox plus neutral combo tracking."""
+
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
+        self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
 
 
 __all__ = [

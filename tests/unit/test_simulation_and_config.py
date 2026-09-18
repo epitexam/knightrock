@@ -30,7 +30,7 @@ class TrackingGroup(list):
 
 
 def test_hit_stop_suspends_the_tick_that_expires_it() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
     loop.combat_system.hit_stop_timer = 0.01
 
     effective_delta = loop.begin_tick(0.02)

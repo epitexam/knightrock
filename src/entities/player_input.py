@@ -57,17 +57,25 @@ class PlayerInputHandler:
 
     def _handle_attack_input(self) -> None:
         """Process attack input with charge attacks, buffering, and combos."""
+        if self._handle_charging():
+            return
+        self._handle_attack_request()
+
+    def _handle_charging(self) -> bool:
         player = self._player
         im = player.input_manager
+        if not player.combat.charging.is_charging:
+            return False
+        if not player.can_attack():
+            player.combat.charging.cancel()
+            return True
+        if im.attack2_just_released:
+            player.combat.release_charge()
+        return True
 
-        if player.combat.charging.is_charging:
-            if not player.can_attack():
-                player.combat.charging.cancel()
-                return
-            if im.attack2_just_released:
-                player.combat.release_charge()
-            return
-
+    def _handle_attack_request(self) -> None:
+        player = self._player
+        im = player.input_manager
         if not player.can_attack():
             return
 

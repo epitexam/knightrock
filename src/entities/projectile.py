@@ -55,6 +55,9 @@ class Projectile(Sprite):
         self.is_dead: bool = True
         self.targets_hit: set[str] = set()
         self.facing_right: bool = True
+        from src.combat.combat_component import NullCombatComponent
+
+        self.combat = NullCombatComponent()
 
     @property
     def hurtbox(self) -> pygame.FRect:

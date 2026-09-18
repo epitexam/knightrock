@@ -8,7 +8,7 @@ from src.core.level.systems.gameplay_loop import GameplayLoop
 
 
 def test_hit_stop_suspends_simulation_for_its_duration() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
 
     loop.combat_system.hit_stop_timer = 0.05
     suspended_delta = loop.begin_tick(1 / 60)
@@ -24,7 +24,7 @@ def test_hit_stop_suspends_simulation_for_its_duration() -> None:
 
 
 def test_begin_tick_returns_full_delta_without_hit_stop() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
 
     delta = loop.begin_tick(1 / 60)
 
@@ -32,7 +32,7 @@ def test_begin_tick_returns_full_delta_without_hit_stop() -> None:
 
 
 def test_remove_dead_entities_spares_the_player() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
     player = PlayerStub()
     corpse = CorpseStub()
 
@@ -43,7 +43,7 @@ def test_remove_dead_entities_spares_the_player() -> None:
 
 
 def test_remove_dead_entities_keeps_living_entities() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
     living = CorpseStub(is_dead=False)
 
     loop.remove_dead_entities([living], None)
@@ -52,7 +52,7 @@ def test_remove_dead_entities_keeps_living_entities() -> None:
 
 
 def test_process_combat_and_separation_is_noop_while_suspended() -> None:
-    loop = GameplayLoop()
+    loop = GameplayLoop.combat_only()
     loop.separation_system = SeparationStub()
 
     loop.process_combat_and_separation(0.0, [], [])
@@ -192,32 +192,80 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
     ]
 
 
-def test_update_is_a_noop_while_suspended_even_unwired() -> None:
-    """A hit-stop tick short-circuits before the staged wiring is resolved."""
-    loop = GameplayLoop()
-    loop.combat_system.hit_stop_timer = 0.05
-
-    # The spawner still runs (raw frame delta: cooldown decay), the camera
-    # still tracks and the tick is still bookkept — only the world stages
-    # are skipped, so a bare loop needs just the cross-cutting stages.
+def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
+    """A hit-stop tick short-circuits the world stages."""
     calls: list[str] = []
-    loop.spawn_system = _noop_spawn_stage("spawn", calls)
-    loop.camera_system = _noop_camera_stage("camera", calls)
-    loop.notification_system = _noop_tail_stage("notifications", calls)
-    loop.tick_system = _noop_tick_stage("tick", calls)
+    loop = GameplayLoop(
+        platform_system=_noop_stage("platform", calls),
+        hazard_system=_noop_stage("hazard", calls),
+        physics_system=_noop_stage("physics", calls),
+        contact_damage_system=_noop_stage("contact_damage", calls),
+        hazard_damage_system=_noop_stage("hazard_damage", calls),
+        respawn_system=_noop_respawn_stage("respawn", calls),
+        progression_system=_noop_progression_stage("progression", calls),
+        spawn_system=_noop_spawn_stage("spawn", calls),
+        camera_system=_noop_camera_stage("camera", calls),
+        notification_system=_noop_tail_stage("notifications", calls),
+        tick_system=_noop_tick_stage("tick", calls),
+    )
+    loop.combat_system.hit_stop_timer = 0.05
 
     loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
 
     assert calls == ["spawn", "camera", "notifications", "tick"]
 
 
-def test_update_without_the_world_stages_fails_fast() -> None:
+def test_update_with_invalid_wiring_mutates_nothing() -> None:
+    """Invalid wiring is rejected before any mutation."""
+    from types import SimpleNamespace
+
+    spawn_calls: list[str] = []
+    tick_calls: list[str] = []
+
+    class RollbackSpy:
+        def __init__(self) -> None:
+            self.records = 0
+
+        def record(self, level) -> None:
+            self.records += 1
+
     loop = GameplayLoop(
-        spawn_system=_noop_spawn_stage("spawn", []),
+        spawn_system=SimpleNamespace(process=lambda *a: spawn_calls.append("spawn")),
         camera_system=_noop_camera_stage("camera", []),
         notification_system=_noop_tail_stage("notifications", []),
-        tick_system=_noop_tick_stage("tick", []),
+        tick_system=SimpleNamespace(process=lambda *a: tick_calls.append("tick")),
+    )
+    loop.combat_system.hit_stop_timer = 0.0
+    rollback = RollbackSpy()
+    level = _noop_level()
+    groups = _empty_groups()
+
+    with pytest.raises(RuntimeError, match="platform_system"):
+        loop.update(1 / 60, groups, None, level, rollback)
+
+    assert spawn_calls == []
+    assert tick_calls == []
+    assert loop.combat_system.hit_stop_timer == 0.0
+    assert rollback.records == 0
+    assert level.tick == 0
+
+
+def test_combat_only_update_fails_before_mutation() -> None:
+    loop = GameplayLoop.combat_only()
+    with pytest.raises(RuntimeError):
+        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+
+
+def test_update_without_the_world_stages_fails_fast() -> None:
+    calls: list[str] = []
+    loop = GameplayLoop(
+        spawn_system=_noop_spawn_stage("spawn", calls),
+        camera_system=_noop_camera_stage("camera", calls),
+        notification_system=_noop_tail_stage("notifications", calls),
+        tick_system=_noop_tick_stage("tick", calls),
     )
 
     with pytest.raises(RuntimeError, match="platform_system"):
         loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+
+    assert calls == []

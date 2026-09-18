@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from src.core.rollback.snapshots import LevelSnapshot
+from src.core.rollback.snapshots import LevelSnapshot, SnapshotCapable
 from src.core.settings import Simulation
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
@@ -65,7 +65,7 @@ class RollbackSystem:
         """Most recent bufferable tick, or ``None`` when empty."""
         return self._buffer[-1].tick if self._buffer else None
 
-    def record(self, level: Level) -> None:
+    def record(self, level: SnapshotCapable) -> None:
         """Capture the level's current state and push it onto the buffer."""
         self._buffer.append(level.save_state())
 

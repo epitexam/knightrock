@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pygame
 
+from src.combat.combatant_protocol import Combatant
 from src.combat.hit_resolver import HitResolver
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
@@ -97,20 +98,17 @@ class ProjectileSystem:
     ) -> None:
         targets = self._candidates(projectile, entity_grid)
         for target in targets:
-            if getattr(target, "is_dead", False):
+            if target.is_dead:
                 continue
-            if getattr(target, "faction", None) == projectile.faction:
+            if target.faction == projectile.faction:
                 continue
-            target_id = getattr(target, "id", None)
-            if target_id is None or not projectile.can_contact(target_id):
+            target_id = target.id
+            if not projectile.can_contact(target_id):
                 continue
-            hurtbox = getattr(target, "hurtbox", None)
-            if hurtbox is None:
-                continue
-            if not projectile.hitbox.colliderect(hurtbox):
+            if not projectile.hitbox.colliderect(target.hurtbox):
                 continue
             result = HitResolver.resolve(
-                attacker=projectile,  # type: ignore[arg-type]
+                attacker=projectile,
                 target=target,
                 hit=projectile.config.hit,
             )
@@ -125,12 +123,12 @@ class ProjectileSystem:
         self,
         projectile: Projectile,
         entity_grid: EntityGrid | None,
-    ) -> list:
+    ) -> list[Combatant]:
         entities = list(self.groups.entity_sprites)
         if entity_grid is None:
             return entities
         by_id = {id(entity): entity for entity in entities}
-        candidates: list = []
+        candidates: list[Combatant] = []
         seen: set[int] = set()
         for member in entity_grid.near(projectile.hitbox):
             key = id(member)

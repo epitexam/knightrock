@@ -6,8 +6,8 @@ from typing import cast
 
 import pygame
 
-from src.combat.combatant_protocol import Combatant
-from src.combat.frame_data import HitProperties
+from src.combat.combatant_protocol import Combatant, CombatPort
+from src.combat.frame_data import HitProperties, PhaseDefinition
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
 from src.physics.entity_grid import EntityGrid
@@ -31,6 +31,56 @@ class CombatMetrics:
     pairs_tested: int = 0
     overlaps: int = 0
     contacts: int = 0
+
+
+def _attacker_ready(
+    attacker: Combatant,
+) -> tuple[CombatPort, tuple[pygame.FRect, ...], PhaseDefinition] | None:
+    """Attacker eligibility: alive, active phase, live boxes."""
+    if attacker.is_dead:
+        return None
+    combat = attacker.combat
+    attack_boxes = combat.attack_boxes
+    phase = combat.current_phase
+    if not combat.state.is_active or not attack_boxes or phase is None:
+        return None
+    return combat, attack_boxes, phase
+
+
+def _nearby_targets(
+    attack_boxes: tuple[pygame.FRect, ...],
+    combatants: tuple[Combatant, ...],
+    order: dict[int, int],
+    entity_grid: EntityGrid | None,
+) -> list[Combatant]:
+    """Geometric collection: local grid prune, then group order."""
+    if entity_grid is None:
+        return list(combatants)
+    # Query around every attack box (not the attacker's hitbox:
+    # the weapon reach is what matters), then restore group order
+    # so hit resolution matches the exhaustive loop
+    # deterministically. Only combatants have an entry in `order`,
+    # so the cast is safe.
+    seen: set[int] = set()
+    nearby: list[SpatialHashMember] = []
+    for attack_box in attack_boxes:
+        for member in entity_grid.near(attack_box):
+            if id(member) in order and id(member) not in seen:
+                seen.add(id(member))
+                nearby.append(member)
+    return cast(
+        list[Combatant],
+        sorted(nearby, key=lambda m: order[id(m)]),
+    )
+
+
+def _is_valid_target(attacker: Combatant, target: Combatant, combat: CombatPort) -> bool:
+    """Target eligibility: not self, alive, enemy faction, phase contact."""
+    if attacker is target or target.is_dead:
+        return False
+    if attacker.faction == target.faction:
+        return False
+    return bool(combat.can_contact(target.id))
 
 
 class CombatSystem:
@@ -77,41 +127,14 @@ class CombatSystem:
         order = {id(combatant): index for index, combatant in enumerate(combatants)}
 
         for attacker in combatants:
-            if attacker.is_dead:
+            ready = _attacker_ready(attacker)
+            if ready is None:
                 continue
-
-            combat = attacker.combat
-            attack_boxes = combat.attack_boxes
-            phase = combat.current_phase
-            if not combat.state.is_active or not attack_boxes or phase is None:
-                continue
-
-            if entity_grid is not None:
-                # Query around every attack box (not the attacker's hitbox:
-                # the weapon reach is what matters), then restore group order
-                # so hit resolution matches the exhaustive loop
-                # deterministically. Only combatants have an entry in `order`,
-                # so the cast is safe.
-                seen: set[int] = set()
-                nearby: list[SpatialHashMember] = []
-                for attack_box in attack_boxes:
-                    for member in entity_grid.near(attack_box):
-                        if id(member) in order and id(member) not in seen:
-                            seen.add(id(member))
-                            nearby.append(member)
-                targets = cast(
-                    list[Combatant],
-                    sorted(nearby, key=lambda m: order[id(m)]),
-                )
-            else:
-                targets = list(combatants)
+            combat, attack_boxes, phase = ready
+            targets = _nearby_targets(attack_boxes, combatants, order, entity_grid)
 
             for target in targets:
-                if attacker is target or target.is_dead:
-                    continue
-                if attacker.faction == target.faction:
-                    continue
-                if not combat.can_contact(target.id):
+                if not _is_valid_target(attacker, target, combat):
                     continue
 
                 self.metrics.pairs_tested += 1

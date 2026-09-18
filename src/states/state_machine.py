@@ -141,24 +141,24 @@ class StateMachine:
                     if next_state_info in self.states:
                         self.change_state(next_state_info)
 
-    def change_state(self, new_name: str, force: bool = False, **kwargs: Any) -> None:
+    def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None:
         """Perform change state. 'force' allows reloading an identical state."""
-        if new_name == self.current_state_name and not force:
+        if name == self.current_state_name and not force:
             return
 
         prev = self.current_state_name
         if self.current_state:
-            self.current_state.exit(new_name)
+            self.current_state.exit(name)
 
         self.previous_state_name = prev
-        self.current_state_name = new_name
-        self.current_state = self.states[new_name]
-        self.history.append(new_name)
+        self.current_state_name = name
+        self.current_state = self.states[name]
+        self.history.append(name)
 
         self.current_state.enter(prev, **kwargs)
 
         if self.on_state_change:
-            self.on_state_change(prev, new_name)
+            self.on_state_change(prev, name)
 
     def save_state(self) -> StateMachineSnapshot:
         """Capture the machine position and every state's transient scalars.

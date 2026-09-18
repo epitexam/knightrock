@@ -40,7 +40,28 @@ class AttackStatePort(Protocol):
     def targets_hit(self) -> set[str]: ...
 
 
-class CombatPort(Protocol):
+@runtime_checkable
+class AttackComboPort(Protocol):
+    """Air-combo tracking consumed from an attacker's combat."""
+
+    @property
+    def air_combo_count(self) -> int: ...
+
+    def record_hit_landed(self, airborne: bool) -> None: ...
+
+
+@runtime_checkable
+class AttackerPort(Protocol):
+    """Hit carrier: hitbox plus combo tracking, nothing else."""
+
+    hitbox: pygame.FRect
+
+    @property
+    def combat(self) -> AttackComboPort: ...
+
+
+@runtime_checkable
+class CombatPort(AttackComboPort, Protocol):
     """Minimal combat component surface exposed by a combatant."""
 
     @property
@@ -72,6 +93,11 @@ class CombatPort(Protocol):
 
     @property
     def movement_multiplier(self) -> float: ...
+
+    @property
+    def air_combo_count(self) -> int: ...
+
+    def record_hit_landed(self, airborne: bool) -> None: ...
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
@@ -115,6 +141,8 @@ class Combatant(Protocol):
     hitbox: pygame.FRect
     faction: str
     facing_right: bool
+    on_surface: dict[str, bool]
+    otg_timer: float
 
     @property
     def is_dead(self) -> bool:
@@ -179,6 +207,10 @@ class Combatant(Protocol):
         duration : float
             Stun duration in seconds.
         """
+        ...
+
+    def set_juggle(self, gravity_mult: float, duration: float) -> None:
+        """Apply an airborne gravity multiplier for ``duration``."""
         ...
 
     def die(self) -> None:

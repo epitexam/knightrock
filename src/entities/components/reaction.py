@@ -4,26 +4,24 @@ Extracted from ``Entity`` (audit Phase 3 #2) so knockback, heavy launch, and
 stagger live in a dedicated component wired in like ``vitals``/``combat``
 instead of sitting inline on the entity aggregate (audit F2.2).
 
-The component reads the entity's geometry/facing and delegates status timers
-to ``vitals`` and offensive state to ``combat``/``state_machine`` — it owns
-the *rules* that turn a hit into a physical + state reaction, not the state
-itself.  ``Entity.receive_damage`` stays the public entry point (``Player``
-overrides it for blocking) and calls into this component.
+The component owns the *rules*, not the state: velocity and contacts belong
+to movement, health and status timers to vitals, hurt state to combat, and
+states to the state machine. It operates through the narrow
+:class:`ReactionOwner` view. ``Entity.receive_damage`` stays the public entry
+point (``Player`` overrides it for blocking).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, Protocol, runtime_checkable
 
+import pygame
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
 
-if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
-    from src.entities.entity import Entity
-
-__all__ = ["ReactionComponent", "compute_knockback_direction"]
+__all__ = ["ReactionComponent", "ReactionOwner", "compute_knockback_direction"]
 
 
 def compute_knockback_direction(
@@ -52,18 +50,49 @@ def compute_knockback_direction(
     return 1.0 if facing_right else -1.0
 
 
+class ReactionCombatPort(Protocol):
+    """Combat operations available to Reaction."""
+
+    def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
+
+    def reset_hurt_state(self) -> None: ...
+
+
+class ReactionStatePort(Protocol):
+    """State operation available to Reaction."""
+
+    def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None: ...
+
+
+@runtime_checkable
+class ReactionOwner(Protocol):
+    """Narrow owner view operated on by ReactionComponent."""
+
+    velocity: Vector2
+    hitbox: pygame.FRect
+    facing_right: bool
+    is_dead: bool
+    stagger_timer: float
+    super_armor: bool
+    super_armor_count: int
+
+    @property
+    def combat(self) -> ReactionCombatPort: ...
+
+    @property
+    def state_machine(self) -> ReactionStatePort: ...
+
+
 class ReactionComponent:
     """Turn an incoming hit into knockback, launch, and stagger reactions.
 
     Parameters
     ----------
-    owner : Entity
-        The entity that owns this component. Its ``velocity``, ``hitbox``,
-        ``facing_right``, ``vitals``, ``combat``, and ``state_machine`` are
-        read/driven directly, mirroring the owner-passed component pattern.
+    owner : ReactionOwner
+        The narrow operated view; ``Entity`` satisfies it structurally.
     """
 
-    def __init__(self, owner: Entity) -> None:
+    def __init__(self, owner: ReactionOwner) -> None:
         self._owner = owner
 
     def apply_knockback(
@@ -135,8 +164,9 @@ class ReactionComponent:
             knockback_force=kb_power_x,
             knockback_up_force=kb_power_y,
         )
-        if hasattr(owner.combat, "is_hurt"):
-            owner.combat.is_hurt = False
+        # ``on_hit`` just armed ``is_hurt`` and ``hurt_timer``; only
+        # ``reset_hurt_state`` clears both, so no stale timer is left behind.
+        owner.combat.reset_hurt_state()
         return True
 
     def stagger(self, duration: float) -> None:

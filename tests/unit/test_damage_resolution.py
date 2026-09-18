@@ -38,7 +38,7 @@ def test_block_prevents_damage_and_all_hit_reactions() -> None:
     initial_stamina = player.block.block_stamina
 
     result = HitResolver.resolve(
-        AttackerStub(centerx=80.0),  # type: ignore[arg-type]
+        AttackerStub(centerx=80.0),
         player,
         HitProperties(
             damage=10,
@@ -62,7 +62,7 @@ def test_invincibility_does_not_interrupt_or_apply_knockback() -> None:
     combat = target.combat
 
     result = HitResolver.resolve(
-        AttackerStub(centerx=80.0),  # type: ignore[arg-type]
+        AttackerStub(centerx=80.0),
         target,
         HitProperties(
             damage=20,
@@ -82,7 +82,7 @@ def test_vertical_uppercut_triggers_knockback_without_hurt_conflict() -> None:
     target = make_entity()
 
     result = HitResolver.resolve(
-        AttackerStub(centerx=target.hitbox.centerx),  # type: ignore[arg-type]
+        AttackerStub(centerx=target.hitbox.centerx),
         target,
         HitProperties(
             damage=12,
@@ -120,7 +120,7 @@ def test_finisher_is_atomic_even_when_damage_starts_invincibility() -> None:
     target = make_entity(health=25.0, invincibility=0.2)
 
     result = HitResolver.resolve(
-        AttackerStub(centerx=80.0),  # type: ignore[arg-type]
+        AttackerStub(centerx=80.0),
         target,
         HitProperties(
             damage=10,
@@ -138,7 +138,7 @@ def test_resolver_reports_and_applies_actual_damage() -> None:
     target = make_entity(health=15.0)
 
     result = HitResolver.resolve(
-        AttackerStub(centerx=80.0),  # type: ignore[arg-type]
+        AttackerStub(centerx=80.0),
         target,
         HitProperties(
             damage=20,

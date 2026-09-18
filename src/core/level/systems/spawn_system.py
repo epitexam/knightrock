@@ -12,6 +12,7 @@ to juggle.  The per-action helpers are plain methods so tests drive them
 without polling hardware keys.
 """
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -89,6 +90,14 @@ class SpawnSystem:
 
     def process(self, delta_time: float, player: Player) -> None:
         """Decay cooldowns, then spawn enemies for the debug keys held."""
+        self._decay_cooldowns(delta_time)
+        keys = pygame.key.get_pressed()
+        self._spawn_enemies(keys, player)
+        self._trigger_attacks(keys, player)
+        self._fire_shots(keys, player)
+        self._pop_juggle(keys, player)
+
+    def _decay_cooldowns(self, delta_time: float) -> None:
         for enemy_name, cooldown in self.spawn_cooldowns.items():
             if cooldown > 0:
                 self.spawn_cooldowns[enemy_name] = cooldown - delta_time
@@ -96,12 +105,12 @@ class SpawnSystem:
             if cooldown > 0:
                 self.debug_cooldowns[action] = cooldown - delta_time
 
-        keys = pygame.key.get_pressed()
-
+    def _spawn_enemies(self, keys: Sequence[bool], player: Player) -> None:
         for key, enemy_name in DEBUG_SPAWNS.items():
             if keys[key] and self.spawn_cooldowns[enemy_name] <= 0:
                 self._spawn_enemy(enemy_name, player)
 
+    def _trigger_attacks(self, keys: Sequence[bool], player: Player) -> None:
         for key, attack_name in DEBUG_ATTACKS.items():
             if (
                 keys[key]
@@ -110,6 +119,7 @@ class SpawnSystem:
             ):
                 self._arm_debug_cooldown(attack_name)
 
+    def _fire_shots(self, keys: Sequence[bool], player: Player) -> None:
         for key, config in DEBUG_SHOTS.items():
             action = f"shot_{id(config)}"
             if (
@@ -119,6 +129,7 @@ class SpawnSystem:
             ):
                 self._arm_debug_cooldown(action)
 
+    def _pop_juggle(self, keys: Sequence[bool], player: Player) -> None:
         if (
             keys[DEBUG_JUGGLE_KEY]
             and self._debug_ready("juggle_dummy")
