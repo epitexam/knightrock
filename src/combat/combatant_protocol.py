@@ -40,7 +40,38 @@ class AttackStatePort(Protocol):
     def targets_hit(self) -> set[str]: ...
 
 
-class CombatPort(Protocol):
+@runtime_checkable
+class AttackComboPort(Protocol):
+    """Étroit besoin attaquant : suivi du combo aérien (RF-1).
+
+    Seule surface de ``combat`` consommée par ``HitResolver`` côté
+    attaquant. Un projectile (sans santé ni réactions) la satisfait
+    avec un composant neutre no-op.
+    """
+
+    @property
+    def air_combo_count(self) -> int: ...
+
+    def record_hit_landed(self, airborne: bool) -> None: ...
+
+
+@runtime_checkable
+class AttackerPort(Protocol):
+    """Vue étroite d'un porteur de coup (RF-1).
+
+    L'attaquant ne porte qu'un coup : sa ``hitbox`` donne la source
+    et son ``combat`` ne sert qu'au comptage juggle/combo. Aucune
+    santé, réaction ou blocage n'est exigée.
+    """
+
+    hitbox: pygame.FRect
+
+    @property
+    def combat(self) -> AttackComboPort: ...
+
+
+@runtime_checkable
+class CombatPort(AttackComboPort, Protocol):
     """Minimal combat component surface exposed by a combatant."""
 
     @property
@@ -72,6 +103,11 @@ class CombatPort(Protocol):
 
     @property
     def movement_multiplier(self) -> float: ...
+
+    @property
+    def air_combo_count(self) -> int: ...
+
+    def record_hit_landed(self, airborne: bool) -> None: ...
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
@@ -115,6 +151,8 @@ class Combatant(Protocol):
     hitbox: pygame.FRect
     faction: str
     facing_right: bool
+    on_surface: dict[str, bool]
+    otg_timer: float
 
     @property
     def is_dead(self) -> bool:
@@ -178,6 +216,15 @@ class Combatant(Protocol):
         ----------
         duration : float
             Stun duration in seconds.
+        """
+        ...
+
+    def set_juggle(self, gravity_mult: float, duration: float) -> None:
+        """Applique un multiplicateur de gravité aérienne (juggle).
+
+        Capacité requise de toute cible : l'implémentation de base
+        (``Entity``) ajuste ``gravity_scale``/``juggle_timer``. Appelée
+        uniquement sur victime aérienne quand ``juggle_gravity_mult != 1``.
         """
         ...
 

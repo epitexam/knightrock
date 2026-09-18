@@ -8,7 +8,7 @@ a hitbox collision is detected.
 
 from __future__ import annotations
 
-from src.combat.combatant_protocol import Combatant, DamageResult
+from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
@@ -16,10 +16,7 @@ from src.core.settings import Combat as CombatSettings
 
 def _is_grounded(target: Combatant) -> bool:
     """Grounded victim: no juggle, OTG rules may apply (Phase 5 #4)."""
-    surface = getattr(target, "on_surface", None)
-    if isinstance(surface, dict):
-        return bool(surface.get("floor", False))
-    return True
+    return bool(target.on_surface.get("floor", False))
 
 
 class HitResolver:
@@ -31,7 +28,7 @@ class HitResolver:
 
     @staticmethod
     def resolve(
-        attacker: Combatant,
+        attacker: AttackerPort,
         target: Combatant,
         hit: HitProperties,
         charge_multiplier: float = 1.0,
@@ -51,10 +48,13 @@ class HitResolver:
 
         Parameters
         ----------
-        attacker : Combatant
-            The entity performing the attack.
+        attacker : AttackerPort
+            Narrow hit-carrier view (hitbox + combo tracking only).
+            A projectile satisfies it via a neutral no-op combat; no
+            health or reactions are required.
         target : Combatant
-            The entity being hit.
+            Full combatant (health, reactions, ``on_surface``,
+            ``otg_timer``, ``set_juggle``).
         hit : HitProperties
             Hit properties from the active phase definition.
         charge_multiplier : float
@@ -72,17 +72,17 @@ class HitResolver:
         if was_airborne:
             # Diminishing returns on juggles: consecutive air hits decay
             # toward a floor so infinite air locks cost pressure, not HP.
-            attacker_air = getattr(getattr(attacker, "combat", None), "air_combo_count", 0)
+            attacker_air = attacker.combat.air_combo_count or 0
             juggle_scale = max(
                 CombatSettings.JUGGLE_DAMAGE_FLOOR,
-                1.0 - float(attacker_air or 0) * CombatSettings.JUGGLE_DECAY_STEP,
+                1.0 - float(attacker_air) * CombatSettings.JUGGLE_DECAY_STEP,
             )
         final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
 
         if final_damage <= 0:
             return DamageResult()
 
-        otg_timer = float(getattr(target, "otg_timer", 0.0) or 0.0)
+        otg_timer = float(target.otg_timer or 0.0)
         if grounded_before and otg_timer > 0.0 and not hit.otg_allowed:
             return DamageResult()
 
@@ -110,19 +110,9 @@ class HitResolver:
             target.break_super_armor()
 
         if was_airborne and hit.juggle_gravity_mult != 1.0:
-            setter = getattr(target, "set_juggle", None)
-            if callable(setter):
-                setter(hit.juggle_gravity_mult, CombatSettings.JUGGLE_GRAVITY_TIME)
+            target.set_juggle(hit.juggle_gravity_mult, CombatSettings.JUGGLE_GRAVITY_TIME)
 
-        attacker_combat = getattr(attacker, "combat", None)
-        recorder = getattr(attacker_combat, "record_hit_landed", None)
-        if callable(recorder):
-            recorder(was_airborne)
-        else:
-            tracker = getattr(attacker_combat, "combo", None)
-            callback = getattr(tracker, "on_hit_landed", None)
-            if callable(callback):
-                callback(was_airborne)
+        attacker.combat.record_hit_landed(was_airborne)
 
         if not result.killed and not armor_absorbs_reaction and not result.heavy_knockback:
             target.combat.on_hit(interrupt=True)

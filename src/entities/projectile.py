@@ -38,7 +38,12 @@ class ProjectileConfig:
 
 
 class Projectile(Sprite):
-    """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt."""
+    """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt.
+
+    Expose un ``combat`` neutre (RF-1) : le projectile ne fait que porter
+    un coup, il satisfait ``AttackerPort`` (hitbox + suivi combo no-op)
+    sans santé ni réactions.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -55,6 +60,9 @@ class Projectile(Sprite):
         self.is_dead: bool = True
         self.targets_hit: set[str] = set()
         self.facing_right: bool = True
+        from src.combat.combat_component import NullCombatComponent
+
+        self.combat = NullCombatComponent()
 
     @property
     def hurtbox(self) -> pygame.FRect:
