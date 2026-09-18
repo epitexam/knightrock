@@ -95,17 +95,25 @@ Réglages dans `src/core/settings.py` (`Combat`, `CameraShake`) :
 uv run pytest
 ```
 
-Avec couverture (seuil imposé par la CI : 50 %) :
+Avec couverture instructions (seuil imposé par la CI : 80 %, mesuré 91 % le 2026-09-18) :
 
 ```bash
-uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=50
+uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
-Qualité (lint + types) :
+Couverture avec branches, mesurée séparément (88 % le 2026-09-18, non comparée
+au pourcentage instructions) :
+
+```bash
+uv run pytest --cov=src --cov-branch --cov-report=term-missing
+```
+
+Qualité (lint + format + complexité + types, tous bloquants en CI) :
 
 ```bash
 uv run ruff check src tests
 uv run ruff format --check src tests
+uv run ruff check src tests --select C901
 uv run mypy src
 ```
 
@@ -126,7 +134,11 @@ uv run mypy src
 
 ## Conventions
 
-- Code typé (`mypy` visé strict), formaté avec `ruff format`.
+- Code typé (`mypy src` bloquant ; `disallow_untyped_defs = true` global avec
+  overrides résiduels pour les seuls modules non migrés — `src.combat`,
+  `src.entities` et `src.states` sont strict-clean depuis RF-8), formaté avec
+  `ruff format`, complexité surveillée (`ruff --select C901`, seuil 10,
+  exceptions justifiées).
 - Simulation déterministe à pas fixe (`Simulation.TICK_RATE = 60`) ;
   le rendu suit `Display.FPS`.
 - Constantes de gameplay centralisées dans `src/core/settings.py` —

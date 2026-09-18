@@ -21,7 +21,7 @@ target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "C901", "SIM", "N"]
 ignore = [
     "E501",
     # (str, Enum) is the codebase convention for state names
@@ -41,9 +41,11 @@ warn_unused_configs = true
 ignore_missing_imports = true
 explicit_package_bases = true
 disallow_untyped_defs = true
-# Existing typing debt (audit F3.2: 50+ untyped getattr/hasattr):
-# mypy is informational in CI for now (run with `|| true`).
-# Make these modules strict one by one, without lowering the gate to zero.
+# Dette de typage résiduelle (RF-8, mesurée le 2026-09-18 sans overrides :
+# 41 erreurs dans 14 fichiers) : `src.combat.*`, `src.entities.*` et
+# `src.states.*` sont strict-clean et sortis des overrides. Les modules non
+# migrés gardent `disallow_untyped_defs = false` — effet vérifié, pas supposé.
+# mypy est bloquant en CI (`uv run mypy src`, sans `|| true`).
 
 [[tool.mypy.overrides]]
 module = [
@@ -51,11 +53,8 @@ module = [
     "src.core.rendering.*",
     "src.core.sprites",
     "src.core.hazards",
-    "src.entities.*",
-    "src.states.*",
     "src.ui.*",
     "src.physics.*",
-    "src.combat.*",
 ]
 disallow_untyped_defs = false
 
