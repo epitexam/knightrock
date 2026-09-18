@@ -596,6 +596,73 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
     assert world_ui.layers["panels"] is False
 
 
+def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F6 flips the freeze switch in debug mode, ignored otherwise."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace())
+
+    monkeypatch.setenv("DEBUG", "1")
+    assert scene.frozen is False
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    assert scene.frozen is True
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    assert scene.frozen is False
+
+    monkeypatch.setenv("DEBUG", "0")
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    assert scene.frozen is False
+
+
+def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Frozen: input still polls, level.update never runs until unfreeze."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    monkeypatch.setenv("DEBUG", "1")
+    calls = {"input": 0, "level": 0}
+    game = SimpleNamespace(
+        input_manager=SimpleNamespace(update=lambda: calls.__setitem__("input", calls["input"] + 1))
+    )
+    level = SimpleNamespace(
+        update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
+        completed=False,
+        deaths=0,
+    )
+    scene = GameplayScene(game, level_id=0, level=level)
+
+    scene.update(1 / 60)
+    assert calls == {"input": 1, "level": 1}
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    scene.update(1 / 60)
+    assert calls == {"input": 2, "level": 1}
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    scene.update(1 / 60)
+    assert calls == {"input": 3, "level": 2}
+
+
+def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: Camera) -> None:
+    """The FROZEN tag reads red on black while the sim is held."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.rendering.renderer import Renderer
+
+    monkeypatch.setenv("DEBUG", "1")
+    surface = pygame.display.get_surface()
+    assert surface is not None
+    renderer = Renderer(surface, camera)
+    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None), clock=None)
+    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
+    scene = GameplayScene(game, level_id=0, level=level)
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
+    surface.fill((0, 0, 0))
+    assert scene.draw() is None
+    assert any(
+        surface.get_at((x, y))[:3] == Colors.red for x in range(400, 624) for y in range(10, 34)
+    )
+
+
 def test_debug_panels_can_be_hidden() -> None:
     from src.core.rendering.camera import Camera as _Camera
     from src.core.rendering.renderer import Renderer
