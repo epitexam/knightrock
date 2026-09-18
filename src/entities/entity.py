@@ -19,7 +19,10 @@ from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
 from src.entities.components import MovementComponent, ReactionComponent
-from src.entities.components.reaction import compute_knockback_direction
+from src.entities.components.reaction import (
+    ReactionStatus,
+    compute_knockback_direction,
+)
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
@@ -204,6 +207,9 @@ class Entity(Sprite):
         self.otg_timer: float = 0.0
         # Render-only damage flash (never snapshotted, never in goldens).
         self.flash_timer: float = 0.0
+        # Render-only freshness of the last hit reaction (armed by
+        # ReactionComponent, decayed in ``update``); never snapshotted.
+        self.reaction_age: float = 0.0
         # Render-only landing hint: pre-move fall speed captured on the
         # landing tick (PhysicsSystem turns hard landings into dust puffs).
         # Never snapshotted, never in goldens.
@@ -621,6 +627,15 @@ class Entity(Sprite):
         """
         return self.vitals.apply_damage(amount)
 
+    @property
+    def reaction_status(self) -> ReactionStatus | None:
+        """The last hit-reaction cause (what hit, how hard, which way).
+
+        Owned by ``ReactionComponent``; the state machine owns the category in
+        progress. Render/debug reads only — never snapshotted.
+        """
+        return self._reaction.status
+
     def _apply_knockback(
         self,
         knockback: KnockbackConfig,
@@ -796,6 +811,8 @@ class Entity(Sprite):
         self.vitals.tick_timers(delta_time)
         if self.flash_timer > 0.0:
             self.flash_timer = max(0.0, self.flash_timer - delta_time)
+        if self.reaction_age > 0.0:
+            self.reaction_age = max(0.0, self.reaction_age - delta_time)
 
         self._pre_update(delta_time)
         self._update_state_machine(delta_time)

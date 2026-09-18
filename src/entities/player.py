@@ -313,6 +313,7 @@ class Player(ControllerView, Entity):
         else:
             self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
 
+        self._reaction.note_blocked_push(_kb, source_center_x)
         return DamageResult(blocked=True)
 
     def _can_receive_damage(self) -> bool:

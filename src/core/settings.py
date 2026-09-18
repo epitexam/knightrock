@@ -119,6 +119,17 @@ class HitFlash:
     DURATION = 0.09
 
 
+class ReactionMark:
+    """Freshness window of a hit reaction in the debug overlay (render-only).
+
+    ``ReactionComponent`` re-arms the owner's ``reaction_age`` to this value
+    every time a reaction fires; ``Entity.update`` decays it. Never
+    snapshotted, never in goldens (``flash_timer`` precedent).
+    """
+
+    DURATION = 0.4
+
+
 class Afterimage:
     """Dash ghost trail (render-only)."""
 

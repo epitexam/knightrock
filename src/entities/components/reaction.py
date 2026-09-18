@@ -13,15 +13,70 @@ point (``Player`` overrides it for blocking).
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Final, Protocol, runtime_checkable
 
 import pygame
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import ReactionMark
+from src.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
 
-__all__ = ["ReactionComponent", "ReactionOwner", "compute_knockback_direction"]
+__all__ = [
+    "ReactionComponent",
+    "ReactionKind",
+    "ReactionOwner",
+    "ReactionStatus",
+    "VELOCITY_KINDS",
+    "compute_knockback_direction",
+]
+
+
+class ReactionKind(Enum):
+    """Which hit reaction was last applied — the *cause* authority.
+
+    ``ReactionComponent`` owns this: it answers *what hit, how hard, when*.
+    The state machine separately owns the *category in progress*; both are
+    written at the same sites in the same tick, so they cannot diverge.
+    """
+
+    PUSH = "push"
+    LAUNCH = "launch"
+    STAGGER = "stagger"
+    BLOCKED = "blocked"
+
+
+#: Kinds that carry an applied velocity push. The debug overlay paints these
+#: vectors red while the status is fresh; stagger only locks the state
+#: machine without an impulse, so it stays a locomotion-colored vector.
+VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset(
+    {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.BLOCKED}
+)
+
+
+@dataclass(frozen=True)
+class ReactionStatus:
+    """Typed record of the last applied hit reaction.
+
+    Attributes
+    ----------
+    kind : ReactionKind
+        Which reaction fired (push, launch, stagger, blocked push).
+    magnitude : float
+        Full impulse magnitude in px/s (0.0 for stagger).
+    direction : float
+        Horizontal push direction: 1.0 right, -1.0 left (0.0 for stagger).
+
+    Render/debug data: read by the overlay, never snapshotted, never in
+    goldens.
+    """
+
+    kind: ReactionKind
+    magnitude: float
+    direction: float
 
 
 def compute_knockback_direction(
@@ -75,6 +130,9 @@ class ReactionOwner(Protocol):
     stagger_timer: float
     super_armor: bool
     super_armor_count: int
+    # Render-only freshness of the last reaction; decayed in Entity.update,
+    # armed here and never snapshotted.
+    reaction_age: float
 
     @property
     def combat(self) -> ReactionCombatPort: ...
@@ -86,6 +144,10 @@ class ReactionOwner(Protocol):
 class ReactionComponent:
     """Turn an incoming hit into knockback, launch, and stagger reactions.
 
+    Owns the *cause* of a reaction (``status``: what hit, how hard, which
+    way, refreshed ``reaction_age``); the state machine owns the *category in
+    progress*. Both are written at the same sites in the same tick.
+
     Parameters
     ----------
     owner : ReactionOwner
@@ -94,6 +156,12 @@ class ReactionComponent:
 
     def __init__(self, owner: ReactionOwner) -> None:
         self._owner = owner
+        self.status: ReactionStatus | None = None
+
+    def _arm(self, kind: ReactionKind, magnitude: float, direction: float) -> None:
+        """Record the reaction cause and refresh the render-only freshness age."""
+        self.status = ReactionStatus(kind=kind, magnitude=magnitude, direction=direction)
+        self._owner.reaction_age = ReactionMark.DURATION
 
     def apply_knockback(
         self,
@@ -113,7 +181,9 @@ class ReactionComponent:
             return
 
         owner = self._owner
+        direction: float
         if knockback.mode == "fixed":
+            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
             owner.velocity.x = knockback.power[0]
             owner.velocity.y = knockback.power[1]
         else:
@@ -122,6 +192,11 @@ class ReactionComponent:
             )
             owner.velocity.x = knockback.power[0] * direction
             owner.velocity.y = knockback.power[1]
+        self._arm(
+            ReactionKind.PUSH,
+            Vector2(knockback.power[0], knockback.power[1]).length(),
+            direction,
+        )
 
     def handle_heavy_knockback(
         self,
@@ -158,7 +233,7 @@ class ReactionComponent:
             owner.hitbox.centerx, source_center_x, owner.facing_right
         )
         owner.state_machine.change_state(
-            "knockback",
+            KNOCKBACK_STATE,
             force=True,
             knockback_direction=direction,
             knockback_force=kb_power_x,
@@ -167,7 +242,34 @@ class ReactionComponent:
         # ``on_hit`` just armed ``is_hurt`` and ``hurt_timer``; only
         # ``reset_hurt_state`` clears both, so no stale timer is left behind.
         owner.combat.reset_hurt_state()
+        self._arm(ReactionKind.LAUNCH, magnitude, direction)
         return True
+
+    def note_blocked_push(
+        self,
+        knockback: KnockbackConfig,
+        source_center_x: float | None,
+    ) -> None:
+        """Record the reduced push a blocking player absorbed (4th arming site).
+
+        The block path writes its own velocity directly on the player; this
+        only records the cause so the debug overlay can paint the vector red.
+
+        Parameters
+        ----------
+        knockback : KnockbackConfig
+            The incoming (pre-reduction) knockback configuration.
+        source_center_x : float | None
+            X-coordinate of the damage source for push direction.
+        """
+        if knockback.mode == "fixed":
+            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
+        else:
+            direction = compute_knockback_direction(
+                self._owner.hitbox.centerx, source_center_x, self._owner.facing_right
+            )
+        push = abs(knockback.power[0]) * CombatSettings.BLOCK_KNOCKBACK_FACTOR
+        self._arm(ReactionKind.BLOCKED, push, direction)
 
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.
@@ -193,4 +295,5 @@ class ReactionComponent:
 
         owner.stagger_timer = duration
         owner.combat.reset_hurt_state()
-        owner.state_machine.change_state("stagger", force=True)
+        owner.state_machine.change_state(STAGGER_STATE, force=True)
+        self._arm(ReactionKind.STAGGER, 0.0, 0.0)
