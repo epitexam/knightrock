@@ -80,6 +80,7 @@ class Enemy(Entity):
 
     config: EnemyConfig
     player: PlayerReference | None
+    enemy_type: str | None
     chase_speed: float
     vision_range: float
     attack_range: float
@@ -104,6 +105,7 @@ class Enemy(Entity):
         player_reference: PlayerReference | None,
         config: EnemyConfig,
         rng: random.Random | None = None,
+        enemy_type: str | None = None,
     ) -> None:
         """Initialize an enemy from its configuration.
 
@@ -121,6 +123,9 @@ class Enemy(Entity):
             Data class holding enemy parameters.
         rng : random.Random | None
             Optional random number generator instance for deterministic behaviors.
+        enemy_type : str | None
+            Registry name of this enemy (e.g. ``"goblin"``), shown in the
+            debug label card. ``None`` when built without the factory.
         """
         max_health = config.max_health if config.max_health is not None else config.health
 
@@ -143,6 +148,7 @@ class Enemy(Entity):
 
         self.config = config
         self.player = player_reference
+        self.enemy_type = enemy_type
         self.chase_speed = config.chase_speed
         self.vision_range = config.vision_range
         self.attack_range = config.attack_range

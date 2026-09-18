@@ -171,6 +171,18 @@ class WorldUI:
         )
 
     @staticmethod
+    def _display_name(sprite: pygame.sprite.Sprite) -> str:
+        """Header name: the enemy registry type for foes, the class otherwise.
+
+        Every foe shares the ``Enemy`` class, so the class name says nothing —
+        the stored ``enemy_type`` (``"goblin"``, ``"slime"``, ...) does. Other
+        factions keep their class name, and typeless enemies fall back to it.
+        """
+        if WorldUI._faction(sprite) == "enemy":
+            return getattr(sprite, "enemy_type", None) or type(sprite).__name__
+        return type(sprite).__name__
+
+    @staticmethod
     def _faction(sprite: pygame.sprite.Sprite) -> str | None:
         return getattr(sprite, "faction", None)
 
@@ -312,7 +324,8 @@ class WorldUI:
     def _entity_segments(self, sprite: pygame.sprite.Sprite, state_machine) -> _Segments:
         """One row per datum, every token paired with its display color.
 
-        - header: faction-colored name plus off-white state
+        - header: faction-colored name (the enemy registry type for foes,
+          the class name otherwise) plus off-white state
         - ``HP`` row: value tinted by the health ratio
         - ``ATK`` row (while attacking): gold name, muted phase stats
         - ``FX`` row (active flags only): each flag in its semantic color,
@@ -321,7 +334,7 @@ class WorldUI:
         faction_color = self._label_color(sprite)
         state_name = state_machine.current_state_name or "None"
         lines: _Segments = [
-            [(f"{type(sprite).__name__} ", faction_color), (state_name, Colors.off_white)]
+            [(f"{self._display_name(sprite)} ", faction_color), (state_name, Colors.off_white)]
         ]
         health = getattr(sprite, "health", None)
         max_health = getattr(sprite, "max_health", None)

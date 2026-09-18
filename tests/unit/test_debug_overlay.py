@@ -516,6 +516,47 @@ def test_world_cards_use_compact_fonts(world_ui: WorldUI) -> None:
     )
 
 
+def test_enemy_header_shows_the_registry_type(world_ui: WorldUI) -> None:
+    """Foes share one class: the header shows ``enemy_type``, not ``Enemy``."""
+    entity = _entity(enemy_type="goblin")
+    segments = world_ui._label_segments(entity)
+    lines = world_ui._label_lines(entity)
+    assert segments is not None and lines is not None
+    assert segments[0] == [("goblin ", Colors.light_red), ("idle", Colors.off_white)]
+    assert lines[0] == "goblin idle"
+
+
+def test_enemy_without_type_falls_back_to_class_name(world_ui: WorldUI) -> None:
+    assert world_ui._display_name(_entity()) == "Goblin"
+
+
+def test_player_header_ignores_enemy_type(world_ui: WorldUI) -> None:
+    """Only foes read ``enemy_type``: the player keeps its class name."""
+    entity = _entity(faction="player", enemy_type="goblin")
+    segments = world_ui._label_segments(entity)
+    assert segments is not None
+    assert segments[0] == [("Goblin ", Colors.light_green), ("idle", Colors.off_white)]
+
+
+def test_factory_enemy_label_shows_its_type(world_ui: WorldUI) -> None:
+    """End to end: a factory-built slime labels itself ``slime``."""
+    from pygame.sprite import Group
+
+    from src.entities.enemies.factory import create_enemy
+
+    enemy = create_enemy(
+        name="slime",
+        pos=(100, 100),
+        groups=Group(),
+        collision_sprites=Group(),
+        player_reference=None,
+    )
+    assert enemy.enemy_type == "slime"
+    segments = world_ui._label_segments(enemy)
+    assert segments is not None
+    assert segments[0][0] == ("slime ", Colors.light_red)
+
+
 def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:
     assert world_ui.toggle("labels") is False
     assert world_ui.toggle("labels") is True

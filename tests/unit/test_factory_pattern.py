@@ -47,6 +47,32 @@ class TestFactoryPattern:
         assert isinstance(enemy, Enemy)
         assert enemy.config == ENEMY_CONFIGS["goblin"]
 
+    def test_create_enemy_stores_the_registry_type_name(self):
+        """Test that the factory records the type for debug labels."""
+        groups = Group()
+        collision_sprites = Group()
+
+        assert (
+            create_enemy(
+                name="goblin",
+                pos=(100, 100),
+                groups=groups,
+                collision_sprites=collision_sprites,
+                player_reference=None,
+            ).enemy_type
+            == "goblin"
+        )
+        assert (
+            create_enemy(
+                name="slime",
+                pos=(100, 100),
+                groups=Group(),
+                collision_sprites=Group(),
+                player_reference=None,
+            ).enemy_type
+            == "slime"
+        )
+
     def test_create_enemy_with_dummy_config(self):
         """Test creating a dummy enemy."""
         groups = Group()
