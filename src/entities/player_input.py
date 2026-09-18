@@ -56,18 +56,32 @@ class PlayerInputHandler:
             player.reset_position()
 
     def _handle_attack_input(self) -> None:
-        """Process attack input with charge attacks, buffering, and combos."""
+        """Process attack input with charge attacks, buffering, and combos.
+
+        Priorité préservée (RF-6) : charge active, capacité d'attaquer,
+        spéciale, légère, lourde, uppercut, dash attack.
+        """
+        if self._handle_charging():
+            return
+        self._handle_attack_request()
+
+    def _handle_charging(self) -> bool:
+        """Charge active : annulation, relâchement, verrou (RF-6)."""
         player = self._player
         im = player.input_manager
+        if not player.combat.charging.is_charging:
+            return False
+        if not player.can_attack():
+            player.combat.charging.cancel()
+            return True
+        if im.attack2_just_released:
+            player.combat.release_charge()
+        return True
 
-        if player.combat.charging.is_charging:
-            if not player.can_attack():
-                player.combat.charging.cancel()
-                return
-            if im.attack2_just_released:
-                player.combat.release_charge()
-            return
-
+    def _handle_attack_request(self) -> None:
+        """Demande d'attaque hors charge (RF-6) : priorité spéciale → dash."""
+        player = self._player
+        im = player.input_manager
         if not player.can_attack():
             return
 
