@@ -9,6 +9,7 @@ from pygame.math import Vector2
 
 from src.core.colors import Colors
 from src.core.rendering.camera import Camera
+from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.ui_manager import UIManager
 from src.ui.world_ui import WorldUI
 
@@ -158,9 +159,59 @@ def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
     surface = world_ui.display_surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
-    entity.state_machine = SimpleNamespace(current_state_name="knockback")
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.2
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
+
+
+def test_state_name_alone_no_longer_colors_the_vector_red(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """The overlay reads the typed cause, never a state-machine name."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_blocked_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.BLOCKED, magnitude=90.0, direction=1.0
+    )
+    entity.reaction_age = 0.4
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.red
+
+
+def test_expired_reaction_status_keeps_the_locomotion_color(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
+    entity.reaction_age = 0.0
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Camera) -> None:
+    """Stagger carries no impulse: the vector keeps its locomotion color."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
+    entity.reaction_age = 0.2
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
 def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:

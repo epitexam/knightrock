@@ -19,6 +19,7 @@ import pygame
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.core.settings import Debug
+from src.entities.components.reaction import VELOCITY_KINDS, ReactionStatus
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_OK, TEXT_WARN
 
@@ -184,11 +185,26 @@ class WorldUI:
         start = camera.apply(origin).center
         end = (start[0] + vx * VELOCITY_PREVIEW_S, start[1] + vy * VELOCITY_PREVIEW_S)
         color = Colors.debug_velocity
-        state_machine = getattr(sprite, "state_machine", None)
-        if getattr(state_machine, "current_state_name", None) == "knockback":
-            color = Colors.red  # launched: reaction vector, not locomotion
+        if self._is_reaction_push(sprite):
+            color = Colors.red  # reaction push vector, not locomotion
         pygame.draw.line(self.display_surface, color, start, end, width=2)
         pygame.draw.circle(self.display_surface, color, end, 2)
+
+    @staticmethod
+    def _is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
+        """Whether the vector shows a fresh hit-reaction push (red), not locomotion.
+
+        Reads the typed ``ReactionStatus`` cause — never a state-machine name
+        — so the overlay cannot diverge from the reaction that applied the
+        velocity.
+        """
+        status = getattr(sprite, "reaction_status", None)
+        if not isinstance(status, ReactionStatus):
+            return False
+        return (
+            float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
+            and status.kind in VELOCITY_KINDS
+        )
 
     def _label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
         state_machine = getattr(sprite, "state_machine", None)
