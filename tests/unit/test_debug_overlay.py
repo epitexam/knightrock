@@ -214,6 +214,32 @@ def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Ca
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
+def test_fresh_reaction_status_shows_the_rx_flag(world_ui: WorldUI) -> None:
+    entity = _entity()
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.2
+    lines = world_ui._label_lines(entity)
+    assert lines is not None
+    assert lines[-1] == "RX launch 0.20"
+
+
+def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> None:
+    entity = _entity()
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
+    entity.reaction_age = 0.0
+    lines = world_ui._label_lines(entity)
+    assert lines is not None
+    assert lines[-1] == "RX~ push"
+
+
+def test_entity_without_reaction_has_no_rx_flag(world_ui: WorldUI) -> None:
+    lines = world_ui._label_lines(_entity())
+    assert lines is not None
+    assert all("RX" not in line for line in lines)
+
+
 def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:
     assert world_ui.toggle("labels") is False
     assert world_ui.toggle("labels") is True

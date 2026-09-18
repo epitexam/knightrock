@@ -215,6 +215,22 @@ class WorldUI:
         return None
 
     @staticmethod
+    def _reaction_flag(sprite: pygame.sprite.Sprite) -> str | None:
+        """Label token for the last hit-reaction cause (kind + freshness).
+
+        Reads the typed ``ReactionStatus`` — never a state-machine name.
+        ``RX`` marks a fresh reaction with its remaining freshness window;
+        ``RX~`` marks a stale cause whose freshness has expired.
+        """
+        reaction = getattr(sprite, "reaction_status", None)
+        if not isinstance(reaction, ReactionStatus):
+            return None
+        age = float(getattr(sprite, "reaction_age", 0.0) or 0.0)
+        if age > 0:
+            return f"RX {reaction.kind.value} {age:.2f}"
+        return f"RX~ {reaction.kind.value}"
+
+    @staticmethod
     def _entity_lines(sprite: pygame.sprite.Sprite, state_machine) -> list[str]:
         state_name = state_machine.current_state_name or "None"
         head = f"{type(sprite).__name__} {state_name}"
@@ -239,6 +255,9 @@ class WorldUI:
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
             flags.append(f"STAG {stagger:.2f}")
+        reaction_flag = WorldUI._reaction_flag(sprite)
+        if reaction_flag is not None:
+            flags.append(reaction_flag)
         otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
         if otg > 0:
             flags.append(f"OTG {otg:.2f}")
