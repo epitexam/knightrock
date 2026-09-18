@@ -4,10 +4,14 @@ UX rules (debug readability pass):
 - Viewport culling: off-screen sprites draw nothing, not even labels.
 - Color by faction: blue hitbox = player, red = foe, grey = neutral. Hurtboxes
   stay green, offensive boxes orange, projectiles draw their flight vector.
-- Label hierarchy: one short line by default (class + state + HP); a second
-  line only while attacking or while a status flag (stagger/OTG/juggle/air)
-  is active. Static geometry (hazards, platforms, exits) gets an outline
+- Label cards: each datum gets its own row (header, HP, attack, flags), each
+  token its own color — name by faction, HP by ratio, attack name in gold,
+  every flag in its semantic color. Rows never collapse into one running
+  sentence; static geometry (hazards, platforms, exits) gets an outline
   only — no text.
+- Vertical stack (debug): entity, then its health bar, then its label card —
+  the card floats above the bar and never covers it. Near the top of the
+  screen the bar flips below the entity and the card takes the freed space.
 - Labels never stack: each label dodges upward (then below its entity) to a
   free slot, and is dropped rather than overdrawn when no slot is left.
 - Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
@@ -20,10 +24,18 @@ import pygame
 
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
-from src.core.settings import Debug
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionStatus
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+
+#: Separator between tokens inside one label row (``HP``/``ATK``/``FX``).
+#: ``Colors.grey`` (80,85,95) is unreadable on the dark card fill, so labels
+#: use a slightly brighter grey that still reads as secondary.
+LABEL_SEP: Color = Colors.light_grey
+
+#: Tag introducing a detail row (``HP`` / ``ATK`` / ``FX``): muted grey so the
+#: *value* carries the color, never the tag.
+LABEL_TAG: Color = TEXT_MUTED
 
 #: Velocity vectors show where the sprite heads in this many seconds.
 VELOCITY_PREVIEW_S = 0.15
@@ -34,8 +46,23 @@ VELOCITY_MIN_SPEED = 60.0
 #: World margin around the viewport: sprites grazing the edge still draw.
 CULL_MARGIN_PX = 64.0
 
-#: Vertical step a label takes when dodging another label (px). A one-line
-#: panel is 22 px tall (16 px font + padding): one step leaves a >= 6 px gap.
+#: Horizontal / vertical padding inside a label card (px per side).
+LABEL_PAD_X = 8
+LABEL_PAD_Y = 5
+
+#: Gap between the stacked rows of a label card. Rows carry a muted
+#: ``HP``/``ATK``/``FX`` tag so the row rhythm stays scannable.
+LABEL_LINE_GAP = 5
+
+#: Divider block between the bold header and the detail rows: breathing room
+#: above the rule, the 1 px rule itself, then room below it.
+LABEL_DIVIDER_TOP = 4
+LABEL_DIVIDER_BOTTOM = 5
+
+#: Vertical step a label takes when dodging another label (px). Cards are
+#: taller than the legacy one-liners (a two-row card is ~45 px tall with
+#: padding), so a dodge may take two steps to clear — the placer tries up to
+#: LABEL_MAX_NUDGES steps above, then below, before dropping the label.
 LABEL_NUDGE_PX = 28
 
 #: How many dodge steps a label may take above (then below) its entity
@@ -44,6 +71,35 @@ LABEL_MAX_NUDGES = 6
 
 #: Toggleable overlay layers (F1-F5).
 OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics", "panels")
+
+#: Health bar geometry: bar height, gap entity->bar, gap bar->label card.
+#: The bar width stays responsive (80% of the on-screen sprite width,
+#: clamped to [30, 60] px and to the viewport); only the vertical rhythm
+#: is fixed so the stack entity -> bar -> card never overlaps.
+HEALTH_BAR_HEIGHT = 6
+HEALTH_BAR_ANCHOR_GAP = 8
+HEALTH_BAR_LABEL_GAP = 4
+
+#: Gap between an entity edge and its label card when no health bar sits
+#: between them (statics, projectiles, or labels layer with bars hidden).
+LABEL_ANCHOR_GAP = 8
+
+#: One label row: ``(text, color)`` tokens laid out left to right.
+_Segments = list[list[tuple[str, Color]]]
+
+#: A collected label: sort key, colored rows, faction accent, screen
+#: anchor, clearance above (bar above the entity) and below (bar flipped
+#: under the entity near the top of the screen).
+_LabelRequest = tuple[tuple[int, float, float], _Segments, Color, pygame.FRect, int, int]
+
+
+def join_flag_tokens(flags: list[tuple[str, Color]]) -> list[tuple[str, Color]]:
+    """Interleave flag tokens with a bright ``|`` separator."""
+    joined: list[tuple[str, Color]] = [flags[0]]
+    for text, color in flags[1:]:
+        joined.append((" | ", LABEL_SEP))
+        joined.append((text, color))
+    return joined
 
 
 class WorldUI:
@@ -69,7 +125,7 @@ class WorldUI:
 
         # Labels are collected first and drawn after the loop so they can
         # dodge each other instead of stacking on shared screen space.
-        requests: list[tuple[int, float, float, list[str], Color, pygame.FRect]] = []
+        requests: list[_LabelRequest] = []
         for sprite in all_sprites:
             if type(sprite) is pygame.sprite.Sprite:
                 continue  # static tiles: ~900/level, nothing useful to show
@@ -85,15 +141,18 @@ class WorldUI:
                 self._draw_velocity(sprite, camera)
             if not self.layers["labels"] or is_static:
                 continue
-            lines = self._label_lines(sprite)
-            if not lines:
+            segments = self._label_segments(sprite)
+            if segments is None:
                 continue
             anchor = camera.apply(reference)
             priority = self._label_priority(sprite, anchor)
-            requests.append((*priority, lines, self._label_color(sprite), anchor))
+            above_lift, below_drop = self._label_clearances(sprite, anchor)
+            requests.append(
+                (priority, segments, self._label_color(sprite), anchor, above_lift, below_drop)
+            )
 
         if requests:
-            requests.sort(key=lambda request: request[:3])
+            requests.sort(key=lambda request: request[0])
             self._draw_labels(requests, screen_width)
 
     @staticmethod
@@ -132,6 +191,16 @@ class WorldUI:
         if faction == "player":
             return Colors.light_green
         return Colors.text_muted
+
+    @staticmethod
+    def _health_color(health: float, max_health: float) -> Color:
+        """HP tint by remaining ratio: green, then warn orange, then crit red."""
+        ratio = health / max_health if max_health else 0.0
+        if ratio <= 0.25:
+            return TEXT_CRIT
+        if ratio <= 0.5:
+            return TEXT_WARN
+        return TEXT_OK
 
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
@@ -227,12 +296,101 @@ class WorldUI:
         )
 
     def _label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
+        segments = self._label_segments(sprite)
+        if segments is None:
+            return None
+        return [" ".join(text.strip() for text, _ in line) for line in segments]
+
+    def _label_segments(self, sprite: pygame.sprite.Sprite) -> _Segments | None:
         state_machine = getattr(sprite, "state_machine", None)
         if state_machine is not None:
-            return self._entity_lines(sprite, state_machine)
+            return self._entity_segments(sprite, state_machine)
         if getattr(sprite, "hitbox", None) is not None:
-            return [self._projectile_line(sprite)]
+            return [[(self._projectile_line(sprite), Colors.yellow)]]
         return None
+
+    def _entity_segments(self, sprite: pygame.sprite.Sprite, state_machine) -> _Segments:
+        """One row per datum, every token paired with its display color.
+
+        - header: faction-colored name plus off-white state
+        - ``HP`` row: value tinted by the health ratio
+        - ``ATK`` row (while attacking): gold name, muted phase stats
+        - ``FX`` row (active flags only): each flag in its semantic color,
+          ``|``-separated
+        """
+        faction_color = self._label_color(sprite)
+        state_name = state_machine.current_state_name or "None"
+        lines: _Segments = [
+            [(f"{type(sprite).__name__} ", faction_color), (state_name, Colors.off_white)]
+        ]
+        health = getattr(sprite, "health", None)
+        max_health = getattr(sprite, "max_health", None)
+        if health is not None and max_health:
+            lines.append(
+                [
+                    ("HP ", LABEL_TAG),
+                    (f"{health:.0f}/{max_health:.0f}", self._health_color(health, max_health)),
+                ]
+            )
+
+        attack_line = self._attack_line(sprite)
+        if attack_line is not None:
+            lines.append(attack_line)
+
+        flags = self._status_flag_tokens(sprite)
+        if flags:
+            lines.append([("FX ", LABEL_TAG), *join_flag_tokens(flags)])
+        return lines
+
+    def _attack_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
+        """Attack row: gold name plus muted phase stats, ``None`` while idle."""
+        combat = getattr(sprite, "combat", None)
+        attack_state = getattr(combat, "state", None)
+        attack_name = getattr(attack_state, "attack_name", None)
+        if attack_name is None:
+            return None
+        sub_state = getattr(attack_state, "sub_state", None)
+        sub_state_name = getattr(sub_state, "value", sub_state)
+        phase_index = getattr(attack_state, "phase_index", 0)
+        frame_counter = getattr(attack_state, "frame_counter", 0)
+        target_count = len(getattr(combat, "targets_hit", ()))
+        return [
+            ("ATK ", LABEL_TAG),
+            (f"{attack_name} ", Colors.gold),
+            (
+                f"p{phase_index} {sub_state_name}:{frame_counter} hits:{target_count}",
+                Colors.light_grey,
+            ),
+        ]
+
+    @staticmethod
+    def _status_flag_tokens(sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]]:
+        """Colored status flags for the ``FX`` card row (same order as strings)."""
+        names = WorldUI._status_flag_strings(sprite)
+        colors: dict[str, Color] = {}
+        reaction = WorldUI._reaction_flag(sprite)
+        if reaction is not None:
+            colors[reaction] = (
+                Colors.red
+                if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0
+                else Colors.dark_red
+            )
+        stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
+        if stagger > 0:
+            colors[f"STAG {stagger:.2f}"] = Colors.orange
+        otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
+        if otg > 0:
+            colors[f"OTG {otg:.2f}"] = Colors.debug_otg
+        gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
+        if gravity_scale != 1.0:
+            colors[f"JGx{gravity_scale:.2f}"] = Colors.debug_juggle
+        surface = getattr(sprite, "on_surface", None)
+        if isinstance(surface, dict) and not surface.get("floor"):
+            colors["AIR"] = Colors.light_grey
+        ledge_probe = getattr(sprite, "is_at_ledge", None)
+        if callable(ledge_probe) and ledge_probe():
+            colors["LEDGE"] = Colors.yellow
+        return [(name, colors.get(name, Colors.off_white)) for name in names]
 
     @staticmethod
     def _reaction_flag(sprite: pygame.sprite.Sprite) -> str | None:
@@ -249,6 +407,30 @@ class WorldUI:
         if age > 0:
             return f"RX {reaction.kind.value} {age:.2f}"
         return f"RX~ {reaction.kind.value}"
+
+    @staticmethod
+    def _status_flag_strings(sprite: pygame.sprite.Sprite) -> list[str]:
+        """Plain-text status flags backing ``_entity_lines`` (ledge tests, docs)."""
+        flags: list[str] = []
+        stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
+        if stagger > 0:
+            flags.append(f"STAG {stagger:.2f}")
+        reaction_flag = WorldUI._reaction_flag(sprite)
+        if reaction_flag is not None:
+            flags.append(reaction_flag)
+        otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
+        if otg > 0:
+            flags.append(f"OTG {otg:.2f}")
+        gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
+        if gravity_scale != 1.0:
+            flags.append(f"JGx{gravity_scale:.2f}")
+        surface = getattr(sprite, "on_surface", None)
+        if isinstance(surface, dict) and not surface.get("floor"):
+            flags.append("AIR")
+        ledge_probe = getattr(sprite, "is_at_ledge", None)
+        if callable(ledge_probe) and ledge_probe():
+            flags.append("LEDGE")
+        return flags
 
     @staticmethod
     def _entity_lines(sprite: pygame.sprite.Sprite, state_machine) -> list[str]:
@@ -271,25 +453,7 @@ class WorldUI:
             detail.append(
                 f"{attack_name} p{phase_index} {sub_state_name}:{frame_counter} hits:{target_count}"
             )
-        flags: list[str] = []
-        stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
-        if stagger > 0:
-            flags.append(f"STAG {stagger:.2f}")
-        reaction_flag = WorldUI._reaction_flag(sprite)
-        if reaction_flag is not None:
-            flags.append(reaction_flag)
-        otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
-        if otg > 0:
-            flags.append(f"OTG {otg:.2f}")
-        gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
-        if gravity_scale != 1.0:
-            flags.append(f"JGx{gravity_scale:.2f}")
-        surface = getattr(sprite, "on_surface", None)
-        if isinstance(surface, dict) and not surface.get("floor"):
-            flags.append("AIR")
-        ledge_probe = getattr(sprite, "is_at_ledge", None)
-        if callable(ledge_probe) and ledge_probe():
-            flags.append("LEDGE")
+        flags = WorldUI._status_flag_strings(sprite)
         if flags:
             detail.append(" ".join(flags))
         return [head, *detail]
@@ -312,45 +476,134 @@ class WorldUI:
         player_first = 0 if WorldUI._faction(sprite) == "player" else 1
         return (player_first, float(anchor.top), float(anchor.left))
 
+    @staticmethod
+    def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
+        """Whether ``draw_health_bars`` will draw a bar for this sprite."""
+        if getattr(sprite, "is_dead", False):
+            return False
+        if not getattr(sprite, "max_health", 0):
+            return False
+        return (
+            getattr(sprite, "hitbox", None) is not None or getattr(sprite, "rect", None) is not None
+        )
+
+    def _health_bar_rect(
+        self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect
+    ) -> pygame.Rect | None:
+        """Responsive health bar rect: width follows the sprite, clamped.
+
+        The bar sits ``HEALTH_BAR_ANCHOR_GAP`` above the entity; near the
+        top of the screen (no room above) it flips below the entity so it
+        stays visible instead of clipping. Returns ``None`` for sprites
+        without a bar (dead, no ``max_health``, statics).
+        """
+        if not self._has_health_bar(sprite):
+            return None
+        screen_width = self.display_surface.get_width()
+        screen_height = self.display_surface.get_height()
+        bar_width = max(30, min(float(screen_rect.width) * 0.8, 60))
+        bar_x = screen_rect.centerx - bar_width / 2
+        bar_x = min(max(bar_x, 0), max(0, screen_width - bar_width))
+        bar_y = float(screen_rect.top) - HEALTH_BAR_ANCHOR_GAP - HEALTH_BAR_HEIGHT
+        if bar_y < 0:
+            bar_y = float(screen_rect.bottom) + HEALTH_BAR_ANCHOR_GAP
+            if bar_y + HEALTH_BAR_HEIGHT > screen_height:
+                return None
+        return pygame.Rect(int(bar_x), int(bar_y), int(bar_width), HEALTH_BAR_HEIGHT)
+
+    def _label_clearances(
+        self, sprite: pygame.sprite.Sprite, anchor: pygame.Rect | pygame.FRect
+    ) -> tuple[int, int]:
+        """Vertical room the label card must leave for the health bar.
+
+        Returns ``(above_lift, below_drop)``: when the bar sits above the
+        entity the card's default slot moves up by bar + gap; when the bar
+        flipped below (top of screen) the below-slots move down instead.
+        ``(0, 0)`` when no bar is drawn.
+        """
+        bar = self._health_bar_rect(sprite, anchor)
+        if bar is None:
+            return (0, 0)
+        # The padded card sticks out LABEL_PAD_Y below its content box, so
+        # the lift reserves bar + gap + padding: backgrounds touch neither
+        # the bar nor each other.
+        clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
+        if bar.bottom <= anchor.top:
+            return (clearance, 0)
+        return (0, clearance)
+
     def _draw_labels(
         self,
-        requests: list[tuple[int, float, float, list[str], Color, pygame.FRect]],
+        requests: list[_LabelRequest],
         screen_width: int,
     ) -> None:
         """Draw collected labels, each dodging the ones already placed."""
         screen_height = self.display_surface.get_height()
         placed: list[pygame.Rect] = []
-        for _, _, _, lines, color, anchor in requests:
-            rect = self._place_label(lines, color, anchor, placed, screen_width, screen_height)
+        for _priority, segments, color, anchor, above_lift, below_drop in requests:
+            rect = self._place_label(
+                segments,
+                color,
+                anchor,
+                placed,
+                screen_width,
+                screen_height,
+                above_lift=above_lift,
+                below_drop=below_drop,
+            )
             if rect is not None:
                 placed.append(rect)
 
     def _place_label(
         self,
-        lines: list[str],
+        segments: _Segments,
         color: Color,
         anchor: pygame.Rect | pygame.FRect,
         placed: list[pygame.Rect],
         screen_width: int,
         screen_height: int,
+        above_lift: int = 0,
+        below_drop: int = 0,
     ) -> pygame.Rect | None:
-        """Render a label in the first free slot near its entity.
+        """Render a label card in the first free slot near its entity.
 
-        Slots run above the entity (nudging upward), then below it (nudging
-        downward). Returns the padded rect the label occupies, or ``None``
-        when every slot is taken or off-screen — a dropped label beats an
-        unreadable stack.
+        The header row uses the compact bold world font; detail rows use the
+        compact regular world font. Slots run above the entity (nudging
+        upward), then below it (nudging downward). ``above_lift`` reserves
+        the health bar stacked between the entity and the card; ``below_drop``
+        does the same when the bar flipped under the entity. Returns the
+        padded rect the card occupies, or ``None`` when every slot is taken
+        or off-screen — a dropped label beats an unreadable stack.
         """
-        font = self.renderer.label_font
-        rendered = [self.renderer.render_text(line, font, color) for line in lines]
-        width = max(surface.get_width() for surface in rendered)
-        height = sum(surface.get_height() for surface in rendered) + 4 * (len(rendered) - 1)
+        title_font = self.renderer.world_title_font
+        body_font = self.renderer.world_label_font
+        header = [self.renderer.render_text(text, title_font, tint) for text, tint in segments[0]]
+        rows = [
+            [self.renderer.render_text(text, body_font, tint) for text, tint in line]
+            for line in segments[1:]
+        ]
+        row_height = max(
+            [s.get_height() for s in header] + [s.get_height() for r in rows for s in r]
+        )
+        width = max(
+            [sum(s.get_width() for s in header)] + [sum(s.get_width() for s in r) for r in rows]
+        )
+        divider_block = LABEL_DIVIDER_TOP + 1 + LABEL_DIVIDER_BOTTOM
+        height = (
+            row_height * (len(rows) + 1) + LABEL_LINE_GAP * len(rows) + divider_block
+            if rows
+            else row_height
+        )
         base = pygame.Rect(0, 0, width, height)
-        base.midbottom = (anchor.centerx, anchor.top - 8)
-        for label_rect in self._candidate_slots(base, anchor, screen_width, screen_height):
-            background_rect = label_rect.inflate(12, 6)
+        base.midbottom = (anchor.centerx, anchor.top - LABEL_ANCHOR_GAP - above_lift)
+        for label_rect in self._candidate_slots(
+            base, anchor, screen_width, screen_height, below_drop=below_drop
+        ):
+            background_rect = label_rect.inflate(LABEL_PAD_X * 2, LABEL_PAD_Y * 2)
             if all(not background_rect.colliderect(other) for other in placed):
-                self._blit_label(rendered, label_rect, background_rect)
+                self._blit_label(
+                    header, rows, row_height, color, label_rect, background_rect, screen_width
+                )
                 return background_rect
         return None
 
@@ -360,10 +613,11 @@ class WorldUI:
         anchor: pygame.Rect | pygame.FRect,
         screen_width: int,
         screen_height: int,
+        below_drop: int = 0,
     ) -> list[pygame.Rect]:
         """Slots to try, best first: above the entity, then below it."""
         below = base.copy()
-        below.midtop = (anchor.centerx, anchor.bottom + 8)
+        below.midtop = (anchor.centerx, anchor.bottom + LABEL_ANCHOR_GAP + below_drop)
         slots = [base]
         slots.extend(
             base.move(0, -LABEL_NUDGE_PX * step) for step in range(1, LABEL_MAX_NUDGES + 1)
@@ -374,9 +628,9 @@ class WorldUI:
         )
         kept: list[pygame.Rect] = []
         for slot in slots:
-            # The padded panel sticks out 3 px on every side: keep slots whose
-            # *panel* stays fully on-screen.
-            if slot.top - 3 < 0 or slot.bottom + 3 > screen_height:
+            # The padded card sticks out LABEL_PAD_Y px on every side: keep slots
+            # whose *card* stays fully on-screen.
+            if slot.top - LABEL_PAD_Y < 0 or slot.bottom + LABEL_PAD_Y > screen_height:
                 continue  # off-screen: not a real option
             slot.left = max(0, slot.left)
             slot.right = min(screen_width, slot.right)
@@ -385,24 +639,58 @@ class WorldUI:
 
     def _blit_label(
         self,
-        rendered: list[pygame.Surface],
+        header: list[pygame.Surface],
+        rows: list[list[pygame.Surface]],
+        row_height: int,
+        accent: Color,
         label_rect: pygame.Rect,
         background_rect: pygame.Rect,
+        screen_width: int,
     ) -> None:
-        """Blit the padded panel and the text lines at a resolved position."""
+        """Blit the card: panel, top faction edge, bold header, divider, rows."""
         panel = pygame.Surface(background_rect.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, (18, 20, 24, 210), panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
         self.display_surface.blit(panel, background_rect.topleft)
+        # Top accent edge in the entity's faction color: a 2 px rule just
+        # inside the top border, spanning the card width. It marks the
+        # faction at a glance without cutting through the card and its
+        # divider the way a full-height side stripe did.
+        accent_edge = pygame.Rect(
+            background_rect.left + 1,
+            background_rect.top + 1,
+            background_rect.width - 2,
+            2,
+        )
+        self.display_surface.fill(accent, accent_edge)
+        # Header row (bold).
+        cursor_x = label_rect.left
         cursor_y = label_rect.top
-        for surface in rendered:
-            self.display_surface.blit(surface, (label_rect.left, cursor_y))
-            cursor_y += surface.get_height() + 4
+        for surface in header:
+            self.display_surface.blit(surface, (cursor_x, cursor_y))
+            cursor_x += surface.get_width()
+        cursor_y += row_height + LABEL_DIVIDER_TOP
+        # Divider rule, inset by the card padding.
+        rule_left = max(background_rect.left + LABEL_PAD_X, 0)
+        rule_right = min(background_rect.right - LABEL_PAD_X, screen_width)
+        if rule_right > rule_left:
+            pygame.draw.line(
+                self.display_surface,
+                PANEL_BORDER,
+                (rule_left, cursor_y),
+                (rule_right, cursor_y),
+                1,
+            )
+        cursor_y += 1 + LABEL_DIVIDER_BOTTOM
+        for line in rows:
+            cursor_x = label_rect.left
+            for surface in line:
+                self.display_surface.blit(surface, (cursor_x, cursor_y))
+                cursor_x += surface.get_width()
+            cursor_y += row_height + LABEL_LINE_GAP
 
     def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite], camera: Camera) -> None:
         for entity in entities:
-            if getattr(entity, "is_dead", False):
-                continue
             max_health = getattr(entity, "max_health", 0)
             if not max_health:
                 continue
@@ -413,18 +701,13 @@ class WorldUI:
                 continue
 
             screen_rect = camera.apply(rect)
-            bar_width = max(30, min(screen_rect.width * 0.8, 60))
-            bar_height = 6
-            bar_x = screen_rect.centerx - bar_width / 2
-            base_offset = 8
-            if Debug.is_enabled():
-                base_offset += self.renderer.label_font.get_height() + 4
-            bar_y = screen_rect.top - base_offset - bar_height
-            background_rect = (bar_x, bar_y, bar_width, bar_height)
+            background_rect = self._health_bar_rect(entity, screen_rect)
+            if background_rect is None:
+                continue
 
             pygame.draw.rect(self.display_surface, (35, 37, 40), background_rect)
             health_ratio = max(0.0, min(1.0, health / max_health))
-            health_width = bar_width * health_ratio
+            health_width = background_rect.width * health_ratio
             color = (
                 TEXT_OK if health_ratio > 0.5 else TEXT_WARN if health_ratio > 0.25 else TEXT_CRIT
             )
@@ -432,6 +715,6 @@ class WorldUI:
                 pygame.draw.rect(
                     self.display_surface,
                     color,
-                    (bar_x, bar_y, health_width, bar_height),
+                    (background_rect.x, background_rect.y, health_width, background_rect.height),
                 )
             pygame.draw.rect(self.display_surface, PANEL_BORDER, background_rect, width=1)

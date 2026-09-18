@@ -55,6 +55,12 @@ class PanelRenderer:
         self.debug_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE)
         self.title_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE, bold=True)
         self.label_font = pygame.font.SysFont("Consolas", Debug.LABEL_FONT_SIZE)
+        # World-space entity cards: compact fonts so the floating labels
+        # stay readable without covering the sprites they describe.
+        self.world_title_font = pygame.font.SysFont(
+            "Consolas", Debug.WORLD_TITLE_FONT_SIZE, bold=True
+        )
+        self.world_label_font = pygame.font.SysFont("Consolas", Debug.WORLD_LABEL_FONT_SIZE)
 
         self._text_cache: dict[tuple, pygame.Surface] = {}
 
