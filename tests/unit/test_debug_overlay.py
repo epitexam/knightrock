@@ -11,7 +11,7 @@ from src.core.colors import Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.ui_manager import UIManager
-from src.ui.world_ui import WorldUI
+from src.ui.world_ui import LABEL_NUDGE_PX, WorldUI
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -238,6 +238,103 @@ def test_entity_without_reaction_has_no_rx_flag(world_ui: WorldUI) -> None:
     lines = world_ui._label_lines(_entity())
     assert lines is not None
     assert all("RX" not in line for line in lines)
+
+
+def _crowd(count: int) -> list[SimpleNamespace]:
+    """Stacked enemies sharing one anchor spot (distinct healths for unique text)."""
+    return [_entity(faction="enemy", health=100.0 + i, max_health=200.0) for i in range(count)]
+
+
+def _place_crowd(
+    monkeypatch: pytest.MonkeyPatch,
+    world_ui: WorldUI,
+    sprites: list[SimpleNamespace],
+    camera: Camera,
+) -> list[pygame.Rect]:
+    """Draw the crowd and return the padded rects of every label actually placed."""
+    placed: list[pygame.Rect] = []
+    original = WorldUI._blit_label
+
+    def spy(
+        self: WorldUI,
+        rendered: list[pygame.Surface],
+        label_rect: pygame.Rect,
+        background_rect: pygame.Rect,
+    ) -> None:
+        placed.append(pygame.Rect(background_rect))
+        original(self, rendered, label_rect, background_rect)
+
+    monkeypatch.setattr(WorldUI, "_blit_label", spy)
+    world_ui.draw_debug_overlays(sprites, camera)
+    return placed
+
+
+def test_overlapping_entities_get_non_overlapping_labels(
+    monkeypatch: pytest.MonkeyPatch, world_ui: WorldUI, camera: Camera
+) -> None:
+    """Two entities at the same spot: the second label dodges instead of stacking."""
+    placed = _place_crowd(monkeypatch, world_ui, _crowd(2), camera)
+
+    assert len(placed) == 2
+    first, second = sorted(placed, key=lambda rect: rect.top)
+    assert not first.colliderect(second)
+    assert second.top - first.bottom >= -1
+
+
+def test_label_cascade_walks_upward_until_a_slot_is_free(
+    monkeypatch: pytest.MonkeyPatch, world_ui: WorldUI, camera: Camera
+) -> None:
+    """Stacked entities: labels line up as a column, no two panels overlap."""
+    crowd = _crowd(4)
+    placed = _place_crowd(monkeypatch, world_ui, [crowd[2], crowd[1], crowd[3], crowd[0]], camera)
+
+    assert len(placed) == 4
+    ordered = sorted(placed, key=lambda rect: rect.top)
+    assert all(not ordered[i].colliderect(ordered[i + 1]) for i in range(3))
+    span = ordered[-1].top - ordered[0].top
+    assert span >= 3 * LABEL_NUDGE_PX
+
+
+def test_player_label_wins_the_default_slot(
+    monkeypatch: pytest.MonkeyPatch, world_ui: WorldUI, camera: Camera
+) -> None:
+    """The player is placed first: its label hugs its entity, the enemy dodges up."""
+    player = _entity(faction="player", health=100.0, max_health=100.0)
+    enemy = _entity(faction="enemy", health=90.0, max_health=100.0)
+    placed = _place_crowd(monkeypatch, world_ui, [enemy, player], camera)
+
+    assert len(placed) == 2
+    ordered = sorted(placed, key=lambda rect: rect.top)
+    anchor_top = float(camera.apply(pygame.FRect(100, 100, 40, 48)).top)
+    # The lowest panel hugs the entity's top edge: that is the player's label.
+    assert abs(ordered[-1].bottom - (anchor_top - 5)) <= 3
+    # The enemy label dodged a full step above, leaving a visible gap.
+    assert ordered[-1].top - ordered[0].bottom >= 4
+
+
+def test_labels_beyond_all_slots_are_dropped(
+    monkeypatch: pytest.MonkeyPatch, world_ui: WorldUI, camera: Camera
+) -> None:
+    """More labels than dodge room: extras vanish instead of overdrawing."""
+    placed = _place_crowd(monkeypatch, world_ui, _crowd(12), camera)
+
+    # Deterministic slot budget at the default anchor: 3 upward slots before
+    # the screen edge, then 7 below the entity — exactly 10 panels, all apart.
+    assert len(placed) == 10
+    assert all(not placed[i].colliderect(placed[j]) for i in range(10) for j in range(i + 1, 10))
+
+
+def test_single_label_panel_is_visible_at_the_expected_color(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """Visual pin: the panel fill (18,20,24 @ alpha 210) reads (14,16,19) on black."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays(_crowd(1), camera)
+
+    anchor = camera.apply(pygame.FRect(100, 100, 40, 48))
+    probe_y = anchor.top - 18  # inside the single-line panel above the entity
+    assert surface.get_at((95, probe_y))[:3] == (14, 16, 19)
 
 
 def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:

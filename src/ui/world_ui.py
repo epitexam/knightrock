@@ -8,6 +8,8 @@ UX rules (debug readability pass):
   line only while attacking or while a status flag (stagger/OTG/juggle/air)
   is active. Static geometry (hazards, platforms, exits) gets an outline
   only — no text.
+- Labels never stack: each label dodges upward (then below its entity) to a
+  free slot, and is dropped rather than overdrawn when no slot is left.
 - Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
   F4 statics) via :meth:`WorldUI.toggle`, wired in ``GameplayScene``.
 """
@@ -31,6 +33,14 @@ VELOCITY_MIN_SPEED = 60.0
 
 #: World margin around the viewport: sprites grazing the edge still draw.
 CULL_MARGIN_PX = 64.0
+
+#: Vertical step a label takes when dodging another label (px). A one-line
+#: panel is 22 px tall (16 px font + padding): one step leaves a >= 6 px gap.
+LABEL_NUDGE_PX = 28
+
+#: How many dodge steps a label may take above (then below) its entity
+#: before being dropped: ~2 label heights of travel is plenty readable.
+LABEL_MAX_NUDGES = 6
 
 #: Toggleable overlay layers (F1-F5).
 OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics", "panels")
@@ -57,6 +67,9 @@ class WorldUI:
         viewport = self._viewport(camera)
         screen_width = self.display_surface.get_width()
 
+        # Labels are collected first and drawn after the loop so they can
+        # dodge each other instead of stacking on shared screen space.
+        requests: list[tuple[int, float, float, list[str], Color, pygame.FRect]] = []
         for sprite in all_sprites:
             if type(sprite) is pygame.sprite.Sprite:
                 continue  # static tiles: ~900/level, nothing useful to show
@@ -73,8 +86,15 @@ class WorldUI:
             if not self.layers["labels"] or is_static:
                 continue
             lines = self._label_lines(sprite)
-            if lines:
-                self._draw_label(lines, self._label_color(sprite), sprite, camera, screen_width)
+            if not lines:
+                continue
+            anchor = camera.apply(reference)
+            priority = self._label_priority(sprite, anchor)
+            requests.append((*priority, lines, self._label_color(sprite), anchor))
+
+        if requests:
+            requests.sort(key=lambda request: request[:3])
+            self._draw_labels(requests, screen_width)
 
     @staticmethod
     def _viewport(camera: Camera) -> pygame.Rect:
@@ -284,30 +304,92 @@ class WorldUI:
         faction = getattr(sprite, "faction", "?")
         return f"{type(sprite).__name__} {faction} {vel} {life:.1f}s {pierce} hits:{hits}"
 
-    def _draw_label(
+    @staticmethod
+    def _label_priority(
+        sprite: pygame.sprite.Sprite, anchor: pygame.Rect | pygame.FRect
+    ) -> tuple[int, float, float]:
+        """Placement order: the player reads first, then top-to-bottom."""
+        player_first = 0 if WorldUI._faction(sprite) == "player" else 1
+        return (player_first, float(anchor.top), float(anchor.left))
+
+    def _draw_labels(
+        self,
+        requests: list[tuple[int, float, float, list[str], Color, pygame.FRect]],
+        screen_width: int,
+    ) -> None:
+        """Draw collected labels, each dodging the ones already placed."""
+        screen_height = self.display_surface.get_height()
+        placed: list[pygame.Rect] = []
+        for _, _, _, lines, color, anchor in requests:
+            rect = self._place_label(lines, color, anchor, placed, screen_width, screen_height)
+            if rect is not None:
+                placed.append(rect)
+
+    def _place_label(
         self,
         lines: list[str],
         color: Color,
-        sprite: pygame.sprite.Sprite,
-        camera: Camera,
+        anchor: pygame.Rect | pygame.FRect,
+        placed: list[pygame.Rect],
         screen_width: int,
-    ) -> None:
+        screen_height: int,
+    ) -> pygame.Rect | None:
+        """Render a label in the first free slot near its entity.
+
+        Slots run above the entity (nudging upward), then below it (nudging
+        downward). Returns the padded rect the label occupies, or ``None``
+        when every slot is taken or off-screen — a dropped label beats an
+        unreadable stack.
+        """
         font = self.renderer.label_font
         rendered = [self.renderer.render_text(line, font, color) for line in lines]
-        reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
-        if reference is None:
-            return
-
-        screen_rect = camera.apply(reference)
         width = max(surface.get_width() for surface in rendered)
         height = sum(surface.get_height() for surface in rendered) + 4 * (len(rendered) - 1)
-        label_rect = pygame.Rect(0, 0, width, height)
-        label_rect.midbottom = (screen_rect.centerx, screen_rect.top - 8)
-        label_rect.left = max(0, label_rect.left)
-        label_rect.right = min(screen_width, label_rect.right)
-        label_rect.top = max(0, label_rect.top)
+        base = pygame.Rect(0, 0, width, height)
+        base.midbottom = (anchor.centerx, anchor.top - 8)
+        for label_rect in self._candidate_slots(base, anchor, screen_width, screen_height):
+            background_rect = label_rect.inflate(12, 6)
+            if all(not background_rect.colliderect(other) for other in placed):
+                self._blit_label(rendered, label_rect, background_rect)
+                return background_rect
+        return None
 
-        background_rect = label_rect.inflate(12, 6)
+    @staticmethod
+    def _candidate_slots(
+        base: pygame.Rect,
+        anchor: pygame.Rect | pygame.FRect,
+        screen_width: int,
+        screen_height: int,
+    ) -> list[pygame.Rect]:
+        """Slots to try, best first: above the entity, then below it."""
+        below = base.copy()
+        below.midtop = (anchor.centerx, anchor.bottom + 8)
+        slots = [base]
+        slots.extend(
+            base.move(0, -LABEL_NUDGE_PX * step) for step in range(1, LABEL_MAX_NUDGES + 1)
+        )
+        slots.append(below)
+        slots.extend(
+            below.move(0, LABEL_NUDGE_PX * step) for step in range(1, LABEL_MAX_NUDGES + 1)
+        )
+        kept: list[pygame.Rect] = []
+        for slot in slots:
+            # The padded panel sticks out 3 px on every side: keep slots whose
+            # *panel* stays fully on-screen.
+            if slot.top - 3 < 0 or slot.bottom + 3 > screen_height:
+                continue  # off-screen: not a real option
+            slot.left = max(0, slot.left)
+            slot.right = min(screen_width, slot.right)
+            kept.append(slot)
+        return kept
+
+    def _blit_label(
+        self,
+        rendered: list[pygame.Surface],
+        label_rect: pygame.Rect,
+        background_rect: pygame.Rect,
+    ) -> None:
+        """Blit the padded panel and the text lines at a resolved position."""
         panel = pygame.Surface(background_rect.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, (18, 20, 24, 210), panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
