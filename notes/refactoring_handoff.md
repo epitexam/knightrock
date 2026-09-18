@@ -5,8 +5,8 @@
 > nuances §1 expirées élaguées, §2 règle 5 durcie (goldens recapturés
 > deux fois depuis l'audit : en tenir le journal), RF-4 re-mesuré
 > (complexité 18 → 20 après le hot loop paresseux `629b835`), RF-6
-> re-mesuré (3/4 cibles encore valides, `_collect_candidates` passé de
-> 13 à ~11 après la suppression du slow-mo), RF-8 recalibré (CI :
+> re-mesuré (3/3 cibles toujours valides, `_collect_candidates` à 13
+> inchangé — `eb1f89e` n'a touché que le slow-mo hors `_collect_candidates`), RF-8 recalibré (CI :
 > 120 fichiers mypy propres, seuil coverage 50, 598 tests / 5 échecs
 > connus : 3 goldens + 2 enemy_jump). Le reste (RF-1/2/3/5/7 + fond de
 > RF-8) est toujours pertinent et inchangé.
@@ -37,7 +37,7 @@ Baseline historique de l'audit : 511 tests passants, 89 % de couverture des inst
 | RF-3 | Haute | RF-1 | Responsabilités des réactions clarifiées | À faire (inchangé ; `ReactionComponent` extrait mais `hasattr` §6 toujours présent) |
 | RF-4 | Moyenne | — | Collisions lisibles | À faire (re-mesuré : C901 = 20, helpers `629b835` déjà extraits) |
 | RF-5 | Moyenne | RF-1 | Résolution des coups simplifiée | À faire (inchangé, C901 = 13) |
-| RF-6 | Moyenne | RF-1 pour le combat | Autres fonctions complexes clarifiées | Partiel : `_collect_candidates` ≈ 11 (était 13), `SpawnSystem.process` = 12 et `_handle_attack_input` = 12 toujours valides |
+| RF-6 | Moyenne | RF-1 pour le combat | Autres fonctions complexes clarifiées | À faire (inchangé : `_collect_candidates` = 13, `SpawnSystem.process` = 12 et `_handle_attack_input` = 12 toujours valides) |
 | RF-7 | Moyenne | RF-1 à RF-3 | Dépendances et contrat rollback vérifiés | À faire (inchangé, `type: ignore[arg-type]` présent) |
 | RF-8 | Moyenne | Baseline puis autres lots | CI et typage renforcés | Partiel : 120 fichiers mypy propres mais `|| true` toujours là, seuil CI = 50 (pas 80) |
 
@@ -177,11 +177,11 @@ Séparer calculs purs et application des effets lorsque cela clarifie les règle
 **Validation :** tests RF-1 plus `tests/unit/test_combat_behaviors.py`. Ajouter des cas combinés et limites numériques avec pytest, sans dépendance supplémentaire. Réception : résultat identique, fonctions nommées par leur rôle métier, aucun sondage dynamique réintroduit.
 
 
-## 8. RF-6 — Trois autres points de complexité (re-mesuré 2026-09-17 : 3/4 cibles valides)
+## 8. RF-6 — Trois autres points de complexité (re-mesuré 2026-09-17 : 3/3 cibles valides)
 
-### CombatSystem._collect_candidates — C901 ≈ 11 (était 13 à l'audit)
+### CombatSystem._collect_candidates — C901 = 13 au 2026-09-17 (inchangé depuis l'audit)
 
-Fichier : `src/core/level/systems/combat_system.py` (allégé par `eb1f89e` : suppression du slow-mo — `slowmo_timer`, `slowmo_scale`, settings `SlowMo` — et de ses tests juice ; vérifier que le ≈ 11 mesuré vient bien de là avant de découper).
+Fichier : `src/core/level/systems/combat_system.py` (`eb1f89e` a supprimé le slow-mo — `slowmo_timer`, `slowmo_scale`, settings `SlowMo` — et ses tests juice, mais hors `_collect_candidates` : pas de baisse 13 → 11, à découper tel quel).
 
 Séparer filtres d'éligibilité et collecte géométrique sans changer les deux passes collecte/résolution. Préserver ordre déterministe, factions, auto-exclusion, plusieurs hitbox, déduplication des cibles et suivi par phase. Vérifier métriques et collisions simultanées ; conserver les recherches locales via EntityGrid.
 
@@ -259,7 +259,7 @@ uv run pytest tests --cov=src --cov-branch --cov-report=term-missing
 uv run ruff check src --select C901
 ```
 
-C901 est diagnostique tant que les écarts ci-dessus ne sont pas traités (2026-09-17 : 5 fonctions — `resolve` 13, `_collect_candidates` ≈ 11, `SpawnSystem.process` 12, `_handle_attack_input` 12, `resolve_collisions` 20). Pour chaque lot, exécuter aussi pytest sur les fichiers de tests indiqués dans sa section. Utiliser les fixtures headless existantes ; ne pas assimiler une erreur de dépendance ou d'affichage à une régression métier.
+C901 est diagnostique tant que les écarts ci-dessus ne sont pas traités (2026-09-17 : 5 fonctions — `resolve` 13, `_collect_candidates` 13, `SpawnSystem.process` 12, `_handle_attack_input` 12, `resolve_collisions` 20). Pour chaque lot, exécuter aussi pytest sur les fichiers de tests indiqués dans sa section. Utiliser les fixtures headless existantes ; ne pas assimiler une erreur de dépendance ou d'affichage à une régression métier.
 
 ## 12. Réception globale et transmission
 
