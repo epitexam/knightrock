@@ -406,18 +406,20 @@ def test_jumper_risks_a_deep_drop_onto_the_far_side() -> None:
 
 
 def test_jump_range_follows_the_ballistics() -> None:
+    # Closed form with Physics.GRAVITY = 1500 (fix "correct gravity value"):
+    # apex = 600^2 / (2*1500) = 120, air = 600/1500 + sqrt(2*120/2800).
     enemy = _chasing_enemy(can_jump=True)
 
-    assert enemy.jump_range() == pytest.approx(66.4, abs=0.5)
-    assert enemy.jump_apex() == pytest.approx(90.0, abs=0.5)
+    assert enemy.jump_range() == pytest.approx(83.1, abs=0.5)
+    assert enemy.jump_apex() == pytest.approx(120.0, abs=0.5)
 
 
 def test_jump_range_counts_the_sprint_boost() -> None:
     enemy = _chasing_enemy(can_jump=True)
     enemy.leap_speed_mult = 1.6
 
-    assert enemy.jump_range() == pytest.approx(106.3, abs=0.5)
-    assert enemy.leap_air_time() == pytest.approx(0.55, abs=0.02)
+    assert enemy.jump_range() == pytest.approx(133.0, abs=0.5)
+    assert enemy.leap_air_time() == pytest.approx(0.69, abs=0.02)
 
 
 def _gap_world(gap: float = 40.0):

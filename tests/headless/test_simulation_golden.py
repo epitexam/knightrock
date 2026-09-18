@@ -189,9 +189,14 @@ def build_respawn_level() -> Level:
 # "feat(physics-gravity): apex hang and fast fall"): GameFeel
 # APEX_GRAVITY_DIVISOR 2.0 around |vy| < 120 px/s, and the new down
 # action (InputState.down_held, KB_DOWN) multiplying fall gravity x1.5.
-PHYSICS_DIGEST = "79a9ff26167a9f82194d52ad66c1437e6ee49ac2035bf6105d8bcc8f3c2300ae"
-RIDE_DIGEST = "3205fca59d654f936af6cf99c6a51e7cb5546cd2376e82e17f6123e879a07c50"
-RESPAWN_DIGEST = "dcedaf8302bf08ee64052dffa24730d5f5512ccd474ac655eeabe01eea91a2ae"
+# Re-captured again for the gravity correction (commit "fix(physics):
+# correct gravity value to improve gameplay balance"): Physics.GRAVITY
+# 2000 -> 1500, which moves vy from tick 1 in every scenario. Proven the
+# sole cause: reverting only GRAVITY reproduces the three digests above
+# bit-identically, so no other pipeline change drifted these observables.
+PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
+RIDE_DIGEST = "c9671a0de78ddc89437b4ace4593797056fe259e5a8e43730d14f92d961aaf06"
+RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 
 @requires_assets
