@@ -168,14 +168,20 @@ class SpyCombat:
 
     hit_interrupts: list[bool] = field(default_factory=list)
     is_hurt: bool = False
+    hurt_timer: float = 0.0
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
-        del duration
         self.hit_interrupts.append(interrupt)
         self.is_hurt = interrupt
+        if interrupt:
+            self.hurt_timer = duration if duration is not None else 0.25
+
+    def reset_hurt_state(self) -> None:
+        self.is_hurt = False
+        self.hurt_timer = 0.0
 
     def reset(self) -> None:
-        self.is_hurt = False
+        self.reset_hurt_state()
 
 
 @dataclass
