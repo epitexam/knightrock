@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "player": {
+    "attack_set": "player",
+    "color": [
+      255,
+      120,
+      200
+    ],
+    "max_wall_jumps": "inf"
+  }
+}

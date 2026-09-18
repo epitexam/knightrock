@@ -1,10 +1,65 @@
 [project]
 name = "knightrock"
 version = "0.1.0"
-description = "Add your description here"
+description = "A 2D Hack 'n' Slash platformer developed in Python with pygame-ce."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "pygame-ce>=2.5.7",
     "pytmx>=3.32",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "C901", "SIM", "N"]
+ignore = [
+    "E501",
+    # (str, Enum) is the codebase convention for state names
+    # (PlayerState, EnemyState): drop-in compatible with StateMachine keys.
+    "UP042",
+    # Generic[T] subclass keeps the Registry compatible on 3.14 + mypy.
+    "UP046",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+disallow_untyped_defs = true
+# Remaining typing debt, measured 2026-09-18: `src.combat`, `src.entities`
+# and `src.states` are strict-clean and out of the overrides below.
+# mypy is blocking in CI (`uv run mypy src`).
+
+[[tool.mypy.overrides]]
+module = [
+    "src.core.level.*",
+    "src.core.rendering.*",
+    "src.core.sprites",
+    "src.core.hazards",
+    "src.ui.*",
+    "src.physics.*",
+]
+disallow_untyped_defs = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.14.0",
+    "mypy>=1.18.0",
 ]

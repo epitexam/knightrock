@@ -1,0 +1,319 @@
+"""Behavioral tests for hitbox timing, geometry, lifecycle, and trades."""
+
+import pytest
+from pygame.sprite import Group
+
+from src.combat.attack_state import AttackStateMachine
+from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.gameplay_loop import GameplayLoop
+from tests.unit.helpers import activate, entity_at
+from tests.unit.helpers import make_attack as attack
+from tests.unit.helpers import make_phase as phase
+
+
+def test_attack_state_never_skips_an_active_window_on_large_delta() -> None:
+    machine = AttackStateMachine({"test": attack(phase(active=1))})
+    assert machine.start("test")
+
+    machine.update(0.2)
+
+    assert machine.is_active
+    assert machine.frame_counter == 0
+
+
+def test_hitbox_tracks_facing_and_reuses_its_rectangle() -> None:
+    owner = entity_at(
+        100.0,
+        definition=attack(
+            phase(offset=(25.0, -5.0)),
+            lock_direction=False,
+        ),
+    )
+    activate(owner)
+    first_rect = owner.combat.attack_box
+    assert first_rect is not None
+    assert first_rect.center == (
+        owner.hitbox.centerx + 25.0,
+        owner.hitbox.centery - 5.0,
+    )
+
+    owner.hitbox.x += 10.0
+    owner.facing_right = False
+    owner.combat.sync_attack_box()
+
+    assert owner.combat.attack_box is first_rect
+    assert first_rect.center == (
+        owner.hitbox.centerx - 25.0,
+        owner.hitbox.centery - 5.0,
+    )
+
+
+def test_entity_update_syncs_attack_box_after_movement() -> None:
+    owner = entity_at(0.0, definition=attack(phase(offset=(20.0, 0.0))))
+    owner.velocity.x = 600.0
+    assert owner.combat.start_attack("test")
+
+    owner.update(1 / 60)
+
+    assert owner.combat.attack_box is not None
+    assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
+
+
+def test_attack_box_is_resynchronized_after_entity_separation() -> None:
+    definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
+    attacker = entity_at(0.0, faction="same", definition=definition)
+    other = entity_at(10.0, faction="same")
+    activate(attacker)
+    initial_center = attacker.combat.attack_box.center
+    loop = GameplayLoop.combat_only()
+
+    loop.process_combat_and_separation(
+        1 / 60,
+        Group(attacker, other),
+        Group(attacker, other),
+    )
+
+    assert attacker.hitbox.center != initial_center
+    assert attacker.combat.attack_box.center == attacker.hitbox.center
+
+
+def test_simultaneous_attacks_trade_independently_of_resolution_order() -> None:
+    definition = attack(phase(size=(60.0, 40.0), offset=(0.0, 0.0)))
+    left = entity_at(0.0, faction="left", definition=definition)
+    right = entity_at(10.0, faction="right", definition=definition)
+    activate(left)
+    activate(right)
+
+    CombatSystem().process_attacks([left, right])
+
+    assert left.health == 90.0
+    assert right.health == 90.0
+
+
+def test_combat_system_materializes_generators_once() -> None:
+    definition = attack(phase(size=(60.0, 40.0), offset=(0.0, 0.0)))
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    target = entity_at(10.0, faction="target")
+    activate(attacker)
+    system = CombatSystem()
+
+    system.process_attacks(entity for entity in (attacker, target))
+
+    assert target.health == 90.0
+    assert system.metrics.pairs_tested == 1
+    assert system.metrics.overlaps == 1
+    assert system.metrics.contacts == 1
+
+
+def test_rollback_restore_synchronizes_derived_attack_geometry() -> None:
+    owner = entity_at(0.0, definition=attack(phase()))
+    activate(owner)
+    snapshot = owner.combat.save_state()
+    owner.combat.reset()
+    assert owner.combat.attack_box is None
+
+    owner.hitbox.x = 50.0
+    owner.combat.load_state(snapshot)
+
+    assert owner.combat.attack_box is not None
+    assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
+
+
+def test_death_clears_active_offensive_state() -> None:
+    owner = entity_at(0.0, definition=attack(phase()))
+    activate(owner)
+
+    owner.die()
+
+    assert owner.is_dead
+    assert owner.combat.attack_box is None
+    assert not owner.combat.is_attacking
+
+
+def test_hurtbox_is_distinct_and_synchronized_with_collider() -> None:
+    owner = entity_at(0.0, hurtbox_inflate=(-8.0, -4.0))
+    assert owner.hurtbox is not owner.hitbox
+    assert owner.hurtbox.size == (32.0, 36.0)
+
+    owner.hitbox.center = (120.0, 80.0)
+    owner.sync_rects()
+
+    assert owner.hurtbox.center == owner.hitbox.center
+
+
+@pytest.mark.parametrize(
+    ("reset_targets", "expected_contact"),
+    [(False, True), (True, False)],
+)
+def test_phase_policy_controls_repeat_contacts(reset_targets: bool, expected_contact: bool) -> None:
+    machine = AttackStateMachine(
+        {
+            "test": attack(
+                phase(active=1),
+                phase(active=1, reset_targets=reset_targets),
+            )
+        }
+    )
+    assert machine.start("test")
+    machine.update(1 / 60)
+    machine.targets_hit.add("target")
+    machine.update(1 / 60)
+    machine.update(1 / 60)
+
+    assert ("target" in machine.targets_hit) is expected_contact
+
+
+def test_extra_box_hits_target_outside_primary_reach() -> None:
+    definition = attack(
+        phase(
+            size=(20.0, 20.0),
+            offset=(20.0, 0.0),
+            extra=[((20.0, 20.0), (-30.0, 0.0))],
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    # Only the rear extra box overlaps this target: the primary box misses.
+    target = entity_at(-30.0, faction="target")
+    activate(attacker)
+
+    assert len(attacker.combat.attack_boxes) == 2
+    assert attacker.combat.attack_boxes[0] is attacker.combat.attack_box
+
+    CombatSystem().process_attacks([attacker, target])
+
+    assert target.health == 90.0
+    assert target.id in attacker.combat.targets_hit
+
+
+def test_single_box_attack_exposes_only_the_primary_box() -> None:
+    owner = entity_at(0.0, definition=attack(phase()))
+    activate(owner)
+
+    assert owner.combat.attack_boxes == (owner.combat.attack_box,)
+
+
+def test_animated_box_interpolates_along_startup_curve() -> None:
+    owner = entity_at(
+        0.0,
+        definition=attack(
+            phase(
+                startup=4,
+                active=4,
+                offset=(10.0, 0.0),
+                keyframes=(
+                    (0, (20.0, 20.0), (10.0, 0.0)),
+                    (4, (40.0, 20.0), (30.0, 0.0)),
+                ),
+            )
+        ),
+    )
+    assert owner.combat.start_attack("test")
+    # One attack frame per tick by design: a single update advances the
+    # machine by one frame, landing mid-curve (frame 1 of 0->4).
+    owner.combat.update(1 / 60)
+    owner.combat.sync_attack_box()
+
+    box = owner.combat.attack_box
+    assert box is not None
+    assert box.size == (25.0, 20.0)
+    assert box.centerx == owner.hitbox.centerx + 15.0
+
+
+def test_animated_box_holds_last_keyframe_through_active() -> None:
+    owner = entity_at(
+        0.0,
+        definition=attack(
+            phase(
+                startup=2,
+                active=4,
+                offset=(10.0, 0.0),
+                keyframes=((0, (20.0, 20.0), (10.0, 0.0)),),
+            )
+        ),
+    )
+    activate(owner)  # startup done, first active frame
+    owner.combat.update(1 / 60)
+    owner.combat.sync_attack_box()
+
+    box = owner.combat.attack_box
+    assert box is not None
+    assert box.size == (20.0, 20.0)
+    assert box.centerx == owner.hitbox.centerx + 10.0
+
+
+def test_animated_hit_connects_only_when_curve_reaches_target() -> None:
+    definition = attack(
+        phase(
+            startup=4,
+            active=4,
+            size=(10.0, 10.0),
+            offset=(10.0, 0.0),
+            keyframes=(
+                (0, (10.0, 10.0), (10.0, 0.0)),
+                (4, (10.0, 10.0), (60.0, 0.0)),
+            ),
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    target = entity_at(60.0, faction="target")
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+
+    early_box = attacker.combat.attack_box
+    assert early_box is not None
+    assert not early_box.colliderect(target.hurtbox)
+
+    for _ in range(3):
+        attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+
+    late_box = attacker.combat.attack_box
+    assert late_box is not None
+    assert late_box.colliderect(target.hurtbox)
+
+    CombatSystem().process_attacks([attacker, target])
+    assert target.health == 90.0
+
+
+def test_disjoint_boxes_share_one_contact_per_target() -> None:
+    definition = attack(
+        phase(
+            size=(20.0, 20.0),
+            offset=(0.0, 0.0),
+            extra=[((20.0, 20.0), (0.0, 0.0))],
+        )
+    )
+    attacker = entity_at(0.0, faction="attacker", definition=definition)
+    target = entity_at(0.0, faction="target")
+    activate(attacker)
+    system = CombatSystem()
+
+    system.process_attacks([attacker, target])
+
+    # Both boxes overlap, but the per-phase `targets_hit` policy still
+    # records exactly one contact: no double damage from twin boxes.
+    assert target.health == 90.0
+    assert system.metrics.contacts == 1
+
+
+def test_invalid_frame_data_fails_fast() -> None:
+    with pytest.raises(ValueError, match="active frame"):
+        phase(active=0)
+    with pytest.raises(ValueError, match="at least one phase"):
+        AttackDefinition(phases=(), cooldown=0.0)
+    with pytest.raises(ValueError, match="cannot be negative"):
+        HitProperties(damage=-1)
+
+    invalid_cancel = PhaseDefinition(
+        startup_frames=1,
+        active_frames=1,
+        recovery_frames=1,
+        hitbox_size=(10.0, 10.0),
+        hitbox_offset=(0.0, 0.0),
+        hit=HitProperties(damage=1),
+        cancel_into=("missing",),
+    )
+    with pytest.raises(ValueError, match="unknown cancels"):
+        entity_at(0.0, definition=attack(invalid_cancel))

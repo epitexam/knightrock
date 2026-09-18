@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "enemies": {
+    "goblin": {
+      "size": [
+        36.0,
+        48.0
+      ],
+      "color": [
+        60,
+        130,
+        60
+      ],
+      "health": 60.0,
+      "attacks": "goblin",
+      "attack_name": "claw_swipe",
+      "max_health": null,
+      "hitbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "chase_speed": 120.0,
+      "vision_range": 300.0,
+      "attack_range": 60.0,
+      "patrol_interval": 2.0,
+      "idle_duration": 0.5,
+      "has_ai": true,
+      "pushable": true,
+      "super_armor": false,
+      "passive_friction": 10.0,
+      "can_jump": true,
+      "jump_height": 650.0,
+      "jump_cooldown": 1.0,
+      "leap_speed_mult": 1.6,
+      "animations": {}
+    },
+    "slime": {
+      "size": [
+        32.0,
+        32.0
+      ],
+      "color": [
+        80,
+        200,
+        220
+      ],
+      "health": 40.0,
+      "attacks": "slime",
+      "attack_name": "body_slam",
+      "max_health": null,
+      "hitbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "chase_speed": 80.0,
+      "vision_range": 250.0,
+      "attack_range": 50.0,
+      "patrol_interval": 1.5,
+      "idle_duration": 0.8,
+      "has_ai": true,
+      "pushable": true,
+      "super_armor": false,
+      "passive_friction": 8.0,
+      "animations": {}
+    },
+    "dummy": {
+      "size": [
+        40.0,
+        48.0
+      ],
+      "color": [
+        180,
+        180,
+        180
+      ],
+      "health": 999.0,
+      "attacks": {
+        "test": {
+          "phases": [
+            {
+              "startup_frames": 1,
+              "active_frames": 1,
+              "recovery_frames": 1,
+              "hitbox_size": [
+                1.0,
+                1.0
+              ],
+              "hitbox_offset": [
+                0.0,
+                0.0
+              ],
+              "hit": {
+                "damage": 0,
+                "knockback": {
+                  "power": [
+                    0.0,
+                    0.0
+                  ],
+                  "mode": "from_attacker"
+                },
+                "damage_type": "blunt",
+                "stagger": 0.0,
+                "super_armor_break": false,
+                "is_finisher": false
+              },
+              "reset_targets": true,
+              "cancel_into": []
+            }
+          ],
+          "cooldown": 0.1,
+          "lock_direction": false,
+          "combo_reset": false,
+          "chargeable": false,
+          "max_charge_time": 1.0,
+          "charge_move_multiplier": 1.0,
+          "uninterruptible": false,
+          "lunge_speed_multiplier": 0.35,
+          "attack_move_multiplier": 0.3
+        }
+      },
+      "attack_name": "test",
+      "max_health": null,
+      "hitbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "chase_speed": 0.0,
+      "vision_range": 0.0,
+      "attack_range": 0.0,
+      "patrol_interval": 2.0,
+      "idle_duration": 0.5,
+      "has_ai": false,
+      "pushable": false,
+      "super_armor": true,
+      "passive_friction": 5.0,
+      "animations": {}
+    }
+  }
+}

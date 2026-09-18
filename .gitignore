@@ -1,14 +1,39 @@
-# Python-generated files
+# Compiled Python files
+*.pyc
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
 
 # Virtual environments
-.venv
+venv/
+.venv/
+.env
+.env.local
+*.env.*
 
-# Test Files 
-/data
-graphics
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy cache
+.mypy_cache/
+
+# Assets 
+assets/
