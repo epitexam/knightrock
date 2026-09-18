@@ -42,12 +42,7 @@ class AttackStatePort(Protocol):
 
 @runtime_checkable
 class AttackComboPort(Protocol):
-    """Étroit besoin attaquant : suivi du combo aérien (RF-1).
-
-    Seule surface de ``combat`` consommée par ``HitResolver`` côté
-    attaquant. Un projectile (sans santé ni réactions) la satisfait
-    avec un composant neutre no-op.
-    """
+    """Air-combo tracking consumed from an attacker's combat."""
 
     @property
     def air_combo_count(self) -> int: ...
@@ -57,12 +52,7 @@ class AttackComboPort(Protocol):
 
 @runtime_checkable
 class AttackerPort(Protocol):
-    """Vue étroite d'un porteur de coup (RF-1).
-
-    L'attaquant ne porte qu'un coup : sa ``hitbox`` donne la source
-    et son ``combat`` ne sert qu'au comptage juggle/combo. Aucune
-    santé, réaction ou blocage n'est exigée.
-    """
+    """Hit carrier: hitbox plus combo tracking, nothing else."""
 
     hitbox: pygame.FRect
 
@@ -220,12 +210,7 @@ class Combatant(Protocol):
         ...
 
     def set_juggle(self, gravity_mult: float, duration: float) -> None:
-        """Applique un multiplicateur de gravité aérienne (juggle).
-
-        Capacité requise de toute cible : l'implémentation de base
-        (``Entity``) ajuste ``gravity_scale``/``juggle_timer``. Appelée
-        uniquement sur victime aérienne quand ``juggle_gravity_mult != 1``.
-        """
+        """Apply an airborne gravity multiplier for ``duration``."""
         ...
 
     def die(self) -> None:

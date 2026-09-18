@@ -4,32 +4,11 @@ Extracted from ``Entity`` (audit Phase 3 #2) so knockback, heavy launch, and
 stagger live in a dedicated component wired in like ``vitals``/``combat``
 instead of sitting inline on the entity aggregate (audit F2.2).
 
-Propriété des données (RF-3) — le composant possède les *règles*, pas l'état :
-
-=================== ============ ============================ ==================== ===================
-Donnée             Propriétaire Écrivains autorisés           Reset                Snapshot
-=================== ============ ============================ ==================== ===================
-``velocity``       Movement     Reaction (knockback), états,  ``Movement.stop``    oui (EntitySnapshot)
-                               locomotion
-``on_surface``     Movement     physics/collisions            par tick            oui
-``health/is_dead`` Vitals       ``apply_damage`` via           ``Vitals.reset``    oui (vitals)
-                               ``receive_damage``
-``stagger_timer``  Vitals       Reaction.stagger, tick vitals  ``Vitals.reset`` /  oui (vitals)
-                               (décroissance)                 expiration
-``super_armor*``   Vitals       Reaction.stagger,              ``Vitals.reset`` /  oui (vitals)
-                               ``break_super_armor``          seuil
-``is_hurt/timer``  Combat       ``on_hit``/``reset_hurt_state`` ``reset``/``reset_  oui (combat)
-                               (Reaction ne fait que         ``hurt_state``
-                               demander via ces ops)
-``juggle/OTG``     Entity       ``set_juggle``/``_tick_juggle`` landing/reset      oui (extra)
-``états``          StateMachine états + interrupts            ``change_state``     oui (state_machine)
-=================== ============ ============================ ==================== ===================
-
-Le composant ne reçoit qu'une vue étroite (:class:`ReactionOwner`) :
-vélocité/géométrie en lecture-écriture ciblée, timers via ``vitals``
-délégués, réactions via ``combat`` (``on_hit``/``reset_hurt_state``) et
-``state_machine.change_state``. ``Entity.receive_damage`` reste l'entrée
-publique (``Player`` la surcharge pour le blocage).
+The component owns the *rules*, not the state: velocity and contacts belong
+to movement, health and status timers to vitals, hurt state to combat, and
+states to the state machine. It operates through the narrow
+:class:`ReactionOwner` view. ``Entity.receive_damage`` stays the public entry
+point (``Player`` overrides it for blocking).
 """
 
 from __future__ import annotations
@@ -72,7 +51,7 @@ def compute_knockback_direction(
 
 
 class ReactionCombatPort(Protocol):
-    """Opérations combat autorisées à Reaction (RF-3)."""
+    """Combat operations available to Reaction."""
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
@@ -80,19 +59,14 @@ class ReactionCombatPort(Protocol):
 
 
 class ReactionStatePort(Protocol):
-    """Opération état autorisée à Reaction (RF-3)."""
+    """State operation available to Reaction."""
 
     def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None: ...
 
 
 @runtime_checkable
 class ReactionOwner(Protocol):
-    """Vue étroite opérée par ReactionComponent (RF-3).
-
-    Ni l'Entity entière recopiée ni couplage large : uniquement les
-    opérations nécessaires (géométrie, vélocité, timers délégués,
-    réactions combat/états).
-    """
+    """Narrow owner view operated on by ReactionComponent."""
 
     velocity: Vector2
     hitbox: pygame.FRect
@@ -115,9 +89,7 @@ class ReactionComponent:
     Parameters
     ----------
     owner : ReactionOwner
-        Vue étroite opérée (vélocité, géométrie, timers, combat, états).
-        ``Entity`` la satisfait structurellement ; les tests peuvent
-        fournir un double étroit sans Entity complète.
+        The narrow operated view; ``Entity`` satisfies it structurally.
     """
 
     def __init__(self, owner: ReactionOwner) -> None:
@@ -192,11 +164,8 @@ class ReactionComponent:
             knockback_force=kb_power_x,
             knockback_up_force=kb_power_y,
         )
-        # Opération métier (RF-3) : ``on_hit`` vient d'armer ``is_hurt`` ET
-        # ``hurt_timer`` ; une écriture directe ``is_hurt = False`` laisserait
-        # un timer stale qui ne décrémente jamais (``update`` ne tick que si
-        # ``is_hurt``). ``reset_hurt_state`` nettoie les deux, comme en
-        # ``stagger`` ci-dessous — le knockback reste la réaction définitive.
+        # ``on_hit`` just armed ``is_hurt`` and ``hurt_timer``; only
+        # ``reset_hurt_state`` clears both, so no stale timer is left behind.
         owner.combat.reset_hurt_state()
         return True
 

@@ -41,11 +41,9 @@ warn_unused_configs = true
 ignore_missing_imports = true
 explicit_package_bases = true
 disallow_untyped_defs = true
-# Dette de typage résiduelle (RF-8, mesurée le 2026-09-18 sans overrides :
-# 41 erreurs dans 14 fichiers) : `src.combat.*`, `src.entities.*` et
-# `src.states.*` sont strict-clean et sortis des overrides. Les modules non
-# migrés gardent `disallow_untyped_defs = false` — effet vérifié, pas supposé.
-# mypy est bloquant en CI (`uv run mypy src`, sans `|| true`).
+# Remaining typing debt, measured 2026-09-18: `src.combat`, `src.entities`
+# and `src.states` are strict-clean and out of the overrides below.
+# mypy is blocking in CI (`uv run mypy src`).
 
 [[tool.mypy.overrides]]
 module = [

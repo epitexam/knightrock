@@ -38,12 +38,7 @@ class ProjectileConfig:
 
 
 class Projectile(Sprite):
-    """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt.
-
-    Expose un ``combat`` neutre (RF-1) : le projectile ne fait que porter
-    un coup, il satisfait ``AttackerPort`` (hitbox + suivi combo no-op)
-    sans santé ni réactions.
-    """
+    """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt."""
 
     def __init__(self) -> None:
         super().__init__()

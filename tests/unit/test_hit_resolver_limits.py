@@ -1,4 +1,4 @@
-"""RF-5 : cas combinés et limites numériques du HitResolver."""
+"""HitResolver combined cases and numeric limits."""
 
 import pytest
 
@@ -42,9 +42,7 @@ def test_charge_juggle_combined_formula() -> None:
 def test_finisher_threshold_boundary() -> None:
     target = make_entity(faction="enemy")
     target.on_surface["floor"] = True
-    # 100 - 79 = 21 > 20 : pas de finisher.
     assert _finisher_damage(_hit(10, is_finisher=True), target, 79.0) == 79.0
-    # 100 - 80 = 20 <= 20 : finisher atomique.
     assert _finisher_damage(_hit(10, is_finisher=True), target, 80.0) == 100.0
 
 

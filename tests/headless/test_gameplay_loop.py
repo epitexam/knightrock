@@ -193,12 +193,7 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
 
 
 def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
-    """A hit-stop tick short-circuits the world stages (RF-2).
-
-    Le câblage monde complet est validé avant toute mutation, même
-    suspendu : seuls spawner (raw delta), caméra, notifications et
-    tick bookkeeping tournent.
-    """
+    """A hit-stop tick short-circuits the world stages."""
     calls: list[str] = []
     loop = GameplayLoop(
         platform_system=_noop_stage("platform", calls),
@@ -221,7 +216,7 @@ def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
 
 
 def test_update_with_invalid_wiring_mutates_nothing() -> None:
-    """Câblage invalide rejeté avant mutation (RF-2)."""
+    """Invalid wiring is rejected before any mutation."""
     from types import SimpleNamespace
 
     spawn_calls: list[str] = []
@@ -239,7 +234,6 @@ def test_update_with_invalid_wiring_mutates_nothing() -> None:
         camera_system=_noop_camera_stage("camera", []),
         notification_system=_noop_tail_stage("notifications", []),
         tick_system=SimpleNamespace(process=lambda *a: tick_calls.append("tick")),
-        # monde volontairement incomplet : pas de platform/physics/...
     )
     loop.combat_system.hit_stop_timer = 0.0
     rollback = RollbackSpy()
@@ -274,5 +268,4 @@ def test_update_without_the_world_stages_fails_fast() -> None:
     with pytest.raises(RuntimeError, match="platform_system"):
         loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
 
-    # Échec avant mutation : même le spawner n'a pas tourné.
     assert calls == []

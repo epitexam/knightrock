@@ -1,4 +1,4 @@
-"""RF-6 : branches métier (cooldowns, actions simultanées, priorité)."""
+"""Spawner cooldowns and attack priority branches."""
 
 import pygame
 
@@ -33,8 +33,6 @@ def test_debug_ready_and_arm_roundtrip() -> None:
 
 
 def test_attack_priority_special_first() -> None:
-    """Priorité RF-6 : spéciale avant légère (elif préservé dans le source)."""
-
     import inspect
 
     from src.entities.player_input import PlayerInputHandler

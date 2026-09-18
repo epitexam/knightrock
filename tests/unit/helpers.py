@@ -120,7 +120,7 @@ def activate(entity: Entity) -> None:
 
 
 class _ActiveAttackerCombat(SimpleNamespace):
-    """Double attaquant RF-1 : vue étroite + surface CombatSystem des tests."""
+    """Active attacker double whose box overlaps the target."""
 
     def __init__(self, attack_box: pygame.FRect, hit: HitProperties) -> None:
         targets_hit: set[str] = set()
@@ -201,7 +201,7 @@ class InputStub:
 
 
 class AttackerStub:
-    """Porteur de coup minimal RF-1 : hitbox + suivi combo neutre."""
+    """Minimal hit carrier: hitbox plus neutral combo tracking."""
 
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)

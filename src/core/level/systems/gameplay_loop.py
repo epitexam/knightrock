@@ -95,12 +95,11 @@ class GameplayLoop:
 
     @classmethod
     def combat_only(cls) -> GameplayLoop:
-        """Noyau combat/séparation sans monde (RF-2).
+        """Combat/separation core without world stages.
 
-        Fixture d'assemblage explicite pour le cœur combat/séparation :
-        ``begin_tick``, ``process_combat_and_separation`` et
-        ``remove_dead_entities`` restent utilisables ; ``update()`` lève
-        ``RuntimeError`` avant toute mutation (câblage monde manquant).
+        Explicit assembly fixture: ``begin_tick``,
+        ``process_combat_and_separation`` and ``remove_dead_entities`` stay
+        usable; ``update()`` raises ``RuntimeError`` before any mutation.
         """
         return cls()
 
@@ -150,8 +149,6 @@ class GameplayLoop:
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
-            # Toutes les étapes sont déjà résolues ci-dessus : une boucle
-            # mal câblée échoue avant mutation, jamais au milieu du tick.
             platform.process(effective_delta)
             hazard.process(effective_delta)
             physics.process(effective_delta)

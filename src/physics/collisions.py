@@ -225,7 +225,7 @@ def _is_eligible(
     sprite_old: pygame.Rect | pygame.FRect,
     one_way: bool,
 ) -> bool:
-    """Éligibilité d'un obstacle (RF-4) : one-way et survol de dessus."""
+    """Obstacle eligibility: one-way top-only catch, no top graze as wall."""
     # One-way platforms only catch an entity falling onto their top:
     # never a wall from the side, never a ceiling from below.
     if one_way and (
@@ -247,7 +247,7 @@ def _resolve_horizontal(
     was_overlapping: bool,
     nearby_sprites: list[CollisionSprite],
 ) -> None:
-    """Résolution horizontale (RF-4) : step-up puis correction latérale."""
+    """Horizontal resolution: step-up, then lateral correction."""
     if _try_step_up(entity, sprite, sprite_box, nearby_sprites):
         return
     # Pre-clamp penetration: how deep the entity drove into the
@@ -281,7 +281,7 @@ def _resolve_vertical(
     was_overlapping: bool,
     nearby_sprites: list[CollisionSprite],
 ) -> None:
-    """Résolution verticale (RF-4) : corner-correct puis correction haute/basse."""
+    """Vertical resolution: corner correction, then top/bottom correction."""
     if _try_corner_correct(entity, sprite_box, nearby_sprites):
         return
     penetration = min(entity.hitbox.bottom, sprite_box.bottom) - max(

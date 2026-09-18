@@ -36,7 +36,7 @@ class CombatMetrics:
 def _attacker_ready(
     attacker: Combatant,
 ) -> tuple[CombatPort, tuple[pygame.FRect, ...], PhaseDefinition] | None:
-    """Filtre d'éligibilité attaquant (RF-6) : mort, phase, boîte active."""
+    """Attacker eligibility: alive, active phase, live boxes."""
     if attacker.is_dead:
         return None
     combat = attacker.combat
@@ -48,14 +48,12 @@ def _attacker_ready(
 
 
 def _nearby_targets(
-    attacker: Combatant,
     attack_boxes: tuple[pygame.FRect, ...],
     combatants: tuple[Combatant, ...],
     order: dict[int, int],
     entity_grid: EntityGrid | None,
 ) -> list[Combatant]:
-    """Collecte géométrique (RF-6) : prune grid locale puis ordre groupe."""
-    del attacker
+    """Geometric collection: local grid prune, then group order."""
     if entity_grid is None:
         return list(combatants)
     # Query around every attack box (not the attacker's hitbox:
@@ -77,7 +75,7 @@ def _nearby_targets(
 
 
 def _is_valid_target(attacker: Combatant, target: Combatant, combat: CombatPort) -> bool:
-    """Filtre d'éligibilité cible (RF-6) : soi, mort, faction, contact phase."""
+    """Target eligibility: not self, alive, enemy faction, phase contact."""
     if attacker is target or target.is_dead:
         return False
     if attacker.faction == target.faction:
@@ -133,7 +131,7 @@ class CombatSystem:
             if ready is None:
                 continue
             combat, attack_boxes, phase = ready
-            targets = _nearby_targets(attacker, attack_boxes, combatants, order, entity_grid)
+            targets = _nearby_targets(attack_boxes, combatants, order, entity_grid)
 
             for target in targets:
                 if not _is_valid_target(attacker, target, combat):

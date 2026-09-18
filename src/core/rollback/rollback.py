@@ -66,13 +66,7 @@ class RollbackSystem:
         return self._buffer[-1].tick if self._buffer else None
 
     def record(self, level: SnapshotCapable) -> None:
-        """Capture the level's current state and push it onto the buffer.
-
-        RF-7 : seule la capacité de capture est exigée (pas le ``Level``
-        concret, pas de restauration). Le protocole partagé vit dans
-        ``snapshots`` : aucun import du système de tick ici, aucune
-        dépendance inversée artificielle.
-        """
+        """Capture the level's current state and push it onto the buffer."""
         self._buffer.append(level.save_state())
 
     def can_rollback_to(self, tick: int) -> bool:

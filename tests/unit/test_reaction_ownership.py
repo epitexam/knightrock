@@ -1,4 +1,4 @@
-"""RF-3 : propriété des réactions, interface limitée (caractérisation)."""
+"""Reaction ownership: narrow interface, no duplicated state."""
 
 import inspect
 from types import SimpleNamespace
@@ -14,7 +14,7 @@ from src.entities.components.reaction import (
 
 
 def _narrow_owner(**overrides) -> SimpleNamespace:
-    """Double étroit : pas d'Entity complète (RF-3)."""
+    """Narrow double without a full Entity."""
     base = {
         "velocity": Vector2(0, 0),
         "hitbox": pygame.FRect(0, 0, 40, 48),
@@ -49,7 +49,7 @@ def test_no_hasattr_no_direct_hurt_write() -> None:
     text = inspect.getsource(module)
     assert "hasattr(" not in text
     assert "owner.combat.is_hurt = False" not in text
-    assert text.count("reset_hurt_state") >= 2  # heavy knockback + stagger
+    assert text.count("reset_hurt_state") >= 2
 
 
 def test_narrow_owner_satisfies_protocol() -> None:
@@ -84,7 +84,6 @@ def test_stagger_clears_hurt_and_sets_timer() -> None:
 
 
 def test_block_super_armor_launch_stagger_preserved() -> None:
-    # Super-armure : les deux premiers coups absorbés, le 3e stagger.
     owner = _narrow_owner(super_armor=True)
     component = ReactionComponent(owner)
     component.stagger(0.2)

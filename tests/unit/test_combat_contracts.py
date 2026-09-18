@@ -1,4 +1,4 @@
-"""RF-1 : contrats de combat explicites (caractérisation)."""
+"""Combat contract characterization: explicit attacker/target views."""
 
 import inspect
 
@@ -29,7 +29,6 @@ def test_combatant_requires_grounded_otg_juggle() -> None:
 
 
 def test_attacker_view_is_narrow() -> None:
-    # La vue attaquant n'exige ni santé ni réactions.
     assert "hitbox" in AttackerPort.__annotations__
     assert hasattr(AttackerPort, "combat")
     for forbidden in ("health", "receive_damage", "stagger"):
@@ -43,7 +42,7 @@ def test_projectile_carries_neutral_combat() -> None:
     projectile = Projectile()
     assert isinstance(projectile.combat, NullCombatComponent)
     assert projectile.combat.air_combo_count == 0
-    projectile.combat.record_hit_landed(True)  # no-op, ne lève pas
+    projectile.combat.record_hit_landed(True)
 
 
 def test_resolver_uses_typed_access_without_getattr_fallbacks() -> None:
@@ -57,7 +56,6 @@ def test_combo_recorded_once_air_only() -> None:
     from tests.unit.helpers import make_attack, make_phase
 
     attacker = make_entity(faction="player", attacks={"punch": make_attack(make_phase())})
-    # Combat réel via Entity : air_combo_count démarre à 0.
     ground = make_entity(faction="enemy")
     ground.on_surface["floor"] = True
     air = make_entity(faction="enemy")

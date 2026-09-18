@@ -98,7 +98,6 @@ class SpawnSystem:
         self._pop_juggle(keys, player)
 
     def _decay_cooldowns(self, delta_time: float) -> None:
-        """Décrément des cooldowns spawns + démo (RF-6)."""
         for enemy_name, cooldown in self.spawn_cooldowns.items():
             if cooldown > 0:
                 self.spawn_cooldowns[enemy_name] = cooldown - delta_time
@@ -107,13 +106,11 @@ class SpawnSystem:
                 self.debug_cooldowns[action] = cooldown - delta_time
 
     def _spawn_enemies(self, keys: Sequence[bool], player: Player) -> None:
-        """Spawn d'ennemis via touches de démonstration (RF-6)."""
         for key, enemy_name in DEBUG_SPAWNS.items():
             if keys[key] and self.spawn_cooldowns[enemy_name] <= 0:
                 self._spawn_enemy(enemy_name, player)
 
     def _trigger_attacks(self, keys: Sequence[bool], player: Player) -> None:
-        """Commandes d'attaques showcase (RF-6)."""
         for key, attack_name in DEBUG_ATTACKS.items():
             if (
                 keys[key]
@@ -123,7 +120,6 @@ class SpawnSystem:
                 self._arm_debug_cooldown(attack_name)
 
     def _fire_shots(self, keys: Sequence[bool], player: Player) -> None:
-        """Commandes de projectiles de démonstration (RF-6)."""
         for key, config in DEBUG_SHOTS.items():
             action = f"shot_{id(config)}"
             if (
@@ -134,7 +130,6 @@ class SpawnSystem:
                 self._arm_debug_cooldown(action)
 
     def _pop_juggle(self, keys: Sequence[bool], player: Player) -> None:
-        """Commande dummy aérien à jongler (RF-6)."""
         if (
             keys[DEBUG_JUGGLE_KEY]
             and self._debug_ready("juggle_dummy")

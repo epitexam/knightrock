@@ -20,11 +20,7 @@ def _is_grounded(target: Combatant) -> bool:
 
 
 def _juggle_scale(attacker_air_count: int) -> float:
-    """Diminishing returns on juggles (pur RF-5).
-
-    Les hits aériens consécutifs décroissent vers un plancher pour que
-    les air locks infinis coûtent de la pression, pas des PV.
-    """
+    """Diminishing air-hit returns, floored so juggles cost pressure, not HP."""
     return max(
         CombatSettings.JUGGLE_DAMAGE_FLOOR,
         1.0 - float(attacker_air_count or 0) * CombatSettings.JUGGLE_DECAY_STEP,
@@ -32,12 +28,12 @@ def _juggle_scale(attacker_air_count: int) -> float:
 
 
 def _otg_blocked(grounded: bool, otg_timer: float, hit: HitProperties) -> bool:
-    """Admissibilité OTG (pur RF-5) : fenêtre au sol sans drapeau OTG."""
+    """Grounded OTG window without the OTG flag blocks the hit."""
     return bool(grounded and otg_timer > 0.0 and not hit.otg_allowed)
 
 
 def _finisher_damage(hit: HitProperties, target: Combatant, final_damage: float) -> float:
-    """Finisher atomique (pur RF-5) : seuil 20 % PV max, même formule/ordre."""
+    """Atomic finisher below 20 % of max health."""
     if hit.is_finisher and target.health - final_damage <= target.max_health * 0.2:
         return target.health
     return final_damage
@@ -46,7 +42,7 @@ def _finisher_damage(hit: HitProperties, target: Combatant, final_damage: float)
 def _scaled_knockback(
     hit: HitProperties, charge_multiplier: float, juggle_scale: float
 ) -> KnockbackConfig:
-    """Knockback mis à l'échelle charge × juggle (pur RF-5)."""
+    """Knockback scaled by charge and juggle."""
     scaled_power = (
         hit.knockback.power[0] * charge_multiplier * juggle_scale,
         hit.knockback.power[1] * charge_multiplier * juggle_scale,
@@ -64,13 +60,10 @@ def _apply_post_effects(
     armor_absorbs_reaction: bool,
     result: DamageResult,
 ) -> None:
-    """Réactions après résultat appliqué (effets RF-5).
+    """Post-hit reactions, in preserved order.
 
-    Ordre préservé : bris d'armure, juggle, enregistrement combo (compteurs
-    AVANT le coup utilisés pour la décroissance, enregistrement APRÈS),
-    puis interruption/stagger sauf mort, armure absorbante ou lancement lourd.
-    Super-armure, bris, lancement et stagger ne s'appliquent pas deux fois :
-    ``receive_damage`` a déjà tranché mortalité/immunité en amont.
+    Armor break, juggle, combo recording, then interrupt/stagger unless the
+    target died, armor absorbed the reaction, or knockback launched it.
     """
     if target.has_super_armor and hit.super_armor_break:
         target.break_super_armor()
@@ -119,12 +112,9 @@ class HitResolver:
         Parameters
         ----------
         attacker : AttackerPort
-            Narrow hit-carrier view (hitbox + combo tracking only).
-            A projectile satisfies it via a neutral no-op combat; no
-            health or reactions are required.
+            Hit carrier (hitbox + combo tracking only).
         target : Combatant
-            Full combatant (health, reactions, ``on_surface``,
-            ``otg_timer``, ``set_juggle``).
+            The entity being hit.
         hit : HitProperties
             Hit properties from the active phase definition.
         charge_multiplier : float
