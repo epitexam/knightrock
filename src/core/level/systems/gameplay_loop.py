@@ -48,9 +48,10 @@ class GameplayLoop:
     """Sequence a level's systems for one fixed simulation tick.
 
     The combat core (hit-stop, separation, hit detection) is always present,
-    so ``GameplayLoop()`` stays usable on its own in unit tests.  The world
+    so :meth:`combat_only` stays usable on its own in unit tests.  The world
     stages are injected by the level and are required by :meth:`update`,
-    which fails fast with a wiring hint when one is missing.
+    which validates the full wiring up front — before any mutation — and
+    fails fast with a wiring hint when one is missing.
     """
 
     def __init__(
@@ -92,6 +93,17 @@ class GameplayLoop:
         self.tick_system = tick_system
         self.projectile_system = projectile_system
 
+    @classmethod
+    def combat_only(cls) -> GameplayLoop:
+        """Noyau combat/séparation sans monde (RF-2).
+
+        Fixture d'assemblage explicite pour le cœur combat/séparation :
+        ``begin_tick``, ``process_combat_and_separation`` et
+        ``remove_dead_entities`` restent utilisables ; ``update()`` lève
+        ``RuntimeError`` avant toute mutation (câblage monde manquant).
+        """
+        return cls()
+
     def begin_tick(self, delta_time: float) -> float:
         """Advance hit-stop timing and return the simulation delta."""
         simulation_suspended = self.combat_system.in_hit_stop
@@ -116,28 +128,30 @@ class GameplayLoop:
         matches the pre-refactor ``Level.update`` exactly: spawner,
         platforms, hazards, entity integration, pairings, deaths reaped,
         respawn, progression, camera, notifications, tick counter.
+
+        The full wiring (spawner, world stages, camera, notifications,
+        tick) is resolved up front, before the spawner or hit-stop mutate
+        anything: an invalid assembly raises ``RuntimeError`` without
+        touching cooldowns, hit-stop, groups, tick or rollback.
         """
         spawn = self._require(self.spawn_system, "spawn_system")
         camera = self._require(self.camera_system, "camera_system")
         notifications = self._require(self.notification_system, "notification_system")
         tick = self._require(self.tick_system, "tick_system")
-        respawn = self.respawn_system
-        progression = self.progression_system
+        platform = self._require(self.platform_system, "platform_system")
+        hazard = self._require(self.hazard_system, "hazard_system")
+        physics = self._require(self.physics_system, "physics_system")
+        contact = self._require(self.contact_damage_system, "contact_damage_system")
+        hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
+        respawn = self._require(self.respawn_system, "respawn_system")
+        progression = self._require(self.progression_system, "progression_system")
 
         spawn.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
-            # Resolve the stages up front: a half-wired loop must fail before
-            # it mutates the world, never halfway through the tick.
-            platform = self._require(self.platform_system, "platform_system")
-            hazard = self._require(self.hazard_system, "hazard_system")
-            physics = self._require(self.physics_system, "physics_system")
-            contact = self._require(self.contact_damage_system, "contact_damage_system")
-            hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
-            respawn = self._require(respawn, "respawn_system")
-            progression = self._require(progression, "progression_system")
-
+            # Toutes les étapes sont déjà résolues ci-dessus : une boucle
+            # mal câblée échoue avant mutation, jamais au milieu du tick.
             platform.process(effective_delta)
             hazard.process(effective_delta)
             physics.process(effective_delta)
@@ -169,8 +183,8 @@ class GameplayLoop:
         camera.process(raw_delta, player)
         notifications.process(
             player,
-            deaths=respawn.deaths if respawn is not None else 0,
-            exit_reached=progression.exit_reached if progression is not None else False,
+            deaths=respawn.deaths,
+            exit_reached=progression.exit_reached,
         )
         tick.process(level, rollback)
 
