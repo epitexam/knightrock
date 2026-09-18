@@ -93,12 +93,12 @@ def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
     assert segments[1][0] == ("HP ", TEXT_MUTED)
     assert segments[2][0] == ("ATK ", TEXT_MUTED)
     assert segments[2][1] == ("claw_swipe ", Colors.gold)
-    assert segments[3][0] == ("FX ", TEXT_MUTED)
+    assert segments[3][0] == ("STAG 0.20s", Colors.orange)
     assert lines[0] == "Goblin idle"
     assert lines[1] == "HP 75/100"
     assert "claw_swipe" in lines[2]
     assert "p0 active:3" in lines[2]
-    assert lines[3] == "FX STAG 0.20 | OTG 0.40 | JGx0.50 | AIR"
+    assert lines[3] == "STAG 0.20s | OTG 0.40s | GRAV x0.5 | AIR"
 
 
 def test_segments_color_each_token_with_the_faction_accent(world_ui: WorldUI) -> None:
@@ -134,7 +134,7 @@ def test_status_flags_are_pipe_separated(world_ui: WorldUI) -> None:
     entity = _entity(stagger_timer=0.2, otg_timer=0.4)
     lines = world_ui._label_lines(entity)
     assert lines is not None
-    assert lines[-1] == "FX STAG 0.20 | OTG 0.40"
+    assert lines[-1] == "STAG 0.20s | OTG 0.40s"
 
 
 def test_hitbox_color_follows_faction(world_ui: WorldUI) -> None:
@@ -275,7 +275,7 @@ def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Ca
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
-def test_fresh_reaction_status_shows_the_rx_flag(world_ui: WorldUI) -> None:
+def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
     entity = _entity()
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
@@ -284,9 +284,8 @@ def test_fresh_reaction_status_shows_the_rx_flag(world_ui: WorldUI) -> None:
     segments = world_ui._label_segments(entity)
     lines = world_ui._label_lines(entity)
     assert segments is not None and lines is not None
-    assert segments[-1][0] == ("FX ", TEXT_MUTED)
-    assert segments[-1][1] == ("RX launch 0.20", Colors.red)
-    assert lines[-1] == "FX RX launch 0.20"
+    assert segments[-1] == [("HIT launch 0.20s", Colors.red)]
+    assert lines[-1] == "HIT launch 0.20s"
 
 
 def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> None:
@@ -296,14 +295,14 @@ def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> No
     segments = world_ui._label_segments(entity)
     lines = world_ui._label_lines(entity)
     assert segments is not None and lines is not None
-    assert segments[-1] == [("FX ", TEXT_MUTED), ("RX~ push", Colors.dark_red)]
-    assert lines[-1] == "FX RX~ push"
+    assert segments[-1] == [("HIT push (old)", Colors.dark_red)]
+    assert lines[-1] == "HIT push (old)"
 
 
-def test_entity_without_reaction_has_no_rx_flag(world_ui: WorldUI) -> None:
+def test_entity_without_reaction_has_no_hit_flag(world_ui: WorldUI) -> None:
     lines = world_ui._label_lines(_entity())
     assert lines is not None
-    assert all("RX" not in line for line in lines)
+    assert all("HIT" not in line for line in lines)
 
 
 def _crowd(count: int) -> list[SimpleNamespace]:

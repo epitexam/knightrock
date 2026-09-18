@@ -328,8 +328,8 @@ class WorldUI:
           the class name otherwise) plus off-white state
         - ``HP`` row: value tinted by the health ratio
         - ``ATK`` row (while attacking): gold name, muted phase stats
-        - ``FX`` row (active flags only): each flag in its semantic color,
-          ``|``-separated
+        - flags row (active flags only, no tag — each flag reads on its
+          own): last hit, stagger, OTG, gravity, air, ledge, ``|``-separated
         """
         faction_color = self._label_color(sprite)
         state_name = state_machine.current_state_name or "None"
@@ -352,7 +352,7 @@ class WorldUI:
 
         flags = self._status_flag_tokens(sprite)
         if flags:
-            lines.append([("FX ", LABEL_TAG), *join_flag_tokens(flags)])
+            lines.append(join_flag_tokens(flags))
         return lines
 
     def _attack_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
@@ -378,7 +378,7 @@ class WorldUI:
 
     @staticmethod
     def _status_flag_tokens(sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]]:
-        """Colored status flags for the ``FX`` card row (same order as strings)."""
+        """Colored status flags for the untagged flags card row (same order as strings)."""
         names = WorldUI._status_flag_strings(sprite)
         colors: dict[str, Color] = {}
         reaction = WorldUI._reaction_flag(sprite)
@@ -390,13 +390,13 @@ class WorldUI:
             )
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
-            colors[f"STAG {stagger:.2f}"] = Colors.orange
+            colors[f"STAG {stagger:.2f}s"] = Colors.orange
         otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
         if otg > 0:
-            colors[f"OTG {otg:.2f}"] = Colors.debug_otg
+            colors[f"OTG {otg:.2f}s"] = Colors.debug_otg
         gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
         if gravity_scale != 1.0:
-            colors[f"JGx{gravity_scale:.2f}"] = Colors.debug_juggle
+            colors[f"GRAV x{gravity_scale:.1f}"] = Colors.debug_juggle
         surface = getattr(sprite, "on_surface", None)
         if isinstance(surface, dict) and not surface.get("floor"):
             colors["AIR"] = Colors.light_grey
@@ -410,16 +410,17 @@ class WorldUI:
         """Label token for the last hit-reaction cause (kind + freshness).
 
         Reads the typed ``ReactionStatus`` — never a state-machine name.
-        ``RX`` marks a fresh reaction with its remaining freshness window;
-        ``RX~`` marks a stale cause whose freshness has expired.
+        ``HIT`` marks a fresh reaction with its remaining freshness window
+        in seconds; ``HIT ... (old)`` marks a stale cause whose freshness
+        has expired.
         """
         reaction = getattr(sprite, "reaction_status", None)
         if not isinstance(reaction, ReactionStatus):
             return None
         age = float(getattr(sprite, "reaction_age", 0.0) or 0.0)
         if age > 0:
-            return f"RX {reaction.kind.value} {age:.2f}"
-        return f"RX~ {reaction.kind.value}"
+            return f"HIT {reaction.kind.value} {age:.2f}s"
+        return f"HIT {reaction.kind.value} (old)"
 
     @staticmethod
     def _status_flag_strings(sprite: pygame.sprite.Sprite) -> list[str]:
@@ -427,16 +428,16 @@ class WorldUI:
         flags: list[str] = []
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
-            flags.append(f"STAG {stagger:.2f}")
+            flags.append(f"STAG {stagger:.2f}s")
         reaction_flag = WorldUI._reaction_flag(sprite)
         if reaction_flag is not None:
             flags.append(reaction_flag)
         otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
         if otg > 0:
-            flags.append(f"OTG {otg:.2f}")
+            flags.append(f"OTG {otg:.2f}s")
         gravity_scale = float(getattr(sprite, "gravity_scale", 1.0) or 1.0)
         if gravity_scale != 1.0:
-            flags.append(f"JGx{gravity_scale:.2f}")
+            flags.append(f"GRAV x{gravity_scale:.1f}")
         surface = getattr(sprite, "on_surface", None)
         if isinstance(surface, dict) and not surface.get("floor"):
             flags.append("AIR")
