@@ -15,9 +15,21 @@ would transmit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from src.entities.entity import EntitySnapshot
+
+
+class SnapshotCapable(Protocol):
+    """Capacité minimale de capture pour ``RollbackSystem.record`` (RF-7).
+
+    Couche de contrats partagée : ni le rollback ni le tick n'imposent
+    leurs besoins propres à l'autre. Seule ``save_state`` est exigée —
+    PAS les besoins de restauration (``load_state``/groupes), qui restent
+    l'affaire de ``rollback_to`` avec le ``Level`` concret.
+    """
+
+    def save_state(self) -> LevelSnapshot: ...
 
 
 @dataclass(frozen=True)

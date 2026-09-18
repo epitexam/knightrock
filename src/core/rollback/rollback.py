@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from src.core.rollback.snapshots import LevelSnapshot
+from src.core.rollback.snapshots import LevelSnapshot, SnapshotCapable
 from src.core.settings import Simulation
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
@@ -65,8 +65,14 @@ class RollbackSystem:
         """Most recent bufferable tick, or ``None`` when empty."""
         return self._buffer[-1].tick if self._buffer else None
 
-    def record(self, level: Level) -> None:
-        """Capture the level's current state and push it onto the buffer."""
+    def record(self, level: SnapshotCapable) -> None:
+        """Capture the level's current state and push it onto the buffer.
+
+        RF-7 : seule la capacité de capture est exigée (pas le ``Level``
+        concret, pas de restauration). Le protocole partagé vit dans
+        ``snapshots`` : aucun import du système de tick ici, aucune
+        dépendance inversée artificielle.
+        """
         self._buffer.append(level.save_state())
 
     def can_rollback_to(self, tick: int) -> bool:

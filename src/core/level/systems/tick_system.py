@@ -34,6 +34,8 @@ class TickSystem:
         if level.rollback_enabled:
             # ``Level`` satisfies ``TickOwner`` structurally (tick counter,
             # opt-in flag, snapshot hook); the protocol keeps the stage
-            # testable without importing the level aggregate.
-            rollback.record(level)  # type: ignore[arg-type]
+            # testable without importing the level aggregate. ``TickOwner``
+            # satisfies ``SnapshotCapable`` (``save_state``) so ``record``
+            # needs no ignore and no tick→rollback import (RF-7).
+            rollback.record(level)
         level.tick += 1
