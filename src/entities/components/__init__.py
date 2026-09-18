@@ -9,10 +9,17 @@ exactly like ``vitals``/``combat``.
 """
 
 from src.entities.components.movement import MovementComponent
-from src.entities.components.reaction import ReactionComponent, compute_knockback_direction
+from src.entities.components.reaction import (
+    ReactionComponent,
+    ReactionKind,
+    ReactionStatus,
+    compute_knockback_direction,
+)
 
 __all__ = [
     "MovementComponent",
     "ReactionComponent",
+    "ReactionKind",
+    "ReactionStatus",
     "compute_knockback_direction",
 ]

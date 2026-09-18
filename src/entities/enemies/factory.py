@@ -69,4 +69,5 @@ def create_enemy(
         collision_sprites=collision_sprites,
         player_reference=player_reference,
         config=config,
+        enemy_type=name,
     )

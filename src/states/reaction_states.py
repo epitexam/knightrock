@@ -14,11 +14,17 @@ logic is now parameterized by:
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Final
 
 from src.core.settings import Combat, Physics
 from src.physics import lerp_velocity
 from src.states.state_machine import State
+
+#: Shared reaction-state vocabulary: ``ReactionComponent`` drives the state
+#: machine with these names, and both state-name enums carry the same values
+#: (``PlayerState``/``EnemyState``). Kept in sync by ``test_reaction_status``.
+KNOCKBACK_STATE: Final[str] = "knockback"
+STAGGER_STATE: Final[str] = "stagger"
 
 # Horizontal speed (px/s) below which knockback is considered resolved.
 KNOCKBACK_STOP_SPEED = 20.0

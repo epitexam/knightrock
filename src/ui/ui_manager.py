@@ -66,6 +66,7 @@ class UIManager:
             "F1-4 boxes/labels/",
             "     veloc./statics",
             "F5   panels on/off",
+            "F6   freeze (debug)",
         ]
         return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS", layout=layout)
 

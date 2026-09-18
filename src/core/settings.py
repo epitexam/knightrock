@@ -119,6 +119,17 @@ class HitFlash:
     DURATION = 0.09
 
 
+class ReactionMark:
+    """Freshness window of a hit reaction in the debug overlay (render-only).
+
+    ``ReactionComponent`` re-arms the owner's ``reaction_age`` to this value
+    every time a reaction fires; ``Entity.update`` decays it. Never
+    snapshotted, never in goldens (``flash_timer`` precedent).
+    """
+
+    DURATION = 0.4
+
+
 class Afterimage:
     """Dash ghost trail (render-only)."""
 
@@ -190,6 +201,12 @@ class Debug:
 
     FONT_SIZE = 24
     LABEL_FONT_SIZE = 16
+
+    #: World-space label cards floating above entities: much smaller than
+    #: the side debug panels, so a 2-row card stays compact next to a
+    #: ~48 px tall sprite instead of dwarfing it.
+    WORLD_TITLE_FONT_SIZE = 14
+    WORLD_LABEL_FONT_SIZE = 12
 
     @staticmethod
     def is_enabled() -> bool:

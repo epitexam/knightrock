@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
+from src.core.colors import Colors
 from src.core.level.level import Level
-from src.core.settings import Gameplay
+from src.core.settings import Debug, Gameplay
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -23,6 +24,10 @@ _OVERLAY_TOGGLES = {
     pygame.K_F5: "panels",
 }
 
+#: Debug-only freeze key (F6): holds the simulation still so floating
+#: label cards can be read, while rendering keeps running.
+_FREEZE_KEY = pygame.K_F6
+
 
 class GameplayScene(Scene):
     """Run a ``Level`` and trigger the end transitions.
@@ -31,6 +36,8 @@ class GameplayScene(Scene):
     - exit flag reached → next level (or menu if last level);
     - ``Gameplay.MAX_DEATHS`` deaths → Game Over scene;
     - ESC → pause (the scene is frozen on the stack).
+    - F6 (debug only) → freeze the simulation in place to inspect the
+      debug label cards; rendering keeps running.
     """
 
     def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
@@ -38,6 +45,7 @@ class GameplayScene(Scene):
         super().__init__(game)
         self.level_id = level_id
         self.level: Level | None = level
+        self.frozen = False
 
     def enter(self) -> None:
         if self.level is None:
@@ -60,6 +68,8 @@ class GameplayScene(Scene):
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
         self.game.input_manager.update()
+        if self.frozen and Debug.is_enabled():
+            return  # debug freeze: the frame still renders, the sim holds still
         self.level.update(delta_time)
 
         if self.level.completed:
@@ -87,6 +97,9 @@ class GameplayScene(Scene):
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
             return
         if event.type == pygame.KEYDOWN and self.level is not None:
+            if event.key == _FREEZE_KEY and Debug.is_enabled():
+                self.frozen = not self.frozen
+                return
             toggle = _OVERLAY_TOGGLES.get(event.key)
             if toggle is not None:
                 world_ui = self.level.renderer.ui_manager.world_ui
@@ -98,4 +111,15 @@ class GameplayScene(Scene):
         clock = self.game.clock
         fps = clock.get_fps() if clock else 0.0
         frame_time = clock.get_time() if clock else 0.0
-        return self.level.draw(fps, game=self.game, frame_time=frame_time)
+        rects = self.level.draw(fps, game=self.game, frame_time=frame_time)
+        if self.frozen:
+            self._draw_frozen_tag()
+        return rects
+
+    def _draw_frozen_tag(self) -> None:
+        """Paint a red FROZEN marker, top-center, while the sim is held."""
+        assert self.level is not None  # draw() already guarantees a level
+        ui_manager = self.level.renderer.ui_manager
+        surface = ui_manager.renderer.display_surface
+        tag = ui_manager.renderer.render_text("FROZEN", ui_manager.renderer.title_font, Colors.red)
+        surface.blit(tag, (surface.get_width() // 2 - tag.get_width() // 2, 10))
