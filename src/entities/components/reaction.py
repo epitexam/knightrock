@@ -45,8 +45,9 @@ class ReactionKind(Enum):
 
 
 #: Kinds that carry an applied velocity push. The debug overlay paints these
-#: vectors red while the status is fresh; stagger only locks the state
-#: machine without an impulse, so it stays a locomotion-colored vector.
+#: vectors red while the status is fresh *or* while the knockback state still
+#: carries the entity; stagger only locks the state machine without an impulse,
+#: so it stays a locomotion-colored vector.
 VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset(
     {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
 )

@@ -16,6 +16,9 @@ UX rules (debug readability pass):
   triangular head, a pivot dot on the entity and a dark rim so the silhouette
   survives a bright sky. The head length is clamped, and a minimum drawn
   length keeps slow vectors readable.
+- A velocity vector is painted red while the typed hit cause is fresh **or**
+  while the knockback state still carries the entity (a launch outlives the
+  freshness window), gold on a parry, yellow for locomotion.
 - Labels never stack: each label dodges upward (then below its entity) to a
   free slot, and is dropped rather than overdrawn when no slot is left.
 - Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
@@ -31,6 +34,7 @@ from pygame.math import Vector2
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
+from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 
@@ -412,19 +416,30 @@ class WorldUI:
 
     @staticmethod
     def _is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether the vector shows a fresh hit-reaction push (red), not locomotion.
+        """Whether the vector is a hit reaction's push (red), not locomotion.
 
-        Reads the typed ``ReactionStatus`` cause — never a state-machine name
-        — so the overlay cannot diverge from the reaction that applied the
-        velocity.
+        The typed ``ReactionStatus`` cause stays the gate — a bare state name
+        can never colour a vector — but it qualifies through two windows:
+
+        - *fresh cause* (``reaction_age > 0``): the hit just landed, so the
+          vector is the impulse it applied;
+        - *carried by the cause*: the entity is still in ``KNOCKBACK_STATE``
+          with a velocity-kind cause. A launch stays airborne far longer than
+          the ``ReactionMark`` freshness window (up to
+          ``Combat.KNOCKBACK_MAX_DURATION``) and its vector still comes from
+          that knockback — wall bounce, directional influence and friction
+          all rewrite it without re-arming the cause.
+
+        Walking, dashing, an AI chase or the tail of a resolved knockback read
+        as locomotion (yellow).
         """
         status = getattr(sprite, "reaction_status", None)
-        if not isinstance(status, ReactionStatus):
+        if not isinstance(status, ReactionStatus) or status.kind not in VELOCITY_KINDS:
             return False
-        return (
-            float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
-            and status.kind in VELOCITY_KINDS
-        )
+        if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0:
+            return True
+        state_machine = getattr(sprite, "state_machine", None)
+        return getattr(state_machine, "current_state_name", None) == KNOCKBACK_STATE
 
     def _label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
         segments = self._label_segments(sprite)
