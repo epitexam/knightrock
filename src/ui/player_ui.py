@@ -92,7 +92,7 @@ class PlayerUI:
 
         lines = [
             f"HP     {player.health:.0f}/{player.max_health:.0f}",
-            f"Block  {player.block_stamina:.2f}/{player.max_block_stamina:.2f}   cd {player.block_cooldown_timer:.2f}s",
+            f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}   lock {player.guard_lockout_timer:.2f}s",
             f"Dash   {player.dash_charges}/{player.max_dash_charges}   pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
             f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
             f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",

@@ -13,13 +13,15 @@ from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
+from src.core.settings import HitFlash
 from src.entities.controller_view import ControllerView
 from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
 from src.entities.player_controllers import (
-    BlockController,
     DashController,
+    GuardController,
     JumpController,
 )
 from src.entities.player_input import PlayerInputHandler
@@ -32,36 +34,7 @@ from src.states.player_states import (
 
 
 class Player(ControllerView, Entity):
-    """Playable character with full state machine, input reading, and combat.
-
-    Extends Entity with movement, jumping, dashing, blocking, and attacks.
-    Utilizes the enhanced StateMachine with Input Buffering and State Tags.
-
-    The class is a thin aggregate (audit F1.1, Phase 2 #3): capability
-    resources live in the ``jump``/``block``/``dash`` controllers, input
-    reading lives in the ``input_handler``, and flat attribute access to
-    controller fields is provided by :class:`ControllerView` instead of
-    ~50 hand-written delegating properties.
-
-    Attributes
-    ----------
-    input_manager : InputManager
-        Source of player input.
-    input_handler : PlayerInputHandler
-        Reads the input manager each tick and drives abilities/attacks.
-    speed : float
-        Base movement speed.
-    floor_control : float
-        Horizontal control when on the ground.
-    air_control : float
-        Horizontal control when airborne.
-    jump : JumpController
-        Owns jump resources: buffer, coyote time, wall lock, and jump stocks.
-    block : BlockController
-        Owns block resources: stamina pool and post-block cooldown.
-    dash : DashController
-        Owns dash resources: charges, recharge, penalty, and squished hitbox.
-    """
+    """Playable character with movement, guard, dash, and frame-data attacks."""
 
     input_manager: InputManager
     speed: float
@@ -69,7 +42,7 @@ class Player(ControllerView, Entity):
     air_control: float
 
     jump: JumpController
-    block: BlockController
+    guard: GuardController
     dash: DashController
     input_handler: PlayerInputHandler
 
@@ -77,7 +50,7 @@ class Player(ControllerView, Entity):
 
     left_held: bool
     right_held: bool
-    block_held: bool
+    guard_held: bool
 
     CONTROLLER_VIEWS: ClassVar[dict[str, tuple[str, str]]] = {
         # Jump controller (physics protocols JumpEntity/WallJumpLock, debug UI)
@@ -91,10 +64,12 @@ class Player(ControllerView, Entity):
         "wall_jump_push_multiplier": ("jump", "wall_jump_push_multiplier"),
         "wall_jump_lock_duration": ("jump", "wall_jump_lock_duration"),
         "wall_jump_min_lock": ("jump", "wall_jump_min_lock"),
-        # Block controller (debug UI, hit resolver)
-        "block_stamina": ("block", "block_stamina"),
-        "max_block_stamina": ("block", "max_block_stamina"),
-        "block_cooldown_timer": ("block", "block_cooldown_timer"),
+        # Guard controller (debug UI, hit resolver)
+        "guard_posture": ("guard", "posture"),
+        "guard_posture_max": ("guard", "max_posture"),
+        "guard_lockout_timer": ("guard", "lockout_timer"),
+        "guard_parry_timer": ("guard", "parry_timer"),
+        "guard_riposte_timer": ("guard", "riposte_timer"),
         # Dash controller (debug UI)
         "dash_charges": ("dash", "charges"),
         "max_dash_charges": ("dash", "max_charges"),
@@ -162,14 +137,14 @@ class Player(ControllerView, Entity):
         self.air_control = config.air_control
 
         self.jump = JumpController(config)
-        self.block = BlockController(config)
+        self.guard = GuardController(config)
         self.dash = DashController(config, original_hitbox_width=self.hitbox.width)
 
         self.moving_platforms = moving_platforms
 
         self.left_held = False
         self.right_held = False
-        self.block_held = False
+        self.guard_held = False
 
         self.input_manager = input_manager
         self.input_handler = PlayerInputHandler(self)
@@ -178,18 +153,15 @@ class Player(ControllerView, Entity):
         self._setup_state_machine()
 
     def _setup_state_machine(self) -> None:
-        """Build the 12-state machine; states and interrupts live in player_states."""
         configure_player_state_machine(self)
         self._setup_interrupts()
 
     def _setup_interrupts(self) -> None:
-        """Register the shared hurt interrupt (dash/block/attack in player_states)."""
         super()._setup_interrupts()
 
     @property
-    def is_blocking(self) -> bool:
-        """Return True if the player is currently blocking."""
-        return self.state_machine.current_state_name == PlayerState.BLOCK
+    def is_guarding(self) -> bool:
+        return self.state_machine.current_state_name == PlayerState.GUARD
 
     @property
     def _buffered_attack_name(self) -> str | None:
@@ -221,10 +193,9 @@ class Player(ControllerView, Entity):
         self.jump.restore_midair_jumps()
 
     def update_timers(self, delta_time: float) -> None:
-        """Update every controller's timers (buffer, coyote, stamina, dash)."""
-        is_blocking = self.state_machine.current_state_name == PlayerState.BLOCK
+        is_guarding = self.state_machine.current_state_name == PlayerState.GUARD
         self.jump.update(delta_time, self.on_surface["floor"])
-        self.block.update(delta_time, is_blocking)
+        self.guard.update(delta_time, is_guarding)
         self.dash.update(delta_time)
 
     def _animation_name(self) -> str | None:
@@ -263,9 +234,8 @@ class Player(ControllerView, Entity):
         resolve_jump(self)
 
     def _on_reset(self) -> None:
-        """Full reset of all player-specific state."""
         self.jump.reset()
-        self.block.reset()
+        self.guard.reset()
         self.dash.reset()
         self.move_axis = 0.0
         self.input_handler.buffered_attack_name = None
@@ -273,52 +243,47 @@ class Player(ControllerView, Entity):
 
         self.left_held = False
         self.right_held = False
-        self.block_held = False
+        self.guard_held = False
 
     def respawn(self) -> None:
-        """Alias for reset_position, used after death."""
         self.reset_position()
 
-    def _apply_block_damage_reaction(
+    def _faces_source(self, source_center_x: float | None) -> bool:
+        if source_center_x is None:
+            return True
+        if source_center_x >= self.hitbox.centerx:
+            return self.facing_right
+        return not self.facing_right
+
+    def _apply_guard_reaction(
         self,
         amount: float,
         knockback: KnockbackConfig | None,
         source_center_x: float | None,
     ) -> DamageResult:
-        """Handle damage while blocking: consume stamina, reduce knockback, and apply reduced push.
-
-        Parameters
-        ----------
-        amount : float
-            Raw damage amount used for stamina calculation.
-        knockback : KnockbackConfig | None
-            Original knockback configuration.
-        source_center_x : float | None
-            X-coordinate of the damage source.
-
-        Returns
-        -------
-        DamageResult
-            A dataclass detailing the outcome of the blocked damage.
-        """
         _kb = knockback if knockback is not None else NULL_KNOCKBACK
-        self.block.consume(amount * CombatSettings.BLOCK_STAMINA_COST_RATIO)
-
+        in_air = not self.on_surface["floor"]
+        outcome, chip = self.guard.take_hit(amount, in_air)
+        if outcome == "parry":
+            self._reaction.note_guard_push(_kb, source_center_x, parried=True)
+            return DamageResult(guarded=True, parried=True)
         direction = compute_knockback_direction(
             self.hitbox.centerx, source_center_x, self.facing_right
         )
-
         if _kb.mode == "fixed":
-            self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR
+            push_dir = 1.0 if _kb.power[0] >= 0.0 else -1.0
+            self.velocity.x = _kb.power[0] * GuardSettings.PUSH_FACTOR
+            direction = push_dir
         else:
-            self.velocity.x = _kb.power[0] * CombatSettings.BLOCK_KNOCKBACK_FACTOR * direction
-
-        self._reaction.note_blocked_push(_kb, source_center_x)
-        return DamageResult(blocked=True)
-
-    def _can_receive_damage(self) -> bool:
-        """Check immunity/death; blocking is resolved as an explicit outcome."""
-        return super()._can_receive_damage()
+            self.velocity.x = _kb.power[0] * GuardSettings.PUSH_FACTOR * direction
+        self._reaction.note_guard_push(_kb, source_center_x)
+        if chip > 0:
+            self._apply_damage(chip)
+            self.flash_timer = HitFlash.DURATION
+        if outcome == "break":
+            self.stagger(GuardSettings.BREAK_STAGGER)
+            return DamageResult(guarded=True, guard_broken=True, applied=True, actual_damage=chip)
+        return DamageResult(guarded=True, applied=False, actual_damage=chip)
 
     def receive_damage(
         self,
@@ -327,32 +292,11 @@ class Player(ControllerView, Entity):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
     ) -> DamageResult:
-        """Override to add blocking logic and cap hurt duration.
-
-        If blocking, stamina is consumed and knockback is reduced; no health lost.
-        Otherwise, the base entity logic is applied and the hurt timer is capped.
-
-        Parameters
-        ----------
-        amount : float
-            Hit points to subtract.
-        source_center_x : float | None
-            X centre of the damage source for knockback direction.
-        knockback : KnockbackConfig | None
-            Knockback impulse configuration.
-        interrupt : bool
-            Whether the hit interrupts the entity's current action.
-
-        Returns
-        -------
-        DamageResult
-            A dataclass detailing the outcome of the damage application.
-        """
         if not self._can_receive_damage():
             return DamageResult()
 
-        if self.is_blocking:
-            return self._apply_block_damage_reaction(amount, knockback, source_center_x)
+        if self.is_guarding and self._faces_source(source_center_x):
+            return self._apply_guard_reaction(amount, knockback, source_center_x)
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 
@@ -365,33 +309,25 @@ class Player(ControllerView, Entity):
         return result
 
     def save_state(self) -> EntitySnapshot:
-        """Extend the entity snapshot with controller and input runtime state.
-
-        ``jump``/``block``/``dash`` hold the timers and stocks that drive
-        locomotion, and ``input_handler.buffered_attack_name`` is the second
-        half of the attack buffer — both must round-trip for a bit-exact
-        rollback (Phase 3 #3).
-        """
         snapshot = super().save_state()
         snapshot.extra = {
             "jump": self.jump.save_state(),
-            "block": self.block.save_state(),
+            "guard": self.guard.save_state(),
             "dash": self.dash.save_state(),
             "buffered_attack_name": self.input_handler.buffered_attack_name,
             "left_held": self.left_held,
             "right_held": self.right_held,
-            "block_held": self.block_held,
+            "guard_held": self.guard_held,
         }
         return snapshot
 
     def load_state(self, snapshot: EntitySnapshot) -> None:
-        """Restore controllers and input state after a rollback."""
         super().load_state(snapshot)
         extra = snapshot.extra
         self.jump.load_state(extra["jump"])
-        self.block.load_state(extra["block"])
+        self.guard.load_state(extra["guard"])
         self.dash.load_state(extra["dash"])
         self.input_handler.buffered_attack_name = extra["buffered_attack_name"]
         self.left_held = extra["left_held"]
         self.right_held = extra["right_held"]
-        self.block_held = extra["block_held"]
+        self.guard_held = extra["guard_held"]

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import AttackDefinition
 from src.core.colors import Colors
-from src.core.settings import Combat, Physics
+from src.core.settings import Combat, Guard, Physics
 
 
 def _default_attacks() -> dict[str, AttackDefinition]:
@@ -59,12 +59,10 @@ class PlayerConfig:
         Duration after leaving a surface where jump is still allowed.
     jump_buffer_duration : float
         Duration to buffer a jump input before landing.
-    max_block_stamina : float
-        Maximum stamina for blocking.
-    block_cooldown_normal : float
-        Cooldown after a normal block.
-    block_cooldown_broken : float
-        Cooldown after a broken block.
+    guard_posture_max : float
+        Maximum guard posture before break.
+    guard_break_lockout : float
+        Lockout after a guard break.
     max_dash_charges : int
         Maximum number of dash charges.
     dash_speed : float
@@ -107,9 +105,8 @@ class PlayerConfig:
     max_wall_jumps: int | float = float("inf")
     coyote_duration: float = Physics.COYOTE_DURATION
     jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
-    max_block_stamina: float = Physics.MAX_BLOCK_STAMINA
-    block_cooldown_normal: float = Combat.BLOCK_COOLDOWN_NORMAL
-    block_cooldown_broken: float = Combat.BLOCK_COOLDOWN_BROKEN
+    guard_posture_max: float = Guard.MAX_POSTURE
+    guard_break_lockout: float = Guard.BREAK_LOCKOUT
     max_dash_charges: int = Physics.DASH_MAX_CHARGES
     dash_speed: float = Physics.DASH_SPEED
     dash_duration: float = Physics.DASH_DURATION
@@ -141,9 +138,8 @@ DEFAULT_PLAYER_CONFIG = PlayerConfig(
     max_wall_jumps=math.inf,
     coyote_duration=Physics.COYOTE_DURATION,
     jump_buffer_duration=Physics.JUMP_BUFFER_DURATION,
-    max_block_stamina=Physics.MAX_BLOCK_STAMINA,
-    block_cooldown_normal=Combat.BLOCK_COOLDOWN_NORMAL,
-    block_cooldown_broken=Combat.BLOCK_COOLDOWN_BROKEN,
+    guard_posture_max=Guard.MAX_POSTURE,
+    guard_break_lockout=Guard.BREAK_LOCKOUT,
     max_dash_charges=Physics.DASH_MAX_CHARGES,
     dash_speed=Physics.DASH_SPEED,
     dash_duration=Physics.DASH_DURATION,

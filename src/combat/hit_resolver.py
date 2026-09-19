@@ -104,7 +104,7 @@ class HitResolver:
         2. Compute scaled knockback by applying ``charge_multiplier`` to the
            base knockback power vectors.
         3. Apply damage and inspect its explicit ``DamageResult``.
-        4. Stop immediately for blocked or immune hits.
+        4. Stop immediately for guarded, parried, or immune hits.
         5. Resolve armor break and finishers only after applied damage.
         6. Interrupt and stagger only living targets not already reacting to
            heavy knockback or protected by super armor.
@@ -148,8 +148,7 @@ class HitResolver:
         applied_knockback = None if armor_absorbs_reaction else effective_knockback
         result = target.receive_damage(final_damage, source_x, applied_knockback)
 
-        # Blocking, invincibility, death, or any future immunity is authoritative:
-        # no interruption, stagger, armor break, or finisher may leak through.
+        # Guard, invincibility, death, or any future immunity is authoritative.
         if not result.applied:
             return result
 

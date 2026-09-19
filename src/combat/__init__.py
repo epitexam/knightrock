@@ -32,7 +32,7 @@ from src.combat.attack_loading import load_attacks
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 
 # ── Protocols ─────────────────────────────────────────────────────────
-from src.combat.combatant_protocol import BlockingCombatant, Combatant
+from src.combat.combatant_protocol import Combatant, GuardingCombatant
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     FRAME_RATE,
@@ -59,7 +59,7 @@ __all__ = [
     "AttackDefinition",
     # Protocols
     "Combatant",
-    "BlockingCombatant",
+    "GuardingCombatant",
     # Core
     "CombatComponent",
     "NullCombatComponent",

@@ -102,7 +102,7 @@ class LocalInputProvider(InputProvider):
         state = InputState()
         state.move_axis = self._calculate_move_axis(keys, kb, axes)
         state.down_held = keys[kb["move_down"]]
-        state.block_held = keys[kb["block"]] or self._current_joy_buttons.get(btns["block"], False)
+        state.guard_held = keys[kb["guard"]] or self._current_joy_buttons.get(btns["guard"], False)
         state.jump_held = keys[kb["jump"]] or self._current_joy_buttons.get(btns["jump"], False)
         state.dash_held = keys[kb["dash"]] or self._current_joy_axes.get(axes["dash"], 0.0) > 0.5
         state.reset_held = keys[kb["reset"]] or self._current_joy_buttons.get(btns["reset"], False)

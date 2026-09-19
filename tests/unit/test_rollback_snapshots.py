@@ -17,10 +17,10 @@ from pygame.sprite import Group
 from src.entities.entity import Entity
 from src.entities.player import Player
 from src.entities.player_controllers import (
-    BlockController,
-    BlockSnapshot,
     DashController,
     DashSnapshot,
+    GuardController,
+    GuardSnapshot,
     JumpController,
     JumpSnapshot,
 )
@@ -130,17 +130,21 @@ def test_jump_controller_snapshot_round_trip() -> None:
     assert ctrl.wall_jumps_left == 3
 
 
-def test_block_and_dash_controller_snapshots() -> None:
+def test_guard_and_dash_controller_snapshots() -> None:
     config = _fake_player_config()
-    block = BlockController(config)
-    block.block_stamina = 0.42
-    block.block_cooldown_timer = 0.33
-    snap_block = block.save_state()
-    assert isinstance(snap_block, BlockSnapshot)
-    block.reset()
-    block.load_state(snap_block)
-    assert block.block_stamina == pytest.approx(0.42)
-    assert block.block_cooldown_timer == pytest.approx(0.33)
+    guard = GuardController(config)
+    guard.posture = 42.0
+    guard.lockout_timer = 0.33
+    guard.parry_timer = 0.1
+    guard.riposte_timer = 0.2
+    snap_guard = guard.save_state()
+    assert isinstance(snap_guard, GuardSnapshot)
+    guard.reset()
+    guard.load_state(snap_guard)
+    assert guard.posture == pytest.approx(42.0)
+    assert guard.lockout_timer == pytest.approx(0.33)
+    assert guard.parry_timer == pytest.approx(0.1)
+    assert guard.riposte_timer == pytest.approx(0.2)
 
     dash = DashController(config, original_hitbox_width=48.0)
     dash.charges = 0
@@ -236,34 +240,34 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
 
     player.jump.jump_buffer_timer = 0.14
     player.jump.midair_jumps_left = 0
-    player.block.block_stamina = 0.25
+    player.guard.posture = 25.0
     player.dash.charges = 0
     player.dash.penalty_timer = 0.5
     player.input_handler.buffered_attack_name = "light_attack"
     player.left_held = True
     player.right_held = False
-    player.block_held = True
+    player.guard_held = True
 
     snapshot = player.save_state()
 
     player.jump.reset()
-    player.block.reset()
+    player.guard.reset()
     player.dash.reset()
     player.input_handler.buffered_attack_name = None
     player.left_held = False
-    player.block_held = False
+    player.guard_held = False
 
     player.load_state(snapshot)
 
     assert player.jump.jump_buffer_timer == pytest.approx(0.14)
     assert player.jump.midair_jumps_left == 0
-    assert player.block.block_stamina == pytest.approx(0.25)
+    assert player.guard.posture == pytest.approx(25.0)
     assert player.dash.charges == 0
     assert player.dash.penalty_timer == pytest.approx(0.5)
     assert player.input_handler.buffered_attack_name == "light_attack"
     assert player.left_held is True
     assert player.right_held is False
-    assert player.block_held is True
+    assert player.guard_held is True
 
 
 def _fake_player_config():

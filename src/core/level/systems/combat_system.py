@@ -161,7 +161,7 @@ class CombatSystem:
                 hit=candidate.hit,
                 charge_multiplier=candidate.charge_multiplier,
             )
-            if not (result.applied or result.blocked):
+            if not (result.applied or result.guarded):
                 continue
 
             candidate.attacker.combat.record_contact(candidate.target.id)

@@ -16,7 +16,8 @@ class MockInputManager:
         self.move_axis = 0.0
         self.left_held = False
         self.right_held = False
-        self.block_held = False
+        self.guard_held = False
+        self.guard_just_pressed = False
         self.down_held = False
         self.jump_just_pressed = False
         self.dash_just_pressed = False
@@ -271,7 +272,7 @@ class TestPrivateVariables:
         assert hasattr(player, "input_handler")
         assert hasattr(player, "left_held")
         assert hasattr(player, "right_held")
-        assert hasattr(player, "block_held")
+        assert hasattr(player, "guard_held")
 
     def test_player_public_variables_no_underscore(self):
         """Test that Player public variables don't have _ prefix."""

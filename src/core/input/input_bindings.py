@@ -39,7 +39,7 @@ class InputBindings:
             "attack2": pygame.K_s,
             "attack3": pygame.K_d,
             "attack4": pygame.K_f,
-            "block": pygame.K_q,
+            "guard": pygame.K_q,
             "reset": pygame.K_r,
         }
     )
@@ -50,7 +50,7 @@ class InputBindings:
             "attack1": 1,
             "attack2": 2,
             "attack3": 3,
-            "block": 4,
+            "guard": 4,
             "attack4": 5,
             "reset": 7,
         }

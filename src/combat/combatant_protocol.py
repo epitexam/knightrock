@@ -21,7 +21,9 @@ class DamageResult:
     """Explicit outcome of a call to ``receive_damage``."""
 
     applied: bool = False
-    blocked: bool = False
+    guarded: bool = False
+    parried: bool = False
+    guard_broken: bool = False
     killed: bool = False
     actual_damage: float = 0.0
     heavy_knockback: bool = False
@@ -243,18 +245,12 @@ class Combatant(Protocol):
 
 
 @runtime_checkable
-class BlockingCombatant(Combatant, Protocol):
-    """Extends ``Combatant`` with blocking capabilities.
+class GuardingCombatant(Combatant, Protocol):
+    """Extends ``Combatant`` with directional guard capabilities."""
 
-    Attributes
-    ----------
-    block_stamina : float
-        Remaining stamina available for blocking.
-    """
-
-    block_stamina: float
+    guard_posture: float
 
     @property
-    def is_blocking(self) -> bool:
-        """Whether the entity is currently in a blocking state."""
+    def is_guarding(self) -> bool:
+        """Whether the entity is currently in a guarding state."""
         ...

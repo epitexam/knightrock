@@ -80,9 +80,12 @@ class InputManager:
         return self._current_state.move_axis > InputSettings.AXIS_DEADZONE
 
     @property
-    def block_held(self) -> bool:
-        """Return True if the block action is held."""
-        return self._current_state.block_held
+    def guard_held(self) -> bool:
+        return self._current_state.guard_held
+
+    @property
+    def guard_just_pressed(self) -> bool:
+        return self._current_state.guard_held and not self._prev_state.guard_held
 
     @property
     def down_held(self) -> bool:

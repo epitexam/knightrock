@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics
 from src.physics import apply_velocity_friction
 from src.states.reaction_states import HurtState, KnockbackState, StaggerState
@@ -166,39 +166,19 @@ class PlayerAttackState(PlayerBaseState):
         return None
 
 
-class PlayerBlockState(PlayerBaseState):
-    """Represent the PlayerBlock state."""
-
+class PlayerGuardState(PlayerBaseState):
     def __init__(self, entity: Any):
-        """Initialize the PlayerBlockState instance with block tags."""
-        super().__init__(entity, tags=["block", "busy"])
-
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state, stop horizontal velocity, and reduce hitbox height."""
-        if self.entity.on_surface["floor"]:
-            self.entity.velocity.x = 0
-        old_bottom = self.entity.hitbox.bottom
-        self.entity.hitbox.height -= CombatSettings.BLOCK_HEIGHT_REDUCTION
-        self.entity.hitbox.bottom = old_bottom
-        self.entity.sync_rects()
-
-    def exit(self, next_state: str | None = None) -> None:
-        """Exit the state, restore hitbox height, and apply block cooldown."""
-        self.entity.block.apply_exit_cooldown()
-        old_bottom = self.entity.hitbox.bottom
-        self.entity.hitbox.height += CombatSettings.BLOCK_HEIGHT_REDUCTION
-        self.entity.hitbox.bottom = old_bottom
-        self.entity.handle_collisions("vertical")
-        self.entity.sync_rects()
+        super().__init__(entity, tags=["guard", "busy"])
 
     def update(self, delta_time: float) -> str | None:
-        """Update the current state, draining stamina and checking conditions."""
-        self.entity.velocity.x = 0.0
-        drain = delta_time
-        if not self.entity.on_surface["floor"]:
-            drain = delta_time * CombatSettings.BLOCK_AIR_DRAIN_MULT
-        self.entity.block.consume(drain)
-        if not self.entity.block_held or self.entity.block.block_stamina <= 0:
+        self.entity.handle_jump()
+        saved_axis = self.entity.move_axis
+        self.entity.move_axis = saved_axis * GuardSettings.MOVE_MULT
+        self.entity.apply_horizontal_movement(delta_time)
+        self.entity.move_axis = saved_axis
+        if self.entity.guard.posture <= 0:
+            return "stagger"
+        if not self.entity.guard_held or not self.entity.guard.can_use():
             return self.ground_return()
         return None
 
@@ -315,7 +295,7 @@ class PlayerState(str, Enum):
     FALL = "fall"
     WALL_SLIDE = "wall_slide"
     ATTACK = "attack"
-    BLOCK = "block"
+    GUARD = "guard"
     HURT = "hurt"
     DASH = "dash"
     STAGGER = "stagger"
@@ -325,7 +305,7 @@ class PlayerState(str, Enum):
 
 ATTACK_FORBIDDEN_STATES = {
     PlayerState.WALL_SLIDE,
-    PlayerState.BLOCK,
+    PlayerState.GUARD,
     PlayerState.HURT,
     PlayerState.DASH,
     PlayerState.STAGGER,
@@ -344,12 +324,10 @@ def _can_dash(player: Any) -> bool:
     )
 
 
-def _can_block(player: Any) -> bool:
-    """Check if the player can currently interrupt to block."""
+def _can_guard(player: Any) -> bool:
     return (
-        player.on_surface["floor"]
-        and player.block_held
-        and player.block.can_use()
+        player.guard_held
+        and player.guard.can_use()
         and player.state_machine.current_state_name
         not in (
             PlayerState.WALL_SLIDE,
@@ -357,6 +335,7 @@ def _can_block(player: Any) -> bool:
             PlayerState.KNOCKBACK,
             PlayerState.DASH,
             PlayerState.STAGGER,
+            PlayerState.ATTACK,
         )
     )
 
@@ -378,12 +357,12 @@ def configure_player_state_machine(player: Any) -> None:
     sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))
     sm.add_state(PlayerState.ATTACK, PlayerAttackState(player))
     sm.add_state(PlayerState.CHARGE, PlayerChargeState(player))
-    sm.add_state(PlayerState.BLOCK, PlayerBlockState(player))
+    sm.add_state(PlayerState.GUARD, PlayerGuardState(player))
     sm.add_state(PlayerState.HURT, PlayerHurtState(player))
     sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
     sm.add_state(PlayerState.DASH, PlayerDashState(player))
     sm.add_state(PlayerState.STAGGER, PlayerStaggerState(player))
     sm.set_initial_state(PlayerState.IDLE)
     sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
-    sm.add_interrupt(PlayerState.BLOCK, lambda: _can_block(player), priority=60)
+    sm.add_interrupt(PlayerState.GUARD, lambda: _can_guard(player), priority=60)
     sm.add_interrupt(PlayerState.ATTACK, lambda: _can_attack_interrupt(player), priority=40)

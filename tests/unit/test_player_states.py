@@ -8,8 +8,8 @@ from src.states.player_states import (
     ATTACK_FORBIDDEN_STATES,
     PlayerState,
     _can_attack_interrupt,
-    _can_block,
     _can_dash,
+    _can_guard,
     configure_player_state_machine,
     player_ground_return,
 )
@@ -28,10 +28,8 @@ def _make_entity(**overrides) -> SimpleNamespace:
         "left_held": False,
         "right_held": False,
         "dash": SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None),
-        "block": SimpleNamespace(can_use=lambda: True, apply_exit_cooldown=lambda: None),
-        "block_stamina": 0.5,
-        "max_block_stamina": 0.75,
-        "block_held": False,
+        "guard": SimpleNamespace(can_use=lambda: True),
+        "guard_held": False,
         "combat": SimpleNamespace(is_attacking=False),
         "state_machine": SimpleNamespace(current_state_name=None),
     }
@@ -97,40 +95,48 @@ def test_can_dash_false_when_no_charges() -> None:
     assert _can_dash(entity) is False
 
 
-# --- _can_block ---
+# --- _can_guard ---
 
 
-def test_can_block_true_when_grounded() -> None:
+def test_can_guard_true_when_held() -> None:
     entity = _make_entity(
-        block_held=True,
+        guard_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
     )
-    assert _can_block(entity) is True
+    assert _can_guard(entity) is True
 
 
-def test_can_block_false_when_airborne() -> None:
+def test_can_guard_true_when_airborne() -> None:
     entity = _make_entity(
-        block_held=True,
+        guard_held=True,
         on_surface={"floor": False, "left": False, "right": False},
+        state_machine=SimpleNamespace(current_state_name=PlayerState.FALL),
+    )
+    assert _can_guard(entity) is True
+
+
+def test_can_guard_false_when_not_held() -> None:
+    entity = _make_entity(
+        guard_held=False,
         state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
     )
-    assert _can_block(entity) is False
+    assert _can_guard(entity) is False
 
 
-def test_can_block_false_when_not_held() -> None:
+def test_can_guard_false_in_hurt_state() -> None:
     entity = _make_entity(
-        block_held=False,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
-    )
-    assert _can_block(entity) is False
-
-
-def test_can_block_false_in_hurt_state() -> None:
-    entity = _make_entity(
-        block_held=True,
+        guard_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.HURT),
     )
-    assert _can_block(entity) is False
+    assert _can_guard(entity) is False
+
+
+def test_can_guard_false_in_attack_state() -> None:
+    entity = _make_entity(
+        guard_held=True,
+        state_machine=SimpleNamespace(current_state_name=PlayerState.ATTACK),
+    )
+    assert _can_guard(entity) is False
 
 
 # --- _can_attack_interrupt ---
@@ -155,7 +161,7 @@ def test_can_attack_interrupt_false_when_not_attacking() -> None:
 
 def test_attack_forbidden_states_contains_expected_members() -> None:
     assert PlayerState.WALL_SLIDE in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.BLOCK in ATTACK_FORBIDDEN_STATES
+    assert PlayerState.GUARD in ATTACK_FORBIDDEN_STATES
     assert PlayerState.HURT in ATTACK_FORBIDDEN_STATES
     assert PlayerState.DASH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.STAGGER in ATTACK_FORBIDDEN_STATES
@@ -171,15 +177,12 @@ def _dash_stub():
     return SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None)
 
 
-def _block_stub():
-    return SimpleNamespace(
-        can_use=lambda: True,
-        apply_exit_cooldown=lambda: None,
-    )
+def _guard_stub():
+    return SimpleNamespace(can_use=lambda: True)
 
 
 def test_configure_state_machine_sets_all_states() -> None:
-    entity = _make_entity(dash=_dash_stub(), block=_block_stub())
+    entity = _make_entity(dash=_dash_stub(), guard=_guard_stub())
     configure_player_state_machine(entity)
     sm = entity.state_machine
     assert sm.current_state_name == "idle"
@@ -188,11 +191,11 @@ def test_configure_state_machine_sets_all_states() -> None:
 
 
 def test_configure_state_machine_registers_interrupts() -> None:
-    entity = _make_entity(dash=_dash_stub(), block=_block_stub())
+    entity = _make_entity(dash=_dash_stub(), guard=_guard_stub())
     configure_player_state_machine(entity)
     sm = entity.state_machine
     assert len(sm._interrupts) == 3
     targets = {t for _, t, _ in sm._interrupts}
     assert PlayerState.DASH.value in targets
-    assert PlayerState.BLOCK.value in targets
+    assert PlayerState.GUARD.value in targets
     assert PlayerState.ATTACK.value in targets

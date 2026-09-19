@@ -47,7 +47,8 @@ class InputStub:
     """Same minimal contract as the headless test fixture."""
 
     move_axis = 1.0
-    left_held = right_held = block_held = down_held = False
+    left_held = right_held = guard_held = down_held = False
+    guard_just_pressed = False
     jump_just_pressed = dash_just_pressed = reset_just_pressed = False
     attack1_just_pressed = attack2_just_pressed = attack2_just_released = False
     attack3_just_pressed = attack4_just_pressed = special_attack_just_pressed = False

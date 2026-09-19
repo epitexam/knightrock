@@ -30,7 +30,7 @@ def test_combat_system_ignores_immune_contact_without_hit_stop() -> None:
     assert system.hit_stop_timer == 0.0
 
 
-def test_combat_system_consumes_blocked_contact_once() -> None:
+def test_combat_system_consumes_guarded_contact_once() -> None:
     player = Player(
         pos=(0.0, 0.0),
         groups=Group(),
@@ -38,19 +38,20 @@ def test_combat_system_consumes_blocked_contact_once() -> None:
         moving_platforms=[],
         input_manager=InputStub(),  # type: ignore[arg-type]
     )
-    player.state_machine.current_state_name = "block"
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
     attacker = make_active_attacker(player)
     system = CombatSystem()
-    initial_stamina = player.block.block_stamina
+    initial_posture = player.guard.posture
 
     combatants = [attacker, player]  # type: ignore[list-item]
     system.process_attacks(combatants)
-    stamina_after_first_contact = player.block.block_stamina
+    posture_after_first_contact = player.guard.posture
     system.hit_stop_timer = 0.0
     system.process_attacks(combatants)
 
-    assert stamina_after_first_contact < initial_stamina
-    assert player.block.block_stamina == stamina_after_first_contact
+    assert posture_after_first_contact < initial_posture
+    assert player.guard.posture == posture_after_first_contact
     assert player.id in attacker.combat.targets_hit
 
 
@@ -118,8 +119,8 @@ def test_null_combat_component_is_reset_substitutable() -> None:
 
 def test_player_copies_all_behavioral_configuration() -> None:
     config = PlayerConfig(
-        block_cooldown_normal=0.9,
-        block_cooldown_broken=3.4,
+        guard_posture_max=120.0,
+        guard_break_lockout=2.0,
         dash_recharge_time=0.85,
         dash_gravity_mult=0.4,
     )
@@ -132,7 +133,7 @@ def test_player_copies_all_behavioral_configuration() -> None:
         config=config,
     )
 
-    assert player.block.block_cooldown_normal == 0.9
-    assert player.block.block_cooldown_broken == 3.4
+    assert player.guard.break_lockout == 2.0
+    assert player.guard.max_posture == 120.0
     assert player.dash.recharge_time == 0.85
     assert player.dash.gravity_mult == 0.4

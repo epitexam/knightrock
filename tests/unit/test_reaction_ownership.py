@@ -84,7 +84,7 @@ def test_stagger_clears_hurt_and_sets_timer() -> None:
     assert owner.combat.is_hurt is False
 
 
-def test_block_super_armor_launch_stagger_preserved() -> None:
+def test_guard_super_armor_launch_stagger_preserved() -> None:
     owner = _narrow_owner(super_armor=True)
     component = ReactionComponent(owner)
     component.stagger(0.2)

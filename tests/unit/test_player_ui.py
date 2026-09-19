@@ -57,9 +57,9 @@ def _make_full_player(**overrides) -> SimpleNamespace:
     base = {
         "health": 100.0,
         "max_health": 100.0,
-        "block_stamina": 0.5,
-        "max_block_stamina": 0.75,
-        "block_cooldown_timer": 0.0,
+        "guard_posture": 50.0,
+        "guard_posture_max": 100.0,
+        "guard_lockout_timer": 0.0,
         "dash_charges": 2,
         "max_dash_charges": 2,
         "dash_penalty_timer": 0.0,

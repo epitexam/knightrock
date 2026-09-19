@@ -14,11 +14,11 @@ from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.settings import Combat, Physics
+from src.core.settings import Guard, Physics
 from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import BlockController, DashController
+from src.entities.player_controllers import DashController, GuardController
 from src.physics.movement import resolve_jump
-from src.states.player_states import PlayerBlockState, PlayerDashState
+from src.states.player_states import PlayerDashState, PlayerGuardState
 
 
 class TrackingGroup(list):
@@ -243,25 +243,46 @@ def test_wall_jump_uses_entity_configuration() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stamina", "expected"),
+    ("posture", "expected"),
     [
-        (0.5, 0.9),
-        (0.0, 3.4),
+        (50.0, "guard"),
+        (5.0, "break"),
     ],
 )
-def test_block_exit_uses_exposed_cooldown_configuration(stamina: float, expected: float) -> None:
+def test_guard_take_hit_uses_exposed_posture_configuration(posture: float, expected: str) -> None:
+    guard = GuardController(PlayerConfig(guard_posture_max=100.0, guard_break_lockout=1.2))
+    guard.posture = posture
+
+    outcome, _ = guard.take_hit(10.0, False)
+
+    assert outcome == expected
+
+
+def test_guard_state_moves_slowly_and_releases() -> None:
     entity = SimpleNamespace(
-        block=BlockController(PlayerConfig(block_cooldown_normal=0.9, block_cooldown_broken=3.4)),
-        hitbox=pygame.FRect(0, 0, 48, 40),
-        handle_collisions=Mock(),
-        sync_rects=Mock(),
+        move_axis=1.0,
+        guard=GuardController(PlayerConfig(guard_posture_max=100.0, guard_break_lockout=1.2)),
+        guard_held=True,
+        velocity=pygame.Vector2(),
+        speed=350.0,
+        floor_control=25.0,
+        air_control=12.0,
+        on_surface={"floor": True, "left": False, "right": False},
+        combat=SimpleNamespace(movement_multiplier=1.0),
+        handle_jump=lambda: None,
+        apply_horizontal_movement=lambda dt: setattr(entity, "saw_axis", entity.move_axis),
+        left_held=False,
+        right_held=True,
+        state_machine=SimpleNamespace(current_state_name="guard"),
     )
-    entity.block.block_stamina = stamina
+    state = PlayerGuardState(entity)
 
-    PlayerBlockState(entity).exit()
+    assert state.update(1 / 60) is None
+    assert entity.saw_axis == pytest.approx(Guard.MOVE_MULT)
+    assert entity.move_axis == pytest.approx(1.0)
 
-    assert entity.block.block_cooldown_timer == pytest.approx(expected)
-    entity.handle_collisions.assert_called_once_with("vertical")
+    entity.guard_held = False
+    assert state.update(1 / 60) == "run"
 
 
 def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
@@ -303,5 +324,5 @@ def test_player_config_defaults_follow_central_settings() -> None:
     assert config.speed == Physics.PLAYER_SPEED
     assert config.dash_recharge_time == Physics.DASH_RECHARGE_TIME
     assert config.dash_gravity_mult == Physics.DASH_GRAVITY_MULT
-    assert config.block_cooldown_normal == Combat.BLOCK_COOLDOWN_NORMAL
-    assert config.block_cooldown_broken == Combat.BLOCK_COOLDOWN_BROKEN
+    assert config.guard_posture_max == Guard.MAX_POSTURE
+    assert config.guard_break_lockout == Guard.BREAK_LOCKOUT

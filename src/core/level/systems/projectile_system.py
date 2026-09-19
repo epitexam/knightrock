@@ -112,7 +112,7 @@ class ProjectileSystem:
                 target=target,
                 hit=projectile.config.hit,
             )
-            if not (result.applied or result.blocked):
+            if not (result.applied or result.guarded):
                 continue
             projectile.targets_hit.add(target_id)
             if not projectile.config.pierce:
