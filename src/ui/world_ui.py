@@ -12,6 +12,13 @@ UX rules (debug readability pass):
 - Vertical stack (debug): entity, then its health bar, then its label card —
   the card floats above the bar and never covers it. Near the top of the
   screen the bar flips below the entity and the card takes the freed space.
+- Velocity vectors are arrows, not hairlines: a tapered shaft, a filled
+  triangular head, a pivot dot on the entity and a dark rim so the silhouette
+  survives a bright sky. The head length is clamped, and a minimum drawn
+  length keeps slow vectors readable.
+- A velocity vector is painted red while the typed hit cause is fresh **or**
+  while the knockback state still carries the entity (a launch outlives the
+  freshness window), gold on a parry, yellow for locomotion.
 - Labels never stack: each label dodges upward (then below its entity) to a
   free slot, and is dropped rather than overdrawn when no slot is left.
 - Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
@@ -21,10 +28,13 @@ UX rules (debug readability pass):
 from collections.abc import Iterable
 
 import pygame
+import pygame.gfxdraw
+from pygame.math import Vector2
 
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
+from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 
@@ -42,6 +52,39 @@ VELOCITY_PREVIEW_S = 0.15
 
 #: Hide near-stationary drift vectors below this speed (px/s).
 VELOCITY_MIN_SPEED = 60.0
+
+#: Shortest arrow drawn (px). A slow preview would collapse into a dot, so the
+#: shaft stretches just enough for the head to still read as a head;
+#: near-stationary drift is already filtered out by ``VELOCITY_MIN_SPEED``.
+VELOCITY_MIN_LENGTH = 26.0
+
+#: Arrowhead length: a fraction of the drawn shaft, clamped to
+#: ``[VELOCITY_HEAD_MIN, VELOCITY_HEAD_MAX]`` px so a short vector keeps a
+#: visible head and a long one does not end in a fat wedge.
+VELOCITY_HEAD_RATIO = 0.45
+VELOCITY_HEAD_MIN = 7.0
+VELOCITY_HEAD_MAX = 15.0
+
+#: Arrowhead half-width as a fraction of the head length (~0.6 reads as a
+#: needle, not a blot), capped by ``VELOCITY_HEAD_WIDTH_CAP`` so the head of a
+#: short arrow stays proportionate to its shaft instead of turning into a blob.
+VELOCITY_HEAD_WIDTH_RATIO = 0.62
+VELOCITY_HEAD_WIDTH_CAP = 0.3
+
+#: Shaft widths (px): the neck meets the head, the tail leaves the entity.
+#: The taper is what makes the vector read as motion instead of a bar.
+VELOCITY_NECK_WIDTH = 4
+VELOCITY_TAIL_WIDTH = 2
+
+#: Rounded pivot at the origin (px radius): the arrow visibly departs the
+#: entity center instead of starting mid-air.
+VELOCITY_TAIL_RADIUS = 3
+
+#: 1 px-ish dark rim stroked under the arrow fill: over a bright sky a plain
+#: yellow vector bleeds into the background, the rim keeps the silhouette
+#: readable. Half the stroke lands inside the shape and is covered by the fill.
+VELOCITY_OUTLINE: Color = (14, 16, 20)
+VELOCITY_OUTLINE_WIDTH = 3
 
 #: World margin around the viewport: sprites grazing the edge still draw.
 CULL_MARGIN_PX = 64.0
@@ -91,6 +134,35 @@ _Segments = list[list[tuple[str, Color]]]
 #: anchor, clearance above (bar above the entity) and below (bar flipped
 #: under the entity near the top of the screen).
 _LabelRequest = tuple[tuple[int, float, float], _Segments, Color, pygame.FRect, int, int]
+
+
+def arrow_outline(
+    start: Vector2,
+    direction: Vector2,
+    length: float,
+    head_length: float,
+    head_half_width: float,
+) -> list[tuple[int, int]]:
+    """Silhouette of a velocity arrow: a tapered shaft plus a triangular head.
+
+    One single seven-point polygon (tail, neck, barb, tip, barb, neck, tail)
+    so the shaft and the head can never leave a seam. ``direction`` must be a
+    unit vector, ``start`` the screen-space pivot and ``length`` the drawn
+    length (already floored to ``VELOCITY_MIN_LENGTH``).
+    """
+    normal = Vector2(-direction.y, direction.x)
+    tip = start + direction * length
+    neck = tip - direction * head_length
+    corners = (
+        start + normal * (VELOCITY_TAIL_WIDTH / 2.0),
+        neck + normal * (VELOCITY_NECK_WIDTH / 2.0),
+        neck + normal * head_half_width,
+        tip,
+        neck - normal * head_half_width,
+        neck - normal * (VELOCITY_NECK_WIDTH / 2.0),
+        start - normal * (VELOCITY_TAIL_WIDTH / 2.0),
+    )
+    return [(round(corner.x), round(corner.y)) for corner in corners]
 
 
 def join_flag_tokens(flags: list[tuple[str, Color]]) -> list[tuple[str, Color]]:
@@ -283,15 +355,55 @@ class WorldUI:
         origin = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
         if origin is None:
             return
-        start = camera.apply(origin).center
-        end = (start[0] + vx * VELOCITY_PREVIEW_S, start[1] + vy * VELOCITY_PREVIEW_S)
         color = Colors.debug_velocity
         if self._is_parry_flash(sprite):
             color = Colors.gold
         elif self._is_reaction_push(sprite):
             color = Colors.red  # reaction push vector, not locomotion
-        pygame.draw.line(self.display_surface, color, start, end, width=2)
-        pygame.draw.circle(self.display_surface, color, end, 2)
+        self._draw_velocity_arrow(Vector2(camera.apply(origin).center), Vector2(vx, vy), color)
+
+    def _draw_velocity_arrow(self, start: Vector2, velocity: Vector2, color: Color) -> None:
+        """Paint one velocity preview: rim, filled tapered shaft and arrowhead.
+
+        Geometry recap — the tail leaves the entity thinner than the neck, the
+        barbs flare at ``head_length`` from the tip, and the pivot dot marks
+        where the sprite actually is. The dark rim is stroked first, then the
+        colour fill covers its inner half, and an anti-aliased pass smooths the
+        fill boundary on top (debug-only cost: a handful of visible sprites).
+        """
+        delta = velocity * VELOCITY_PREVIEW_S
+        length = delta.length()
+        if length <= 0.0:
+            return
+        direction = delta / length
+        drawn_length = max(length, VELOCITY_MIN_LENGTH)
+        head_length = min(
+            max(drawn_length * VELOCITY_HEAD_RATIO, VELOCITY_HEAD_MIN),
+            VELOCITY_HEAD_MAX,
+            drawn_length,
+        )
+        points = arrow_outline(
+            start,
+            direction,
+            drawn_length,
+            head_length,
+            min(head_length * VELOCITY_HEAD_WIDTH_RATIO, drawn_length * VELOCITY_HEAD_WIDTH_CAP),
+        )
+        pygame.draw.polygon(
+            self.display_surface, VELOCITY_OUTLINE, points, width=VELOCITY_OUTLINE_WIDTH
+        )
+        pygame.draw.polygon(self.display_surface, color, points)
+        pygame.gfxdraw.aapolygon(self.display_surface, points, color)
+
+        pivot = (round(start.x), round(start.y))
+        pygame.draw.circle(
+            self.display_surface,
+            VELOCITY_OUTLINE,
+            pivot,
+            VELOCITY_TAIL_RADIUS + VELOCITY_OUTLINE_WIDTH // 2,
+        )
+        pygame.draw.circle(self.display_surface, color, pivot, VELOCITY_TAIL_RADIUS)
+        pygame.gfxdraw.aacircle(self.display_surface, *pivot, VELOCITY_TAIL_RADIUS, color)
 
     @staticmethod
     def _is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
@@ -304,19 +416,30 @@ class WorldUI:
 
     @staticmethod
     def _is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether the vector shows a fresh hit-reaction push (red), not locomotion.
+        """Whether the vector is a hit reaction's push (red), not locomotion.
 
-        Reads the typed ``ReactionStatus`` cause — never a state-machine name
-        — so the overlay cannot diverge from the reaction that applied the
-        velocity.
+        The typed ``ReactionStatus`` cause stays the gate — a bare state name
+        can never colour a vector — but it qualifies through two windows:
+
+        - *fresh cause* (``reaction_age > 0``): the hit just landed, so the
+          vector is the impulse it applied;
+        - *carried by the cause*: the entity is still in ``KNOCKBACK_STATE``
+          with a velocity-kind cause. A launch stays airborne far longer than
+          the ``ReactionMark`` freshness window (up to
+          ``Combat.KNOCKBACK_MAX_DURATION``) and its vector still comes from
+          that knockback — wall bounce, directional influence and friction
+          all rewrite it without re-arming the cause.
+
+        Walking, dashing, an AI chase or the tail of a resolved knockback read
+        as locomotion (yellow).
         """
         status = getattr(sprite, "reaction_status", None)
-        if not isinstance(status, ReactionStatus):
+        if not isinstance(status, ReactionStatus) or status.kind not in VELOCITY_KINDS:
             return False
-        return (
-            float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
-            and status.kind in VELOCITY_KINDS
-        )
+        if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0:
+            return True
+        state_machine = getattr(sprite, "state_machine", None)
+        return getattr(state_machine, "current_state_name", None) == KNOCKBACK_STATE
 
     def _label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
         segments = self._label_segments(sprite)

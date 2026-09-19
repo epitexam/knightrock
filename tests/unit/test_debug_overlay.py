@@ -22,7 +22,10 @@ from src.ui.world_ui import (
     LABEL_NUDGE_PX,
     LABEL_PAD_X,
     LABEL_PAD_Y,
+    VELOCITY_MIN_LENGTH,
+    VELOCITY_OUTLINE,
     WorldUI,
+    arrow_outline,
 )
 
 
@@ -216,6 +219,75 @@ def test_locomotion_vector_is_yellow(world_ui: WorldUI, camera: Camera) -> None:
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
+def test_arrow_outline_is_a_tapered_shaft_with_a_flared_head() -> None:
+    """Seven points, mirrored about the axis: tail, neck, barb, tip."""
+    points = arrow_outline(Vector2(0, 0), Vector2(1, 0), 40.0, 10.0, 6.0)
+    assert points == [(0, 1), (30, 2), (30, 6), (40, 0), (30, -6), (30, -2), (0, -1)]
+
+
+def test_arrow_outline_follows_the_direction() -> None:
+    """A vertical push points up: tip above the pivot, barbs behind the neck."""
+    points = arrow_outline(Vector2(0, 0), Vector2(0, -1), 40.0, 10.0, 6.0)
+    assert points == [(1, 0), (2, -30), (6, -30), (0, -40), (-6, -30), (-2, -30), (-1, 0)]
+
+
+def test_velocity_vector_is_a_filled_arrowhead_not_a_hairline(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """A 2 px line + tip dot covered ~190 px; the filled head adds ~200 more."""
+    surface = world_ui.display_surface
+    surface.fill(Colors.sky_blue)
+    world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
+    covered = sum(
+        1
+        for x in range(120, 215)
+        for y in range(110, 140)
+        if surface.get_at((x, y))[:3] == Colors.debug_velocity
+    )
+    assert covered >= 300
+    # Off-axis points next to the tip are only reachable by a flared head.
+    assert surface.get_at((196, 117))[:3] == Colors.debug_velocity
+    assert surface.get_at((196, 131))[:3] == Colors.debug_velocity
+
+
+def test_velocity_arrow_keeps_a_dark_rim_over_a_bright_background(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """The rim separates the fill from the sky: the silhouette stays readable."""
+    surface = world_ui.display_surface
+    surface.fill(Colors.sky_blue)
+    world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
+    rim = sum(
+        1
+        for x in range(120, 215)
+        for y in range(110, 140)
+        if surface.get_at((x, y))[:3] == VELOCITY_OUTLINE
+    )
+    assert rim > 0
+
+
+def test_slow_vector_is_stretched_to_the_minimum_arrow_length(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """65 px/s previews 9.75 px: the arrow floors to VELOCITY_MIN_LENGTH."""
+    surface = world_ui.display_surface
+    surface.fill(Colors.sky_blue)
+    world_ui.draw_debug_overlays([_entity(velocity=Vector2(65, 0))], camera)
+    tip_x = 120 + int(VELOCITY_MIN_LENGTH)
+    assert surface.get_at((tip_x, 124))[:3] == Colors.debug_velocity
+    assert surface.get_at((tip_x + 4, 124))[:3] == Colors.sky_blue
+
+
+def test_velocity_arrow_pivot_marks_the_entity_center(world_ui: WorldUI, camera: Camera) -> None:
+    """The vector visibly departs the entity: pivot dot, fill only ahead."""
+    surface = world_ui.display_surface
+    surface.fill(Colors.sky_blue)
+    world_ui.draw_debug_overlays([_entity(velocity=Vector2(-600, 0))], camera)
+    assert surface.get_at((120, 124))[:3] == Colors.debug_velocity  # pivot dot
+    assert surface.get_at((60, 124))[:3] == Colors.debug_velocity  # shaft + head
+    assert surface.get_at((180, 124))[:3] == Colors.sky_blue  # nothing behind
+
+
 def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
     surface = world_ui.display_surface
     surface.fill((0, 0, 0))
@@ -265,11 +337,61 @@ def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera
 def test_expired_reaction_status_keeps_the_locomotion_color(
     world_ui: WorldUI, camera: Camera
 ) -> None:
+    """Stale cause *and* the state machine left knockback: locomotion again."""
     surface = world_ui.display_surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
     entity.reaction_age = 0.0
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_knockback_state_keeps_the_vector_red_after_the_freshness_window(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """A launch outlives ReactionMark.DURATION: the state still carries it.
+
+    Measured in flight, a (400, -600) launch stays in ``knockback`` for
+    ~1.15 s while ``reaction_age`` runs out after 0.4 s — the vector is still
+    the knockback, so it stays red (this was the "sometimes yellow" report).
+    """
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.0  # freshness expired, still being launched
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.red
+
+
+def test_resolved_knockback_falls_back_to_the_locomotion_color(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """Once the state machine leaves knockback, a stale cause is locomotion."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.0
+    entity.state_machine = SimpleNamespace(current_state_name="chase")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
+    """The kind gate still rules: a stagger carries no impulse, state or not."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
+    entity.reaction_age = 0.0
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
