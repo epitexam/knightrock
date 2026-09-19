@@ -244,26 +244,55 @@ class PlayerDashState(PlayerBaseState):
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
-        direction = 1 if self.entity.facing_right else -1
+        # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
+        request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
+        move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
+        direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else (1.0 if self.entity.facing_right else -1.0)
         self.entity.velocity.x = self.entity.dash.speed * direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
+        # Signal dash start for screen shake/trauma
+        self.entity._dash_started_this_frame = True
 
     def exit(self, next_state: str | None = None) -> None:
         """Exit the state and restore the original hitbox width."""
         if self.entity.dash.restore_hitbox(self.entity.hitbox):
             self.entity.handle_collisions("horizontal")
             self.entity.sync_rects()
+        # Start dash coyote window for attack/guard after dash ends
+        self.entity.dash.start_coyote()
 
     def update(self, delta_time: float) -> str | None:
         """Update the current state, applying dash friction and air control."""
         self.entity.dash.duration_timer -= delta_time
-        friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
-        apply_velocity_friction(self.entity, friction, delta_time)
-        if self.entity.left_held:
-            self.entity.velocity.x -= Physics.DASH_AIR_CONTROL * delta_time
-        if self.entity.right_held:
-            self.entity.velocity.x += Physics.DASH_AIR_CONTROL * delta_time
+        # Full directional control: input directly influences velocity for snappy changes
+        move_axis = getattr(self.entity, "move_axis", 0.0)
+        if move_axis != 0.0:
+            target_vx = self.entity.dash.speed * move_axis
+            # Strong acceleration toward target velocity for instant direction response (Brawlhalla-style)
+            control_accel = Physics.DASH_AIR_CONTROL * delta_time
+            diff = target_vx - self.entity.velocity.x
+            # If trying to reverse direction, apply extra impulse for instant turn
+            if diff * self.entity.velocity.x < 0:  # Opposite signs = reversing
+                control_accel *= 5.0  # 5x stronger when reversing
+            if abs(diff) > control_accel:
+                self.entity.velocity.x += control_accel if diff > 0 else -control_accel
+            else:
+                self.entity.velocity.x = target_vx
+            # No friction while actively controlling - player has full authority
+        else:
+            # No input: apply friction to slow down naturally
+            friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
+            apply_velocity_friction(self.entity, friction, delta_time)
+
+        # Wall bounce: if dashing into a wall, bounce off with momentum retention
+        if self.entity.on_surface.get("left", False) and self.entity.velocity.x < 0:
+            self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
+            self.entity.facing_right = True
+        elif self.entity.on_surface.get("right", False) and self.entity.velocity.x > 0:
+            self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
+            self.entity.facing_right = False
+
         self.entity.velocity.y += (
             self.entity.normal_gravity * self.entity.dash.gravity_mult * delta_time
         )
@@ -346,25 +375,40 @@ def _can_dash(player: Any) -> bool:
 
 
 def _can_guard(player: Any) -> bool:
-    return (
-        player.guard_held
-        and player.guard.can_use()
-        and player.state_machine.current_state_name
-        not in (
-            PlayerState.WALL_SLIDE,
-            PlayerState.HURT,
-            PlayerState.KNOCKBACK,
-            PlayerState.DASH,
-            PlayerState.STAGGER,
-            PlayerState.ATTACK,
-        )
+    if not (player.guard_held and player.guard.can_use()):
+        return False
+    current = player.state_machine.current_state_name
+    # Allow guard cancel from dash after cancel window
+    if current == PlayerState.DASH:
+        dash_elapsed = player.dash.duration - player.dash.duration_timer
+        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+    # Allow guard during dash coyote window
+    if bool(player.dash.in_coyote()):
+        return True
+    return current not in (
+        PlayerState.WALL_SLIDE,
+        PlayerState.HURT,
+        PlayerState.KNOCKBACK,
+        PlayerState.DASH,
+        PlayerState.STAGGER,
+        PlayerState.ATTACK,
     )
 
 
 def _can_attack_interrupt(player: Any) -> bool:
     """Check if the player can currently interrupt to attack."""
     is_attacking: bool = player.combat.is_attacking
-    return is_attacking and player.can_attack()
+    if not (is_attacking and player.can_attack()):
+        return False
+    # Allow attack cancel from dash after cancel window
+    current = player.state_machine.current_state_name
+    if current == PlayerState.DASH:
+        dash_elapsed = player.dash.duration - player.dash.duration_timer
+        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+    # Allow attack during dash coyote window
+    if bool(player.dash.in_coyote()):
+        return True
+    return current not in ATTACK_FORBIDDEN_STATES
 
 
 def configure_player_state_machine(player: Any) -> None:

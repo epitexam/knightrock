@@ -114,6 +114,7 @@ class PlayerConfig:
     dash_penalty_duration: float = Physics.DASH_PENALTY_TIME
     dash_recharge_time: float = Physics.DASH_RECHARGE_TIME
     dash_gravity_mult: float = Physics.DASH_GRAVITY_MULT
+    dash_coyote_time: float = Physics.DASH_COYOTE_TIME
     hurt_duration: float = Combat.PLAYER_HURT_DURATION
     invincibility_duration: float = Combat.INVINCIBILITY_DURATION
     faction: str = "player"
@@ -147,6 +148,7 @@ DEFAULT_PLAYER_CONFIG = PlayerConfig(
     dash_penalty_duration=Physics.DASH_PENALTY_TIME,
     dash_recharge_time=Physics.DASH_RECHARGE_TIME,
     dash_gravity_mult=Physics.DASH_GRAVITY_MULT,
+    dash_coyote_time=Physics.DASH_COYOTE_TIME,
     hurt_duration=Combat.PLAYER_HURT_DURATION,
     invincibility_duration=Combat.INVINCIBILITY_DURATION,
     faction="player",

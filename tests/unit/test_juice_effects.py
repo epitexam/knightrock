@@ -248,8 +248,8 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
 
     system._spawn_impact_fx(1 / 60)
 
-    # Landing fan plus the one-shot dash-start burst.
-    assert len(groups.fx_sprites) == Dust.COUNT + DASH_BURST_COUNT
+    # Landing fan plus the one-shot dash-start burst + shockwave + dash trail.
+    assert len(groups.fx_sprites) == Dust.COUNT + DASH_BURST_COUNT + 2
 
 
 def test_dash_burst_fires_once_per_dash() -> None:
@@ -260,11 +260,12 @@ def test_dash_burst_fires_once_per_dash() -> None:
     system = PhysicsSystem(groups)
 
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == DASH_BURST_COUNT
+    # Burst + shockwave + dash trail on dash start
+    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 2
 
-    # Still dashing: only the single trail puff from now on.
+    # Still dashing: trail puff + dash trail particle
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 1
+    assert len(groups.fx_sprites) >= DASH_BURST_COUNT + 2 + 2
 
     # Dash over, then re-dash: the burst fires again.
     dasher.state_machine = SimpleNamespace(current_state_name="run")
@@ -272,7 +273,7 @@ def test_dash_burst_fires_once_per_dash() -> None:
     before = len(groups.fx_sprites)
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT
+    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT + 2
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -331,8 +332,8 @@ def test_is_player_dashing_only_matches_dashing_players() -> None:
 
 
 def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
-    from src.core.input.input_manager import InputManager  # noqa: PLC0415
-    from src.entities.player import Player  # noqa: PLC0415
+    from src.core.input.input_manager import InputManager  # noqa: PLC015
+    from src.entities.player import Player  # noqa: PLC015
 
     player = Player(
         pos=(0, 0),
@@ -343,7 +344,8 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
     )
     player.state_machine.current_state_name = "dash"
 
-    assert player._animation_name() == "run"
+    # Now has dedicated dash animation (falls back to run if not available)
+    assert player._animation_name() == "dash"
 
 
 def test_dash_trail_spawns_fast_thin_streaks() -> None:

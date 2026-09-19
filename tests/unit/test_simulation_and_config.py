@@ -303,6 +303,7 @@ def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
         velocity=pygame.Vector2(),
         hitbox=pygame.FRect(0, 0, 50, 60),
         normal_gravity=2000.0,
+        on_surface={"floor": False, "left": False, "right": False},
     )
     entity.dash.charges = 2
     state = PlayerDashState(entity)

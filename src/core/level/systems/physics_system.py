@@ -4,10 +4,13 @@ Extracted from ``Level.update`` (audit §4: ``core/level/systems/physics_system`
 """
 
 from src.core.fx import (
+    DASH_TRAIL_SPAWN_EVERY,
     DIZZY_VORTEX_SPAWN_EVERY,
     MAX_FX_SPRITES,
     spawn_dash_burst,
+    spawn_dash_shockwave,
     spawn_dash_streak,
+    spawn_dash_trail,
     spawn_dizzy_vortex,
     spawn_landing_dust,
     spawn_sweat_drops,
@@ -58,6 +61,8 @@ class PhysicsSystem:
         self._sweat_timers: dict[int, float] = {}
         # Per-entity dizzy vortex emission countdown.
         self._dizzy_timers: dict[int, float] = {}
+        # Per-entity dash trail emission countdown.
+        self._dash_trail_timers: dict[int, float] = {}
 
     def process(self, delta_time: float) -> None:
         """Apply the platform carry, then integrate entities and effects."""
@@ -76,35 +81,62 @@ class PhysicsSystem:
         burst kicks out once when a dash starts, a fully drained dasher
         sweats droplets every ``Sweat.SPAWN_EVERY`` seconds while its
         penalty runs, and a dizzy entity spawns purple vortex swirls every
-        ``DIZZY_VORTEX_SPAWN_EVERY`` seconds. The landing hint is consumed
+        ``DIZZY_VORTEX_SPAWN_EVERY`` seconds. Dash trails spawn every
+        ``DASH_TRAIL_SPAWN_EVERY`` seconds during dash, and a shockwave
+        ring appears on dash start. The landing hint is consumed
         here so a dead-or-frozen entity cannot re-emit it on later ticks;
         spawning stops past ``MAX_FX_SPRITES`` as a particle-budget guard.
         """
         dashing_ids: set[int] = set()
         sweating_ids: set[int] = set()
         dizzy_ids: set[int] = set()
+        dash_trail_ids: set[int] = set()
         for entity in self.groups.entity_sprites:
-            dashing = _is_dashing(entity)
-            if dashing:
-                dashing_ids.add(id(entity))
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
-                if impact >= Dust.MIN_FALL_SPEED:
-                    spawn_landing_dust(self.groups.fx_sprites, entity)
-                elif dashing:
-                    if id(entity) not in self._dashing_ids:
-                        spawn_dash_burst(self.groups.fx_sprites, entity)
-                    else:
-                        spawn_dash_streak(self.groups.fx_sprites, entity)
-            if _in_dash_penalty(entity):
-                sweating_ids.add(id(entity))
-                self._tick_sweat(entity, delta_time)
-            if _is_dizzy(entity):
-                dizzy_ids.add(id(entity))
-                self._tick_dizzy_vortex(entity, delta_time)
-            if hasattr(entity, "landed_impact"):
-                entity.landed_impact = 0.0
+            self._process_entity_fx(entity, delta_time, dashing_ids, sweating_ids, dizzy_ids, dash_trail_ids)
         self._dashing_ids = dashing_ids
+        self._cleanup_timers(sweating_ids, dizzy_ids, dash_trail_ids)
+
+    def _process_entity_fx(
+        self,
+        entity,
+        delta_time: float,
+        dashing_ids: set[int],
+        sweating_ids: set[int],
+        dizzy_ids: set[int],
+        dash_trail_ids: set[int],
+    ) -> None:
+        dashing = _is_dashing(entity)
+        if dashing:
+            dashing_ids.add(id(entity))
+        if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+            impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+            if impact >= Dust.MIN_FALL_SPEED:
+                spawn_landing_dust(self.groups.fx_sprites, entity)
+            elif dashing:
+                if id(entity) not in self._dashing_ids:
+                    spawn_dash_burst(self.groups.fx_sprites, entity)
+                    spawn_dash_shockwave(self.groups.fx_sprites, entity)
+                else:
+                    spawn_dash_streak(self.groups.fx_sprites, entity)
+        # Dash trail particles on a cadence while dashing
+        if dashing:
+            dash_trail_ids.add(id(entity))
+            self._tick_dash_trail(entity, delta_time)
+        if _in_dash_penalty(entity):
+            sweating_ids.add(id(entity))
+            self._tick_sweat(entity, delta_time)
+        if _is_dizzy(entity):
+            dizzy_ids.add(id(entity))
+            self._tick_dizzy_vortex(entity, delta_time)
+        if hasattr(entity, "landed_impact"):
+            entity.landed_impact = 0.0
+
+    def _cleanup_timers(
+        self,
+        sweating_ids: set[int],
+        dizzy_ids: set[int],
+        dash_trail_ids: set[int],
+    ) -> None:
         # Drop timers of entities no longer sweating (or gone) so stale ids
         # cannot leak into a later entity reusing the same memory address.
         self._sweat_timers = {
@@ -117,6 +149,12 @@ class PhysicsSystem:
             entity_id: timer
             for entity_id, timer in self._dizzy_timers.items()
             if entity_id in dizzy_ids
+        }
+        # Clean up dash trail timers for entities no longer dashing.
+        self._dash_trail_timers = {
+            entity_id: timer
+            for entity_id, timer in self._dash_trail_timers.items()
+            if entity_id in dash_trail_ids
         }
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:
@@ -138,3 +176,12 @@ class PhysicsSystem:
                 spawn_dizzy_vortex(self.groups.fx_sprites, entity)
             timer = DIZZY_VORTEX_SPAWN_EVERY
         self._dizzy_timers[id(entity)] = timer
+
+    def _tick_dash_trail(self, entity: object, delta_time: float) -> None:
+        """Emit curved dash trail particles on the ``DASH_TRAIL_SPAWN_EVERY`` cadence."""
+        timer = self._dash_trail_timers.get(id(entity), 0.0) - delta_time
+        if timer <= 0.0:
+            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+                spawn_dash_trail(self.groups.fx_sprites, entity)
+            timer = DASH_TRAIL_SPAWN_EVERY
+        self._dash_trail_timers[id(entity)] = timer

@@ -53,7 +53,7 @@ class PlayerInputHandler:
             apply_jump_cut(player, GameFeel.JUMP_CUT_DIVISOR)
 
         if im.dash_just_pressed:
-            player.dash.request()
+            player.dash.request(player.move_axis)
 
         if im.reset_just_pressed:
             player.reset_position()

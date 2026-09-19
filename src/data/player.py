@@ -116,6 +116,7 @@ def read_player_config(
             ),
             dash_recharge_time=float(raw.get("dash_recharge_time", base.dash_recharge_time)),
             dash_gravity_mult=float(raw.get("dash_gravity_mult", base.dash_gravity_mult)),
+            dash_coyote_time=float(raw.get("dash_coyote_time", base.dash_coyote_time)),
             hurt_duration=float(raw.get("hurt_duration", base.hurt_duration)),
             invincibility_duration=float(
                 raw.get("invincibility_duration", base.invincibility_duration)

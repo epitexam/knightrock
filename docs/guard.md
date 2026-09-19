@@ -117,3 +117,98 @@ does not reset it). Projectiles and dummy entities are excluded.
 - `src/combat/hit_resolver.py` — applies `DIZZY_DAMAGE_MULT` (1.5x) when target state is `dizzy`.
 - `src/core/fx.py` — `spawn_dizzy_stars` (orbiting gold stars).
 - `src/ui/world_ui.py` — `DIZZY x.xxs` gold flag in enemy label card.
+
+## Dash System
+
+The dash is a core mobility and combat tool with invincibility frames, directional flexibility, and deep combat integration.
+
+### Core Mechanics
+
+- **Invincibility frames** — `tags=["dash", "invincible"]` grants full phasing through enemies and projectiles (hit resolver, contact damage, separation all respect `is_invincible`).
+- **Directional control** — Dash direction follows the input axis at press time (`DashController.request(move_axis)`), enabling reactive opposite dashes. Mid-dash direction changes use strong air control (`Physics.DASH_AIR_CONTROL = 3000`, 5x multiplier when reversing) for Brawlhalla-style zigzag.
+- **Speed & duration** — `DASH_SPEED = 1000`, `DASH_DURATION = 0.10` (faster, punchier than legacy 800/0.12).
+- **Charges & penalty** — 5 charges, 0.40s recharge, 2.20s penalty when fully drained (sweat FX).
+
+### Combat Integration
+
+| Feature | Window | Effect |
+|---|---|---|
+| **Cancel window** | `DASH_CANCEL_WINDOW = 0.05s` | Attack/guard/jump allowed after 0.05s in dash |
+| **Perfect Dash Parry** | `DASH_PARRY_WINDOW = 0.08s` | Auto-parry within first 0.08s: no damage, full posture restore, riposte window |
+| **Refresh on hit** | — | Landing a hit mid-dash restores 1 charge (up to max) |
+| **Coyote time** | `DASH_COYOTE_TIME = 0.05s` | Attack/guard allowed 0.05s after dash ends |
+| **Wall bounce** | `DASH_WALL_BOUNCE = 0.6` | Dash into wall reflects velocity × 0.6, flips facing |
+
+### Visual Effects
+
+| Effect | Description |
+|---|---|
+| **Cartoon stretch** | `DASH_STRETCH_X = 1.55`, `DASH_STRETCH_Y = 0.65` (render-only) |
+| **Afterimages** | 14 max, spawn every 0.02s, TTL 0.35s with cyan speed tint |
+| **Shockwave ring** | Expanding cyan ring on dash start (0.18s) |
+| **Curved trail particles** | 0.015s cadence, tapered curved streaks following path |
+| **Screen shake** | Light camera trauma (0.4× parry trauma) on dash start |
+| **Cyan additive tint** | Dash frame gets `BLEND_RGB_ADD` (100, 200, 255) for energy feel |
+
+### Dash Attack
+
+- **Startup**: 1 frame (was 2)
+- **Active**: 8 frames (was 7)
+- **Recovery**: 4 frames (was 5)
+- **Hitbox**: 70×24 @ (42, -8) (was 60×20 @ (38, -6))
+- **Damage**: 16 (was 14), Pierce, super armor break
+- **Knockback**: (550, -80) (was 500, -50)
+- **Cancels into**: light, heavy, uppercut
+- **Cooldown**: 0.50s (was 0.60s)
+- **Lunge speed**: 1.0 (was 0.9)
+
+### Tuning (`src/core/settings.py`, class `Physics`)
+
+| Field | Default | Meaning |
+|---|---|---|
+| `DASH_SPEED` | 1000 | Horizontal dash velocity (px/s) |
+| `DASH_DURATION` | 0.10 | Dash duration (s) |
+| `DASH_FRICTION` | 15.0 | Friction when no input held |
+| `DASH_MAX_CHARGES` | 5 | Maximum dash charges |
+| `DASH_RECHARGE_TIME` | 0.40 | Time to recharge one charge (s) |
+| `DASH_PENALTY_TIME` | 2.20 | Penalty duration when empty (s) |
+| `DASH_GRAVITY_MULT` | 0.0 | Gravity multiplier during dash |
+| `DASH_CANCEL_WINDOW` | 0.05 | Min dash time before attack/guard cancel (s) |
+| `DASH_PARRY_WINDOW` | 0.08 | Auto-parry window from dash start (s) |
+| `DASH_REFRESH_ON_HIT` | `True` | Restore 1 charge on hit during dash |
+| `DASH_COYOTE_TIME` | 0.05 | Post-dash window for attack/guard (s) |
+| `DASH_WALL_BOUNCE` | 0.6 | Velocity retention on wall bounce |
+| `DASH_AIR_CONTROL` | 3000.0 | Mid-dash direction change acceleration |
+| `DASH_STRETCH_X` | 1.55 | Render stretch horizontal (Renderer) |
+| `DASH_STRETCH_Y` | 0.65 | Render stretch vertical (Renderer) |
+
+### Afterimage (`Afterimage`)
+
+| Field | Default |
+|---|---|
+| `MAX` | 14 |
+| `TTL` | 0.35 |
+| `SPAWN_EVERY` | 0.02 |
+
+### Dash FX (`src/core/fx.py`)
+
+| Constant | Default |
+|---|---|
+| `DASH_BURST_COUNT` | 10 |
+| `DASH_SHOCKWAVE_TTL` | 0.18 |
+| `DASH_SHOCKWAVE_MAX_RADIUS` | 48 |
+| `DASH_TRAIL_SPAWN_EVERY` | 0.015 |
+| `DASH_TRAIL_TTL` | 0.15 |
+
+### Code Map
+
+- `src/entities/player_controllers.py` — `DashController` (charges, recharge, penalty, `request(move_axis)`, coyote, rollback snapshots)
+- `src/states/player_states.py` — `PlayerDashState` (enter/exit/update with direction capture, air control, wall bounce, coyote start)
+- `src/entities/player.py` — `receive_damage` perfect dash parry branch, `dash.start_coyote()` on exit
+- `src/combat/hit_resolver.py` — `_apply_post_effects` dash refresh on hit
+- `src/core/level/systems/physics_system.py` — shockwave on dash start, trail particles on cadence, cleanup
+- `src/core/level/systems/separation_system.py` — skips separation for invincible entities (phasing)
+- `src/core/rendering/renderer.py` — `dash_frame` stretch + cyan tint, afterimage spawning
+- `src/core/fx.py` — `DashShockwaveParticle`, `DashTrailParticle`, spawners
+- `src/core/asset_library.py` — graceful fallback `dash` → `run` animation
+- `src/data/player.py` — `dash_coyote_time` in `PlayerConfig` serialization

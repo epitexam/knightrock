@@ -32,13 +32,18 @@ class Physics:
     FALL_GRAVITY = 2800.0
     JUMP_FORCE = 750.0
     MAX_FALL_SPEED = 1500.0
-    DASH_SPEED = 800
-    DASH_DURATION = 0.12
-    DASH_FRICTION = 15.0
+    DASH_SPEED = 1100
+    DASH_DURATION = 0.08
+    DASH_FRICTION = 25.0
     DASH_MAX_CHARGES = 5
-    DASH_RECHARGE_TIME = 0.40
-    DASH_PENALTY_TIME = 2.20
+    DASH_RECHARGE_TIME = 0.35
+    DASH_PENALTY_TIME = 2.0
     DASH_GRAVITY_MULT = 0.0
+    DASH_CANCEL_WINDOW = 0.04
+    DASH_PARRY_WINDOW = 0.07
+    DASH_REFRESH_ON_HIT = True
+    DASH_COYOTE_TIME = 0.05
+    DASH_WALL_BOUNCE = 0.5
 
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0
@@ -54,7 +59,7 @@ class Physics:
     HURT_FRICTION = 5.0
     KNOCKBACK_FRICTION = 8.0
     STAGGER_FRICTION = 8.0
-    DASH_AIR_CONTROL = 100.0
+    DASH_AIR_CONTROL = 3000.0
 
 
 class Combat:
@@ -147,9 +152,9 @@ class ReactionMark:
 class Afterimage:
     """Dash ghost trail (render-only)."""
 
-    MAX = 8
-    TTL = 0.25
-    SPAWN_EVERY = 0.04
+    MAX = 14
+    TTL = 0.35
+    SPAWN_EVERY = 0.02
 
 
 class Dust:

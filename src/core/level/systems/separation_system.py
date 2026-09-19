@@ -30,6 +30,9 @@ class SeparationSystem:
             )
 
         for ent_a, ent_b in pairs:
+            # Skip separation if either entity is invincible (e.g., dashing) - allows phasing through
+            if getattr(ent_a, "is_invincible", False) or getattr(ent_b, "is_invincible", False):
+                continue
             if not (ent_a.pushable or ent_b.pushable):
                 continue
 
