@@ -12,10 +12,10 @@ from src.ui.ui_manager import UIManager
 HEALTH_BAR_CLEARANCE_PX = 18
 """Headroom above each sprite rect where WorldUI draws health bars."""
 
-DASH_STRETCH_X = 1.55
+DASH_STRETCH_X = 1.6
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
 
-DASH_STRETCH_Y = 0.65
+DASH_STRETCH_Y = 0.6
 """Vertical squash paired with the dash stretch (render-only)."""
 
 # Chromatic aberration offset for dashing players (simulated via RGB channel separation)
