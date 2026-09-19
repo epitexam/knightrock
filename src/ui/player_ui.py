@@ -111,6 +111,17 @@ class PlayerUI:
 
         gravity_scale = getattr(player, "gravity_scale", 1.0)
         line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
+        posture_ratio = (
+            player.guard_posture / player.guard_posture_max if player.guard_posture_max else 0
+        )
+        if player.guard_lockout_timer > 0:
+            line_colors[1] = TEXT_CRIT
+        elif posture_ratio <= 0.3:
+            line_colors[1] = TEXT_WARN
+        if player.guard_riposte_timer > 0:
+            idx = len(lines)
+            lines.append(f"RIPOSTE {player.guard_riposte_timer:.2f}s")
+            line_colors[idx] = TEXT_OK
         if gravity_scale != 1.0:
             idx = len(lines)
             lines.append(

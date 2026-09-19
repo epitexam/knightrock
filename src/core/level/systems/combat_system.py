@@ -10,6 +10,7 @@ from src.combat.combatant_protocol import Combatant, CombatPort
 from src.combat.frame_data import HitProperties, PhaseDefinition
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
 
@@ -31,6 +32,14 @@ class CombatMetrics:
     pairs_tested: int = 0
     overlaps: int = 0
     contacts: int = 0
+
+
+@dataclass(frozen=True)
+class GuardEvent:
+    """Render-only guard outcome drained once per tick by the game loop."""
+
+    kind: str
+    target: Combatant
 
 
 def _attacker_ready(
@@ -90,6 +99,7 @@ class CombatSystem:
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
+        self.guard_events: list[GuardEvent] = []
 
     def process_attacks(
         self,
@@ -111,6 +121,7 @@ class CombatSystem:
         """
         self.metrics = CombatMetrics()
         self.impact = 0.0
+        self.guard_events = []
         if self.in_hit_stop:
             return
 
@@ -166,6 +177,13 @@ class CombatSystem:
 
             candidate.attacker.combat.record_contact(candidate.target.id)
             self.metrics.contacts += 1
+            if result.guarded:
+                kind = "guard"
+                if result.parried:
+                    kind = "parry"
+                elif result.guard_broken:
+                    kind = "break"
+                self.guard_events.append(GuardEvent(kind, candidate.target))
             magnitude = (
                 pygame.math.Vector2(candidate.hit.knockback.power).length()
                 * candidate.charge_multiplier
@@ -176,6 +194,8 @@ class CombatSystem:
                 + candidate.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
                 + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
             )
+            if result.parried:
+                hitstop_duration = max(hitstop_duration, GuardSettings.PARRY_HITSTOP)
             self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
 
     def update_timer(self, delta_time: float) -> None:

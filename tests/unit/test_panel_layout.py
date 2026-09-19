@@ -120,6 +120,7 @@ def test_debug_panels_fit_a_small_display() -> None:
         guard_posture=50.0,
         guard_posture_max=100.0,
         guard_lockout_timer=0.0,
+        guard_riposte_timer=0.0,
         dash_charges=2,
         max_dash_charges=2,
         dash_penalty_timer=0.0,

@@ -110,6 +110,10 @@ class Guard:
     PUSH_FACTOR = 0.15
     BREAK_LOCKOUT = 1.2
     BREAK_STAGGER = 1.0
+    PARRY_HITSTOP = 0.14
+    PARRY_TRAUMA = 0.45
+    BREAK_TRAUMA = 0.55
+    GUARD_TRAUMA = 0.12
 
 
 class CameraShake:

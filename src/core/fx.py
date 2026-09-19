@@ -20,18 +20,32 @@ from src.core.settings import Dust, Sweat
 
 __all__ = [
     "DustParticle",
+    "SparkParticle",
     "StreakParticle",
     "SweatParticle",
     "dash_direction",
     "iter_landing_entities",
     "particle_frames",
+    "spawn_break_burst",
     "spawn_dash_burst",
     "spawn_dash_dust",
     "spawn_dash_streak",
+    "spawn_guard_spark",
     "spawn_landing_dust",
+    "spawn_parry_burst",
     "spawn_sweat_drops",
 ]
 
+#: Guard spark looks: cyan chips, gold parry flash, red break shards.
+GUARD_SPARK_COLORS = ((80, 220, 230), (200, 245, 255))
+PARRY_SPARK_COLORS = ((255, 200, 50), (255, 255, 255))
+BREAK_SPARK_COLORS = ((235, 70, 70), (245, 140, 60))
+SPARK_TTL = 0.3
+SPARK_GRAVITY = 900.0
+SPARK_SIZE = 4.0
+GUARD_SPARK_COUNT = 6
+PARRY_SPARK_COUNT = 14
+BREAK_SPARK_COUNT = 12
 #: Puff base size (px) before the per-particle jitter.
 DUST_RADIUS = 5.0
 #: Upward drift so puffs hang briefly instead of dropping like stones.
@@ -159,6 +173,37 @@ class StreakParticle(pygame.sprite.Sprite):
         if self.ttl <= 0.0:
             self.kill()
             return
+        self.pos += self.velocity * delta_time
+        self.rect.center = self.pos
+        assert self.image is not None
+        self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
+
+
+class SparkParticle(pygame.sprite.Sprite):
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        color: tuple[int, int, int],
+        ttl: float = SPARK_TTL,
+        size: float = SPARK_SIZE,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.velocity = Vector2(velocity)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        side = max(2, int(size))
+        self.image = pygame.Surface((side, side), pygame.SRCALPHA)
+        self.image.fill(color)
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def update(self, delta_time: float) -> None:
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+        self.velocity.y += SPARK_GRAVITY * delta_time
         self.pos += self.velocity * delta_time
         self.rect.center = self.pos
         assert self.image is not None
@@ -388,6 +433,55 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     )
     fx_group.add(streak)
     return streak
+
+
+def _spawn_sparks(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    colors: tuple[tuple[int, int, int], ...],
+    count: int,
+    speed: tuple[float, float],
+    upward: bool = False,
+) -> list[SparkParticle]:
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or count <= 0:
+        return []
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return []
+    rng = _puff_rng(entity)
+    sparks: list[SparkParticle] = []
+    for _ in range(count):
+        velocity = (
+            rng.uniform(-speed[0], speed[0]),
+            -abs(rng.uniform(speed[1] * 0.4, speed[1]))
+            if upward
+            else rng.uniform(-speed[1], speed[1]),
+        )
+        spark = SparkParticle(
+            (
+                hitbox.centerx + rng.uniform(-6.0, 6.0),
+                hitbox.centery + rng.uniform(-10.0, 10.0),
+            ),
+            velocity,
+            rng.choice(colors),
+        )
+        fx_group.add(spark)
+        sparks.append(spark)
+    return sparks
+
+
+def spawn_guard_spark(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(fx_group, entity, GUARD_SPARK_COLORS, GUARD_SPARK_COUNT, (260.0, 220.0))
+
+
+def spawn_parry_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(
+        fx_group, entity, PARRY_SPARK_COLORS, PARRY_SPARK_COUNT, (420.0, 340.0), upward=True
+    )
+
+
+def spawn_break_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(fx_group, entity, BREAK_SPARK_COLORS, BREAK_SPARK_COUNT, (380.0, 300.0))
 
 
 def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:

@@ -60,6 +60,7 @@ def _make_full_player(**overrides) -> SimpleNamespace:
         "guard_posture": 50.0,
         "guard_posture_max": 100.0,
         "guard_lockout_timer": 0.0,
+        "guard_riposte_timer": 0.0,
         "dash_charges": 2,
         "max_dash_charges": 2,
         "dash_penalty_timer": 0.0,
@@ -155,5 +156,17 @@ def test_draw_stats_panel_with_combat(player_ui: PlayerUI) -> None:
 
 def test_draw_stats_panel_without_combat(player_ui: PlayerUI) -> None:
     player = _make_full_player(combat=None)
+    height = player_ui.draw_stats_panel(0, 0, player)
+    assert height > 0
+
+
+def test_draw_stats_panel_shows_riposte_window(player_ui: PlayerUI) -> None:
+    player = _make_full_player(guard_riposte_timer=0.4, combat=None)
+    height = player_ui.draw_stats_panel(0, 0, player)
+    assert height > 0
+
+
+def test_draw_stats_panel_shows_lockout(player_ui: PlayerUI) -> None:
+    player = _make_full_player(guard_lockout_timer=1.0, guard_posture=0.0, combat=None)
     height = player_ui.draw_stats_panel(0, 0, player)
     assert height > 0

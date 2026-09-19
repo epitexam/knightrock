@@ -43,7 +43,6 @@ Per-player overrides: `PlayerConfig.guard_posture_max`,
 `guard_break_lockout`).
 
 ## Code map
-
 - `src/entities/player_controllers.py` — `GuardController` / `GuardSnapshot`
   (posture, lockout, parry, riposte; rollback-safe).
 - `src/states/player_states.py` — `PlayerGuardState`, `PlayerState.GUARD`,
@@ -59,3 +58,20 @@ Per-player overrides: `PlayerConfig.guard_posture_max`,
 - `src/core/level/systems/combat_system.py`,
   `src/core/level/systems/projectile_system.py` — guarded contacts are
   consumed (no multi-dip) with hit-stop.
+
+## Effects
+
+Every guarded outcome is readable in-game without opening the debug panels:
+
+| Outcome | Particles | Hit-stop | Camera | Overlay |
+|---|---|---|---|---|
+| Guard | 6 cyan chips | standard | light (`GUARD_TRAUMA`) | red push vector |
+| Parry | 14 gold sparks, kicked upward | floored at `PARRY_HITSTOP` (0.14s) | medium (`PARRY_TRAUMA`) | gold vector + `RIPOSTE` line in the stats panel |
+| Break | 12 red/orange shards | standard (chip hit) | heavy (`BREAK_TRAUMA`) | guard line turns critical + lockout timer |
+
+How it flows: `CombatSystem` and `ProjectileSystem` record render-only
+`GuardEvent(kind, target)` entries while resolving contacts; `GameplayLoop`
+drains them once per tick, spawns the matching `fx` burst into
+`fx_sprites`, and feeds the strongest trauma of the tick to the camera.
+Particles never touch snapshots or golden digests; event lists reset every
+tick, so rollback re-simulation regenerates them deterministically.

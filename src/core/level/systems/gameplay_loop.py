@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from src.core.rollback import RollbackSystem
 from src.core.settings import CameraShake
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
@@ -161,6 +162,7 @@ class GameplayLoop:
                 camera.add_trauma(impact / CameraShake.HEAVY_DIV)
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
+            self._emit_guard_fx(groups, camera)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
             self.remove_dead_entities(groups.entity_sprites, player)
@@ -194,6 +196,40 @@ class GameplayLoop:
                 "in Level and pass it to GameplayLoop(...)."
             )
         return system
+
+    def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
+        fx_group = getattr(groups, "fx_sprites", None)
+        if fx_group is None:
+            return
+        events = list(getattr(self.combat_system, "guard_events", None) or [])
+        if hasattr(self.combat_system, "guard_events"):
+            self.combat_system.guard_events.clear()
+        projectile_system = self.projectile_system
+        if projectile_system is not None:
+            events.extend(getattr(projectile_system, "guard_events", None) or [])
+            if hasattr(projectile_system, "guard_events"):
+                projectile_system.guard_events.clear()
+        if not events:
+            return
+        from src.core.fx import (  # noqa: PLC0415 - heavy pygame import kept local to the tick tail
+            spawn_break_burst,
+            spawn_guard_spark,
+            spawn_parry_burst,
+        )
+
+        trauma = 0.0
+        for event in events:
+            if event.kind == "parry":
+                spawn_parry_burst(fx_group, event.target)
+                trauma = max(trauma, GuardSettings.PARRY_TRAUMA)
+            elif event.kind == "break":
+                spawn_break_burst(fx_group, event.target)
+                trauma = max(trauma, GuardSettings.BREAK_TRAUMA)
+            else:
+                spawn_guard_spark(fx_group, event.target)
+                trauma = max(trauma, GuardSettings.GUARD_TRAUMA)
+        if trauma > 0.0 and hasattr(camera, "add_trauma"):
+            camera.add_trauma(trauma)
 
     def process_combat_and_separation(
         self,
