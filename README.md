@@ -81,13 +81,13 @@ DEBUG=1 uv run python main.py
 | Move | `Left arrow` / `Right arrow` |
 | Fast fall | `Down arrow` |
 | Jump | `Space` |
-| Dash | `Left Shift` |
+| Dash | `Left Shift` (cancellable into an attack/guard) |
 | Guard (tap = parry) | `Q` |
 | Reset position | `R` |
 | Attack 1 — light (aerial in the air) | `A` |
 | Attack 2 — heavy (hold to charge, release to swing) | `S` |
 | Attack 3 — uppercut | `D` |
-| Attack 4 — dash attack | `F` |
+| Attack 4 — dash attack (lunge; cancels a dash) | `F` |
 | Special attack | `G` + `H` |
 | Pause / resume | `Esc` / `Enter` |
 | Menu navigation | `Enter` / `N` / `Esc` |

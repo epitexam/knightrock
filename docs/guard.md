@@ -126,24 +126,24 @@ The dash is a core mobility and combat tool with invincibility frames, direction
 
 - **Invincibility frames** — `tags=["dash", "invincible"]` grants full phasing through enemies and projectiles (hit resolver, contact damage, separation all respect `is_invincible`).
 - **Directional control** — Dash direction follows the input axis at press time (`DashController.request(move_axis)`), enabling reactive opposite dashes. Mid-dash direction changes use strong air control (`Physics.DASH_AIR_CONTROL = 3000`, 5x multiplier when reversing) for Brawlhalla-style zigzag.
-- **Speed & duration** — `DASH_SPEED = 1000`, `DASH_DURATION = 0.10` (faster, punchier than legacy 800/0.12).
-- **Charges & penalty** — 5 charges, 0.40s recharge, 2.20s penalty when fully drained (sweat FX).
+- **Speed & duration** — `DASH_SPEED = 1100`, `DASH_DURATION = 0.08` (faster, punchier than legacy 800/0.12).
+- **Charges & penalty** — 5 charges, 0.35s recharge, 2.0s penalty when fully drained (sweat FX).
 
 ### Combat Integration
 
 | Feature | Window | Effect |
 |---|---|---|
-| **Cancel window** | `DASH_CANCEL_WINDOW = 0.05s` | Attack/guard/jump allowed after 0.05s in dash |
-| **Perfect Dash Parry** | `DASH_PARRY_WINDOW = 0.08s` | Auto-parry within first 0.08s: no damage, full posture restore, riposte window |
+| **Cancel window** | `DASH_CANCEL_WINDOW = 0.0s` | Attack/guard may cancel a dash as soon as it starts. Non-zero values keep the dash committed for that long; note the 60 Hz granularity (interrupts run before the dash state decrements its timer, so a 0.04s window on a 0.08s dash only accepted a press on its last frame — measured). |
+| **Perfect Dash Parry** | `DASH_PARRY_WINDOW = 0.07s` | Auto-parry within first 0.07s: no damage, full posture restore, riposte window |
 | **Refresh on hit** | — | Landing a hit mid-dash restores 1 charge (up to max) |
 | **Coyote time** | `DASH_COYOTE_TIME = 0.05s` | Attack/guard allowed 0.05s after dash ends |
-| **Wall bounce** | `DASH_WALL_BOUNCE = 0.6` | Dash into wall reflects velocity × 0.6, flips facing |
+| **Wall bounce** | `DASH_WALL_BOUNCE = 0.5` | Dash into wall reflects velocity × 0.5, flips facing |
 
 ### Visual Effects
 
 | Effect | Description |
 |---|---|
-| **Cartoon stretch** | `DASH_STRETCH_X = 1.55`, `DASH_STRETCH_Y = 0.65` (render-only) |
+| **Cartoon stretch** | `DASH_STRETCH_X = 1.6`, `DASH_STRETCH_Y = 0.6` (render-only) |
 | **Afterimages** | 14 max, spawn every 0.02s, TTL 0.35s with cyan speed tint |
 | **Shockwave ring** | Expanding cyan ring on dash start (0.18s) |
 | **Curved trail particles** | 0.015s cadence, tapered curved streaks following path |
@@ -151,6 +151,11 @@ The dash is a core mobility and combat tool with invincibility frames, direction
 | **Cyan additive tint** | Dash frame gets `BLEND_RGB_ADD` (100, 200, 255) for energy feel |
 
 ### Dash Attack
+
+Bound to `attack4` (`F`, gamepad button 5) and to `light_attack`'s `cancel_into`
+chain. It is a lunge move: on the ground the attack state sets
+`velocity.x = speed × lunge_speed_multiplier`, so `dash_attack` (1.0 × 350 px/s)
+is the strongest opener in the kit.
 
 - **Startup**: 1 frame (was 2)
 - **Active**: 8 frames (was 7)
@@ -161,26 +166,33 @@ The dash is a core mobility and combat tool with invincibility frames, direction
 - **Cancels into**: light, heavy, uppercut
 - **Cooldown**: 0.50s (was 0.60s)
 - **Lunge speed**: 1.0 (was 0.9)
+- **From a dash**: pressing `F` mid-dash cancels it into this move once the
+  cancel window is open. The `ATTACK` state replaces `DASH`, so the dash
+  i-frames and the squished hitbox end with it — the trade for the hitbox.
+  `Player.can_attack()` and the `ATTACK` interrupt both read
+  `player_states.dash_cancel_open`, so the input gate and the transition can
+  never disagree (before this, `can_attack()` forbade `DASH` outright and the
+  press was silently swallowed).
 
 ### Tuning (`src/core/settings.py`, class `Physics`)
 
 | Field | Default | Meaning |
 |---|---|---|
-| `DASH_SPEED` | 1000 | Horizontal dash velocity (px/s) |
-| `DASH_DURATION` | 0.10 | Dash duration (s) |
-| `DASH_FRICTION` | 15.0 | Friction when no input held |
+| `DASH_SPEED` | 1100 | Horizontal dash velocity (px/s) |
+| `DASH_DURATION` | 0.08 | Dash duration (s) |
+| `DASH_FRICTION` | 25.0 | Friction when no input held |
 | `DASH_MAX_CHARGES` | 5 | Maximum dash charges |
-| `DASH_RECHARGE_TIME` | 0.40 | Time to recharge one charge (s) |
-| `DASH_PENALTY_TIME` | 2.20 | Penalty duration when empty (s) |
+| `DASH_RECHARGE_TIME` | 0.35 | Time to recharge one charge (s) |
+| `DASH_PENALTY_TIME` | 2.0 | Penalty duration when empty (s) |
 | `DASH_GRAVITY_MULT` | 0.0 | Gravity multiplier during dash |
-| `DASH_CANCEL_WINDOW` | 0.05 | Min dash time before attack/guard cancel (s) |
-| `DASH_PARRY_WINDOW` | 0.08 | Auto-parry window from dash start (s) |
+| `DASH_CANCEL_WINDOW` | 0.0 | Min dash time before attack/guard cancel (s) |
+| `DASH_PARRY_WINDOW` | 0.07 | Auto-parry window from dash start (s) |
 | `DASH_REFRESH_ON_HIT` | `True` | Restore 1 charge on hit during dash |
 | `DASH_COYOTE_TIME` | 0.05 | Post-dash window for attack/guard (s) |
-| `DASH_WALL_BOUNCE` | 0.6 | Velocity retention on wall bounce |
+| `DASH_WALL_BOUNCE` | 0.5 | Velocity retention on wall bounce |
 | `DASH_AIR_CONTROL` | 3000.0 | Mid-dash direction change acceleration |
-| `DASH_STRETCH_X` | 1.55 | Render stretch horizontal (Renderer) |
-| `DASH_STRETCH_Y` | 0.65 | Render stretch vertical (Renderer) |
+| `DASH_STRETCH_X` | 1.6 | Render stretch horizontal (Renderer) |
+| `DASH_STRETCH_Y` | 0.6 | Render stretch vertical (Renderer) |
 
 ### Afterimage (`Afterimage`)
 
@@ -203,7 +215,7 @@ The dash is a core mobility and combat tool with invincibility frames, direction
 ### Code Map
 
 - `src/entities/player_controllers.py` — `DashController` (charges, recharge, penalty, `request(move_axis)`, coyote, rollback snapshots)
-- `src/states/player_states.py` — `PlayerDashState` (enter/exit/update with direction capture, air control, wall bounce, coyote start)
+- `src/states/player_states.py` — `PlayerDashState` (enter/exit/update with direction capture, air control, wall bounce, coyote start), `dash_cancel_open` (the cancel window read by the input gate and the interrupts)
 - `src/entities/player.py` — `receive_damage` perfect dash parry branch, `dash.start_coyote()` on exit
 - `src/combat/hit_resolver.py` — `_apply_post_effects` dash refresh on hit
 - `src/core/level/systems/physics_system.py` — shockwave on dash start, trail particles on cadence, cleanup
