@@ -138,6 +138,10 @@ frame cost predictable:
 - **Hitboxes** — blue = player, red = enemy, grey = neutral. Overlaid with the
   green hurtbox, the orange offensive box and the yellow velocity vector
   (**red** while in knockback).
+- **Velocity arrows** — a tapered shaft, a filled triangular head and a pivot
+  dot on the entity, all wrapped in a dark rim so the silhouette survives a
+  bright sky. The head length is clamped and short vectors are stretched to a
+  minimum drawn length, so a slow walk and a dash both stay legible.
 - **Outlines** — cyan = OTG guard, purple = juggle gravity.
 - **Labels** — short cards (`Goblin chase 75/100`); a second line appears only
   during an attack or when a flag is set (`STAG`, `OTG`, `JGx`, `AIR`).
