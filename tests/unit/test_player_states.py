@@ -3,7 +3,9 @@
 from types import SimpleNamespace
 
 import pygame
+import pytest
 
+from src.core.settings import Physics
 from src.states.player_states import (
     ATTACK_FORBIDDEN_STATES,
     PlayerState,
@@ -11,6 +13,7 @@ from src.states.player_states import (
     _can_dash,
     _can_guard,
     configure_player_state_machine,
+    dash_cancel_open,
     player_ground_return,
 )
 from src.states.state_machine import StateMachine
@@ -27,11 +30,7 @@ def _make_entity(**overrides) -> SimpleNamespace:
         "move_axis": 0.0,
         "left_held": False,
         "right_held": False,
-        "dash": SimpleNamespace(
-            can_use=lambda: True,
-            cancel_request=lambda: None,
-            in_coyote=lambda: False,
-        ),
+        "dash": _dash_stub(),
         "guard": SimpleNamespace(can_use=lambda: True),
         "guard_held": False,
         "combat": SimpleNamespace(is_attacking=False),
@@ -177,8 +176,15 @@ def test_attack_forbidden_states_contains_expected_members() -> None:
 # --- configure_player_state_machine ---
 
 
-def _dash_stub():
-    return SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None)
+def _dash_stub(duration: float = 0.08, duration_timer: float = 0.0):
+    """Dash double with the timers the cancel-window helper reads."""
+    return SimpleNamespace(
+        can_use=lambda: True,
+        cancel_request=lambda: None,
+        in_coyote=lambda: False,
+        duration=duration,
+        duration_timer=duration_timer,
+    )
 
 
 def _guard_stub():
@@ -208,60 +214,70 @@ def test_configure_state_machine_registers_interrupts() -> None:
 # --- Dash cancel window ---
 
 
-def test_can_attack_interrupt_true_during_dash_after_cancel_window() -> None:
-    """Attack allowed from dash after DASH_CANCEL_WINDOW."""
+def test_dash_cancel_open_is_immediate_with_the_shipped_window() -> None:
+    """The shipped window is 0.0: a dash is cancellable as soon as it starts."""
+    assert Physics.DASH_CANCEL_WINDOW == 0.0
+    entity = _make_entity(dash=_dash_stub(duration=0.08, duration_timer=0.063))
+    assert dash_cancel_open(entity) is True
+
+
+def test_dash_cancel_open_honours_a_committed_dash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A positive window keeps the dash committed until enough time elapsed."""
+    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
+    fresh = _make_entity(dash=_dash_stub(duration=0.08, duration_timer=0.08))
+    elapsed = _make_entity(dash=_dash_stub(duration=0.08, duration_timer=0.04))
+    assert dash_cancel_open(fresh) is False
+    assert dash_cancel_open(elapsed) is True
+
+
+def test_can_attack_interrupt_true_during_dash_after_cancel_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Attack allowed from dash once the cancel window has elapsed."""
+    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
     entity = _make_entity(
         combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
         state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-    )
-    entity.can_attack = lambda: True
-    entity.dash = SimpleNamespace(
-        duration=0.10,
-        duration_timer=0.04,  # 0.06s elapsed > 0.05 cancel window
-        in_coyote=lambda: False,
+        dash=_dash_stub(duration=0.08, duration_timer=0.04),  # 0.04s elapsed
     )
     assert _can_attack_interrupt(entity) is True
 
 
-def test_can_attack_interrupt_false_during_dash_before_cancel_window() -> None:
-    """Attack blocked from dash before DASH_CANCEL_WINDOW."""
+def test_can_attack_interrupt_false_during_dash_before_cancel_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Attack blocked from a dash still inside its cancel window."""
+    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
     entity = _make_entity(
         combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
         state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-    )
-    entity.can_attack = lambda: True
-    entity.dash = SimpleNamespace(
-        duration=0.10,
-        duration_timer=0.08,  # 0.02s elapsed < 0.05 cancel window
-        in_coyote=lambda: False,
+        dash=_dash_stub(duration=0.08, duration_timer=0.08),  # 0.0s elapsed
     )
     assert _can_attack_interrupt(entity) is False
 
 
-def test_can_guard_true_during_dash_after_cancel_window() -> None:
-    """Guard allowed from dash after DASH_CANCEL_WINDOW."""
+def test_can_guard_true_during_dash_after_cancel_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard allowed from dash once the cancel window has elapsed."""
+    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
     entity = _make_entity(
         guard_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-    )
-    entity.dash = SimpleNamespace(
-        duration=0.10,
-        duration_timer=0.04,  # 0.06s elapsed > 0.05 cancel window
-        in_coyote=lambda: False,
+        dash=_dash_stub(duration=0.08, duration_timer=0.04),  # 0.04s elapsed
     )
     assert _can_guard(entity) is True
 
 
-def test_can_guard_false_during_dash_before_cancel_window() -> None:
-    """Guard blocked from dash before DASH_CANCEL_WINDOW."""
+def test_can_guard_false_during_dash_before_cancel_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard blocked from a dash still inside its cancel window."""
+    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
     entity = _make_entity(
         guard_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-    )
-    entity.dash = SimpleNamespace(
-        duration=0.10,
-        duration_timer=0.08,  # 0.02s elapsed < 0.05 cancel window
-        in_coyote=lambda: False,
+        dash=_dash_stub(duration=0.08, duration_timer=0.08),  # 0.0s elapsed
     )
     assert _can_guard(entity) is False
 
@@ -274,10 +290,7 @@ def test_can_attack_interrupt_true_during_dash_coyote() -> None:
     entity = _make_entity(
         combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
         state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
-    )
-    entity.can_attack = lambda: True
-    entity.dash = SimpleNamespace(
-        in_coyote=lambda: True,
+        dash=SimpleNamespace(in_coyote=lambda: True),
     )
     assert _can_attack_interrupt(entity) is True
 
@@ -287,8 +300,6 @@ def test_can_guard_true_during_dash_coyote() -> None:
     entity = _make_entity(
         guard_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
-    )
-    entity.dash = SimpleNamespace(
-        in_coyote=lambda: True,
+        dash=SimpleNamespace(in_coyote=lambda: True),
     )
     assert _can_guard(entity) is True
