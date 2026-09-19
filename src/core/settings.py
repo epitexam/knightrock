@@ -94,6 +94,7 @@ class Combat:
     HITSTUN_DAMAGE_FACTOR = 0.004
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
+    DIZZY_DAMAGE_MULT = 1.5
 
 
 class Guard:

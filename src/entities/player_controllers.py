@@ -159,12 +159,12 @@ class GuardController:
                 self.max_posture,
             )
 
-    def take_hit(self, amount: float, in_air: bool) -> tuple[str, float]:
+    def take_hit(self, amount: float, in_air: bool) -> tuple[str, float, bool]:
         if self.parry_timer > 0:
             self.posture = self.max_posture
             self.riposte_timer = GuardSettings.RIPOSTE_WINDOW
             self.parry_timer = 0.0
-            return ("parry", 0.0)
+            return ("parry", 0.0, True)
         mult = GuardSettings.AIR_POSTURE_MULT if in_air else 1.0
         self.posture -= amount * GuardSettings.POSTURE_COST_RATIO * mult
         chip = amount * GuardSettings.CHIP_RATIO
@@ -172,8 +172,8 @@ class GuardController:
             self.posture = 0.0
             self.lockout_timer = self.break_lockout
             self.riposte_timer = 0.0
-            return ("break", chip)
-        return ("guard", chip)
+            return ("break", chip, False)
+        return ("guard", chip, False)
 
     def reset(self) -> None:
         self.posture = self.max_posture

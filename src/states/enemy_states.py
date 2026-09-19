@@ -26,6 +26,7 @@ class EnemyState(str, Enum):
     HURT = "hurt"
     KNOCKBACK = "knockback"
     STAGGER = "stagger"
+    DIZZY = "dizzy"
     LEDGE = "ledge"
 
 
@@ -384,3 +385,22 @@ class EnemyStaggerState(StaggerState):
 
     def __init__(self, entity: Any):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
+
+
+class EnemyDizzyState(State):
+    """Dizzy reaction from consecutive perfect parries: return to idle when timer clears."""
+
+    def __init__(self, entity: Any):
+        super().__init__(entity, tags=["dizzy", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        duration = kwargs.get("duration", 0.0)
+        if duration > 0:
+            self.entity.stagger_timer = duration
+
+    def update(self, delta_time: float) -> str | None:
+        if self.entity.stagger_timer > 0:
+            self.entity.stagger_timer -= delta_time
+        if self.entity.stagger_timer <= 0:
+            return EnemyState.IDLE
+        return None

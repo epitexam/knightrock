@@ -38,4 +38,6 @@ DUMMY_CONFIG = EnemyConfig(
     pushable=False,
     super_armor=True,
     passive_friction=5.0,
+    parry_stun_threshold=None,
+    parry_stun_duration=0.0,
 )

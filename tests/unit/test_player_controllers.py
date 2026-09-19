@@ -128,29 +128,32 @@ class TestGuardController:
         guard.posture = 40.0
         guard.press()
 
-        outcome, chip = guard.take_hit(20.0, False)
+        outcome, chip, is_parry = guard.take_hit(20.0, False)
 
         assert outcome == "parry"
         assert chip == pytest.approx(0.0)
+        assert is_parry is True
         assert guard.posture == pytest.approx(100.0)
         assert guard.riposte_timer > 0
 
     def test_guard_applies_chip_and_posture_cost(self, config) -> None:
         guard = GuardController(config)
 
-        outcome, chip = guard.take_hit(10.0, False)
+        outcome, chip, is_parry = guard.take_hit(10.0, False)
 
         assert outcome == "guard"
         assert chip == pytest.approx(10.0 * GuardSettings.CHIP_RATIO)
+        assert is_parry is False
         assert guard.posture == pytest.approx(100.0 - 10.0 * GuardSettings.POSTURE_COST_RATIO)
 
     def test_break_arms_lockout_on_posture_empty(self, config) -> None:
         guard = GuardController(config)
         guard.posture = 5.0
 
-        outcome, _ = guard.take_hit(10.0, False)
+        outcome, _, is_parry = guard.take_hit(10.0, False)
 
         assert outcome == "break"
+        assert is_parry is False
         assert guard.posture == pytest.approx(0.0)
         assert guard.lockout_timer == pytest.approx(1.2)
         assert not guard.can_use()

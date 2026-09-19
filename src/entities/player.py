@@ -263,8 +263,9 @@ class Player(ControllerView, Entity):
     ) -> DamageResult:
         _kb = knockback if knockback is not None else NULL_KNOCKBACK
         in_air = not self.on_surface["floor"]
-        outcome, chip = self.guard.take_hit(amount, in_air)
+        outcome, chip, was_parry = self.guard.take_hit(amount, in_air)
         if outcome == "parry":
+            self.parries_given += 1
             self._reaction.note_guard_push(_kb, source_center_x, parried=True)
             return DamageResult(guarded=True, parried=True)
         direction = compute_knockback_direction(

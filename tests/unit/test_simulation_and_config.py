@@ -253,7 +253,7 @@ def test_guard_take_hit_uses_exposed_posture_configuration(posture: float, expec
     guard = GuardController(PlayerConfig(guard_posture_max=100.0, guard_break_lockout=1.2))
     guard.posture = posture
 
-    outcome, _ = guard.take_hit(10.0, False)
+    outcome, _, _ = guard.take_hit(10.0, False)
 
     assert outcome == expected
 

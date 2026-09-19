@@ -286,6 +286,25 @@ class PlayerStaggerState(StaggerState):
         )
 
 
+class PlayerDizzyState(State):
+    """Represent the PlayerDizzy state from consecutive perfect parries received."""
+
+    def __init__(self, entity: Any):
+        super().__init__(entity, tags=["dizzy", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        duration = kwargs.get("duration", 0.0)
+        if duration > 0:
+            self.entity.stagger_timer = duration
+
+    def update(self, delta_time: float) -> str | None:
+        if self.entity.stagger_timer > 0:
+            self.entity.stagger_timer -= delta_time
+        if self.entity.stagger_timer <= 0:
+            return player_ground_return(self.entity)
+        return None
+
+
 class PlayerState(str, Enum):
     """Enumeration of player states for type safety and refactoring reliability."""
 
@@ -301,6 +320,7 @@ class PlayerState(str, Enum):
     STAGGER = "stagger"
     CHARGE = "charge"
     KNOCKBACK = "knockback"
+    DIZZY = "dizzy"
 
 
 ATTACK_FORBIDDEN_STATES = {
@@ -310,6 +330,7 @@ ATTACK_FORBIDDEN_STATES = {
     PlayerState.DASH,
     PlayerState.STAGGER,
     PlayerState.KNOCKBACK,
+    PlayerState.DIZZY,
 }
 """Set of states where initiating an attack is forbidden."""
 
@@ -362,6 +383,7 @@ def configure_player_state_machine(player: Any) -> None:
     sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
     sm.add_state(PlayerState.DASH, PlayerDashState(player))
     sm.add_state(PlayerState.STAGGER, PlayerStaggerState(player))
+    sm.add_state(PlayerState.DIZZY, PlayerDizzyState(player))
     sm.set_initial_state(PlayerState.IDLE)
     sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
     sm.add_interrupt(PlayerState.GUARD, lambda: _can_guard(player), priority=60)

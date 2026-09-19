@@ -36,6 +36,8 @@
       "jump_height": 650.0,
       "jump_cooldown": 1.0,
       "leap_speed_mult": 1.6,
+      "parry_stun_threshold": 2,
+      "parry_stun_duration": 1.5,
       "animations": {}
     },
     "slime": {
@@ -69,6 +71,8 @@
       "pushable": true,
       "super_armor": false,
       "passive_friction": 8.0,
+      "parry_stun_threshold": 3,
+      "parry_stun_duration": 2.0,
       "animations": {}
     },
     "dummy": {
@@ -145,6 +149,8 @@
       "pushable": false,
       "super_armor": true,
       "passive_friction": 5.0,
+      "parry_stun_threshold": null,
+      "parry_stun_duration": 0.0,
       "animations": {}
     }
   }

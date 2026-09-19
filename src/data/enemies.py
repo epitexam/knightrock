@@ -108,6 +108,12 @@ def read_enemy_config(
             jump_height=float(raw.get("jump_height", 500.0)),
             jump_cooldown=float(raw.get("jump_cooldown", 1.0)),
             leap_speed_mult=float(raw.get("leap_speed_mult", 1.0)),
+            parry_stun_threshold=(
+                int(raw["parry_stun_threshold"])
+                if raw.get("parry_stun_threshold") is not None
+                else None
+            ),
+            parry_stun_duration=float(raw.get("parry_stun_duration", 0.0)),
             animations=_read_animations(raw.get("animations"), f"{where}.animations"),
         )
     except (TypeError, ValueError) as exc:
@@ -163,5 +169,7 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "jump_height": config.jump_height,
         "jump_cooldown": config.jump_cooldown,
         "leap_speed_mult": config.leap_speed_mult,
+        "parry_stun_threshold": config.parry_stun_threshold,
+        "parry_stun_duration": config.parry_stun_duration,
         "animations": dict(config.animations),
     }

@@ -16,4 +16,6 @@ SLIME_CONFIG = EnemyConfig(
     pushable=True,
     super_armor=False,
     passive_friction=8.0,
+    parry_stun_threshold=3,
+    parry_stun_duration=2.0,
 )

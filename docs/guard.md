@@ -68,6 +68,7 @@ Every guarded outcome is readable in-game without opening the debug panels:
 | Guard | 6 cyan chips | standard | light (`GUARD_TRAUMA`) | red push vector |
 | Parry | 14 gold sparks, kicked upward | floored at `PARRY_HITSTOP` (0.14s) | medium (`PARRY_TRAUMA`) | gold vector + `RIPOSTE` line in the stats panel |
 | Break | 12 red/orange shards | standard (chip hit) | heavy (`BREAK_TRAUMA`) | guard line turns critical + lockout timer |
+| Stun | 12 gold orbiting stars | standard | heavy (`BREAK_TRAUMA`) | `DIZZY x.xxs` gold flag on enemy card |
 
 How it flows: `CombatSystem` and `ProjectileSystem` record render-only
 `GuardEvent(kind, target)` entries while resolving contacts; `GameplayLoop`
@@ -75,3 +76,44 @@ drains them once per tick, spawns the matching `fx` burst into
 `fx_sprites`, and feeds the strongest trauma of the tick to the camera.
 Particles never touch snapshots or golden digests; event lists reset every
 tick, so rollback re-simulation regenerates them deterministically.
+
+## Parry Stun (DIZZY)
+
+Consecutive perfect parries build up a counter on the **attacker** (not the
+player). When the counter reaches the enemy type's threshold, the attacker
+enters the `DIZZY` state: frozen in place, vulnerable, taking `1.5x` damage
+(`Combat.DIZZY_DAMAGE_MULT`), and marked with a gold `DIZZY` flag in the
+world overlay. The counter is **consecutive** — it resets to zero whenever
+the attacker lands a real HP hit on the player (chip damage through guard
+does not reset it). Projectiles and dummy entities are excluded.
+
+### Configuration (`src/entities/enemies/schema.py`, class `EnemyConfig`)
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `parry_stun_threshold` | `int \| None` | `None` | Consecutive parries needed to dizzy. `None` = immune. |
+| `parry_stun_duration` | `float` | `0.0` | Seconds the dizzy state lasts. |
+
+### Defaults (placeholders in `src/entities/enemies/types/*.py`)
+
+| Enemy | Threshold | Duration |
+|---|---|---|
+| Goblin | 2 | 1.5 s |
+| Slime | 3 | 2.0 s |
+| Dummy | immune | 0 s |
+
+### Per-player tracking
+
+- `Entity.parries_given` — total perfect parries landed this life (saved in rollback).
+- `Entity.parries_taken` — consecutive perfect parries received (reset on real hit).
+- Both round-trip through `EntitySnapshot.extra` for determinism.
+
+### Code map (additions)
+
+- `src/states/reaction_states.py` — `DIZZY_STATE = "dizzy"`, `DizzyState` shared class.
+- `src/states/enemy_states.py` — `EnemyState.DIZZY`, `EnemyDizzyState` (exits to `idle` on timer).
+- `src/states/player_states.py` — `PlayerState.DIZZY`, `PlayerDizzyState` (exits via `ground_return`).
+- `src/core/level/systems/combat_system.py` — increments `parries_taken`, triggers `DIZZY`, emits `GuardEvent("stun")`, resets counter on real hit.
+- `src/combat/hit_resolver.py` — applies `DIZZY_DAMAGE_MULT` (1.5x) when target state is `dizzy`.
+- `src/core/fx.py` — `spawn_dizzy_stars` (orbiting gold stars).
+- `src/ui/world_ui.py` — `DIZZY x.xxs` gold flag in enemy label card.

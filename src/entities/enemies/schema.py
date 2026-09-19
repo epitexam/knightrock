@@ -37,3 +37,7 @@ class EnemyConfig:
     # numbered PNG frames, e.g. {"idle": "assets/graphics/enemies/shell/idle"}.
     # States without an entry keep the last shown animation (Phase 2 #1).
     animations: Mapping[str, str] = field(default_factory=dict)
+    # Parry-stun threshold: consecutive perfect parries needed to dizzy.
+    # None = immune (e.g. dummy).  Set per enemy type in its config.
+    parry_stun_threshold: int | None = None
+    parry_stun_duration: float = 0.0

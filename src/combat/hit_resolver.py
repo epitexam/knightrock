@@ -12,6 +12,7 @@ from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.states.reaction_states import DIZZY_STATE
 
 
 def _is_grounded(target: Combatant) -> bool:
@@ -132,6 +133,12 @@ class HitResolver:
         if was_airborne:
             juggle_scale = _juggle_scale(attacker.combat.air_combo_count or 0)
         final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
+
+        # DIZZY bonus: targets in dizzy state take extra damage
+        if getattr(target, "state_machine", None) is not None:
+            current = getattr(target.state_machine, "current_state_name", None)
+            if current == DIZZY_STATE:
+                final_damage *= CombatSettings.DIZZY_DAMAGE_MULT
 
         if final_damage <= 0:
             return DamageResult()

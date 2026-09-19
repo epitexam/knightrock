@@ -8,6 +8,7 @@ golden digests — pure juice, zero simulation impact.
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Iterable
 from typing import Any
@@ -30,6 +31,7 @@ __all__ = [
     "spawn_dash_burst",
     "spawn_dash_dust",
     "spawn_dash_streak",
+    "spawn_dizzy_stars",
     "spawn_guard_spark",
     "spawn_landing_dust",
     "spawn_parry_burst",
@@ -46,6 +48,10 @@ SPARK_SIZE = 4.0
 GUARD_SPARK_COUNT = 6
 PARRY_SPARK_COUNT = 14
 BREAK_SPARK_COUNT = 12
+DIZZY_STAR_COUNT = 12
+DIZZY_STAR_COLORS = ((255, 200, 50), (255, 255, 255), (255, 150, 0))
+DIZZY_STAR_RADIUS = 30.0
+DIZZY_STAR_SPEED = 80.0
 #: Puff base size (px) before the per-particle jitter.
 DUST_RADIUS = 5.0
 #: Upward drift so puffs hang briefly instead of dropping like stones.
@@ -482,6 +488,36 @@ def spawn_parry_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkP
 
 def spawn_break_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
     return _spawn_sparks(fx_group, entity, BREAK_SPARK_COLORS, BREAK_SPARK_COUNT, (380.0, 300.0))
+
+
+def spawn_dizzy_stars(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """Gold stars orbiting above a dizzy entity's head."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return []
+    rng = _puff_rng(entity)
+    stars: list[SparkParticle] = []
+    for i in range(DIZZY_STAR_COUNT):
+        angle = (i / DIZZY_STAR_COUNT) * 2 * 3.14159
+        velocity = (
+            DIZZY_STAR_SPEED * math.cos(angle),
+            -abs(rng.uniform(20.0, 60.0)) + DIZZY_STAR_SPEED * math.sin(angle),
+        )
+        star = SparkParticle(
+            (
+                hitbox.centerx + DIZZY_STAR_RADIUS * math.cos(angle),
+                hitbox.top - 10.0 + DIZZY_STAR_RADIUS * math.sin(angle),
+            ),
+            velocity,
+            rng.choice(DIZZY_STAR_COLORS),
+            ttl=entity.parry_stun_duration if hasattr(entity, "parry_stun_duration") else SPARK_TTL,
+            size=SPARK_SIZE * 1.2,
+        )
+        fx_group.add(star)
+        stars.append(star)
+    return stars
 
 
 def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:
