@@ -284,6 +284,15 @@ class PlayerDashState(PlayerBaseState):
             # No input: apply friction to slow down naturally
             friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
             apply_velocity_friction(self.entity, friction, delta_time)
+
+        # Wall bounce: if dashing into a wall, bounce off with momentum retention
+        if self.entity.on_surface.get("left", False) and self.entity.velocity.x < 0:
+            self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
+            self.entity.facing_right = True
+        elif self.entity.on_surface.get("right", False) and self.entity.velocity.x > 0:
+            self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
+            self.entity.facing_right = False
+
         self.entity.velocity.y += (
             self.entity.normal_gravity * self.entity.dash.gravity_mult * delta_time
         )

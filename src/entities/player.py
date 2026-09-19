@@ -210,9 +210,7 @@ class Player(ControllerView, Entity):
         mapping: dict[str, str] = {
             PlayerState.IDLE: "idle",
             PlayerState.RUN: "run",
-            # No dash art shipped: cycle the run so the sprite never
-            # freezes mid-dash on whatever frame was playing.
-            PlayerState.DASH: "run",
+            PlayerState.DASH: "dash",
             PlayerState.JUMP: "jump",
             PlayerState.FALL: "fall",
             PlayerState.WALL_SLIDE: "wall",

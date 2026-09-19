@@ -203,3 +203,92 @@ def test_configure_state_machine_registers_interrupts() -> None:
     assert PlayerState.DASH.value in targets
     assert PlayerState.GUARD.value in targets
     assert PlayerState.ATTACK.value in targets
+
+
+# --- Dash cancel window ---
+
+
+def test_can_attack_interrupt_true_during_dash_after_cancel_window() -> None:
+    """Attack allowed from dash after DASH_CANCEL_WINDOW."""
+    entity = _make_entity(
+        combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
+        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
+    )
+    entity.can_attack = lambda: True
+    entity.dash = SimpleNamespace(
+        duration=0.10,
+        duration_timer=0.04,  # 0.06s elapsed > 0.05 cancel window
+        in_coyote=lambda: False,
+    )
+    assert _can_attack_interrupt(entity) is True
+
+
+def test_can_attack_interrupt_false_during_dash_before_cancel_window() -> None:
+    """Attack blocked from dash before DASH_CANCEL_WINDOW."""
+    entity = _make_entity(
+        combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
+        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
+    )
+    entity.can_attack = lambda: True
+    entity.dash = SimpleNamespace(
+        duration=0.10,
+        duration_timer=0.08,  # 0.02s elapsed < 0.05 cancel window
+        in_coyote=lambda: False,
+    )
+    assert _can_attack_interrupt(entity) is False
+
+
+def test_can_guard_true_during_dash_after_cancel_window() -> None:
+    """Guard allowed from dash after DASH_CANCEL_WINDOW."""
+    entity = _make_entity(
+        guard_held=True,
+        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
+    )
+    entity.dash = SimpleNamespace(
+        duration=0.10,
+        duration_timer=0.04,  # 0.06s elapsed > 0.05 cancel window
+        in_coyote=lambda: False,
+    )
+    assert _can_guard(entity) is True
+
+
+def test_can_guard_false_during_dash_before_cancel_window() -> None:
+    """Guard blocked from dash before DASH_CANCEL_WINDOW."""
+    entity = _make_entity(
+        guard_held=True,
+        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
+    )
+    entity.dash = SimpleNamespace(
+        duration=0.10,
+        duration_timer=0.08,  # 0.02s elapsed < 0.05 cancel window
+        in_coyote=lambda: False,
+    )
+    assert _can_guard(entity) is False
+
+
+# --- Dash coyote ---
+
+
+def test_can_attack_interrupt_true_during_dash_coyote() -> None:
+    """Attack allowed during dash coyote window after dash ends."""
+    entity = _make_entity(
+        combat=SimpleNamespace(is_attacking=True, state=SimpleNamespace()),
+        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
+    )
+    entity.can_attack = lambda: True
+    entity.dash = SimpleNamespace(
+        in_coyote=lambda: True,
+    )
+    assert _can_attack_interrupt(entity) is True
+
+
+def test_can_guard_true_during_dash_coyote() -> None:
+    """Guard allowed during dash coyote window after dash ends."""
+    entity = _make_entity(
+        guard_held=True,
+        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
+    )
+    entity.dash = SimpleNamespace(
+        in_coyote=lambda: True,
+    )
+    assert _can_guard(entity) is True

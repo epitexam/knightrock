@@ -332,8 +332,8 @@ def test_is_player_dashing_only_matches_dashing_players() -> None:
 
 
 def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
-    from src.core.input.input_manager import InputManager  # noqa: PLC0415
-    from src.entities.player import Player  # noqa: PLC0415
+    from src.core.input.input_manager import InputManager  # noqa: PLC015
+    from src.entities.player import Player  # noqa: PLC015
 
     player = Player(
         pos=(0, 0),
@@ -344,7 +344,8 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
     )
     player.state_machine.current_state_name = "dash"
 
-    assert player._animation_name() == "run"
+    # Now has dedicated dash animation (falls back to run if not available)
+    assert player._animation_name() == "dash"
 
 
 def test_dash_trail_spawns_fast_thin_streaks() -> None:

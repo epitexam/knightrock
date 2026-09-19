@@ -16,6 +16,9 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
         AnimationSpec("fall", "assets/graphics/player/fall", AnimationSettings.FRAME_DURATION),
         AnimationSpec("wall", "assets/graphics/player/wall", AnimationSettings.FRAME_DURATION),
         AnimationSpec(
+            "dash", "assets/graphics/player/dash", AnimationSettings.RUN_FRAME_DURATION, loop=False
+        ),
+        AnimationSpec(
             "attack",
             "assets/graphics/player/attack",
             AnimationSettings.ATTACK_FRAME_DURATION,
@@ -34,7 +37,7 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
 }
 """Sprite-sheet animations shipped under ``assets/graphics/player/``.
 
-States without dedicated art (guard, charge, dash, stagger) keep playing
+States without dedicated art (guard, charge, stagger) keep playing
 the previous animation: :meth:`Player._animation_name` returns None for
 them.  The animator is attached in ``Player.__init__`` so the hundred
 shipped artworks are actually rendered (audit F4.1, Phase 2 #1).
