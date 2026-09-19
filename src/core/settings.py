@@ -39,7 +39,13 @@ class Physics:
     DASH_RECHARGE_TIME = 0.35
     DASH_PENALTY_TIME = 2.0
     DASH_GRAVITY_MULT = 0.0
-    DASH_CANCEL_WINDOW = 0.04
+    # Dash cancel window (s): how long a dash must last before an attack or a
+    # guard can cancel it. 0.0 = cancellable as soon as the dash starts, which
+    # is what makes a tapped "dash attack" reachable: interrupts are evaluated
+    # before the dash state decrements its timer, so a 0.04 window on a 0.08
+    # dash only accepted a press on its very last frame (measured), while 0.0
+    # accepts every frame but the first.
+    DASH_CANCEL_WINDOW = 0.0
     DASH_PARRY_WINDOW = 0.07
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05

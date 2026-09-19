@@ -30,6 +30,7 @@ from src.states.player_states import (
     ATTACK_FORBIDDEN_STATES,
     PlayerState,
     configure_player_state_machine,
+    dash_cancel_open,
 )
 
 
@@ -173,8 +174,18 @@ class Player(ControllerView, Entity):
         self.input_handler.buffered_attack_name = value
 
     def can_attack(self) -> bool:
-        """Return True if an attack can be started from the current state."""
-        return self.state_machine.current_state_name not in ATTACK_FORBIDDEN_STATES
+        """Return True if an attack can be started from the current state.
+
+        ``DASH`` is a special case: it is navigable, not forbidden. An attack
+        cancels a dash once ``Physics.DASH_CANCEL_WINDOW`` has elapsed — the
+        same rule the ``ATTACK`` interrupt reads through
+        :func:`~src.states.player_states.dash_cancel_open`, so the input gate
+        and the state transition can never disagree.
+        """
+        current = self.state_machine.current_state_name
+        if current == PlayerState.DASH:
+            return dash_cancel_open(self)
+        return current not in ATTACK_FORBIDDEN_STATES
 
     def is_wall_sliding(self) -> bool:
         """Return True when sliding down a wall."""
