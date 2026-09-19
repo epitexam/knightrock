@@ -70,6 +70,10 @@ class AssetLibrary:
         Frames are sorted numerically and served in a shared, converted
         state: callers must never mutate them.
 
+        If the requested directory doesn't exist, falls back to "run" for
+        player animations (graceful degradation when dash assets aren't
+        available yet). For other cases, raises FileNotFoundError.
+
         Parameters
         ----------
         relative_directory : str | Path
@@ -79,7 +83,8 @@ class AssetLibrary:
         Raises
         ------
         FileNotFoundError
-            If the directory does not exist or contains no frames.
+            If the directory does not exist and no fallback is available,
+            or contains no frames.
         """
         key = f"f:{relative_directory}"
         cached = self._frame_cache.get(key)
@@ -88,6 +93,10 @@ class AssetLibrary:
 
         directory = Path(resource_path(str(relative_directory)))
         if not directory.is_dir():
+            # Graceful fallback: dash -> run for player animations
+            if "player/dash" in str(relative_directory):
+                fallback = str(relative_directory).replace("player/dash", "player/run")
+                return self.frames(fallback)
             raise FileNotFoundError(f"Animation directory not found: {directory}")
 
         def frame_order(path: Path) -> tuple[int, str]:
