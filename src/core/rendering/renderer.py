@@ -12,11 +12,15 @@ from src.ui.ui_manager import UIManager
 HEALTH_BAR_CLEARANCE_PX = 18
 """Headroom above each sprite rect where WorldUI draws health bars."""
 
-DASH_STRETCH_X = 1.28
+DASH_STRETCH_X = 1.55
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
 
-DASH_STRETCH_Y = 0.78
+DASH_STRETCH_Y = 0.65
 """Vertical squash paired with the dash stretch (render-only)."""
+
+# Chromatic aberration offset for dashing players (simulated via RGB channel separation)
+DASH_CHROMATIC_ABERRATION_PX = 2.0
+"""Pixel offset for RGB channel separation during dash (render-only)."""
 
 
 def is_player_dashing(sprite: object) -> bool:
@@ -28,12 +32,15 @@ def is_player_dashing(sprite: object) -> bool:
 
 
 def dash_frame(
-    image: pygame.Surface, screen_rect: pygame.Rect
+    image: pygame.Surface, screen_rect: pygame.Rect, apply_tint: bool = True
 ) -> tuple[pygame.Surface, pygame.Rect]:
     """Stretch a dash frame wide-and-low, recentered on its screen rect."""
     width = max(1, int(image.get_width() * DASH_STRETCH_X))
     height = max(1, int(image.get_height() * DASH_STRETCH_Y))
     stretched = pygame.transform.scale(image, (width, height))
+    # Add energetic cyan tint to dash frame for speed feel
+    if apply_tint:
+        stretched.fill((100, 200, 255), special_flags=pygame.BLEND_RGB_ADD)
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
@@ -162,7 +169,7 @@ class Renderer:
             # Speed tint: the trail reads as energy, not a plain snapshot.
             ghost.fill((170, 220, 255), special_flags=pygame.BLEND_RGB_MULT)
             screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
-            ghost, ghost_rect = dash_frame(ghost, screen_rect)
+            ghost, ghost_rect = dash_frame(ghost, screen_rect, apply_tint=False)
             self._ghosts.append((ghost, ghost_rect, Afterimage.TTL))
             self._ghosts = self._ghosts[-Afterimage.MAX :]
 

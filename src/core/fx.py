@@ -25,6 +25,8 @@ __all__ = [
     "StreakParticle",
     "SweatParticle",
     "DizzyVortexParticle",
+    "DashShockwaveParticle",
+    "DashTrailParticle",
     "dash_direction",
     "iter_landing_entities",
     "particle_frames",
@@ -32,6 +34,8 @@ __all__ = [
     "spawn_dash_burst",
     "spawn_dash_dust",
     "spawn_dash_streak",
+    "spawn_dash_shockwave",
+    "spawn_dash_trail",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
     "spawn_guard_spark",
@@ -61,7 +65,7 @@ DUST_RISE = -60.0
 #: Horizontal drag applied to puff velocity (per second).
 DUST_DRAG = 4.0
 #: Puffs kicked out when a dash starts (rising edge, once per dash).
-DASH_BURST_COUNT = 5
+DASH_BURST_COUNT = 10
 #: Safety cap: the spawner skips new puffs once the fx group is this full.
 MAX_FX_SPRITES = 64
 #: Shipped debris frames, cycled as a shrink-out puff when present.
@@ -104,6 +108,23 @@ DIZZY_VORTEX_TTL = 0.5
 DIZZY_VORTEX_SPAWN_EVERY = 0.12
 #: Rotation speed in degrees per second.
 DIZZY_VORTEX_ROTATION_SPEED = 720.0
+
+#: Dash shockwave ring: expanding ring at dash start for impact feel.
+DASH_SHOCKWAVE_COLOR = (180, 220, 255)
+DASH_SHOCKWAVE_OUTLINE = (60, 100, 140)
+DASH_SHOCKWAVE_OUTLINE_WIDTH = 2
+DASH_SHOCKWAVE_INITIAL_RADIUS = 8.0
+DASH_SHOCKWAVE_MAX_RADIUS = 48.0
+DASH_SHOCKWAVE_TTL = 0.18
+
+#: Dash trail particles: curved streaks following the dash path.
+DASH_TRAIL_COLOR = (160, 200, 255)
+DASH_TRAIL_OUTLINE = (40, 80, 120)
+DASH_TRAIL_OUTLINE_WIDTH = 1
+DASH_TRAIL_LENGTH = 35.0
+DASH_TRAIL_WIDTH = 6.0
+DASH_TRAIL_TTL = 0.15
+DASH_TRAIL_SPAWN_EVERY = 0.015
 
 
 class DustParticle(pygame.sprite.Sprite):
@@ -393,6 +414,155 @@ class DizzyVortexParticle(pygame.sprite.Sprite):
         self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
 
 
+class DashShockwaveParticle(pygame.sprite.Sprite):
+    """Expanding ring shockwave at dash start for impact feel."""
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        ttl: float = DASH_SHOCKWAVE_TTL,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        self.current_radius = DASH_SHOCKWAVE_INITIAL_RADIUS
+        self.image = self._render()
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def _render(self) -> pygame.Surface:
+        """Render the expanding ring with outline."""
+        radius = int(self.current_radius) + DASH_SHOCKWAVE_OUTLINE_WIDTH + 2
+        size = 2 * radius
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx = cy = size // 2
+
+        # Outer outline ring
+        pygame.draw.circle(
+            surface,
+            DASH_SHOCKWAVE_OUTLINE,
+            (cx, cy),
+            int(self.current_radius) + DASH_SHOCKWAVE_OUTLINE_WIDTH,
+        )
+        # Inner fill ring (thinner)
+        pygame.draw.circle(
+            surface,
+            DASH_SHOCKWAVE_COLOR,
+            (cx, cy),
+            int(self.current_radius),
+        )
+        # Hollow center - erase inner circle
+        pygame.draw.circle(
+            surface,
+            (0, 0, 0, 0),
+            (cx, cy),
+            max(1, int(self.current_radius) - 4),
+        )
+
+        return surface
+
+    def update(self, delta_time: float) -> None:
+        """Expand ring, fade, and reap."""
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+
+        progress = 1.0 - self.ttl / self.max_ttl
+        # Ease-out expansion
+        self.current_radius = DASH_SHOCKWAVE_INITIAL_RADIUS + (
+            DASH_SHOCKWAVE_MAX_RADIUS - DASH_SHOCKWAVE_INITIAL_RADIUS
+        ) * (1.0 - (1.0 - progress) ** 2)
+
+        self.image = self._render()
+        self.rect = self.image.get_frect(center=self.pos)
+        assert self.image is not None
+        self.image.set_alpha(int(255 * (1.0 - progress) ** 1.5))
+
+
+class DashTrailParticle(pygame.sprite.Sprite):
+    """Curved streak particle following the dash path."""
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        direction: float,
+        ttl: float = DASH_TRAIL_TTL,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        self.direction = direction  # -1 for left, 1 for right
+        self.image = self._render()
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def _render(self) -> pygame.Surface:
+        """Render a curved speed streak."""
+        length = int(DASH_TRAIL_LENGTH)
+        width = int(DASH_TRAIL_WIDTH)
+        outline = DASH_TRAIL_OUTLINE_WIDTH
+        size = max(length, width) + 2 * outline + 4
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx = cy = size // 2
+
+        # Curved streak: a bent rectangle with tapered ends
+        points = []
+        segments = 6
+        for i in range(segments + 1):
+            t = i / segments
+            # Curve the trail slightly upward
+            curve = math.sin(t * math.pi) * 8.0
+            x_offset = -self.direction * t * length
+            y_offset = -curve
+            w = width * (1.0 - t * 0.7)  # Taper toward end
+            # Left edge
+            points.append((cx + x_offset - w / 2, cy + y_offset))
+        # Right edge (reverse)
+        for i in range(segments, -1, -1):
+            t = i / segments
+            curve = math.sin(t * math.pi) * 8.0
+            x_offset = -self.direction * t * length
+            y_offset = -curve
+            w = width * (1.0 - t * 0.7)
+            points.append((cx + x_offset + w / 2, cy + y_offset))
+
+        # Outline
+        pygame.draw.polygon(surface, DASH_TRAIL_OUTLINE, points)
+        # Fill (inset)
+        inset_points = []
+        for i in range(segments + 1):
+            t = i / segments
+            curve = math.sin(t * math.pi) * 8.0
+            x_offset = -self.direction * t * length
+            y_offset = -curve
+            w = (width - 2 * outline) * (1.0 - t * 0.7)
+            inset_points.append((cx + x_offset - w / 2, cy + y_offset))
+        for i in range(segments, -1, -1):
+            t = i / segments
+            curve = math.sin(t * math.pi) * 8.0
+            x_offset = -self.direction * t * length
+            y_offset = -curve
+            w = (width - 2 * outline) * (1.0 - t * 0.7)
+            inset_points.append((cx + x_offset + w / 2, cy + y_offset))
+        pygame.draw.polygon(surface, DASH_TRAIL_COLOR, inset_points)
+
+        return surface
+
+    def update(self, delta_time: float) -> None:
+        """Fade and reap the trail."""
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+
+        progress = 1.0 - self.ttl / self.max_ttl
+        self.image = self._render()
+        self.rect = self.image.get_frect(center=self.pos)
+        assert self.image is not None
+        self.image.set_alpha(int(255 * (1.0 - progress) ** 1.2))
+
+
 _frames_cache: list[pygame.Surface] | None = None
 _frames_miss = False
 
@@ -537,6 +707,42 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     )
     fx_group.add(streak)
     return streak
+
+
+def spawn_dash_shockwave(fx_group: pygame.sprite.Group, entity: Any) -> DashShockwaveParticle | None:
+    """Spawn an expanding shockwave ring at the entity's center on dash start."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return None
+    shockwave = DashShockwaveParticle(
+        (hitbox.centerx, hitbox.centery),
+        ttl=DASH_SHOCKWAVE_TTL,
+    )
+    fx_group.add(shockwave)
+    return shockwave
+
+
+def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailParticle | None:
+    """Spawn a curved trail particle behind the dasher."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return None
+    direction = dash_direction(entity)
+    rng = _puff_rng(entity)
+    trail = DashTrailParticle(
+        (
+            hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
+            hitbox.centery + rng.uniform(-hitbox.height / 4.0, hitbox.height / 4.0),
+        ),
+        direction,
+        ttl=DASH_TRAIL_TTL,
+    )
+    fx_group.add(trail)
+    return trail
 
 
 def _spawn_sparks(

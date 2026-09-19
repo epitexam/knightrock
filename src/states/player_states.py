@@ -244,10 +244,15 @@ class PlayerDashState(PlayerBaseState):
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
-        direction = 1 if self.entity.facing_right else -1
+        # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
+        request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
+        move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
+        direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else (1.0 if self.entity.facing_right else -1.0)
         self.entity.velocity.x = self.entity.dash.speed * direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
+        # Signal dash start for screen shake/trauma
+        self.entity._dash_started_this_frame = True
 
     def exit(self, next_state: str | None = None) -> None:
         """Exit the state and restore the original hitbox width."""
@@ -258,12 +263,25 @@ class PlayerDashState(PlayerBaseState):
     def update(self, delta_time: float) -> str | None:
         """Update the current state, applying dash friction and air control."""
         self.entity.dash.duration_timer -= delta_time
-        friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
-        apply_velocity_friction(self.entity, friction, delta_time)
-        if self.entity.left_held:
-            self.entity.velocity.x -= Physics.DASH_AIR_CONTROL * delta_time
-        if self.entity.right_held:
-            self.entity.velocity.x += Physics.DASH_AIR_CONTROL * delta_time
+        # Full directional control: input directly influences velocity for snappy changes
+        move_axis = getattr(self.entity, "move_axis", 0.0)
+        if move_axis != 0.0:
+            target_vx = self.entity.dash.speed * move_axis
+            # Strong acceleration toward target velocity for instant direction response (Brawlhalla-style)
+            control_accel = Physics.DASH_AIR_CONTROL * delta_time
+            diff = target_vx - self.entity.velocity.x
+            # If trying to reverse direction, apply extra impulse for instant turn
+            if diff * self.entity.velocity.x < 0:  # Opposite signs = reversing
+                control_accel *= 5.0  # 5x stronger when reversing
+            if abs(diff) > control_accel:
+                self.entity.velocity.x += control_accel if diff > 0 else -control_accel
+            else:
+                self.entity.velocity.x = target_vx
+            # No friction while actively controlling - player has full authority
+        else:
+            # No input: apply friction to slow down naturally
+            friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
+            apply_velocity_friction(self.entity, friction, delta_time)
         self.entity.velocity.y += (
             self.entity.normal_gravity * self.entity.dash.gravity_mult * delta_time
         )

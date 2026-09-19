@@ -43,6 +43,7 @@ class DashSnapshot:
     recharge_timer: float
     penalty_timer: float
     requested: bool
+    request_move_axis: float
     duration_timer: float
     original_hitbox_width: float
 
@@ -224,6 +225,7 @@ class DashController:
         self.recharge_timer: float = 0.0
         self.penalty_timer: float = 0.0
         self.requested: bool = False
+        self.request_move_axis: float = 0.0
         self.duration_timer: float = 0.0
         self.original_hitbox_width: float = original_hitbox_width
 
@@ -231,18 +233,25 @@ class DashController:
         """Whether a pending dash request can actually start a dash."""
         return self.requested and self.charges > 0
 
-    def request(self) -> None:
-        """Register a dash press, gated by available charges and penalty."""
+    def request(self, move_axis: float = 0.0) -> None:
+        """Register a dash press, gated by available charges and penalty.
+
+        Captures the move_axis at request time for reactive dash direction.
+        """
         self.requested = self.charges > 0 and self.penalty_timer <= 0
+        if self.requested:
+            self.request_move_axis = move_axis
 
     def cancel_request(self) -> None:
         """Drop any pending dash request (hit, knockback, dash started)."""
         self.requested = False
+        self.request_move_axis = 0.0
 
     def consume_charge(self) -> None:
         """Spend one charge and arm recharge/penalty timers accordingly."""
         self.charges -= 1
         self.requested = False
+        self.request_move_axis = 0.0
         if self.recharge_timer <= 0:
             self.recharge_timer = self.recharge_time
         if self.charges == 0:
@@ -281,6 +290,7 @@ class DashController:
         self.recharge_timer = 0.0
         self.penalty_timer = 0.0
         self.requested = False
+        self.request_move_axis = 0.0
 
     def save_state(self) -> DashSnapshot:
         """Capture runtime state for rollback (Phase 3 #3)."""
@@ -289,6 +299,7 @@ class DashController:
             recharge_timer=self.recharge_timer,
             penalty_timer=self.penalty_timer,
             requested=self.requested,
+            request_move_axis=self.request_move_axis,
             duration_timer=self.duration_timer,
             original_hitbox_width=self.original_hitbox_width,
         )
@@ -299,5 +310,6 @@ class DashController:
         self.recharge_timer = snapshot.recharge_timer
         self.penalty_timer = snapshot.penalty_timer
         self.requested = snapshot.requested
+        self.request_move_axis = snapshot.request_move_axis
         self.duration_timer = snapshot.duration_timer
         self.original_hitbox_width = snapshot.original_hitbox_width

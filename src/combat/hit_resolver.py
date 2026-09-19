@@ -140,6 +140,10 @@ class HitResolver:
             if current == DIZZY_STATE:
                 final_damage *= CombatSettings.DIZZY_DAMAGE_MULT
 
+        # INVINCIBILITY: entities with invincible tag (dash, hurt, knockback) cannot be hit
+        if getattr(target, "is_invincible", False):
+            return DamageResult()
+
         if final_damage <= 0:
             return DamageResult()
 

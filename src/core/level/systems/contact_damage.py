@@ -37,6 +37,8 @@ class ContactDamageSystem:
                 continue
             if ent_a.faction == ent_b.faction:
                 continue
+            if getattr(ent_a, "is_invincible", False) or getattr(ent_b, "is_invincible", False):
+                continue
             if not ent_a.hitbox.colliderect(ent_b.hitbox):
                 continue
 

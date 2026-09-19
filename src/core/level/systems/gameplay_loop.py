@@ -163,6 +163,10 @@ class GameplayLoop:
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
             self._emit_guard_fx(groups, camera)
+            # Dash start screen shake
+            if getattr(player, "_dash_started_this_frame", False):
+                player._dash_started_this_frame = False
+                camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
             self.remove_dead_entities(groups.entity_sprites, player)
