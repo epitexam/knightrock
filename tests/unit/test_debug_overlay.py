@@ -337,11 +337,61 @@ def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera
 def test_expired_reaction_status_keeps_the_locomotion_color(
     world_ui: WorldUI, camera: Camera
 ) -> None:
+    """Stale cause *and* the state machine left knockback: locomotion again."""
     surface = world_ui.display_surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
     entity.reaction_age = 0.0
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_knockback_state_keeps_the_vector_red_after_the_freshness_window(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """A launch outlives ReactionMark.DURATION: the state still carries it.
+
+    Measured in flight, a (400, -600) launch stays in ``knockback`` for
+    ~1.15 s while ``reaction_age`` runs out after 0.4 s — the vector is still
+    the knockback, so it stays red (this was the "sometimes yellow" report).
+    """
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.0  # freshness expired, still being launched
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.red
+
+
+def test_resolved_knockback_falls_back_to_the_locomotion_color(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    """Once the state machine leaves knockback, a stale cause is locomotion."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(
+        kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
+    )
+    entity.reaction_age = 0.0
+    entity.state_machine = SimpleNamespace(current_state_name="chase")
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
+
+
+def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
+    """The kind gate still rules: a stagger carries no impulse, state or not."""
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
+    entity.reaction_age = 0.0
+    entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
