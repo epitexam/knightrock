@@ -247,7 +247,13 @@ class PlayerDashState(PlayerBaseState):
         # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
         request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
         move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
-        direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else (1.0 if self.entity.facing_right else -1.0)
+        direction = (
+            1.0
+            if move_axis > 0
+            else -1.0
+            if move_axis < 0
+            else (1.0 if self.entity.facing_right else -1.0)
+        )
         self.entity.velocity.x = self.entity.dash.speed * direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
@@ -364,6 +370,25 @@ ATTACK_FORBIDDEN_STATES = {
 """Set of states where initiating an attack is forbidden."""
 
 
+def dash_cancel_open(player: Any) -> bool:
+    """Whether a dash has run long enough to be cancelled (attack/guard).
+
+    ``Physics.DASH_CANCEL_WINDOW`` is measured from the dash start, so the
+    comparison uses the *remaining* timer (``duration - duration_timer``).
+    Note the 60 Hz granularity: interrupts are evaluated before the dash state
+    decrements its timer, so a press is accepted on the frame *after* the
+    window is crossed. With the shipped ``0.0`` window every dash frame but the
+    first accepts a cancel; any positive value is a deliberate commitment.
+
+    Single source of truth for the cancel window: ``Player.can_attack`` and
+    the state-machine interrupts (``_can_guard`` / ``_can_attack_interrupt``)
+    all read it, so the input gate and the transition can never disagree.
+    """
+    dash = player.dash
+    elapsed = dash.duration - dash.duration_timer
+    return bool(elapsed >= Physics.DASH_CANCEL_WINDOW)
+
+
 def _can_dash(player: Any) -> bool:
     """Check if the player can currently interrupt to dash."""
     return player.dash.can_use() and player.state_machine.current_state_name not in (
@@ -380,8 +405,7 @@ def _can_guard(player: Any) -> bool:
     current = player.state_machine.current_state_name
     # Allow guard cancel from dash after cancel window
     if current == PlayerState.DASH:
-        dash_elapsed = player.dash.duration - player.dash.duration_timer
-        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+        return dash_cancel_open(player)
     # Allow guard during dash coyote window
     if bool(player.dash.in_coyote()):
         return True
@@ -396,15 +420,20 @@ def _can_guard(player: Any) -> bool:
 
 
 def _can_attack_interrupt(player: Any) -> bool:
-    """Check if the player can currently interrupt to attack."""
-    is_attacking: bool = player.combat.is_attacking
-    if not (is_attacking and player.can_attack()):
+    """Check if the player can currently interrupt to attack.
+
+    ``Player.can_attack()`` is deliberately *not* a precondition: it forbids
+    ``DASH`` outright, which used to make the dash branch below unreachable
+    (pressing an attack mid-dash was swallowed). The state test that follows
+    already covers every forbidden state, so the dash window stays the only
+    thing that gates a dash cancel.
+    """
+    if not player.combat.is_attacking:
         return False
-    # Allow attack cancel from dash after cancel window
     current = player.state_machine.current_state_name
+    # Allow attack cancel from dash after cancel window
     if current == PlayerState.DASH:
-        dash_elapsed = player.dash.duration - player.dash.duration_timer
-        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+        return dash_cancel_open(player)
     # Allow attack during dash coyote window
     if bool(player.dash.in_coyote()):
         return True

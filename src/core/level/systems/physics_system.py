@@ -92,7 +92,9 @@ class PhysicsSystem:
         dizzy_ids: set[int] = set()
         dash_trail_ids: set[int] = set()
         for entity in self.groups.entity_sprites:
-            self._process_entity_fx(entity, delta_time, dashing_ids, sweating_ids, dizzy_ids, dash_trail_ids)
+            self._process_entity_fx(
+                entity, delta_time, dashing_ids, sweating_ids, dizzy_ids, dash_trail_ids
+            )
         self._dashing_ids = dashing_ids
         self._cleanup_timers(sweating_ids, dizzy_ids, dash_trail_ids)
 
