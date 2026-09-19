@@ -105,13 +105,8 @@ def read_player_config(
             ),
             coyote_duration=float(raw.get("coyote_duration", base.coyote_duration)),
             jump_buffer_duration=float(raw.get("jump_buffer_duration", base.jump_buffer_duration)),
-            max_block_stamina=float(raw.get("max_block_stamina", base.max_block_stamina)),
-            block_cooldown_normal=float(
-                raw.get("block_cooldown_normal", base.block_cooldown_normal)
-            ),
-            block_cooldown_broken=float(
-                raw.get("block_cooldown_broken", base.block_cooldown_broken)
-            ),
+            guard_posture_max=float(raw.get("guard_posture_max", base.guard_posture_max)),
+            guard_break_lockout=float(raw.get("guard_break_lockout", base.guard_break_lockout)),
             max_dash_charges=int(raw.get("max_dash_charges", base.max_dash_charges)),
             dash_speed=float(raw.get("dash_speed", base.dash_speed)),
             dash_duration=float(raw.get("dash_duration", base.dash_duration)),
@@ -158,9 +153,8 @@ def player_config_to_dict(config: PlayerConfig, attack_set: str | None) -> dict[
         "max_midair_jumps",
         "coyote_duration",
         "jump_buffer_duration",
-        "max_block_stamina",
-        "block_cooldown_normal",
-        "block_cooldown_broken",
+        "guard_posture_max",
+        "guard_break_lockout",
         "max_dash_charges",
         "dash_speed",
         "dash_duration",

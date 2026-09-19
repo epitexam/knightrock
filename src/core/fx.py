@@ -8,6 +8,7 @@ golden digests — pure juice, zero simulation impact.
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Iterable
 from typing import Any
@@ -20,18 +21,39 @@ from src.core.settings import Dust, Sweat
 
 __all__ = [
     "DustParticle",
+    "SparkParticle",
     "StreakParticle",
     "SweatParticle",
+    "DizzyVortexParticle",
     "dash_direction",
     "iter_landing_entities",
     "particle_frames",
+    "spawn_break_burst",
     "spawn_dash_burst",
     "spawn_dash_dust",
     "spawn_dash_streak",
+    "spawn_dizzy_stars",
+    "spawn_dizzy_vortex",
+    "spawn_guard_spark",
     "spawn_landing_dust",
+    "spawn_parry_burst",
     "spawn_sweat_drops",
 ]
 
+#: Guard spark looks: cyan chips, gold parry flash, red break shards.
+GUARD_SPARK_COLORS = ((80, 220, 230), (200, 245, 255))
+PARRY_SPARK_COLORS = ((255, 200, 50), (255, 255, 255))
+BREAK_SPARK_COLORS = ((235, 70, 70), (245, 140, 60))
+SPARK_TTL = 0.3
+SPARK_GRAVITY = 900.0
+SPARK_SIZE = 4.0
+GUARD_SPARK_COUNT = 6
+PARRY_SPARK_COUNT = 14
+BREAK_SPARK_COUNT = 12
+DIZZY_STAR_COUNT = 12
+DIZZY_STAR_COLORS = ((255, 200, 50), (255, 255, 255), (255, 150, 0))
+DIZZY_STAR_RADIUS = 30.0
+DIZZY_STAR_SPEED = 80.0
 #: Puff base size (px) before the per-particle jitter.
 DUST_RADIUS = 5.0
 #: Upward drift so puffs hang briefly instead of dropping like stones.
@@ -66,6 +88,22 @@ SWEAT_POP_UP = -110.0
 SWEAT_GRAVITY = 620.0
 #: Lateral jitter as a fraction of the hitbox width: hug the crown.
 SWEAT_SPREAD = 0.12
+
+#: Dizzy vortex look: purple comic swirl above stunned entity's head.
+DIZZY_VORTEX_COLOR = (180, 60, 220)
+#: Dark ink outline for the vortex arms.
+DIZZY_VORTEX_OUTLINE = (60, 20, 80)
+DIZZY_VORTEX_OUTLINE_WIDTH = 2
+#: Base radius of the vortex swirl.
+DIZZY_VORTEX_RADIUS = 18.0
+#: Number of swirl arms.
+DIZZY_VORTEX_ARMS = 3
+#: How long each vortex puff lives.
+DIZZY_VORTEX_TTL = 0.5
+#: Cadence to spawn new vortex puffs while dizzy.
+DIZZY_VORTEX_SPAWN_EVERY = 0.12
+#: Rotation speed in degrees per second.
+DIZZY_VORTEX_ROTATION_SPEED = 720.0
 
 
 class DustParticle(pygame.sprite.Sprite):
@@ -165,6 +203,37 @@ class StreakParticle(pygame.sprite.Sprite):
         self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
 
 
+class SparkParticle(pygame.sprite.Sprite):
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        color: tuple[int, int, int],
+        ttl: float = SPARK_TTL,
+        size: float = SPARK_SIZE,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.velocity = Vector2(velocity)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        side = max(2, int(size))
+        self.image = pygame.Surface((side, side), pygame.SRCALPHA)
+        self.image.fill(color)
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def update(self, delta_time: float) -> None:
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+        self.velocity.y += SPARK_GRAVITY * delta_time
+        self.pos += self.velocity * delta_time
+        self.rect.center = self.pos
+        assert self.image is not None
+        self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
+
+
 class SweatParticle(pygame.sprite.Sprite):
     """A single sweat droplet: pops off the head, arcs down, fades, dies.
 
@@ -240,6 +309,86 @@ class SweatParticle(pygame.sprite.Sprite):
         self.velocity.y += SWEAT_GRAVITY * delta_time
         self.pos += self.velocity * delta_time
         self.rect.center = self.pos
+        assert self.image is not None
+        self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
+
+
+class DizzyVortexParticle(pygame.sprite.Sprite):
+    """A comic-style purple swirl vortex above a dizzy entity's head.
+
+    Rotates continuously, pulses in scale, and fades out. Multiple puffs
+    spawn on a cadence while the entity remains dizzy, creating a persistent
+    swirling effect.
+    """
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        ttl: float = DIZZY_VORTEX_TTL,
+        radius: float = DIZZY_VORTEX_RADIUS,
+    ) -> None:
+        super().__init__()
+        self.pos = Vector2(pos)
+        self.ttl = float(ttl)
+        self.max_ttl = float(ttl) if ttl > 0.0 else 1.0
+        self.radius = float(radius)
+        self.rotation = 0.0
+        self.image = self._render()
+        self.rect: pygame.FRect = self.image.get_frect(center=self.pos)
+
+    def _render(self) -> pygame.Surface:
+        """Render the swirling vortex: multiple curved arms with outline."""
+        radius = int(self.radius)
+        outline = DIZZY_VORTEX_OUTLINE_WIDTH
+        arms = DIZZY_VORTEX_ARMS
+        size = 2 * (radius + outline + 2)
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx = cy = size // 2
+
+        progress = 1.0 - self.ttl / self.max_ttl
+        pulse = 0.85 + 0.15 * math.sin(progress * math.pi * 4)
+        current_radius = radius * pulse
+
+        for arm in range(arms):
+            base_angle = (arm / arms) * 2 * math.pi + math.radians(self.rotation)
+            # Draw 3 segments per arm for a curved spiral look
+            for seg in range(3):
+                seg_progress = seg / 3.0
+                r_start = current_radius * (0.3 + seg_progress * 0.7)
+                r_end = current_radius * (0.4 + seg_progress * 0.7)
+                angle_start = base_angle + seg_progress * math.pi * 0.5
+                angle_end = base_angle + (seg_progress + 0.33) * math.pi * 0.5
+
+                points = [
+                    (cx + r_start * math.cos(angle_start), cy + r_start * math.sin(angle_start)),
+                    (cx + r_end * math.cos(angle_end), cy + r_end * math.sin(angle_end)),
+                    (cx + r_end * math.cos(angle_end + 0.2), cy + r_end * math.sin(angle_end + 0.2)),
+                    (cx + r_start * math.cos(angle_start + 0.2), cy + r_start * math.sin(angle_start + 0.2)),
+                ]
+
+                # Outline
+                pygame.draw.polygon(surface, DIZZY_VORTEX_OUTLINE, points)
+                # Fill (slightly inset)
+                inset_points = [
+                    (cx + (r_start - outline) * math.cos(angle_start), cy + (r_start - outline) * math.sin(angle_start)),
+                    (cx + (r_end - outline) * math.cos(angle_end), cy + (r_end - outline) * math.sin(angle_end)),
+                    (cx + (r_end - outline) * math.cos(angle_end + 0.2), cy + (r_end - outline) * math.sin(angle_end + 0.2)),
+                    (cx + (r_start - outline) * math.cos(angle_start + 0.2), cy + (r_start - outline) * math.sin(angle_start + 0.2)),
+                ]
+                pygame.draw.polygon(surface, DIZZY_VORTEX_COLOR, inset_points)
+
+        return surface
+
+    def update(self, delta_time: float) -> None:
+        """Rotate, pulse, fade, and reap the vortex puff."""
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+
+        self.rotation += DIZZY_VORTEX_ROTATION_SPEED * delta_time
+        self.image = self._render()
+        self.rect = self.image.get_frect(center=self.pos)
         assert self.image is not None
         self.image.set_alpha(int(255 * self.ttl / self.max_ttl))
 
@@ -388,6 +537,101 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     )
     fx_group.add(streak)
     return streak
+
+
+def _spawn_sparks(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    colors: tuple[tuple[int, int, int], ...],
+    count: int,
+    speed: tuple[float, float],
+    upward: bool = False,
+) -> list[SparkParticle]:
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or count <= 0:
+        return []
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return []
+    rng = _puff_rng(entity)
+    sparks: list[SparkParticle] = []
+    for _ in range(count):
+        velocity = (
+            rng.uniform(-speed[0], speed[0]),
+            -abs(rng.uniform(speed[1] * 0.4, speed[1]))
+            if upward
+            else rng.uniform(-speed[1], speed[1]),
+        )
+        spark = SparkParticle(
+            (
+                hitbox.centerx + rng.uniform(-6.0, 6.0),
+                hitbox.centery + rng.uniform(-10.0, 10.0),
+            ),
+            velocity,
+            rng.choice(colors),
+        )
+        fx_group.add(spark)
+        sparks.append(spark)
+    return sparks
+
+
+def spawn_guard_spark(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(fx_group, entity, GUARD_SPARK_COLORS, GUARD_SPARK_COUNT, (260.0, 220.0))
+
+
+def spawn_parry_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(
+        fx_group, entity, PARRY_SPARK_COLORS, PARRY_SPARK_COUNT, (420.0, 340.0), upward=True
+    )
+
+
+def spawn_break_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    return _spawn_sparks(fx_group, entity, BREAK_SPARK_COLORS, BREAK_SPARK_COUNT, (380.0, 300.0))
+
+
+def spawn_dizzy_stars(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """Gold stars orbiting above a dizzy entity's head."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return []
+    rng = _puff_rng(entity)
+    stars: list[SparkParticle] = []
+    for i in range(DIZZY_STAR_COUNT):
+        angle = (i / DIZZY_STAR_COUNT) * 2 * 3.14159
+        velocity = (
+            DIZZY_STAR_SPEED * math.cos(angle),
+            -abs(rng.uniform(20.0, 60.0)) + DIZZY_STAR_SPEED * math.sin(angle),
+        )
+        star = SparkParticle(
+            (
+                hitbox.centerx + DIZZY_STAR_RADIUS * math.cos(angle),
+                hitbox.top - 10.0 + DIZZY_STAR_RADIUS * math.sin(angle),
+            ),
+            velocity,
+            rng.choice(DIZZY_STAR_COLORS),
+            ttl=entity.parry_stun_duration if hasattr(entity, "parry_stun_duration") else SPARK_TTL,
+            size=SPARK_SIZE * 1.2,
+        )
+        fx_group.add(star)
+        stars.append(star)
+    return stars
+
+
+def spawn_dizzy_vortex(fx_group: pygame.sprite.Group, entity: Any) -> DizzyVortexParticle | None:
+    """Spawn a single purple vortex swirl above a dizzy entity's head."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if len(fx_group) >= MAX_FX_SPRITES:
+        return None
+    vortex = DizzyVortexParticle(
+        (hitbox.centerx, hitbox.top - DIZZY_VORTEX_RADIUS - 4.0),
+        ttl=DIZZY_VORTEX_TTL,
+        radius=DIZZY_VORTEX_RADIUS,
+    )
+    fx_group.add(vortex)
+    return vortex
 
 
 def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:

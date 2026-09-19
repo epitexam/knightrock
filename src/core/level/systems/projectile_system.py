@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import pygame
 
-from src.combat.combatant_protocol import Combatant
+from src.combat.combatant_protocol import Combatant, DamageResult
 from src.combat.hit_resolver import HitResolver
+from src.core.level.systems.combat_system import GuardEvent
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import Projectile, ProjectileConfig
@@ -42,6 +43,7 @@ class ProjectileSystem:
             pool if pool is not None else ObjectPool(Projectile, reset=_reset_projectile)
         )
         self.spatial_hash = spatial_hash
+        self.guard_events: list[GuardEvent] = []
 
     def spawn(
         self,
@@ -63,6 +65,7 @@ class ProjectileSystem:
         entity_grid: EntityGrid | None = None,
     ) -> None:
         """Advance every projectile and resolve contacts."""
+        self.guard_events.clear()
         if delta_time <= 0.0:
             return
         for projectile in list(self.groups.projectile_sprites):
@@ -91,6 +94,16 @@ class ProjectileSystem:
                 return True
         return False
 
+    def _record_guard_event(self, result: DamageResult, target: Combatant) -> None:
+        if not result.guarded:
+            return
+        kind = "guard"
+        if result.parried:
+            kind = "parry"
+        elif result.guard_broken:
+            kind = "break"
+        self.guard_events.append(GuardEvent(kind, target))
+
     def _resolve_contacts(
         self,
         projectile: Projectile,
@@ -112,8 +125,9 @@ class ProjectileSystem:
                 target=target,
                 hit=projectile.config.hit,
             )
-            if not (result.applied or result.blocked):
+            if not (result.applied or result.guarded):
                 continue
+            self._record_guard_event(result, target)
             projectile.targets_hit.add(target_id)
             if not projectile.config.pierce:
                 self._release(projectile)

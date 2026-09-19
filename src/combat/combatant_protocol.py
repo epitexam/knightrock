@@ -7,7 +7,7 @@ class.
 """
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import pygame
 
@@ -21,7 +21,9 @@ class DamageResult:
     """Explicit outcome of a call to ``receive_damage``."""
 
     applied: bool = False
-    blocked: bool = False
+    guarded: bool = False
+    parried: bool = False
+    guard_broken: bool = False
     killed: bool = False
     actual_damage: float = 0.0
     heavy_knockback: bool = False
@@ -134,6 +136,8 @@ class Combatant(Protocol):
         True if the entity's health has reached zero.
     combat : CombatPort
         The entity's combat component through its explicit public port.
+    state_machine : Any
+        The entity's state machine for state-based logic (optional, for DIZZY checks).
     """
 
     id: str
@@ -143,6 +147,7 @@ class Combatant(Protocol):
     facing_right: bool
     on_surface: dict[str, bool]
     otg_timer: float
+    state_machine: Any
 
     @property
     def is_dead(self) -> bool:
@@ -243,18 +248,12 @@ class Combatant(Protocol):
 
 
 @runtime_checkable
-class BlockingCombatant(Combatant, Protocol):
-    """Extends ``Combatant`` with blocking capabilities.
+class GuardingCombatant(Combatant, Protocol):
+    """Extends ``Combatant`` with directional guard capabilities."""
 
-    Attributes
-    ----------
-    block_stamina : float
-        Remaining stamina available for blocking.
-    """
-
-    block_stamina: float
+    guard_posture: float
 
     @property
-    def is_blocking(self) -> bool:
-        """Whether the entity is currently in a blocking state."""
+    def is_guarding(self) -> bool:
+        """Whether the entity is currently in a guarding state."""
         ...

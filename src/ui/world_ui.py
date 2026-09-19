@@ -24,7 +24,7 @@ import pygame
 
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
-from src.entities.components.reaction import VELOCITY_KINDS, ReactionStatus
+from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 
@@ -286,10 +286,21 @@ class WorldUI:
         start = camera.apply(origin).center
         end = (start[0] + vx * VELOCITY_PREVIEW_S, start[1] + vy * VELOCITY_PREVIEW_S)
         color = Colors.debug_velocity
-        if self._is_reaction_push(sprite):
+        if self._is_parry_flash(sprite):
+            color = Colors.gold
+        elif self._is_reaction_push(sprite):
             color = Colors.red  # reaction push vector, not locomotion
         pygame.draw.line(self.display_surface, color, start, end, width=2)
         pygame.draw.circle(self.display_surface, color, end, 2)
+
+    @staticmethod
+    def _is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
+        status = getattr(sprite, "reaction_status", None)
+        if not isinstance(status, ReactionStatus):
+            return False
+        if status.kind is not ReactionKind.PARRIED:
+            return False
+        return float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
 
     @staticmethod
     def _is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
@@ -391,6 +402,11 @@ class WorldUI:
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
             colors[f"STAG {stagger:.2f}s"] = Colors.orange
+        state_machine = getattr(sprite, "state_machine", None)
+        if state_machine is not None:
+            current = getattr(state_machine, "current_state_name", None)
+            if current == "dizzy":
+                colors[f"DIZZY {stagger:.2f}s"] = Colors.gold
         otg = float(getattr(sprite, "otg_timer", 0.0) or 0.0)
         if otg > 0:
             colors[f"OTG {otg:.2f}s"] = Colors.debug_otg
@@ -429,6 +445,11 @@ class WorldUI:
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
             flags.append(f"STAG {stagger:.2f}s")
+        state_machine = getattr(sprite, "state_machine", None)
+        if state_machine is not None:
+            current = getattr(state_machine, "current_state_name", None)
+            if current == "dizzy":
+                flags.append(f"DIZZY {stagger:.2f}s")
         reaction_flag = WorldUI._reaction_flag(sprite)
         if reaction_flag is not None:
             flags.append(reaction_flag)

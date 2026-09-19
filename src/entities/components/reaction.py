@@ -22,6 +22,7 @@ from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
 from src.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
 
@@ -36,24 +37,18 @@ __all__ = [
 
 
 class ReactionKind(Enum):
-    """Which hit reaction was last applied — the *cause* authority.
-
-    ``ReactionComponent`` owns this: it answers *what hit, how hard, when*.
-    The state machine separately owns the *category in progress*; both are
-    written at the same sites in the same tick, so they cannot diverge.
-    """
-
     PUSH = "push"
     LAUNCH = "launch"
     STAGGER = "stagger"
-    BLOCKED = "blocked"
+    GUARDED = "guarded"
+    PARRIED = "parried"
 
 
 #: Kinds that carry an applied velocity push. The debug overlay paints these
 #: vectors red while the status is fresh; stagger only locks the state
 #: machine without an impulse, so it stays a locomotion-colored vector.
 VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset(
-    {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.BLOCKED}
+    {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
 )
 
 
@@ -245,31 +240,23 @@ class ReactionComponent:
         self._arm(ReactionKind.LAUNCH, magnitude, direction)
         return True
 
-    def note_blocked_push(
+    def note_guard_push(
         self,
         knockback: KnockbackConfig,
         source_center_x: float | None,
+        parried: bool = False,
     ) -> None:
-        """Record the reduced push a blocking player absorbed (4th arming site).
-
-        The block path writes its own velocity directly on the player; this
-        only records the cause so the debug overlay can paint the vector red.
-
-        Parameters
-        ----------
-        knockback : KnockbackConfig
-            The incoming (pre-reduction) knockback configuration.
-        source_center_x : float | None
-            X-coordinate of the damage source for push direction.
-        """
         if knockback.mode == "fixed":
             direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
         else:
             direction = compute_knockback_direction(
                 self._owner.hitbox.centerx, source_center_x, self._owner.facing_right
             )
-        push = abs(knockback.power[0]) * CombatSettings.BLOCK_KNOCKBACK_FACTOR
-        self._arm(ReactionKind.BLOCKED, push, direction)
+        if parried:
+            self._arm(ReactionKind.PARRIED, 0.0, direction)
+            return
+        push = abs(knockback.power[0]) * GuardSettings.PUSH_FACTOR
+        self._arm(ReactionKind.GUARDED, push, direction)
 
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.

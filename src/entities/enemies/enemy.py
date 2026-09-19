@@ -19,6 +19,7 @@ from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChargeState,
     EnemyChaseState,
+    EnemyDizzyState,
     EnemyHurtState,
     EnemyIdleState,
     EnemyKnockbackState,
@@ -166,6 +167,8 @@ class Enemy(Entity):
 
         self.pushable = config.pushable
         self.super_armor = config.super_armor
+        self.parry_stun_threshold = config.parry_stun_threshold
+        self.parry_stun_duration = config.parry_stun_duration
 
         self.can_jump = config.can_jump
         self.jump_height = config.jump_height
@@ -198,6 +201,7 @@ class Enemy(Entity):
         self.state_machine.add_state(EnemyState.HURT, EnemyHurtState(self))
         self.state_machine.add_state(EnemyState.KNOCKBACK, EnemyKnockbackState(self))
         self.state_machine.add_state(EnemyState.STAGGER, EnemyStaggerState(self))
+        self.state_machine.add_state(EnemyState.DIZZY, EnemyDizzyState(self))
         self.state_machine.add_state(
             EnemyState.LEDGE, LedgeState(self, exit_resolver=lambda: EnemyState.IDLE)
         )

@@ -17,7 +17,7 @@ import pygame
 
 from src.combat.combatant_protocol import Combatant
 from src.core.level.systems.camera_system import CameraSystem
-from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from src.core.rollback import RollbackSystem
 from src.core.settings import CameraShake
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
@@ -161,6 +162,7 @@ class GameplayLoop:
                 camera.add_trauma(impact / CameraShake.HEAVY_DIV)
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
+            self._emit_guard_fx(groups, camera)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
             self.remove_dead_entities(groups.entity_sprites, player)
@@ -194,6 +196,61 @@ class GameplayLoop:
                 "in Level and pass it to GameplayLoop(...)."
             )
         return system
+
+    def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
+        events = self._collect_guard_events()
+        if not events:
+            return
+        self._spawn_guard_fx(events, groups, camera)
+
+    def _collect_guard_events(self) -> list[GuardEvent]:
+        events = list(getattr(self.combat_system, "guard_events", None) or [])
+        if hasattr(self.combat_system, "guard_events"):
+            self.combat_system.guard_events.clear()
+        projectile_system = self.projectile_system
+        if projectile_system is not None:
+            events.extend(getattr(projectile_system, "guard_events", None) or [])
+            if hasattr(projectile_system, "guard_events"):
+                projectile_system.guard_events.clear()
+        return events
+
+    def _spawn_guard_fx(
+        self, events: list[GuardEvent], groups: SpriteGroups, camera: CameraSystem
+    ) -> None:
+        fx_group = getattr(groups, "fx_sprites", None)
+        if fx_group is None:
+            return
+
+        trauma = 0.0
+        for event in events:
+            trauma = max(trauma, self._trauma_for_event(event))
+            self._spawn_fx_for_event(event, fx_group)
+        if trauma > 0.0 and hasattr(camera, "add_trauma"):
+            camera.add_trauma(trauma)
+
+    def _trauma_for_event(self, event: GuardEvent) -> float:
+        if event.kind == "parry":
+            return GuardSettings.PARRY_TRAUMA
+        if event.kind in ("break", "stun"):
+            return GuardSettings.BREAK_TRAUMA
+        return GuardSettings.GUARD_TRAUMA
+
+    def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
+        from src.core.fx import (  # noqa: PLC0415
+            spawn_break_burst,
+            spawn_dizzy_stars,
+            spawn_guard_spark,
+            spawn_parry_burst,
+        )
+
+        if event.kind == "parry":
+            spawn_parry_burst(fx_group, event.target)
+        elif event.kind == "break":
+            spawn_break_burst(fx_group, event.target)
+        elif event.kind == "stun":
+            spawn_dizzy_stars(fx_group, event.target)
+        else:
+            spawn_guard_spark(fx_group, event.target)
 
     def process_combat_and_separation(
         self,

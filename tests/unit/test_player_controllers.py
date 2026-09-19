@@ -1,27 +1,26 @@
-"""Unit tests for the dash/block/jump controllers extracted from Player."""
+"""Unit tests for the dash/guard/jump controllers extracted from Player."""
 
 import pygame
 import pytest
 
+from src.core.settings import Guard as GuardSettings
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import (
-    BlockController,
     DashController,
+    GuardController,
     JumpController,
 )
 
 
 @pytest.fixture
 def config() -> PlayerConfig:
-    """Build a controller config with small, explicit tuning values."""
     return PlayerConfig(
         max_midair_jumps=1,
         max_wall_jumps=2,
         coyote_duration=0.1,
         jump_buffer_duration=0.2,
-        max_block_stamina=3.0,
-        block_cooldown_normal=0.9,
-        block_cooldown_broken=3.4,
+        guard_posture_max=100.0,
+        guard_break_lockout=1.2,
         max_dash_charges=3,
         dash_recharge_time=1.0,
         dash_penalty_duration=2.0,
@@ -88,74 +87,90 @@ class TestJumpController:
         assert jump.wall_jumps_left == 2
 
 
-class TestBlockController:
-    def test_can_use_requires_stamina_and_no_cooldown(self, config) -> None:
-        block = BlockController(config)
-        assert block.can_use()
+class TestGuardController:
+    def test_can_use_requires_posture_and_no_lockout(self, config) -> None:
+        guard = GuardController(config)
+        assert guard.can_use()
 
-        block.block_stamina = 0.2
-        assert not block.can_use()
+        guard.posture = 0.0
+        assert not guard.can_use()
 
-        block.block_stamina = 1.0
-        block.block_cooldown_timer = 0.5
-        assert not block.can_use()
+        guard.posture = 50.0
+        guard.lockout_timer = 0.5
+        assert not guard.can_use()
 
-    def test_update_regenerates_stamina_while_not_blocking(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 2.0
+    def test_update_regenerates_posture_while_not_guarding(self, config) -> None:
+        guard = GuardController(config)
+        guard.posture = 50.0
 
-        block.update(0.5, is_blocking=False)
+        guard.update(0.5, is_guarding=False)
 
-        assert block.block_stamina == pytest.approx(2.25)
+        assert guard.posture == pytest.approx(50.0 + 0.5 * GuardSettings.REGEN_PER_S)
 
-    def test_update_keeps_stamina_while_blocking(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 2.0
+    def test_update_keeps_posture_while_guarding(self, config) -> None:
+        guard = GuardController(config)
+        guard.posture = 50.0
 
-        block.update(0.5, is_blocking=True)
+        guard.update(0.5, is_guarding=True)
 
-        assert block.block_stamina == pytest.approx(2.0)
+        assert guard.posture == pytest.approx(50.0)
 
     def test_update_regenerates_up_to_max(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 2.9
+        guard = GuardController(config)
+        guard.posture = 99.0
 
-        block.update(10.0, is_blocking=False)
+        guard.update(10.0, is_guarding=False)
 
-        assert block.block_stamina == pytest.approx(3.0)
+        assert guard.posture == pytest.approx(100.0)
 
-    def test_consume_clamps_at_zero(self, config) -> None:
-        block = BlockController(config)
+    def test_parry_window_negates_damage_and_arms_riposte(self, config) -> None:
+        guard = GuardController(config)
+        guard.posture = 40.0
+        guard.press()
 
-        block.consume(4.0)
+        outcome, chip, is_parry = guard.take_hit(20.0, False)
 
-        assert block.block_stamina == 0.0
+        assert outcome == "parry"
+        assert chip == pytest.approx(0.0)
+        assert is_parry is True
+        assert guard.posture == pytest.approx(100.0)
+        assert guard.riposte_timer > 0
 
-    def test_exit_cooldown_normal_when_guard_intact(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 1.0
+    def test_guard_applies_chip_and_posture_cost(self, config) -> None:
+        guard = GuardController(config)
 
-        block.apply_exit_cooldown()
+        outcome, chip, is_parry = guard.take_hit(10.0, False)
 
-        assert block.block_cooldown_timer == pytest.approx(0.9)
+        assert outcome == "guard"
+        assert chip == pytest.approx(10.0 * GuardSettings.CHIP_RATIO)
+        assert is_parry is False
+        assert guard.posture == pytest.approx(100.0 - 10.0 * GuardSettings.POSTURE_COST_RATIO)
 
-    def test_exit_cooldown_broken_when_guard_exhausted(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 0.0
+    def test_break_arms_lockout_on_posture_empty(self, config) -> None:
+        guard = GuardController(config)
+        guard.posture = 5.0
 
-        block.apply_exit_cooldown()
+        outcome, _, is_parry = guard.take_hit(10.0, False)
 
-        assert block.block_cooldown_timer == pytest.approx(3.4)
+        assert outcome == "break"
+        assert is_parry is False
+        assert guard.posture == pytest.approx(0.0)
+        assert guard.lockout_timer == pytest.approx(1.2)
+        assert not guard.can_use()
 
-    def test_reset_restores_stamina_and_clears_cooldown(self, config) -> None:
-        block = BlockController(config)
-        block.block_stamina = 0.0
-        block.block_cooldown_timer = 1.0
+    def test_reset_restores_posture_and_clears_timers(self, config) -> None:
+        guard = GuardController(config)
+        guard.posture = 0.0
+        guard.lockout_timer = 1.0
+        guard.parry_timer = 0.1
+        guard.riposte_timer = 0.2
 
-        block.reset()
+        guard.reset()
 
-        assert block.block_stamina == pytest.approx(3.0)
-        assert block.block_cooldown_timer == 0.0
+        assert guard.posture == pytest.approx(100.0)
+        assert guard.lockout_timer == 0.0
+        assert guard.parry_timer == 0.0
+        assert guard.riposte_timer == 0.0
 
 
 class TestDashController:

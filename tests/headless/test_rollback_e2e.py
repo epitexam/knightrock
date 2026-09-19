@@ -66,7 +66,7 @@ def _default_inputs() -> dict[str, object]:
         "move_axis": 0.0,
         "left_held": False,
         "right_held": False,
-        "block_held": False,
+        "guard_held": False,
         "jump_just_pressed": False,
         "dash_just_pressed": False,
         "reset_just_pressed": False,

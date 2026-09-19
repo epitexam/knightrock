@@ -38,8 +38,11 @@ class PlayerInputHandler:
         player.move_axis = im.move_axis
         player.left_held = im.left_held
         player.right_held = im.right_held
-        player.block_held = im.block_held
+        player.guard_held = im.guard_held
         player.fast_fall = im.down_held
+
+        if im.guard_just_pressed:
+            player.guard.press()
 
         player.face_movement()
 

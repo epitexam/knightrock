@@ -1,29 +1,16 @@
-"""Player capability controllers extracted from ``Player`` (ARCH-03).
+"""Player capability controllers extracted from ``Player``.
 
-``Player`` used to own every timer, counter, and configuration mirror of
-its dash, block, and jump mechanics inline (40+ attributes).  Each
-mechanic now lives in a dedicated controller that owns its timers and
-exposes ``can_use()`` / ``update(dt)``.  ``Player`` composes the three
-controllers and delegates to them, while keeping flat property access
-for the physics protocols (``JumpEntity``, ``WallJumpLock``), the debug
-UI, and the states.
-
-Each controller is deliberately ignorant of the state machine and of
-``Player`` itself: orchestration flags (``on_floor``, ``is_blocking``)
-are passed in by the caller, mirroring the ``Vitals`` design.
+``Player`` composes jump, guard, and dash mechanics. Each controller owns
+its timers and exposes ``can_use`` / ``update``. ``Player`` passes
+orchestration flags (``on_floor``, ``is_guarding``) in by the caller.
 """
 
 from dataclasses import dataclass
 
 import pygame
 
+from src.core.settings import Guard as GuardSettings
 from src.entities.player_config import PlayerConfig
-
-BLOCK_MIN_STAMINA = 0.3
-"""Minimum stamina required before a block can be entered."""
-
-BLOCK_STAMINA_REGEN_RATE = 0.5
-"""Stamina points regenerated per second while not actively blocking."""
 
 DASH_HITBOX_SQUISH = 0.6
 """Hitbox width multiplier applied while dashing."""
@@ -41,11 +28,11 @@ class JumpSnapshot:
 
 
 @dataclass(frozen=True)
-class BlockSnapshot:
-    """Serializable capture of the block controller's runtime state."""
-
-    block_stamina: float
-    block_cooldown_timer: float
+class GuardSnapshot:
+    posture: float
+    lockout_timer: float
+    parry_timer: float
+    riposte_timer: float
 
 
 @dataclass(frozen=True)
@@ -141,71 +128,72 @@ class JumpController:
         self.wall_jumps_left = snapshot.wall_jumps_left
 
 
-class BlockController:
-    """Own block resources: stamina pool and post-block cooldown.
-
-    Parameters
-    ----------
-    config : PlayerConfig
-        Source of the block tuning values.
-    """
+class GuardController:
+    """Directional guard posture with a parry window and break lockout."""
 
     def __init__(self, config: PlayerConfig) -> None:
-        self.max_block_stamina: float = config.max_block_stamina
-        self.block_cooldown_normal: float = config.block_cooldown_normal
-        self.block_cooldown_broken: float = config.block_cooldown_broken
-
-        self.block_stamina: float = self.max_block_stamina
-        self.block_cooldown_timer: float = 0.0
+        self.max_posture: float = config.guard_posture_max
+        self.break_lockout: float = config.guard_break_lockout
+        self.posture: float = self.max_posture
+        self.lockout_timer: float = 0.0
+        self.parry_timer: float = 0.0
+        self.riposte_timer: float = 0.0
 
     def can_use(self) -> bool:
-        """Whether blocking may be entered (off cooldown, enough stamina)."""
-        return self.block_cooldown_timer <= 0 and self.block_stamina > BLOCK_MIN_STAMINA
+        return self.lockout_timer <= 0 and self.posture > 0
 
-    def update(self, delta_time: float, is_blocking: bool) -> None:
-        """Decay the cooldown and regenerate stamina while not blocking."""
-        if self.block_cooldown_timer > 0:
-            self.block_cooldown_timer -= delta_time
+    def press(self) -> None:
+        if self.lockout_timer <= 0:
+            self.parry_timer = GuardSettings.PARRY_WINDOW
 
-        if not is_blocking and self.block_stamina < self.max_block_stamina:
-            self.block_stamina = min(
-                self.block_stamina + delta_time * BLOCK_STAMINA_REGEN_RATE,
-                self.max_block_stamina,
+    def update(self, delta_time: float, is_guarding: bool) -> None:
+        if self.lockout_timer > 0:
+            self.lockout_timer -= delta_time
+        if self.parry_timer > 0:
+            self.parry_timer -= delta_time
+        if self.riposte_timer > 0:
+            self.riposte_timer -= delta_time
+        if not is_guarding and self.posture < self.max_posture:
+            self.posture = min(
+                self.posture + delta_time * GuardSettings.REGEN_PER_S,
+                self.max_posture,
             )
 
-    def consume(self, amount: float) -> None:
-        """Spend stamina, clamped at zero (a broken guard)."""
-        self.block_stamina -= amount
-        if self.block_stamina < 0:
-            self.block_stamina = 0.0
-
-    def apply_exit_cooldown(self) -> None:
-        """Arm the cooldown due after leaving the block state.
-
-        A guard broken by stamina exhaustion triggers the longer
-        ``block_cooldown_broken``; otherwise ``block_cooldown_normal``.
-        """
-        if self.block_stamina <= 0:
-            self.block_cooldown_timer = self.block_cooldown_broken
-        else:
-            self.block_cooldown_timer = self.block_cooldown_normal
+    def take_hit(self, amount: float, in_air: bool) -> tuple[str, float, bool]:
+        if self.parry_timer > 0:
+            self.posture = self.max_posture
+            self.riposte_timer = GuardSettings.RIPOSTE_WINDOW
+            self.parry_timer = 0.0
+            return ("parry", 0.0, True)
+        mult = GuardSettings.AIR_POSTURE_MULT if in_air else 1.0
+        self.posture -= amount * GuardSettings.POSTURE_COST_RATIO * mult
+        chip = amount * GuardSettings.CHIP_RATIO
+        if self.posture <= 0:
+            self.posture = 0.0
+            self.lockout_timer = self.break_lockout
+            self.riposte_timer = 0.0
+            return ("break", chip, False)
+        return ("guard", chip, False)
 
     def reset(self) -> None:
-        """Restore the stamina pool and clear the cooldown."""
-        self.block_stamina = self.max_block_stamina
-        self.block_cooldown_timer = 0.0
+        self.posture = self.max_posture
+        self.lockout_timer = 0.0
+        self.parry_timer = 0.0
+        self.riposte_timer = 0.0
 
-    def save_state(self) -> BlockSnapshot:
-        """Capture runtime state for rollback (Phase 3 #3)."""
-        return BlockSnapshot(
-            block_stamina=self.block_stamina,
-            block_cooldown_timer=self.block_cooldown_timer,
+    def save_state(self) -> GuardSnapshot:
+        return GuardSnapshot(
+            posture=self.posture,
+            lockout_timer=self.lockout_timer,
+            parry_timer=self.parry_timer,
+            riposte_timer=self.riposte_timer,
         )
 
-    def load_state(self, snapshot: BlockSnapshot) -> None:
-        """Restore runtime state from a rollback snapshot."""
-        self.block_stamina = snapshot.block_stamina
-        self.block_cooldown_timer = snapshot.block_cooldown_timer
+    def load_state(self, snapshot: GuardSnapshot) -> None:
+        self.posture = snapshot.posture
+        self.lockout_timer = snapshot.lockout_timer
+        self.parry_timer = snapshot.parry_timer
+        self.riposte_timer = snapshot.riposte_timer
 
 
 class DashController:

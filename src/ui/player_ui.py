@@ -92,7 +92,7 @@ class PlayerUI:
 
         lines = [
             f"HP     {player.health:.0f}/{player.max_health:.0f}",
-            f"Block  {player.block_stamina:.2f}/{player.max_block_stamina:.2f}   cd {player.block_cooldown_timer:.2f}s",
+            f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}   lock {player.guard_lockout_timer:.2f}s",
             f"Dash   {player.dash_charges}/{player.max_dash_charges}   pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
             f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
             f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",
@@ -111,6 +111,17 @@ class PlayerUI:
 
         gravity_scale = getattr(player, "gravity_scale", 1.0)
         line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
+        posture_ratio = (
+            player.guard_posture / player.guard_posture_max if player.guard_posture_max else 0
+        )
+        if player.guard_lockout_timer > 0:
+            line_colors[1] = TEXT_CRIT
+        elif posture_ratio <= 0.3:
+            line_colors[1] = TEXT_WARN
+        if player.guard_riposte_timer > 0:
+            idx = len(lines)
+            lines.append(f"RIPOSTE {player.guard_riposte_timer:.2f}s")
+            line_colors[idx] = TEXT_OK
         if gravity_scale != 1.0:
             idx = len(lines)
             lines.append(

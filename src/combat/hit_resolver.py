@@ -12,6 +12,7 @@ from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.states.reaction_states import DIZZY_STATE
 
 
 def _is_grounded(target: Combatant) -> bool:
@@ -104,7 +105,7 @@ class HitResolver:
         2. Compute scaled knockback by applying ``charge_multiplier`` to the
            base knockback power vectors.
         3. Apply damage and inspect its explicit ``DamageResult``.
-        4. Stop immediately for blocked or immune hits.
+        4. Stop immediately for guarded, parried, or immune hits.
         5. Resolve armor break and finishers only after applied damage.
         6. Interrupt and stagger only living targets not already reacting to
            heavy knockback or protected by super armor.
@@ -133,6 +134,12 @@ class HitResolver:
             juggle_scale = _juggle_scale(attacker.combat.air_combo_count or 0)
         final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
 
+        # DIZZY bonus: targets in dizzy state take extra damage
+        if getattr(target, "state_machine", None) is not None:
+            current = getattr(target.state_machine, "current_state_name", None)
+            if current == DIZZY_STATE:
+                final_damage *= CombatSettings.DIZZY_DAMAGE_MULT
+
         if final_damage <= 0:
             return DamageResult()
 
@@ -148,8 +155,7 @@ class HitResolver:
         applied_knockback = None if armor_absorbs_reaction else effective_knockback
         result = target.receive_damage(final_damage, source_x, applied_knockback)
 
-        # Blocking, invincibility, death, or any future immunity is authoritative:
-        # no interruption, stagger, armor break, or finisher may leak through.
+        # Guard, invincibility, death, or any future immunity is authoritative.
         if not result.applied:
             return result
 

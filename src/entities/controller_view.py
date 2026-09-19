@@ -1,7 +1,7 @@
 """Flat delegation to controllers via ``__getattr__`` (audit F1.1, Phase 2 #3).
 
 ``Player`` aggregates ability controllers (``JumpController``,
-``BlockController``, ``DashController``) but historically exposed ~50 flat
+``GuardController``, ``DashController``) but historically exposed ~50 flat
 ``@property`` attributes that only relayed reads/writes of an attribute on
 the underlying controller (``JumpEntity``/``WallJumpLock`` physics protocols
 and debug UI).

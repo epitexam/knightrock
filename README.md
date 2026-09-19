@@ -82,7 +82,7 @@ DEBUG=1 uv run python main.py
 | Fast fall | `Down arrow` |
 | Jump | `Space` |
 | Dash | `Left Shift` |
-| Block | `Q` |
+| Guard (tap = parry) | `Q` |
 | Reset position | `R` |
 | Attack 1 — light (aerial in the air) | `A` |
 | Attack 2 — heavy (hold to charge, release to swing) | `S` |
@@ -101,7 +101,7 @@ DEBUG=1 uv run python main.py
 | Attack 1 | `1` |
 | Attack 2 | `2` |
 | Attack 3 | `3` |
-| Block | `4` |
+| Guard (tap = parry) | `4` |
 | Attack 4 | `5` |
 | Reset | `7` |
 | Dash | Axis `2` |

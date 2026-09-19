@@ -15,7 +15,8 @@ class MockInputManager:
         self.move_axis = 0.0
         self.left_held = False
         self.right_held = False
-        self.block_held = False
+        self.guard_held = False
+        self.guard_just_pressed = False
         self.jump_just_pressed = False
         self.dash_just_pressed = False
         self.reset_just_pressed = False
@@ -204,7 +205,7 @@ class TestResetPosition:
         player.velocity.x = 100
         player.health = 50
         player.dash.charges = 0
-        player.block.block_stamina = 0
+        player.guard.posture = 0
 
         # Reset position
         player.reset_position()
@@ -219,8 +220,8 @@ class TestResetPosition:
         # Check that dash charges are reset
         assert player.dash.charges == player.dash.max_charges
 
-        # Check that block stamina is reset
-        assert player.block.block_stamina == player.block.max_block_stamina
+        # Check that guard posture is reset
+        assert player.guard.posture == player.guard.max_posture
 
     def test_player_reset_position_resets_state_machine(self):
         """Test that Player.reset_position resets state machine to idle."""

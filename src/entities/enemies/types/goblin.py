@@ -19,4 +19,6 @@ GOBLIN_CONFIG = EnemyConfig(
     can_jump=True,
     jump_height=650.0,
     leap_speed_mult=1.6,
+    parry_stun_threshold=2,
+    parry_stun_duration=1.5,
 )

@@ -214,6 +214,12 @@ class Entity(Sprite):
         # landing tick (PhysicsSystem turns hard landings into dust puffs).
         # Never snapshotted, never in goldens.
         self.landed_impact: float = 0.0
+        # Parry-stun counters (reset on rollback/load, consecutive logic).
+        self.parries_given: int = 0
+        self.parries_taken: int = 0
+        # Per-entity parry-stun config (copied from config on spawn).
+        self.parry_stun_threshold: int | None = None
+        self.parry_stun_duration: float = 0.0
         # Physics robustness: crush flag set by the bounded resolver and
         # pre-carry backup for crush revert (both tick in ``update``).
         self.crushed: bool = False
@@ -861,6 +867,10 @@ class Entity(Sprite):
             "gravity_scale": self.gravity_scale,
             "juggle_timer": self.juggle_timer,
             "otg_timer": self.otg_timer,
+            "parries_given": self.parries_given,
+            "parries_taken": self.parries_taken,
+            "parry_stun_threshold": self.parry_stun_threshold,
+            "parry_stun_duration": self.parry_stun_duration,
         }
         return snap
 
@@ -890,3 +900,11 @@ class Entity(Sprite):
         self.gravity_scale = float(extra.get("gravity_scale", 1.0))
         self.juggle_timer = float(extra.get("juggle_timer", 0.0))
         self.otg_timer = float(extra.get("otg_timer", 0.0))
+        self.parries_given = int(extra.get("parries_given", 0))
+        self.parries_taken = int(extra.get("parries_taken", 0))
+        self.parry_stun_threshold = (
+            int(extra["parry_stun_threshold"])
+            if extra.get("parry_stun_threshold") is not None
+            else None
+        )
+        self.parry_stun_duration = float(extra.get("parry_stun_duration", 0.0))

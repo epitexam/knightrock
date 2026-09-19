@@ -10,8 +10,11 @@ from src.combat.combatant_protocol import Combatant, CombatPort
 from src.combat.frame_data import HitProperties, PhaseDefinition
 from src.combat.hit_resolver import HitResolver
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
+from src.entities.enemies.enemy import Enemy
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
+from src.states.reaction_states import DIZZY_STATE
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,14 @@ class CombatMetrics:
     pairs_tested: int = 0
     overlaps: int = 0
     contacts: int = 0
+
+
+@dataclass(frozen=True)
+class GuardEvent:
+    """Render-only guard outcome drained once per tick by the game loop."""
+
+    kind: str
+    target: Combatant
 
 
 def _attacker_ready(
@@ -90,6 +101,7 @@ class CombatSystem:
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
+        self.guard_events: list[GuardEvent] = []
 
     def process_attacks(
         self,
@@ -111,6 +123,7 @@ class CombatSystem:
         """
         self.metrics = CombatMetrics()
         self.impact = 0.0
+        self.guard_events = []
         if self.in_hit_stop:
             return
 
@@ -161,11 +174,31 @@ class CombatSystem:
                 hit=candidate.hit,
                 charge_multiplier=candidate.charge_multiplier,
             )
-            if not (result.applied or result.blocked):
+            if not (result.applied or result.guarded):
                 continue
 
             candidate.attacker.combat.record_contact(candidate.target.id)
             self.metrics.contacts += 1
+            if result.guarded:
+                kind = "guard"
+                if result.parried:
+                    kind = "parry"
+                elif result.guard_broken:
+                    kind = "break"
+                self.guard_events.append(GuardEvent(kind, candidate.target))
+                # Parry-stun: count consecutive perfect parries received by attacker
+                if result.parried and isinstance(candidate.attacker, Enemy):
+                    attacker = candidate.attacker
+                    attacker.parries_taken += 1
+                    if (
+                        attacker.parry_stun_threshold is not None
+                        and attacker.parries_taken >= attacker.parry_stun_threshold
+                    ):
+                        attacker.state_machine.change_state(
+                            DIZZY_STATE, force=True, duration=attacker.parry_stun_duration
+                        )
+                        attacker.parries_taken = 0
+                        self.guard_events.append(GuardEvent("stun", candidate.attacker))
             magnitude = (
                 pygame.math.Vector2(candidate.hit.knockback.power).length()
                 * candidate.charge_multiplier
@@ -176,7 +209,13 @@ class CombatSystem:
                 + candidate.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
                 + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
             )
+            if result.parried:
+                hitstop_duration = max(hitstop_duration, GuardSettings.PARRY_HITSTOP)
             self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
+
+            # Reset consecutive parry counter when attacker deals real HP damage
+            if result.applied and hasattr(candidate.attacker, "parries_taken"):
+                candidate.attacker.parries_taken = 0
 
     def update_timer(self, delta_time: float) -> None:
         """Advance the global hit-stop timer."""

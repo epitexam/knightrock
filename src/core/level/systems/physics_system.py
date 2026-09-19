@@ -4,9 +4,11 @@ Extracted from ``Level.update`` (audit §4: ``core/level/systems/physics_system`
 """
 
 from src.core.fx import (
+    DIZZY_VORTEX_SPAWN_EVERY,
     MAX_FX_SPRITES,
     spawn_dash_burst,
     spawn_dash_streak,
+    spawn_dizzy_vortex,
     spawn_landing_dust,
     spawn_sweat_drops,
 )
@@ -33,6 +35,13 @@ def _in_dash_penalty(entity: object) -> bool:
     )
 
 
+def _is_dizzy(entity: object) -> bool:
+    """Whether the entity is currently in a dizzy state."""
+    state_machine = getattr(entity, "state_machine", None)
+    current = getattr(state_machine, "current_state_name", None)
+    return current is not None and "dizzy" in current
+
+
 class PhysicsSystem:
     """Carry platform riders, then run the entity and effect update passes.
 
@@ -47,6 +56,8 @@ class PhysicsSystem:
         self._dashing_ids: set[int] = set()
         # Per-entity sweat emission countdown (droplets every SPAWN_EVERY).
         self._sweat_timers: dict[int, float] = {}
+        # Per-entity dizzy vortex emission countdown.
+        self._dizzy_timers: dict[int, float] = {}
 
     def process(self, delta_time: float) -> None:
         """Apply the platform carry, then integrate entities and effects."""
@@ -57,19 +68,21 @@ class PhysicsSystem:
         self.groups.fx_sprites.update(delta_time)
 
     def _spawn_impact_fx(self, delta_time: float) -> None:
-        """Turn hard landings, dashes, and dash penalties into render-only FX.
+        """Turn hard landings, dashes, dash penalties, and dizzy state into render-only FX.
 
         The puffs join ``fx_sprites`` (no collision, never snapshotted):
         landing fans use the fall speed ``Entity`` recorded on the landing
         tick, dash streaks trail dashing entities one puff per tick, a
-        burst kicks out once when a dash starts, and a fully drained
-        dasher sweats droplets every ``Sweat.SPAWN_EVERY`` seconds while
-        its penalty runs. The landing hint is consumed here so a
-        dead-or-frozen entity cannot re-emit it on later ticks; spawning
-        stops past ``MAX_FX_SPRITES`` as a particle-budget guard.
+        burst kicks out once when a dash starts, a fully drained dasher
+        sweats droplets every ``Sweat.SPAWN_EVERY`` seconds while its
+        penalty runs, and a dizzy entity spawns purple vortex swirls every
+        ``DIZZY_VORTEX_SPAWN_EVERY`` seconds. The landing hint is consumed
+        here so a dead-or-frozen entity cannot re-emit it on later ticks;
+        spawning stops past ``MAX_FX_SPRITES`` as a particle-budget guard.
         """
         dashing_ids: set[int] = set()
         sweating_ids: set[int] = set()
+        dizzy_ids: set[int] = set()
         for entity in self.groups.entity_sprites:
             dashing = _is_dashing(entity)
             if dashing:
@@ -86,6 +99,9 @@ class PhysicsSystem:
             if _in_dash_penalty(entity):
                 sweating_ids.add(id(entity))
                 self._tick_sweat(entity, delta_time)
+            if _is_dizzy(entity):
+                dizzy_ids.add(id(entity))
+                self._tick_dizzy_vortex(entity, delta_time)
             if hasattr(entity, "landed_impact"):
                 entity.landed_impact = 0.0
         self._dashing_ids = dashing_ids
@@ -95,6 +111,12 @@ class PhysicsSystem:
             entity_id: timer
             for entity_id, timer in self._sweat_timers.items()
             if entity_id in sweating_ids
+        }
+        # Clean up dizzy timers for entities that are no longer dizzy.
+        self._dizzy_timers = {
+            entity_id: timer
+            for entity_id, timer in self._dizzy_timers.items()
+            if entity_id in dizzy_ids
         }
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:
@@ -107,3 +129,12 @@ class PhysicsSystem:
                 spawn_sweat_drops(self.groups.fx_sprites, entity)
             timer = Sweat.SPAWN_EVERY
         self._sweat_timers[id(entity)] = timer
+
+    def _tick_dizzy_vortex(self, entity: object, delta_time: float) -> None:
+        """Emit purple vortex swirls on the ``DIZZY_VORTEX_SPAWN_EVERY`` cadence."""
+        timer = self._dizzy_timers.get(id(entity), 0.0) - delta_time
+        if timer <= 0.0:
+            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+                spawn_dizzy_vortex(self.groups.fx_sprites, entity)
+            timer = DIZZY_VORTEX_SPAWN_EVERY
+        self._dizzy_timers[id(entity)] = timer

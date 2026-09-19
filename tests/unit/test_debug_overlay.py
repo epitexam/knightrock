@@ -240,16 +240,26 @@ def test_state_name_alone_no_longer_colors_the_vector_red(
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
-def test_blocked_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
+def test_guarded_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
     surface = world_ui.display_surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(
-        kind=ReactionKind.BLOCKED, magnitude=90.0, direction=1.0
+        kind=ReactionKind.GUARDED, magnitude=90.0, direction=1.0
     )
     entity.reaction_age = 0.4
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
+
+
+def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    entity = _entity(velocity=Vector2(600, 0))
+    entity.reaction_status = ReactionStatus(kind=ReactionKind.PARRIED, magnitude=0.0, direction=1.0)
+    entity.reaction_age = 0.4
+    world_ui.draw_debug_overlays([entity], camera)
+    assert surface.get_at((200, 124))[:3] == Colors.gold
 
 
 def test_expired_reaction_status_keeps_the_locomotion_color(

@@ -58,7 +58,7 @@ def test_zero_damage_applies_nothing() -> None:
     assert attacker.combat.air_combo_count == 0
 
 
-def test_blocked_hit_records_no_combo_no_stagger() -> None:
+def test_guarded_hit_records_no_combo_no_stagger() -> None:
     from pygame.sprite import Group
 
     from src.entities.player import Player
@@ -71,11 +71,13 @@ def test_blocked_hit_records_no_combo_no_stagger() -> None:
         moving_platforms=[],
         input_manager=InputStub(),
     )
-    player.state_machine.current_state_name = "block"
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
     from tests.unit.helpers import AttackerStub
 
     attacker = AttackerStub(centerx=80.0)
     result = HitResolver.resolve(attacker, player, _hit(10.0, stagger=0.5, is_finisher=True))
-    assert result.blocked is True
+    assert result.guarded is True
+    assert result.applied is False
     assert player.stagger_timer == 0.0
     assert player.combat.is_hurt is False

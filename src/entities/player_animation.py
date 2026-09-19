@@ -34,7 +34,7 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
 }
 """Sprite-sheet animations shipped under ``assets/graphics/player/``.
 
-States without dedicated art (block, charge, dash, stagger) keep playing
+States without dedicated art (guard, charge, dash, stagger) keep playing
 the previous animation: :meth:`Player._animation_name` returns None for
 them.  The animator is attached in ``Player.__init__`` so the hundred
 shipped artworks are actually rendered (audit F4.1, Phase 2 #1).

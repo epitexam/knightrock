@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pygame
+import pytest
 from pygame.sprite import Group
 
 from src.combat.combatant_protocol import DamageResult
@@ -11,6 +12,7 @@ from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.entities.entity import Entity
 from src.entities.player import Player
 from tests.unit.helpers import AttackerStub, InputStub, SpyCombat, SpyStateMachine
@@ -25,7 +27,7 @@ def make_entity(*, health: float = 100.0, invincibility: float = 0.0) -> Entity:
     return entity
 
 
-def test_block_prevents_damage_and_all_hit_reactions() -> None:
+def test_guard_applies_chip_without_hit_reactions() -> None:
     player = Player(
         pos=(100.0, 100.0),
         groups=Group(),
@@ -33,9 +35,10 @@ def test_block_prevents_damage_and_all_hit_reactions() -> None:
         moving_platforms=[],
         input_manager=InputStub(),  # type: ignore[arg-type]
     )
-    player.state_machine.current_state_name = "block"
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
     initial_health = player.health
-    initial_stamina = player.block.block_stamina
+    initial_posture = player.guard.posture
 
     result = HitResolver.resolve(
         AttackerStub(centerx=80.0),
@@ -48,12 +51,96 @@ def test_block_prevents_damage_and_all_hit_reactions() -> None:
         ),
     )
 
-    assert result == DamageResult(blocked=True)
-    assert player.health == initial_health
-    assert player.block.block_stamina < initial_stamina
-    assert player.velocity.x == 60.0
+    assert result.guarded is True
+    assert result.parried is False
+    assert result.applied is False
+    assert player.health < initial_health
+    assert player.health == initial_health - 10 * GuardSettings.CHIP_RATIO
+    assert player.guard.posture < initial_posture
+    assert player.velocity.x == pytest.approx(200.0 * GuardSettings.PUSH_FACTOR)
     assert player.combat.is_hurt is False
     assert player.stagger_timer == 0.0
+
+
+def test_parry_window_negates_all_damage_and_push() -> None:
+    player = Player(
+        pos=(100.0, 100.0),
+        groups=Group(),
+        collision_sprites=Group(),
+        moving_platforms=[],
+        input_manager=InputStub(),  # type: ignore[arg-type]
+    )
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
+    player.guard.press()
+    initial_health = player.health
+
+    result = HitResolver.resolve(
+        AttackerStub(centerx=80.0),
+        player,
+        HitProperties(
+            damage=10,
+            knockback=KnockbackConfig(power=(200.0, -100.0)),
+            stagger=0.25,
+        ),
+    )
+
+    assert result == DamageResult(guarded=True, parried=True)
+    assert player.health == initial_health
+    assert player.velocity.x == pytest.approx(0.0)
+    assert player.guard.riposte_timer > 0
+
+
+def test_guard_fails_from_behind() -> None:
+    player = Player(
+        pos=(100.0, 100.0),
+        groups=Group(),
+        collision_sprites=Group(),
+        moving_platforms=[],
+        input_manager=InputStub(),  # type: ignore[arg-type]
+    )
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
+
+    result = HitResolver.resolve(
+        AttackerStub(centerx=player.hitbox.centerx + 50.0),
+        player,
+        HitProperties(
+            damage=10,
+            knockback=KnockbackConfig(power=(200.0, 0.0)),
+        ),
+    )
+
+    assert result.guarded is False
+    assert result.applied is True
+    assert player.health == 90.0
+
+
+def test_guard_break_applies_chip_and_stagger() -> None:
+    player = Player(
+        pos=(100.0, 100.0),
+        groups=Group(),
+        collision_sprites=Group(),
+        moving_platforms=[],
+        input_manager=InputStub(),  # type: ignore[arg-type]
+    )
+    player.state_machine.current_state_name = "guard"
+    player.facing_right = False
+    player.guard.posture = 5.0
+
+    result = HitResolver.resolve(
+        AttackerStub(centerx=80.0),
+        player,
+        HitProperties(
+            damage=10,
+            knockback=KnockbackConfig(power=(200.0, 0.0)),
+        ),
+    )
+
+    assert result.guarded is True
+    assert result.guard_broken is True
+    assert player.guard.lockout_timer > 0
+    assert player.stagger_timer > 0
 
 
 def test_invincibility_does_not_interrupt_or_apply_knockback() -> None:

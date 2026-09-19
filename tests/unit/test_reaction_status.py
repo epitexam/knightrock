@@ -10,7 +10,7 @@ import pytest
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
-from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
 from src.entities.components.reaction import (
     VELOCITY_KINDS,
@@ -34,8 +34,9 @@ def test_shared_state_names_match_the_enums() -> None:
 def test_velocity_kinds_cover_applied_pushes_only() -> None:
     """Overlay-red kinds: every applied push, never the stagger lock."""
     actual = set(VELOCITY_KINDS)
-    assert actual == {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.BLOCKED}
+    assert actual == {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
     assert ReactionKind.STAGGER not in VELOCITY_KINDS
+    assert ReactionKind.PARRIED not in VELOCITY_KINDS
 
 
 def test_apply_knockback_arms_push_status() -> None:
@@ -140,15 +141,30 @@ def test_absorbed_stagger_does_not_arm() -> None:
     assert component.status is None
 
 
-def test_note_blocked_push_arms_blocked_status() -> None:
+def test_note_guard_push_arms_guarded_status() -> None:
     owner = _narrow_owner()
     component = ReactionComponent(owner)
 
-    component.note_blocked_push(KnockbackConfig(power=(300.0, -100.0)), source_center_x=None)
+    component.note_guard_push(KnockbackConfig(power=(300.0, -100.0)), source_center_x=None)
 
     assert component.status == ReactionStatus(
-        kind=ReactionKind.BLOCKED,
-        magnitude=pytest.approx(300.0 * CombatSettings.BLOCK_KNOCKBACK_FACTOR),
+        kind=ReactionKind.GUARDED,
+        magnitude=pytest.approx(300.0 * GuardSettings.PUSH_FACTOR),
+        direction=1.0,
+    )
+
+
+def test_note_guard_push_parried_arms_parried_status() -> None:
+    owner = _narrow_owner()
+    component = ReactionComponent(owner)
+
+    component.note_guard_push(
+        KnockbackConfig(power=(300.0, -100.0)), source_center_x=None, parried=True
+    )
+
+    assert component.status == ReactionStatus(
+        kind=ReactionKind.PARRIED,
+        magnitude=pytest.approx(0.0),
         direction=1.0,
     )
 

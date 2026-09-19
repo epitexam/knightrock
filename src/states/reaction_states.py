@@ -1,6 +1,6 @@
-"""Shared reaction states (hurt / knockback / stagger) for players and enemies.
+"""Shared reaction states (hurt / knockback / stagger / dizzy) for players and enemies.
 
-These three states were duplicated between ``player_states.py`` and
+These states were duplicated between ``player_states.py`` and
 ``enemy_states.py`` with only small differences (ARCH-05).  The shared
 logic is now parameterized by:
 
@@ -25,6 +25,7 @@ from src.states.state_machine import State
 #: (``PlayerState``/``EnemyState``). Kept in sync by ``test_reaction_status``.
 KNOCKBACK_STATE: Final[str] = "knockback"
 STAGGER_STATE: Final[str] = "stagger"
+DIZZY_STATE: Final[str] = "dizzy"
 
 # Horizontal speed (px/s) below which knockback is considered resolved.
 KNOCKBACK_STOP_SPEED = 20.0
@@ -154,6 +155,38 @@ class StaggerState(State):
 
     def update(self, delta_time: float) -> str | None:
         """Apply ground friction and leave the state when the timer clears."""
+        if self.friction > 0 and self.entity.on_surface["floor"]:
+            lerp_velocity(self.entity, 0.0, self.friction, delta_time)
+        if self.entity.stagger_timer <= 0:
+            return self.exit_resolver()
+        return None
+
+
+class DizzyState(State):
+    """Stunned by consecutive perfect parries: locked until timer clears.
+
+    Unlike stagger, this state is entered with a fixed duration and is
+    cancellable by a new hit (the hit resets the timer via re-entry).
+    """
+
+    def __init__(
+        self,
+        entity: Any,
+        exit_resolver: Callable[[], str | None],
+        *,
+        friction: float = 0.0,
+        tags: list[str] | None = None,
+    ) -> None:
+        super().__init__(entity, tags or ["dizzy", "busy"])
+        self.exit_resolver = exit_resolver
+        self.friction = friction
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        duration = kwargs.get("duration", 0.0)
+        if duration > 0:
+            self.entity.stagger_timer = duration
+
+    def update(self, delta_time: float) -> str | None:
         if self.friction > 0 and self.entity.on_surface["floor"]:
             lerp_velocity(self.entity, 0.0, self.friction, delta_time)
         if self.entity.stagger_timer <= 0:
