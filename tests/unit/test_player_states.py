@@ -27,7 +27,11 @@ def _make_entity(**overrides) -> SimpleNamespace:
         "move_axis": 0.0,
         "left_held": False,
         "right_held": False,
-        "dash": SimpleNamespace(can_use=lambda: True, cancel_request=lambda: None),
+        "dash": SimpleNamespace(
+            can_use=lambda: True,
+            cancel_request=lambda: None,
+            in_coyote=lambda: False,
+        ),
         "guard": SimpleNamespace(can_use=lambda: True),
         "guard_held": False,
         "combat": SimpleNamespace(is_attacking=False),

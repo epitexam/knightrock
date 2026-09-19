@@ -259,6 +259,8 @@ class PlayerDashState(PlayerBaseState):
         if self.entity.dash.restore_hitbox(self.entity.hitbox):
             self.entity.handle_collisions("horizontal")
             self.entity.sync_rects()
+        # Start dash coyote window for attack/guard after dash ends
+        self.entity.dash.start_coyote()
 
     def update(self, delta_time: float) -> str | None:
         """Update the current state, applying dash friction and air control."""
@@ -364,25 +366,40 @@ def _can_dash(player: Any) -> bool:
 
 
 def _can_guard(player: Any) -> bool:
-    return (
-        player.guard_held
-        and player.guard.can_use()
-        and player.state_machine.current_state_name
-        not in (
-            PlayerState.WALL_SLIDE,
-            PlayerState.HURT,
-            PlayerState.KNOCKBACK,
-            PlayerState.DASH,
-            PlayerState.STAGGER,
-            PlayerState.ATTACK,
-        )
+    if not (player.guard_held and player.guard.can_use()):
+        return False
+    current = player.state_machine.current_state_name
+    # Allow guard cancel from dash after cancel window
+    if current == PlayerState.DASH:
+        dash_elapsed = player.dash.duration - player.dash.duration_timer
+        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+    # Allow guard during dash coyote window
+    if bool(player.dash.in_coyote()):
+        return True
+    return current not in (
+        PlayerState.WALL_SLIDE,
+        PlayerState.HURT,
+        PlayerState.KNOCKBACK,
+        PlayerState.DASH,
+        PlayerState.STAGGER,
+        PlayerState.ATTACK,
     )
 
 
 def _can_attack_interrupt(player: Any) -> bool:
     """Check if the player can currently interrupt to attack."""
     is_attacking: bool = player.combat.is_attacking
-    return is_attacking and player.can_attack()
+    if not (is_attacking and player.can_attack()):
+        return False
+    # Allow attack cancel from dash after cancel window
+    current = player.state_machine.current_state_name
+    if current == PlayerState.DASH:
+        dash_elapsed = player.dash.duration - player.dash.duration_timer
+        return bool(dash_elapsed >= Physics.DASH_CANCEL_WINDOW)
+    # Allow attack during dash coyote window
+    if bool(player.dash.in_coyote()):
+        return True
+    return current not in ATTACK_FORBIDDEN_STATES
 
 
 def configure_player_state_machine(player: Any) -> None:

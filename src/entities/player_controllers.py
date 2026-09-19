@@ -45,6 +45,7 @@ class DashSnapshot:
     requested: bool
     request_move_axis: float
     duration_timer: float
+    coyote_timer: float
     original_hitbox_width: float
 
 
@@ -220,6 +221,7 @@ class DashController:
         self.penalty_duration: float = config.dash_penalty_duration
         self.recharge_time: float = config.dash_recharge_time
         self.gravity_mult: float = config.dash_gravity_mult
+        self.coyote_time: float = config.dash_coyote_time
 
         self.charges: int = self.max_charges
         self.recharge_timer: float = 0.0
@@ -227,6 +229,7 @@ class DashController:
         self.requested: bool = False
         self.request_move_axis: float = 0.0
         self.duration_timer: float = 0.0
+        self.coyote_timer: float = 0.0
         self.original_hitbox_width: float = original_hitbox_width
 
     def can_use(self) -> bool:
@@ -268,6 +271,18 @@ class DashController:
                     self.charges += 1
                     self.recharge_timer = self.recharge_time
 
+        # Dash coyote timer: allows attack/guard for a short window after dash ends
+        if self.coyote_timer > 0:
+            self.coyote_timer -= delta_time
+
+    def start_coyote(self) -> None:
+        """Start the dash coyote window (call when dash ends)."""
+        self.coyote_timer = self.coyote_time
+
+    def in_coyote(self) -> bool:
+        """Check if in dash coyote window."""
+        return self.coyote_timer > 0
+
     def apply_squish(self, hitbox: pygame.FRect) -> None:
         """Narrow the hitbox for the dash, keeping its horizontal center."""
         self.original_hitbox_width = hitbox.width
@@ -291,6 +306,7 @@ class DashController:
         self.penalty_timer = 0.0
         self.requested = False
         self.request_move_axis = 0.0
+        self.coyote_timer = 0.0
 
     def save_state(self) -> DashSnapshot:
         """Capture runtime state for rollback (Phase 3 #3)."""
@@ -301,6 +317,7 @@ class DashController:
             requested=self.requested,
             request_move_axis=self.request_move_axis,
             duration_timer=self.duration_timer,
+            coyote_timer=self.coyote_timer,
             original_hitbox_width=self.original_hitbox_width,
         )
 
@@ -312,4 +329,5 @@ class DashController:
         self.requested = snapshot.requested
         self.request_move_axis = snapshot.request_move_axis
         self.duration_timer = snapshot.duration_timer
+        self.coyote_timer = snapshot.coyote_timer
         self.original_hitbox_width = snapshot.original_hitbox_width

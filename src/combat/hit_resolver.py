@@ -12,6 +12,7 @@ from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Physics
 from src.states.reaction_states import DIZZY_STATE
 
 
@@ -73,6 +74,18 @@ def _apply_post_effects(
         target.set_juggle(hit.juggle_gravity_mult, CombatSettings.JUGGLE_GRAVITY_TIME)
 
     attacker.combat.record_hit_landed(was_airborne)
+
+    # Dash refresh on hit: restore 1 charge when hitting during dash
+    if Physics.DASH_REFRESH_ON_HIT:
+        dash = getattr(attacker, "dash", None)
+        state_machine = getattr(attacker, "state_machine", None)
+        if (
+            dash is not None
+            and state_machine is not None
+            and getattr(state_machine, "current_state_name", None) == "dash"
+            and getattr(dash, "charges", 0) < getattr(dash, "max_charges", 0)
+        ):
+            dash.charges = min(dash.charges + 1, dash.max_charges)
 
     if not result.killed and not armor_absorbs_reaction and not result.heavy_knockback:
         target.combat.on_hit(interrupt=True)

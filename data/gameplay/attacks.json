@@ -135,47 +135,48 @@
       "dash_attack": {
         "phases": [
           {
-            "startup_frames": 2,
-            "active_frames": 7,
-            "recovery_frames": 5,
+            "startup_frames": 1,
+            "active_frames": 8,
+            "recovery_frames": 4,
             "hitbox_size": [
-              60.0,
-              20.0
+              70.0,
+              24.0
             ],
             "hitbox_offset": [
-              38.0,
-              -6.0
+              42.0,
+              -8.0
             ],
             "hit": {
-              "damage": 14,
+              "damage": 16,
               "knockback": {
                 "power": [
-                  500.0,
-                  -50.0
+                  550.0,
+                  -80.0
                 ],
                 "mode": "from_attacker"
               },
               "damage_type": "pierce",
-              "stagger": 0.2,
+              "stagger": 0.25,
               "super_armor_break": true,
               "is_finisher": false
             },
             "reset_targets": true,
             "cancel_into": [
               "light_attack",
-              "heavy_attack"
+              "heavy_attack",
+              "uppercut"
             ]
           }
         ],
-        "cooldown": 0.6,
+        "cooldown": 0.5,
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
         "max_charge_time": 1.0,
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
-        "lunge_speed_multiplier": 0.9,
-        "attack_move_multiplier": 0.6
+        "lunge_speed_multiplier": 1.0,
+        "attack_move_multiplier": 0.7
       },
       "air_attack": {
         "phases": [

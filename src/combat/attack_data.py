@@ -87,25 +87,25 @@ PLAYER_ATTACKS = {
     "dash_attack": AttackDefinition(
         phases=(
             PhaseDefinition(
-                startup_frames=2,
-                active_frames=7,
-                recovery_frames=5,
-                hitbox_size=(60.0, 20.0),
-                hitbox_offset=(38.0, -6.0),
+                startup_frames=1,
+                active_frames=8,
+                recovery_frames=4,
+                hitbox_size=(70.0, 24.0),
+                hitbox_offset=(42.0, -8.0),
                 hit=HitProperties(
-                    damage=14,
-                    knockback=KnockbackConfig(power=(500.0, -50.0)),
+                    damage=16,
+                    knockback=KnockbackConfig(power=(550.0, -80.0)),
                     damage_type=DamageType.PIERCE,
-                    stagger=0.2,
+                    stagger=0.25,
                     super_armor_break=True,
                 ),
-                cancel_into=("light_attack", "heavy_attack"),
+                cancel_into=("light_attack", "heavy_attack", "uppercut"),
             ),
         ),
-        cooldown=0.60,
+        cooldown=0.50,
         lock_direction=True,
-        lunge_speed_multiplier=0.9,
-        attack_move_multiplier=0.6,
+        lunge_speed_multiplier=1.0,
+        attack_move_multiplier=0.7,
     ),
     "air_attack": AttackDefinition(
         phases=(
