@@ -247,7 +247,13 @@ class PlayerDashState(PlayerBaseState):
         # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
         request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
         move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
-        direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else (1.0 if self.entity.facing_right else -1.0)
+        direction = (
+            1.0
+            if move_axis > 0
+            else -1.0
+            if move_axis < 0
+            else (1.0 if self.entity.facing_right else -1.0)
+        )
         self.entity.velocity.x = self.entity.dash.speed * direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration

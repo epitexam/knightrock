@@ -383,18 +383,36 @@ class DizzyVortexParticle(pygame.sprite.Sprite):
                 points = [
                     (cx + r_start * math.cos(angle_start), cy + r_start * math.sin(angle_start)),
                     (cx + r_end * math.cos(angle_end), cy + r_end * math.sin(angle_end)),
-                    (cx + r_end * math.cos(angle_end + 0.2), cy + r_end * math.sin(angle_end + 0.2)),
-                    (cx + r_start * math.cos(angle_start + 0.2), cy + r_start * math.sin(angle_start + 0.2)),
+                    (
+                        cx + r_end * math.cos(angle_end + 0.2),
+                        cy + r_end * math.sin(angle_end + 0.2),
+                    ),
+                    (
+                        cx + r_start * math.cos(angle_start + 0.2),
+                        cy + r_start * math.sin(angle_start + 0.2),
+                    ),
                 ]
 
                 # Outline
                 pygame.draw.polygon(surface, DIZZY_VORTEX_OUTLINE, points)
                 # Fill (slightly inset)
                 inset_points = [
-                    (cx + (r_start - outline) * math.cos(angle_start), cy + (r_start - outline) * math.sin(angle_start)),
-                    (cx + (r_end - outline) * math.cos(angle_end), cy + (r_end - outline) * math.sin(angle_end)),
-                    (cx + (r_end - outline) * math.cos(angle_end + 0.2), cy + (r_end - outline) * math.sin(angle_end + 0.2)),
-                    (cx + (r_start - outline) * math.cos(angle_start + 0.2), cy + (r_start - outline) * math.sin(angle_start + 0.2)),
+                    (
+                        cx + (r_start - outline) * math.cos(angle_start),
+                        cy + (r_start - outline) * math.sin(angle_start),
+                    ),
+                    (
+                        cx + (r_end - outline) * math.cos(angle_end),
+                        cy + (r_end - outline) * math.sin(angle_end),
+                    ),
+                    (
+                        cx + (r_end - outline) * math.cos(angle_end + 0.2),
+                        cy + (r_end - outline) * math.sin(angle_end + 0.2),
+                    ),
+                    (
+                        cx + (r_start - outline) * math.cos(angle_start + 0.2),
+                        cy + (r_start - outline) * math.sin(angle_start + 0.2),
+                    ),
                 ]
                 pygame.draw.polygon(surface, DIZZY_VORTEX_COLOR, inset_points)
 
@@ -709,7 +727,9 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     return streak
 
 
-def spawn_dash_shockwave(fx_group: pygame.sprite.Group, entity: Any) -> DashShockwaveParticle | None:
+def spawn_dash_shockwave(
+    fx_group: pygame.sprite.Group, entity: Any
+) -> DashShockwaveParticle | None:
     """Spawn an expanding shockwave ring at the entity's center on dash start."""
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:

@@ -313,7 +313,9 @@ class Player(ControllerView, Entity):
                 self.guard.posture = self.guard.max_posture
                 self.guard.riposte_timer = GuardSettings.RIPOSTE_WINDOW
                 self.parries_given += 1
-                self._reaction.note_guard_push(knockback or NULL_KNOCKBACK, source_center_x, parried=True)
+                self._reaction.note_guard_push(
+                    knockback or NULL_KNOCKBACK, source_center_x, parried=True
+                )
                 self.flash_timer = HitFlash.DURATION
                 return DamageResult(guarded=True, parried=True)
 
