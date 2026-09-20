@@ -29,6 +29,7 @@ from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickOwner, TickSystem
+from src.entities.entity import Entity
 
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
@@ -150,6 +151,18 @@ class GameplayLoop:
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
+            # P1 sweep (D1/D3): tick-frontier capture. One explicit capture
+            # per tick, before any movement or attack start of the tick —
+            # covering the pre-carry segment, unlike a start-of-``update``
+            # capture that would run after the platform carry. ``update``
+            # positioning stays pure/idempotent, so the double sync stays
+            # harmless. Covers spawn-adjacent sprites too (both sides of
+            # the loop boundary).
+            for sprite in groups.entity_sprites:
+                if isinstance(sprite, Entity):
+                    sprite.capture_sweep_origin()
+            for combatant in groups.combat_sprites:
+                combatant.combat.capture_attack_origin()
             platform.process(effective_delta)
             hazard.process(effective_delta)
             physics.process(effective_delta)

@@ -15,6 +15,7 @@ from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCom
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
+from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
@@ -174,6 +175,11 @@ class Entity(Sprite):
         self.old_hitbox = self.hitbox.copy()
         self._hurtbox_inflate = tuple(hurtbox_inflate)
         self._hurtbox = self.hitbox.inflate(*self._hurtbox_inflate)
+        # P1 sweep: hurtbox geometry captured at the previous tick boundary.
+        # Written only by ``capture_sweep_origin`` (tick frontier), reset by
+        # ``reset_position``/``load_state`` (no stale smear across a teleport
+        # or a rollback; re-derived at the next capture).
+        self._prev_hurtbox: pygame.FRect | None = None
 
         self.collision_sprites: Iterable[CollisionSprite] = cast(
             Iterable[CollisionSprite], collision_sprites
@@ -400,6 +406,22 @@ class Entity(Sprite):
         """Damage-receiving area, distinct from the physical collider."""
         return self._hurtbox
 
+    def capture_sweep_origin(self) -> None:
+        """Freeze the current hurtbox as the next tick's sweep origin (P1/D3).
+
+        Called once per tick by the gameplay loop, before any movement.
+        """
+        self._prev_hurtbox = self._hurtbox.copy()
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        """Swept damage-receiving area for the current tick (P1, D1/D4).
+
+        Bilateral-generous by design: a target that dodges more than
+        ``SWEEP_MIN_DISPLACEMENT_PX`` but less than
+        ``SWEEP_MAX_DISPLACEMENT_PX`` stays hittable for one tick.
+        """
+        return swept_box(self._prev_hurtbox, self._hurtbox)
+
     @property
     def has_super_armor(self) -> bool:
         """Whether the entity currently ignores stagger."""
@@ -602,6 +624,8 @@ class Entity(Sprite):
         self._movement.stop()
         self.old_hitbox = self.hitbox.copy()
         self.vitals.reset()
+        # P1 (D4): respawn/teleport is a discontinuity — no swept smear.
+        self._prev_hurtbox = None
 
         self.combat.reset()
 
@@ -895,6 +919,9 @@ class Entity(Sprite):
             snapshot.old_hitbox
         )
         self.sync_rects()
+        # P1 (D3): ``prev`` is re-derived at the next frontier capture; no
+        # snapshot field carries it across a rollback.
+        self._prev_hurtbox = None
         self.velocity = Vector2(snapshot.velocity)
         self.on_surface = dict(snapshot.on_surface)
         self.facing_right = snapshot.facing_right
