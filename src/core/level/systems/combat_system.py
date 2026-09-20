@@ -25,6 +25,21 @@ class HitCandidate:
     target: Combatant
     hit: HitProperties
     charge_multiplier: float
+    zone_index: int = 0
+    zone_mult: float = 1.0
+
+
+def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> bool:
+    """Whether a zone is hittable by a hit carrying ``hit_tags``.
+
+    P2: no hit carries tags (``HitProperties`` has no tag field yet — the
+    matcher is exercised at unit level), so a zone is immune exactly when
+    both tuples are non-empty and intersect. With ``hit_tags == ()`` every
+    zone is vulnerable by construction (safe default, zero behavior change).
+    """
+    if not zone_tags or not hit_tags:
+        return True
+    return not set(zone_tags).intersection(hit_tags)
 
 
 @dataclass
@@ -104,6 +119,41 @@ def _target_hurtbox(target: Combatant) -> pygame.FRect:
     return target.hurtbox if not callable(swept) else swept()
 
 
+def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
+    """Per-zone swept rectangles (P2), single legacy box as fallback.
+
+    Duck-typed like ``_target_hurtbox`` (P1 precedent): real entities expose
+    ``swept_hurtboxes``; test doubles and legacy consumers only get the
+    single ``hurtbox``.
+    """
+    swept = getattr(target, "swept_hurtboxes", None)
+    if callable(swept):
+        zones = tuple(swept())
+        if zones:
+            return zones
+    return (target.hurtbox,)
+
+
+def _zone_mults(target: Combatant) -> tuple[float, ...]:
+    """Per-zone damage multipliers (P2), neutral 1.0 for legacy targets."""
+    mults = getattr(target, "hurtbox_mult", None)
+    if isinstance(mults, tuple):
+        return mults
+    if callable(mults):
+        return tuple(mults())
+    return (1.0,)
+
+
+def _zone_tags_list(target: Combatant) -> tuple[tuple[str, ...], ...]:
+    """Per-zone reserved invulnerability tags (P2), empty for legacy targets."""
+    tags = getattr(target, "hurtbox_tags", None)
+    if isinstance(tags, tuple):
+        return tags
+    if callable(tags):
+        return tuple(tags())
+    return ((),)
+
+
 class CombatSystem:
     """Collect and resolve offensive contacts in two deterministic passes."""
 
@@ -162,10 +212,24 @@ class CombatSystem:
                     continue
 
                 self.metrics.pairs_tested += 1
-                # P1 sweep: attack-vs-hurt on swept geometry on BOTH sides
-                # (bilateral generosity, documented in D3).
-                hurt_box = _target_hurtbox(target)
-                if not any(box.colliderect(hurt_box) for box in swept_boxes):
+                # P1 sweep + P2 zones: attack-vs-hurt on swept geometry
+                # on BOTH sides (bilateral generosity, documented in D3).
+                # First vulnerable zone touched wins (P2): zone tags are the
+                # reserved invulnerability mechanism (no hit tags in P2, so
+                # every zone is vulnerable here — the matcher is unit-tested).
+                zones = _target_swept_zones(target)
+                mults = _zone_mults(target)
+                tags_list = _zone_tags_list(target)
+                hit_zone: int | None = None
+                for index, hurt_zone in enumerate(zones):
+                    if not any(box.colliderect(hurt_zone) for box in swept_boxes):
+                        continue
+                    zone_tags = tags_list[index] if index < len(tags_list) else ()
+                    if not _zone_vulnerable(zone_tags, ()):
+                        continue
+                    hit_zone = index
+                    break
+                if hit_zone is None:
                     continue
 
                 self.metrics.overlaps += 1
@@ -175,6 +239,8 @@ class CombatSystem:
                         target=target,
                         hit=phase.hit,
                         charge_multiplier=combat.charge_multiplier,
+                        zone_index=hit_zone,
+                        zone_mult=mults[hit_zone] if hit_zone < len(mults) else 1.0,
                     )
                 )
 
@@ -187,6 +253,7 @@ class CombatSystem:
                 target=candidate.target,
                 hit=candidate.hit,
                 charge_multiplier=candidate.charge_multiplier,
+                zone_mult=candidate.zone_mult,
             )
             if not (result.applied or result.guarded):
                 continue

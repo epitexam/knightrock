@@ -109,12 +109,17 @@ class HitResolver:
         target: Combatant,
         hit: HitProperties,
         charge_multiplier: float = 1.0,
+        zone_mult: float = 1.0,
     ) -> DamageResult:
         """Calculate and apply damage, knockback, stagger, and finisher.
 
         The resolution flow:
 
-        1. Compute final damage = ``hit.damage × charge_multiplier × type_modifier``.
+        1. Compute final damage = ``hit.damage × charge_multiplier ×
+           zone_mult × type_modifier``. ``zone_mult`` is the P2 localized
+           damage multiplier (head ×1.2...); it scales damage only, never
+           knockback — the field is named ``damage_mult`` in the design
+           doc (§6.1), unlike the charge multiplier.
         2. Compute scaled knockback by applying ``charge_multiplier`` to the
            base knockback power vectors.
         3. Apply damage and inspect its explicit ``DamageResult``.
@@ -133,6 +138,8 @@ class HitResolver:
             Hit properties from the active phase definition.
         charge_multiplier : float
             Damage and knockback multiplier from charging (default 1.0).
+        zone_mult : float
+            P2 localized damage multiplier of the zone hit (default 1.0).
 
         Returns
         -------
@@ -145,7 +152,7 @@ class HitResolver:
         juggle_scale = 1.0
         if was_airborne:
             juggle_scale = _juggle_scale(attacker.combat.air_combo_count or 0)
-        final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
+        final_damage = hit.damage * charge_multiplier * zone_mult * type_mult * juggle_scale
 
         # DIZZY bonus: targets in dizzy state take extra damage
         if getattr(target, "state_machine", None) is not None:

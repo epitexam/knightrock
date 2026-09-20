@@ -6,6 +6,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 ``from tests.unit.helpers import ...``.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.entities.entity import Entity
+from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 def make_phase(
@@ -77,6 +79,7 @@ def make_entity(
     attacks: dict[str, AttackDefinition] | None = None,
     invincibility: float = 0.0,
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
+    hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
 ) -> Entity:
     """Build a bare :class:`Entity` in isolated sprite groups."""
     return Entity(
@@ -91,6 +94,7 @@ def make_entity(
         attacks=attacks,
         invincibility_duration=invincibility,
         hurtbox_inflate=hurtbox_inflate,
+        hurtbox_zones=hurtbox_zones,
     )
 
 
@@ -100,6 +104,7 @@ def entity_at(
     faction: str = "neutral",
     definition: AttackDefinition | None = None,
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
+    hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
 ) -> Entity:
     """Place an entity at ``(x, 0)`` with an optional ``test`` attack."""
     attacks = {"test": definition} if definition is not None else None
@@ -108,6 +113,7 @@ def entity_at(
         faction=faction,
         attacks=attacks,
         hurtbox_inflate=hurtbox_inflate,
+        hurtbox_zones=hurtbox_zones,
     )
 
 
