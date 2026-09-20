@@ -11,7 +11,7 @@ from src.combat.frame_data import AttackDefinition
 from src.core.level.level_manager import LEVEL_PATHS
 from src.core.paths import PROJECT_ROOT
 from src.data.attacks import ATTACKS_FILENAME, attack_definition_to_dict, read_attacks_file
-from src.data.enemies import ENEMIES_FILENAME, read_enemies_file
+from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
 from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
@@ -203,6 +203,88 @@ def test_read_enemies_file_unknown_attack_set_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown attack set"):
         read_enemies_file(path, {"goblin": {}})
+
+
+def test_read_enemies_file_hurtbox_zones_roundtrip(tmp_path: Path) -> None:
+    doc = {
+        "version": 1,
+        "enemies": {
+            "goblin": {
+                "size": [36.0, 48.0],
+                "color": [60, 130, 60],
+                "health": 60.0,
+                "attacks": "goblin",
+                "hurtbox_zones": [
+                    {"name": "head", "inflate": [-10.0, -30.0], "mult": 1.2, "tags": ["head"]},
+                    {"name": "torso", "inflate": [-4.0, -8.0]},
+                    {"name": "legs", "inflate": [0.0, 4.0], "tags": ["legs", "low"]},
+                ],
+            }
+        },
+    }
+    path = _write(tmp_path / "enemies.json", doc)
+
+    enemies = read_enemies_file(path, {"goblin": dict(GOBLIN_ATTACKS)})
+    config = enemies["goblin"]
+
+    assert config.hurtbox_zones is not None
+    assert [zone.name for zone in config.hurtbox_zones] == ["head", "torso", "legs"]
+    assert config.hurtbox_zones[0].mult == pytest.approx(1.2)
+    assert config.hurtbox_zones[0].inflate == (-10.0, -30.0)
+    assert config.hurtbox_zones[2].tags == ("legs", "low")
+    # Canonical serialized shape (defaults filled) -> reparse is stable.
+    zones_dict = enemy_config_to_dict(config)["hurtbox_zones"]
+    assert zones_dict == [
+        {"name": "head", "inflate": [-10.0, -30.0], "mult": 1.2, "tags": ["head"]},
+        {"name": "torso", "inflate": [-4.0, -8.0], "mult": 1.0, "tags": []},
+        {"name": "legs", "inflate": [0.0, 4.0], "mult": 1.0, "tags": ["legs", "low"]},
+    ]
+    doc2 = {"version": 1, "enemies": {"goblin": enemy_config_to_dict(config)}}
+    reparsed = read_enemies_file(_write(tmp_path / "enemies2.json", doc2), {"goblin": {}})
+    assert reparsed["goblin"] == config
+
+
+def test_read_enemies_file_without_zones_keeps_legacy_fallback(tmp_path: Path) -> None:
+    """``hurtbox_inflate`` only: zones stay None (fallback on the old field)."""
+    doc = {
+        "version": 1,
+        "enemies": {
+            "goblin": {
+                "size": [36.0, 48.0],
+                "color": [60, 130, 60],
+                "health": 60.0,
+                "attacks": "goblin",
+                "hurtbox_inflate": [-4.0, -6.0],
+            }
+        },
+    }
+    path = _write(tmp_path / "enemies.json", doc)
+
+    config = read_enemies_file(path, {"goblin": dict(GOBLIN_ATTACKS)})["goblin"]
+
+    assert config.hurtbox_zones is None
+    assert config.hurtbox_inflate == (-4.0, -6.0)
+    # Serializer omits the key for legacy payloads (JSON shape unchanged).
+    assert "hurtbox_zones" not in enemy_config_to_dict(config)
+
+
+def test_read_enemies_file_empty_zones_rejected(tmp_path: Path) -> None:
+    doc = {
+        "version": 1,
+        "enemies": {
+            "goblin": {
+                "size": [36.0, 48.0],
+                "color": [60, 130, 60],
+                "health": 60.0,
+                "attacks": "goblin",
+                "hurtbox_zones": [],
+            }
+        },
+    }
+    path = _write(tmp_path / "enemies.json", doc)
+
+    with pytest.raises(ValueError, match="at least one zone"):
+        read_enemies_file(path, {"goblin": dict(GOBLIN_ATTACKS)})
 
 
 # ── player.json ───────────────────────────────────────────────────────────

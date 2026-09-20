@@ -19,6 +19,7 @@ from typing import Any
 
 from src.combat.frame_data import AttackDefinition
 from src.data.errors import GameplayDataError, read_json_object
+from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 from src.entities.player_config import PlayerConfig
 
 PLAYER_FILENAME = "player.json"
@@ -83,6 +84,8 @@ def read_player_config(
             hurtbox_inflate=_pair_of_floats(
                 raw.get("hurtbox_inflate", list(base.hurtbox_inflate)), f"{where}.hurtbox_inflate"
             ),
+            # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
+            hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
             attacks=attacks if attacks is not None else dict(base.attacks),
             speed=float(raw.get("speed", base.speed)),
             floor_control=float(raw.get("floor_control", base.floor_control)),
@@ -176,6 +179,9 @@ def player_config_to_dict(config: PlayerConfig, attack_set: str | None) -> dict[
         value = list(getattr(config, key))
         if list(getattr(base, key)) != value:
             diff[key] = value
+    # P2 multi-hurtbox: zones are config overrides, written when present.
+    if config.hurtbox_zones is not None:
+        diff["hurtbox_zones"] = hurtbox_zones_to_dict(config.hurtbox_zones)
     if list(base.color) != list(config.color):
         diff["color"] = list(config.color)
     if isinstance(config.max_wall_jumps, float) and config.max_wall_jumps == math.inf:

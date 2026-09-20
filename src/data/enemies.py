@@ -20,6 +20,7 @@ from src.combat.frame_data import AttackDefinition
 from src.data.attacks import read_attack_definition
 from src.data.errors import GameplayDataError, read_json_object
 from src.entities.enemies.schema import EnemyConfig
+from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
 ENEMIES_FILENAME = "enemies.json"
 ENEMIES_VERSION = 1
@@ -95,6 +96,8 @@ def read_enemy_config(
             hurtbox_inflate=_pair_of_floats(
                 raw.get("hurtbox_inflate", [0.0, 0.0]), f"{where}.hurtbox_inflate"
             ),
+            # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
+            hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
             chase_speed=float(raw.get("chase_speed", 120.0)),
             vision_range=float(raw.get("vision_range", 300.0)),
             attack_range=float(raw.get("attack_range", 60.0)),
@@ -156,6 +159,12 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "max_health": config.max_health,
         "hitbox_inflate": list(config.hitbox_inflate),
         "hurtbox_inflate": list(config.hurtbox_inflate),
+        # P2 multi-hurtbox: key omitted for legacy configs (JSON shape kept).
+        **(
+            {"hurtbox_zones": hurtbox_zones_to_dict(config.hurtbox_zones)}
+            if config.hurtbox_zones is not None
+            else {}
+        ),
         "chase_speed": config.chase_speed,
         "vision_range": config.vision_range,
         "attack_range": config.attack_range,

@@ -124,6 +124,7 @@ class Player(ControllerView, Entity):
             collision_sprites,
             hitbox_inflate=config.hitbox_inflate,
             hurtbox_inflate=config.hurtbox_inflate,
+            hurtbox_zones=config.hurtbox_zones,
             health=config.health,
             max_health=config.max_health,
             faction=config.faction,
