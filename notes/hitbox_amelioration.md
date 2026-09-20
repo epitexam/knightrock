@@ -915,7 +915,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 |---|---|---|---|---|---|---|---|
 | Ref (pre-P0) | 2026-09-20 | 719 passed | propre hors `main.py`* | propre (120 fichiers) | trou confirme | 0.003 / 0.029 / 0.075 ms | rapport takeover-ready, sans scripts |
 | P0 | 2026-09-20 | 723 passed (719 + 4 P0.1) | propre (src+tests) | propre | trou confirme (`contacts=0 overlaps=0 pairs=1`, union -> True) | 0.002 / 0.016 / 0.056 ms (sans grille, meme machine, meme ordre de grandeur) | P0.1 goldens 3 attaques + census (aucun saut letal >= 4 px) ; P0.2 parite pre-existante (egalite complete 3 sets) ; P0.3 docstring source de verite |
-| P1 | | | | | | | |
+| P1 | 2026-09-20 | 735 passed (724 + 3 debloques (b)/(b')/(b'') + 8 reception) | propre (src+tests) | propre (121 fichiers) | corrige — miss discret confirme, hit via sweep (contacts=1) | non rejoue (hors checklist P1) | commits P1.1-P1.5 : constantes D1/D4 + `src/combat/sweep.py` ; `HitboxManager` prev pool + seed starter + hygiene D3 ; `swept_hurtbox` Entity + capture frontiere dans `gameplay_loop.update` ; `CombatSystem` sur swept (grille D2 + contacts bilateraux) ; reception (a),(c),(d),(f),(g),(h),(h'),(i) + invariant borne MAX 64 px |
 | P2 | | | | | | | |
 | P3t1 | | | | | | | |
 | P4 | | | | | | | |
