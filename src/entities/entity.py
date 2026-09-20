@@ -24,6 +24,7 @@ from src.entities.components.reaction import (
     ReactionStatus,
     compute_knockback_direction,
 )
+from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
@@ -112,6 +113,7 @@ class Entity(Sprite):
         collision_sprites: Group,
         hitbox_inflate: Sequence[float] = (0.0, 0.0),
         hurtbox_inflate: Sequence[float] = (0.0, 0.0),
+        hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
         health: float = 100.0,
         max_health: float = 100.0,
         faction: str = "neutral",
@@ -170,16 +172,33 @@ class Entity(Sprite):
         self.image.fill(color)
 
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
-        self.hitbox = self.rect.inflate(*hitbox_inflate)
-        self.hitbox.midbottom = self.rect.midbottom
-        self.old_hitbox = self.hitbox.copy()
-        self._hurtbox_inflate = tuple(hurtbox_inflate)
-        self._hurtbox = self.hitbox.inflate(*self._hurtbox_inflate)
-        # P1 sweep: hurtbox geometry captured at the previous tick boundary.
+        # P2 (axe B): the physical collider is the *pushbox*. ``hitbox`` stays
+        # as a delegating property over the same FRect for one release — no
+        # caller migrated at this tier (checklist P2.5).
+        self._pushbox = self.rect.inflate(*hitbox_inflate)
+        self._pushbox.midbottom = self.rect.midbottom
+        self.old_hitbox = self._pushbox.copy()
+        self._hurtbox_inflate: tuple[float, float] = (
+            float(hurtbox_inflate[0]),
+            float(hurtbox_inflate[1]),
+        )
+        # P2 multi-hurtbox: zones derive from the pushbox via ``sync_rects``
+        # (the single derivation point, preserving the dash-squish timing).
+        # ``None`` config = one legacy zone = exact pre-P2 behavior.
+        self._zones: tuple[HurtboxZoneDef, ...] = (
+            tuple(hurtbox_zones)
+            if hurtbox_zones is not None
+            else (HurtboxZoneDef(inflate=self._hurtbox_inflate),)
+        )
+        self._hurtbox_rects: list[pygame.FRect] = []
+        self._hurtbox_union: pygame.FRect = pygame.FRect(0, 0, 0, 0)
+        # P1 sweep origins, now per zone (P2: ``_prev_hurtbox`` -> tuple).
         # Written only by ``capture_sweep_origin`` (tick frontier), reset by
         # ``reset_position``/``load_state`` (no stale smear across a teleport
         # or a rollback; re-derived at the next capture).
-        self._prev_hurtbox: pygame.FRect | None = None
+        self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
+        # Initial derivation (the legacy code built ``_hurtbox`` inline here).
+        self.sync_rects()
 
         self.collision_sprites: Iterable[CollisionSprite] = cast(
             Iterable[CollisionSprite], collision_sprites
@@ -402,25 +421,73 @@ class Entity(Sprite):
         self._handle_death()
 
     @property
+    def pushbox(self) -> pygame.FRect:
+        """Physical collider: walls, floors, separation, platform carry (P2)."""
+        return self._pushbox
+
+    @property
+    def hitbox(self) -> pygame.FRect:
+        """Legacy alias over the pushbox (P2 migration: no caller migrated)."""
+        return self._pushbox
+
+    @hitbox.setter
+    def hitbox(self, value: pygame.FRect) -> None:
+        """Rebind the alias target (test doubles and protocol compat only)."""
+        self._pushbox = value
+
+    @property
     def hurtbox(self) -> pygame.FRect:
-        """Damage-receiving area, distinct from the physical collider."""
-        return self._hurtbox
+        """Damage-receiving area: the single zone in legacy configuration."""
+        if not self._hurtbox_rects:
+            return self._hurtbox_union
+        return self._hurtbox_rects[0]
+
+    @property
+    def hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Every damage-receiving zone (single legacy zone by default)."""
+        return tuple(self._hurtbox_rects)
+
+    @property
+    def hurtbox_tags(self) -> tuple[tuple[str, ...], ...]:
+        """Per-zone reserved invulnerability tags (parallel to ``hurtboxes``)."""
+        return tuple(zone.tags for zone in self._zones)
+
+    @property
+    def hurtbox_mult(self) -> tuple[float, ...]:
+        """Per-zone localized damage multiplier (parallel to ``hurtboxes``)."""
+        return tuple(zone.mult for zone in self._zones)
 
     def capture_sweep_origin(self) -> None:
-        """Freeze the current hurtbox as the next tick's sweep origin (P1/D3).
+        """Freeze the current zones as the next tick's sweep origin (P1/D3).
 
         Called once per tick by the gameplay loop, before any movement.
         """
-        self._prev_hurtbox = self._hurtbox.copy()
+        self._prev_hurtboxes = tuple(rect.copy() for rect in self._hurtbox_rects)
 
-    def swept_hurtbox(self) -> pygame.FRect:
-        """Swept damage-receiving area for the current tick (P1, D1/D4).
+    def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-zone swept rectangles for the current tick (P1, D1/D4).
 
         Bilateral-generous by design: a target that dodges more than
         ``SWEEP_MIN_DISPLACEMENT_PX`` but less than
         ``SWEEP_MAX_DISPLACEMENT_PX`` stays hittable for one tick.
         """
-        return swept_box(self._prev_hurtbox, self._hurtbox)
+        return tuple(
+            swept_box(
+                self._prev_hurtboxes[index] if index < len(self._prev_hurtboxes) else None,
+                rect,
+            )
+            for index, rect in enumerate(self._hurtbox_rects)
+        )
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        """Union of the per-zone swept rectangles (legacy single-view API)."""
+        zones = self.swept_hurtboxes()
+        if not zones:
+            return self._hurtbox_union.copy()
+        union = zones[0].copy()
+        for zone in zones[1:]:
+            union = union.union(zone)
+        return union
 
     @property
     def has_super_armor(self) -> bool:
@@ -450,14 +517,27 @@ class Entity(Sprite):
         return 1.0
 
     def sync_rects(self) -> None:
-        """Align sprite and hurtbox geometry with the physical collider."""
-        self.rect.midbottom = self.hitbox.midbottom
-        inflate_x, inflate_y = self._hurtbox_inflate
-        self._hurtbox.size = (
-            self.hitbox.width + inflate_x,
-            self.hitbox.height + inflate_y,
-        )
-        self._hurtbox.center = self.hitbox.center
+        """Derive sprite rect and every hurtbox zone from the pushbox.
+
+        The single derivation point of the hurt geometry (P2): the dash
+        squish mutates the pushbox, this re-derives zones — including the
+        cached union backing the legacy ``hurtbox`` view.
+        """
+        self.rect.midbottom = self._pushbox.midbottom
+        while len(self._hurtbox_rects) < len(self._zones):
+            self._hurtbox_rects.append(pygame.FRect(0, 0, 0, 0))
+        while len(self._hurtbox_rects) > len(self._zones):
+            self._hurtbox_rects.pop()
+        for rect, zone in zip(self._hurtbox_rects, self._zones, strict=True):
+            inflate_x, inflate_y = zone.inflate
+            rect.size = (
+                self._pushbox.width + inflate_x,
+                self._pushbox.height + inflate_y,
+            )
+            rect.center = self._pushbox.center
+        self._hurtbox_union = self._hurtbox_rects[0].unionall(
+            self._hurtbox_rects[1:]
+        ) if len(self._hurtbox_rects) > 1 else self._hurtbox_rects[0].copy()
 
     def face_movement(self, threshold: float = 0.1) -> None:
         """Orient the entity based on its current movement axis.
@@ -624,8 +704,8 @@ class Entity(Sprite):
         self._movement.stop()
         self.old_hitbox = self.hitbox.copy()
         self.vitals.reset()
-        # P1 (D4): respawn/teleport is a discontinuity — no swept smear.
-        self._prev_hurtbox = None
+        # P1 (D4) / P2: respawn/teleport is a discontinuity — no swept smear.
+        self._prev_hurtboxes = ()
 
         self.combat.reset()
 
@@ -919,9 +999,9 @@ class Entity(Sprite):
             snapshot.old_hitbox
         )
         self.sync_rects()
-        # P1 (D3): ``prev`` is re-derived at the next frontier capture; no
-        # snapshot field carries it across a rollback.
-        self._prev_hurtbox = None
+        # P1 (D3) / P2: ``prev`` is re-derived at the next frontier capture;
+        # no snapshot field carries it across a rollback.
+        self._prev_hurtboxes = ()
         self.velocity = Vector2(snapshot.velocity)
         self.on_surface = dict(snapshot.on_surface)
         self.facing_right = snapshot.facing_right
