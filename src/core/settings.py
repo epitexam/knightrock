@@ -106,6 +106,16 @@ class Combat:
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
     DIZZY_DAMAGE_MULT = 1.5
+    # P1 sweep CCD (D1) : borne BASSE en deplacement mesure, pas en vitesse.
+    # Distance euclidienne des centres par index de boite ; en dessous, le
+    # sweep est inutile (goldens stables) et `swept = cur`.
+    SWEEP_MIN_DISPLACEMENT_PX = 4.0
+    # P1 sweep CCD (D4) : borne HAUTE. Au-dela (respawn, teleport, carry
+    # anormal), `swept = cur` : pas de smear geant, pas de touche fantome.
+    # Invariant a dt sim fixe (TIMESTEP = 1/60) :
+    # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
+    # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
+    SWEEP_MAX_DISPLACEMENT_PX = 64.0
 
 
 class Guard:
