@@ -103,11 +103,12 @@ class HitboxManager:
         """Create or reposition every rectangle without per-tick allocation.
 
         The primary box follows the phase's animated curve
-        (``hitbox_at``); extra boxes stay static by design (#1 scope).
+        (``hitbox_at``); each extra box follows its own curve
+        (``extra_box_at``), static by default.
         """
         specs = (
             (phase.hitbox_at(frame)),
-            *((spec.size, spec.offset) for spec in phase.extra_hitboxes),
+            *(phase.extra_box_at(index, frame) for index in range(len(phase.extra_hitboxes))),
         )
         while len(self._pool) < len(specs):
             self._pool.append(pygame.FRect(0, 0, 0, 0))

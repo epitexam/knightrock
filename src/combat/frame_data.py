@@ -104,32 +104,6 @@ class HitProperties:
 
 
 @dataclass(frozen=True)
-class HitboxSpec:
-    """Size and offset of a single offensive rectangle within a phase.
-
-    A phase always carries its legacy primary box (``hitbox_size`` /
-    ``hitbox_offset``); each entry of ``PhaseDefinition.extra_hitboxes``
-    adds one disjoint box following the same convention: ``size`` is the
-    rectangle dimensions in pixels, ``offset`` its center relative to the
-    owner's hitbox center (mirrored on the x-axis when facing left).
-
-    Attributes
-    ----------
-    size : tuple[float, float]
-        Width and height in pixels, both strictly positive.
-    offset : tuple[float, float]
-        Center offset ``(x, y)`` relative to the owner's hitbox center.
-    """
-
-    size: tuple[float, float]
-    offset: tuple[float, float]
-
-    def __post_init__(self) -> None:
-        if not (self.size[0] > 0 and self.size[1] > 0):
-            raise ValueError("Hitbox dimensions must be strictly positive")
-
-
-@dataclass(frozen=True)
 class HitboxKeyframe:
     """One animated hitbox sample on the startup-to-active curve.
 
@@ -160,6 +134,98 @@ class HitboxKeyframe:
             raise ValueError("Hitbox keyframe index cannot be negative")
         if not (self.size[0] > 0 and self.size[1] > 0):
             raise ValueError("Hitbox dimensions must be strictly positive")
+
+
+BoxGeometry = tuple[tuple[float, float], tuple[float, float]]
+"""``(size, offset)`` pair interpolated from keyframes for one box."""
+
+
+def _check_keyframe_span(
+    keyframes: tuple[HitboxKeyframe, ...], span: int, label: str
+) -> None:
+    """Validate increasing frames within the startup-to-active ``span``."""
+    previous = -1
+    for keyframe in keyframes:
+        if keyframe.frame <= previous:
+            raise ValueError(f"{label}s must use strictly increasing frames")
+        if keyframe.frame > span:
+            raise ValueError(f"{label} exceeds the startup-to-active frame span")
+        previous = keyframe.frame
+
+
+def interpolate_keyframes(
+    keyframes: tuple[HitboxKeyframe, ...],
+    static: BoxGeometry,
+    frame: int,
+) -> BoxGeometry:
+    """Linearly interpolate ``(size, offset)`` at a phase ``frame``.
+
+    ``frame`` counts from the start of startup (``0`` = phase start),
+    matching ``AttackStateMachine.frame_counter`` within each sub-state.
+    With no keyframes the static box is returned. Otherwise the
+    surrounding keyframes are interpolated linearly; outside their range
+    the nearest endpoint is held.
+    """
+    if not keyframes:
+        return static
+    if frame <= keyframes[0].frame:
+        first = keyframes[0]
+        return (first.size, first.offset)
+    # Pairwise walk over offset slices: the second slice is one shorter
+    # by construction, so strict=True would always raise (B905 exempt).
+    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
+        if frame <= after.frame:
+            span = after.frame - before.frame
+            blend = (frame - before.frame) / span
+            size = (
+                before.size[0] + (after.size[0] - before.size[0]) * blend,
+                before.size[1] + (after.size[1] - before.size[1]) * blend,
+            )
+            offset = (
+                before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
+                before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
+            )
+            return (size, offset)
+    last = keyframes[-1]
+    return (last.size, last.offset)
+
+
+@dataclass(frozen=True)
+class HitboxSpec:
+    """Size and offset of a single offensive rectangle within a phase.
+
+    A phase always carries its legacy primary box (``hitbox_size`` /
+    ``hitbox_offset``); each entry of ``PhaseDefinition.extra_hitboxes``
+    adds one disjoint box following the same convention: ``size`` is the
+    rectangle dimensions in pixels, ``offset`` its center relative to the
+    owner's hitbox center (mirrored on the x-axis when facing left).
+    ``keyframes`` optionally animates the box over the phase's
+    startup-to-active frames (same samples as the primary curve);
+    empty = static box. Span validation lives in
+    ``PhaseDefinition.__post_init__`` (the spec alone cannot know it).
+
+    Attributes
+    ----------
+    size : tuple[float, float]
+        Width and height in pixels, both strictly positive.
+    offset : tuple[float, float]
+        Center offset ``(x, y)`` relative to the owner's hitbox center.
+    keyframes : tuple[HitboxKeyframe, ...]
+        Optional animated samples for this box (empty = static).
+    """
+
+    size: tuple[float, float]
+    offset: tuple[float, float]
+    keyframes: tuple[HitboxKeyframe, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not (self.size[0] > 0 and self.size[1] > 0):
+            raise ValueError("Hitbox dimensions must be strictly positive")
+        previous = -1
+        for keyframe in self.keyframes:
+            if keyframe.frame <= previous:
+                raise ValueError("Hitbox keyframes must use strictly increasing frames")
+            previous = keyframe.frame
 
 
 @dataclass(frozen=True)
@@ -244,46 +310,30 @@ class PhaseDefinition:
         if any(size <= 0 for size in self.hitbox_size):
             raise ValueError("Hitbox dimensions must be strictly positive")
         span = self.startup_frames + self.active_frames
-        previous = -1
-        for keyframe in self.hitbox_keyframes:
-            if keyframe.frame <= previous:
-                raise ValueError("Hitbox keyframes must use strictly increasing frames")
-            if keyframe.frame > span:
-                raise ValueError("Hitbox keyframe exceeds the startup-to-active frame span")
-            previous = keyframe.frame
+        _check_keyframe_span(self.hitbox_keyframes, span, "Hitbox keyframe")
+        for index, spec in enumerate(self.extra_hitboxes):
+            _check_keyframe_span(spec.keyframes, span, f"Extra hitbox #{index} keyframe")
 
-    def hitbox_at(self, frame: int) -> tuple[tuple[float, float], tuple[float, float]]:
+    def hitbox_at(self, frame: int) -> BoxGeometry:
         """Interpolate the primary ``(size, offset)`` at a phase ``frame``.
 
         ``frame`` counts from the start of startup (``0`` = phase start),
         matching ``AttackStateMachine.frame_counter`` within each
-        sub-state. With no keyframes the static legacy box is returned.
-        Otherwise the surrounding keyframes are interpolated linearly;
-        outside their range the nearest endpoint is held.
+        sub-state. Delegates to :func:`interpolate_keyframes` over the
+        primary curve (static legacy box when empty).
         """
-        if not self.hitbox_keyframes:
-            return (self.hitbox_size, self.hitbox_offset)
-        keyframes = self.hitbox_keyframes
-        if frame <= keyframes[0].frame:
-            first = keyframes[0]
-            return (first.size, first.offset)
-        # Pairwise walk over offset slices: the second slice is one shorter
-        # by construction, so strict=True would always raise (B905 exempt).
-        for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
-            if frame <= after.frame:
-                span = after.frame - before.frame
-                blend = (frame - before.frame) / span
-                size = (
-                    before.size[0] + (after.size[0] - before.size[0]) * blend,
-                    before.size[1] + (after.size[1] - before.size[1]) * blend,
-                )
-                offset = (
-                    before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
-                    before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
-                )
-                return (size, offset)
-        last = keyframes[-1]
-        return (last.size, last.offset)
+        return interpolate_keyframes(
+            self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
+        )
+
+    def extra_box_at(self, index: int, frame: int) -> BoxGeometry:
+        """Interpolate extra box ``index`` at a phase ``frame``.
+
+        Each box follows its own curve (static ``(size, offset)`` when it
+        carries no keyframes); the primary curve is never reused here.
+        """
+        spec = self.extra_hitboxes[index]
+        return interpolate_keyframes(spec.keyframes, (spec.size, spec.offset), frame)
 
     @property
     def total_frames(self) -> int:

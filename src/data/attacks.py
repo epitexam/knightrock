@@ -85,13 +85,19 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
 
 
 def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
-    """Parse one ``{"size": [...], "offset": [...]}`` extra box."""
+    """Parse one ``{"size": [...], "offset": [...]}`` extra box.
+
+    P2: each box may carry its own ``keyframes`` curve (absent = static).
+    """
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: extra hitbox must be an object, got {raw!r}")
     try:
         return HitboxSpec(
             size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
             offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
+            keyframes=_read_hitbox_keyframes(
+                raw.get("keyframes"), f"{where}.keyframes"
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid extra hitbox: {exc}") from exc
@@ -228,7 +234,19 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "otg_allowed": phase.hit.otg_allowed,
                 },
                 "extra_hitboxes": [
-                    {"size": list(spec.size), "offset": list(spec.offset)}
+                    # P2: serialize each box's own keyframes (absent = static).
+                    {
+                        "size": list(spec.size),
+                        "offset": list(spec.offset),
+                        "keyframes": [
+                            {
+                                "frame": keyframe.frame,
+                                "size": list(keyframe.size),
+                                "offset": list(keyframe.offset),
+                            }
+                            for keyframe in spec.keyframes
+                        ],
+                    }
                     for spec in phase.extra_hitboxes
                 ],
                 "hitbox_keyframes": [
