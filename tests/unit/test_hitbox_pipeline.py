@@ -122,6 +122,17 @@ def test_rollback_restore_synchronizes_derived_attack_geometry() -> None:
     assert owner.combat.attack_box is not None
     assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
 
+    # P1 (D3, re-derivation) : la boucle rejoue les captures frontiere
+    # explicitement ; prev est re-derive depuis cur, jamais relu a travers
+    # un load sans capture. Aucun champ snapshot n'existe pour prev.
+    assert owner.combat.hitbox.prev_rects == ()
+    owner.combat.capture_attack_origin()
+    owner.capture_sweep_origin()
+    assert owner.combat.hitbox.prev_rects[0].center == (
+        pytest.approx(owner.combat.attack_box.centerx),
+        pytest.approx(owner.combat.attack_box.centery),
+    )
+
 
 def test_death_clears_active_offensive_state() -> None:
     owner = entity_at(0.0, definition=attack(phase()))
