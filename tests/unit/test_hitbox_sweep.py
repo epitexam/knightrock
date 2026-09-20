@@ -5,9 +5,9 @@ Cas (b), (b') et (b'') : ordre de tick REEL verifie code — capture,
 detection (`entity.py:831-842`, interrupt synchrone
 `state_machine.py:127-158`, lunge `player_states.py:147`).
 
-Marques `xfail(strict=True)` : le sweep n est pas implemente (P1).
-En P1, l agent retire les marqueurs au vert — un XPASS strict rend la
-suite rouge tant qu un marqueur subsiste.
+(b) reste `xfail(strict=True)` tant que le sweep n est pas branche dans
+`CombatSystem` ; (b')/(b'') (geometrie deja recouvrante en discret)
+sont verts des le seed/capture de P1.2.
 """
 
 import pygame
@@ -46,7 +46,6 @@ def test_lunge_frame1_sweeps_transition_tick() -> None:
     assert system.metrics.contacts == 1
 
 
-@pytest.mark.xfail(reason="P1 : sweep CCD non implemente", strict=True)
 def test_startup_ge2_seeds_naturally_via_capture() -> None:
     """(b') `startup >= 2` : `prev` du 1er ACTIVE = startup, via capture."""
     definition = attack(phase(startup=2, active=4, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0)))
@@ -70,7 +69,6 @@ def test_startup_ge2_seeds_naturally_via_capture() -> None:
     assert system.metrics.contacts == 1
 
 
-@pytest.mark.xfail(reason="P1 : sweep CCD non implemente", strict=True)
 def test_phase_transition_sweeps_from_own_startup() -> None:
     """(b'') Transition de phase : 1er ACTIVE de phase N depuis son startup.
 

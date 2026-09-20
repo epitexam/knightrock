@@ -7,6 +7,7 @@ import pygame
 from src.combat.attack_state import AttackStateMachine
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import PhaseDefinition
+from src.combat.sweep import swept_box
 
 
 class HitboxManager:
@@ -17,17 +18,45 @@ class HitboxManager:
     pool — primary box first, then one slot per
     ``PhaseDefinition.extra_hitboxes`` entry. Both views share the same
     rectangles: ``rects[0] is rect`` whenever a box is live.
+
+    P1 sweep: ``_prev_pool`` holds the geometry captured at the previous
+    tick boundary (``capture_origin``), the sole other writers of which
+    are the ``start_attack`` seed (D1) and ``clear`` (attack end).
+    ``update`` never touches it: positioning is pure and idempotent, so
+    the double sync (``Entity.update`` + gameplay loop) is harmless.
     """
 
     def __init__(self, entity: Combatant) -> None:
         self._entity: Combatant = entity
         self.rect: pygame.FRect | None = None
         self._pool: list[pygame.FRect] = []
+        self._prev_pool: list[pygame.FRect] = []
 
     @property
     def rects(self) -> tuple[pygame.FRect, ...]:
         """Live offensive rectangles: primary box first, then extras."""
         return tuple(self._pool)
+
+    @property
+    def prev_rects(self) -> tuple[pygame.FRect, ...]:
+        """Copies of the rectangles captured at the previous tick boundary."""
+        return tuple(rect.copy() for rect in self._prev_pool)
+
+    @property
+    def swept_rects(self) -> tuple[pygame.FRect, ...]:
+        """Per-index swept rectangles between the captured origin and now.
+
+        An index without a captured origin (spawn, resize) or whose
+        displacement is out of the ``Combat`` sweep bounds yields ``cur``
+        (D1/D4); otherwise the union of prev and cur.
+        """
+        return tuple(
+            swept_box(
+                self._prev_pool[index] if index < len(self._prev_pool) else None,
+                rect,
+            )
+            for index, rect in enumerate(self._pool)
+        )
 
     def update(self, state: AttackStateMachine) -> None:
         """Synchronize geometry from attack state and owner position.
@@ -52,9 +81,23 @@ class HitboxManager:
         self._position_rects(phase, facing_right, state.animation_frame)
 
     def clear(self) -> None:
-        """Remove offensive geometry immediately."""
+        """Remove offensive geometry immediately (end of attack)."""
         self.rect = None
         self._pool.clear()
+        self._prev_pool.clear()
+
+    def capture_origin(self) -> None:
+        """Copy the live pool as the sweep origin of the next tick.
+
+        Called once per tick at the frontier, by the gameplay loop,
+        before any movement or attack start of the tick. Deep copy: the
+        pool rectangles are repositioned in place afterwards.
+        """
+        self._prev_pool = [rect.copy() for rect in self._pool]
+
+    def clear_origin(self) -> None:
+        """Forget the sweep origin (rollback hygiene, re-derived on next capture)."""
+        self._prev_pool.clear()
 
     def _position_rects(self, phase: PhaseDefinition, facing_right: bool, frame: int) -> None:
         """Create or reposition every rectangle without per-tick allocation.

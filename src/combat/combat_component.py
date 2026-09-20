@@ -130,6 +130,15 @@ class CombatComponent:
         return self.hitbox.rects
 
     @property
+    def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-box swept rectangles (captured origin union current)."""
+        return self.hitbox.swept_rects
+
+    def capture_attack_origin(self) -> None:
+        """Freeze the live offensive geometry as the next tick's sweep origin."""
+        self.hitbox.capture_origin()
+
+    @property
     def current_phase(self) -> PhaseDefinition | None:
         """The ``PhaseDefinition`` for the current active phase, or ``None``."""
         return self.state.current_phase_def
@@ -243,6 +252,13 @@ class CombatComponent:
         self._cooldowns[name] = definition.cooldown
         self.combo.on_attack_started(definition.combo_reset)
 
+        # P1 starter seed (D1): all starts happen during ``Entity.update``,
+        # i.e. AFTER the tick-frontier capture, so without seeding ``prev``
+        # here the first ACTIVE tick would stay discrete. Position the
+        # startup frame-0 geometry in the pool, then copy it as origin.
+        self.sync_attack_box()
+        self.hitbox.capture_origin()
+
         return True
 
     def start_charge(self, name: str) -> bool:
@@ -350,6 +366,10 @@ class CombatComponent:
         self.combo.restore(snapshot.combo_count, snapshot.combo_timer, snapshot.air_combo_count)
         self._cooldowns = dict(snapshot.cooldowns)
         self.charging.load_state(snapshot.charge_state)
+        # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
+        # at the next frontier capture; forgetting it here keeps the restore
+        # deterministic (never read stale geometry across a load).
+        self.hitbox.clear_origin()
         self.sync_attack_box()
 
     def update(self, delta_time: float) -> None:
@@ -411,6 +431,7 @@ class NullCombatComponent:
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
         self.attack_boxes: tuple[pygame.FRect, ...] = ()
+        self.swept_attack_boxes: tuple[pygame.FRect, ...] = ()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()
@@ -481,6 +502,9 @@ class NullCombatComponent:
     def sync_attack_box(self) -> None:
         """No-op."""
 
+    def capture_attack_origin(self) -> None:
+        """No-op."""
+
     def can_contact(self, target_id: str) -> bool:
         """A non-combatant never owns a valid offensive contact."""
         return False
@@ -532,6 +556,8 @@ class NullCombatComponent:
 class _NullHitboxManager:
     rect = None
     rects: tuple = ()
+    prev_rects: tuple = ()
+    swept_rects: tuple = ()
 
     def clear(self) -> None:
         """No-op."""
