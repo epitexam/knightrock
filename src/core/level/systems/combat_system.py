@@ -19,7 +19,12 @@ from src.states.reaction_states import DIZZY_STATE
 
 @dataclass(frozen=True)
 class HitCandidate:
-    """Immutable contact captured before any hit reaction mutates combat state."""
+    """Immutable contact captured before any hit reaction mutates combat state.
+
+    P2 multi-hurtbox: ``zone_index`` is the first vulnerable zone touched
+    (zones tested in order, break on first contact); ``zone_mult`` is that
+    zone's localized damage multiplier (1.0 = neutral legacy zone).
+    """
 
     attacker: Combatant
     target: Combatant
@@ -111,12 +116,6 @@ def _is_valid_target(attacker: Combatant, target: Combatant, combat: CombatPort)
     if attacker.faction == target.faction:
         return False
     return bool(combat.can_contact(target.id))
-
-
-def _target_hurtbox(target: Combatant) -> pygame.FRect:
-    """Hurt area of a target: swept when supported (P1), else raw hurtbox."""
-    swept = getattr(target, "swept_hurtbox", None)
-    return target.hurtbox if not callable(swept) else swept()
 
 
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:

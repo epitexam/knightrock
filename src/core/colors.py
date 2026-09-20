@@ -64,6 +64,13 @@ class Colors:
 
     debug_hitbox: ClassVar[Color] = (80, 140, 210)
     debug_hurtbox: ClassVar[Color] = (80, 210, 120)
+    # P2: one outline color per hurtbox zone (head/torso/legs...); index
+    # cycles with % so configs with more zones than colors still draw.
+    debug_hurtbox_zones: ClassVar[tuple[Color, ...]] = (
+        (80, 210, 120),
+        (90, 170, 235),
+        (235, 200, 90),
+    )
     debug_attack_box: ClassVar[Color] = (230, 120, 60)
     debug_static: ClassVar[Color] = (140, 145, 155)
     debug_velocity: ClassVar[Color] = (245, 230, 90)

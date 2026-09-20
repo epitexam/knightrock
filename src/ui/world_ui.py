@@ -286,9 +286,24 @@ class WorldUI:
             return TEXT_WARN
         return TEXT_OK
 
+    @staticmethod
+    def _hurtbox_zones(
+        sprite: pygame.sprite.Sprite, collider: pygame.FRect
+    ) -> tuple[pygame.FRect, ...]:
+        """Hurt outlines to draw: multi-zone list first, legacy single fallback.
+
+        Zones identical to the collider are skipped (the collider outline
+        already covers them); a zone equal to the collider would otherwise
+        double-draw the same rectangle.
+        """
+        zones = getattr(sprite, "hurtboxes", None)
+        rects = tuple(zones) if zones is not None else (getattr(sprite, "hurtbox", None),)
+        return tuple(
+            zone for zone in rects if zone is not None and zone is not collider
+        )
+
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
-        hurtbox = getattr(sprite, "hurtbox", None)
         combat = getattr(sprite, "combat", None)
         attack_boxes = getattr(combat, "attack_boxes", None)
         if attack_boxes is None:
@@ -306,19 +321,23 @@ class WorldUI:
                     width=1,
                 )
             return
-        pygame.draw.rect(
-            self.display_surface,
-            self._hitbox_color(sprite),
-            camera.apply(collider),
-            width=1,
-        )
-        if hurtbox is not None and hurtbox is not collider:
+        if collider is not None:
             pygame.draw.rect(
                 self.display_surface,
-                Colors.debug_hurtbox,
-                camera.apply(hurtbox),
+                self._hitbox_color(sprite),
+                camera.apply(collider),
                 width=1,
             )
+            # P2 multi-zone: one outline per zone with its own color (index
+            # cycles); single-zone sprites keep the legacy green outline.
+            for index, zone in enumerate(self._hurtbox_zones(sprite, collider)):
+                color = Colors.debug_hurtbox_zones[index % len(Colors.debug_hurtbox_zones)]
+                pygame.draw.rect(
+                    self.display_surface,
+                    color,
+                    camera.apply(zone),
+                    width=1,
+                )
         for attack_box in attack_boxes:
             pygame.draw.rect(
                 self.display_surface,
