@@ -5,9 +5,9 @@ Cas (b), (b') et (b'') : ordre de tick REEL verifie code — capture,
 detection (`entity.py:831-842`, interrupt synchrone
 `state_machine.py:127-158`, lunge `player_states.py:147`).
 
-(b) reste `xfail(strict=True)` tant que le sweep n est pas branche dans
-`CombatSystem` ; (b')/(b'') (geometrie deja recouvrante en discret)
-sont verts des le seed/capture de P1.2.
+Les trois cas sont verts : (b) par le sweep union prev+cur branche
+dans `CombatSystem` (P1.4), (b')/(b'') par le seed + la capture
+frontiere (P1.2/P1.3, geometrie deja recouvrante en discret).
 """
 
 import pygame
@@ -23,7 +23,6 @@ def _lunge_definition() -> object:
     return attack(phase(startup=1, active=8, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0)))
 
 
-@pytest.mark.xfail(reason="P1 : sweep CCD non implemente", strict=True)
 def test_lunge_frame1_sweeps_transition_tick() -> None:
     """(b) Lunge frame 1 : seed startup -> ACTIVE post-lunge, meme tick.
 

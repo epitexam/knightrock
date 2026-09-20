@@ -46,20 +46,25 @@ class GuardEvent:
 
 def _attacker_ready(
     attacker: Combatant,
-) -> tuple[CombatPort, tuple[pygame.FRect, ...], PhaseDefinition] | None:
-    """Attacker eligibility: alive, active phase, live boxes."""
+) -> tuple[CombatPort, tuple[pygame.FRect, ...], tuple[pygame.FRect, ...], PhaseDefinition] | None:
+    """Attacker eligibility: alive, active phase, live and swept boxes."""
     if attacker.is_dead:
         return None
     combat = attacker.combat
     attack_boxes = combat.attack_boxes
+    swept_boxes = combat.swept_attack_boxes
     phase = combat.current_phase
     if not combat.state.is_active or not attack_boxes or phase is None:
         return None
-    return combat, attack_boxes, phase
+    # Per-index pairing preserved (D1): swept boxes follow the same order
+    # as the live boxes; a missing origin (spawn/resize) degenerates to cur.
+    if len(swept_boxes) != len(attack_boxes):
+        swept_boxes = attack_boxes
+    return combat, attack_boxes, swept_boxes, phase
 
 
 def _nearby_targets(
-    attack_boxes: tuple[pygame.FRect, ...],
+    query_boxes: tuple[pygame.FRect, ...],
     combatants: tuple[Combatant, ...],
     order: dict[int, int],
     entity_grid: EntityGrid | None,
@@ -67,15 +72,14 @@ def _nearby_targets(
     """Geometric collection: local grid prune, then group order."""
     if entity_grid is None:
         return list(combatants)
-    # Query around every attack box (not the attacker's hitbox:
-    # the weapon reach is what matters), then restore group order
-    # so hit resolution matches the exhaustive loop
-    # deterministically. Only combatants have an entry in `order`,
-    # so the cast is safe.
+    # Query around every swept box (D2: the whole tick's motion is what
+    # matters, not just the final box), then restore group order so hit
+    # resolution matches the exhaustive loop deterministically. Only
+    # combatants have an entry in `order`, so the cast is safe.
     seen: set[int] = set()
     nearby: list[SpatialHashMember] = []
-    for attack_box in attack_boxes:
-        for member in entity_grid.near(attack_box):
+    for query_box in query_boxes:
+        for member in entity_grid.near(query_box):
             if id(member) in order and id(member) not in seen:
                 seen.add(id(member))
                 nearby.append(member)
@@ -92,6 +96,12 @@ def _is_valid_target(attacker: Combatant, target: Combatant, combat: CombatPort)
     if attacker.faction == target.faction:
         return False
     return bool(combat.can_contact(target.id))
+
+
+def _target_hurtbox(target: Combatant) -> pygame.FRect:
+    """Hurt area of a target: swept when supported (P1), else raw hurtbox."""
+    swept = getattr(target, "swept_hurtbox", None)
+    return target.hurtbox if not callable(swept) else swept()
 
 
 class CombatSystem:
@@ -143,15 +153,19 @@ class CombatSystem:
             ready = _attacker_ready(attacker)
             if ready is None:
                 continue
-            combat, attack_boxes, phase = ready
-            targets = _nearby_targets(attack_boxes, combatants, order, entity_grid)
+            combat, _attack_boxes, swept_boxes, phase = ready
+            # D2: grid prune around the swept boxes (whole tick motion).
+            targets = _nearby_targets(swept_boxes, combatants, order, entity_grid)
 
             for target in targets:
                 if not _is_valid_target(attacker, target, combat):
                     continue
 
                 self.metrics.pairs_tested += 1
-                if not any(attack_box.colliderect(target.hurtbox) for attack_box in attack_boxes):
+                # P1 sweep: attack-vs-hurt on swept geometry on BOTH sides
+                # (bilateral generosity, documented in D3).
+                hurt_box = _target_hurtbox(target)
+                if not any(box.colliderect(hurt_box) for box in swept_boxes):
                     continue
 
                 self.metrics.overlaps += 1

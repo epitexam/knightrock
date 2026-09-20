@@ -64,7 +64,11 @@ class AttackerPort(Protocol):
 
 @runtime_checkable
 class CombatPort(AttackComboPort, Protocol):
-    """Minimal combat component surface exposed by a combatant."""
+    """Minimal combat component surface exposed by a combatant.
+
+    P1 sweep members: ``swept_attack_boxes`` feeds the grid query and the
+    contact test; ``capture_attack_origin`` is the tick-frontier hook.
+    """
 
     @property
     def is_hurt(self) -> bool: ...
@@ -83,6 +87,9 @@ class CombatPort(AttackComboPort, Protocol):
 
     @property
     def attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
+
+    @property
+    def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
 
     @property
     def current_phase(self) -> PhaseDefinition | None: ...
@@ -106,6 +113,8 @@ class CombatPort(AttackComboPort, Protocol):
     def reset_hurt_state(self) -> None: ...
 
     def sync_attack_box(self) -> None: ...
+
+    def capture_attack_origin(self) -> None: ...
 
     def can_contact(self, target_id: str) -> bool: ...
 

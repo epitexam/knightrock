@@ -128,11 +128,13 @@ class _ActiveAttackerCombat(SimpleNamespace):
             state=SimpleNamespace(is_active=True),
             attack_box=attack_box,
             attack_boxes=(attack_box,),
+            swept_attack_boxes=(attack_box,),
             current_phase=SimpleNamespace(hit=hit),
             charge_multiplier=1.0,
             targets_hit=targets_hit,
             can_contact=lambda target_id: target_id not in targets_hit,
             record_contact=targets_hit.add,
+            capture_attack_origin=lambda: None,
         )
         self._air_count = 0
 
@@ -159,6 +161,7 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         faction="enemy",
         hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
         combat=combat,
+        swept_hurtbox=lambda: target.hurtbox.copy(),
     )
 
 
@@ -206,7 +209,6 @@ class AttackerStub:
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
         self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
-
 
 __all__ = [
     "AttackerStub",
