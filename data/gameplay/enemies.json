@@ -23,6 +23,35 @@
         0.0,
         0.0
       ],
+      "hurtbox_zones": [
+        {
+          "name": "head",
+          "inflate": [
+            8.0,
+            -28.0
+          ],
+          "mult": 1.5,
+          "tags": []
+        },
+        {
+          "name": "torso",
+          "inflate": [
+            0.0,
+            0.0
+          ],
+          "mult": 1.0,
+          "tags": []
+        },
+        {
+          "name": "legs",
+          "inflate": [
+            0.0,
+            -28.0
+          ],
+          "mult": 0.8,
+          "tags": []
+        }
+      ],
       "chase_speed": 120.0,
       "vision_range": 300.0,
       "attack_range": 60.0,
