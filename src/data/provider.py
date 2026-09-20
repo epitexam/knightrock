@@ -1,5 +1,12 @@
 """Single entry point loading all gameplay data with fallback (Phase 3 #4).
 
+Source of truth at runtime: the JSON files in ``data/gameplay/``. The
+in-code values (``src/combat/attack_data.py`` and siblings) are an
+absence-only fallback, never a second source — see the resolution order
+below. Parity between both layers is pinned by
+``tests/unit/test_gameplay_data.py`` (P0.2): editing one side without the
+other fails the suite instead of drifting silently.
+
 :class:`GameplayData` is a plain value bundle — attack sets, enemy configs,
 the player config and the level registry — built either from the tracked
 JSON files in ``data/gameplay/`` or from the historical in-code values
