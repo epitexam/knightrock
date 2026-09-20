@@ -362,8 +362,9 @@ commits : voir P4.
 
 ## 5. Plan de refacto / implementation (P0 a P5)
 
-Conventions takeover pour tout le plan : une branche par palier
-(`hitbox/p0-gel`, `hitbox/p1-sweep`, …), un commit par tache du tableau,
+Conventions takeover pour tout le plan : tout le rework sur l unique branche
+`hitbox/rework` (P0 deja dessus : docstring, goldens, scaffolding xfail),
+un commit par tache du tableau,
 jamais de refactor opportuniste hors scope du palier. Apres chaque palier :
 `uv run pytest -q` (719 + nouveaux), `uv run ruff check .`,
 `uv run mypy src`, mesures section 2 rejouees, mise a jour de la section
