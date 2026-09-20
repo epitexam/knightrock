@@ -1,13 +1,16 @@
 """Behavioral tests for hitbox timing, geometry, lifecycle, and trades."""
 
+import math
+
 import pytest
 from pygame.sprite import Group
 
+from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.attack_state import AttackStateMachine
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
-from tests.unit.helpers import activate, entity_at
+from tests.unit.helpers import activate, entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
@@ -317,3 +320,118 @@ def test_invalid_frame_data_fails_fast() -> None:
     )
     with pytest.raises(ValueError, match="unknown cancels"):
         entity_at(0.0, definition=attack(invalid_cancel))
+
+
+# ── P0.1 golden trajectoires + recensement (hitbox_amelioration.md) ─────────
+#
+# Les trajectoires ci-dessous figent la geometrie predetection, frame par
+# frame d animation (`attack_state.animation_frame`), proprietaire immobile
+# en x=0. Tout changement de ces valeurs en P1+ doit etre explique dans le
+# recettage du rapport (regression vs changement voulu). Constate notable :
+# `dash_attack` (startup=1) n expose JAMAIS de frame startup — le premier
+# sync voit deja ACTIVE (trou du seed, cf. D1) ; la recovery expose encore
+# de la geometrie (comportement legacy, detection verrouillee sur ACTIVE).
+
+
+def _drive(name: str, attacks: dict) -> list[tuple[str, int, tuple | None]]:
+    owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
+    assert owner.combat.start_attack(name), name
+    frames: list[tuple[str, int, tuple | None]] = []
+    while owner.combat.is_attacking:
+        owner.combat.update(1 / 60)
+        owner.combat.sync_attack_box()
+        box = owner.combat.attack_box
+        frames.append(
+            (
+                owner.combat.state.sub_state.value,
+                owner.combat.state.phase_index,
+                None
+                if box is None
+                else (
+                    round(box.centerx, 3),
+                    round(box.centery, 3),
+                    round(box.width, 3),
+                    round(box.height, 3),
+                ),
+            )
+        )
+    return frames
+
+
+def test_golden_dash_attack_trajectory() -> None:
+    frames = _drive("dash_attack", PLAYER_ATTACKS)
+
+    assert len(frames) == 13
+    # Pas de frame startup : startup=1 bascule en ACTIVE avant le 1er sync.
+    assert frames[0][0] == "active"
+    assert all(box == (62.0, 12.0, 70.0, 24.0) for _, _, box in frames if box is not None)
+    assert frames[-1] == ("idle", 0, None)
+
+
+def test_golden_sweeping_arc_trajectory() -> None:
+    frames = _drive("sweeping_arc", PLAYER_ATTACKS)
+
+    assert len(frames) == 17
+    assert [sub for sub, _, _ in frames].count("startup") == 5
+    assert [sub for sub, _, _ in frames].count("active") == 6
+    assert frames[0] == ("startup", 0, (38.333, 17.333, 32.5, 16.333))
+    assert frames[5] == ("active", 0, (50.0, 14.0, 55.0, 28.0))
+    assert frames[10] == ("active", 0, (56.667, 12.333, 67.5, 33.0))
+    assert frames[-1] == ("idle", 0, None)
+
+
+def test_golden_sky_launcher_trajectory() -> None:
+    frames = _drive("sky_launcher", PLAYER_ATTACKS)
+
+    assert len(frames) == 22
+    assert [sub for sub, _, _ in frames].count("startup") == 6
+    assert [sub for sub, _, _ in frames].count("active") == 5
+    assert all(box == (36.0, -8.0, 32.0, 48.0) for _, _, box in frames if box is not None)
+    assert frames[-1] == ("idle", 0, None)
+
+
+def _lethal_jumps(attacks: dict, name: str) -> list[float]:
+    """Deplacements de centre vus par la detection (vers un tick ACTIVE).
+
+    Ne retient que les arrives en ACTIVE : seul ce sous-etat est teste par
+    `_attacker_ready`, donc seuls ces sauts peuvent changer un contact en P1.
+    """
+    owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
+    assert owner.combat.start_attack(name), name
+    jumps: list[float] = []
+    prev: tuple[float, float] | None = None
+    while owner.combat.is_attacking:
+        owner.combat.update(1 / 60)
+        owner.combat.sync_attack_box()
+        box = owner.combat.attack_box
+        cur = None if box is None else (box.centerx, box.centery)
+        if owner.combat.state.is_active and cur is not None and prev is not None:
+            jumps.append(math.hypot(cur[0] - prev[0], cur[1] - prev[1]))
+        prev = cur
+    return jumps
+
+
+def test_census_no_lethal_window_jump_needs_sweep_on_static_owner() -> None:
+    """Recensement P0 : aucun saut >= 4 px en fenetre letale, data actuelle.
+
+    Verifie le 2026-09-20 : `sweeping_arc` ~2.43 px/frame en startup->active,
+    `claw_swipe` 8.94 px en recovery->startup de phase (non letal),
+    `sweeping_arc` 21.4 px en active->recovery (non letal). Consequence : le
+    sweep P1 ne change aucun contact a proprietaire immobile — il ne capture
+    que le mouvement du porteur (lunge/dash/chute), i.e. les tunnelings.
+    Toute edition des donnees qui fait echouer ce test reclame une
+    revalidation du golden simulation (changement voulu, pas regression).
+    """
+    worst: dict[str, float] = {}
+    for set_name, sets in (
+        ("player", PLAYER_ATTACKS),
+        ("goblin", GOBLIN_ATTACKS),
+        ("slime", SLIME_ATTACKS),
+    ):
+        for name in sets:
+            jumps = _lethal_jumps(sets, name)
+            worst[f"{set_name}.{name}"] = max(jumps, default=0.0)
+
+    assert worst["player.sweeping_arc"] == pytest.approx(2.427, abs=0.01)
+    for key, value in worst.items():
+        assert value < 4.0, f"{key}: saut letal {value:.2f} px >= seuil sweep"
