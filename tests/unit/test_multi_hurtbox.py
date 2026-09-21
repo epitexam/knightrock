@@ -13,7 +13,8 @@ import pytest
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.combat.knockback import KnockbackConfig
-from src.core.level.systems.combat_system import CombatSystem, _zone_vulnerable
+from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.contact_system import _zone_vulnerable
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from tests.unit.helpers import AttackerStub, entity_at
 from tests.unit.helpers import make_attack as attack
@@ -141,11 +142,13 @@ def test_first_vulnerable_zone_wins_candidate() -> None:
     assert attacker.combat.start_attack("test")
     attacker.combat.update(1 / 60)
     attacker.combat.sync_attack_box()
+    health_before = target.health
 
     system = CombatSystem()
-    candidates = system._collect_candidates((attacker, target), None)
+    system.process_attacks([attacker, target])
 
-    assert len(candidates) == 1
-    assert candidates[0].zone_index == 0
-    assert candidates[0].zone_mult == pytest.approx(1.2)
+    # Zone 0 (head, mult 1.2) is touched first: its multiplier lands, not
+    # the torso's. Every zone overlaps here, so the order is what decides.
     assert system.metrics.overlaps == 1
+    assert system.metrics.contacts == 1
+    assert health_before - target.health == pytest.approx(10.0 * 1.2)

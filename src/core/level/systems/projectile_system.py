@@ -1,21 +1,22 @@
 """ProjectileSystem: pooled flying hitboxes (audit Phase 5 #3).
 
-Extracted as a world stage like the other ``core/level/systems`` stages. The
-per-tick :class:`~src.physics.entity_grid.EntityGrid` (rebuilt by
-``GameplayLoop``) prunes target candidates around each projectile box
-(O(n . k) instead of projectiles x entities); without a grid the pairs are
-tested exhaustively. Damage goes through
-:class:`~src.combat.hit_resolver.HitResolver` so ranged hits share armor,
+Extracted as a world stage like the other ``core/level/systems`` stages.
+Targets are resolved through the unified
+:class:`~src.core.level.systems.contact_system.ContactSystem` (P4.1), which
+owns the per-tick grid prune (O(n . k) instead of projectiles x entities;
+exhaustive without a grid) and the shared hit resolution: ranged hits go
+through :class:`~src.combat.hit_resolver.HitResolver` so they share armor,
 stagger and finisher rules with melee.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pygame
 
-from src.combat.combatant_protocol import Combatant, DamageResult
-from src.combat.hit_resolver import HitResolver
-from src.core.level.systems.combat_system import GuardEvent
+from src.combat.combatant_protocol import Combatant
+from src.core.level.systems.contact_system import ContactSystem, GuardEvent, OffensiveBox
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import Projectile, ProjectileConfig
@@ -29,6 +30,15 @@ def _reset_projectile(projectile: Projectile) -> None:
     projectile.reset()
 
 
+def _record_target(projectile: Projectile) -> Callable[[Combatant], None]:
+    """Adapter: the unified pipeline records targets, the pool records ids."""
+
+    def record(target: Combatant) -> None:
+        projectile.targets_hit.add(target.id)
+
+    return record
+
+
 class ProjectileSystem:
     """Spawn, integrate and resolve pooled projectiles once per tick."""
 
@@ -37,12 +47,16 @@ class ProjectileSystem:
         groups: SpriteGroups,
         pool: ObjectPool[Projectile] | None = None,
         spatial_hash: SpatialHash | None = None,
+        contact_system: ContactSystem | None = None,
     ) -> None:
         self.groups = groups
         self.pool: ObjectPool[Projectile] = (
             pool if pool is not None else ObjectPool(Projectile, reset=_reset_projectile)
         )
         self.spatial_hash = spatial_hash
+        self.contact_system: ContactSystem = (
+            contact_system if contact_system is not None else ContactSystem()
+        )
         self.guard_events: list[GuardEvent] = []
 
     def spawn(
@@ -94,66 +108,37 @@ class ProjectileSystem:
                 return True
         return False
 
-    def _record_guard_event(self, result: DamageResult, target: Combatant) -> None:
-        if not result.guarded:
-            return
-        kind = "guard"
-        if result.parried:
-            kind = "parry"
-        elif result.guard_broken:
-            kind = "break"
-        self.guard_events.append(GuardEvent(kind, target))
-
     def _resolve_contacts(
         self,
         projectile: Projectile,
         entity_grid: EntityGrid | None,
     ) -> None:
-        targets = self._candidates(projectile, entity_grid)
-        for target in targets:
-            if target.is_dead:
-                continue
-            if target.faction == projectile.faction:
-                continue
-            target_id = target.id
-            if not projectile.can_contact(target_id):
-                continue
-            if not projectile.hitbox.colliderect(target.hurtbox):
-                continue
-            result = HitResolver.resolve(
-                attacker=projectile,
-                target=target,
-                hit=projectile.config.hit,
-            )
-            if not (result.applied or result.guarded):
-                continue
-            self._record_guard_event(result, target)
-            projectile.targets_hit.add(target_id)
-            if not projectile.config.pierce:
-                self._release(projectile)
-                return
+        """Emit the projectile's offensive box into the unified pipeline.
 
-    def _candidates(
-        self,
-        projectile: Projectile,
-        entity_grid: EntityGrid | None,
-    ) -> list[Combatant]:
-        entities = list(self.groups.entity_sprites)
-        if entity_grid is None:
-            return entities
-        by_id = {id(entity): entity for entity in entities}
-        candidates: list[Combatant] = []
-        seen: set[int] = set()
-        for member in entity_grid.near(projectile.hitbox):
-            key = id(member)
-            if key in seen or key not in by_id:
-                continue
-            seen.add(key)
-            candidates.append(by_id[key])
-        # Group order keeps hit resolution deterministic like CombatSystem.
-        order = {id(entity): index for index, entity in enumerate(entities)}
-        candidates.sort(key=lambda entity: order[id(entity)])
-        return candidates
+        Legacy semantics preserved: ``HitResolver`` decides whether the
+        contact lands, the projectile remembers the target, and a
+        single-hit projectile is released (stopping after the first
+        contact) while a piercing one keeps flying.
+        """
+        config = projectile.config
+        box = OffensiveBox(
+            box=projectile.hitbox,
+            swept=(projectile.hitbox,),
+            hit=config.hit,
+            faction=projectile.faction,
+            owner_id=projectile.id,
+            can_contact=projectile.can_contact,
+            kind="projectile",
+            attacker=projectile,
+            stop_after_first=not config.pierce,
+            record_contact=_record_target(projectile),
+        )
+        outcome = self.contact_system.resolve(
+            (box,), self.groups.entity_sprites, entity_grid
+        )
+        self.guard_events.extend(outcome.guard_events)
+        if outcome.metrics.contacts and not config.pierce:
+            self._release(projectile)
 
     def _release(self, projectile: Projectile) -> None:
         projectile.kill()

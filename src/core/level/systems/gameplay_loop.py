@@ -19,6 +19,7 @@ from src.combat.combatant_protocol import Combatant
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.contact_system import ContactSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.notification_system import NotificationSystem
@@ -71,7 +72,13 @@ class GameplayLoop:
         tick_system: TickSystem | None = None,
         projectile_system: ProjectileSystem | None = None,
     ) -> None:
-        self.combat_system: CombatSystem = CombatSystem()
+        # Unified offensive-contact pipeline (P4.1): the melee producer in
+        # CombatSystem emits into this shared engine; its counters and
+        # hit-stop are the ones surfaced for debug tooling.
+        self.contact_system: ContactSystem = ContactSystem()
+        self.combat_system: CombatSystem = CombatSystem(
+            contact_system=self.contact_system
+        )
         self.separation_system: SeparationSystem = SeparationSystem()
         # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
         # pass at the start of process_combat_and_separation (positions are
