@@ -14,6 +14,7 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.frame_data import (
+    FRAME_RATE,
     AttackDefinition,
     HitboxKeyframe,
     HitboxSpec,
@@ -68,10 +69,15 @@ def make_phase(
 
 
 def make_attack(*phases: PhaseDefinition, lock_direction: bool = True) -> AttackDefinition:
-    """Build an attack definition wrapping the given phases."""
+    """Build an attack definition wrapping the given phases.
+
+    The cooldown matches the attack's own duration: the strict loader
+    (``attack_loading``) rejects shorter ones.
+    """
+    total_frames = sum(phase.total_frames for phase in phases)
     return AttackDefinition(
         phases=phases,
-        cooldown=0.0,
+        cooldown=total_frames / FRAME_RATE,
         lock_direction=lock_direction,
     )
 
