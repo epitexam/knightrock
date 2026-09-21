@@ -166,8 +166,12 @@ class GuardController:
         amount: float,
         in_air: bool,
         unblockable: bool = False,
+        height: str = "mid",
+        crouching: bool = False,
     ) -> tuple[str, float, bool]:
         if unblockable:
+            return ("none", 0.0, False)
+        if not GuardSettings.HEIGHT_BLOCK.get((height, crouching), True):
             return ("none", 0.0, False)
         if self.parry_timer > 0:
             self.posture = self.max_posture

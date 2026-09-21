@@ -50,6 +50,7 @@ class Physics:
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05
     DASH_WALL_BOUNCE = 0.5
+    CROUCH_HEIGHT_FACTOR = 0.6
 
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0
@@ -136,6 +137,16 @@ class Guard:
     PARRY_TRAUMA = 0.45
     BREAK_TRAUMA = 0.55
     GUARD_TRAUMA = 0.12
+    HEIGHT_BLOCK = {
+        ("high", False): True,
+        ("high", True): False,
+        ("mid", False): True,
+        ("mid", True): True,
+        ("low", False): False,
+        ("low", True): True,
+        ("overhead", False): True,
+        ("overhead", True): False,
+    }
 
 
 class CameraShake:

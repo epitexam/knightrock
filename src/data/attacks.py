@@ -82,6 +82,7 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             unblockable=bool(raw.get("unblockable", False)),
             priority=int(raw.get("priority", 0)),
             clash=str(raw.get("clash", "trade")),
+            height=str(raw.get("height", "mid")),
             hit_level=str(raw.get("hit_level", "med")),
         )
     except (TypeError, ValueError) as exc:
@@ -239,6 +240,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "unblockable": phase.hit.unblockable,
                     "priority": phase.hit.priority,
                     "clash": phase.hit.clash,
+                    "height": phase.hit.height,
                     "hit_level": phase.hit.hit_level,
                 },
                 "extra_hitboxes": [

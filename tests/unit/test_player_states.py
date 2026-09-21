@@ -165,6 +165,7 @@ def test_can_attack_interrupt_false_when_not_attacking() -> None:
 def test_attack_forbidden_states_contains_expected_members() -> None:
     assert PlayerState.WALL_SLIDE in ATTACK_FORBIDDEN_STATES
     assert PlayerState.GUARD in ATTACK_FORBIDDEN_STATES
+    assert PlayerState.CROUCH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.HURT in ATTACK_FORBIDDEN_STATES
     assert PlayerState.DASH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.STAGGER in ATTACK_FORBIDDEN_STATES
@@ -204,11 +205,12 @@ def test_configure_state_machine_registers_interrupts() -> None:
     entity = _make_entity(dash=_dash_stub(), guard=_guard_stub())
     configure_player_state_machine(entity)
     sm = entity.state_machine
-    assert len(sm._interrupts) == 3
+    assert len(sm._interrupts) == 4
     targets = {t for _, t, _ in sm._interrupts}
     assert PlayerState.DASH.value in targets
     assert PlayerState.GUARD.value in targets
     assert PlayerState.ATTACK.value in targets
+    assert PlayerState.CROUCH.value in targets
 
 
 # --- Dash cancel window ---

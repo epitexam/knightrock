@@ -195,6 +195,7 @@ class Combatant(Protocol):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
         unblockable: bool = False,
+        height: str = "mid",
     ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
@@ -210,6 +211,8 @@ class Combatant(Protocol):
             Whether the hit may interrupt the current action.
         unblockable : bool
             Whether the hit bypasses guard and parry.
+        height : str
+            Guard height checked against the crouch state.
 
         Returns
         -------

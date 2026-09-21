@@ -796,6 +796,7 @@ class Entity(Sprite):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
         unblockable: bool = False,
+        height: str = "mid",
     ) -> DamageResult:
         """Public entry point for applying damage, knockback, and hit reactions.
 
@@ -810,6 +811,8 @@ class Entity(Sprite):
         interrupt : bool
             Whether to interrupt current actions.
         unblockable : bool
+            Accepted for protocol compatibility; base entity has no guard.
+        height : str
             Accepted for protocol compatibility; base entity has no guard.
 
         Returns

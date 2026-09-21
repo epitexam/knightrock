@@ -147,6 +147,7 @@ class Player(ControllerView, Entity):
         self.left_held = False
         self.right_held = False
         self.guard_held = False
+        self.down_held = False
 
         self.input_manager = input_manager
         self.input_handler = PlayerInputHandler(self)
@@ -254,6 +255,7 @@ class Player(ControllerView, Entity):
         self.left_held = False
         self.right_held = False
         self.guard_held = False
+        self.down_held = False
 
     def respawn(self) -> None:
         self.reset_position()
@@ -270,10 +272,22 @@ class Player(ControllerView, Entity):
         amount: float,
         knockback: KnockbackConfig | None,
         source_center_x: float | None,
+        height: str = "mid",
     ) -> DamageResult:
         _kb = knockback if knockback is not None else NULL_KNOCKBACK
         in_air = not self.on_surface["floor"]
-        outcome, chip, was_parry = self.guard.take_hit(amount, in_air)
+        crouching = self.state_machine.current_state_name == PlayerState.CROUCH
+        outcome, chip, was_parry = self.guard.take_hit(
+            amount, in_air, height=height, crouching=crouching
+        )
+        if outcome == "none":
+            result = super().receive_damage(amount, source_center_x, knockback)
+            if hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
+                self.combat.hurt_timer = min(
+                    self.combat.hurt_timer,
+                    CombatSettings.PLAYER_HURT_DURATION,
+                )
+            return result
         if outcome == "parry":
             self.parries_given += 1
             self._reaction.note_guard_push(_kb, source_center_x, parried=True)
@@ -303,16 +317,15 @@ class Player(ControllerView, Entity):
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
         unblockable: bool = False,
+        height: str = "mid",
     ) -> DamageResult:
         if not self._can_receive_damage():
             return DamageResult()
 
         if not unblockable:
-            # Perfect Dash Parry: if dashing within parry window, auto-parry
             if self.state_machine.current_state_name == "dash":
                 dash_elapsed = self.dash.duration - self.dash.duration_timer
                 if dash_elapsed <= Physics.DASH_PARRY_WINDOW:
-                    # Perfect parry: no damage, restore posture, grant riposte
                     self.guard.posture = self.guard.max_posture
                     self.guard.riposte_timer = GuardSettings.RIPOSTE_WINDOW
                     self.parries_given += 1
@@ -323,7 +336,7 @@ class Player(ControllerView, Entity):
                     return DamageResult(guarded=True, parried=True)
 
             if self.is_guarding and self._faces_source(source_center_x):
-                return self._apply_guard_reaction(amount, knockback, source_center_x)
+                return self._apply_guard_reaction(amount, knockback, source_center_x, height)
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 

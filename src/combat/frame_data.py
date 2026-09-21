@@ -90,6 +90,9 @@ class HitProperties:
     clash : str
         Equal-priority outcome: ``"trade"`` (both connect) or
         ``"clash"`` (both attacks cancel with a clash event).
+    height : str
+        Guard height: ``"high"``, ``"mid"``, ``"low"`` or ``"overhead"``.
+        Checked against ``Guard.HEIGHT_BLOCK`` with the target crouching.
     hit_level : str
         Reserved label for the future crouch-height pass (``"med"`` today).
     """
@@ -105,6 +108,7 @@ class HitProperties:
     unblockable: bool = False
     priority: int = 0
     clash: str = "trade"
+    height: str = "mid"
     hit_level: str = "med"
 
     def __post_init__(self) -> None:
@@ -118,6 +122,8 @@ class HitProperties:
             raise ValueError("Hit priority cannot be negative")
         if self.clash not in ("trade", "clash"):
             raise ValueError("Hit clash must be 'trade' or 'clash'")
+        if self.height not in ("high", "mid", "low", "overhead"):
+            raise ValueError("Hit height must be 'high', 'mid', 'low' or 'overhead'")
         if self.hit_level not in ("med",):
             raise ValueError("Hit level must be 'med'")
 

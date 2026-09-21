@@ -39,6 +39,7 @@ def make_phase(
     unblockable: bool = False,
     priority: int = 0,
     clash: str = "trade",
+    height: str = "mid",
 ) -> PhaseDefinition:
     """Build a single phase definition with sensible defaults."""
     return PhaseDefinition(
@@ -60,6 +61,7 @@ def make_phase(
             unblockable=unblockable,
             priority=priority,
             clash=clash,
+            height=height,
         ),
         reset_targets=reset_targets,
     )
