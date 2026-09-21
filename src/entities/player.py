@@ -302,26 +302,28 @@ class Player(ControllerView, Entity):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
+        unblockable: bool = False,
     ) -> DamageResult:
         if not self._can_receive_damage():
             return DamageResult()
 
-        # Perfect Dash Parry: if dashing within parry window, auto-parry
-        if self.state_machine.current_state_name == "dash":
-            dash_elapsed = self.dash.duration - self.dash.duration_timer
-            if dash_elapsed <= Physics.DASH_PARRY_WINDOW:
-                # Perfect parry: no damage, restore posture, grant riposte
-                self.guard.posture = self.guard.max_posture
-                self.guard.riposte_timer = GuardSettings.RIPOSTE_WINDOW
-                self.parries_given += 1
-                self._reaction.note_guard_push(
-                    knockback or NULL_KNOCKBACK, source_center_x, parried=True
-                )
-                self.flash_timer = HitFlash.DURATION
-                return DamageResult(guarded=True, parried=True)
+        if not unblockable:
+            # Perfect Dash Parry: if dashing within parry window, auto-parry
+            if self.state_machine.current_state_name == "dash":
+                dash_elapsed = self.dash.duration - self.dash.duration_timer
+                if dash_elapsed <= Physics.DASH_PARRY_WINDOW:
+                    # Perfect parry: no damage, restore posture, grant riposte
+                    self.guard.posture = self.guard.max_posture
+                    self.guard.riposte_timer = GuardSettings.RIPOSTE_WINDOW
+                    self.parries_given += 1
+                    self._reaction.note_guard_push(
+                        knockback or NULL_KNOCKBACK, source_center_x, parried=True
+                    )
+                    self.flash_timer = HitFlash.DURATION
+                    return DamageResult(guarded=True, parried=True)
 
-        if self.is_guarding and self._faces_source(source_center_x):
-            return self._apply_guard_reaction(amount, knockback, source_center_x)
+            if self.is_guarding and self._faces_source(source_center_x):
+                return self._apply_guard_reaction(amount, knockback, source_center_x)
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 

@@ -83,6 +83,15 @@ class HitProperties:
         If True, this hit may connect during the OTG protection window
         granted on landing from a juggle (Phase 5 #4). Ground hits
         otherwise bounce off a recently knocked-down victim.
+    unblockable : bool
+        If True, the hit bypasses guard and parry (chip/posture unchanged).
+    priority : int
+        Hit-vs-hit rank for simultaneous box overlaps (higher wins).
+    clash : str
+        Equal-priority outcome: ``"trade"`` (both connect) or
+        ``"clash"`` (both attacks cancel with a clash event).
+    hit_level : str
+        Reserved label for the future crouch-height pass (``"med"`` today).
     """
 
     damage: float
@@ -93,6 +102,10 @@ class HitProperties:
     is_finisher: bool = False
     juggle_gravity_mult: float = 1.0
     otg_allowed: bool = False
+    unblockable: bool = False
+    priority: int = 0
+    clash: str = "trade"
+    hit_level: str = "med"
 
     def __post_init__(self) -> None:
         if self.damage < 0:
@@ -101,6 +114,12 @@ class HitProperties:
             raise ValueError("Hit stagger cannot be negative")
         if self.juggle_gravity_mult <= 0:
             raise ValueError("Juggle gravity multiplier must be strictly positive")
+        if self.priority < 0:
+            raise ValueError("Hit priority cannot be negative")
+        if self.clash not in ("trade", "clash"):
+            raise ValueError("Hit clash must be 'trade' or 'clash'")
+        if self.hit_level not in ("med",):
+            raise ValueError("Hit level must be 'med'")
 
 
 @dataclass(frozen=True)

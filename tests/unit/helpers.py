@@ -36,6 +36,9 @@ def make_phase(
     keyframes: tuple[tuple[int, tuple[float, float], tuple[float, float]], ...] = (),
     damage: int = 10,
     reset_targets: bool = True,
+    unblockable: bool = False,
+    priority: int = 0,
+    clash: str = "trade",
 ) -> PhaseDefinition:
     """Build a single phase definition with sensible defaults."""
     return PhaseDefinition(
@@ -54,6 +57,9 @@ def make_phase(
         hit=HitProperties(
             damage=damage,
             knockback=KnockbackConfig(power=(0.0, 0.0)),
+            unblockable=unblockable,
+            priority=priority,
+            clash=clash,
         ),
         reset_targets=reset_targets,
     )
@@ -141,6 +147,7 @@ class _ActiveAttackerCombat(SimpleNamespace):
             can_contact=lambda target_id: target_id not in targets_hit,
             record_contact=targets_hit.add,
             capture_attack_origin=lambda: None,
+            cancel_attack=lambda: None,
         )
         self._air_count = 0
 

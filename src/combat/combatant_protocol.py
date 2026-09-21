@@ -110,6 +110,8 @@ class CombatPort(AttackComboPort, Protocol):
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
+    def cancel_attack(self) -> None: ...
+
     def reset_hurt_state(self) -> None: ...
 
     def sync_attack_box(self) -> None: ...
@@ -192,6 +194,7 @@ class Combatant(Protocol):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
+        unblockable: bool = False,
     ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
@@ -205,6 +208,8 @@ class Combatant(Protocol):
             Knockback impulse.
         interrupt : bool
             Whether the hit may interrupt the current action.
+        unblockable : bool
+            Whether the hit bypasses guard and parry.
 
         Returns
         -------

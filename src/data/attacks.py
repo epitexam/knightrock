@@ -79,6 +79,10 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             is_finisher=bool(raw.get("is_finisher", False)),
             juggle_gravity_mult=float(raw.get("juggle_gravity_mult", 1.0)),
             otg_allowed=bool(raw.get("otg_allowed", False)),
+            unblockable=bool(raw.get("unblockable", False)),
+            priority=int(raw.get("priority", 0)),
+            clash=str(raw.get("clash", "trade")),
+            hit_level=str(raw.get("hit_level", "med")),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -232,6 +236,10 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "is_finisher": phase.hit.is_finisher,
                     "juggle_gravity_mult": phase.hit.juggle_gravity_mult,
                     "otg_allowed": phase.hit.otg_allowed,
+                    "unblockable": phase.hit.unblockable,
+                    "priority": phase.hit.priority,
+                    "clash": phase.hit.clash,
+                    "hit_level": phase.hit.hit_level,
                 },
                 "extra_hitboxes": [
                     # P2: serialize each box's own keyframes (absent = static).

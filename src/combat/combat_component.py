@@ -333,6 +333,11 @@ class CombatComponent:
         self.hitbox.clear()
         self.charging.cancel()
 
+    def cancel_attack(self) -> None:
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+
     def save_state(self) -> CombatSnapshot:
         """Capture the full combat state for a rollback frame.
 
@@ -494,6 +499,9 @@ class NullCombatComponent:
         return False
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
+        """No-op."""
+
+    def cancel_attack(self) -> None:
         """No-op."""
 
     def update(self, delta_time: float) -> None:

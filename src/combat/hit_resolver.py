@@ -177,7 +177,12 @@ class HitResolver:
 
         armor_absorbs_reaction = target.has_super_armor and not hit.super_armor_break
         applied_knockback = None if armor_absorbs_reaction else effective_knockback
-        result = target.receive_damage(final_damage, source_x, applied_knockback)
+        result = target.receive_damage(
+            final_damage,
+            source_x,
+            applied_knockback,
+            unblockable=hit.unblockable,
+        )
 
         # Guard, invincibility, death, or any future immunity is authoritative.
         if not result.applied:

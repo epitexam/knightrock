@@ -795,6 +795,7 @@ class Entity(Sprite):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
+        unblockable: bool = False,
     ) -> DamageResult:
         """Public entry point for applying damage, knockback, and hit reactions.
 
@@ -808,6 +809,8 @@ class Entity(Sprite):
             Configuration for the push effect.
         interrupt : bool
             Whether to interrupt current actions.
+        unblockable : bool
+            Accepted for protocol compatibility; base entity has no guard.
 
         Returns
         -------

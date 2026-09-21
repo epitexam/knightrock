@@ -64,9 +64,18 @@ class GuardEvent:
     target: Combatant
 
 
+@dataclass(frozen=True)
+class _ReadyAttacker:
+    attacker: Combatant
+    combat: CombatPort
+    attack_boxes: tuple[pygame.FRect, ...]
+    swept_boxes: tuple[pygame.FRect, ...]
+    phase: PhaseDefinition
+
+
 def _attacker_ready(
     attacker: Combatant,
-) -> tuple[CombatPort, tuple[pygame.FRect, ...], tuple[pygame.FRect, ...], PhaseDefinition] | None:
+) -> _ReadyAttacker | None:
     """Attacker eligibility: alive, active phase, live and swept boxes."""
     if attacker.is_dead:
         return None
@@ -80,7 +89,7 @@ def _attacker_ready(
     # as the live boxes; a missing origin (spawn/resize) degenerates to cur.
     if len(swept_boxes) != len(attack_boxes):
         swept_boxes = attack_boxes
-    return combat, attack_boxes, swept_boxes, phase
+    return _ReadyAttacker(attacker, combat, attack_boxes, swept_boxes, phase)
 
 
 def _nearby_targets(
@@ -187,22 +196,77 @@ class CombatSystem:
             return
 
         combatants = tuple(combat_sprites)
-        candidates = self._collect_candidates(combatants, entity_grid)
+        ready = self._collect_ready(combatants)
+        losers, clashed = self._resolve_hit_vs_hit(ready)
+        candidates = self._collect_candidates(combatants, entity_grid, losers, clashed)
         self._resolve_candidates(candidates)
+
+    def _collect_ready(self, combatants: tuple[Combatant, ...]) -> list[_ReadyAttacker]:
+        return [
+            entry
+            for attacker in combatants
+            if (entry := _attacker_ready(attacker)) is not None
+        ]
+
+    def _resolve_hit_vs_hit(
+        self, ready: list[_ReadyAttacker]
+    ) -> tuple[set[int], set[int]]:
+        losers: set[int] = set()
+        clashed: set[int] = set()
+        for index_a in range(len(ready)):
+            for index_b in range(index_a + 1, len(ready)):
+                entry_a = ready[index_a]
+                entry_b = ready[index_b]
+                if entry_a.attacker.faction == entry_b.attacker.faction:
+                    continue
+                if id(entry_a.attacker) in clashed or id(entry_b.attacker) in clashed:
+                    continue
+                if not any(
+                    box_a.colliderect(box_b)
+                    for box_a in entry_a.swept_boxes
+                    for box_b in entry_b.swept_boxes
+                ):
+                    continue
+                self.metrics.overlaps += 1
+                pa = entry_a.phase.hit.priority
+                pb = entry_b.phase.hit.priority
+                if pa == pb:
+                    if entry_a.phase.hit.clash != 'clash':
+                        continue
+                    entry_a.attacker.combat.cancel_attack()
+                    entry_b.attacker.combat.cancel_attack()
+                    clashed.add(id(entry_a.attacker))
+                    clashed.add(id(entry_b.attacker))
+                    self.guard_events.append(GuardEvent('clash', entry_a.attacker))
+                    self.guard_events.append(GuardEvent('clash', entry_b.attacker))
+                    self.hit_stop_timer = max(
+                        self.hit_stop_timer, CombatSettings.HITSTOP_BASE
+                    )
+                elif pa > pb:
+                    entry_b.attacker.combat.cancel_attack()
+                    losers.add(id(entry_b.attacker))
+                else:
+                    entry_a.attacker.combat.cancel_attack()
+                    losers.add(id(entry_a.attacker))
+        return losers, clashed
 
     def _collect_candidates(
         self,
         combatants: tuple[Combatant, ...],
-        entity_grid: EntityGrid | None = None,
+        entity_grid: EntityGrid | None,
+        losers: set[int] | frozenset[int] = frozenset(),
+        clashed: set[int] | frozenset[int] = frozenset(),
     ) -> tuple[HitCandidate, ...]:
         candidates: list[HitCandidate] = []
         order = {id(combatant): index for index, combatant in enumerate(combatants)}
 
         for attacker in combatants:
+            if id(attacker) in losers or id(attacker) in clashed:
+                continue
             ready = _attacker_ready(attacker)
             if ready is None:
                 continue
-            combat, _attack_boxes, swept_boxes, phase = ready
+            combat, swept_boxes, phase = ready.combat, ready.swept_boxes, ready.phase
             # D2: grid prune around the swept boxes (whole tick motion).
             targets = _nearby_targets(swept_boxes, combatants, order, entity_grid)
 

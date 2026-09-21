@@ -161,7 +161,14 @@ class GuardController:
                 self.max_posture,
             )
 
-    def take_hit(self, amount: float, in_air: bool) -> tuple[str, float, bool]:
+    def take_hit(
+        self,
+        amount: float,
+        in_air: bool,
+        unblockable: bool = False,
+    ) -> tuple[str, float, bool]:
+        if unblockable:
+            return ("none", 0.0, False)
         if self.parry_timer > 0:
             self.posture = self.max_posture
             self.riposte_timer = GuardSettings.RIPOSTE_WINDOW
