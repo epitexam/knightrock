@@ -12,6 +12,7 @@ from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
 from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Locomotion
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.entity import Entity
 from src.physics import apply_velocity_friction
@@ -57,6 +58,8 @@ class Enemy(Entity):
         Reference to the player entity for AI targeting.
     chase_speed : float
         Movement speed when chasing the player.
+    patrol_speed : float
+        Movement speed while patrolling (slow cruise).
     vision_range : float
         Distance at which the enemy can detect the player.
     attack_range : float
@@ -83,6 +86,7 @@ class Enemy(Entity):
     player: PlayerReference | None
     enemy_type: str | None
     chase_speed: float
+    patrol_speed: float
     vision_range: float
     attack_range: float
     attack_name: str | None
@@ -152,13 +156,18 @@ class Enemy(Entity):
         self.player = player_reference
         self.enemy_type = enemy_type
         self.chase_speed = config.chase_speed
+        self.patrol_speed = (
+            config.patrol_speed
+            if config.patrol_speed is not None
+            else config.chase_speed * Locomotion.ENEMY_PATROL_SPEED_MULT
+        )
         self.vision_range = config.vision_range
         self.attack_range = config.attack_range
         self.attack_name = config.attack_name
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
 
-        self.speed = self.chase_speed
+        self.speed = self.patrol_speed
         self.floor_control = CombatSettings.ENEMY_FLOOR_CONTROL
         self.air_control = CombatSettings.ENEMY_AIR_CONTROL
 

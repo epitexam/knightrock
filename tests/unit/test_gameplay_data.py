@@ -240,7 +240,34 @@ def test_read_enemies_file_with_attack_set_reference(tmp_path: Path) -> None:
     assert dict(config.attacks) == attack_sets["goblin"]
     assert config.attack_name == "claw_swipe"
     assert config.chase_speed == 120.0  # dataclass default
+    assert config.patrol_speed is None  # derived from chase_speed at runtime
     assert config.has_ai is True  # dataclass default
+
+
+def test_read_enemies_file_explicit_patrol_speed(tmp_path: Path) -> None:
+    doc = {
+        "version": 1,
+        "enemies": {
+            "goblin": {
+                "size": [36.0, 48.0],
+                "color": [60, 130, 60],
+                "health": 60.0,
+                "attacks": "goblin",
+                "chase_speed": 100.0,
+                "patrol_speed": 40.0,
+            }
+        },
+    }
+    path = _write(tmp_path / "enemies.json", doc)
+
+    enemies = read_enemies_file(path, {"goblin": dict(GOBLIN_ATTACKS)})
+
+    assert enemies["goblin"].patrol_speed == 40.0
+    assert enemy_config_to_dict(enemies["goblin"])["patrol_speed"] == 40.0
+
+
+def test_enemy_config_to_dict_omits_default_patrol_speed() -> None:
+    assert "patrol_speed" not in enemy_config_to_dict(GOBLIN_CONFIG)
 
 
 def test_read_enemies_file_unknown_attack_set_raises(tmp_path: Path) -> None:

@@ -20,6 +20,8 @@ class EnemyConfig:
     # P2 multi-hurtbox: None = legacy fallback on ``hurtbox_inflate``.
     hurtbox_zones: Sequence[HurtboxZoneDef] | None = None
     chase_speed: float = 120.0
+    # Patrol cruise; None derives Locomotion.ENEMY_PATROL_SPEED_MULT * chase_speed.
+    patrol_speed: float | None = None
     vision_range: float = 300.0
     attack_range: float = 60.0
     patrol_interval: float = 2.0

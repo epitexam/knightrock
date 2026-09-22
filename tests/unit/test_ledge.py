@@ -165,6 +165,8 @@ def _patrol_stub(*, at_ledge: bool) -> SimpleNamespace:
         direction=1,
         patrol_interval=2.0,
         patrol_direction=1,
+        patrol_speed=60.0,
+        speed=120.0,
         facing_right=True,
         move_axis=0.0,
         on_surface={"floor": True},
@@ -173,6 +175,24 @@ def _patrol_stub(*, at_ledge: bool) -> SimpleNamespace:
         apply_horizontal_movement=Mock(),
         state_machine=SimpleNamespace(change_state=Mock()),
     )
+
+
+def test_patrol_enter_picks_up_patrol_speed() -> None:
+    entity = _patrol_stub(at_ledge=False)
+    entity.speed = 120.0
+    state = EnemyPatrolState(entity)
+    state.enter()
+    assert entity.speed == 60.0
+
+
+def test_chase_enter_picks_up_chase_speed() -> None:
+    entity = _chase_stub(at_ledge=False)
+    entity.chase_speed = 120.0
+    entity.speed = 60.0
+    entity.face_player = Mock()
+    state = EnemyChaseState(entity)
+    state.enter()
+    assert entity.speed == 120.0
 
 
 def test_patrol_steps_into_ledge_state_at_the_edge() -> None:
@@ -208,6 +228,9 @@ def _chase_stub(*, at_ledge: bool) -> SimpleNamespace:
         facing_right=True,
         on_surface={"floor": True},
         combat=SimpleNamespace(),
+        chase_speed=120.0,
+        speed=120.0,
+        face_player=Mock(),
         is_player_in_range=Mock(return_value=False),
         can_see_player=Mock(return_value=True),
         is_at_ledge=Mock(return_value=at_ledge),

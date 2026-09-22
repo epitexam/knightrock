@@ -222,6 +222,8 @@ class Player(ControllerView, Entity):
             return "hit"
         mapping: dict[str, str] = {
             PlayerState.IDLE: "idle",
+            PlayerState.WALK_SLOW: "walk_slow",
+            PlayerState.WALK: "walk",
             PlayerState.RUN: "run",
             PlayerState.DASH: "dash",
             PlayerState.JUMP: "jump",

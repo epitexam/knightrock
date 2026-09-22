@@ -137,6 +137,8 @@ class TestFactoryPattern:
 
         config = ENEMY_CONFIGS["goblin"]
         assert enemy.chase_speed == config.chase_speed
+        assert enemy.patrol_speed == config.chase_speed * 0.5  # derived default
+        assert enemy.speed == enemy.patrol_speed  # initial cruise
         assert enemy.vision_range == config.vision_range
         assert enemy.attack_range == config.attack_range
         assert enemy.attack_name == config.attack_name
@@ -155,6 +157,7 @@ class TestFactoryPattern:
             assert hasattr(config, "health")
             assert hasattr(config, "attacks")
             assert hasattr(config, "chase_speed")
+            assert hasattr(config, "patrol_speed")
             assert hasattr(config, "vision_range")
 
 

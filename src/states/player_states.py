@@ -8,6 +8,40 @@ from src.states.reaction_states import HurtState, KnockbackState, StaggerState
 from src.states.state_machine import State, StateMachine
 
 
+def _classify_ratio(ratio: float) -> str:
+    """Classify from idle/reaction states using pure ratio thresholds."""
+    if ratio >= Locomotion.WALK_PROMOTE:
+        return PlayerState.RUN.value
+    if ratio >= Locomotion.WALK_SLOW_PROMOTE:
+        return PlayerState.WALK.value
+    return PlayerState.WALK_SLOW.value
+
+
+def resolve_locomotion_state(entity: Any) -> str:
+    """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis."""
+    vx = abs(float(entity.velocity.x))
+    base = float(getattr(entity, "speed", 0.0) or 0.0) or Physics.PLAYER_SPEED
+    if base <= 0.0:
+        return PlayerState.WALK_SLOW.value
+    ratio = vx / base
+    current = str(getattr(getattr(entity, "state_machine", None), "current_state_name", "") or "")
+    if current in (PlayerState.RUN.value, PlayerState.RUN):
+        if ratio < Locomotion.WALK_DEMOTE:
+            return PlayerState.WALK.value
+        return PlayerState.RUN.value
+    if current in (PlayerState.WALK.value, PlayerState.WALK):
+        if ratio >= Locomotion.WALK_PROMOTE:
+            return PlayerState.RUN.value
+        if ratio < Locomotion.WALK_SLOW_DEMOTE:
+            return PlayerState.WALK_SLOW.value
+        return PlayerState.WALK.value
+    if current in (PlayerState.WALK_SLOW.value, PlayerState.WALK_SLOW):
+        if ratio >= Locomotion.WALK_SLOW_PROMOTE:
+            return PlayerState.WALK.value
+        return PlayerState.WALK_SLOW.value
+    return _classify_ratio(ratio)
+
+
 def player_ground_return(entity: Any) -> str:
     """Return the landing state name for the player.
 
@@ -15,7 +49,9 @@ def player_ground_return(entity: Any) -> str:
     place (archived duplication from ARCH-05).
     """
     if entity.on_surface["floor"]:
-        return "run" if (entity.left_held or entity.right_held) else "idle"
+        if entity.left_held or entity.right_held:
+            return resolve_locomotion_state(entity)
+        return "idle"
     return "fall"
 
 
@@ -46,12 +82,12 @@ class PlayerIdleState(PlayerBaseState):
         if not self.entity.on_surface["floor"]:
             return "fall"
         if self.entity.left_held or self.entity.right_held:
-            return "run"
+            return resolve_locomotion_state(self.entity)
         return None
 
 
-class PlayerRunState(PlayerBaseState):
-    """Represent the PlayerRun state."""
+class PlayerGroundLocomotionState(PlayerBaseState):
+    """Shared update for walk_slow / walk / run on the ground."""
 
     def update(self, delta_time: float) -> str | None:
         """Update the current state."""
@@ -66,7 +102,19 @@ class PlayerRunState(PlayerBaseState):
             and abs(self.entity.velocity.x) < Locomotion.RUN_STOP_SPEED_PX_S
         ):
             return "idle"
-        return None
+        return resolve_locomotion_state(self.entity)
+
+
+class PlayerRunState(PlayerGroundLocomotionState):
+    """Represent the PlayerRun state."""
+
+
+class PlayerWalkState(PlayerGroundLocomotionState):
+    """Mid-speed ground tier (analog input / combat movement multiplier)."""
+
+
+class PlayerWalkSlowState(PlayerGroundLocomotionState):
+    """Slow ground tier (Guard MOVE_MULT, partial analog stick)."""
 
 
 class PlayerJumpState(PlayerBaseState):
@@ -392,6 +440,8 @@ class PlayerState(str, Enum):
     """Enumeration of player states for type safety and refactoring reliability."""
 
     IDLE = "idle"
+    WALK_SLOW = "walk_slow"
+    WALK = "walk"
     RUN = "run"
     JUMP = "jump"
     FALL = "fall"
@@ -503,15 +553,19 @@ def _can_crouch(player: Any) -> bool:
         return False
     return player.state_machine.current_state_name in (
         PlayerState.IDLE,
+        PlayerState.WALK_SLOW,
+        PlayerState.WALK,
         PlayerState.RUN,
     )
 
 
 def configure_player_state_machine(player: Any) -> None:
-    """Build the 14-state player machine (moved from Player, audit F1.1)."""
+    """Build the 16-state player machine (moved from Player, audit F1.1)."""
     sm = StateMachine(player)
     player.state_machine = sm
     sm.add_state(PlayerState.IDLE, PlayerIdleState(player))
+    sm.add_state(PlayerState.WALK_SLOW, PlayerWalkSlowState(player))
+    sm.add_state(PlayerState.WALK, PlayerWalkState(player))
     sm.add_state(PlayerState.RUN, PlayerRunState(player))
     sm.add_state(PlayerState.JUMP, PlayerJumpState(player))
     sm.add_state(PlayerState.FALL, PlayerFallState(player))

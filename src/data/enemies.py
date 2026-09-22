@@ -99,6 +99,9 @@ def read_enemy_config(
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
             hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
             chase_speed=float(raw.get("chase_speed", 120.0)),
+            patrol_speed=(
+                float(raw["patrol_speed"]) if raw.get("patrol_speed") is not None else None
+            ),
             vision_range=float(raw.get("vision_range", 300.0)),
             attack_range=float(raw.get("attack_range", 60.0)),
             patrol_interval=float(raw.get("patrol_interval", 2.0)),
@@ -166,6 +169,7 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
             else {}
         ),
         "chase_speed": config.chase_speed,
+        **({"patrol_speed": config.patrol_speed} if config.patrol_speed is not None else {}),
         "vision_range": config.vision_range,
         "attack_range": config.attack_range,
         "patrol_interval": config.patrol_interval,

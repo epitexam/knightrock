@@ -282,7 +282,7 @@ def test_guard_state_moves_slowly_and_releases() -> None:
     assert entity.move_axis == pytest.approx(1.0)
 
     entity.guard_held = False
-    assert state.update(1 / 60) == "run"
+    assert state.update(1 / 60) == "walk_slow"
 
 
 def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:

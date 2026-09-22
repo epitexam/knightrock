@@ -339,13 +339,23 @@ class GameFeel:
 
 
 class Locomotion:
-    """Movement damping and stop thresholds."""
+    """Movement damping, stop thresholds and ground speed tiers."""
 
     TURN_DEADZONE = 0.1
     STOP_SPEED_PX_S = 0.5
     RUN_STOP_SPEED_PX_S = 0.1
     WALL_JUMP_DAMPING = 10.0
     VELOCITY_EPSILON = 0.01
+    # Ground tiers as |velocity.x| / entity.speed, with hysteresis so the
+    # state does not flicker while acceleration crosses a boundary.
+    # Demote below *_DEMOTE, promote at/above *_PROMOTE (PROMOTE > DEMOTE).
+    WALK_SLOW_DEMOTE = 0.35  # walk -> walk_slow (covers Guard.MOVE_MULT)
+    WALK_SLOW_PROMOTE = 0.50  # walk_slow -> walk
+    WALK_DEMOTE = 0.65  # run -> walk
+    WALK_PROMOTE = 0.80  # walk -> run
+    # Enemy patrol cruise as a fraction of chase_speed when config omits
+    # an explicit patrol_speed.
+    ENEMY_PATROL_SPEED_MULT = 0.5
 
 
 class AI:
@@ -372,6 +382,9 @@ class Animation:
 
     FRAME_DURATION = 0.10
     RUN_FRAME_DURATION = 0.08
+    # Walk tiers reuse the run sprite-sheet with a slower frame clock.
+    WALK_FRAME_DURATION = 0.12
+    WALK_SLOW_FRAME_DURATION = 0.18
     ATTACK_FRAME_DURATION = 0.07
     HIT_FRAME_DURATION = 0.08
     HAZARD_FRAME_DURATION = 0.12
