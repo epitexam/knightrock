@@ -774,6 +774,38 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls == {"input": 3, "level": 2}
 
 
+def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F7 while frozen runs exactly one tick, then holds again."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    monkeypatch.setenv("DEBUG", "1")
+    calls = {"level": 0}
+    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None))
+    level = SimpleNamespace(
+        update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
+        completed=False,
+        deaths=0,
+    )
+    scene = GameplayScene(game, level_id=0, level=level)
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))  # freeze
+    scene.update(1 / 60)
+    assert calls["level"] == 0
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F7))  # step
+    scene.update(1 / 60)
+    assert calls["level"] == 1
+
+    scene.update(1 / 60)  # pending step consumed: hold again
+    assert calls["level"] == 1
+
+    # F7 ignored while unfrozen (step is freeze-only).
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))  # unfreeze
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F7))
+    scene.update(1 / 60)
+    assert calls["level"] == 2  # normal unfrozen update, not a double-step
+
+
 def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: Camera) -> None:
     """The FROZEN tag reads red on black while the sim is held."""
     from src.application.scenes.gameplay_scene import GameplayScene

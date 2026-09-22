@@ -5,7 +5,7 @@ import pygame
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.player_ui import PlayerUI
-from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.world_ui import WorldUI
 
 
@@ -56,19 +56,55 @@ class UIManager:
 
         return self.renderer.draw_panel(x, y, lines, title="SCENE", layout=layout)
 
-    def draw_help_panel(self, x: int, y: int, layout: PanelLayout | None = None) -> int:
+    def draw_help_panel(
+        self, x: int, y: int, layout: PanelLayout | None = None, layers: dict[str, bool] | None = None
+    ) -> int:
         """List the debug test-bench keys and overlay toggles."""
+        states = layers or {}
+
+        def mark(key: str) -> str:
+            if key not in states:
+                return ""
+            return " [ON]" if states[key] else " [OFF]"
+
         lines = [
             "1-4  test attacks",
             "V/B  firebolt / pierce",
             "C    juggle dummy",
             "G/P/T spawn foe",
-            "F1-4 boxes/labels/",
-            "     veloc./statics",
-            "F5   panels on/off",
+            f"F1   boxes{mark('boxes')}",
+            f"F2   labels{mark('labels')}",
+            f"F3   velocities{mark('velocities')}",
+            f"F4   statics{mark('statics')}",
+            f"F5   panels{mark('panels')}",
             "F6   freeze (debug)",
+            "F7   step (frozen)",
         ]
         return self.renderer.draw_panel(x, y, lines, title="DEBUG KEYS", layout=layout)
+
+    def draw_legend_panel(self, x: int, y: int, layout: PanelLayout | None = None) -> int:
+        """Persistent color legend for the world-space combat overlay."""
+        from src.ui.world_ui import PHASE_OUTLINE_COLORS
+
+        lines = [
+            "blue/red  pushbox (player/foe)",
+            "green     hurtbox / zones",
+            "orange    attack active",
+            "gold      attack startup",
+            "grey      attack recovery",
+            "dashed    sweep ghost",
+            "P2/UBL    priority/unblockable",
+            "cyan      OTG guard",
+            "purple    juggle gravity",
+        ]
+        line_colors = {
+            2: PHASE_OUTLINE_COLORS["active"],
+            3: PHASE_OUTLINE_COLORS["startup"],
+            4: PHASE_OUTLINE_COLORS["recovery"],
+        }
+        return self.renderer.draw_panel(
+            x, y, lines, title="LEGEND", layout=layout, text_color=TEXT_MUTED, line_colors=line_colors
+        )
 
     def draw_performance_panel(
         self,

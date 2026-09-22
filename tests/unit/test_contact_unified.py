@@ -84,6 +84,28 @@ def test_melee_counters_and_hit_stop_are_merged_back() -> None:
     assert system.contact_system.metrics.contacts == 1
 
 
+def test_shared_engine_accumulates_tick_metrics_until_begin_tick() -> None:
+    """One shared ContactSystem: metrics pile up across producers per tick."""
+    engine = ContactSystem()
+    engine.begin_tick()
+    hazard = HazardDamageSystem(contact_system=engine)
+    contact = ContactDamageSystem(contact_system=engine)
+    target = _TargetStub(pygame.FRect(10, 10, 40, 40), "player")
+
+    hazard.process([target], [_HazardStub(pygame.FRect(10, 10, 64, 64), damage=25.0)])
+    assert engine.metrics.contacts == 1  # last resolve only
+    assert engine.tick_metrics.contacts == 1
+
+    a, b = _momentum_pair(600.0, 0.0)
+    contact.process(Group(a, b))
+    assert engine.metrics.contacts == 1  # contact pass overwrote metrics
+    assert engine.tick_metrics.contacts == 2  # tick accumulator kept both
+
+    engine.begin_tick()
+    assert engine.tick_metrics.contacts == 0
+    assert engine.metrics.contacts == 1  # last-call view survives the reset
+
+
 
 def test_projectile_parity_with_direct_resolver() -> None:
     """Projectile: same damage as a direct ``HitResolver`` pass."""

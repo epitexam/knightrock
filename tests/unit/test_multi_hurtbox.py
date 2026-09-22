@@ -152,3 +152,27 @@ def test_first_vulnerable_zone_wins_candidate() -> None:
     assert system.metrics.overlaps == 1
     assert system.metrics.contacts == 1
     assert health_before - target.health == pytest.approx(10.0 * 1.2)
+
+
+def test_hurtbox_singular_is_union_of_zones() -> None:
+    """Legacy view: ``hurtbox`` covers every zone, not only zone 0."""
+    target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
+    target.sync_rects()
+    union = target.hurtbox
+    for zone in target.hurtboxes:
+        assert union.contains(zone)
+    # Legacy single-zone path stays exact: union == the only zone.
+    legacy = entity_at(40.0, faction="B")
+    assert legacy.hurtbox == legacy.hurtboxes[0]
+
+
+def test_zone_names_exposed_for_debug_overlay() -> None:
+    """Named zones surface on the entity so the overlay can label them."""
+    target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
+    assert target.hurtbox_zone_names == ("head", "torso", "legs")
+    from src.ui.world_ui import WorldUI
+
+    assert WorldUI._zone_tag(0, target) == "head x1.2"
+    assert WorldUI._zone_tag(1, target) == "torso"
+    # Legacy unnamed zone: no label (mult 1.0, empty name).
+    assert WorldUI._zone_tag(0, entity_at(0.0)) is None

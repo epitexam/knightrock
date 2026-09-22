@@ -369,3 +369,25 @@ def test_sweep_max_displacement_invariant_holds() -> None:
     assert kb_max == pytest.approx(1081.67, abs=0.01)
     assert required == pytest.approx(54.08, abs=0.05)
     assert required <= CombatSettings.SWEEP_MAX_DISPLACEMENT_PX
+
+
+def test_case_e_p0_goldens_and_census_revalidate() -> None:
+    """(e) P0.1 goldens + census revalidated after the P1 sweep landed.
+
+    Frozen trajectory anchors and the sub-4px lethal-jump inventory must
+    still hold: any data edit that fails this is a wanted change to
+    re-sign off in the report, not a silent regression.
+    """
+    from src.combat.attack_data import PLAYER_ATTACKS
+    from tests.unit.test_hitbox_pipeline import _drive, _lethal_jumps
+
+    dash = _drive("dash_attack", PLAYER_ATTACKS)
+    assert dash[0][0] == "active"
+    assert all(box == (62.0, 12.0, 70.0, 24.0) for _, _, box in dash if box is not None)
+
+    sweep = _drive("sweeping_arc", PLAYER_ATTACKS)
+    assert sweep[5] == ("active", 0, (50.0, 14.0, 55.0, 28.0))
+
+    for name in PLAYER_ATTACKS:
+        jumps = _lethal_jumps(PLAYER_ATTACKS, name)
+        assert max(jumps, default=0.0) < 4.0, f"{name}: lethal jump needs sweep"

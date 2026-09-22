@@ -209,7 +209,10 @@ class Renderer:
         self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
         if game is not None:
             self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
-        self.ui_manager.draw_help_panel(10, 10, layout=layout)
+        self.ui_manager.draw_help_panel(
+            10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
+        )
+        self.ui_manager.draw_legend_panel(10, 10, layout=layout)
         self.ui_manager.draw_performance_panel(
             fps=fps,
             sprite_count=sprite_count,

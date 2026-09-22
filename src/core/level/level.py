@@ -10,6 +10,7 @@ from src.application.events import EventBus, LevelStarted
 from src.core.level.level_data import LevelData
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.contact_system import ContactSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -119,17 +120,28 @@ class Level:
         # and re-exposes the state they hold, while the gameplay loop owns the
         # order in which they run (audit F1.6).  Each one takes its
         # collaborators explicitly, so it stays independently testable.
+        # P4.1: one ContactSystem instance shared by all four offensive
+        # producers (melee via GameplayLoop, projectiles, hazards, contact).
+        self.contact_system = ContactSystem()
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
         self.hazard_system = HazardSystem(self.groups)
-        self.contact_damage_system = ContactDamageSystem()
-        self.hazard_damage_system = HazardDamageSystem()
+        self.contact_damage_system = ContactDamageSystem(
+            contact_system=self.contact_system
+        )
+        self.hazard_damage_system = HazardDamageSystem(
+            contact_system=self.contact_system
+        )
         self.respawn_system = PlayerRespawnSystem(self.player, level_data)
         self.progression_system = ProgressionSystem(self.groups.exit_sprites)
         self.camera_system = CameraSystem(self.camera)
         self.notification_system = NotificationSystem(events, level_id, level_data)
         self.tick_system = TickSystem()
-        self.projectile_system = ProjectileSystem(self.groups, spatial_hash=self.spatial_hash)
+        self.projectile_system = ProjectileSystem(
+            self.groups,
+            spatial_hash=self.spatial_hash,
+            contact_system=self.contact_system,
+        )
         self.spawn_system.projectile_system = self.projectile_system
 
         self.gameplay_loop = GameplayLoop(
@@ -145,6 +157,7 @@ class Level:
             notification_system=self.notification_system,
             tick_system=self.tick_system,
             projectile_system=self.projectile_system,
+            contact_system=self.contact_system,
         )
 
         if self.events is not None:
@@ -302,7 +315,7 @@ class Level:
         )
         self.renderer.draw_health_bars(self.groups.entity_sprites)
         self.renderer.ui_manager.world_ui.draw_metrics_panel(
-            self.gameplay_loop.contact_system.metrics
+            self.gameplay_loop.contact_system.tick_metrics
         )
 
         if not debug_enabled:

@@ -71,11 +71,15 @@ class GameplayLoop:
         notification_system: NotificationSystem | None = None,
         tick_system: TickSystem | None = None,
         projectile_system: ProjectileSystem | None = None,
+        contact_system: ContactSystem | None = None,
     ) -> None:
-        # Unified offensive-contact pipeline (P4.1): the melee producer in
-        # CombatSystem emits into this shared engine; its counters and
-        # hit-stop are the ones surfaced for debug tooling.
-        self.contact_system: ContactSystem = ContactSystem()
+        # Unified offensive-contact pipeline (P4.1): one shared engine for
+        # melee, projectiles, hazards and contact damage (injected by Level
+        # in production; created here for combat-only test fixtures). Its
+        # tick accumulator is what the debug metrics panel surfaces.
+        self.contact_system: ContactSystem = (
+            contact_system if contact_system is not None else ContactSystem()
+        )
         self.combat_system: CombatSystem = CombatSystem(
             contact_system=self.contact_system
         )
@@ -116,6 +120,8 @@ class GameplayLoop:
         """Advance hit-stop timing and return the simulation delta."""
         simulation_suspended = self.combat_system.in_hit_stop
         self.combat_system.update_timer(delta_time)
+        if not simulation_suspended:
+            self.contact_system.begin_tick()
         return 0.0 if simulation_suspended else delta_time
 
     def update(

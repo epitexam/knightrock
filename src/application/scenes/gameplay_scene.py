@@ -28,6 +28,10 @@ _OVERLAY_TOGGLES = {
 #: label cards can be read, while rendering keeps running.
 _FREEZE_KEY = pygame.K_F6
 
+#: Debug-only single-step key (F7): while frozen, advance exactly one tick
+#: so sweep ghosts and attack phases stay readable at full speed otherwise.
+_STEP_KEY = pygame.K_F7
+
 
 class GameplayScene(Scene):
     """Run a ``Level`` and trigger the end transitions.
@@ -38,6 +42,7 @@ class GameplayScene(Scene):
     - ESC → pause (the scene is frozen on the stack).
     - F6 (debug only) → freeze the simulation in place to inspect the
       debug label cards; rendering keeps running.
+    - F7 (debug only, while frozen) → advance exactly one simulation tick.
     """
 
     def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
@@ -46,6 +51,7 @@ class GameplayScene(Scene):
         self.level_id = level_id
         self.level: Level | None = level
         self.frozen = False
+        self._step_pending = False
 
     def enter(self) -> None:
         if self.level is None:
@@ -69,7 +75,9 @@ class GameplayScene(Scene):
             raise RuntimeError("GameplayScene has no level loaded")
         self.game.input_manager.update()
         if self.frozen and Debug.is_enabled():
-            return  # debug freeze: the frame still renders, the sim holds still
+            if not self._step_pending:
+                return  # debug freeze: the frame still renders, the sim holds still
+            self._step_pending = False
         self.level.update(delta_time)
 
         if self.level.completed:
@@ -99,6 +107,10 @@ class GameplayScene(Scene):
         if event.type == pygame.KEYDOWN and self.level is not None:
             if event.key == _FREEZE_KEY and Debug.is_enabled():
                 self.frozen = not self.frozen
+                self._step_pending = False
+                return
+            if event.key == _STEP_KEY and Debug.is_enabled() and self.frozen:
+                self._step_pending = True
                 return
             toggle = _OVERLAY_TOGGLES.get(event.key)
             if toggle is not None:

@@ -137,6 +137,27 @@ SWEEP_GHOST_WIDTH = 1
 SWEEP_ARROW_HEAD = 5
 SWEEP_LABEL_LIFT = 4
 
+#: Smallest per-tick motion that still draws a sweep ghost (px). Below the
+#: P1 geometry threshold on purpose: the ghost is render-only, collision
+#: thresholds in CombatSettings stay untouched.
+SWEEP_DISPLAY_MIN_PX = 1.0
+
+#: Compact badge per hit height: full names would cover the box.
+HIT_HEIGHT_BADGES = {
+    "high": "HIGH",
+    "mid": "MID",
+    "low": "LOW",
+    "overhead": "OVH",
+}
+
+#: Offensive outline by combat phase: startup telegraphs gold, the active
+#: window stays orange, recovery fades to grey.
+PHASE_OUTLINE_COLORS = {
+    "startup": Colors.gold,
+    "active": Colors.debug_attack_box,
+    "recovery": Colors.grey,
+}
+
 #: Phase timeline geometry (world px): bar height, per-phase-segment widths
 #: per frame, and lift above the sprite collider.
 TIMELINE_BAR_HEIGHT = 4
@@ -385,6 +406,7 @@ class WorldUI:
                     camera.apply(zone),
                     width=1,
                 )
+                self._draw_zone_tag(index, zone, sprite, camera)
         self._draw_timeline(sprite, collider, camera)
         self._draw_offensive_boxes(sprite, collider, combat, attack_boxes, swept_boxes, camera)
         # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
@@ -404,12 +426,90 @@ class WorldUI:
             )
 
     @staticmethod
+    def _zone_tag(index: int, sprite: pygame.sprite.Sprite) -> str | None:
+        names = getattr(sprite, "hurtbox_zone_names", None)
+        mults = getattr(sprite, "hurtbox_mult", None)
+        name = names[index] if names is not None and index < len(names) else ""
+        if not name and (mults is None or index >= len(mults)):
+            return None
+        if mults is not None and index < len(mults) and mults[index] != 1.0:
+            return f"{name} x{mults[index]:g}" if name else f"x{mults[index]:g}"
+        return name or None
+
+    def _draw_zone_tag(
+        self,
+        index: int,
+        zone: pygame.FRect,
+        sprite: pygame.sprite.Sprite,
+        camera: Camera,
+    ) -> None:
+        tag = self._zone_tag(index, sprite)
+        if tag is None:
+            return
+        screen = camera.apply(zone)
+        label = self.renderer.render_text(
+            tag, self.renderer.world_label_font, Colors.off_white
+        )
+        self.display_surface.blit(label, (screen.x + 2, screen.y - label.get_height() - 1))
+
+    @staticmethod
+    def _offensive_hit(combat: object) -> object | None:
+        phase = getattr(combat, "current_phase", None)
+        return getattr(phase, "hit", None)
+
+    def _offensive_badges(self, combat: object) -> tuple[str, ...]:
+        hit = self._offensive_hit(combat)
+        if hit is None:
+            return ()
+        badges: list[str] = []
+        priority = int(getattr(hit, "priority", 0) or 0)
+        if priority > 0:
+            badges.append(f"P{priority}")
+        if bool(getattr(hit, "unblockable", False)):
+            badges.append("UBL")
+        height = str(getattr(hit, "height", "mid") or "mid")
+        if height != "mid":
+            badges.append(HIT_HEIGHT_BADGES.get(height, height.upper()))
+        return tuple(badges)
+
+    def _offensive_outline(self, combat: object) -> Color:
+        state = getattr(combat, "state", None)
+        phase_name = getattr(getattr(state, "sub_state", None), "value", None)
+        if isinstance(phase_name, str):
+            return PHASE_OUTLINE_COLORS.get(phase_name, Colors.debug_attack_box)
+        return Colors.debug_attack_box
+
+    def _draw_badges(
+        self, badges: tuple[str, ...], attack_box: pygame.FRect, camera: Camera
+    ) -> None:
+        if not badges:
+            return
+        screen = camera.apply(attack_box)
+        label = self.renderer.render_text(
+            " ".join(badges), self.renderer.world_label_font, Colors.gold
+        )
+        self.display_surface.blit(
+            label, (screen.x, screen.y - label.get_height() - SWEEP_LABEL_LIFT)
+        )
+
+    @staticmethod
     def _offensive_boxes(combat: object) -> tuple:
         boxes = getattr(combat, "attack_boxes", None)
         if boxes is None:
             legacy_box = getattr(combat, "attack_box", None)
             return (legacy_box,) if legacy_box is not None else ()
         return tuple(boxes)
+
+    @staticmethod
+    def _box_moved(swept: pygame.FRect, current: pygame.FRect) -> bool:
+        swept_center = Vector2(swept.centerx, swept.centery)
+        current_center = Vector2(current.centerx, current.centery)
+        if swept_center.distance_to(current_center) >= SWEEP_DISPLAY_MIN_PX:
+            return True
+        return (
+            abs(swept.width - current.width) >= SWEEP_DISPLAY_MIN_PX
+            or abs(swept.height - current.height) >= SWEEP_DISPLAY_MIN_PX
+        )
 
     @staticmethod
     def _swept_boxes(combat: object, count: int) -> tuple:
@@ -429,18 +529,26 @@ class WorldUI:
         swept_boxes: tuple,
         camera: Camera,
     ) -> None:
+        outline = self._offensive_outline(combat)
+        badges = self._offensive_badges(combat)
         for index, attack_box in enumerate(attack_boxes):
             swept = swept_boxes[index] if index < len(swept_boxes) else None
-            if swept is not None and swept != attack_box:
-                self._draw_dashed_rect(camera.apply(swept), Colors.debug_attack_box)
+            if (
+                swept is not None
+                and swept != attack_box
+                and self._box_moved(swept, attack_box)
+            ):
+                self._draw_dashed_rect(camera.apply(swept), outline)
                 self._draw_motion_arrow(swept, attack_box, camera)
             pygame.draw.rect(
                 self.display_surface,
-                Colors.debug_attack_box,
+                outline,
                 camera.apply(attack_box),
                 width=2,
             )
             self._draw_box_id(index, attack_box, camera)
+        if badges and len(attack_boxes) > 0:
+            self._draw_badges(badges, attack_boxes[0], camera)
         if collider is None:
             return
         # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).

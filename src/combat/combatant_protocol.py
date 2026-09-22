@@ -138,7 +138,10 @@ class Combatant(Protocol):
     hitbox : pygame.FRect
         Collision rectangle representing the entity's body.
     hurtbox : pygame.FRect
-        Rectangle that incoming attacks must overlap to register a hit.
+        Union of the damage-receiving zones that incoming attacks must
+        overlap to register a hit.
+    hurtboxes : tuple[pygame.FRect, ...]
+        Every damage-receiving zone (P2; single legacy zone by default).
     faction : str | None
         Faction identifier for friendly-fire rules.
     facing_right : bool
@@ -172,7 +175,39 @@ class Combatant(Protocol):
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Collision rectangle used for incoming attacks."""
+        """Collision rectangle used for incoming attacks (union of zones)."""
+        ...
+
+    @property
+    def hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Every damage-receiving zone (P2; single legacy zone by default)."""
+        ...
+
+    @property
+    def hurtbox_mult(self) -> tuple[float, ...]:
+        """Per-zone localized damage multipliers (parallel to ``hurtboxes``)."""
+        ...
+
+    @property
+    def hurtbox_tags(self) -> tuple[tuple[str, ...], ...]:
+        """Per-zone reserved invulnerability tags (parallel to ``hurtboxes``)."""
+        ...
+
+    @property
+    def hurtbox_zone_names(self) -> tuple[str, ...]:
+        """Per-zone debug names (parallel to ``hurtboxes``)."""
+        ...
+
+    def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-zone swept rectangles for the current tick (P1 sweep)."""
+        ...
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        """Union of the per-zone swept rectangles (legacy single-view API)."""
+        ...
+
+    def capture_sweep_origin(self) -> None:
+        """Freeze the current zones as the next tick's sweep origin (P1/D3)."""
         ...
 
     @property

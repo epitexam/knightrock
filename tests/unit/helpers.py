@@ -182,7 +182,14 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         faction="enemy",
         hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
         combat=combat,
-        swept_hurtbox=lambda: target.hurtbox.copy(),
+        hurtbox=target.hurtbox.copy(),
+        hurtboxes=target.hurtboxes,
+        hurtbox_mult=target.hurtbox_mult,
+        hurtbox_tags=target.hurtbox_tags,
+        hurtbox_zone_names=target.hurtbox_zone_names,
+        swept_hurtbox=lambda: target.swept_hurtbox(),
+        swept_hurtboxes=lambda: target.swept_hurtboxes(),
+        capture_sweep_origin=target.capture_sweep_origin,
     )
 
 

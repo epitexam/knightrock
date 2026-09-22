@@ -437,10 +437,12 @@ class Entity(Sprite):
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Damage-receiving area: the single zone in legacy configuration."""
-        if not self._hurtbox_rects:
-            return self._hurtbox_union
-        return self._hurtbox_rects[0]
+        """Damage-receiving area: union of every zone (P2).
+
+        Legacy single-zone configurations are exactly that one zone, so the
+        union view stays byte-identical to the pre-P2 ``hurtbox``.
+        """
+        return self._hurtbox_union
 
     @property
     def hurtboxes(self) -> tuple[pygame.FRect, ...]:
@@ -456,6 +458,11 @@ class Entity(Sprite):
     def hurtbox_mult(self) -> tuple[float, ...]:
         """Per-zone localized damage multiplier (parallel to ``hurtboxes``)."""
         return tuple(zone.mult for zone in self._zones)
+
+    @property
+    def hurtbox_zone_names(self) -> tuple[str, ...]:
+        """Per-zone debug names (parallel to ``hurtboxes``; ``""`` when unnamed)."""
+        return tuple(zone.name for zone in self._zones)
 
     def capture_sweep_origin(self) -> None:
         """Freeze the current zones as the next tick's sweep origin (P1/D3).

@@ -108,7 +108,12 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 
 
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
-    """Per-zone swept rectangles (P2), single legacy box as fallback."""
+    """Per-zone swept rectangles (P2), single legacy box as fallback.
+
+    ``getattr`` only bridges minimal hazard/contact stubs that never
+    implement the zone surface; full combatants expose
+    ``Combatant.swept_hurtboxes`` from the protocol.
+    """
     swept = getattr(target, "swept_hurtboxes", None)
     if callable(swept):
         zones = tuple(swept())
@@ -118,7 +123,10 @@ def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
 
 
 def _zone_mults(target: Combatant) -> tuple[float, ...]:
-    """Per-zone damage multipliers (P2), neutral 1.0 for legacy targets."""
+    """Per-zone damage multipliers (P2), neutral 1.0 for legacy targets.
+
+    Declared on ``Combatant.hurtbox_mult``; ``getattr`` remains for stubs.
+    """
     mults = getattr(target, "hurtbox_mult", ())
     if isinstance(mults, tuple):
         return mults
@@ -128,7 +136,10 @@ def _zone_mults(target: Combatant) -> tuple[float, ...]:
 
 
 def _zone_tags(target: Combatant) -> tuple[tuple[str, ...], ...]:
-    """Per-zone reserved invulnerability tags (empty when unknown, P2)."""
+    """Per-zone reserved invulnerability tags (empty when unknown, P2).
+
+    Declared on ``Combatant.hurtbox_tags``; ``getattr`` remains for stubs.
+    """
     tags = getattr(target, "hurtbox_tags", ())
     return tuple(tuple(zone) for zone in tags)
 
@@ -178,13 +189,25 @@ def _first_vulnerable_zone(
 
 
 class ContactSystem:
-    """Shared broadphase, narrowphase and resolve for offensive producers."""
+    """Shared broadphase, narrowphase and resolve for offensive producers.
+
+    ``metrics`` reflects the last :meth:`resolve` call (fed back to the
+    producer via :class:`ContactOutcome`); ``tick_metrics`` accumulates
+    across every producer of the current tick and is what the debug panel
+    reads. Call :meth:`begin_tick` once per simulation tick to reset the
+    accumulator when a single instance is shared by all four producers.
+    """
 
     def __init__(self) -> None:
         self.metrics: CombatMetrics = CombatMetrics()
+        self.tick_metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
         self.hit_stop: float = 0.0
         self.guard_events: list[GuardEvent] = []
+
+    def begin_tick(self) -> None:
+        """Reset the per-tick metric accumulator (shared-instance wiring)."""
+        self.tick_metrics = CombatMetrics()
 
     def resolve(
         self,
@@ -225,6 +248,9 @@ class ContactSystem:
                 if box.stop_after_first:
                     break
 
+        self.tick_metrics.pairs_tested += self.metrics.pairs_tested
+        self.tick_metrics.overlaps += self.metrics.overlaps
+        self.tick_metrics.contacts += self.metrics.contacts
         return ContactOutcome(
             metrics=self.metrics,
             guard_events=self.guard_events,
