@@ -301,6 +301,9 @@ class Level:
             self.groups, debug_enabled, dt=frame_time / 1000.0
         )
         self.renderer.draw_health_bars(self.groups.entity_sprites)
+        self.renderer.ui_manager.world_ui.draw_metrics_panel(
+            self.gameplay_loop.contact_system.metrics
+        )
 
         if not debug_enabled:
             return dirty

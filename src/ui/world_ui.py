@@ -26,6 +26,7 @@ UX rules (debug readability pass):
 """
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 import pygame
 import pygame.gfxdraw
@@ -37,6 +38,9 @@ from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, React
 from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+
+if TYPE_CHECKING:
+    from src.combat.frame_data import PhaseDefinition
 
 #: Separator between tokens inside one label row (``HP``/``ATK``/``FX``).
 #: ``Colors.grey`` (80,85,95) is unreadable on the dark card fill, so labels
@@ -127,6 +131,24 @@ HEALTH_BAR_LABEL_GAP = 4
 #: between them (statics, projectiles, or labels layer with bars hidden).
 LABEL_ANCHOR_GAP = 8
 
+#: Attack-box outline detail: dashed sweep ghost width (px), motion arrow
+#: head size (px), and label lift above the box (px).
+SWEEP_GHOST_WIDTH = 1
+SWEEP_ARROW_HEAD = 5
+SWEEP_LABEL_LIFT = 4
+
+#: Phase timeline geometry (world px): bar height, per-phase-segment widths
+#: per frame, and lift above the sprite collider.
+TIMELINE_BAR_HEIGHT = 4
+TIMELINE_PX_PER_FRAME = 3
+TIMELINE_LIFT = 10
+
+#: Live combat counters panel geometry (screen px) and update cadence.
+METRICS_PANEL_X = 10
+METRICS_PANEL_Y = 150
+METRICS_LINE_STEP = 16
+METRICS_TICK_DIVISOR = 10
+
 #: One label row: ``(text, color)`` tokens laid out left to right.
 _Segments = list[list[tuple[str, Color]]]
 
@@ -181,6 +203,8 @@ class WorldUI:
         self.renderer = renderer
         self.display_surface = renderer.display_surface
         self.layers: dict[str, bool] = dict.fromkeys(OVERLAY_LAYERS, True)
+        self.metrics_text: tuple[str, ...] = ()
+        self._metrics_tick = 0
 
     def toggle(self, layer: str) -> bool:
         """Flip an overlay layer, returning its new state."""
@@ -302,13 +326,36 @@ class WorldUI:
             zone for zone in rects if zone is not None and zone is not collider
         )
 
+    def update_metrics(self, metrics: object) -> None:
+        self._metrics_tick += 1
+        if self._metrics_tick % METRICS_TICK_DIVISOR:
+            return
+        pairs = int(getattr(metrics, "pairs_tested", 0) or 0)
+        overlaps = int(getattr(metrics, "overlaps", 0) or 0)
+        contacts = int(getattr(metrics, "contacts", 0) or 0)
+        self.metrics_text = (
+            f"pairs {pairs}",
+            f"overlaps {overlaps}",
+            f"contacts {contacts}",
+        )
+
+    def draw_metrics_panel(self, metrics: object | None = None) -> None:
+        if metrics is not None:
+            self.update_metrics(metrics)
+        if not self.metrics_text:
+            return
+        font = self.renderer.debug_font
+        for index, line in enumerate(self.metrics_text):
+            text = self.renderer.render_text(line, font, Colors.off_white)
+            self.display_surface.blit(
+                text, (METRICS_PANEL_X, METRICS_PANEL_Y + index * METRICS_LINE_STEP)
+            )
+
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
         combat = getattr(sprite, "combat", None)
-        attack_boxes = getattr(combat, "attack_boxes", None)
-        if attack_boxes is None:
-            legacy_box = getattr(combat, "attack_box", None)
-            attack_boxes = (legacy_box,) if legacy_box is not None else ()
+        attack_boxes = self._offensive_boxes(combat)
+        swept_boxes = self._swept_boxes(combat, len(attack_boxes))
 
         if collider is None:
             reference = getattr(sprite, "rect", None)
@@ -338,13 +385,8 @@ class WorldUI:
                     camera.apply(zone),
                     width=1,
                 )
-        for attack_box in attack_boxes:
-            pygame.draw.rect(
-                self.display_surface,
-                Colors.debug_attack_box,
-                camera.apply(attack_box),
-                width=2,
-            )
+        self._draw_timeline(sprite, collider, camera)
+        self._draw_offensive_boxes(sprite, collider, combat, attack_boxes, swept_boxes, camera)
         # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
         if float(getattr(sprite, "otg_timer", 0.0) or 0.0) > 0:
             pygame.draw.rect(
@@ -360,6 +402,157 @@ class WorldUI:
                 camera.apply(collider),
                 width=2,
             )
+
+    @staticmethod
+    def _offensive_boxes(combat: object) -> tuple:
+        boxes = getattr(combat, "attack_boxes", None)
+        if boxes is None:
+            legacy_box = getattr(combat, "attack_box", None)
+            return (legacy_box,) if legacy_box is not None else ()
+        return tuple(boxes)
+
+    @staticmethod
+    def _swept_boxes(combat: object, count: int) -> tuple:
+        swept = getattr(combat, "swept_attack_boxes", None)
+        if callable(swept):
+            boxes = tuple(swept())
+            if len(boxes) == count:
+                return boxes
+        return (None,) * count
+
+    def _draw_offensive_boxes(
+        self,
+        sprite: pygame.sprite.Sprite,
+        collider: pygame.FRect | None,
+        combat: object,
+        attack_boxes: tuple,
+        swept_boxes: tuple,
+        camera: Camera,
+    ) -> None:
+        for index, attack_box in enumerate(attack_boxes):
+            swept = swept_boxes[index] if index < len(swept_boxes) else None
+            if swept is not None and swept != attack_box:
+                self._draw_dashed_rect(camera.apply(swept), Colors.debug_attack_box)
+                self._draw_motion_arrow(swept, attack_box, camera)
+            pygame.draw.rect(
+                self.display_surface,
+                Colors.debug_attack_box,
+                camera.apply(attack_box),
+                width=2,
+            )
+            self._draw_box_id(index, attack_box, camera)
+        if collider is None:
+            return
+        # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
+        if float(getattr(sprite, "otg_timer", 0.0) or 0.0) > 0:
+            pygame.draw.rect(
+                self.display_surface,
+                Colors.debug_otg,
+                camera.apply(collider),
+                width=3,
+            )
+        if float(getattr(sprite, "gravity_scale", 1.0) or 1.0) != 1.0:
+            pygame.draw.rect(
+                self.display_surface,
+                Colors.debug_juggle,
+                camera.apply(collider),
+                width=2,
+            )
+
+    def _draw_box_id(self, index: int, box: pygame.FRect, camera: Camera) -> None:
+        label = self.renderer.render_text(
+            f"b{index}", self.renderer.debug_font, Colors.debug_attack_box
+        )
+        screen = camera.apply(box)
+        self.display_surface.blit(label, (screen.x, screen.y - SWEEP_LABEL_LIFT))
+
+    def _draw_dashed_rect(self, screen: pygame.FRect, color: Color) -> None:
+        x, y, width, height = screen.x, screen.y, screen.width, screen.height
+        for start, end in self._dashed_edges(x, y, width, height):
+            pygame.draw.line(self.display_surface, color, start, end, SWEEP_GHOST_WIDTH)
+
+    @staticmethod
+    def _dashed_edges(
+        x: float, y: float, width: float, height: float
+    ) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+        step = 2 * SWEEP_GHOST_WIDTH + 2
+        edges: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        cursor = x
+        while cursor < x + width:
+            end = min(cursor + SWEEP_GHOST_WIDTH + 2, x + width)
+            edges.append(((cursor, y), (end, y)))
+            edges.append(((cursor, y + height), (end, y + height)))
+            cursor += step
+        cursor = y
+        while cursor < y + height:
+            end = min(cursor + SWEEP_GHOST_WIDTH + 2, y + height)
+            edges.append(((x, cursor), (x, end)))
+            edges.append(((x + width, cursor), (x + width, end)))
+            cursor += step
+        return tuple(edges)
+
+    def _draw_motion_arrow(
+        self, swept: pygame.FRect, current: pygame.FRect, camera: Camera
+    ) -> None:
+        start = camera.apply(swept).center
+        end = camera.apply(current).center
+        delta = Vector2(end) - Vector2(start)
+        if delta.length_squared() < 1.0:
+            return
+        pygame.draw.line(self.display_surface, Colors.debug_attack_box, start, end)
+        direction = delta.normalize()
+        normal = Vector2(-direction.y, direction.x)
+        tip = Vector2(end)
+        left = tip - direction * SWEEP_ARROW_HEAD + normal * SWEEP_ARROW_HEAD
+        right = tip - direction * SWEEP_ARROW_HEAD - normal * SWEEP_ARROW_HEAD
+        pygame.draw.polygon(
+            self.display_surface, Colors.debug_attack_box, [tuple(tip), tuple(left), tuple(right)]
+        )
+
+    def _draw_timeline(
+        self, sprite: pygame.sprite.Sprite, collider: pygame.FRect | None, camera: Camera
+    ) -> None:
+        if collider is None:
+            return
+        state = getattr(getattr(sprite, "combat", None), "state", None)
+        if getattr(state, "attack_name", None) is None:
+            return
+        phase = getattr(getattr(sprite, "combat", None), "current_phase", None)
+        if phase is None:
+            return
+        sub_state = getattr(getattr(state, "sub_state", None), "value", None)
+        screen = camera.apply(collider)
+        bar_y = screen.y - TIMELINE_LIFT - TIMELINE_BAR_HEIGHT
+        cursor = screen.x
+        for frames, color in (
+            (phase.startup_frames, Colors.gold),
+            (phase.active_frames, Colors.debug_attack_box),
+            (phase.recovery_frames, Colors.light_grey),
+        ):
+            width = max(1, frames * TIMELINE_PX_PER_FRAME)
+            pygame.draw.rect(
+                self.display_surface, color, pygame.Rect(cursor, bar_y, width, TIMELINE_BAR_HEIGHT)
+            )
+            cursor += width
+        filled = self._timeline_progress(state, sub_state, phase)
+        pygame.draw.rect(
+            self.display_surface,
+            Colors.off_white,
+            pygame.Rect(screen.x, bar_y, filled, TIMELINE_BAR_HEIGHT),
+            width=1,
+        )
+
+    @staticmethod
+    def _timeline_progress(state: object, sub_state: object, phase: PhaseDefinition) -> int:
+        frame = int(getattr(state, "frame_counter", 0) or 0)
+        startup = int(getattr(phase, "startup_frames", 0) or 0)
+        active = int(getattr(phase, "active_frames", 0) or 0)
+        recovery = int(getattr(phase, "recovery_frames", 0) or 0)
+        if sub_state == "startup":
+            return min(frame, startup) * TIMELINE_PX_PER_FRAME
+        if sub_state == "active":
+            return (startup + min(frame, active)) * TIMELINE_PX_PER_FRAME
+        return (startup + active + min(frame, recovery)) * TIMELINE_PX_PER_FRAME
 
     def _draw_velocity(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         velocity = getattr(sprite, "velocity", None)

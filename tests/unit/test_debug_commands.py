@@ -1,6 +1,13 @@
 """Phase 5 test bench: debug commands + showcase attack catalog."""
 
+import os
+from types import SimpleNamespace
+
+import pygame
+import pytest
+
 from src.combat.attack_data import PLAYER_ATTACKS
+from src.core.colors import Colors
 from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.level.systems.spawn_system import (
     DEBUG_ATTACKS,
@@ -12,6 +19,29 @@ from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from tests.unit.helpers import make_entity
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _headless_display() -> None:
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    pygame.init()
+    pygame.display.set_mode((1024, 768))
+
+
+@pytest.fixture()
+def world_ui():
+    from src.ui.panel_renderer import PanelRenderer
+    from src.ui.world_ui import WorldUI
+
+    return WorldUI(PanelRenderer(pygame.display.get_surface()))
+
+
+@pytest.fixture()
+def camera():
+    from src.core.rendering.camera import Camera as _Camera
+
+    return _Camera(1024, 768)
 
 
 def _player() -> object:
@@ -106,6 +136,66 @@ def test_spawn_juggle_dummy_is_airborne_and_rising() -> None:
 
 
 def test_debug_juggle_key_is_bound() -> None:
-    import pygame
-
     assert pygame.K_c == DEBUG_JUGGLE_KEY
+
+
+def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
+    from src.ui.world_ui import WorldUI
+
+    surface = world_ui.display_surface
+    combat = SimpleNamespace(
+        attack_boxes=(pygame.FRect(100, 100, 30, 20),),
+        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 30, 20),),
+        state=SimpleNamespace(attack_name=None),
+        current_phase=None,
+    )
+    entity = SimpleNamespace(
+        hitbox=pygame.FRect(60, 100, 40, 48),
+        hurtbox=pygame.FRect(60, 100, 40, 48),
+        hurtboxes=None,
+        combat=combat,
+        faction="player",
+        otg_timer=0.0,
+        gravity_scale=1.0,
+    )
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays([entity], camera)
+    box_pixels = sum(
+        1
+        for x in range(100, 130)
+        for y in range(100, 120)
+        if surface.get_at((x, y))[:3] == Colors.debug_attack_box
+    )
+    assert box_pixels > 0
+    assert WorldUI._swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
+
+
+def test_swept_ghost_exposes_previous_origin(world_ui, camera) -> None:
+    from src.ui.world_ui import WorldUI
+
+    combat = SimpleNamespace(
+        attack_boxes=(pygame.FRect(120, 100, 30, 20),),
+        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 50, 20),),
+    )
+    swept = WorldUI._swept_boxes(combat, 1)
+    assert swept[0] != combat.attack_boxes[0]
+    assert swept[0].width == 50.0
+
+
+def test_attack_timeline_marks_phase_progress(world_ui) -> None:
+    from src.ui.world_ui import WorldUI
+
+    state = SimpleNamespace(attack_name="jab", frame_counter=2)
+    phase = SimpleNamespace(startup_frames=4, active_frames=4, recovery_frames=4)
+    assert WorldUI._timeline_progress(state, "startup", phase) == 2 * 3
+    assert WorldUI._timeline_progress(state, "active", phase) == (4 + 2) * 3
+    assert WorldUI._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * 3
+
+
+def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
+    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    assert world_ui.metrics_text == ()
+    for _ in range(8):
+        world_ui.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
+    assert world_ui.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
