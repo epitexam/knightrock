@@ -314,8 +314,15 @@ class Level:
             self.groups, debug_enabled, dt=frame_time / 1000.0
         )
         self.renderer.draw_health_bars(self.groups.entity_sprites)
+        for event in self.gameplay_loop.combat_system.guard_events:
+            if event.kind == "clash":
+                self.renderer.ui_manager.world_ui.note_clash(
+                    self.gameplay_loop.combat_system.last_clash
+                )
         self.renderer.ui_manager.world_ui.draw_metrics_panel(
-            self.gameplay_loop.contact_system.tick_metrics
+            self.gameplay_loop.contact_system.tick_metrics,
+            player=self.player,
+            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
         )
 
         if not debug_enabled:

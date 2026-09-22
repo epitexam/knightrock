@@ -165,10 +165,19 @@ TIMELINE_PX_PER_FRAME = 3
 TIMELINE_LIFT = 10
 
 #: Live combat counters panel geometry (screen px) and update cadence.
-METRICS_PANEL_X = 10
-METRICS_PANEL_Y = 150
 METRICS_LINE_STEP = 16
 METRICS_TICK_DIVISOR = 10
+
+#: Lifetime (s) of the world-space clash marker and its ring radius (px).
+CLASH_MARKER_LIFETIME = 0.35
+CLASH_MARKER_RADIUS = 18
+
+#: Per-frame TTL decay at the fixed 60 Hz debug cadence.
+CLASH_TICK_S = 1.0 / 60.0
+
+#: Unified COMBAT panel (screen px), refreshed on the metrics cadence.
+COMBAT_PANEL_X = 10
+COMBAT_PANEL_Y = 150
 
 #: One label row: ``(text, color)`` tokens laid out left to right.
 _Segments = list[list[tuple[str, Color]]]
@@ -226,6 +235,8 @@ class WorldUI:
         self.layers: dict[str, bool] = dict.fromkeys(OVERLAY_LAYERS, True)
         self.metrics_text: tuple[str, ...] = ()
         self._metrics_tick = 0
+        self.clash_point: tuple[float, float] | None = None
+        self._clash_ttl: float = 0.0
 
     def toggle(self, layer: str) -> bool:
         """Flip an overlay layer, returning its new state."""
@@ -271,6 +282,8 @@ class WorldUI:
         if requests:
             requests.sort(key=lambda request: request[0])
             self._draw_labels(requests, screen_width)
+
+        self._draw_clash_marker(camera)
 
     @staticmethod
     def _viewport(camera: Camera) -> pygame.Rect:
@@ -360,17 +373,81 @@ class WorldUI:
             f"contacts {contacts}",
         )
 
-    def draw_metrics_panel(self, metrics: object | None = None) -> None:
+    def note_clash(self, point: tuple[float, float] | None) -> None:
+        """Record a fresh clash point (world px) to flash in the world."""
+        if point is not None:
+            self.clash_point = point
+            self._clash_ttl = CLASH_MARKER_LIFETIME
+
+    def draw_metrics_panel(
+        self,
+        metrics: object | None = None,
+        player: object | None = None,
+        hit_stop: float | None = None,
+    ) -> None:
+        """Unified COMBAT panel: counters plus live attack/hit-stop/clash state."""
         if metrics is not None:
             self.update_metrics(metrics)
         if not self.metrics_text:
             return
+        lines: list[tuple[str, Color]] = [
+            ("COMBAT", Colors.text_title),
+            *((line, Colors.off_white) for line in self.metrics_text),
+        ]
+        attack = self._live_attack_text(player)
+        if attack is not None:
+            lines.append((f"atk {attack}", Colors.gold))
+        if hit_stop:
+            lines.append((f"hit-stop {hit_stop:.2f}s", TEXT_WARN))
+        if self._clash_ttl > 0.0:
+            lines.append(("CLASH", TEXT_CRIT))
         font = self.renderer.debug_font
-        for index, line in enumerate(self.metrics_text):
-            text = self.renderer.render_text(line, font, Colors.off_white)
+        for index, (text, color) in enumerate(lines):
             self.display_surface.blit(
-                text, (METRICS_PANEL_X, METRICS_PANEL_Y + index * METRICS_LINE_STEP)
+                self.renderer.render_text(text, font, color),
+                (COMBAT_PANEL_X, COMBAT_PANEL_Y + index * METRICS_LINE_STEP),
             )
+
+    @staticmethod
+    def _live_attack_text(player: object | None) -> str | None:
+        """``name substate frame`` for the player's running attack, if any."""
+        combat = getattr(player, "combat", None)
+        state = getattr(combat, "state", None)
+        name = getattr(state, "attack_name", None)
+        if not name:
+            return None
+        sub_state = getattr(state, "sub_state", "")
+        phase = getattr(sub_state, "value", sub_state)
+        frame = getattr(state, "frame_counter", 0)
+        return f"{name} {phase} f{frame}"
+
+    def _draw_clash_marker(self, camera: Camera) -> None:
+        """Expanding ring at the last clash point; fades over its lifetime."""
+        if self._clash_ttl <= 0.0 or self.clash_point is None:
+            return
+        self._clash_ttl -= CLASH_TICK_S
+        anchor = camera.apply(
+            pygame.FRect(self.clash_point[0] - 1, self.clash_point[1] - 1, 2, 2)
+        )
+        center = (round(anchor.centerx), round(anchor.centery))
+        progress = 1.0 - self._clash_ttl / CLASH_MARKER_LIFETIME
+        radius = round(CLASH_MARKER_RADIUS * (0.5 + progress))
+        pygame.draw.circle(self.display_surface, Colors.gold, center, radius, width=2)
+        arm = 5
+        pygame.draw.line(
+            self.display_surface,
+            Colors.white,
+            (center[0] - arm, center[1] - arm),
+            (center[0] + arm, center[1] + arm),
+            width=1,
+        )
+        pygame.draw.line(
+            self.display_surface,
+            Colors.white,
+            (center[0] - arm, center[1] + arm),
+            (center[0] + arm, center[1] - arm),
+            width=1,
+        )
 
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)

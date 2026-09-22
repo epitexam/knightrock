@@ -63,6 +63,17 @@ def _record_for(combat: CombatPort) -> Callable[[Combatant], None]:
     return record
 
 
+def _clash_point(
+    boxes_a: tuple[pygame.FRect, ...], boxes_b: tuple[pygame.FRect, ...]
+) -> tuple[float, float] | None:
+    """Center of the first overlapping swept pair: the clash spark anchor."""
+    for box_a in boxes_a:
+        for box_b in boxes_b:
+            if box_a.colliderect(box_b):
+                return box_a.clamp(box_b).center
+    return None
+
+
 class CombatSystem:
     """Collect and resolve offensive contacts in two deterministic passes."""
 
@@ -74,6 +85,7 @@ class CombatSystem:
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
         self.guard_events: list[GuardEvent] = []
+        self.last_clash: tuple[float, float] | None = None
 
     def process_attacks(
         self,
@@ -96,6 +108,7 @@ class CombatSystem:
         self.metrics = CombatMetrics()
         self.impact = 0.0
         self.guard_events = []
+        self.last_clash = None
         if self.in_hit_stop:
             return
 
@@ -188,6 +201,7 @@ class CombatSystem:
                     self.hit_stop_timer = max(
                         self.hit_stop_timer, CombatSettings.HITSTOP_BASE
                     )
+                    self.last_clash = _clash_point(entry_a.swept_boxes, entry_b.swept_boxes)
                 elif pa > pb:
                     entry_b.attacker.combat.cancel_attack()
                     losers.add(id(entry_b.attacker))

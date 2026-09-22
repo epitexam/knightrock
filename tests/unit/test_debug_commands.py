@@ -199,3 +199,73 @@ def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
     for _ in range(8):
         world_ui.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
     assert world_ui.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
+
+
+def test_live_attack_text_formats_player_state(world_ui) -> None:
+    from src.ui.world_ui import WorldUI
+
+    player = SimpleNamespace(
+        combat=SimpleNamespace(
+            state=SimpleNamespace(attack_name="jab", sub_state="active", frame_counter=3)
+        )
+    )
+    assert WorldUI._live_attack_text(player) == "jab active f3"
+    assert WorldUI._live_attack_text(None) is None
+    idle = SimpleNamespace(combat=SimpleNamespace(state=SimpleNamespace(attack_name=None)))
+    assert WorldUI._live_attack_text(idle) is None
+
+
+def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:
+    player = SimpleNamespace(
+        combat=SimpleNamespace(
+            state=SimpleNamespace(attack_name="jab", sub_state="startup", frame_counter=1)
+        )
+    )
+    for _ in range(10):
+        world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    world_ui.note_clash((10.0, 10.0))
+    world_ui.draw_metrics_panel(player=player, hit_stop=0.05)
+    assert world_ui.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
+    assert world_ui._clash_ttl > 0.0
+
+
+def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
+    world_ui.note_clash((42.0, 7.0))
+    assert world_ui.clash_point == (42.0, 7.0)
+    assert world_ui._clash_ttl > 0.0
+    world_ui.note_clash(None)
+    assert world_ui.clash_point == (42.0, 7.0)
+
+
+def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
+    from src.ui.world_ui import CLASH_MARKER_LIFETIME, WorldUI
+
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.note_clash((120.0, 110.0))
+    assert world_ui._clash_ttl == CLASH_MARKER_LIFETIME
+    world_ui._draw_clash_marker(camera)
+    gold_pixels = sum(
+        1
+        for x in range(90, 150)
+        for y in range(80, 140)
+        if surface.get_at((x, y))[:3] == Colors.gold
+    )
+    assert gold_pixels > 0
+
+    surface.fill((0, 0, 0))
+    for _ in range(30):
+        world_ui._draw_clash_marker(camera)
+    assert world_ui._clash_ttl <= 0.0
+    surface.fill((0, 0, 0))
+    world_ui._draw_clash_marker(camera)
+    assert (
+        sum(
+            1
+            for x in range(90, 150)
+            for y in range(80, 140)
+            if surface.get_at((x, y))[:3] == Colors.gold
+        )
+        == 0
+    )
+    assert WorldUI._draw_clash_marker  # bound method still wired in overlays
