@@ -80,9 +80,12 @@ class CombatTrace:
     def drain_jsonl(self, path: Path) -> Path:
         """Write every buffered candidate as one JSON object per line, then clear.
 
-        Creates parent directories as needed. Returns the written path.
+        Creates parent directories as needed. An empty buffer creates nothing.
+        Returns the written path.
         """
         path = Path(path)
+        if not self._buffer:
+            return path
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             for candidate in self._buffer:

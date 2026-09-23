@@ -77,14 +77,12 @@ def test_begin_tick_advances_counter() -> None:
 
 
 def test_is_enabled_requires_debug_and_dump_env(monkeypatch) -> None:
-    from src.core.level.systems.combat_trace import CombatTrace as CT
-
     monkeypatch.setenv("DEBUG", "1")
     monkeypatch.setenv("DEBUG_COMBAT_DUMP", "1")
-    assert CT.is_enabled() is True
+    assert CombatTrace.is_enabled() is True
 
     monkeypatch.setenv("DEBUG_COMBAT_DUMP", "0")
-    assert CT.is_enabled() is False
+    assert CombatTrace.is_enabled() is False
 
     monkeypatch.delenv("DEBUG_COMBAT_DUMP", raising=False)
-    assert CT.is_enabled() is False
+    assert CombatTrace.is_enabled() is False
