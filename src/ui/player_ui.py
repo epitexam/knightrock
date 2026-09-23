@@ -11,7 +11,12 @@ class PlayerUI:
         self.renderer = renderer
 
     def draw_state_panel(
-        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+        self,
+        x: int,
+        y: int,
+        player: Any,
+        layout: PanelLayout | None = None,
+        panel_id: str | None = None,
     ) -> int:
         if not player or not getattr(player, "state_machine", None):
             return 0
@@ -78,11 +83,22 @@ class PlayerUI:
             line_colors[idx] = TEXT_OK
 
         return self.renderer.draw_panel(
-            x, y, lines, title="PLAYER STATE", line_colors=line_colors, layout=layout
+            x,
+            y,
+            lines,
+            title="PLAYER STATE",
+            line_colors=line_colors,
+            layout=layout,
+            panel_id=panel_id,
         )
 
     def draw_stats_panel(
-        self, x: int, y: int, player: Any, layout: PanelLayout | None = None
+        self,
+        x: int,
+        y: int,
+        player: Any,
+        layout: PanelLayout | None = None,
+        panel_id: str | None = None,
     ) -> int:
         if not player:
             return 0
@@ -136,5 +152,5 @@ class PlayerUI:
             line_colors[idx] = TEXT_OK
 
         return self.renderer.draw_panel(
-            x, y, lines, title="STATS", line_colors=line_colors, layout=layout
+            x, y, lines, title="STATS", line_colors=line_colors, layout=layout, panel_id=panel_id
         )

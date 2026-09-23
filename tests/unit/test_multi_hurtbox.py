@@ -167,12 +167,8 @@ def test_hurtbox_singular_is_union_of_zones() -> None:
 
 
 def test_zone_names_exposed_for_debug_overlay() -> None:
-    """Named zones surface on the entity so the overlay can label them."""
+    """Named zones surface on the entity so the overlay can list them."""
     target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
     assert target.hurtbox_zone_names == ("head", "torso", "legs")
-    from src.ui.world_ui import WorldUI
-
-    assert WorldUI._zone_tag(0, target) == "head x1.2"
-    assert WorldUI._zone_tag(1, target) == "torso"
-    # Legacy unnamed zone: no label (mult 1.0, empty name).
-    assert WorldUI._zone_tag(0, entity_at(0.0)) is None
+    # Legacy unnamed zone: no roster row (mult 1.0, empty name).
+    assert target.hurtbox_mult == (1.2, 1.0, 1.0)

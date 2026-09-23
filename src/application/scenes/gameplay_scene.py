@@ -32,6 +32,10 @@ _FREEZE_KEY = pygame.K_F6
 #: so sweep ghosts and attack phases stay readable at full speed otherwise.
 _STEP_KEY = pygame.K_F7
 
+#: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
+#: anything else reaches the level untouched.
+_PANEL_MOUSE_EVENTS = (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION)
+
 
 class GameplayScene(Scene):
     """Run a ``Level`` and trigger the end transitions.
@@ -43,6 +47,10 @@ class GameplayScene(Scene):
     - F6 (debug only) → freeze the simulation in place to inspect the
       debug label cards; rendering keeps running.
     - F7 (debug only, while frozen) → advance exactly one simulation tick.
+
+    Mouse events are offered to the debug panels first (debug only): a click
+    on their ``×`` hides that panel and a drag moves it, until F5 resets the
+    whole set.
     """
 
     def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
@@ -104,6 +112,8 @@ class GameplayScene(Scene):
 
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
             return
+        if self._route_to_panels(event):
+            return
         if event.type == pygame.KEYDOWN and self.level is not None:
             if event.key == _FREEZE_KEY and Debug.is_enabled():
                 self.frozen = not self.frozen
@@ -114,8 +124,34 @@ class GameplayScene(Scene):
                 return
             toggle = _OVERLAY_TOGGLES.get(event.key)
             if toggle is not None:
-                world_ui = self.level.renderer.ui_manager.world_ui
-                world_ui.toggle(toggle)
+                ui_manager = self.level.renderer.ui_manager
+                ui_manager.world_ui.toggle(toggle)
+                if toggle == "panels":
+                    # F5 is also the reset key: the ``×`` closures and the
+                    # dropped positions are forgotten, so pressing it twice
+                    # always brings back the whole default stack.
+                    ui_manager.reset_debug_panels()
+
+    def _route_to_panels(self, event: pygame.event.Event) -> bool:
+        """Let the debug panels swallow a mouse event (``×``, drag & drop).
+
+        Only while the panels are actually painted: their registered rects
+        outlive the frame that drew them, so routing clicks while the layer
+        is off would let an invisible panel eat gameplay input. Non-mouse
+        events return at once, before the level is even touched.
+        """
+        if event.type not in _PANEL_MOUSE_EVENTS:
+            return False
+        if self.level is None or not Debug.is_enabled():
+            return False
+        # Duck-typed levels (tests) may not carry a renderer at all.
+        renderer = getattr(self.level, "renderer", None)
+        if renderer is None:
+            return False
+        ui_manager = renderer.ui_manager
+        if not ui_manager.world_ui.layers.get("panels", True):
+            return False
+        return bool(ui_manager.handle_panel_event(event))
 
     def draw(self) -> list[pygame.Rect] | None:
         if self.level is None:
@@ -124,6 +160,13 @@ class GameplayScene(Scene):
         fps = clock.get_fps() if clock else 0.0
         frame_time = clock.get_time() if clock else 0.0
         rects = self.level.draw(fps, game=self.game, frame_time=frame_time)
+        # Always-on player gauges (UI-7): drawn last so the HUD stays on top of
+        # the world and of the debug panels, and never hidden by F5. Its rects
+        # join the dirty set, since a non-debug frame presents those only.
+        ui_manager = self.level.renderer.ui_manager
+        hud_rects = ui_manager.draw_hud(getattr(self.level, "player", None))
+        if rects is not None:
+            rects.extend(hud_rects)
         if self.frozen:
             self._draw_frozen_tag()
         return rects

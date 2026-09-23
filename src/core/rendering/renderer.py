@@ -204,15 +204,13 @@ class Renderer:
         if not self.ui_manager.world_ui.layers.get("panels", True):
             return
         surface = self.ui_manager.renderer.display_surface
+        # Hit tests run against the rects painted last frame; the registry is
+        # rebuilt here so panels closed with their ``×`` stop eating clicks.
+        self.ui_manager.renderer.interaction.begin_frame()
         layout = PanelLayout(surface.get_width(), surface.get_height())
-        self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
-        self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
-        if game is not None:
-            self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
-        self.ui_manager.draw_help_panel(
-            10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
-        )
-        self.ui_manager.draw_legend_panel(10, 10, layout=layout)
+        # PERFORMANCE is pinned first so the column flow can reserve it and
+        # wrap around it; COMBAT counters then lead the flow, so the tall
+        # PLAYER STATE / STATS panels can never overdraw them.
         self.ui_manager.draw_performance_panel(
             fps=fps,
             sprite_count=sprite_count,
@@ -225,3 +223,12 @@ class Renderer:
             cache_size=cache_size,
             layout=layout,
         )
+        self.ui_manager.draw_combat_panel(layout)
+        self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
+        self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
+        if game is not None:
+            self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
+        self.ui_manager.draw_help_panel(
+            10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
+        )
+        self.ui_manager.draw_legend_panel(10, 10, layout=layout)

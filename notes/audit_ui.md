@@ -21,7 +21,7 @@ Statut : `✅` = re-vérifié le 2026-09-22 sur `a6d20f8` ; `🆕` = constat app
 | Réglages vidéo (fenêtre/plein écran/vsync) | ❌ `set_mode` fixe, aucun `RESIZABLE`/vsync | `game.py:84` | ✅ |
 | Réglages audio (volumes) | ❌ aucun audio du tout (`pygame.mixer`/`Sound`/`music` : **0 hit**) | grep §7 | ✅ |
 | Sélection de niveau | ❌ seuls « continue » (dernier niveau) et « new game » ; `unlocked_levels` au-delà du dernier **inaccessibles** | `menu_scene.py:32-55`, `save_game.py:27-28` | ✅ |
-| HUD joueur lisible | ❌ pas de HUD joueur (vie/posture/dash/combo) ; barres de vie *d'entités* déjà présentes hors debug (`level.py:316`) ; panneaux « UI » restants en mode debug | `level.py:312-328`, `ui_manager.py:20-156`, `world_ui.py:1247-1275` | ✅ (corrigé) |
+| HUD joueur lisible | ✅ **soldé** : `src/ui/hud.py` (vie/posture/dash/combo, ancré écran, hors `Debug`), branché depuis `GameplayScene.draw` (D9) ; barre world-space du **joueur retirée** (gate dans `_has_health_bar`), celle des *entités* reste hors debug (`level.py:316`) | `src/ui/hud.py`, `gameplay_scene.py:156-172`, `tests/unit/test_hud.py` | 🆕 (UI-7) |
 | Écran d'aide aux contrôles | ❌ le panneau « aide » liste les touches du banc de debug (F1-F7), pas les contrôles du joueur | `ui_manager.py:59-83` | ✅ |
 | Modèle de sélection (focus/hover) | ❌ 0 hit `selected/focused/hover/highlight` (hits `cursor` = curseurs de layout debug : `panel_renderer.py:23,41`, `world_ui.py` timeline/sweep) | greps §7 | ✅ |
 | Panneau COMBAT hors debug | ❌ `draw_metrics_panel` + `note_clash` appelés **avant** le gate `Debug` — visibles en mode joueur | `level.py:317-326` vs `level.py:328` | 🆕 (UI-14) |
@@ -129,6 +129,8 @@ Base de tests existante réutilisable pour la réception : `tests/headless/test_
 
   - Ancrage écran (coin bas-gauche vie/posture, bas-droite dash/combo), **pas** de world-space, **pas** de `Debug.is_enabled()`. Classe `HUD.draw(player) -> None` ; **branchement D9** : `GameplayScene.draw` (`src/application/`, périmètre autorisé) appelle `self.level.renderer.ui_manager.draw_hud(self.level.player)` **après** `level.draw()` — ni `level.py`, ni `renderer.py` modifiés (règle 1).
 - *Réception* : headless — HUD dessiné sans `Debug.is_enabled()`, contenu et couleurs vérifiés par état (vie basse → rouge) via snapshot de texte/Rects (pas de pixel-perfect).
+- *État (2026-09-22)* : **soldé**. `src/ui/hud.py` (`HUD.draw(player) -> list[Rect]`), seuils UI-7 dans `health_color`/`posture_color`, largeur de barre proportionnelle bornée à l'écran (`bar_width_for`), `HudLayout` gelé pour l'assertion par état ; `UIManager.draw_hud` + branchement D9 dans `GameplayScene.draw`, rects HUD ajoutés au set dirty (frame non-debug). 23 tests dans `tests/unit/test_hud.py` (ancrage, seuils, pips, combo expiré, clamp des résolutions, rects présentés).
+- *Complément (2026-09-22)* : la **barre world-space du joueur est retirée** (redondante avec le HUD) — gate `faction == "player"` dans `WorldUI._has_health_bar` (`src/ui/`, règle 1 respectée ; `level.py:316` inchangé), ce qui supprime aussi la salle réservée par les cartes debug pour une barre jamais dessinée. Les barres des **entités ennemies** restent hors debug. Test `test_player_has_no_world_space_health_bar`.
 
 **UI-8 — Pas d'aide aux contrôles, libellés figés (priorité moyenne, effort S/M)**
 - *Constat* : le seul panneau « aide » (`ui_manager.py:59-83`) liste `1-4 test attacks / F1-7 boxes/step…` = touches du banc de debug. Les libellés de menu (`"ENTER: play"`, `menu_scene.py:37-42`) sont des chaînes en dur qui ne reflètent ni `InputBindings` ni d'éventuels rebidings (UI-5). Aucun écran « Contrôles » consultable depuis menu ou pause.
@@ -181,6 +183,7 @@ Base de tests existante réutilisable pour la réception : `tests/headless/test_
   - **Aucune édition de `level.py`** → règle 1 intacte (pas d'exception).
   - Option (b) (asserter le panneau comme feedback joueur) est **rejetée** pour l'instant : à rouvrir seulement avec une refonte vers `ui/hud.py` et une ligne écrite ici.
 - *Réception* : headless — `DEBUG` unset : `draw_metrics_panel` ne blitte rien (compteur de `display_surface` ou spy) ; `DEBUG=1` : comportement inchangé (`test_debug_overlay.py` / `test_ui_debug_panels.py` restent verts).
+- *État (2026-09-22)* : **soldé autrement que par le gate sec** — `draw_metrics_panel` collecte les lignes (gate `Debug.is_enabled()` dans `world_ui.py`, zéro édition de `level.py` : décision D1 intacte) et le **flux de colonnes** les dessine (`UIManager.draw_combat_panel`, appelé par `Renderer.draw_debug_panels`). Le COMBAT a donc en plus quitté sa position fixe `(10, 150)` où il s'empilait sur STATE/STATS. Tests : `tests/unit/test_debug_layout.py` (gate + flux) ; `DEBUG` unset → `combat_panel_lines` vide et aucun pixel COMBAT.
 
 ## 3. Cible proposée (architecture)
 

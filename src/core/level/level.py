@@ -328,6 +328,9 @@ class Level:
         if not debug_enabled:
             return dirty
 
+        # Bars painted over the debug overlays: stamp the clash ring again so
+        # a clash never hides behind an HP bar (this stamp spends no TTL).
+        self.renderer.ui_manager.world_ui.stamp_clash_marker(self.renderer.camera)
         self.renderer.draw_debug_panels(
             player=self.player,
             fps=fps,
