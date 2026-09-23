@@ -4,7 +4,7 @@
 - **Périmètre** : `src/core/input/` (`input_bindings`, `input_provider`, `input_manager`, `input_state`), `src/core/game.py` (`_handle_events`, hot-plug manette), consommation gameplay `src/entities/player_input.py`, tests input associés. Seuils : `src/core/settings.py` (`Input`).
 - **Hors périmètre** : touches de debug hors bindings (`spawn_system.py` K_g/K_p/…, `gameplay_scene.py` F1-F7, conflit K_g combo/spawn) — noté en fin de document, non planifié ici ; UI des menus et écrans (`audit_ui.md`) ; simulation (`src/core/level/`, `src/combat/`, `src/entities/` hors `player_input`).
 - **Méthode** : lecture ligne à ligne des 4 modules input + `_handle_events` + `player_input` ; greps exhaustifs (souris, actions UI, seuils, remapping, stubs de test) ; croisement avec le snapshot `.coverage` et les tests headless/unit input.
-- **Verdict** : le socle **gameplay tient la route** — séparation bindings / provider / manager / edges déterministe, hot-plug manette géré, abstraction réseau prête (`InputProvider` ABC, `apply_remote_state`). Mais le système **n'est pas extensible en l'état** vers les besoins UI : zéro action de menu dans le vocabulaire, `InputState` fermé (11 champs figés), propriétés d'edges copiées-collées, **9 stubs de test dupliqués**, aucune souris dans la stack, seuils/deadzones incohérents, SOCD clavier implicite (C-9), bindings sans contexte de map (C-10), réponse analogique sans seuil extérieur (C-11). Ce n'est pas une refonte : c'est **une couche d'actions à ajouter en amont des lots UI** (C-Lot 0 avant UI lot 1).
+- **Verdict** : le socle **gameplay tient la route** — séparation bindings / provider / manager / edges déterministe, hot-plug manette géré, surface d'injection réseau (`set_provider`, `apply_remote_state`). Mais le système **n'est pas extensible en l'état** vers les besoins UI : zéro action de menu dans le vocabulaire, `InputState` fermé (10 actions booléennes et un axe), propriétés d'edges copiées-collées, **9 stubs de test divergents**, aucune souris dans le chemin commun des menus, seuils/deadzones incohérents, SOCD implicite (C-9), bindings sans contexte de map (C-10), réponse analogique sans seuil extérieur (C-11). Ce n'est pas une refonte : c'est **un vocabulaire d'actions et un routeur d'événements à ajouter en amont des lots UI** (C-Lot 0 avant UI lot 1), en privilégiant des patterns simples et adaptés au projet.
 - **Lien** : ce document **précède** `notes/audit_ui.md` (les lots UI 1-2 dépendent de C-Lot 0a/0b). Le chantier rebinding (ex-UI-5) est **porté ici** ; l'écran Contrôles reste en UI.
 
 ---
@@ -28,13 +28,13 @@ Statut : **verifié** = re-vérifié le 2026-09-22 sur `a6d20f8` ; **absent** = 
 
 | Capacité attendue | État actuel | Preuve | Statut |
 |---|---|---|---|
-| Clavier : edges just pressed / released | Oui — `InputManager` double état prev/cur, 11 propriétés dédiées | `input_manager.py:62-158`, tests headless | verifié |
+| Clavier : edges just pressed / released | Oui — `InputManager` double état prev/cur, 11 propriétés d'edges dédiées | `input_manager.py:62-158`, tests headless | verifié |
 | Manette : hot-plug added/removed | Oui — `game.py:133-146` + `connect`/`disconnect`/`reassign` | `game.py:82,133-146`, `input_provider.py:52-82` | verifié (removed non testé) |
 | Manette : axes, hat X, deadzone | Partiel — axe X + hat X ; deadzone **0.2** en dur puis **0.1** dans le manager (cumul) | `input_provider.py:156-191`, `settings.py:286` | partiel |
 | Manette : hat Y et `down` | Absents — hat Y ignoré ; `down_held` clavier seul | `input_provider.py:104,166` | absent |
 | SOCD clavier (gauche+droite simultanés) | Absent — `neutral` implicite via `droite - gauche`, policy non documentée, non testée | `input_provider.py:156` | absent |
 | Combos clavier / manette | Oui — `special_attack` (détecté level dans le provider) | `input_bindings.py:66-76`, `input_provider.py:110-120` | verifié |
-| Souris dans la stack input | Absente — `InputState` sans position ni clic ; 0 hit `MOUSE*` | grep §7 | absent |
+| Souris dans la stack input | Absente du chemin commun gameplay/menu — la souris existe uniquement dans les panneaux debug (`MOUSEBUTTON*`, `MOUSEMOTION`, `pygame.mouse.get_pos`) | `panel_renderer.py:151-175,468`, `gameplay_scene.py:42,157-176` | absent |
 | Actions de menu (`ui_up` / `ui_confirm` / `ui_back`) | Absentes — bindings = gameplay seul | `input_bindings.py:31-76` | absent |
 | Structure des bindings en maps de contexte | Absente — 5 dicts plats gameplay ; pas de regroupement `gameplay`/`menu` ni mapping manette standard documenté | `input_bindings.py:31-76` | absent |
 | Routage événements multi-périphériques (menus) | Absent — les 3 scènes filtrent `KEYDOWN` à la source ; manette/souris jamais consommées en menu | `menu_scene.py:48`, `pause_scene.py:33`, `gameover_scene.py:34` | absent |
@@ -44,7 +44,7 @@ Statut : **verifié** = re-vérifié le 2026-09-22 sur `a6d20f8` ; **absent** = 
 | Seuil extérieur analogique (`range_end`) | Absent — rescale vers 1.0 implicite ; un pad fatigué plafonne `move_axis` | `input_provider.py:188-191` | absent |
 | Stubs de test input unifiés | Non — au moins **9** copies partielles divergentes | grep §7 | partiel |
 | Tests `LocalInputProvider` | Faible — couverture snapshot **54 %** ; hat/combos/deadzone/connect non testés | snapshot `.coverage` | partiel |
-| Abstraction réseau / provider swappable | Oui — `InputProvider` ABC, `NullInputProvider`, `set_provider`, `apply_remote_state` | `input_provider.py:16-29`, `input_manager.py:38-60` | verifié (API inexploitée dans `src/`) |
+| Abstraction réseau / provider swappable | Partiel — `InputProvider` est une classe conventionnelle avec `NotImplementedError`, pas une véritable ABC/Protocol ; `NullInputProvider`, `set_provider`, `apply_remote_state` existent | `input_provider.py:16-29`, `input_manager.py:38-60` | partiel (API inexploitée dans `src/`) |
 | `JOYDEVICEREMOVED` testé | Non — chemin hors couverture | `game.py:141-146` | absent |
 
 Base de tests existante : `tests/headless/test_input_manager.py` (5 tests : edges, deadzone manager, axe, remote, indépendance attaques), `tests/unit/test_runtime_and_paths.py:102-118` (hot-plug added), `tests/unit/test_player_controllers.py` (~20 tests timers), `tests/unit/test_player.py:88-147` (consommation via mock).
@@ -60,14 +60,14 @@ Format de chaque constat : **Constat** (fait + preuve), **Impact**, **Cible**, *
 **C-1 — Deux canaux d'entrée parallèles, jamais unifiés (priorité haute, effort M)**
 - *Constat* : les menus consomment la file d'événements pygame bruts (`game.py:148` → `SceneManager.handle_event` → filtre `!= KEYDOWN → return` dans `menu_scene.py:48`, `pause_scene.py:33`, `gameover_scene.py:34`). Le gameplay consomme le polling `InputManager` (`gameplay_scene.py:76` → `provider.poll()` → edges), cadencé **uniquement** en tick de scène gameplay — hors gameplay, `InputManager.update()` n'est jamais appelé (gelé). Aucune couche ne traduit événements clavier/souris/manette en **actions nommées** communes.
 - *Impact* : toute navigation de menu multi-périphérique impose de dupliquer la logique dans chaque scène ; l'UI (UI-1/UI-2 de `audit_ui.md`) n'a pas de point d'entrée unique ; un appui manette sur un menu n'existe tout simplement pas.
-- *Cible* : un **routeur d'événements** (C-Lot 0b) : `route_event(event) -> Action | None` ou vers un modèle de focus, consommant `KEYDOWN` / `MOUSE*` / `JOYBUTTON*` / `JOYHAT*` / `JOYAXIS*` **avant** le filtre des scènes. Les scènes menu appellent le routeur ; le gameplay garde son polling inchangé (déterminisme).
-- *Réception* : headless — un `Event(JOYBUTTONDOWN)` ou `MOUSEMOTION` injecté sur le routeur produit l'action attendue (`ui_down`, `ui_confirm`) ; les scènes menu ne contiennent plus `if event.type != pygame.KEYDOWN` comme unique porte d'entrée.
+- *Cible* : un **routeur d'événements** (C-Lot 0b), appelé une seule fois par `Game` ou `SceneManager`, qui adapte les événements Pygame en résultats structurés (`action`, `position`, `device`) ou en `None`. Il consomme `KEYDOWN` / `MOUSE*` / `JOYBUTTON*` / `JOYHAT*` / `JOYAXIS*` avant le routage vers la scène active ; les scènes ne reçoivent les événements bruts que pour les usages non input (debug). Le gameplay conserve son polling inchangé (déterminisme).
+- *Réception* : headless — un `Event(JOYBUTTONDOWN)` injecté sur le routeur produit l'action attendue (`ui_down`, `ui_confirm`) ; un `MOUSEMOTION` produit un résultat de position et un clic produit `ui_confirm` avec position ; les scènes menu ne contiennent plus `if event.type != pygame.KEYDOWN` comme unique porte d'entrée.
 
 **C-2 — `InputState` fermé + edges en copier-coller (priorité haute, effort M — socle de C-3)**
-- *Constat* : `InputState` est un dataclass à **11 champs booléens/axe figés** (`input_state.py:41-51`). `InputManager` expose **11 propriétés** quasi identiques du type `current.X and not prev.X` (`input_manager.py:96-158`), écrites à la main. Ajouter une action = (1) champ dans `InputState`, (2) assignation dans `LocalInputProvider.poll` (câblage en dur, `:102-135`, pas de boucle sur les bindings), (3) propriété dans le manager, (4) mise à jour de **jusqu'à 9 stubs de test** divergents (`tests/conftest.py:23`, `tests/headless/test_level_events.py:10`, `tests/headless/test_simulation_golden.py:46`, `tests/headless/test_rollback_e2e.py`, `tests/unit/helpers.py:228`, `tests/unit/test_player.py`, `tests/unit/test_reset_position.py:11`, `tests/unit/test_combat_component.py:11`, `tests/unit/test_type_annotations.py:12`).
+- *Constat* : `InputState` est un dataclass à **10 champs booléens + 1 axe figés** (`input_state.py:41-51`). `InputManager` expose **11 propriétés d'edges** quasi identiques du type `current.X and not prev.X` (`input_manager.py:96-158`), écrites à la main. Ajouter une action de simulation = (1) champ dans `InputState`, (2) déclaration dans la table d'actions, (3) lecture dans `LocalInputProvider.poll` (câblage en dur, `:102-135`, pas de boucle sur les bindings), puis mise à jour de **jusqu'à 9 stubs de test** divergents (`tests/conftest.py:23`, `tests/headless/test_level_events.py:10`, `tests/headless/test_simulation_golden.py:46`, `tests/headless/test_rollback_e2e.py`, `tests/unit/helpers.py:228`, `tests/unit/test_player.py`, `tests/unit/test_reset_position.py:11`, `tests/unit/test_combat_component.py:11`, `tests/unit/test_type_annotations.py:12`).
 - *Impact* : coût linéaire et fragile par action ; les stubs divergent silencieusement (signe : `player_input.py:53` utilise `getattr(im, "jump_just_released", False)` alors que la propriété existe réellement). Bloque directement l'ajout de `ui_up` / `ui_confirm` / `ui_back`.
-- *Cible* : API d'action générique (C-D1) : `manager.just_pressed("jump")`, `manager.held("guard")` sur un dict d'edges calculé une seule fois à partir des champs/actifs ; **un seul** helper de stub de test partagé ; les propriétés nommées existantes restent (compatibilité `player_input`) mais déléguent à l'API générique.
-- *Réception* : tests unitaires purs — ajouter une action factice en **une ligne** (binding + entrée state) la rend lisible via `just_pressed` sans toucher le manager ; stub unique utilisé par les 9 fichiers (ou réduits à un import).
+- *Cible* : une **table d'actions déclarative** reliant un identifiant typé (`InputAction`), le champ correspondant de `InputState` et le contexte, consommée par `manager.held(action)`, `manager.just_pressed(action)` et `manager.just_released(action)`. Les propriétés nommées existantes restent pour la compatibilité et délèguent à cette API. `InputState` reste limité à la simulation : les actions UI ne le rejoignent pas. Un **scripted provider/fixture partagé** fournit de vrais `InputState` aux tests au lieu de neuf faux objets partiels.
+- *Réception* : tests unitaires purs — déclarer une nouvelle action de simulation dans la table et `InputState` la rend lisible via l'API générique sans ajouter de propriété au manager ; une action UI n'exige aucune modification de `InputState` ; le stub commun remplace progressivement les neuf doublons.
 
 **C-3 — Aucune action de menu dans le vocabulaire (priorité haute, effort S/M)**
 - *Constat* : `InputBindings` ne contient que du gameplay (`move_*`, `jump`, `dash`, `attack1-4`, `guard`, `reset`, combos) — `input_bindings.py:31-76`. Grep `ui_confirm|ui_back|ui_up|ui_down` : **0 hit** dans `src/`. `InputState` ne transporte aucune sémantique de navigation.
@@ -77,11 +77,11 @@ Format de chaque constat : **Constat** (fait + preuve), **Impact**, **Cible**, *
 
 ### Axe B — Périphériques et seuils
 
-**C-4 — Souris entièrement hors de la stack input (priorité haute pour l'UI, effort M)**
-- *Constat* : `InputState` n'a ni position de curseur, ni boutons (`input_state.py:41-51`). `LocalInputProvider.poll` ne lit que `pygame.key.get_pressed()` + joystick (`input_provider.py:86-100`). Grep `MOUSEMOTION|MOUSEBUTTON|pygame.mouse` dans `src/` : **0 hit**. Les seuls `cursor` du code sont des curseurs de layout debug (`panel_renderer.py:23,41`, `world_ui.py` timeline/sweep).
-- *Impact* : hover et clic menu (UI-1) impossible sans nouveau code ; pas de position partagée pour hit-test.
-- *Cible* : le **routeur C-Lot 0b** traite `MOUSEMOTION` / `MOUSEBUTTONDOWN` en événements (position transmise au modèle de focus UI, pas forcément dans le poll gameplay — la souris **n'entre pas** dans `InputState` de simulation, décision C-D3) ; éventuellement exposer `pygame.mouse.get_pos()` pour le rendu du curseur.
-- *Réception* : headless — `Event(MOUSEMOTION, pos=…)` et `Event(MOUSEBUTTONDOWN, pos=…, button=1)` routés produisent `hover` / `ui_confirm` ; `InputState` gameplay reste inchangé (pas de champ souris).
+**C-4 — Souris hors du chemin commun input/UI (priorité haute pour l'UI, effort M)**
+- *Constat* : `InputState` n'a ni position de curseur, ni boutons (`input_state.py:41-51`) et `LocalInputProvider.poll` ne lit que clavier + joystick (`input_provider.py:86-100`). La souris est toutefois déjà traitée par le panneau de debug : `MOUSEBUTTONDOWN`, `MOUSEBUTTONUP`, `MOUSEMOTION` et `pygame.mouse.get_pos()` (`panel_renderer.py:151-175,468`, `gameplay_scene.py:42,157-176`). Elle n'est ni traduite en action commune, ni routée vers les menus.
+- *Impact* : hover et clic menu (UI-1) nécessitent un nouveau chemin ; le code debug montre qu'un routeur peut être introduit sans modifier `InputState` de simulation.
+- *Cible* : le **routeur C-Lot 0b** traite `MOUSEMOTION` / `MOUSEBUTTONDOWN` comme résultats de position et d'activation UI ; la souris **n'entre pas** dans `InputState` de simulation (décision C-D3). Le panneau debug conserve son traitement brut tant qu'il n'est pas migré.
+- *Réception* : headless — `Event(MOUSEMOTION, pos=…)` et `Event(MOUSEBUTTONDOWN, pos=…, button=1)` routés produisent un résultat de survol et `ui_confirm` avec position ; `InputState` gameplay reste inchangé (pas de champ souris).
 
 **C-5 — Seuils et deadzones incohérents, hors `settings` (priorité moyenne, effort S)**
 - *Constat* :
@@ -101,8 +101,8 @@ Format de chaque constat : **Constat** (fait + preuve), **Impact**, **Cible**, *
 
 **C-7 — Bindings non persistés, non rebindables (priorité moyenne, effort M — porte le ex-UI-5)**
 - *Constat* : `input_bindings.py:5` promet « *These mappings can be customized to support user-defined keybinds* » ; defaults en dur (`:31-76`) ; **aucun** `to_dict` / `from_dict` ; aucune écriture disque. `SaveGame` ne persiste que la progression. L'écran de capture de touche n'existe pas (l'UI est responsable de l'affichage — `audit_ui.md` UI-8 / lot UI-3).
-- *Impact* : tout réglage (dont les futures actions `ui_*`) perdu à chaque lancement ; le schéma `settings.json` de l'UI n'a pas de section `bindings` peuplée sans ce travail.
-- *Cible* : `InputBindings.to_dict()` / `from_dict()` + persistance dans `settings.json` **section `bindings`** (schéma déjà esquissé dans `audit_ui.md` UI-5 — la **donnée** est portée ici, l'**écran** reste UI) ; même contrat version/fallback que `SaveGame` (`save_game.py:53-65`) ; `LocalInputProvider` construit avec les bindings chargés (`input_provider.py:39-47` le supporte déjà).
+- *Impact* : tout réglage (dont les futures actions `ui_*`) est perdu à chaque lancement ; le schéma de configuration de l'UI n'a pas de source de données pour les bindings.
+- *Cible* : `InputBindings.to_dict()` / `from_dict()` avec schéma versionné, puis un `BindingsRepository` ou le futur `SettingsStore` pour une section `bindings` dans le fichier de configuration utilisateur. Le chargement d'un fichier absent ou corrompu retombe sur les defaults avec journalisation ; une action inconnue dans un fichier par ailleurs valide doit être signalée comme erreur de configuration, pas ignorée. `LocalInputProvider` est construit avec les bindings chargés (`input_provider.py:39-47` le supporte déjà). L'écran de capture reste hors périmètre de cet audit.
 - *Réception* : headless — roundtrip JSON des 4 dicts (+ `menu`) ; bindings modifiés → rechargés identiques ; fichier corrompu → defaults sans crash ; le routeur et le gameplay voient les mêmes codes.
 
 ### Axe C — Tests et santé du code
@@ -114,7 +114,7 @@ Format de chaque constat : **Constat** (fait + preuve), **Impact**, **Cible**, *
   - `game.py:141-146` (`JOYDEVICEREMOVED`) hors couverture ;
   - `test_rf6_branches.py:35-46` asserte l'**ordre des lignes dans le source** via `inspect.getsource` au lieu d'un comportement — test structurel fragile.
 - *Impact* : impossible de verrouiller les régressions manette **avant** de brancher les menus dessus ; les refactors C-2/C-6 risquent des casses silencieuses de la simulation.
-- *Cible* : (1) **un seul** stub/fabrique d'input de test partagé (helper `make_input_manager(**held)`) ; (2) tests comportementaux `LocalInputProvider` (scripter key/joy via monkeypatch `pygame.key.get_pressed` + faux joystick) : deadzone, priorité clavier/analog/hat, combo, écrêtage, hat Y, `down` manette ; (3) test `JOYDEVICEREMOVED` (reassign) ; (4) remplacer l'assert `inspect.getsource` par un test de comportement si touché.
+- *Cible* : (1) **un seul** stub/fabrique d'input de test partagé, fondé sur un `InputProvider`/`ScriptedProvider` conforme au port et de vrais `InputState` ; (2) tests comportementaux `LocalInputProvider` (clavier/joystick via ports injectables ou adaptation minimale) : deadzone, priorité clavier/analog/hat, combo, écrêtage, hat Y, `down` manette ; (3) test `JOYDEVICEREMOVED` (reassign) ; (4) remplacer l'assert `inspect.getsource` par un test de comportement si touché.
 - *Réception* : `uv run pytest tests/unit/test_input_provider.py tests/headless/test_input_manager.py tests/unit/test_runtime_and_paths.py` verts ; grep des 9 stubs → **1** emplacement ; couverture provider nettement au-dessus de 54 % (mesurer avant/après).
 
 **C-9 — SOCD clavier implicite, non spécifié, non testé (priorité haute pour le netcode, effort S)**
@@ -140,27 +140,29 @@ Format de chaque constat : **Constat** (fait + preuve), **Impact**, **Cible**, *
 ## 3. Architecture cible
 
 ```
-InputBindings (défauts + dict menu)  ←→  settings.json section bindings (C-7)
+InputBindings (défauts + contextes gameplay/menu)  ←→  BindingsRepository / SettingsStore (C-7)
         │
         ▼
-LocalInputProvider.poll()  ──→  InputState (gameplay, inchangé côté simulation)
-        │                         + dictionnaire d'actifs / edges
+LocalInputProvider.poll()  ──→  InputState (gameplay uniquement, inchangé côté simulation)
+        │                         + table d'actions / edges calculée par InputManager
         ▼
-InputManager  ── API générique just_pressed("…") / held("…")
+InputManager  ── API générique held(action) / just_pressed(action) / just_released(action)
         │       ── propriétés nommées existantes déléguées (compat player_input)
         ▼
 PlayerInputHandler (gameplay)          │
                                        │  (parallèle, même vocabulaire)
-Routeur d'événements (C-Lot 0b)        │
+InputEventRouter / Adapter (C-Lot 0b)  │
   KEYDOWN | MOUSE* | JOYBUTTON | JOYHAT | JOYAXIS
         │
         ▼
-  actions ui_*  ──→  MenuModel / scènes menu  (audit_ui.md, UI-3)
+  résultats ui_* / position  ──→  scène active ou MenuModel (audit_ui.md, UI-3)
 ```
 
-- **Deux canaux assumés** (polling simulation vs file d'événements menus) mais un **vocabulaire d'actions unique** organisé en **maps de contexte** (`gameplay`, `menu` — C-D11) et un **routeur unique** pour les événements (la map `menu` activée consomme les événements) — plus de filtre `KEYDOWN` local par scène.
-- Les seuils vivent dans `settings.Input` ; les codes matériels dans `InputBindings` (rebindables) ; la persistance dans `settings.json` (section `bindings`).
-- `InputProvider` ABC et `apply_remote_state` **conservés** (surface réseau, tests et **replay d'inputs** pour la réception — décision C-D7, cf. C-D8 révisée).
+- **Deux canaux assumés** (polling simulation vs file d'événements menus), mais un **vocabulaire d'actions unique** organisé en contextes (`gameplay`, `menu` — C-D11). Un routeur unique est appelé par `Game`/`SceneManager`, pas par chaque scène.
+- Les seuils vivent dans `settings.Input` ; les codes matériels dans `InputBindings` (rebindables) ; la persistance dans la configuration utilisateur via un repository, séparée du `savegame.json`.
+- `InputProvider` est maintenu comme port (migrer vers `Protocol` si nécessaire) et `apply_remote_state` est conservé pour le réseau, les tests et le replay d'inputs.
+- **Patterns retenus** : table/registry d'actions + façade `InputManager`, adapter + routeur d'événements, parameter object `settings.Input`, strategy SOCD explicite, ports et scripted test doubles, repository de configuration. Un vrai Command/Mediator ou une hiérarchie de strategies serait disproportionné ici ; un routeur simple est préférable.
+- **Patterns à éviter** : Singleton pour les bindings/provider/routeur, input UI dans `InputState`, gameplay routed par l'`EventBus`, et observabilité par `inspect.getsource`.
 
 ---
 
@@ -170,17 +172,17 @@ Ne pas rouvrir sans écrire la nouvelle décision ici **et** la répercuter dans
 
 | # | Sujet | Décision |
 |---|---|---|
-| C-D1 | API d'action | API générique `just_pressed(name)` / `held(name)` **en plus** des propriétés nommées (délégation) ; `InputState` peut rester dataclass, mais le manager calcule un dict d'edges — pas de nouvelle propriété manuelle par action |
-| C-D2 | Transport des `ui_*` | Le **routeur d'événements** (C-Lot 0b) produit `ui_up/down/confirm/back` pour les menus ; le polling gameplay **ne remplit pas** `InputState` avec les `ui_*` (pas de bruit en simulation). Les codes matériels sont **dans** `InputBindings.menu` (rebindables, persistés) |
-| C-D3 | Souris | **Hors** `InputState` de simulation ; gérée uniquement par le routeur événements (position + clic → focus menu / activation) |
-| C-D4 | Deadzone | **Une seule** deadzone, valeur `InputSettings.AXIS_DEADZONE`, appliquée **côté provider** ; le manager ne re-filtre plus `left_held`/`right_held` avec une autre valeur (il peut comparer à 0 ou réutiliser la même constante, sans second rescale) ; seuil extérieur `AXIS_RANGE_END` (C-11) **optionnel**, hors lots tant que le gameplay reste binaire |
+| C-D1 | API d'action | Table d'actions typée (`InputAction` + champ/contexte) et API `held(action)` / `just_pressed(action)` / `just_released(action)` **en plus** des propriétés nommées (délégation) ; `InputState` reste limité à la simulation, le manager calcule les edges sans nouvelle propriété manuelle par action |
+| C-D2 | Transport des `ui_*` | Un **InputEventRouter/Adapter** (C-Lot 0b), appelé une fois par `Game` ou `SceneManager`, produit des résultats `ui_up/down/confirm/back` et de position pour les menus ; le polling gameplay **ne remplit pas** `InputState` avec les `ui_*`. Une commande ou un médiateur formel n'est pas justifié tant que le routeur reste simple. Les codes matériels sont dans le contexte `menu` d'`InputBindings` (rebindables, persistés) |
+| C-D3 | Souris | **Hors** `InputState` de simulation ; le chemin commun UI la traite via le routeur (position + clic → focus menu / activation). Le panneau debug peut conserver son traitement brut jusqu'à sa migration |
+| C-D4 | Deadzone et seuils | `settings.Input` sert de **parameter object** : une seule deadzone `AXIS_DEADZONE` appliquée côté provider, sans second filtrage manager ; `DASH_AXIS_THRESHOLD` et les seuils menu sont regroupés dans le même objet. `AXIS_RANGE_END` reste optionnel, hors lots tant que le gameplay reste binaire |
 | C-D5 | `down` manette | Hat **Y** (`+1` = bas) **et** stick axe 1 (`> InputSettings.AXIS_DEADZONE` ou seuil dédié) alimentent `down_held` en plus du clavier ; priorité clavier > analog > hat conservée |
-| C-D6 | Portage rebinding | **Porté par cet audit** (C-7) : données `InputBindings.to_dict/from_dict` + section `bindings` de `settings.json` ; `audit_ui.md` UI-5 devient un renvoi vers C-7, l'écran Contrôles reste UI lot 3 |
-| C-D7 | API réseau (`set_provider`, `apply_remote_state`) | **Actée comme surface publique** (tests + futur multi) — pas de suppression ; les tests existants qui l'utilisent restent ; documenter dans la docstring qu'elle n'est pas encore câblée dans `src/` |
-| C-D8 | Stubs de test | **Un seul** helper partagé (ex. `tests/unit/helpers.py::make_input(...)`) appuyé sur un `ScriptedProvider` à états nommés ; variante **replay** : séquence d'`InputState` injectée via `apply_remote_state` (pattern `test_rollback_e2e.py`) ; les 9 copies sont migrées puis supprimées |
+| C-D6 | Portage rebinding | **Porté par cet audit** (C-7) : sérialisation versionnée + `BindingsRepository`/`SettingsStore` ; l'écran Contrôles reste UI lot 3 |
+| C-D7 | Port réseau (`set_provider`, `apply_remote_state`) | Conservés comme surface publique (tests + futur multi). Migrer `InputProvider` vers un `Protocol` si cela élimine les écarts de type des scripted providers ; ne pas introduire de service locator global |
+| C-D8 | Stubs de test | **Un seul** scripted test double/fixture, basé sur le port `InputProvider` et de vrais `InputState` ; variante **replay** : séquence d'`InputState` injectée via `apply_remote_state` (pattern `test_rollback_e2e.py`) ; les 9 copies sont migrées puis supprimées |
 | C-D9 | Ordre | **C-Lot 0a → 0b → 0c** ; l'exécution UI (lots `audit_ui.md`) ne démarre qu'après 0a + 0b verts |
-| C-D10 | SOCD | Policy **`neutral`** actée (directions opposées pressées s'annulent = comportement actuel conservé, zéro changement gameplay) : explicite dans `_calculate_move_axis` + test dédié (C-Lot 0c) ; option `last_input_wins` (fightstick) notée pour évolution — exige une révision de cette décision avant tout code |
-| C-D11 | Maps d'actions | `InputBindings` regroupé en **maps nommées** (`gameplay`, `menu`) ; le routeur 0b = map `menu` activée qui consomme les événements ; rebind = écriture dans une map ; mapping manette par défaut documenté « Standard Gamepad (Xbox) » |
+| C-D10 | SOCD | Policy **`neutral`** actée et encapsulée dans une petite **strategy** ou fonction pure testable (directions opposées pressées s'annulent = comportement actuel conservé, zéro changement gameplay) ; l'option `last_input_wins` exige une révision de cette décision avant tout code |
+| C-D11 | Contextes d'actions | `InputBindings` regroupé en **contextes nommés** (`gameplay`, `menu`) ; le routeur 0b résout le contexte `menu` actif ; rebind = écriture dans le contexte ; mapping manette par défaut documenté « Standard Gamepad (Xbox) » |
 
 ---
 
@@ -190,33 +192,32 @@ Chaque lot est livrable et recevable indépendamment. Efforts : S ≈ demi-journ
 
 | Lot | Contenu | Constats | Effort | Bloque l'UI ? |
 |---|---|---|---|---|
-| **C-Lot 0a — Socle actions** | API générique + dict d'edges ; maps de contexte (`gameplay`, `menu`) dans `InputBindings` ; seuils → `settings.Input` (deadzone unique) ; helper de stub unique ; migration des 9 stubs | C-2, C-3 (bindings), C-5, C-8 (stubs), C-10 | M | Oui → UI-3 et fondations |
-| **C-Lot 0b — Routeur événements** | `route_event` : KEYDOWN + MOUSE + JOYBUTTON + JOYHAT + JOYAXIS → actions `ui_*` (codes depuis `InputBindings.menu`) ; scènes menu branchées (retrait du filtre exclusif KEYDOWN) **sans** encore le curseur visuel (UI-3/UI-1 = lots UI) | C-1, C-3, C-4 | M | Oui → UI-1, UI-2 |
+| **C-Lot 0a — Socle actions** | Table d'actions + façade générique ; maps de contexte (`gameplay`, `menu`) dans `InputBindings` ; seuils → `settings.Input` (deadzone unique) ; port + scripted test double ; migration des 9 stubs | C-2, C-3 (bindings), C-5, C-8 (stubs), C-10 | M | Oui → UI-3 et fondations |
+| **C-Lot 0b — Routeur événements** | `InputEventRouter`/adapter appelé par `Game` ou `SceneManager` : KEYDOWN + MOUSE + JOYBUTTON + JOYHAT + JOYAXIS → actions `ui_*` ou résultat de position ; scènes actives branchées sur le résultat, sans filtre Pygame local **sans** curseur visuel (UI-3/UI-1 = lots UI) | C-1, C-3, C-4 | M | Oui → UI-1, UI-2 |
 | **C-Lot 0c — Hygiène manette + tests** | Hat Y + `down` manette ; test SOCD `neutral` (C-D10) ; tests `LocalInputProvider` (deadzone, priorités, combo, hat) ; test `JOYDEVICEREMOVED` ; revue `inspect.getsource` | C-5, C-6, C-8, C-9 | M | Non (recommandé avant UI-2) |
-| **C-Lot 0d — Persistance bindings** | `to_dict`/`from_dict` + section `settings.json` `bindings` ; wiring au boot (`game.py` charge les bindings dans le provider) | C-7 | M | Non (UI lot 3 en dépend pour l'écran) |
+| **C-Lot 0d — Persistance bindings** | `to_dict`/`from_dict` + section `bindings` dans la configuration utilisateur (ex. `settings.json`) ; wiring au boot (`game.py` charge les bindings dans le provider) | C-7 | M | Non (UI lot 3 en dépend pour l'écran) |
 
 ### C-Lot 0a — Socle actions et extensibilité
 
 **Ordre**
-1. `settings.Input` : documenter/ajouter `DASH_AXIS_THRESHOLD = 0.5` ; **supprimer** le littéral `0.2` de `_apply_deadzone` au profit de `AXIS_DEADZONE` (C-D4) — ceci peut être reporté en 0c si 0a reste focalisé API ; **minimum 0a** : prévoir la constante et l'import.
-2. `InputBindings` : regrouper en **maps de contexte** (`gameplay`, `menu` — C-D11) ; `menu` par défaut clavier (`ui_up: K_UP`, `ui_down: K_DOWN`, `ui_confirm: K_RETURN`, `ui_back: K_ESCAPE`) + manette (`ui_confirm: 0`, `ui_back: 1`) — aligné sur D12 de `audit_ui.md` ; documenter le mapping manette gameplay comme « Standard Gamepad (Xbox) » dans la docstring (C-10).
-3. `InputManager` : méthode `just_pressed(name: str) -> bool` et `held(name: str) -> bool` (dictionnaire d'actifs dérivé de `InputState` + table nom→attribut, extensible) ; **les 11 propriétés existantes déléguent** à ces méthodes (ou partagent le même calcul) — comportement gameplay inchangé.
-4. Helper de test unique dans `tests/unit/helpers.py` (ou `tests/conftest.py`) : construit un `InputManager` avec un `ScriptedProvider` à états nommés ; variante replay long-form : séquence d'`InputState` via `apply_remote_state` (C-D8 révisée).
+1. `settings.Input` : documenter/ajouter `DASH_AXIS_THRESHOLD = 0.5` ; **supprimer** le littéral `0.2` de `_apply_deadzone` au profit de `AXIS_DEADZONE` (C-D4) ; le paramètre de configuration est injecté ou centralisé sans créer un singleton.
+2. `InputBindings` : regrouper en **contextes** (`gameplay`, `menu` — C-D11) ; `menu` par défaut clavier (`ui_up: K_UP`, `ui_down: K_DOWN`, `ui_confirm: K_RETURN`, `ui_back: K_ESCAPE`) + manette (`ui_confirm: 0`, `ui_back: 1`) — aligné sur D12 de `audit_ui.md` ; documenter le mapping manette gameplay comme « Standard Gamepad (Xbox) » dans la docstring (C-10).
+3. Déclarer une **table d'actions** reliant les identifiants typés aux champs de `InputState` ; `InputManager` expose `held(action)`, `just_pressed(action)` et `just_released(action)`. Les 11 propriétés d'edges existantes délèguent à cette API — comportement gameplay inchangé.
+4. Définir le port `InputProvider` (de préférence `Protocol`) et un `ScriptedProvider` partagé qui produit de vrais `InputState` ; variante replay via `apply_remote_state` (C-D8 révisée).
 5. Migrer les 9 stubs vers le helper ; supprimer les copies.
-6. `to_dict` / `from_dict` sur `InputBindings` (format plat JSON, cf. schéma UI-5) — peut aller en 0d ; **si 0a = socle pur**, au moins la signature + tests roundtrip sans disque.
 
-**Fichiers créés** : `tests/unit/test_input_bindings_dict.py` (roundtrip), éventuellement `tests/unit/test_input_actions.py`.  
-**Fichiers modifiés** : `input_bindings.py`, `input_manager.py`, `settings.py` (constantes), `tests/unit/helpers.py`, les 7 fichiers de stubs, `player_input.py` seulement si délégation nécessite un ajustement type.
+**Fichiers créés** : éventuellement `tests/unit/test_input_actions.py`.
+**Fichiers modifiés** : `input_bindings.py`, `input_manager.py`, `settings.py` (constantes), `tests/unit/helpers.py`, les 9 fichiers de stubs, `player_input.py` seulement si délégation nécessite un ajustement type.
 
 **DoD C-Lot 0a**
 ```bash
-uv run pytest tests/unit/test_input_actions.py tests/unit/test_input_bindings_dict.py \
-  tests/headless/test_input_manager.py tests/unit/test_player.py \
-  tests/unit/test_player_controllers.py tests/headless/test_gameplay_loop.py -q
+uv run pytest tests/unit/test_input_actions.py tests/headless/test_input_manager.py \
+  tests/unit/test_player.py tests/unit/test_player_controllers.py \
+  tests/headless/test_gameplay_loop.py -q
 uv run ruff check src tests && uv run ruff format --check src tests
 uv run mypy src
 ```
-+ grep : une seule définition de stub input dans `tests/` (§7) ; `just_pressed("jump")` équivalent à `jump_just_pressed` sur les mêmes états.
++ grep : une seule définition de stub input dans `tests/` (§7) ; `just_pressed(InputAction.JUMP)` équivalent à `jump_just_pressed` sur les mêmes états.
 
 ---
 
@@ -225,17 +226,9 @@ uv run mypy src
 **Prérequis** : C-Lot 0a (vocabulaire `menu` + API).
 
 **Ordre**
-1. Module `src/core/input/event_router.py` (ou `src/ui/ui_controller.py` — **choix : `src/core/input/event_router.py`** pour rester dans le périmètre contrôle, réutilisé ensuite par l'UI) :  
-   `route(event, bindings) -> str | None` retourne `"ui_up" | "ui_down" | "ui_confirm" | "ui_back" | None` ;  
-   - `KEYDOWN` → codes `bindings.menu` (+ répétition gérée par la scène ou edge via dernier état) ;  
-   - `MOUSEMOTION` → signal de survol (position) — type de retour structuré `RouterResult(action, pos)` ;  
-   - `MOUSEBUTTONDOWN` button 1 → `"ui_confirm"` avec `pos` ;  
-   - `JOYBUTTONDOWN` → indices `bindings.menu` manette ;  
-   - `JOYHATMOTION` Y ±1 → `ui_up`/`ui_down` (edge : mémoriser dernier hat) ;  
-   - `JOYAXIS` axe 1 : seuil 0.5 montée / 0.3 descente (edge, cf. D12 UI) — seuils dans `settings.Input` (`MENU_STICK_ON/OFF`).
-2. Brancher `MenuScene`, `PauseScene`, `GameOverScene` : le routeur est appelé **avant** toute logique ; le filtre `!= KEYDOWN → return` disparaît au profit d'une consommation d'action. ESC/ENTER/Q restent gérés comme **actions** (`ui_back` / `ui_confirm`) — mapping scène→comportement identique à aujourd'hui (pas de changement UX clavier).
-3. Ne **pas** ajouter le curseur visuel ni le clic sur Rects (UI-3/UI-1 → lots UI) — ici : le périphérique parvient aux scènes, le modèle de focus est le lot UI suivant. Pour valider 0b sans `MenuModel` : les actions produites sont observées (tests) et les raccourcis existants continuent de fonctionner.
-4. `game.py` : rien à changer (les événements sont déjà forwardés) ; s'assurer que `JOYDEVICE*` reste géré avant le routeur (inchangé).
+1. Créer `src/core/input/event_router.py` comme **adapter/routeur simple**, réutilisé par l'UI : `route(event, bindings, previous_axes) -> RouterResult | None`, avec `RouterResult(action, position, device)` ; 2. `Game` ou `SceneManager` appelle ce routeur une seule fois avant de distribuer le résultat à la scène active ; 3. `KEYDOWN` → codes du contexte `menu` ; `MOUSEMOTION` → résultat de position ; `MOUSEBUTTONDOWN` bouton 1 → `ui_confirm` avec position ; 4. `JOYBUTTONDOWN` → indices du contexte `menu` ; `JOYHATMOTION` → hat Y ; `JOYAXISMOTION` → seuil d'activation et désactivation avec état précédent, les seuils appartenant à `settings.Input`. Le routeur n'a pas besoin d'un Command ou d'un Mediator tant que son contrat reste ce résultat structuré.
+5. Faire consommer le résultat par `MenuScene`, `PauseScene` et `GameOverScene` ; retirer leur filtre Pygame local. ESC/ENTER/Q restent des actions dont la sémantique varie selon la scène.
+6. Ne pas ajouter le curseur visuel ni le hit-test des Rects ici ; le modèle de focus et le rendu restent les lots UI. Les événements bruts non transformés peuvent continuer à être transmis uniquement pour le debug.
 
 **Fichiers créés** : `src/core/input/event_router.py`, `tests/unit/test_event_router.py`.  
 **Fichiers modifiés** : `menu_scene.py`, `pause_scene.py`, `gameover_scene.py`, `settings.py` (seuils stick menu si pas fait).
@@ -281,9 +274,9 @@ uv run ruff check src tests && uv run ruff format --check src tests && uv run my
 **Prérequis** : 0a (`to_dict`/`from_dict`).
 
 **Ordre**
-1. Section `bindings` de `settings.json` : soit un `SettingsStore` pré-existant (UI lot 3), soit mini-store dédié **jusqu'à** la fusion — **choix : écrire via le futur `settings_store.py` s'il existe, sinon helper local `default_bindings_path` miroir de `default_save_path`** ; le fusionner sans casser quand UI lot 3 arrive.
-2. `Game._initialize` ou `Game.__init__` : charger les bindings, construire `LocalInputProvider(bindings)` (le ctor l'accepte déjà, `input_provider.py:39-47`).
-3. Écran de rebinding : **hors périmètre** (UI lot 3) — ici seulement la couche données.
+1. Définir un `BindingsRepository` (ou l'intégrer au futur `SettingsStore`) avec schéma versionné, valeurs par défaut, validation des actions/contexte et écriture atomique. Le fichier de configuration utilisateur est distinct de `savegame.json`.
+2. `Game.__init__` : charger les bindings avant de construire `LocalInputProvider(bindings)` ; passer le même modèle au routeur.
+3. Écran de rebinding : hors périmètre (UI lot 3) — ici seulement la couche données.
 
 **DoD C-Lot 0d**
 ```bash
@@ -316,25 +309,25 @@ C-Lot 0a  ──→  C-Lot 0b  ──→  UI lot 1 (MenuModel)  ──→  UI lo
 
 1. **Aucun changement de gameplay** : le polling de simulation (`InputState` gameplay, edges attaque/jump/dash) garde son comportement **bit-identique** sauf hygiène explicite C-5/C-6/C-9 (deadzone/hat/SOCD — le SOCD rend explicite la policy actuelle, zéro changement) testée avant/après. Jamais `src/core/level/`, `src/combat/`, `src/states/`, `src/physics/` ; `src/entities/player_input.py` seulement pour délégation compatible.
 2. **Un vocabulaire, deux canaux** : polling (tick fixe) pour la simulation ; routeur d'événements pour les menus — pas de troisième canal ad hoc ; pas de `key.get_pressed` supplémentaire hors provider/routeur.
-3. **Seuils dans `settings.Input`**, codes matériels dans `InputBindings`, persistance dans `settings.json` (section `bindings` séparée de `savegame.json`).
+3. **Seuils dans `settings.Input`**, codes matériels dans `InputBindings`, persistance dans la configuration utilisateur (ex. `settings.json`, section `bindings`) séparée de `savegame.json`.
 4. **Réception headless uniquement** : `SDL_VIDEODRIVER=dummy`, events injectés, faux joystick scriptable.
 5. **Un seul stub d'input dans les tests** après C-Lot 0a (C-D8).
 6. **Compatibilité** : `jump_just_pressed` et consorts restent utilisables par `player_input.py` pendant toute la migration (délégation, pas rupture).
-7. **Les décisions C-D1 à C-D9 font autorité** ; divergence = mettre à jour le tableau avant le code.
+7. **Les décisions C-D1 à C-D11 font autorité** ; divergence = mettre à jour le tableau avant le code.
 
 ---
 
 ## 6. Réception globale
 
-- [ ] API générique : ajouter une action fictive en une ligne (binding + état) → lisible par `just_pressed` / `held` sans modifier `InputManager`.
+- [ ] API générique : une nouvelle action de simulation est déclarée dans la table et `InputState`, puis lisible via `held` / `just_pressed` sans nouvelle propriété dans `InputManager` ; une action UI ne modifie pas `InputState`.
 - [ ] Vocabulaire `menu` (`ui_up`, `ui_down`, `ui_confirm`, `ui_back`) présent dans `InputBindings` par défaut, sérialisable (roundtrip).
-- [ ] Routeur : les 5 types d'événements (KEYDOWN, MOUSEMOTION, MOUSEBUTTONDOWN, JOYHATMOTION, JOYBUTTONDOWN) produisent l'action `ui_*` attendue en test unitaire.
+- [ ] Routeur : KEYDOWN, MOUSEMOTION, MOUSEBUTTONDOWN, JOYBUTTONDOWN, JOYHATMOTION et JOYAXISMOTION produisent l'action `ui_*` ou le résultat de position attendu en test unitaire.
 - [ ] Scènes menu : plus de porte d'entrée exclusive `KEYDOWN` ; parcours clavier historique (ENTER/N/ESC/Q) **identique** (`test_scenes.py` vert).
 - [ ] Une seule deadzone `settings.Input` ; grep sans littéral `0.2` / `0.5` dans `input_provider.py`.
 - [ ] `down_held` (et `ui_up`/`ui_down`) fonctionnent à la manette (hat Y) — test provider + routeur.
-- [ ] Un seul helper de stub d'input ; les 7 copies supprimées.
-- [ ] `tests/unit/test_input_provider.py` existant et vert ; `JOYDEVICEREMOVED` / reassign testé ; couverture provider en nette hausse (mesurer).
-- [ ] `InputBindings` persisté via `settings.json` section `bindings` (si 0d livré) ; corrompu → defaults.
+- [ ] Un seul helper de stub d'input ; les 9 copies supprimées.
+- [ ] `tests/unit/test_input_provider.py` créé et vert ; `JOYDEVICEREMOVED` / reassign testé ; couverture provider en nette hausse (mesurer).
+- [ ] `InputBindings` persisté dans la section `bindings` de la configuration utilisateur (ex. `settings.json`) (si 0d livré) ; corrompu → defaults.
 - [ ] SOCD `neutral` : gauche+droite pressés → `move_axis == 0.0` (C-D10), test dédié vert.
 - [ ] Maps de contexte `gameplay`/`menu` dans `InputBindings` ; mapping manette standard documenté (C-D11).
 - [ ] (Optionnel, C-11) `AXIS_RANGE_END` : rescale borné à 1.0 au-delà du seuil extérieur.
@@ -351,7 +344,7 @@ C-Lot 0a  ──→  C-Lot 0b  ──→  UI lot 1 (MenuModel)  ──→  UI lo
 # C-3 / C-2 : actions menu dans les bindings (0 hit avant C-Lot 0a)
 grep -rnE 'ui_confirm|ui_back|ui_up|ui_down' src/core/input/
 
-# C-4 : souris hors stack input (0 hit avant C-Lot 0b)
+# C-4 : souris : hits debug attendus avant C-Lot 0b ; vérifier l'absence de routeur commun avant, puis les résultats de position/action après
 grep -rnE 'MOUSEMOTION|MOUSEBUTTON|pygame\.mouse' src/
 
 # C-1 : filtre exclusif KEYDOWN dans les scènes (hits avant C-Lot 0b)
@@ -393,7 +386,7 @@ grep -c 'def test_' tests/headless/test_input_manager.py tests/unit/test_input_p
 
 | Point | Audit contrôles | Audit UI | Décision |
 |---|---|---|---|
-| Rebinding / `InputBindings` persistés | **C-7**, C-Lot 0d (données + disque) | UI-5, UI-8 (écran Contrôles, capture) | **C-D6** : données ici, écran là ; schéma `bindings` de `settings.json` défini par C-7, référencé par UI-5 sans être dupliqué |
+| Rebinding / `InputBindings` persistés | **C-7**, C-Lot 0d (données + disque) | UI-5, UI-8 (écran Contrôles, capture) | **C-D6** : données ici, écran là ; schéma `bindings` de la configuration utilisateur défini par C-7, référencé par UI-5 sans être dupliqué |
 | Routeur / actions menu | **C-1**, **C-3**, C-Lot 0b | UI-1, UI-2, D8 (`ui_controller`) | **C-D2** : routeur physique en `src/core/input/event_router.py` ; l'UI l'appelle et gère focus/Rects ; ne pas créer deux routeurs |
 | Mapping manette menu (A/B, hat, stick) | indices dans `InputBindings.menu` (C-3), seuils stick dans `settings.Input` | D12, cible UI-2 | Même mapping ; le tableau D12 UI reste la référence UX, ce document porte l'implémentation |
 | `MenuModel` / curseur focus | Hors périmètre ici | UI-3, UI-1 | Après C-Lot 0a+0b |
@@ -415,4 +408,5 @@ grep -c 'def test_' tests/headless/test_input_manager.py tests/unit/test_input_p
 
 - Re-vérification code : 2026-09-22, `a6d20f8` — preuves §1, §2, §7.
 - Reprise complète : 2026-09-22 — branche corrigée (`hitbox/rework`), stubs 7→9 (ajout `test_rollback_e2e.py`, `test_player.py`), constats C-9/C-10/C-11 ajoutés, décisions C-D10/C-D11 ajoutées, C-D4/C-D8 révisées, référence pendante « C-10 en annexe » (§3) remplacée par C-D7/C-D8.
+- Revue des design patterns : 2026-09-23 — actions registry/facade, routeur adapter, parameter object, strategy SOCD, ports et repository de bindings ; suppression du Command/Mediator formel et correction du traitement souris debug existant.
 - Rédaction : 2026-09-22 — périmètre socle input + prérequis UI ; rebinding (ex-UI-5) porté ici (C-D6) ; enchaînement : exécuter ce document (C-Lot 0a → 0b) **avant** les lots 1-2 de `notes/audit_ui.md`.
