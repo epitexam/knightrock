@@ -25,9 +25,9 @@ from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.settings import Combat as CombatSettings
 from src.core.sprite_groups import SpriteGroups
+from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.projectile import ProjectileConfig
 from src.physics.entity_grid import EntityGrid
-from src.entities.hurtbox_zones import HurtboxZoneDef
 from tests.unit.helpers import entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
