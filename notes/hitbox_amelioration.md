@@ -1,10 +1,11 @@
 # Rapport Hitbox — Audit et plan de refonte / implementation
 
-- **Date :** 2026-09-20 (ameliore le 2026-09-20 : preuves dynamiques, corrections)
-- **Perimetre :** `src/combat/`, `src/physics/`, `src/entities/entity.py`, `src/core/level/systems/combat_system.py`, `src/core/level/systems/projectile_system.py`, `src/core/level/systems/hazard_damage.py`, `data/gameplay/attacks.json`, `src/ui/world_ui.py` (debug)
-- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection (sec 2.2), parite JSON/builtin, suite 719 tests)
+- **Date :** 2026-09-20 (ameliore 2026-09-20 preuves ; 2026-09-22 gap audit ; **2026-09-23 re-audit doc** : historisation §1/§3/§4, ecarts consignes, ances)
+- **Perimetre :** `src/combat/`, `src/physics/`, `src/entities/entity.py` + `hurtbox_zones.py`, `src/core/level/systems/combat_system.py` + `contact_system.py`, `src/core/level/systems/projectile_system.py`, `src/core/level/systems/hazard_damage.py`, `data/gameplay/attacks.json`, `data/gameplay/enemies.json` (zones goblin P2), `src/ui/world_ui.py` (debug)
+- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **856** (voir §10)
 - **Statut grab (rappel) :** aucun systeme de grab/throw/command-grab n existe. Seul faux positif : `generator.throw()` dans un test.
-- **Base de tests :** 719 tests collectes et verts (`pytest -q` : 719 passed), voir section 7.
+- **Base de tests :** **856 tests verts** (`pytest -q` le 2026-09-23), `ruff` propre hors `main.py`*, `mypy` propre (125 fichiers) — detail §10.
+- **Lecture du diagnostic :** §3 decrit l etat **pre-P0** ; chaque item clos porte une balise `**[clos Pn]**` (etat actuel = code + §10). Ne pas re-traiter un item balise clos sans nouveau repro.
 
 ## Sommaire
 
@@ -23,43 +24,47 @@
 
 ## 1. Etat des lieux
 
-### 1.1 Architecture actuelle
+### 1.1 Architecture actuelle (etat 2026-09-23, post P0-P4)
 
 ```
 AttackDefinition (frame_data.py)
   └─ phases: PhaseDefinition[startup | active | recovery]
        ├─ hitbox_size / hitbox_offset (boite primaire, AABB)
-       ├─ extra_hitboxes: HitboxSpec[] (boites secondaires, statiques)
-       ├─ hitbox_keyframes: HitboxKeyframe[] (courbe animee, primaire seule)
-       └─ hit: HitProperties (damage, knockback, stagger, ...)
+       ├─ extra_hitboxes: HitboxSpec[] (secondaires ; keyframes par boite P2.3)
+       ├─ hitbox_keyframes: HitboxKeyframe[] (primaire + extras si declares)
+       └─ hit: HitProperties (damage, knockback, unblockable, priority,
+             clash, height, hit_level reserve ; block_mask NON livre)
 
 CombatComponent (combat_component.py)
   ├─ AttackStateMachine (frame_counter, facing locke, targets_hit, charge)
-  ├─ HitboxManager (pool de pygame.FRect, rect = rects[0])
+  ├─ HitboxManager (pool de pygame.FRect, rect = rects[0], prev + swept P1)
   ├─ ComboTracker / ChargeHandler
   └─ is_hurt / hurt_timer / cooldowns
 
-CombatSystem (systems/combat_system.py) — **P4.1 : delegate a ContactSystem**
-  1. ContactSystem._candidates : requete EntityGrid autour de chaque swept
-     box, filtre eligibilite, tri par ordre de groupe
-  2. ContactSystem._resolve_melee/_resolve_generic : HitResolver.resolve()
-     + record_contact + hit-stop (+ zone_index/zone_mult P2.4)
+CombatSystem (combat_system.py) — P4.1 : producteur + hit-vs-hit
+  └─ ContactSystem (contact_system.py) — moteur unifie 4 producteurs
+       1. _candidates : requete EntityGrid autour de chaque swept (melee)
+          ou box discrete (projectile/hazard/contact), eligibilite, ordre
+       2. _resolve_melee/_resolve_generic : HitResolver.resolve()
+          + record_contact + hit-stop + ZoneContact(zone_index/zone_mult)
 
-Entity (entity.py)
-  ├─ hitbox  : collider physique (murs, sols, plateformes)
-  └─ hurtbox : hitbox.inflate(hurtbox_inflate), recentree, une seule zone
+Entity (entity.py + hurtbox_zones.py)
+  ├─ pushbox   : collision corps-a-corps / separation (P2.1)
+  ├─ hitbox    : alias legacy = ancrage offensif / collider env.
+  └─ hurtboxes[]: zones derivees dans sync_rects (P2.1)
+       + tags/mult/noms (P2.2) + swept par zone (P2) + union legacy `hurtbox`
 ```
 
 ### 1.2 Fichiers de reference
 
 | Fichier | Role | Points cles |
 |---|---|---|
-| `src/combat/frame_data.py:49-253` | `HitProperties`, `PhaseDefinition`, `HitboxSpec`, `HitboxKeyframe` | AABB uniquement, keyframes sur primaire seule, `reset_targets=True` par defaut |
-| `src/combat/hitbox_manager.py:13-98` | Positionnement offensif | Pool sans alloc, actif des `startup`, miroir X selon facing, extras statiques |
+| `src/combat/frame_data.py:49-367` | `HitProperties`, `PhaseDefinition`, `HitboxSpec`, `HitboxKeyframe` | AABB uniquement ; keyframes par boite (P2.3) ; `reset_targets=True` par defaut |
+| `src/combat/hitbox_manager.py:13-126` | Positionnement offensif | Pool sans alloc, actif des `startup`, miroir X selon facing, extras keyframables (P2.3), `prev`/`swept` (P1) |
 | `src/combat/combat_component.py:123-162,406` | Orchestrateur par entite | `attack_box` (legacy) + `attack_boxes` (tuple), `can_contact` / `record_contact` via `targets_hit` |
-| `src/core/level/systems/combat_system.py:77-221` + `contact_system.py:203-397` | Detection melee (producteur + moteur unifie P4.1) | Producteur : `_collect_ready` + hit-vs-hit + emit `OffensiveBox` ; moteur : prune `EntityGrid.near(swept)`, ordre deterministe, narrowphase swept-vs-zones |
-| `src/combat/hit_resolver.py:99-189` | Degats, knockback, stagger, finisher, dizzy, invincibilite | Pas de hauteur, pas de priorite, pas de clash |
-| `src/entities/entity.py:193-200,439-547` | `hitbox` vs `hurtbox` | zones derives dans `sync_rects()`, union legacy `hurtbox` |
+| `src/core/level/systems/combat_system.py:77-221` + `contact_system.py:203-432` | Detection melee (producteur + moteur unifie P4.1) | Producteur : `_collect_ready` + hit-vs-hit + emit `OffensiveBox` ; moteur : prune `EntityGrid.near(swept)`, ordre deterministe, narrowphase swept-vs-zones (melee) / `colliderect` (autres) |
+| `src/combat/hit_resolver.py:99-202` | Degats, knockback, stagger, finisher, dizzy, invincibilite | Passe `unblockable`/`height`/`zone_mult` (P2/P3) ; priority/clash resolus en amont (`_resolve_hit_vs_hit`) |
+| `src/entities/entity.py:186-547` + `src/entities/hurtbox_zones.py` | `pushbox` / `hitbox` / `hurtboxes[]` | pushbox + zones derivees `sync_rects` (P2.1), tags/mult (P2.2), union legacy `hurtbox` |
 | `src/physics/collisions.py:68-76` | `hitbox_collide` | `colliderect` instantane, pas de sweep |
 | `src/physics/spatial_hash.py:53,182-193` | Grille environnement | `QUERY_MARGIN_PX=32`, requete enflee, faux positifs OK |
 | `src/physics/entity_grid.py:32-76` | Grille entites | Rebuild O(n) par tick, ordre legacy preserve |
@@ -69,7 +74,7 @@ Entity (entity.py)
 | `src/physics/movement.py:228-280` | Mouvement environnement **substeppe** | Decoupage `ceil(|v|.dt / SUB_STEP_SIZE)` plafonne par `MAX_SUBSTEPS_PER_AXIS`, `old_hitbox` mis a jour par sous-pas. Le tunneling environnement est donc deja traite ; **seule la detection offensive est discrete** (1 passe/tick sur les boites finales) |
 | `src/core/level/systems/projectile_system.py:76-137` | Pipeline projectiles | emet `OffensiveBox` vers `ContactSystem.resolve` (P4.1) |
 | `src/core/level/systems/hazard_damage.py:44-60` | Pipeline hazards | emet `OffensiveBox` vers `ContactSystem.resolve` (P4.1) |
-| `src/ui/world_ui.py:340-1310` | Debug overlay | Sweep fantome pointille + fleche, timeline phases, id `bN`/zone, compteurs `CombatMetrics` live, panneaux (P4.3) |
+| `src/ui/world_ui.py:340-391,831-1310` | Debug overlay | Sweep fantome pointille + fleche, timeline phases, index par boite (`●`/`○`), compteurs `CombatMetrics` live, panneaux (P4.3) |
 
 ### 1.3 Flux par tick (melee)
 
@@ -212,99 +217,151 @@ builtin est un fallback. Reste un risque de drift (edition d un seul cote)
 
 ## 3. Diagnostic et limites
 
+> **Historique :** etat d avant le chantier P0-P5 (2026-09-20). Les items
+> clos sont balises `**[clos Pn]**` ; l etat actuel est le code + §10.
+> Un item non balise reste ouvert ou hors scope (cf. §10 ecarts).
+
 ### L1 — Detection offensive discrete, tunneling (prouve en 2.1)
 
-Seule la detection **offensive** est discrete : le mouvement environnement est
+**[clos P1 — sweep CCD bilatéral melee]** Seule la detection **offensive**
+etait discrete : le mouvement environnement est
 substeppe (`movement.py:228-280`), et la machine d attaque ne saute jamais une
-fenetre ACTIVE (`attack_state.py:263-278`). Le trou restant : une seule
-geometrie offensive testee par tick (post-mouvement), sans union prev+cur.
-Cas a risque : `dash_attack` (lunge frame 1, boite 70x24, offset 42 px),
+fenetre ACTIVE (`attack_state.py:263-278`). Trou d origine : une seule
+geometrie offensive testee par tick (post-mouvement), sans union prev+cur —
+repro 2.1 (`contacts=0` puis hit via sweep apres P1).
+Cas a risque d origine : `dash_attack` (lunge frame 1, boite 70x24, offset 42 px),
 keyframes `sweeping_arc` (28 -> 70 px en 6 frames), chutes ~25 px/tick
 (1500 px/s a 60 Hz) contre cibles fines. `QUERY_MARGIN_PX=32` protege la
-broadphase (requete elargie), pas la narrowphase (`colliderect` instantane).
+ broadphase (requete elargie), pas la narrowphase.
+**Limite restante (voulue) :** le sweep bilatéral prev+cur ne s applique
+qu au chemin **melee** ; projectiles / hazards / contact emettent
+`swept=(box,)` trivial et resolvent en `colliderect` discret
+(`projectile_system.py:126`, `hazard_damage.py:46`, `contact_damage.py:63`,
+branchement `contact_system.py:261-264`).
 
-Symptomes : coups rapides qui passent au travers, whiffs visuels injustes
-sur lunge et cibles fines.
+Symptomes d origine : coups rapides qui passent au travers, whiffs visuels
+injustes sur lunge et cibles fines.
 
 ### L2 — Geometrie pauvre : AABB uniquement
 
+**[partiellement clos P2.3 — extras keyframables ; P5 non engage]**
 - Que des rectangles alignes aux axes. Pas de rotation, cercle, capsule, OBB, polygone.
-- `extra_hitboxes` statiques par design (commentaire `#1 scope` dans `hitbox_manager.py:62`). Impossible d animer twin-fangs lame par lame ou un arc qui pivote.
-- `hitbox_keyframes` sur la boite primaire seule, interpolation lineaire taille/offset, pas de courbe de position absolue ni d easing.
+- `extra_hitboxes` : **statiques par design d origine** (commentaire `#1 scope`
+  **supprime** depuis P2.3) ; chaque `HitboxSpec` porte maintenant
+  `keyframes` optionnelles (`frame_data.py:219-253`). Jusqu a une seule
+  attaque JSON les utilise (`twin_fangs` extras, `sweeping_arc` primaire).
+- `hitbox_keyframes` : primaire **et** extras (si declares), interpolation
+  lineaire taille/offset, pas de courbe de position absolue ni d easing.
 
 ### L3 — Une seule hurtbox globale
 
-`hurtbox = hitbox.inflate(...)` centree. Consequences :
+**[clos P2.1/P2.2 — multi-zone]**
+`hurtbox = hitbox.inflate(...)` centree etait l unique reception. Depuis P2 :
 
-- Pas de zones (tete/torse/jambes), pas de multiplicateur localise.
-- Le `dash` qui ecrase la hitbox (`apply_squish`) retrecit aussi la vulnerabilite sans controle fin.
-- Pas d invulnerabilite partielle (ex. jambes invulnees pendant un saut), pas de garde haute/basse.
+- zones `hurtboxes[]` + tags/mult/noms (`hurtbox_zones.py`, `entity.py:448-464`) ;
+  multiplicateurs locauxises (ex. goblin head x1.5 — `enemies.json:26-54`,
+  commit `6129613`).
+- Le `dash` qui ecrase la hitbox (`apply_squish`) n elargit plus la
+  vulnerabilite au-dela des zones (test squish).
+- Invulnerabilite partielle par tags : **matcher present, tags du coup NON
+  portes** (`HitProperties` sans champ tags) — E2E « jambes invulnees en
+  saut » **ouvert** (reporte P3t1, jamais clos — cf. §10 ecarts). Garde
+  haute/basse : `height` + `Guard.HEIGHT_BLOCK` **[clos P3t2]**.
 
 ### L4 — Pas de distinction push / hurt / hit
 
-`hitbox` sert a la fois de corps physique, d ancrage des attaques et de reference hurtbox. Standard versus-fighter attendu :
+**[clos P2.1 — pushbox + hurtboxes[] + hitbox[] (boxes emettrices)]**
 
-- `pushbox` (collision corps-a-corps, separation),
-- `hurtbox[]` (zones recevant),
-- `hitbox[]` (zones emettrices).
+`hitbox` servait a la fois de corps physique, d ancrage des attaques et de
+reference hurtbox. Standard versus-fighter attendu :
 
-Sans ca : cross-up aleatoires, separation qui pousse pendant un hit-stop, grab impossible a specifier proprement.
+- `pushbox` (collision corps-a-corps, separation) — **livre** `entity.py:424`,
+- `hurtbox[]` (zones recevant) — **livre** `entity.py:448`,
+- `hitbox[]` (zones emettrices) — `attack_boxes` + `extra_hitboxes` (depuis v1/P2).
+
+Sans ca (avant P2) : cross-up aleatoires, separation qui pousse pendant un
+hit-stop, grab impossible a specifier proprement. Grab reste **hors chantier**
+(§9-3).
 
 ### L5 — Semantique de coup minimale
 
-`HitProperties` = degats + knockback + stagger + armor-break + finisher + juggle + OTG. Manquent :
+**[clos P3t1/P3t2 temps 1+height ; temps 2 block_mask NON livre]**
 
-- hauteur (`high/low/mid`, overhead, must-block-crouch),
-- `unblockable` / `grab` (bloque le design anti-garde),
-- priorite, `clash` (hit-vs-hit), `trade`,
-- `hit_level` (light/med/heavy -> hit-stop et pushback differencies),
-- `whiff` vs `blocked` vs `hit` (feedback et cancel differents).
+`HitProperties` = degats + knockback + stagger + armor-break + finisher + juggle + OTG.
+Depuis P3 (etat actuel `frame_data.py:108-112`) :
 
-### L6 — Quatre pipelines divergents (corrige : v1 disait trois)
+- hauteur `height` (`high/mid/low/overhead`) + table `Guard.HEIGHT_BLOCK` **[clos P3t2]**,
+- `unblockable` (bypass garde — chemin `Player.receive_damage`) **[clos P3t1]**,
+- `priority` + `clash` (`trade|clash`) via `_resolve_hit_vs_hit` **[clos P3t1]**,
+- `hit_level` : champ **reserve**, validateur n accepte que `"med"` **[ouvert — light/heavy non ouverts]**,
+- `block_mask` : **NON implemente** (prevu temps 2 avec accroupi — accroupi livre P3t2 sans block_mask) **[ouvert — cf. §10]**,
+- `whiff` vs `blocked` vs `hit` : feedback via `GuardEvent` (partiel, pas d enum dediee).
 
+### L6 — Quatre pipelines divergents
+
+**[clos P4.1 — `ContactSystem` unifie]**
 Melee (`combat_system.py`), projectiles (`projectile_system.py`), degats de
 hazards (`hazard_damage.py`) **et** degats de contact (`contact_damage.py`,
-seuil `CONTACT_DAMAGE_THRESHOLD=300`) : quatre conventions de test
-(hit-vs-hurt, hitbox-vs-hurtbox, box-vs-hitbox, hitbox-vs-hitbox + seuil de
-vitesse), quatre gestions faction/invincibilite, quatre debug. Ordre par tick
-(fichier `gameplay_loop.py:163-197`, load-bearing) : spawn -> plateformes ->
-hazards -> physique -> combat+separation (`:157-159`, rebuild grille,
-separation, sync boxes, `process_attacks`) -> projectiles (`:163-164`) ->
-contact (`:170`) -> hazard-damage (`:171`) -> morts -> respawn. Tout ajout
-(sweep, priorite) doit etre porte quatre fois tant que P4 n unifie pas.
+seuil `CONTACT_DAMAGE_THRESHOLD=300`) avaient quatre conventions de test.
+Depuis P4.1 les quatre emettent `OffensiveBox` vers **une seule**
+`ContactSystem.resolve` (instance partagee `level.py:125`). Ordre par tick
+(fichier `gameplay_loop.py:163-210`, load-bearing) : spawn -> plateformes ->
+hazards -> physique -> combat+separation (rebuild grille,
+separation, sync boxes, `process_attacks` `:313`) -> projectiles (`:190`) ->
+contact (`:196`) -> hazard-damage (`:197`) -> morts -> respawn.
+Les producteurs historiques restent presents **en tant que producteurs**
+(ils ne resolvent plus localement).
 
 ### L7 — Authoring : source connue, drift possible, validation faible
 
+**[clos P0.2/P0.3/P4.2 — parite + docstring + validateur strict ; trou offset keyframe reste]**
 Corrige (v1 disait "sans source de verite", c est faux) : a l execution, le
 JSON prime (`provider.py:93-100`), le code en dur est un fallback documente
-(`provider.py:1-17`). Parite verifiee en 2.3. Restent :
+(`provider.py:1-26`). Parite verifiee en 2.3 **et en CI** (P0.2).
+Validateur P4.2 (`attack_loading.py`) : taille/offset statique dans
+enveloppe, keyframes croissantes dans `0..startup+active`, cooldown,
+`cancel_into`, warning `reset_targets`.
+Restent (ouverts, hors plan P0-P4) :
 
-- Aucun test de parite JSON/builtin en CI : une edition d un seul cote
-  diverge silencieusement jusqu au prochain lancement sans JSON.
-- Validation geometrique faible au chargement (`attack_loading.py` ne verifie
-  que les `cancel_into`) : taille nulle, offset aberrant, keyframes hors
-  `0..startup+active` (partiellement garde en `__post_init__`), multi-phase
-  sans `reset_targets`, cooldown incoherent.
-- Pas de previsualisation : tuner = editer JSON, relancer, rejouer le coup a la main.
+- **offset des keyframes jamais valide** (seul `frame>=0` + `size>0` —
+  un offset aberrant sur courbe passe),
+- `attacks.json` ne porte pas encore `height`/`priority`/`clash`/`unblockable`
+  (regles P3 couvertes par tests synthetiques uniquement),
+- `cancel_into` : pas de controle de cycle / auto-reference,
+- sous-remplissage data (1 extra keyframe, 1 extras hitboxes dans tout le JSON) —
+  item `audit_consolide` R-8.2 non repris ici,
+- previsualisation / export JSON de l editeur : **Axe F partiel** (replay F8
+  livre, export JSON non planifie au plan P0-P5).
 
 ### L8 — Debug limite
 
-Overlay actuel : boites instantanees. Manquent : trajectoire sweep (prev->cur), timeline startup/active/recovery, identifiant par boite, paires testees vs overlaps, dump tick par tick, pause + avance frame par frame.
+**[clos P4.3 + gap audit + Axe G]**
+Overlay d origine : boites instantanees. Livres depuis : trajectoire sweep
+(prev->cur + fleche), timeline startup/active/recovery, index par boite
+(points `●`/`○` — le libelle textuel `bN` de la spec d origine a ete fusionne
+dans le header), paires testees/overlaps/contacts live, dump JSONL
+`logs/combat_trace.jsonl` si `DEBUG_COMBAT_DUMP=1` (**Axe G**), pause F6 +
+step F7, replay F8.
 
 ### L9 — Perf et determinisme sous pression (mesure en 2.2)
 
-Sain aujourd hui : ~0.003 ms/tick en 1v1, ~0.07 ms en 8v8 sur la detection
+**[mesure initiale ; bench non rejoue apres P0 — cf. §10]**
+Sain a l origine : ~0.003 ms/tick en 1v1, ~0.07 ms en 8v8 sur la detection
 seule. Risques a la montee en charge : requete grille par `swept`
 (O(n . k . b)), `tuple()` + `sorted()` par tick chaud dans
-`ContactSystem._candidates`, `FRect`/`inflate` temporaires dans les requetes spatiales,
+`ContactSystem._candidates` (`:321-323`) — **Axe H non planifie au plan
+P0-P5**, `FRect`/`inflate` temporaires dans les requetes spatiales,
 pas de checksum geometrie pour le rollback (snapshot logique uniquement,
-geometrie re-derivee — voir 2.4).
+ geometrie re-derivee — voir 2.4 ; D3).
 
 ---
 
 ## 4. Axes d amelioration (meme refontes profondes)
 
-### Axe A — CCD / sweep continu (anti-tunneling, prouve en 2.1)
+> **Etat 2026-09-23 :** A–E livres (P1–P4) ; F partiel ; G livre ;
+> H **hors plan P0-P5** (non engage). Grab hors chantier (§9).
+
+### Axe A — CCD / sweep continu (anti-tunneling, prouve en 2.1) **[livre P1, melee]**
 
 Remplacer `box(t) capte hurt(t)` par `balayage(t-1 -> t) capte hurt`, sur la
 geometrie ACTIVE uniquement (le startup est un telegraph non letal, voir 1.4).
@@ -319,7 +376,7 @@ geometrie ACTIVE uniquement (le startup est un telegraph non letal, voir 1.4).
 - Effet attendu : capture le cas repro 2.1 (rate en discret, touche en
   swept) ; cout mesure en 2.2 comme reference pour le bench avant/apres.
 
-### Axe B — Vrai modele push / hurt / hit
+### Axe B — Vrai modele push / hurt / hit **[livre P2.1]**
 
 - `pushbox` = ancien `hitbox` physique (murs, sols, separation).
 - `hurtbox[]` = 1..n zones vulnérables derivees du pushbox + inflate par zone + tags.
@@ -327,20 +384,20 @@ geometrie ACTIVE uniquement (le startup est un telegraph non letal, voir 1.4).
 - Migration : `sync_rects()` derive les trois, `separation_system` et `platform_system` n utilisent que `pushbox`, le combat n utilise que `hurtbox[]`.
 - Pre-requis du grab (attrape = test pushbox-vs-pushbox a courte portee, pas hit-vs-hurt).
 
-### Axe C — Hurtboxes multiples + hitboxes expressives
+### Axe C — Hurtboxes multiples + hitboxes expressives **[livre P2 partiel ; tags du coup + shapes non]**
 
 - Hurtboxes nommees : `head/torso/legs` avec `damage_mult` et `invuln_tags`. Exemple : jambes invulnees en saut, tete x1.2 sur uppercut adverse.
 - Hitbox : `shape in (aabb, circle, capsule)`, `keyframes` par boite (pas que primaire), easing, suivi d un point d ancrage (hanche, epee).
 - Extension `PhaseDefinition` / `HitboxSpec` + migration JSON avec defaults (compat ascendante).
 
-### Axe D — Hauteur, garde, priorite, clash
+### Axe D — Hauteur, garde, priorite, clash **[livre P3t1+P3t2 ; block_mask + hit_level light/heavy NON]**
 
 - `HitProperties += height, block_mask, unblockable, grab_spec, priority, clash, hit_level`.
 - Resolution hit-vs-hit avant hit-vs-hurt : si deux actives se chevauchent, `priority` decide (beat/trade/clash), sinon les deux passent en whiff-clash avec hit-stop court.
 - Hauteur : `high` bloque debout, `low` bloque accroupi (necessite un etat accroupi, absent aujourd hui), `mid`/`overhead` selon design.
 - Ouvre la porte au grab : `grab_spec(range, whiff_time, tech_window)` + etats `grabbed/throw`.
 
-### Axe E — Pipeline de contact unifie (4 producteurs, voir L6)
+### Axe E — Pipeline de contact unifie (4 producteurs, voir L6) **[livre P4.1]**
 
 Un seul `ContactSystem` : melee, projectiles, hazards **et contact** produisent
 des `OffensiveBox(box, swept, hit, faction, owner_id)` ; une seule broadphase
@@ -348,18 +405,18 @@ des `OffensiveBox(box, swept, hit, faction, owner_id)` ; une seule broadphase
 resolve. Supprime la quadruple maintenance. Inventaire et migration en 3
 commits : voir P4.
 
-### Axe F — Authoring data-driven + validation
+### Axe F — Authoring data-driven + validation **[partiel P0.2/P0.3/P4.2 + F8 ; export JSON non]**
 
 - Source de verite : `data/gameplay/attacks.json` (supprimer le doublon en dur ou le generer).
 - Validateur au chargement : taille > 0, offset dans une enveloppe sprite, keyframes tries dans `0..startup+active`, `reset_targets` exige sur multi-phase, cooldown >= duree totale,Facing lock coherent.
 - Editeur minimal : overlay qui rejoue une attaque en boucle avec trajectoire + export JSON.
 
-### Axe G — Debug temps reel
+### Axe G — Debug temps reel **[livre P4.3 + gap audit + CombatTrace]**
 
 - Overlay : sweep (rect prev + fleche), timeline phase, id par boite, paires testees/overlaps/contacts en direct, mode pause + step frame.
 - Dump : log binaire ou JSON des `HitCandidate` par tick pour rejouer un whiff suspect.
 
-### Axe H — Perf / determinisme / rollback
+### Axe H — Perf / determinisme / rollback **[hors plan P0-P5 — non engage]**
 
 - Eviter `tuple(sorted())` par tick chaud : ordre par index pre-calcule, buffers reutilises.
 - Checksum geometrie dans `CombatSnapshot` (hash des `rects` quantifies) pour detecter un desync.
@@ -380,10 +437,18 @@ fou liste ci-dessous casse et ne se repare pas en restant dans le scope du
 palier, stopper et demander arbitrage au lieu de contourner.
 
 Gardes-fous transverses (ne doivent jamais regresser) :
-`tests/unit/test_hitbox_pipeline.py`, `tests/unit/test_combat_behaviors.py`,
+`tests/unit/test_hitbox_pipeline.py`, `tests/unit/test_hitbox_sweep.py`,
+`tests/unit/test_combat_behaviors.py`,
 `tests/unit/test_damage_resolution.py`, `tests/unit/test_rollback_snapshots.py`,
 `tests/unit/test_rollback_system.py`, `tests/headless/test_rollback_e2e.py`,
-`tests/headless/test_simulation_golden.py`, `tests/unit/test_gameplay_data.py`.
+`tests/headless/test_simulation_golden.py`, `tests/unit/test_gameplay_data.py`,
+`tests/unit/test_multi_hurtbox.py`, `tests/unit/test_priority_clash.py`,
+`tests/unit/test_height_block.py`, `tests/unit/test_contact_unified.py`,
+`tests/unit/test_attack_validation.py`, `tests/unit/test_hit_resolver_limits.py`,
+`tests/unit/test_combat_contracts.py`, `tests/unit/test_combat_trace.py`,
+`tests/unit/test_debug_commands.py`, `tests/unit/test_debug_overlay.py`,
+`tests/unit/test_entity_grid.py`, `tests/unit/test_spatial_hash.py`,
+`tests/unit/test_combat_component.py`, `tests/unit/test_movement_collision_cache.py`.
 
 ### P0 — Gel et filet de securite (0.5 j, sans casse)
 
@@ -393,7 +458,7 @@ Objectif : pouvoir mesurer avant/apres. Aucun changement de comportement.
 |---|---|---|---|
 | P0.1 | Test golden trajectoires | Etendre `tests/unit/test_hitbox_pipeline.py` (helpers : `tests/unit/helpers.py:29-71` `make_phase`/`make_attack`, `:115-142` `entity_at`/`activate`) | `dash_attack`, `sweeping_arc`, `sky_launcher` issus de `src/combat/attack_data.py:87-225` : centres/tailles de boites figes par frame d animation (`animation_frame`, `attack_state.py:125-140`) + recenser pour les 10 attaques le deplacement de centre startup->active (seed) et par frame (keyframes) : lister celles >= 4 px (sweep attendu en P1, ex. `sweeping_arc` ~7 px/frame) pour revalider le golden simulation comme changement voulu, pas regression. Etendre aux transitions de phase (`special_attack` 5 phases, `claw_swipe` 2) : premier ACTIVE de phase N balaie depuis son propre startup (continuite assuree par capture — pas d invalidation de `prev` au changement de phase, qui recrerait un tick discret) |
 | P0.2 | Test de parite JSON/builtin | Nouveau cas dans `tests/unit/test_gameplay_data.py` ; sources : `src/data/provider.py:93-100`, `data/gameplay/attacks.json` (`sets.player`, 10 attaques), `src/combat/attack_data.py:18-310` | Noms + `cooldown` + `hitbox_size`/`hitbox_offset` des 10 attaques player identiques ; echoue si drift |
-| P0.3 | Doc source de verite | Etendre la docstring `src/data/provider.py:1-17` | Phrase : JSON = source a l execution, builtin = fallback d absence uniquement |
+| P0.3 | Doc source de verite | Etendre la docstring `src/data/provider.py:1-26` | Phrase : JSON = source a l execution, builtin = fallback d absence uniquement |
 | P0.4 | Bench de reference | Methode section 2.2 (300 iterations, roster ACTIVE) | Valeurs notees en recettage (ref 2026-09-20 : 0.003 / 0.029 / 0.075 ms) |
 | P0.5 | Repro de reference | Rejouer l extrait section 2.1 dans un test temporaire | Trou confirme (`contacts=0`, union -> True), note en recettage |
 
@@ -584,13 +649,15 @@ bilateral genereux documente) ; (g) `test_teleport` : deplacement > MAX
 `prev` intact, sweep pleine largeur ; (h') attaquant immobile 3 ticks :
 `swept == cur` des le 2e tick ; (i) invariant
 `SWEEP_MAX_DISPLACEMENT_PX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE,
-KB_MAX * CHARGE_MAX) * TIMESTEP * 1.5` avec KB_MAX = magnitude max des
-`power` de `attacks.json`, `CHARGE_MAX = 2.0` (`charge_handler.py:114-115` ;
+KB_MAX * 2.0) * TIMESTEP * 1.5` avec KB_MAX = magnitude max des
+`power` de `attacks.json` (constante `CHARGE_MAX` **inexistante** dans le
+code — formule historique du plan, borne retenue empiriquement 64 px ;
 le knockback vitesse REMPLACE la velocite, `reaction.py:183-190`, donc pas
 d addition de termes — juggle <= 1, finisher/dizzy = degats seuls) :
 max(1500, 1100, 750, 1082*2) / 60 * 1.5 = 54.1 <= 64. dt sim fixe
 `TIMESTEP`, pas de spike possible).
-Bench : valeurs 2.2 sans regression > 10 % meme machine.
+Bench : valeurs 2.2 sans regression > 10 % meme machine (**non rejoue apres
+P0 — cf. §10** ; pas de harness dans le repo).
 Gardes-fous transverses verts.
 
 ### P2 — Push / hurt / hit + multi-hurtbox (3-5 j, refonte moyenne)
@@ -602,8 +669,9 @@ hurtbox, break des la premiere zone touchee).
 
 **Checklist d implementation (ordre impose) :**
 
-1. `src/entities/entity.py` (ancres : `__init__` ~`:113-176`,
-   `hurtbox` `:398-401`, `sync_rects:430-438`, snapshots `:44-57,:846-918`) :
+1. `src/entities/entity.py` (ancres actuelles : `__init__` `:186-200`,
+   `pushbox` `:424`, `hitbox` `:429-437`, `hurtbox` `:439-445`,
+   `hurtboxes` `:448`, `sync_rects:526-547`, snapshots `:963-1038`) :
    - Introduire `pushbox` comme nom interne du collider physique actuel ;
      garder `hitbox` en alias (propriete deleguant au meme `FRect`) pendant
      une version — ne rien renommer chez les appelants a ce palier.
@@ -618,12 +686,17 @@ hurtbox, break des la premiere zone touchee).
    - Snapshots : zones derivees => rien a stocker sauf `hurtbox_zones`
      (config, pas runtime) ; `_prev_hurtbox` P1 devient `_prev_hurtboxes`.
 2. Data (fallback inchange sur l ancien champ) :
-   - `src/entities/player_config.py:93` (`hurtbox_inflate`) et
-     `src/entities/enemies/schema.py:18` : ajouter `hurtbox_zones` optionnel
+   - `src/entities/player_config.py:94` (`hurtbox_inflate`) et
+     `src/entities/enemies/schema.py:19` : ajouter `hurtbox_zones` optionnel
      `[{name, inflate, mult, tags}]`, defaut `None` => 1 zone legacy.
-   - `src/data/player.py:83-84` + `src/data/enemies.py:95-96` (parsers
+     Implementation livree : module central `src/entities/hurtbox_zones.py`
+     (`HurtboxZoneDef`, `read_hurtbox_zones`, `hurtbox_zones_to_dict`).
+   - `src/data/player.py:84-85` + `src/data/enemies.py:96-97` (parsers
      `hurtbox_inflate`) : parser le nouveau champ, fallback sur l ancien.
-   - `data/gameplay/player.json` + `enemies.json` : ne rien changer (defaults).
+   - `data/gameplay/player.json` + `enemies.json` : defaults legacy.
+     **Exception consignee :** commit `6129613` ajoute les zones de test
+     **goblin** dans `enemies.json:26-54` (head x1.5 / torso x1.0 /
+     legs x0.8) — donnees d accueil P2, multiplicateurs de degats reels.
 3. `src/combat/hitbox_manager.py` : keyframes par boite (P2.3 de la checklist
    P1 etendue) : `HitboxSpec` (`frame_data.py:106-130`) +=
    `keyframes: tuple[HitboxKeyframe, ...] = ()` ; `_position_rects:59-82`
@@ -652,9 +725,10 @@ hurtbox, break des la premiere zone touchee).
    (`head/torso/legs`), sweep P1 dessine en pointille.
 
 **Reception P2 :** `tests/unit/test_multi_hurtbox.py` (1 zone par defaut =
-byte-identique au legacy ; tete x1.2 via `hurtbox_mult` ; jambes invulnees
-en saut via tags ; squish dash `player.py` n elargit pas la vulnerabilite) ;
-roundtrip JSON ancien/nouveau champ ; golden P0.1 + sweep P1 verts ;
+byte-identique au legacy ; tete x1.2 via `hurtbox_mult` ; jambes/zone tags
+**matcher unitaire** — E2E invuln saut **reporte/non clos**, cf. §10 ;
+squish dash `player.py` n elargit pas la vulnerabilite) ;
+roundtrip JSON ancien/nouveau champ ; goldens P0.1 + sweep P1 verts ;
 gardes-fous transverses + `test_projectile_system.py`,
 `test_hazard_damage.py`, `test_entity_pairing_systems.py`,
 `test_movement_collision_cache.py` verts ; `mypy`/`ruff` propres.
@@ -707,7 +781,7 @@ inchangees (defaults) ; `test_height_block.py` reserve au temps 2.
 Pre-requis : P1-P3 verts. Ne pas commencer avant : l interface unifiee fige
 les contrats sweep + zones + clash.
 
-Inventaire des producteurs a unifier (ordre tick `gameplay_loop.py:163-197`) :
+Inventaire des producteurs a unifier (ordre tick `gameplay_loop.py:163-210`) :
 `combat_system.process_attacks(:273)` <- `sync_attack_box(:272)` ;
 `projectile_system.process(:163-164, entity_grid)` ;
 `contact_damage.process(:170, entity_grid)` ; `hazard_damage.process(:171)`.
@@ -766,7 +840,7 @@ Seulement si le game-design l exige (armes rotatives, arcs verticaux). Cout elev
 P0 (gel + parite + bench) -> P1 (sweep ACTIVE) -> P2 (push/hurt/hit) -> P3t1 (priorite/clash/unblockable) -> [P3t2 hauteur quand accroupi] -> P4 (unification/debug) -> [P5 optionnel]
 ```
 
-Chaque palier : 719 tests verts + nouveaux, `ruff check`, `mypy src`, golden trajectoires, bench 2.2 sur la meme machine, mise a jour de ce rapport (section recettage datee).
+Chaque palier : suite complete verte (base 719 au 2026-09-20, **856 au 2026-09-23** — voir §10) + nouveaux tests, `ruff check`, `mypy src`, golden trajectoires ; bench 2.2 prevu sur la meme machine (**effectif P0 seul — non rejoue ensuite, cf. §10 / O4**), mise a jour de ce rapport (section recettage datee).
 
 ---
 
@@ -803,12 +877,15 @@ class HitPropertiesV2:
     damage: float
     knockback: KnockbackConfig
     damage_type: DamageType
-    unblockable: bool = False           # P3 temps 1
-    priority: int = 0                   # P3 temps 1
-    clash: str = "trade"                # P3 temps 1 : trade | beat | lose | clash
-    hit_level: str = "med"              # P3 temps 1 : light | med | heavy
-    height: str = "mid"                 # P3 temps 2 (requiert etat accroupi)
-    block_mask: str = "any"             # P3 temps 2
+    unblockable: bool = False           # P3 temps 1 [livre]
+    priority: int = 0                   # P3 temps 1 [livre]
+    clash: str = "trade"                # P3 temps 1 : ENUM REEL ("trade","clash")
+                                        # beat/lose = RESULTATS de priority,
+                                        # pas des valeurs de champ
+    hit_level: str = "med"              # P3 temps 1 : RESERVE — validateur
+                                        # n accepte que "med" (light/heavy non)
+    height: str = "mid"                 # P3 temps 2 [livre P3t2]
+    block_mask: str = "any"             # P3 temps 2 : NON IMPLEMENTE (ouvert)
     # champs existants conserves : stagger, super_armor_break,
     # is_finisher, juggle_gravity_mult, otg_allowed
     # grab : hors chantier, rapport dedie (pre-requis = P2 pushbox + unblockable)
@@ -826,7 +903,7 @@ class HitPropertiesV2:
          "keyframes": []}
       ],
       "hit": {"damage": 8, "damage_type": "slash", "stagger": 0.1,
-              "priority": 0, "hit_level": "light"}
+              "priority": 0, "hit_level": "med"}
     }],
     "cooldown": 0.30
   }
@@ -834,6 +911,12 @@ class HitPropertiesV2:
 ```
 
 Ancien format (`hitbox_size`/`hitbox_offset` uniques, `hurtbox_inflate` global) reste charge via normalisation vers le nouveau modele.
+
+**Note enums vs §6 :** exemples ci-dessus alignes sur les validateurs
+reels (`frame_data.py:121-127`) : `clash in ("trade","clash")`,
+`hit_level == "med"` seul, `height in ("high","mid","low","overhead")`.
+`light|heavy`, `beat|lose` et `block_mask` ne sont **pas** des valeurs
+acceptees aujourd hui.
 
 ### 6.3 Narrowphase cible (pseudo-code)
 
@@ -868,21 +951,25 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 | Palier | Fichier | Cas |
 |---|---|---|
-| P0 | `test_hitbox_pipeline.py` (etendu P0.1) + parite (P0.2) | positions figees `dash_attack`, `sweeping_arc`, `sky_launcher` frame par frame ; parite JSON/builtin |
+| P0 | `test_hitbox_pipeline.py` (etendu P0.1 + goldens phases P0.1-bis) + parite (P0.2) | positions figees `dash_attack`, `sweeping_arc`, `sky_launcher` + `special_attack`/`claw_swipe` transitions de phase ; parite JSON/builtin |
 | P1 | `test_hitbox_sweep.py` (nouveau, spec en P1) | cas (a)-(i)+b'+b'' : saut 40 px, lunges seedes startup 1 et >= 2, transition de phase, rollback re-derive, parite grille, goldens revalides, dodge, teleport, double-sync, stationnaire, invariant MAX |
-| P2 | `test_multi_hurtbox.py` (nouveau, spec en P2) | defaut byte-identique, tete x1.2, jambes invulnees en saut, squish dash |
-| P3 | `test_priority_clash.py` (nouveau) | beat/trade/clash, attaques existantes inchangees (defaults) |
-| P3t2 | `test_height_block.py` (reserve) | high/low, requiert l etat accroupi (non planifie ici) |
+| P2 | `test_multi_hurtbox.py` (nouveau) | defaut byte-identique, tete x1.2, matcher zone tags (E2E invuln saut **non clos** — §10), squish dash |
+| P3t1 | `test_priority_clash.py` (nouveau) | beat/trade/clash + unblockable, attaques existantes inchangees (defaults) |
+| P3t2 | `test_height_block.py` (livre `aec4969`) | high/mid/low/overhead vs etat accroupi (`Guard.HEIGHT_BLOCK`) |
 | P4 | `test_contact_unified.py`, `test_attack_validation.py` | 4 producteurs unifies, JSON invalide rejete avec message |
-| Tous | golden + bench + gardes-fous | trajectoires inchangees a vitesse normale, bench 2.2 < +10 %, section 5 |
+| Debug | `test_debug_commands.py`, `test_debug_overlay.py` | F6 freeze, F7 step, F8 replay, panneaux overlay |
+| Trace | `test_combat_trace.py` | `CombatTrace` ring + JSONL gate `DEBUG_COMBAT_DUMP` |
+| Tous | golden + gardes-fous §5 | trajectoires inchangees a vitesse normale ; **bench 2.2 non rejoue apres P0** (pas de harness — cf. §10) |
 
 ### 7.3 Criteres globaux
 
-- 719 tests verts de reference (`pytest -q` : 719 passed le 2026-09-20), `ruff` et `mypy` propres.
+- **856 tests verts** de reference (`pytest -q` le 2026-09-23 ; base
+  historique 719 le 2026-09-20), `ruff` propre hors `main.py`*, `mypy` propre.
 - Aucune regression visuelle sur les 5 attaques vitrines (`twin_fangs`, `sweeping_arc`, `sky_launcher`, `otg_slam`, `special_attack`).
 - Determinisme : deux runs meme seed = memes `CombatMetrics` et memes positions.
 - Rollback : `save/load` + capture frontiere re-derive `prev` (aucun champ snapshot) et ne rate aucun contact au tick suivant.
-- Mesures rejouables : l extrait 2.1 et la methode 2.2 restent valides a chaque palier.
+- Mesures rejouables : l extrait 2.1 reste valide ; **la methode 2.2 n a pas
+  ete rejouee apres P0** (convention de plan non tenue — ecart consigne §10).
 
 ---
 
@@ -892,18 +979,20 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 | Risque | Mitigation |
 |---|---|
-| Sweep trop genereux (touches fantomes) | Seuils D1 (4 px) + D4 (cap 64 px, raz au reset), golden P0.1 + recensement >= 4 px, `QUERY_MARGIN_PX` inchange (regle D2), tests `test_dodge`/`test_teleport` |
+| Sweep trop genereux (touches fantomes) | Seuils D1 (4 px) + D4 (cap 64 px, raz au reset), golden P0.1 + recensement >= 4 px, `QUERY_MARGIN_PX` inchange (regle D2), tests `test_dodge_within_one_tick_stays_hittable` / `test_teleport_beyond_max_yields_no_phantom_contact` |
 | Explosion combinatoire (boxes x zones x cibles) | Break par box des la premiere zone touchee, broadphase sur swept, bench 8v8 |
 | Migration JSON cassante | Test de parite P0.2, defaults = comportement actuel, roundtrip teste |
 | Desync rollback silencieux | Re-derivation D3 (load-sync `cur` + capture `prev`, aucun champ), tests save/load P1(c), parite grille P1(d) |
-| Refonte P2 qui touche physique + separation + plateformes | Alias `hitbox` conserve (aucun renommage appelant en P2), inventaire section P2.5 |
+| Refonte P2 qui touche physique + separation + plateformes | Alias `hitbox` conserve (aucun renommage appelant en P2) ; inventaire checklist P2 ci-dessus + commit `271f513` |
 
 ### Non-objectifs (sauf P5 valide)
 
 - Netcode / rollback reseau (seule la proprete locale est visee).
 - Capsules / OBB / polygones tant que le roster reste AABB.
 - Editeur visuel complet (overlay + rejouabilite suffisent).
-- Equilibrage des degats (les valeurs restent inchangees, seule la detection s ameliore).
+- Equilibrage des degats (valeurs d attaque `attacks.json` inchangees ;
+  **exception :** zones goblin `enemies.json` mult x1.5/x1.0/x0.8 ajoutees
+  en P2 — `6129613`, cf. §10).
 
 ---
 
@@ -927,14 +1016,15 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 | Palier | Date | pytest | ruff | mypy | Repro 2.1 rejoué | Bench 2.2 (1v1/4v4/8v8) | Note |
 |---|---|---|---|---|---|---|---|
 | Ref (pre-P0) | 2026-09-20 | 719 passed | propre hors `main.py`* | propre (120 fichiers) | trou confirme | 0.003 / 0.029 / 0.075 ms | rapport takeover-ready, sans scripts |
-| P0 | 2026-09-20 | 723 passed (719 + 4 P0.1) | propre (src+tests) | propre | trou confirme (`contacts=0 overlaps=0 pairs=1`, union -> True) | 0.002 / 0.016 / 0.056 ms (sans grille, meme machine, meme ordre de grandeur) | P0.1 goldens 3 attaques + census (aucun saut letal >= 4 px) ; P0.2 parite pre-existante (egalite complete 3 sets) ; P0.3 docstring source de verite |
-| P1 | 2026-09-20 | 735 passed (724 + 3 debloques (b)/(b')/(b'') + 8 reception) | propre (src+tests) | propre (121 fichiers) | corrige — miss discret confirme, hit via sweep (contacts=1) | non rejoue (hors checklist P1) | commits P1.1-P1.5 : constantes D1/D4 + `src/combat/sweep.py` ; `HitboxManager` prev pool + seed starter + hygiene D3 ; `swept_hurtbox` Entity + capture frontiere dans `gameplay_loop.update` ; `CombatSystem` sur swept (grille D2 + contacts bilateraux) ; reception (a),(c),(d),(f),(g),(h),(h'),(i) + invariant borne MAX 64 px |
-| P2 | 2026-09-20 | 746 passed (735 + 2 extra-keyframes + 3 hurtbox-zones-data + 6 multi-hurtbox) | propre (src+tests) | propre (122 fichiers) | corrige (heritage P1, revalide via goldens + `test_hitbox_sweep.py` verts) | non rejoue (hors checklist P2) | commits P2.1-P2.5 : pushbox + `hurtboxes[]` derives dans `sync_rects` (alias `hitbox` conserve) + sweep par zone ; data `hurtbox_zones` (parse JSON + roundtrip, fallback `hurtbox_inflate`, JSON inchanges) ; keyframes par boite (`HitboxSpec.keyframes`, `interpolate_keyframes` factorisee, `extra_box_at`, parse+serialize `keyframes`) ; `CombatSystem` par zones (premier contact vulnerable, `zone_mult` damage-only dans `HitResolver.resolve`, `_zone_vulnerable` unitaire — tags du coup : aucun en P2, E2E jambes reporte P3t1) ; debug 1 couleur/zone + reception `test_multi_hurtbox.py` (legacy, tete x1.2, matcher, squish, swept P1xP2) |
+| P0 | 2026-09-20 | 723 passed (719 + 4 P0.1) | propre (src+tests) | propre | trou confirme (`contacts=0 overlaps=0 pairs=1`, union -> True) | 0.002 / 0.016 / 0.056 ms (sans grille, meme machine, meme ordre de grandeur) | P0.1 goldens 3 attaques + census (aucun saut letal >= 4 px) ; P0.2 parite pre-existante (egalite complete 3 sets) ; P0.3 docstring source de verite. Goldens multi-phases (`special_attack`/`claw_swipe`) livres plus tard en P0.1-bis (`5db47ad`, 2026-09-23) |
+| P1 | 2026-09-20 | 735 passed (723 + 1 goldens phases non recenses + 3 debloques (b)/(b')/(b'') + 8 reception = base intermediaire 724 non listee) | propre (src+tests) | propre (121 fichiers) | corrige — miss discret confirme, hit via sweep (contacts=1) | non rejoue (hors checklist P1 effective — **ecart convention**) | commits P1.1-P1.5 : constantes D1/D4 + `src/combat/sweep.py` ; `HitboxManager` prev pool + seed starter + hygiene D3 ; `swept_hurtbox` Entity + capture frontiere dans `gameplay_loop.update` ; `CombatSystem` sur swept (grille D2 + contacts bilateraux) ; reception (a),(c),(d),(f),(g),(h),(h'),(i) + invariant borne MAX 64 px |
+| P2 | 2026-09-20 | 746 passed (735 + 2 extra-keyframes + 3 hurtbox-zones-data + 6 multi-hurtbox) | propre (src+tests) | propre (122 fichiers) | corrige (heritage P1, revalide via goldens + `test_hitbox_sweep.py` verts) | non rejoue (hors checklist P2 effective — **ecart convention**) | commits P2.1-P2.5 + **`6129613`** (zones goblin `enemies.json` head x1.5 / legs x0.8 — exception « JSON inchanges ») : pushbox + `hurtboxes[]` derives dans `sync_rects` (alias `hitbox` conserve) + sweep par zone ; data `hurtbox_zones` (`src/entities/hurtbox_zones.py`, parse JSON + roundtrip, fallback `hurtbox_inflate`) ; keyframes par boite (`HitboxSpec.keyframes`, `interpolate_keyframes` factorisee, `extra_box_at`, parse+serialize `keyframes`) ; `CombatSystem` par zones (premier contact vulnerable, `zone_mult` damage-only dans `HitResolver.resolve`, `_zone_vulnerable` unitaire — tags du coup : **non portes**, E2E jambes **ouvert/O2**) ; debug 1 couleur/zone + reception `test_multi_hurtbox.py` (legacy, tete x1.2, matcher, squish, swept P1xP2) |
 | P3t1 | 2026-09-20 | 750 passed (746 + 4 priority/clash/unblockable) | propre (src+tests) | propre (122 fichiers) | n/a | non rejoue (hors checklist P3) | commit `5ce0295` : HitProperties unblockable/priority/clash + hit_level reserved ; `_resolve_hit_vs_hit` (beat/trade/clash, HITSTOP_BASE, GuardEvent clash) avant hit-vs-hurt ; `cancel_attack` sur CombatPort/CombatComponent/Null ; unblockable -> receive_damage (bypass dash-parry + garde) ; reception `test_priority_clash.py` |
 | P3t2 | 2026-09-20 | 755 passed (750 + 5 crouch/height) | propre (src+tests) | propre (122 fichiers) | n/a | non rejoue (hors checklist P3t2) | commit `aec4969` : PlayerState.CROUCH tenu (`_wants_crouch`, interrupt prio 30, squish vertical ancré pieds CROUCH_HEIGHT_FACTOR=0.6, anti-écrasement au relever) ; `HitProperties.height` (high/mid/low/overhead) + table `Guard.HEIGHT_BLOCK` (overhead standard : traverse la garde accroupie) ; reception `test_height_block.py` |
 | P4 | 2026-09-22 | 777 passed (755 + 8 validator + 14 debug overlay) | propre (src+tests) | propre (123 fichiers) | corrige (heritage P1-P3, revalide via goldens + sweep + multi-hurtbox + priority/clash + height verts) | non rejoue (hors checklist P4) | commits P4.1-P4.3 : `ContactSystem` unifie (melee/projectile/hazard/contact, hit-vs-hit melee-only) ; validateur strict `attack_loading` (taille/offset/keyframes/cooldown/cancel_into, `GameplayDataError` nommee + avertissement `reset_targets`) ; overlay debug (sweep fantome pointille + fleche, timeline startup/active/recovery, id `bN` par boite, panneau `CombatMetrics` live) |
-| Gap audit | 2026-09-22 | 782 passed (777 + 5) | propre (src+tests) | propre (123 fichiers) | corrige (heritage) | non rejoue | Ecarts mineurs d audit refermes : F7 step cabled (`gameplay_scene`, 1 tick while frozen) ; `hurtbox_zone_names` exposee sur Entity (labels `head/torso/legs` rendus) ; `hurtbox` singulier = union des zones (legacy = zone unique byte-identique) ; protocole `Combatant` etendu (`swept_hurtboxes`/`swept_hurtbox`/`capture_sweep_origin`/`hurtbox_*`) ; cas (e) P1 ajoute (`test_case_e_p0_goldens_and_census_revalidate`) ; instance `ContactSystem` partagee par les 4 producteurs (`Level` + `tick_metrics` accumule, reset dans `begin_tick`) ; helpers doubles equipes des membres zones |
-| Chantier audit 5 ecarts | 2026-09-23 | 856 passed (782 + 74 suite + nouveaux goldens/replay/zone/trace) | propre hors `main.py`* | propre (125 fichiers) | corrige (heritage) | non rejoue | Commits `5db47ad` goldens P0.1-bis (`special_attack` 5 phases + `claw_swipe` 2) ; `b9a9133` replay F8 (`toggle_attack_replay`/`tick_attack_replay`, option `DEBUG`) ; `413b582`+`8a25359` `ZoneContact.zone_index` stocke + expose (P2.4 boucle) ; `3d5cbc8`+`f65e4db` Axe G : `CombatTrace`/`HitCandidate` JSONL `logs/combat_trace.jsonl` si `DEBUG_COMBAT_DUMP=1` ; ecarts mineurs H1-H4 clos. Hors scope consignes : `9387b84`, `5b22925`, `1f5e3fa`, `a6d20f8` |
+| Gap audit | 2026-09-22 | 782 passed (777 + 5) | propre (src+tests) | propre (123 fichiers) | corrige (heritage) | non rejoue | Ecarts mineurs d audit refermes (`f7c4a29`) : F7 step cabled (`gameplay_scene`, 1 tick while frozen) + F6 freeze deja present ; `hurtbox_zone_names` exposee sur Entity (labels `head/torso/legs` rendus) ; `hurtbox` singulier = union des zones (legacy = zone unique byte-identique) ; protocole `Combatant` etendu (`swept_hurtboxes`/`swept_hurtbox`/`capture_sweep_origin`/`hurtbox_*`) ; cas (e) P1 ajoute (`test_case_e_p0_goldens_and_census_revalidate`) ; instance `ContactSystem` partagee par les 4 producteurs (`Level` + `tick_metrics` accumule, reset dans `begin_tick`) ; helpers doubles equipes des membres zones |
+| Chantier audit 5 ecarts | 2026-09-23 | 856 passed (782 + 74 suite + nouveaux goldens/replay/zone/trace) | propre hors `main.py`* | propre (125 fichiers) | corrige (heritage) | non rejoue | Commits `5db47ad` goldens P0.1-bis (`special_attack` 5 phases + `claw_swipe` 2) ; `b9a9133` replay F8 (`toggle_attack_replay`/`tick_attack_replay`, option `DEBUG`) ; `413b582`+`8a25359` `ZoneContact.zone_index` stocke + expose (P2.4 boucle) ; `3d5cbc8`+`f65e4db` Axe G : `CombatTrace`/`HitCandidate` JSONL `logs/combat_trace.jsonl` si `DEBUG_COMBAT_DUMP=1` ; ecarts mineurs H1-H4 du re-audit clos (ancres, goldens phases, F8, zone_index, trace). Hors scope consignes : `9387b84`, `5b22925`, `1f5e3fa`, `a6d20f8` |
+| Re-audit doc | 2026-09-23 | 856 passed (inchangé) | propre hors `main.py`* | propre (125 fichiers) | corrige (heritage) | non rejoue | Passe documentaire seule (aucun code) : historisation §1/§3/§4 balises `[clos Pn]` ; en-tête 719->856 ; arithmetique P0/P1 ; enums §6 alignes validateur ; §7.2 complete (debug/trace/P3t2) ; `6129613` + exception zones goblin ; gardes-fous etendus ; reference `P2.5` morte retiree. **Ecarts ouverts consignes (non clos) :** (O1) `block_mask` non implemente malgre P3t2/accroupi ; (O2) E2E jambes invulnees / tags du coup non portes (`HitProperties` sans tags, matcher inert) ; (O3) `hit_level` reserve (`"med"` seul) ; (O4) bench 2.2 non rejoue apres P0 — pas de harness dans le repo (convention de plan non tenue) ; (O5) Axe F export JSON non livre (F8 seul) ; (O6) Axe H non planifie (`sorted()` toujours par tick, pas de checksum) ; (O7) sweep bilatéral melee seul — projectiles/hazards/contact = `colliderect` discret (vouu, non documente avant) ; (O8) offset des keyframes jamais valide dans `attack_loading` ; (O9) libelle `bN` remplace par points `●/○` fusionnes (forme). `868d081` re-ancrage + `f7c4a29` gap audit P0-P4 (contenu dans row Gap audit) |
 
 \* `uv run ruff check .` signale 2 erreurs pre-existantes dans `main.py`
 (imports, newline) : hors scope hitbox, ne pas les imputer au chantier.
