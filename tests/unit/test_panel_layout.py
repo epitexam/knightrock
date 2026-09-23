@@ -5,7 +5,7 @@ import os
 import pygame
 import pytest
 
-from src.ui.panel_renderer import PanelLayout, PanelRenderer
+from src.ui.panel_renderer import PanelLayout, PanelLayoutError, PanelRenderer
 from src.ui.ui_manager import UIManager
 
 
@@ -44,13 +44,30 @@ def test_layout_wraps_to_a_new_column_on_overflow() -> None:
     assert second[0] > first[0]
 
 
-def test_layout_clamps_panels_inside_narrow_displays() -> None:
+def test_layout_reports_panel_too_large_for_display() -> None:
     layout = PanelLayout(100, 480)
 
-    x, y = layout.place(200, 50)
+    with pytest.raises(PanelLayoutError, match="cannot fit"):
+        layout.place(200, 50)
 
-    assert x == 10
-    assert y == 10
+
+def test_layout_reports_when_no_free_slot_exists() -> None:
+    layout = PanelLayout(100, 100)
+    layout.place(80, 80)
+
+    with pytest.raises(PanelLayoutError, match="no free slot"):
+        layout.place(80, 20)
+
+
+def test_manual_placement_relocates_instead_of_overlapping() -> None:
+    layout = PanelLayout(640, 480)
+    first = layout.place_at(10, 10, 200, 100)
+
+    second = layout.place_at(10, 10, 200, 100)
+
+    assert isinstance(first, tuple)
+    assert isinstance(second, tuple)
+    assert not pygame.Rect(*first, 200, 100).colliderect(pygame.Rect(*second, 200, 100))
 
 
 def test_layout_pins_top_right_inside_bounds() -> None:
@@ -61,8 +78,8 @@ def test_layout_pins_top_right_inside_bounds() -> None:
     assert (x, y) == (640 - 10 - 200, 10)
 
     tiny = PanelLayout(100, 480)
-    x, _ = tiny.place_top_right(200, 100)
-    assert x == 10
+    with pytest.raises(PanelLayoutError, match="cannot fit"):
+        tiny.place_top_right(200, 100)
 
 
 def test_measure_matches_drawn_height(renderer: PanelRenderer) -> None:
@@ -82,8 +99,8 @@ def test_default_line_height_comes_from_the_font(renderer: PanelRenderer) -> Non
 
 
 def test_draw_panel_with_layout_flows_without_error(renderer: PanelRenderer) -> None:
-    layout = PanelLayout(640, 200)
-    lines = [f"row {i}" for i in range(20)]
+    layout = PanelLayout(640, 480)
+    lines = [f"row {i}" for i in range(10)]
 
     first = renderer.draw_panel(0, 0, lines, title="A", layout=layout)
     second = renderer.draw_panel(0, 0, ["short"], title="B", layout=layout)
@@ -96,7 +113,7 @@ def test_positional_calls_stay_backward_compatible(renderer: PanelRenderer) -> N
     assert renderer.draw_panel(10, 10, ["x"], title="T") > 0
 
 
-def test_debug_panels_fit_a_small_display() -> None:
+def test_debug_panels_signal_impossible_small_display_placement() -> None:
     from types import SimpleNamespace  # noqa: PLC0415 - local test double
 
     ui = UIManager(pygame.Surface((640, 480)))
@@ -140,16 +157,7 @@ def test_debug_panels_fit_a_small_display() -> None:
     from src.ui.panel_renderer import PanelLayout as Layout  # noqa: PLC0415
 
     layout = Layout(640, 480)
-    ui.draw_state_panel(10, 10, player, layout=layout)
-    ui.draw_stats_panel(10, 10, player, layout=layout)
-    ui.draw_help_panel(10, 10, layout=layout)
-    ui.draw_performance_panel(
-        fps=60.0,
-        sprite_count=1,
-        combat_count=1,
-        entity_count=1,
-        collision_count=1,
-        hit_stop=0.0,
-        spawn_cooldown=0.0,
-        layout=layout,
-    )
+    with pytest.warns(RuntimeWarning, match="no free slot|cannot fit"):
+        ui.draw_state_panel(10, 10, player, layout=layout)
+        assert ui.draw_stats_panel(10, 10, player, layout=layout) == 0
+        ui.draw_help_panel(10, 10, layout=layout, layers={})

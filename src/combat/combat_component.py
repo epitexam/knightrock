@@ -147,6 +147,11 @@ class CombatComponent:
         """Per-shape boundary/current pairs for advanced CCD."""
         return self.hitbox.swept_shapes
 
+    @property
+    def attack_anchors(self) -> tuple[tuple[float, float], ...]:
+        """Resolved anchor points corresponding to live attack shapes."""
+        return self.hitbox.anchors
+
     def capture_attack_origin(self) -> None:
         """Freeze the live offensive geometry as the next tick's sweep origin."""
         self.hitbox.capture_origin()
@@ -462,6 +467,7 @@ class NullCombatComponent:
         self.swept_attack_boxes: tuple[pygame.FRect, ...] = ()
         self.attack_shapes: tuple[ShapePose, ...] = ()
         self.swept_attack_shapes: tuple[SweptShape, ...] = ()
+        self.attack_anchors: tuple[tuple[float, float], ...] = ()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()

@@ -6,7 +6,7 @@ import pygame
 
 from src.combat.attack_state import AttackStateMachine
 from src.combat.combatant_protocol import Combatant
-from src.combat.frame_data import HitboxSpec, PhaseDefinition
+from src.combat.frame_data import BoxGeometry, HitboxSpec, PhaseDefinition
 from src.combat.shapes import AnchorKind, ShapeKind, ShapePose, SweptShape, broadphase_aabb
 from src.combat.sweep import swept_box
 
@@ -34,6 +34,7 @@ class HitboxManager:
         self._prev_pool: list[pygame.FRect] = []
         self._shape_pool: list[ShapePose] = []
         self._prev_shape_pool: list[ShapePose] = []
+        self._anchor_pool: list[tuple[float, float]] = []
 
     @property
     def rects(self) -> tuple[pygame.FRect, ...]:
@@ -82,6 +83,11 @@ class HitboxManager:
             for index, shape in enumerate(self._shape_pool)
         )
 
+    @property
+    def anchors(self) -> tuple[tuple[float, float], ...]:
+        """Resolved anchor points corresponding to the live shape pool."""
+        return tuple(self._anchor_pool)
+
     def update(self, state: AttackStateMachine) -> None:
         """Synchronize geometry from attack state and owner position.
 
@@ -111,6 +117,7 @@ class HitboxManager:
         self._prev_pool.clear()
         self._shape_pool.clear()
         self._prev_shape_pool.clear()
+        self._anchor_pool.clear()
 
     def capture_origin(self) -> None:
         """Copy the live pool as the sweep origin of the next tick.
@@ -129,29 +136,13 @@ class HitboxManager:
 
     def _position_rects(self, phase: PhaseDefinition, facing_right: bool, frame: int) -> None:
         """Create or reposition every rectangle and advanced shape."""
-        primary_geometry, primary_angle = phase.hitbox_shape_at(frame)
-        if not phase.hitbox_keyframes:
-            primary_angle = phase.hitbox_angle
-        shape_data = [
-            (phase.hitbox_spec, primary_geometry, primary_angle),
-        ]
-        for index, spec in enumerate(phase.extra_hitboxes):
-            geometry, angle = phase.extra_shape_at(index, frame)
-            if not spec.keyframes:
-                angle = spec.angle
-            shape_data.append((spec, geometry, angle))
-        while len(self._pool) < len(shape_data):
-            self._pool.append(pygame.FRect(0, 0, 0, 0))
-        while len(self._pool) > len(shape_data):
-            self._pool.pop()
-        while len(self._shape_pool) < len(shape_data):
-            self._shape_pool.append(ShapePose(ShapeKind.AABB, (1.0, 1.0)))
-        while len(self._shape_pool) > len(shape_data):
-            self._shape_pool.pop()
+        shape_data = self._shape_data(phase, frame)
+        self._resize_pools(len(shape_data))
         for index, (rect, (spec, (size, offset), angle)) in enumerate(
             zip(self._pool, shape_data, strict=True)
         ):
             anchor = self._anchor_position(spec, facing_right)
+            self._anchor_pool[index] = anchor
             offset_x, offset_y = offset
             if not facing_right:
                 offset_x = -offset_x
@@ -162,6 +153,36 @@ class HitboxManager:
             rect.size = self._broadphase_size(shape)
             rect.center = position
         self.rect = self._pool[0]
+
+    def _shape_data(
+        self, phase: PhaseDefinition, frame: int
+    ) -> list[tuple[HitboxSpec, BoxGeometry, float]]:
+        primary_geometry, primary_angle = phase.hitbox_shape_at(frame)
+        if not phase.hitbox_keyframes:
+            primary_angle = phase.hitbox_angle
+        shape_data: list[tuple[HitboxSpec, BoxGeometry, float]] = [
+            (phase.hitbox_spec, primary_geometry, primary_angle),
+        ]
+        for index, spec in enumerate(phase.extra_hitboxes):
+            geometry, angle = phase.extra_shape_at(index, frame)
+            if not spec.keyframes:
+                angle = spec.angle
+            shape_data.append((spec, geometry, angle))
+        return shape_data
+
+    def _resize_pools(self, count: int) -> None:
+        while len(self._pool) < count:
+            self._pool.append(pygame.FRect(0, 0, 0, 0))
+        while len(self._pool) > count:
+            self._pool.pop()
+        while len(self._shape_pool) < count:
+            self._shape_pool.append(ShapePose(ShapeKind.AABB, (1.0, 1.0)))
+        while len(self._shape_pool) > count:
+            self._shape_pool.pop()
+        while len(self._anchor_pool) < count:
+            self._anchor_pool.append((0.0, 0.0))
+        while len(self._anchor_pool) > count:
+            self._anchor_pool.pop()
 
     def _anchor_position(self, spec: HitboxSpec, facing_right: bool) -> tuple[float, float]:
         owner = self._entity.hitbox

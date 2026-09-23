@@ -277,3 +277,46 @@ def test_full_debug_panel_stack_never_overlaps(
             assert not rect.colliderect(other), f"panel {rect} stacks on {other}"
     screen = surface.get_rect()
     assert all(screen.contains(rect) for rect in placed), "a panel sticks out of the display"
+
+
+def test_compact_display_uses_focus_selector_without_overlap() -> None:
+    from src.core.rendering.camera import Camera as _Camera
+    from src.core.rendering.renderer import Renderer
+
+    surface = pygame.Surface((640, 480))
+    renderer = Renderer(surface, _Camera(640, 480))
+    level = SimpleNamespace(
+        deaths=0,
+        groups=SimpleNamespace(
+            entity_sprites=[],
+            hazard_sprites=[],
+            projectile_sprites=[],
+        ),
+    )
+    game = SimpleNamespace(
+        scene_manager=SimpleNamespace(
+            current=SimpleNamespace(level_id=0, level=level),
+        )
+    )
+
+    renderer.draw_debug_panels(
+        player=_full_player(),
+        fps=60.0,
+        sprite_count=1,
+        combat_count=0,
+        entity_count=0,
+        collision_count=0,
+        hit_stop=0.0,
+        spawn_cooldown=0.0,
+        game=game,
+        frame_time=16.0,
+    )
+    renderer.ui_manager.renderer.interaction.begin_frame()
+    panels = renderer.ui_manager.renderer.interaction.panels
+    screen = surface.get_rect()
+
+    assert set(panels) == {"performance", "state"}
+    assert all(screen.contains(rect) for rect in panels.values())
+    assert not panels["performance"].colliderect(panels["state"])
+    assert renderer.ui_manager.compact_panel_focus() == "state"
+    assert renderer.ui_manager.cycle_compact_panel() == "stats"

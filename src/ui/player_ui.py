@@ -10,23 +10,18 @@ class PlayerUI:
     def __init__(self, renderer: PanelRenderer):
         self.renderer = renderer
 
-    def draw_state_panel(
-        self,
-        x: int,
-        y: int,
-        player: Any,
-        layout: PanelLayout | None = None,
-        panel_id: str | None = None,
-    ) -> int:
-        if not player or not getattr(player, "state_machine", None):
-            return 0
-
-        sm = player.state_machine
-        current = sm.current_state_name or "None"
-        previous = sm.previous_state_name or "-"
-        history = list(sm.history)[-6:] if sm.history else []
-
-        lines = [
+    @staticmethod
+    def _state_lines(player: Any, state_machine: Any, compact: bool) -> list[str]:
+        if compact:
+            return [
+                f"State  {state_machine.current_state_name or 'None'}",
+                f"Vel    ({player.velocity.x:6.1f}, {player.velocity.y:6.1f})",
+                f"Axis   {player.move_axis:+.2f}",
+            ]
+        current = state_machine.current_state_name or "None"
+        previous = state_machine.previous_state_name or "-"
+        history = list(state_machine.history)[-6:] if state_machine.history else []
+        return [
             f"State  {current}   (prev {previous})",
             f"Hist   {' > '.join(history)}",
             f"Vel    ({player.velocity.x:6.1f}, {player.velocity.y:6.1f})",
@@ -36,6 +31,23 @@ class PlayerUI:
             f"Jumps  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
             f"Dash   req {player.dash.requested!s:5}  dur {player.dash.duration_timer:.2f}s",
         ]
+
+    def draw_state_panel(
+        self,
+        x: int,
+        y: int,
+        player: Any,
+        layout: PanelLayout | None = None,
+        panel_id: str | None = None,
+        compact: bool = False,
+    ) -> int:
+        if panel_id is not None and self.renderer.interaction.is_closed(panel_id):
+            return 0
+        if not player or not getattr(player, "state_machine", None):
+            return 0
+
+        sm = player.state_machine
+        lines = self._state_lines(player, sm, compact)
 
         line_colors = {}
         combat = getattr(player, "combat", None)
@@ -51,6 +63,14 @@ class PlayerUI:
 
             phase_text = f"{phase_idx}/{total_phases - 1}" if total_phases > 0 else "idle"
             lines.append(f"Combat {attack_name}  phase {phase_text}")
+            shapes = tuple(getattr(combat, "attack_shapes", ()))
+            anchors = tuple(getattr(combat, "attack_anchors", ()))
+            if shapes:
+                anchor = anchors[0] if anchors else (0.0, 0.0)
+                lines.append(
+                    f"Hitbox {shapes[0].kind.value} x{len(shapes)}"
+                    f"  anchor ({anchor[0]:.0f},{anchor[1]:.0f})"
+                )
 
             hurt_idx = len(lines)
             hurt_timer = getattr(combat, "hurt_timer", 0.0)
@@ -99,21 +119,31 @@ class PlayerUI:
         player: Any,
         layout: PanelLayout | None = None,
         panel_id: str | None = None,
+        compact: bool = False,
     ) -> int:
+        if panel_id is not None and self.renderer.interaction.is_closed(panel_id):
+            return 0
         if not player:
             return 0
 
         hp_ratio = player.health / player.max_health if player.max_health else 0
         hp_color = TEXT_OK if hp_ratio > 0.5 else TEXT_WARN if hp_ratio > 0.25 else TEXT_CRIT
 
-        lines = [
-            f"HP     {player.health:.0f}/{player.max_health:.0f}",
-            f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}   lock {player.guard_lockout_timer:.2f}s",
-            f"Dash   {player.dash_charges}/{player.max_dash_charges}   pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
-            f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
-            f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",
-            f"Dash   spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s  fric {player.dash_friction:.1f}",
-        ]
+        if compact:
+            lines = [
+                f"HP     {player.health:.0f}/{player.max_health:.0f}",
+                f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}",
+                f"Move   spd {player.speed:.0f}",
+            ]
+        else:
+            lines = [
+                f"HP     {player.health:.0f}/{player.max_health:.0f}",
+                f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}   lock {player.guard_lockout_timer:.2f}s",
+                f"Dash   {player.dash_charges}/{player.max_dash_charges}   pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
+                f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
+                f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",
+                f"Dash   spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s  fric {player.dash_friction:.1f}",
+            ]
 
         combat = getattr(player, "combat", None)
         if combat:

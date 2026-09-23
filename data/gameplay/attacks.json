@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "sets": {
     "player": {
       "light_attack": {
@@ -223,239 +223,239 @@
         "attack_move_multiplier": 0.6
       },
       "twin_fangs": {
-          "phases": [
-            {
-              "startup_frames": 4,
-              "active_frames": 6,
-              "recovery_frames": 6,
-              "hitbox_size": [
-                45.0,
-                22.0
-              ],
-              "hitbox_offset": [
-                26.0,
-                -4.0
-              ],
-              "hit": {
-                "damage": 8,
-                "knockback": {
-                  "power": [
-                    180.0,
-                    -80.0
-                  ],
-                  "mode": "from_attacker"
-                },
-                "damage_type": "slash",
-                "stagger": 0.15,
-                "super_armor_break": false,
-                "is_finisher": false,
-                "juggle_gravity_mult": 1.0,
-                "otg_allowed": false
+        "phases": [
+          {
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 6,
+            "hitbox_size": [
+              45.0,
+              22.0
+            ],
+            "hitbox_offset": [
+              26.0,
+              -4.0
+            ],
+            "hit": {
+              "damage": 8,
+              "knockback": {
+                "power": [
+                  180.0,
+                  -80.0
+                ],
+                "mode": "from_attacker"
               },
-              "extra_hitboxes": [
-                {
-                  "size": [
-                    30.0,
-                    18.0
-                  ],
-                  "offset": [
-                    20.0,
-                    -24.0
-                  ]
-                }
-              ],
-              "hitbox_keyframes": [],
-              "reset_targets": true,
-              "cancel_into": [
-                "light_attack",
-                "heavy_attack"
-              ]
-            }
-          ],
-          "cooldown": 0.5,
-          "lock_direction": true,
-          "combo_reset": false,
-          "chargeable": false,
-          "max_charge_time": 1.0,
-          "charge_move_multiplier": 1.0,
-          "uninterruptible": false,
-          "lunge_speed_multiplier": 0.35,
-          "attack_move_multiplier": 0.5
-        },
+              "damage_type": "slash",
+              "stagger": 0.15,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false
+            },
+            "extra_hitboxes": [
+              {
+                "size": [
+                  30.0,
+                  18.0
+                ],
+                "offset": [
+                  20.0,
+                  -24.0
+                ]
+              }
+            ],
+            "hitbox_keyframes": [],
+            "reset_targets": true,
+            "cancel_into": [
+              "light_attack",
+              "heavy_attack"
+            ]
+          }
+        ],
+        "cooldown": 0.5,
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.5
+      },
       "sweeping_arc": {
-          "phases": [
-            {
-              "startup_frames": 6,
-              "active_frames": 6,
-              "recovery_frames": 5,
-              "hitbox_size": [
-                40.0,
-                22.0
-              ],
-              "hitbox_offset": [
-                24.0,
-                -4.0
-              ],
-              "hit": {
-                "damage": 12,
-                "knockback": {
-                  "power": [
-                    220.0,
-                    -100.0
-                  ],
-                  "mode": "from_attacker"
-                },
-                "damage_type": "slash",
-                "stagger": 0.2,
-                "super_armor_break": false,
-                "is_finisher": false,
-                "juggle_gravity_mult": 1.0,
-                "otg_allowed": false
+        "phases": [
+          {
+            "startup_frames": 6,
+            "active_frames": 6,
+            "recovery_frames": 5,
+            "hitbox_size": [
+              40.0,
+              22.0
+            ],
+            "hitbox_offset": [
+              24.0,
+              -4.0
+            ],
+            "hit": {
+              "damage": 12,
+              "knockback": {
+                "power": [
+                  220.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
               },
-              "extra_hitboxes": [],
-              "hitbox_keyframes": [
-                {
-                  "frame": 0,
-                  "size": [
-                    28.0,
-                    14.0
-                  ],
-                  "offset": [
-                    16.0,
-                    -2.0
-                  ]
-                },
-                {
-                  "frame": 6,
-                  "size": [
-                    55.0,
-                    28.0
-                  ],
-                  "offset": [
-                    30.0,
-                    -6.0
-                  ]
-                },
-                {
-                  "frame": 12,
-                  "size": [
-                    70.0,
-                    34.0
-                  ],
-                  "offset": [
-                    38.0,
-                    -8.0
-                  ]
-                }
-              ],
-              "reset_targets": true,
-              "cancel_into": [
-                "light_attack"
-              ]
-            }
-          ],
-          "cooldown": 0.7,
-          "lock_direction": true,
-          "combo_reset": false,
-          "chargeable": false,
-          "max_charge_time": 1.0,
-          "charge_move_multiplier": 1.0,
-          "uninterruptible": false,
-          "lunge_speed_multiplier": 0.35,
-          "attack_move_multiplier": 0.4
-        },
+              "damage_type": "slash",
+              "stagger": 0.2,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false
+            },
+            "extra_hitboxes": [],
+            "hitbox_keyframes": [
+              {
+                "frame": 0,
+                "size": [
+                  28.0,
+                  14.0
+                ],
+                "offset": [
+                  16.0,
+                  -2.0
+                ]
+              },
+              {
+                "frame": 6,
+                "size": [
+                  55.0,
+                  28.0
+                ],
+                "offset": [
+                  30.0,
+                  -6.0
+                ]
+              },
+              {
+                "frame": 12,
+                "size": [
+                  70.0,
+                  34.0
+                ],
+                "offset": [
+                  38.0,
+                  -8.0
+                ]
+              }
+            ],
+            "reset_targets": true,
+            "cancel_into": [
+              "light_attack"
+            ]
+          }
+        ],
+        "cooldown": 0.7,
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.4
+      },
       "sky_launcher": {
-          "phases": [
-            {
-              "startup_frames": 7,
-              "active_frames": 5,
-              "recovery_frames": 10,
-              "hitbox_size": [
-                32.0,
-                48.0
-              ],
-              "hitbox_offset": [
-                16.0,
-                -28.0
-              ],
-              "hit": {
-                "damage": 14,
-                "knockback": {
-                  "power": [
-                    250.0,
-                    -650.0
-                  ],
-                  "mode": "from_attacker"
-                },
-                "damage_type": "blunt",
-                "stagger": 0.35,
-                "super_armor_break": true,
-                "is_finisher": false,
-                "juggle_gravity_mult": 0.5,
-                "otg_allowed": false
+        "phases": [
+          {
+            "startup_frames": 7,
+            "active_frames": 5,
+            "recovery_frames": 10,
+            "hitbox_size": [
+              32.0,
+              48.0
+            ],
+            "hitbox_offset": [
+              16.0,
+              -28.0
+            ],
+            "hit": {
+              "damage": 14,
+              "knockback": {
+                "power": [
+                  250.0,
+                  -650.0
+                ],
+                "mode": "from_attacker"
               },
-              "extra_hitboxes": [],
-              "hitbox_keyframes": [],
-              "reset_targets": true,
-              "cancel_into": []
-            }
-          ],
-          "cooldown": 1.0,
-          "lock_direction": true,
-          "combo_reset": false,
-          "chargeable": false,
-          "max_charge_time": 1.0,
-          "charge_move_multiplier": 1.0,
-          "uninterruptible": false,
-          "lunge_speed_multiplier": 0.35,
-          "attack_move_multiplier": 0.2
-        },
+              "damage_type": "blunt",
+              "stagger": 0.35,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 0.5,
+              "otg_allowed": false
+            },
+            "extra_hitboxes": [],
+            "hitbox_keyframes": [],
+            "reset_targets": true,
+            "cancel_into": []
+          }
+        ],
+        "cooldown": 1.0,
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.2
+      },
       "otg_slam": {
-          "phases": [
-            {
-              "startup_frames": 9,
-              "active_frames": 4,
-              "recovery_frames": 12,
-              "hitbox_size": [
-                60.0,
-                30.0
-              ],
-              "hitbox_offset": [
-                30.0,
-                10.0
-              ],
-              "hit": {
-                "damage": 20,
-                "knockback": {
-                  "power": [
-                    200.0,
-                    450.0
-                  ],
-                  "mode": "from_attacker"
-                },
-                "damage_type": "blunt",
-                "stagger": 0.4,
-                "super_armor_break": true,
-                "is_finisher": false,
-                "juggle_gravity_mult": 1.0,
-                "otg_allowed": true
+        "phases": [
+          {
+            "startup_frames": 9,
+            "active_frames": 4,
+            "recovery_frames": 12,
+            "hitbox_size": [
+              60.0,
+              30.0
+            ],
+            "hitbox_offset": [
+              30.0,
+              10.0
+            ],
+            "hit": {
+              "damage": 20,
+              "knockback": {
+                "power": [
+                  200.0,
+                  450.0
+                ],
+                "mode": "from_attacker"
               },
-              "extra_hitboxes": [],
-              "hitbox_keyframes": [],
-              "reset_targets": true,
-              "cancel_into": []
-            }
-          ],
-          "cooldown": 1.2,
-          "lock_direction": true,
-          "combo_reset": true,
-          "chargeable": false,
-          "max_charge_time": 1.0,
-          "charge_move_multiplier": 1.0,
-          "uninterruptible": false,
-          "lunge_speed_multiplier": 0.35,
-          "attack_move_multiplier": 0.15
-        },
+              "damage_type": "blunt",
+              "stagger": 0.4,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": true
+            },
+            "extra_hitboxes": [],
+            "hitbox_keyframes": [],
+            "reset_targets": true,
+            "cancel_into": []
+          }
+        ],
+        "cooldown": 1.2,
+        "lock_direction": true,
+        "combo_reset": true,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.15
+      },
       "special_attack": {
         "phases": [
           {
@@ -613,6 +613,271 @@
         "uninterruptible": false,
         "lunge_speed_multiplier": 0.0,
         "attack_move_multiplier": 0.1
+      },
+      "p5_shapes": {
+        "phases": [
+          {
+            "startup_frames": 1,
+            "active_frames": 2,
+            "recovery_frames": 1,
+            "hitboxes": [
+              {
+                "shape": "circle",
+                "size": [
+                  24.0,
+                  24.0
+                ],
+                "offset": [
+                  36.0,
+                  -4.0
+                ],
+                "anchor": "weapon",
+                "anchor_offset": [
+                  8.0,
+                  -10.0
+                ]
+              }
+            ],
+            "hit": {
+              "damage": 8,
+              "knockback": {
+                "power": [
+                  120.0,
+                  -40.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.1,
+              "super_armor_break": false,
+              "is_finisher": false
+            },
+            "reset_targets": true,
+            "cancel_into": []
+          },
+          {
+            "startup_frames": 2,
+            "active_frames": 4,
+            "recovery_frames": 2,
+            "hitboxes": [
+              {
+                "shape": "capsule",
+                "size": [
+                  36.0,
+                  16.0
+                ],
+                "offset": [
+                  34.0,
+                  -8.0
+                ],
+                "angle": 20.0,
+                "easing": "ease_in_out",
+                "anchor": "hand",
+                "anchor_offset": [
+                  10.0,
+                  -4.0
+                ],
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "size": [
+                      28.0,
+                      14.0
+                    ],
+                    "offset": [
+                      31.0,
+                      -6.0
+                    ],
+                    "angle": 0.0
+                  },
+                  {
+                    "frame": 6,
+                    "size": [
+                      44.0,
+                      18.0
+                    ],
+                    "offset": [
+                      38.0,
+                      -10.0
+                    ],
+                    "angle": 30.0
+                  }
+                ]
+              }
+            ],
+            "hit": {
+              "damage": 10,
+              "knockback": {
+                "power": [
+                  180.0,
+                  -60.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.2,
+              "super_armor_break": false,
+              "is_finisher": false
+            },
+            "reset_targets": true,
+            "cancel_into": []
+          },
+          {
+            "startup_frames": 3,
+            "active_frames": 4,
+            "recovery_frames": 3,
+            "hitboxes": [
+              {
+                "shape": "obb",
+                "size": [
+                  48.0,
+                  24.0
+                ],
+                "offset": [
+                  32.0,
+                  -10.0
+                ],
+                "angle": 30.0,
+                "easing": "ease_in",
+                "anchor": "weapon",
+                "anchor_offset": [
+                  12.0,
+                  -6.0
+                ],
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "size": [
+                      40.0,
+                      20.0
+                    ],
+                    "offset": [
+                      22.0,
+                      -8.0
+                    ],
+                    "angle": 20.0
+                  },
+                  {
+                    "frame": 7,
+                    "size": [
+                      56.0,
+                      28.0
+                    ],
+                    "offset": [
+                      36.0,
+                      -12.0
+                    ],
+                    "angle": 45.0
+                  }
+                ]
+              }
+            ],
+            "hit": {
+              "damage": 12,
+              "knockback": {
+                "power": [
+                  240.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "blunt",
+              "stagger": 0.3,
+              "super_armor_break": false,
+              "is_finisher": false
+            },
+            "reset_targets": true,
+            "cancel_into": []
+          }
+        ],
+        "cooldown": 0.5,
+        "lock_direction": true,
+        "combo_reset": true,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.3
+      },
+      "circle_burst": {
+        "phases": [
+          {
+            "startup_frames": 2,
+            "active_frames": 4,
+            "recovery_frames": 2,
+            "hitboxes": [
+              {
+                "shape": "circle",
+                "size": [
+                  20.0,
+                  20.0
+                ],
+                "offset": [
+                  12.0,
+                  0.0
+                ],
+                "easing": "ease_out",
+                "anchor": "weapon",
+                "anchor_offset": [
+                  4.0,
+                  -6.0
+                ],
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "size": [
+                      20.0,
+                      20.0
+                    ],
+                    "offset": [
+                      12.0,
+                      0.0
+                    ],
+                    "angle": 0.0
+                  },
+                  {
+                    "frame": 6,
+                    "size": [
+                      40.0,
+                      40.0
+                    ],
+                    "offset": [
+                      24.0,
+                      0.0
+                    ],
+                    "angle": 0.0
+                  }
+                ]
+              }
+            ],
+            "hit": {
+              "damage": 12,
+              "knockback": {
+                "power": [
+                  180.0,
+                  -60.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "pierce",
+              "stagger": 0.2,
+              "super_armor_break": false,
+              "is_finisher": false
+            },
+            "reset_targets": true,
+            "cancel_into": []
+          }
+        ],
+        "cooldown": 0.25,
+        "lock_direction": true,
+        "combo_reset": true,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "attack_move_multiplier": 0.3
       }
     },
     "goblin": {

@@ -1,3 +1,5 @@
+from collections import deque
+from time import perf_counter
 from typing import Any
 
 import pygame
@@ -61,7 +63,30 @@ class Renderer:
         self.background_color = self._resolve_background_color(config)
         self._previous_dirty: list[pygame.Rect] = []
         self._ghosts: list[tuple[pygame.Surface, pygame.Rect, float]] = []
-        self._ghost_timer = 0.0
+        self._ghost_timer: float = 0.0
+        self._debug_samples: dict[str, deque[float]] = {
+            "world_ui_ms": deque(maxlen=120),
+            "panels_ms": deque(maxlen=120),
+        }
+
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        self.display_surface = display_surface
+        self.ui_manager.set_display_surface(display_surface)
+        self.camera.width = display_surface.get_width()
+        self.camera.height = display_surface.get_height()
+        self._previous_dirty.clear()
+
+    def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
+        self._debug_samples[name].append(elapsed_ms)
+
+    def debug_metrics_snapshot(self) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for name, samples in self._debug_samples.items():
+            ordered = sorted(samples)
+            result[name] = ordered[-1] if ordered else 0.0
+            index = min(len(ordered) - 1, int(len(ordered) * 0.95)) if ordered else 0
+            result[f"{name.removesuffix('_ms')}_p95_ms"] = ordered[index] if ordered else 0.0
+        return result
 
     @staticmethod
     def _resolve_background_color(config):
@@ -84,19 +109,19 @@ class Renderer:
         blits = self._collect_visible_blits(groups)
         ghost_draws = self._update_afterimages(groups, dt)
         flashes = self._collect_flashes(groups)
-        dirty = [self._to_dirty_rect(screen_rect) for _, screen_rect in blits]
-        dirty += [self._to_dirty_rect(screen_rect) for _, screen_rect in ghost_draws]
-
-        update_rects = [*dirty, *self._previous_dirty]
-        self._previous_dirty = dirty
-
         if debug_enabled:
             self._draw_full(groups, blits)
             self._draw_ghosts(ghost_draws)
             self._draw_flashes(flashes)
-            self.ui_manager.draw_debug_overlays(groups.all_sprites, self.camera)
+            started = perf_counter()
+            self.ui_manager.draw_debug_overlays(groups.all_sprites, self.camera, dt)
+            self._record_debug_sample("world_ui_ms", (perf_counter() - started) * 1000.0)
             return None
 
+        dirty = [self._to_dirty_rect(screen_rect) for _, screen_rect in blits]
+        dirty += [self._to_dirty_rect(screen_rect) for _, screen_rect in ghost_draws]
+        update_rects = [*dirty, *self._previous_dirty]
+        self._previous_dirty = dirty
         area = update_rects[0].unionall(update_rects[1:]) if update_rects else None
         if area is not None:
             # Erase exactly the region that will be refreshed: every pixel
@@ -199,14 +224,14 @@ class Renderer:
         spawn_cooldown,
         game: Any = None,
         frame_time: float = 0.0,
-        cache_size: int = 0,
+        cache_size: int | None = None,
     ):
+        started = perf_counter()
+        self.ui_manager.renderer.interaction.begin_frame()
         if not self.ui_manager.world_ui.layers.get("panels", True):
+            self._record_debug_sample("panels_ms", 0.0)
             return
         surface = self.ui_manager.renderer.display_surface
-        # Hit tests run against the rects painted last frame; the registry is
-        # rebuilt here so panels closed with their ``×`` stop eating clicks.
-        self.ui_manager.renderer.interaction.begin_frame()
         layout = PanelLayout(surface.get_width(), surface.get_height())
         # PERFORMANCE is pinned first so the column flow can reserve it and
         # wrap around it; COMBAT counters then lead the flow, so the tall
@@ -222,13 +247,19 @@ class Renderer:
             frame_time=frame_time,
             cache_size=cache_size,
             layout=layout,
+            debug_stats=self.debug_metrics_snapshot(),
         )
-        self.ui_manager.draw_combat_panel(layout)
-        self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
-        self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
-        if game is not None:
-            self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
-        self.ui_manager.draw_help_panel(
-            10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
-        )
-        self.ui_manager.draw_legend_panel(10, 10, layout=layout)
+        compact = surface.get_width() < 1100 or surface.get_height() < 800
+        if compact:
+            self.ui_manager.draw_compact_panel(player, layout, game)
+        else:
+            self.ui_manager.draw_combat_panel(layout)
+            self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
+            self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
+            if game is not None:
+                self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
+            self.ui_manager.draw_help_panel(
+                10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
+            )
+            self.ui_manager.draw_legend_panel(10, 10, layout=layout)
+        self._record_debug_sample("panels_ms", (perf_counter() - started) * 1000.0)

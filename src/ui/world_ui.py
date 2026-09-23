@@ -54,7 +54,7 @@ import pygame
 import pygame.gfxdraw
 from pygame.math import Vector2
 
-from src.combat.shapes import ShapeKind, ShapePose
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.core.settings import Debug
@@ -315,6 +315,7 @@ class WorldUI:
         self.display_surface = renderer.display_surface
         self.layers: dict[str, bool] = dict.fromkeys(OVERLAY_LAYERS, True)
         self.metrics_text: tuple[str, ...] = ()
+        self._metrics_whiffs = 0
         #: Colored ``(text, color)`` lines of the unified COMBAT panel,
         #: refreshed by :meth:`draw_metrics_panel`, drawn by the debug flow.
         self.combat_panel_lines: list[tuple[str, Color]] = []
@@ -340,12 +341,17 @@ class WorldUI:
         return self.layers[layer]
 
     def draw_debug_overlays(
-        self, all_sprites: Iterable[pygame.sprite.Sprite], camera: Camera
+        self,
+        all_sprites: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        delta_time: float | None = None,
     ) -> None:
         # Fresh annotation bookkeeping: the rects drawn this frame feed both
         # the card obstacles and the card clearances.
         self._annotation_rects = {}
         self._annotation_obstacles = []
+        if not any(self.layers[name] for name in ("boxes", "labels", "velocities", "statics")):
+            return
         viewport = self._viewport(camera)
         screen_width = self.display_surface.get_width()
 
@@ -355,7 +361,7 @@ class WorldUI:
         for sprite in all_sprites:
             if type(sprite) is pygame.sprite.Sprite:
                 continue  # static tiles: ~900/level, nothing useful to show
-            reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
+            reference = self._debug_reference(sprite)
             if reference is None or not viewport.colliderect(reference):
                 continue  # culled: off-screen, not worth a single pixel
             is_static = getattr(sprite, "hitbox", None) is None
@@ -365,31 +371,56 @@ class WorldUI:
                 self._draw_boxes(sprite, camera)
             if self.layers["velocities"]:
                 self._draw_velocity(sprite, camera)
-            if not self.layers["labels"] or is_static:
-                continue
-            segments = self._label_segments(sprite)
-            if segments is None:
-                continue
-            anchor = camera.apply(reference)
-            priority = self._label_priority(sprite, anchor)
-            above_lift, below_drop = self._label_clearances(sprite, anchor)
-            requests.append(
-                (
-                    priority,
-                    segments,
-                    self._label_color(sprite),
-                    anchor,
-                    above_lift,
-                    below_drop,
-                    sprite,
-                )
-            )
+            request = self._label_request(sprite, reference, is_static, camera)
+            if request is not None:
+                requests.append(request)
 
         if requests:
             requests.sort(key=lambda request: request[0])
             self._draw_labels(requests, screen_width, self.display_surface.get_height())
 
-        self._draw_clash_marker(camera)
+        self._draw_clash_marker(camera, delta_time)
+
+    def _label_request(
+        self,
+        sprite: pygame.sprite.Sprite,
+        reference: pygame.FRect,
+        is_static: bool,
+        camera: Camera,
+    ) -> _LabelRequest | None:
+        if not self.layers["labels"] or is_static:
+            return None
+        segments = self._label_segments(sprite)
+        if segments is None:
+            return None
+        anchor = camera.apply(reference)
+        priority = self._label_priority(sprite, anchor)
+        above_lift, below_drop = self._label_clearances(sprite, anchor)
+        return (
+            priority,
+            segments,
+            self._label_color(sprite),
+            anchor,
+            above_lift,
+            below_drop,
+            sprite,
+        )
+
+    @staticmethod
+    def _debug_reference(sprite: pygame.sprite.Sprite) -> pygame.FRect | None:
+        reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
+        if reference is None:
+            return None
+        combat = getattr(sprite, "combat", None)
+        rectangles = [pygame.FRect(reference)]
+        for name in ("attack_boxes", "swept_attack_boxes"):
+            values = getattr(combat, name, ())
+            if isinstance(values, tuple):
+                rectangles.extend(pygame.FRect(value) for value in values if value is not None)
+        anchors = getattr(combat, "attack_anchors", ())
+        if isinstance(anchors, tuple):
+            rectangles.extend(pygame.FRect(anchor[0], anchor[1], 0.0, 0.0) for anchor in anchors)
+        return rectangles[0].unionall(rectangles[1:]) if len(rectangles) > 1 else rectangles[0]
 
     @staticmethod
     def _viewport(camera: Camera) -> pygame.Rect:
@@ -471,6 +502,7 @@ class WorldUI:
         pairs = int(getattr(metrics, "pairs_tested", 0) or 0)
         overlaps = int(getattr(metrics, "overlaps", 0) or 0)
         contacts = int(getattr(metrics, "contacts", 0) or 0)
+        self._metrics_whiffs = max(0, pairs - overlaps)
         self.metrics_text = (
             f"pairs {pairs}",
             f"overlaps {overlaps}",
@@ -502,7 +534,10 @@ class WorldUI:
             self.update_metrics(metrics)
         if not self.metrics_text:
             return
-        lines: list[tuple[str, Color]] = [*((line, Colors.off_white) for line in self.metrics_text)]
+        lines: list[tuple[str, Color]] = [
+            *((line, Colors.off_white) for line in self.metrics_text),
+            (f"whiffs {self._metrics_whiffs}", TEXT_MUTED),
+        ]
         attack = self._live_attack_text(player)
         if attack is not None:
             lines.append((f"atk {attack}", Colors.gold))
@@ -531,11 +566,11 @@ class WorldUI:
         frame = getattr(state, "frame_counter", 0)
         return f"{name} {phase} f{frame}"
 
-    def _draw_clash_marker(self, camera: Camera) -> None:
+    def _draw_clash_marker(self, camera: Camera, delta_time: float | None = None) -> None:
         """Expanding ring at the last clash point; fades over its lifetime."""
         if self._clash_ttl <= 0.0 or self.clash_point is None:
             return
-        self._clash_ttl -= CLASH_TICK_S
+        self._clash_ttl -= CLASH_TICK_S if delta_time is None else max(0.0, delta_time)
         self._paint_clash_ring(camera)
 
     def stamp_clash_marker(self, camera: Camera) -> None:
@@ -804,6 +839,9 @@ class WorldUI:
         if hit is None:
             return ()
         badges: list[str] = []
+        shapes = self._offensive_shapes(combat)
+        if shapes:
+            badges.append(shapes[0].kind.value.upper())
         priority = int(getattr(hit, "priority", 0) or 0)
         if priority > 0:
             badges.append(f"P{priority}")
@@ -850,11 +888,29 @@ class WorldUI:
         return (None,) * count
 
     @staticmethod
+    def _swept_shapes(combat: object, count: int) -> tuple[SweptShape | None, ...]:
+        shapes = getattr(combat, "swept_attack_shapes", ())
+        if not isinstance(shapes, tuple) or len(shapes) != count:
+            return (None,) * count
+        return shapes
+
+    @staticmethod
+    def _attack_anchors(combat: object) -> tuple[tuple[float, float], ...]:
+        anchors = getattr(combat, "attack_anchors", ())
+        return tuple(anchors) if isinstance(anchors, tuple) else ()
+
+    @staticmethod
     def _offensive_shapes(combat: object) -> tuple[ShapePose, ...]:
         shapes = getattr(combat, "attack_shapes", ())
         return tuple(shapes) if isinstance(shapes, tuple) else ()
 
-    def _draw_shape(self, shape: ShapePose, color: Color, camera: Camera, width: int = 2) -> None:
+    def _draw_shape_once(
+        self,
+        shape: ShapePose,
+        color: Color,
+        camera: Camera,
+        width: int,
+    ) -> None:
         center = camera.apply(
             pygame.FRect(
                 shape.position[0] - shape.size[0] / 2.0,
@@ -870,18 +926,16 @@ class WorldUI:
             radians = math.radians(shape.angle)
             half_length = shape.size[0] / 2.0
             offset = (
-                int(round(math.cos(radians) * half_length)),
-                int(round(math.sin(radians) * half_length)),
+                math.cos(radians) * half_length,
+                math.sin(radians) * half_length,
             )
-            start = (center[0] - offset[0], center[1] - offset[1])
-            end = (center[0] + offset[0], center[1] + offset[1])
-            pygame.draw.line(
-                self.display_surface,
-                color,
-                start,
-                end,
-                max(1, int(shape.size[1])),
-            )
+            start = (round(center[0] - offset[0]), round(center[1] - offset[1]))
+            end = (round(center[0] + offset[0]), round(center[1] + offset[1]))
+            diameter = max(1, int(shape.size[1]))
+            pygame.draw.line(self.display_surface, color, start, end, diameter)
+            radius = diameter / 2.0
+            pygame.draw.circle(self.display_surface, color, start, max(1, int(radius)), width)
+            pygame.draw.circle(self.display_surface, color, end, max(1, int(radius)), width)
             return
         if shape.kind is ShapeKind.OBB:
             radians = math.radians(shape.angle)
@@ -918,6 +972,64 @@ class WorldUI:
             width=width,
         )
 
+    def _draw_shape(self, shape: ShapePose, color: Color, camera: Camera, width: int = 2) -> None:
+        self._draw_shape_once(shape, Colors.debug_shape_outline, camera, width + 2)
+        self._draw_shape_once(shape, color, camera, width)
+
+    def _draw_anchor(self, point: tuple[float, float], camera: Camera) -> None:
+        center = camera.apply(pygame.FRect(point[0], point[1], 0.0, 0.0)).center
+        radius = 5
+        pygame.draw.line(
+            self.display_surface,
+            Colors.debug_anchor,
+            (round(center[0] - radius), round(center[1])),
+            (round(center[0] + radius), round(center[1])),
+            1,
+        )
+        pygame.draw.line(
+            self.display_surface,
+            Colors.debug_anchor,
+            (round(center[0]), round(center[1] - radius)),
+            (round(center[0]), round(center[1] + radius)),
+            1,
+        )
+
+    def _draw_attack_geometry(
+        self,
+        attack_box: pygame.FRect,
+        swept: pygame.FRect | None,
+        shape: ShapePose | None,
+        swept_shape: SweptShape | None,
+        anchor: tuple[float, float] | None,
+        outline: Color,
+        camera: Camera,
+    ) -> None:
+        advanced = shape is not None and shape.kind is not ShapeKind.AABB
+        if advanced and shape is not None:
+            self._draw_dashed_rect(camera.apply(attack_box), Colors.debug_broadphase)
+        if swept is not None and swept != attack_box and self._box_moved(swept, attack_box):
+            self._draw_dashed_rect(camera.apply(swept), Colors.debug_sweep)
+            self._draw_motion_arrow(swept, attack_box, camera)
+        if advanced and swept_shape is not None and swept_shape.previous is not None:
+            previous = swept_shape.previous
+            self._draw_shape_once(previous, Colors.debug_sweep, camera, 1)
+            self._draw_motion_arrow(
+                pygame.FRect(
+                    previous.position[0] - previous.size[0] / 2.0,
+                    previous.position[1] - previous.size[1] / 2.0,
+                    previous.size[0],
+                    previous.size[1],
+                ),
+                attack_box,
+                camera,
+            )
+        if advanced and shape is not None:
+            self._draw_shape(shape, outline, camera)
+        else:
+            pygame.draw.rect(self.display_surface, outline, camera.apply(attack_box), width=2)
+        if anchor is not None:
+            self._draw_anchor(anchor, camera)
+
     def _draw_offensive_boxes(
         self,
         sprite: pygame.sprite.Sprite,
@@ -938,45 +1050,30 @@ class WorldUI:
         """
         outline = self._offensive_outline(combat)
         shapes = self._offensive_shapes(combat)
+        swept_shapes = self._swept_shapes(combat, len(attack_boxes))
+        anchors = self._attack_anchors(combat)
         drawn: list[pygame.Rect] = []
         for index, attack_box in enumerate(attack_boxes):
             swept = swept_boxes[index] if index < len(swept_boxes) else None
-            if swept is not None and swept != attack_box and self._box_moved(swept, attack_box):
-                self._draw_dashed_rect(camera.apply(swept), outline)
-                self._draw_motion_arrow(swept, attack_box, camera)
+            shape = shapes[index] if index < len(shapes) else None
+            swept_shape = swept_shapes[index] if index < len(swept_shapes) else None
+            anchor = anchors[index] if index < len(anchors) else None
+            self._draw_attack_geometry(
+                attack_box,
+                swept,
+                shape,
+                swept_shape,
+                anchor,
+                outline,
+                camera,
+            )
             screen_box = camera.apply(attack_box)
-            if index < len(shapes) and shapes[index].kind is not ShapeKind.AABB:
-                self._draw_shape(shapes[index], outline, camera)
-            else:
-                pygame.draw.rect(
-                    self.display_surface,
-                    outline,
-                    screen_box,
-                    width=2,
-                )
             drawn.append(
                 self._in_situ_dot(
                     (int(screen_box.x) + BOX_DOT_INSET, int(screen_box.y) + BOX_DOT_INSET),
                     outline,
                     filled=index == 0,
                 )
-            )
-        if collider is None:
-            return drawn
-        # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
-        if float(getattr(sprite, "otg_timer", 0.0) or 0.0) > 0:
-            pygame.draw.rect(
-                self.display_surface,
-                Colors.debug_otg,
-                camera.apply(collider),
-                width=3,
-            )
-        if float(getattr(sprite, "gravity_scale", 1.0) or 1.0) != 1.0:
-            pygame.draw.rect(
-                self.display_surface,
-                Colors.debug_juggle,
-                camera.apply(collider),
-                width=2,
             )
         return drawn
 
@@ -1818,7 +1915,7 @@ class WorldUI:
 
             health = getattr(entity, "health", 0)
             rect = getattr(entity, "hitbox", None) or getattr(entity, "rect", None)
-            if rect is None:
+            if rect is None or not camera.is_visible(rect):
                 continue
 
             screen_rect = camera.apply(rect)

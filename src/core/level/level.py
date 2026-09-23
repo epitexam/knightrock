@@ -126,12 +126,8 @@ class Level:
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
         self.hazard_system = HazardSystem(self.groups)
-        self.contact_damage_system = ContactDamageSystem(
-            contact_system=self.contact_system
-        )
-        self.hazard_damage_system = HazardDamageSystem(
-            contact_system=self.contact_system
-        )
+        self.contact_damage_system = ContactDamageSystem(contact_system=self.contact_system)
+        self.hazard_damage_system = HazardDamageSystem(contact_system=self.contact_system)
         self.respawn_system = PlayerRespawnSystem(self.player, level_data)
         self.progression_system = ProgressionSystem(self.groups.exit_sprites)
         self.camera_system = CameraSystem(self.camera)
@@ -209,6 +205,12 @@ class Level:
         the gameplay loop's pipeline.
         """
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
+        if Debug.is_enabled():
+            renderer = getattr(self, "renderer", None)
+            if renderer is not None:
+                renderer.ui_manager.world_ui.update_metrics(
+                    self.gameplay_loop.contact_system.tick_metrics
+                )
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback (Phase 3 #3).
@@ -320,7 +322,6 @@ class Level:
                     self.gameplay_loop.combat_system.last_clash
                 )
         self.renderer.ui_manager.world_ui.draw_metrics_panel(
-            self.gameplay_loop.contact_system.tick_metrics,
             player=self.player,
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
         )

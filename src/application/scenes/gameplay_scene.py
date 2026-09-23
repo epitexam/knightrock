@@ -36,6 +36,7 @@ _STEP_KEY = pygame.K_F7
 #: attack while the player is idle, for overlay/timeline inspection.
 _REPLAY_KEY = pygame.K_F8
 _EXPORT_KEY = pygame.K_F9
+_PANEL_FOCUS_KEY = pygame.K_F10
 
 #: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
 #: anything else reaches the level untouched.
@@ -123,6 +124,22 @@ class GameplayScene(Scene):
         if event.type == pygame.KEYDOWN and self.level is not None:
             self._handle_gameplay_key(event.key)
 
+    def _handle_panel_tools_key(self, key: int) -> bool:
+        if self.level is None:
+            return False
+        if key == _EXPORT_KEY:
+            from src.application.attack_authoring import export_attack
+
+            spawn = getattr(self.level, "spawn_system", None)
+            selected = getattr(spawn, "selected_attack", None)
+            if callable(selected) and selected():
+                export_attack(self.game.gameplay_data.attack_sets, selected())
+            return True
+        if key == _PANEL_FOCUS_KEY:
+            self.level.renderer.ui_manager.cycle_compact_panel()
+            return True
+        return False
+
     def _handle_gameplay_key(self, key: int) -> None:
         if self.level is None or not Debug.is_enabled():
             return
@@ -139,13 +156,7 @@ class GameplayScene(Scene):
             if callable(toggle):
                 toggle()
             return
-        if key == _EXPORT_KEY:
-            from src.application.attack_authoring import export_attack
-
-            spawn = getattr(self.level, "spawn_system", None)
-            selected = getattr(spawn, "selected_attack", None)
-            if callable(selected) and selected():
-                export_attack(self.game.gameplay_data.attack_sets, selected())
+        if self._handle_panel_tools_key(key):
             return
         toggle = _OVERLAY_TOGGLES.get(key)
         if toggle is not None:

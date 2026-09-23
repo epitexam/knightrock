@@ -1,3 +1,6 @@
+import warnings
+from collections import OrderedDict
+
 import pygame
 
 from src.core.settings import Debug
@@ -76,6 +79,7 @@ class PanelInteraction:
         rect = self.panels.get(panel_id)
         if rect is None:
             return
+        self.cancel_drag()
         self.drag_id = panel_id
         self._drag_offset = (mouse_pos[0] - rect.x, mouse_pos[1] - rect.y)
         self._drag_target = rect.topleft
@@ -100,8 +104,21 @@ class PanelInteraction:
         """
         if self.drag_id is not None:
             self.positions[self.drag_id] = self._drag_target
+        self._clear_drag()
+
+    def cancel_drag(self) -> None:
+        """Discard an in-flight drag without persisting its target."""
+        self._clear_drag()
+
+    def _clear_drag(self) -> None:
         self.drag_id = None
         self._drag_offset = (0, 0)
+        self._drag_target = (0, 0)
+
+    def set_position(self, panel_id: str, position: tuple[int, int]) -> None:
+        self.positions[panel_id] = position
+        if self.drag_id == panel_id:
+            self._drag_target = position
 
     def set_closed(self, panel_id: str, closed: bool = True) -> None:
         """Hide (or restore) one panel until the next F5 reset.
@@ -115,16 +132,28 @@ class PanelInteraction:
             self.panels.pop(panel_id, None)
             self._pending.pop(panel_id, None)
             if self.drag_id == panel_id:
-                self.drag_id = None
+                self.cancel_drag()
         else:
             self.closed.discard(panel_id)
+
+    def clamp_positions(self, size: tuple[int, int], *, margin: int = PANEL_MARGIN) -> None:
+        width, height = size
+        max_x = max(margin, width - margin)
+        max_y = max(margin, height - margin)
+        self.positions = {
+            panel_id: (
+                max(margin, min(position[0], max_x)),
+                max(margin, min(position[1], max_y)),
+            )
+            for panel_id, position in self.positions.items()
+        }
+        self.cancel_drag()
 
     def reset(self) -> None:
         """F5: restore every closed panel and clear drops and drags."""
         self.closed.clear()
         self.positions.clear()
-        self.drag_id = None
-        self._drag_offset = (0, 0)
+        self._clear_drag()
 
     def close_rect(self, panel_id: str) -> pygame.Rect | None:
         """Hit box of ``panel_id``'s ``×`` button, if the panel is drawn."""
@@ -157,7 +186,7 @@ class PanelInteraction:
         """
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = tuple(event.pos)
-            for panel_id in self.panels:
+            for panel_id in reversed(list(self.panels)):
                 close = self.close_rect(panel_id)
                 if close is not None and close.collidepoint(pos):
                     self.set_closed(panel_id)
@@ -172,7 +201,14 @@ class PanelInteraction:
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag_id is not None:
             self.end_drag()
             return True
+        elif event.type == pygame.WINDOWFOCUSLOST and self.drag_id is not None:
+            self.cancel_drag()
+            return True
         return False
+
+
+class PanelLayoutError(RuntimeError):
+    pass
 
 
 class PanelLayout:
@@ -201,24 +237,26 @@ class PanelLayout:
         self._placed: list[pygame.Rect] = []
         self._pinned: list[pygame.Rect] = []
 
-    def _clamp_x(self, x: int, w: int) -> int:
-        """Keep a panel inside the display horizontally."""
+    def _bounds(self, w: int, h: int) -> tuple[int, int]:
+        if w <= 0 or h <= 0:
+            raise PanelLayoutError("panel dimensions must be positive")
         max_x = self.width - self.margin - w
-        if max_x <= self.margin:
-            return self.margin
+        max_y = self.height - self.margin - h
+        if max_x < self.margin or max_y < self.margin:
+            raise PanelLayoutError(f"panel {w}x{h} cannot fit in {self.width}x{self.height}")
+        return max_x, max_y
+
+    def _clamp_x(self, x: int, max_x: int) -> int:
         return max(self.margin, min(x, max_x))
 
+    def _clamp_y(self, y: int, max_y: int) -> int:
+        return max(self.margin, min(y, max_y))
+
     def _hits_placed(self, x: int, y: int, w: int, h: int) -> bool:
-        """Whether a ``w`` x ``h`` panel at ``(x, y)`` covers one already drawn."""
         candidate = pygame.Rect(x, y, w, h)
         return any(candidate.colliderect(other) for other in self._placed)
 
     def _next_column_x(self, w: int) -> int:
-        """X for a fresh column: right of the flow so far and of pinned panels.
-
-        A new column starts at the top margin, exactly where pinned panels
-        live, so it must clear them horizontally to never underlap one.
-        """
         x = self._column_right + self.gutter
         for pin in self._pinned:
             if x + w > pin.left and x < pin.right:
@@ -227,58 +265,73 @@ class PanelLayout:
                     x = right_of
         return x
 
-    def _clear_y_below(self, x: int, w: int, h: int) -> int | None:
-        """First Y under every panel already covering this column, if it fits."""
-        bottoms = [rect.bottom for rect in self._placed if rect.left < x + w and rect.right > x]
-        if not bottoms:
-            return None
-        y = max(bottoms) + self.gutter
-        if y + h > self.height - self.margin:
-            return None
-        return y
+    def _find_slot(
+        self,
+        w: int,
+        h: int,
+        preferred: list[tuple[int, int]],
+        *,
+        flow: bool,
+    ) -> tuple[int, int] | None:
+        max_x, max_y = self._bounds(w, h)
+        clamped = [(self._clamp_x(x, max_x), self._clamp_y(y, max_y)) for x, y in preferred]
+        xs = {x for x, _ in clamped}
+        ys = {y for _, y in clamped}
+        xs.update((self.margin, max_x))
+        ys.update((self.margin, max_y))
+        for rect in self._placed:
+            xs.update((rect.right + self.gutter, rect.left - w - self.gutter))
+            ys.update((rect.bottom + self.gutter, rect.top - h - self.gutter))
+        candidates = [
+            (x, y) for x in xs if self.margin <= x <= max_x for y in ys if self.margin <= y <= max_y
+        ]
+        preferred_x, preferred_y = clamped[0]
+        if flow:
+            _, preferred_y = min(clamped, key=lambda pos: (pos[1], pos[0]))
+            candidates.sort(key=lambda pos: (abs(pos[1] - preferred_y), pos[0], pos[1]))
+        else:
+            candidates.sort(
+                key=lambda pos: (
+                    abs(pos[0] - preferred_x) + abs(pos[1] - preferred_y),
+                    pos[1],
+                    pos[0],
+                )
+            )
+        return next(
+            (position for position in candidates if not self._hits_placed(*position, w, h)),
+            None,
+        )
 
     def place(self, w: int, h: int) -> tuple[int, int]:
-        """Reserve the next stacked slot for a ``w`` x ``h`` panel."""
+        self._bounds(w, h)
         x, y = self._column_x, self._cursor_y
+        preferred = [(x, y)]
         if y > self.margin and y + h > self.height - self.margin:
-            x = self._next_column_x(w)
-            y = self.margin
-        x = self._clamp_x(x, w)
-        # Remember the column actually drawn in: the next panel must stack
-        # here (or wrap again), never fall back to the previous column.
-        self._column_x = x
-        if self._hits_placed(x, y, w, h):
-            # The column ran into a pinned (or clamped-over) panel: slide
-            # under the lowest obstacle already covering this column.
-            below = self._clear_y_below(x, w, h)
-            if below is not None:
-                y = below
+            preferred.append((self._next_column_x(w), self.margin))
+        position = self._find_slot(w, h, preferred, flow=True)
+        if position is None:
+            raise PanelLayoutError(f"no free slot for panel {w}x{h}")
+        x, y = position
         self._placed.append(pygame.Rect(x, y, w, h))
+        self._column_x = x
         self._column_right = max(self._column_right, x + w)
         self._cursor_y = y + h + self.gutter
         return x, y
 
     def place_at(self, x: int, y: int, w: int, h: int) -> tuple[int, int]:
-        """Manual slot for a dragged panel, clamped; the flow packs around it.
-
-        The rect still registers as an obstacle so the panels drawn after
-        keep dodging it — responsive even mid-drag. The flow cursor is left
-        untouched: the remaining panels keep their column-flow order.
-        """
-        x = self._clamp_x(x, w)
-        y = max(self.margin, min(y, self.height - self.margin - h))
+        position = self._find_slot(w, h, [(x, y)], flow=False)
+        if position is None:
+            raise PanelLayoutError(f"no free slot for panel {w}x{h} at {(x, y)}")
+        x, y = position
         self._placed.append(pygame.Rect(x, y, w, h))
         self._column_right = max(self._column_right, x + w)
         return x, y
 
     def place_top_right(self, w: int, h: int) -> tuple[int, int]:
-        """Pin a panel (performance) to the top-right corner, clamped.
-
-        Call it *before* the column flow (the renderer pins the performance
-        gauge first) so ``place`` can wrap around the pinned rect instead
-        of stacking panels on top of it.
-        """
-        x = self._clamp_x(self.width - self.margin - w, w)
+        max_x, _ = self._bounds(w, h)
+        x = self._clamp_x(self.width - self.margin - w, max_x)
+        if self._hits_placed(x, self.margin, w, h):
+            raise PanelLayoutError(f"no free top-right slot for panel {w}x{h}")
         pinned = pygame.Rect(x, self.margin, w, h)
         self._pinned.append(pinned)
         self._placed.append(pinned)
@@ -288,8 +341,11 @@ class PanelLayout:
 class PanelRenderer:
     """Render debug panels and cache fonts."""
 
-    def __init__(self, display_surface: pygame.Surface) -> None:
+    def __init__(self, display_surface: pygame.Surface, *, text_cache_capacity: int = 256) -> None:
         self.display_surface = display_surface
+        if text_cache_capacity < 0:
+            raise ValueError("text_cache_capacity must be non-negative")
+        self.text_cache_capacity = text_cache_capacity
 
         self.debug_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE)
         self.title_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE, bold=True)
@@ -301,18 +357,51 @@ class PanelRenderer:
         )
         self.world_label_font = pygame.font.SysFont("Consolas", Debug.WORLD_LABEL_FONT_SIZE)
 
-        self._text_cache: dict[tuple, pygame.Surface] = {}
+        self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
+        self._text_cache_hits = 0
+        self._text_cache_misses = 0
+        self._background_cache: OrderedDict[
+            tuple[int, int, tuple[int, int, int, int]], pygame.Surface
+        ] = OrderedDict()
         #: Panel ids closed this frame set (draw_panel leaves them out).
         self.interaction = PanelInteraction()
+
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        self.display_surface = display_surface
+        self.clear_text_cache()
+        self.interaction.clamp_positions(
+            (display_surface.get_width(), display_surface.get_height())
+        )
+
+    @property
+    def text_cache_stats(self) -> dict[str, int]:
+        return {
+            "hits": self._text_cache_hits,
+            "misses": self._text_cache_misses,
+            "entries": len(self._text_cache),
+        }
+
+    def clear_text_cache(self) -> None:
+        self._text_cache.clear()
+        self._text_cache_hits = 0
+        self._text_cache_misses = 0
 
     def render_text(
         self, text: str, font: pygame.font.Font, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        """Render text and cache it."""
         key = (text, id(font), color)
-        if key not in self._text_cache:
-            self._text_cache[key] = font.render(text, True, color)
-        return self._text_cache[key]
+        cached = self._text_cache.get(key)
+        if cached is not None:
+            self._text_cache.move_to_end(key)
+            self._text_cache_hits += 1
+            return cached
+        self._text_cache_misses += 1
+        rendered = font.render(text, True, color)
+        if self.text_cache_capacity:
+            self._text_cache[key] = rendered
+            if len(self._text_cache) > self.text_cache_capacity:
+                self._text_cache.popitem(last=False)
+        return rendered
 
     def measure_panel(
         self,
@@ -362,6 +451,50 @@ class PanelRenderer:
             max(PANEL_MARGIN, min(x, max(PANEL_MARGIN, screen.width - PANEL_MARGIN - w))),
             max(PANEL_MARGIN, min(y, max(PANEL_MARGIN, screen.height - PANEL_MARGIN - h))),
         )
+
+    def _place_panel(
+        self,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        layout: PanelLayout | None,
+        panel_id: str | None,
+    ) -> tuple[int, int] | None:
+        override = self.interaction.position_for(panel_id) if panel_id is not None else None
+        try:
+            if panel_id is not None and override is not None and layout is not None:
+                x, y = layout.place_at(override[0], override[1], w, h)
+                self.interaction.set_position(panel_id, (x, y))
+            elif panel_id is not None and override is not None:
+                x, y = self._clamp_panel(override[0], override[1], w, h)
+                self.interaction.set_position(panel_id, (x, y))
+            elif layout is not None:
+                x, y = layout.place(w, h)
+        except PanelLayoutError as error:
+            if panel_id is not None:
+                self.interaction.positions.pop(panel_id, None)
+                if self.interaction.drag_id == panel_id:
+                    self.interaction.cancel_drag()
+            warnings.warn(str(error), RuntimeWarning, stacklevel=2)
+            return None
+        return x, y
+
+    def _panel_surface(
+        self, width: int, height: int, color: tuple[int, int, int, int]
+    ) -> pygame.Surface:
+        key = (width, height, color)
+        cached = self._background_cache.get(key)
+        if cached is not None:
+            self._background_cache.move_to_end(key)
+            return cached
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(surface, color, surface.get_rect())
+        pygame.draw.rect(surface, PANEL_BORDER, surface.get_rect(), width=1)
+        self._background_cache[key] = surface
+        if len(self._background_cache) > 16:
+            self._background_cache.popitem(last=False)
+        return surface
 
     def draw_panel(
         self,
@@ -413,13 +546,10 @@ class PanelRenderer:
             reserve_close=panel_id is not None,
         )
 
-        override = self.interaction.position_for(panel_id) if panel_id is not None else None
-        if override is not None and layout is not None:
-            x, y = layout.place_at(override[0], override[1], panel_w, panel_h)
-        elif override is not None:
-            x, y = self._clamp_panel(override[0], override[1], panel_w, panel_h)
-        elif layout is not None:
-            x, y = layout.place(panel_w, panel_h)
+        position = self._place_panel(x, y, panel_w, panel_h, layout, panel_id)
+        if position is None:
+            return 0
+        x, y = position
 
         rendered_lines = [
             self.render_text(line, self.debug_font, line_colors.get(i, text_color))
@@ -427,9 +557,7 @@ class PanelRenderer:
         ]
         title_surf = self.render_text(title, title_font, TEXT_TITLE) if title else None
 
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        pygame.draw.rect(bg, color, (0, 0, panel_w, panel_h))
-        pygame.draw.rect(bg, PANEL_BORDER, (0, 0, panel_w, panel_h), width=1)
+        bg = self._panel_surface(panel_w, panel_h, color)
         self.display_surface.blit(bg, (x, y))
 
         content_y = y + padding

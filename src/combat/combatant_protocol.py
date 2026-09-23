@@ -99,6 +99,9 @@ class CombatPort(AttackComboPort, Protocol):
     def swept_attack_shapes(self) -> tuple[SweptShape, ...]: ...
 
     @property
+    def attack_anchors(self) -> tuple[tuple[float, float], ...]: ...
+
+    @property
     def current_phase(self) -> PhaseDefinition | None: ...
 
     @property

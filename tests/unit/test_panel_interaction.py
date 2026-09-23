@@ -15,6 +15,7 @@ from src.ui.panel_renderer import (
     PANEL_CLOSE_GAP,
     PANEL_CLOSE_INSET,
     PANEL_MARGIN,
+    PanelInteraction,
     PanelLayout,
     PanelRenderer,
     close_box_rect,
@@ -87,6 +88,20 @@ def test_close_button_is_drawn_inside_the_top_right_corner() -> None:
     assert surface.get_at(rect.topleft)[:3] == PANEL_BORDER
 
 
+def test_close_click_uses_topmost_panel() -> None:
+    interaction = PanelInteraction()
+    interaction.panels = {
+        "under": pygame.Rect(0, 0, 300, 100),
+        "top": pygame.Rect(10, 0, 100, 100),
+    }
+    close = interaction.close_rect("top")
+    assert close is not None
+
+    assert interaction.handle_event(_mousedown(close.center)) is True
+    assert interaction.is_closed("top")
+    assert not interaction.is_closed("under")
+
+
 def test_close_click_hides_one_panel_until_f5() -> None:
     """A click on the ``×`` skips that panel only; F5 brings it back."""
     size = (1024, 768)
@@ -143,6 +158,38 @@ def test_only_left_click_and_panel_hits_are_consumed() -> None:
     assert ui.renderer.interaction.drag_id == ui_ids.PANEL_KEYS
 
 
+def test_focus_loss_cancels_drag_without_persisting_target() -> None:
+    interaction = PanelInteraction()
+    interaction.panels["panel"] = pygame.Rect(20, 30, 100, 80)
+    interaction.positions["panel"] = (20, 30)
+    interaction.start_drag("panel", (25, 35))
+    interaction.move_drag((500, 500))
+
+    consumed = interaction.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+
+    assert consumed is True
+    assert interaction.drag_id is None
+    assert interaction.positions["panel"] == (20, 30)
+    assert interaction.handle_event(_motion((600, 600))) is False
+
+
+def test_explicit_cancel_discards_drag_and_closing_panel_clears_it() -> None:
+    interaction = PanelInteraction()
+    interaction.panels["first"] = pygame.Rect(10, 10, 100, 80)
+    interaction.panels["second"] = pygame.Rect(200, 10, 100, 80)
+    interaction.start_drag("first", (15, 15))
+    interaction.move_drag((300, 300))
+
+    interaction.cancel_drag()
+    assert interaction.drag_id is None
+    assert "first" not in interaction.positions
+
+    interaction.start_drag("second", (205, 15))
+    interaction.set_closed("second")
+    assert interaction.drag_id is None
+    assert "second" not in interaction.positions
+
+
 def test_drag_and_drop_moves_a_panel_out_of_the_flow() -> None:
     """Dropping a panel stores its position; it is redrawn exactly there."""
     size = (1024, 768)
@@ -169,13 +216,9 @@ def test_flow_packs_around_a_dropped_panel() -> None:
     ui = UIManager(pygame.Surface(size))
     layout = PanelLayout(*size)
 
-    # The LEGEND panel takes the natural first slot of the flow...
     ui.draw_legend_panel(10, 10, layout=layout)
-    # ...then DEBUG KEYS is dropped exactly on top of it (a manual position
-    # always wins, whatever the flow had planned).
     ui.renderer.interaction.positions[ui_ids.PANEL_KEYS] = (PANEL_MARGIN, PANEL_MARGIN)
     ui.draw_help_panel(10, 10, layout=layout, layers={})
-    # A later panel must not stack on either of them.
     ui.draw_stats_panel(10, 10, _player(), layout=layout)
     _frame(ui)
 
@@ -183,11 +226,10 @@ def test_flow_packs_around_a_dropped_panel() -> None:
     legend = ui.renderer.interaction.panels[ui_ids.PANEL_LEGEND]
     stats = ui.renderer.interaction.panels[ui_ids.PANEL_STATS]
 
-    assert keys.topleft == (PANEL_MARGIN, PANEL_MARGIN)
-    assert stats.top >= keys.bottom + layout.gutter
-    assert stats.top >= legend.bottom + layout.gutter
+    assert not keys.colliderect(legend)
     assert not stats.colliderect(keys)
     assert not stats.colliderect(legend)
+    assert ui.renderer.interaction.positions[ui_ids.PANEL_KEYS] == keys.topleft
 
 
 def test_dragged_panel_is_clamped_inside_the_display() -> None:
@@ -205,6 +247,22 @@ def test_dragged_panel_is_clamped_inside_the_display() -> None:
     assert pygame.Rect(0, 0, *size).contains(moved)
     assert moved.right <= size[0] - PANEL_MARGIN
     assert moved.bottom <= size[1] - PANEL_MARGIN
+
+
+def test_dropped_position_is_normalized_after_surface_reduction() -> None:
+    renderer = PanelRenderer(pygame.Surface((1024, 768)))
+    renderer.interaction.positions["panel"] = (900, 700)
+    renderer.display_surface = pygame.Surface((640, 480))
+    layout = PanelLayout(640, 480)
+
+    renderer.draw_panel(0, 0, ["line"], panel_id="panel", layout=layout)
+    renderer.interaction.begin_frame()
+
+    position = renderer.interaction.positions["panel"]
+    rect = renderer.interaction.panels["panel"]
+    assert position == rect.topleft
+    assert position[0] <= 640 - PANEL_MARGIN
+    assert position[1] <= 480 - PANEL_MARGIN
 
 
 def test_f5_reset_reopens_panels_and_clears_drops() -> None:

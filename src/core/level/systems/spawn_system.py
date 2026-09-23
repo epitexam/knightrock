@@ -44,6 +44,8 @@ DEBUG_ATTACKS = {
     pygame.K_2: "sweeping_arc",
     pygame.K_3: "sky_launcher",
     pygame.K_4: "otg_slam",
+    pygame.K_5: "p5_shapes",
+    pygame.K_6: "circle_burst",
 }
 
 #: Phase 5 projectile presets fired from the player.

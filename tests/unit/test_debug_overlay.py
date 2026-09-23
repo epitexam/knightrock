@@ -7,6 +7,7 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
+from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
@@ -148,6 +149,33 @@ def test_hitbox_color_follows_faction(world_ui: WorldUI) -> None:
     assert world_ui._hitbox_color(_entity(faction="enemy")) == Colors.red
     assert world_ui._hitbox_color(_entity(faction="player")) == Colors.debug_hitbox
     assert world_ui._hitbox_color(_entity(faction="neutral")) == Colors.light_grey
+
+
+def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui._draw_shape(
+        ShapePose(ShapeKind.CIRCLE, (40.0, 40.0), (120.0, 120.0)),
+        Colors.debug_attack_box,
+        camera,
+    )
+    world_ui._draw_anchor((100.0, 100.0), camera)
+
+    assert surface.get_at((120, 101))[:3] == Colors.debug_attack_box
+    assert surface.get_at((100, 96))[:3] == Colors.debug_anchor
+
+
+def test_advanced_shape_debug_exposes_swept_pairs() -> None:
+    combat = SimpleNamespace(
+        swept_attack_shapes=(
+            SimpleNamespace(previous=ShapePose(ShapeKind.OBB, (20.0, 10.0), (0.0, 0.0))),
+        )
+    )
+
+    assert WorldUI._swept_shapes(combat, 1) == combat.swept_attack_shapes
+    assert WorldUI._swept_shapes(SimpleNamespace(), 1) == (None,)
 
 
 def test_projectile_label_shows_flight_data(world_ui: WorldUI) -> None:
@@ -890,12 +918,13 @@ def test_debug_panels_can_be_hidden() -> None:
     assert surface is not None
 
     renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    assert surface.get_at((20, 60))[:3] != (0, 0, 0)
+    renderer.ui_manager.renderer.interaction.begin_frame()
+    assert renderer.ui_manager.renderer.interaction.panels
 
     surface.fill((0, 0, 0))
     renderer.ui_manager.world_ui.toggle("panels")
     renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    assert surface.get_at((20, 60))[:3] == (0, 0, 0)
+    assert renderer.ui_manager.renderer.interaction.panels == {}
 
 
 def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera: Camera) -> None:
