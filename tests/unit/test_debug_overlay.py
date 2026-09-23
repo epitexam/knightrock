@@ -834,6 +834,31 @@ def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch
     assert calls["level"] == 2  # normal unfrozen update, not a double-step
 
 
+def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F8 flips the attack-replay switch in debug mode, ignored otherwise."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.level.systems.spawn_system import SpawnSystem
+    from src.core.sprite_groups import SpriteGroups
+
+    spawn = SpawnSystem(SpriteGroups())
+    scene = GameplayScene(
+        SimpleNamespace(),
+        level_id=0,
+        level=SimpleNamespace(spawn_system=spawn),
+    )
+
+    monkeypatch.setenv("DEBUG", "1")
+    assert spawn.attack_replay is None
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is not None
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is None
+
+    monkeypatch.setenv("DEBUG", "0")
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is None
+
+
 def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: Camera) -> None:
     """The FROZEN tag reads red on black while the sim is held."""
     from src.application.scenes.gameplay_scene import GameplayScene

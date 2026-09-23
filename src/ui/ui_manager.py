@@ -98,6 +98,7 @@ class UIManager:
             f"F5   panels{mark('panels')}",
             "F6   freeze (debug)",
             "F7   step (frozen)",
+            "F8   replay attack",
             "×    close · drag move",
         ]
         return self.renderer.draw_panel(

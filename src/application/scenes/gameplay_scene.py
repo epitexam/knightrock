@@ -32,6 +32,10 @@ _FREEZE_KEY = pygame.K_F6
 #: so sweep ghosts and attack phases stay readable at full speed otherwise.
 _STEP_KEY = pygame.K_F7
 
+#: Debug-only attack-replay key (F8): loops the last (or first) showcase
+#: attack while the player is idle, for overlay/timeline inspection.
+_REPLAY_KEY = pygame.K_F8
+
 #: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
 #: anything else reaches the level untouched.
 _PANEL_MOUSE_EVENTS = (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION)
@@ -47,6 +51,7 @@ class GameplayScene(Scene):
     - F6 (debug only) → freeze the simulation in place to inspect the
       debug label cards; rendering keeps running.
     - F7 (debug only, while frozen) → advance exactly one simulation tick.
+    - F8 (debug only) → toggle looping the last showcase attack.
 
     Mouse events are offered to the debug panels first (debug only): a click
     on their ``×`` hides that panel and a drag moves it, until F5 resets the
@@ -121,6 +126,12 @@ class GameplayScene(Scene):
                 return
             if event.key == _STEP_KEY and Debug.is_enabled() and self.frozen:
                 self._step_pending = True
+                return
+            if event.key == _REPLAY_KEY and Debug.is_enabled():
+                spawn = getattr(self.level, "spawn_system", None)
+                toggle = getattr(spawn, "toggle_attack_replay", None)
+                if callable(toggle):
+                    toggle()
                 return
             toggle = _OVERLAY_TOGGLES.get(event.key)
             if toggle is not None:

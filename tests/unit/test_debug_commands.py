@@ -90,6 +90,60 @@ def test_trigger_test_attack_rejects_unknown_name() -> None:
     assert system.trigger_test_attack(_player(), "nope") is False
 
 
+def test_attack_replay_restarts_attack_when_idle() -> None:
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+
+    assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
+    assert system.trigger_test_attack(player, "twin_fangs")
+    # Replay waits while the attack runs, then restarts once idle.
+    system.tick_attack_replay(player)
+    assert player.combat.is_attacking
+    while player.combat.is_attacking:
+        player.combat.update(1 / 60)
+        player.combat.sync_attack_box()
+        system.debug_cooldowns.clear()
+        system.tick_attack_replay(player)
+    # Drain the combat-side cooldown so start_attack may fire again.
+    for _ in range(180):
+        player.combat.update(1 / 60)
+        player.combat.sync_attack_box()
+        system.debug_cooldowns.clear()
+        system.tick_attack_replay(player)
+        if player.combat.is_attacking:
+            break
+    assert player.combat.is_attacking
+
+
+def test_attack_replay_toggle_returns_state() -> None:
+    system = SpawnSystem(SpriteGroups())
+    assert system.attack_replay is None
+    name = system.toggle_attack_replay()
+    assert name is not None
+    assert system.attack_replay == name
+    assert system.toggle_attack_replay() is None
+    assert system.attack_replay is None
+
+
+def test_attack_replay_ignored_while_attacking_or_on_cooldown() -> None:
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    system.toggle_attack_replay("twin_fangs")
+
+    # Cooldown armed: tick is a no-op even when idle.
+    system.debug_cooldowns["twin_fangs"] = 0.5
+    system.tick_attack_replay(player)
+    assert not player.combat.is_attacking
+
+    # Attacking: replay must not interrupt.
+    system.debug_cooldowns.clear()
+    assert system.trigger_test_attack(player, "twin_fangs")
+    combat = player.combat
+    started = combat.state.frame_counter
+    system.tick_attack_replay(player)
+    assert combat.state.frame_counter == started
+
+
 def test_fire_test_projectile_needs_a_system() -> None:
     assert SpawnSystem(SpriteGroups()).fire_test_projectile(_player()) is None
 

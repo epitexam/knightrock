@@ -82,6 +82,9 @@ class SpawnSystem:
         self.projectile_system = projectile_system
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
+        #: Attack name looped by the debug replay key, ``None`` when off.
+        self.attack_replay: str | None = None
+        self._last_attack: str | None = None
 
     @property
     def spawn_cooldown_max(self) -> float:
@@ -94,6 +97,7 @@ class SpawnSystem:
         keys = pygame.key.get_pressed()
         self._spawn_enemies(keys, player)
         self._trigger_attacks(keys, player)
+        self.tick_attack_replay(player)
         self._fire_shots(keys, player)
         self._pop_juggle(keys, player)
 
@@ -118,6 +122,7 @@ class SpawnSystem:
                 and self.trigger_test_attack(player, attack_name)
             ):
                 self._arm_debug_cooldown(attack_name)
+                self._last_attack = attack_name
 
     def _fire_shots(self, keys: Sequence[bool], player: Player) -> None:
         for key, config in DEBUG_SHOTS.items():
@@ -143,6 +148,30 @@ class SpawnSystem:
         if not callable(start):
             return False
         return bool(start(attack_name))
+
+    def toggle_attack_replay(self, attack_name: str | None = None) -> str | None:
+        """Toggle looped replay of ``attack_name``; return the active name (``None`` = off)."""
+        if self.attack_replay is not None:
+            self.attack_replay = None
+            return None
+        self.attack_replay = (
+            attack_name
+            or self._last_attack
+            or next(iter(DEBUG_ATTACKS.values()))
+        )
+        return self.attack_replay
+
+    def tick_attack_replay(self, player: Player) -> None:
+        """Restart the looped attack once idle and its cooldown is ready."""
+        if self.attack_replay is None:
+            return
+        combat = getattr(player, "combat", None)
+        if combat is None or getattr(combat, "is_attacking", False):
+            return
+        if not self._debug_ready(self.attack_replay):
+            return
+        if self.trigger_test_attack(player, self.attack_replay):
+            self._arm_debug_cooldown(self.attack_replay)
 
     def fire_test_projectile(
         self, player: Player, config: ProjectileConfig = FIREBOLT_CONFIG
