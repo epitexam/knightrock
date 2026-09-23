@@ -195,6 +195,7 @@ class GameplayLoop:
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
+            self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 
             respawn.process(effective_delta, groups.entity_sprites)
@@ -226,6 +227,19 @@ class GameplayLoop:
                 "in Level and pass it to GameplayLoop(...)."
             )
         return system
+
+    def _flush_combat_trace(self) -> None:
+        """Axe G: dump buffered HitCandidates when the debug trace is on.
+
+        Off-by-default (``DEBUG`` + ``DEBUG_COMBAT_DUMP``); the path lives
+        under ``logs/`` next to the rotating handler configured in main.
+        """
+        trace = getattr(self.contact_system, "trace", None)
+        if trace is None or not trace.enabled or len(trace) == 0:
+            return
+        from pathlib import Path  # local: keep import cost off the hot path
+
+        trace.drain_jsonl(Path("logs") / "combat_trace.jsonl")
 
     def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
         events = self._collect_guard_events()

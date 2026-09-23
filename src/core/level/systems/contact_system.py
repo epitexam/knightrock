@@ -27,6 +27,7 @@ import pygame
 from src.combat.combatant_protocol import Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
+from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.entities.enemies.enemy import Enemy
@@ -217,11 +218,14 @@ class ContactSystem:
         self.guard_events: list[GuardEvent] = []
         #: Contacts landed this resolve, with their absorbing zone (P2.4).
         self.zone_contacts: list[ZoneContact] = []
+        #: Optional Axe G dump; enabled only under DEBUG + DEBUG_COMBAT_DUMP.
+        self.trace = CombatTrace(enabled=CombatTrace.is_enabled())
 
     def begin_tick(self) -> None:
         """Reset the per-tick metric accumulator (shared-instance wiring)."""
         self.tick_metrics = CombatMetrics()
         self.zone_contacts = []
+        self.trace.begin_tick()
 
     def resolve(
         self,
@@ -261,6 +265,27 @@ class ContactSystem:
                         continue
                     self.metrics.overlaps += 1
                     self._resolve_generic(box, target)
+                if self.trace.enabled and self.zone_contacts:
+                    last = self.zone_contacts[-1]
+                    self.trace.record(
+                        HitCandidate(
+                            tick=self.trace.tick,
+                            kind=last.kind,
+                            owner_id=last.owner_id,
+                            target_id=last.target_id,
+                            box_count=len(box.swept),
+                            zone_index=last.zone_index,
+                            zone_mult=last.zone_mult,
+                            pairs_tested=self.metrics.pairs_tested,
+                            overlaps=self.metrics.overlaps,
+                            contacts=self.metrics.contacts,
+                            guarded=any(
+                                event.target is target
+                                for event in self.guard_events
+                            ),
+                            damage=box.hit.damage,
+                        )
+                    )
                 if box.stop_after_first:
                     break
 

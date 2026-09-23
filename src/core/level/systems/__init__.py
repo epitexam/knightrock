@@ -12,6 +12,7 @@ ordered pipeline.  This package hosts:
 
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox, ZoneContact
 from src.core.level.systems.gameplay_loop import GameplayLoop
@@ -30,11 +31,13 @@ __all__ = [
     "DEBUG_SPAWNS",
     "CameraSystem",
     "CombatSystem",
+    "CombatTrace",
     "ContactDamageSystem",
     "ContactSystem",
     "GameplayLoop",
     "HazardDamageSystem",
     "HazardSystem",
+    "HitCandidate",
     "NotificationSystem",
     "OffensiveBox",
     "PhysicsSystem",
