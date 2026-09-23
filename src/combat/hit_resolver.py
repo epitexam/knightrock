@@ -183,6 +183,8 @@ class HitResolver:
             applied_knockback,
             unblockable=hit.unblockable,
             height=hit.height,
+            block_mask=hit.block_mask,
+            hit_level=hit.hit_level,
         )
 
         # Guard, invincibility, death, or any future immunity is authoritative.

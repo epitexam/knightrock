@@ -115,7 +115,18 @@ def test_keyframe_outside_the_phase_span_is_rejected_with_named_message() -> Non
         validate_attacks({"kick": definition})
 
 
-def test_unknown_cancel_is_rejected() -> None:
+def test_keyframe_offset_outside_sprite_envelope_is_rejected() -> None:
+    definition = attack(
+        phase(
+            startup=1,
+            active=2,
+            recovery=1,
+            keyframes=((1, (10.0, 10.0), (ENVELOPE_MARGIN * SPRITE_SIZE[0] + 1.0, 0.0)),),
+        )
+    )
+    with pytest.raises(GameplayDataError, match=r"kick' phase 0 hitbox: keyframe 1 offset"):
+        validate_attacks({"kick": definition})
+
     broken_phase = replace(_valid_attack().phases[0], cancel_into=("nope",))
     definition = replace(_valid_attack(), phases=(broken_phase,))
 

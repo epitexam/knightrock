@@ -10,7 +10,7 @@ capabilities, implementing the same public interface.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pygame
 
@@ -18,6 +18,7 @@ from src.combat.attack_state import AttackStateMachine, AttackStateSnapshot
 from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
 from src.combat.combatant_protocol import Combatant
 from src.combat.combo_tracker import ComboTracker
+from src.combat.determinism import GeometryDesyncError, geometry_checksum
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
 
@@ -38,8 +39,8 @@ class CombatSnapshot:
         Current combo count.
     combo_timer : float
         Remaining time for the combo window.
-    air_combo_count : int
-        Air-juggle hits in the current window (Phase 5 #4).
+    geometry_checksum : str
+        Canonical digest of the live offensive rectangles.
     """
 
     attack_state: AttackStateSnapshot
@@ -50,6 +51,7 @@ class CombatSnapshot:
     cooldowns: dict[str, float]
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
+    geometry_checksum: str = field(default="", compare=False)
 
 
 class CombatComponent:
@@ -355,6 +357,7 @@ class CombatComponent:
             cooldowns=dict(self._cooldowns),
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
+            geometry_checksum=geometry_checksum(self.attack_boxes),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
@@ -376,6 +379,15 @@ class CombatComponent:
         # deterministic (never read stale geometry across a load).
         self.hitbox.clear_origin()
         self.sync_attack_box()
+
+    def verify_geometry_checksum(self, expected: str) -> None:
+        """Raise when live offensive geometry differs from a snapshot digest."""
+        actual = geometry_checksum(self.attack_boxes)
+        if expected and actual != expected:
+            raise GeometryDesyncError(
+                "combat geometry checksum mismatch after rollback: "
+                f"expected {expected}, got {actual}"
+            )
 
     def update(self, delta_time: float) -> None:
         """Tick all combat sub-systems.
@@ -555,10 +567,15 @@ class NullCombatComponent:
             combo_timer=0.0,
             cooldowns={},
             charge_state=ChargeSnapshot(),
+            geometry_checksum=geometry_checksum(()),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
         """No-op."""
+
+    def verify_geometry_checksum(self, expected: str) -> None:
+        """Validate the empty null combat geometry."""
+        del expected
 
 
 class _NullHitboxManager:

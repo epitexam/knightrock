@@ -8,7 +8,12 @@ from src.entities.hurtbox_zones import HurtboxZoneDef
 GOBLIN_HURTBOX_ZONES = (
     HurtboxZoneDef(name="head", inflate=(8.0, -28.0), mult=1.5),
     HurtboxZoneDef(name="torso", inflate=(0.0, 0.0), mult=1.0),
-    HurtboxZoneDef(name="legs", inflate=(0.0, -28.0), mult=0.8),
+    HurtboxZoneDef(
+        name="legs",
+        inflate=(0.0, -28.0),
+        mult=0.8,
+        invuln_states=("airborne",),
+    ),
 )
 
 GOBLIN_CONFIG = EnemyConfig(

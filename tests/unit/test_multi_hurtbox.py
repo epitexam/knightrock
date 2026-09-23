@@ -8,6 +8,8 @@
 - zones swept : un dodge rate en discret touche en swept (P1 x P2).
 """
 
+from dataclasses import replace
+
 import pytest
 
 from src.combat.frame_data import HitProperties
@@ -16,7 +18,7 @@ from src.combat.knockback import KnockbackConfig
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.contact_system import _zone_vulnerable
 from src.entities.hurtbox_zones import HurtboxZoneDef
-from tests.unit.helpers import AttackerStub, entity_at
+from tests.unit.helpers import AttackerStub, activate, entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
@@ -84,7 +86,21 @@ def test_zone_vulnerable_matcher_unit() -> None:
     assert _zone_vulnerable((), ("low_crush",)) is True
 
 
-def test_squish_dash_does_not_add_zones() -> None:
+def test_tagged_hit_skips_invulnerable_zone() -> None:
+    zones = (
+        HurtboxZoneDef(name="legs", tags=("low_crush",)),
+        HurtboxZoneDef(name="torso"),
+    )
+    hit_phase = phase(startup=1, active=8, recovery=1, size=(200.0, 200.0), offset=(40.0, 0.0))
+    hit_phase = replace(hit_phase, hit=replace(hit_phase.hit, tags=("low_crush",)))
+    attacker = entity_at(10.0, faction="A", definition=attack(hit_phase))
+    target = entity_at(20.0, faction="B", hurtbox_zones=zones)
+    activate(attacker)
+    system = CombatSystem()
+    system.process_attacks([attacker, target])
+    assert system.metrics.contacts == 1
+    assert system.contact_system.zone_contacts[0].zone_index == 1
+
     """Squish : pushbox mutee puis re-derivee — meme zones, meme mults."""
     target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
     target.sync_rects()
@@ -172,7 +188,14 @@ def test_hurtbox_singular_is_union_of_zones() -> None:
     assert legacy.hurtbox == legacy.hurtboxes[0]
 
 
-def test_zone_names_exposed_for_debug_overlay() -> None:
+def test_airborne_invulnerability_state_adds_runtime_tag() -> None:
+    zones = (HurtboxZoneDef(name="legs", invuln_states=("airborne",)),)
+    target = entity_at(20.0, faction="B", hurtbox_zones=zones)
+    target.on_surface["floor"] = True
+    assert "airborne" not in target.hurtbox_tags[0]
+    target.on_surface["floor"] = False
+    assert "airborne" in target.hurtbox_tags[0]
+
     """Named zones surface on the entity so the overlay can list them."""
     target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
     assert target.hurtbox_zone_names == ("head", "torso", "legs")

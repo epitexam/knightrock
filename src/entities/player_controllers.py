@@ -168,8 +168,15 @@ class GuardController:
         unblockable: bool = False,
         height: str = "mid",
         crouching: bool = False,
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> tuple[str, float, bool]:
         if unblockable:
+            return ("none", 0.0, False)
+        if block_mask not in GuardSettings.BLOCK_MASK_POSTURE:
+            raise ValueError(f"Unknown block mask: {block_mask}")
+        required_crouching = GuardSettings.BLOCK_MASK_POSTURE[block_mask]
+        if required_crouching is not None and required_crouching != crouching:
             return ("none", 0.0, False)
         if not GuardSettings.HEIGHT_BLOCK.get((height, crouching), True):
             return ("none", 0.0, False)
@@ -178,7 +185,9 @@ class GuardController:
             self.riposte_timer = GuardSettings.RIPOSTE_WINDOW
             self.parry_timer = 0.0
             return ("parry", 0.0, True)
-        mult = GuardSettings.AIR_POSTURE_MULT if in_air else 1.0
+        mult = (
+            GuardSettings.AIR_POSTURE_MULT if in_air else 1.0
+        ) * GuardSettings.POSTURE_COST_MULT.get(hit_level, 1.0)
         self.posture -= amount * GuardSettings.POSTURE_COST_RATIO * mult
         chip = amount * GuardSettings.CHIP_RATIO
         if self.posture <= 0:

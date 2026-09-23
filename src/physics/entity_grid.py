@@ -73,6 +73,15 @@ class EntityGrid:
         """
         return self._hash.get_nearby(box)
 
+    def append_near(
+        self,
+        box: pygame.Rect | pygame.FRect,
+        nearby: list[SpatialHashMember],
+        seen: set[int],
+    ) -> None:
+        """Append grid members into caller-owned buffers."""
+        self._hash.append_nearby(box, nearby, seen)
+
     def clear(self) -> None:
         """Empty the grid (level teardown)."""
         self._hash.clear()

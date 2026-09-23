@@ -93,8 +93,12 @@ class HitProperties:
     height : str
         Guard height: ``"high"``, ``"mid"``, ``"low"`` or ``"overhead"``.
         Checked against ``Guard.HEIGHT_BLOCK`` with the target crouching.
+    block_mask : str
+        Posture allowed to block this hit: ``"any"``, ``"stand"`` or ``"crouch"``.
+    tags : tuple[str, ...]
+        Category tags used by hurt-zone invulnerability matching.
     hit_level : str
-        Reserved label for the future crouch-height pass (``"med"`` today).
+        Guard pressure level: ``"light"``, ``"med"`` or ``"heavy"``.
     """
 
     damage: float
@@ -110,6 +114,8 @@ class HitProperties:
     clash: str = "trade"
     height: str = "mid"
     hit_level: str = "med"
+    block_mask: str = "any"
+    tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.damage < 0:
@@ -124,8 +130,14 @@ class HitProperties:
             raise ValueError("Hit clash must be 'trade' or 'clash'")
         if self.height not in ("high", "mid", "low", "overhead"):
             raise ValueError("Hit height must be 'high', 'mid', 'low' or 'overhead'")
-        if self.hit_level not in ("med",):
-            raise ValueError("Hit level must be 'med'")
+        if self.hit_level not in ("light", "med", "heavy"):
+            raise ValueError("Hit level must be 'light', 'med' or 'heavy'")
+        if self.block_mask not in ("any", "stand", "crouch"):
+            raise ValueError("Block mask must be 'any', 'stand' or 'crouch'")
+        if not isinstance(self.tags, tuple) or any(
+            not isinstance(tag, str) or not tag for tag in self.tags
+        ):
+            raise ValueError("Hit tags must be a tuple of non-empty strings")
 
 
 @dataclass(frozen=True)
@@ -165,9 +177,7 @@ BoxGeometry = tuple[tuple[float, float], tuple[float, float]]
 """``(size, offset)`` pair interpolated from keyframes for one box."""
 
 
-def _check_keyframe_span(
-    keyframes: tuple[HitboxKeyframe, ...], span: int, label: str
-) -> None:
+def _check_keyframe_span(keyframes: tuple[HitboxKeyframe, ...], span: int, label: str) -> None:
     """Validate increasing frames within the startup-to-active ``span``."""
     previous = -1
     for keyframe in keyframes:

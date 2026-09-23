@@ -154,12 +154,12 @@ class SpawnSystem:
         if self.attack_replay is not None:
             self.attack_replay = None
             return None
-        self.attack_replay = (
-            attack_name
-            or self._last_attack
-            or next(iter(DEBUG_ATTACKS.values()))
-        )
+        self.attack_replay = attack_name or self._last_attack or next(iter(DEBUG_ATTACKS.values()))
         return self.attack_replay
+
+    def selected_attack(self) -> str | None:
+        """Return the attack currently selected for replay or export."""
+        return self.attack_replay or self._last_attack
 
     def tick_attack_replay(self, player: Player) -> None:
         """Restart the looped attack once idle and its cooldown is ready."""

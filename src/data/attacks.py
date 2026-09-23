@@ -13,6 +13,7 @@ always raise: a typo must fail loudly, never silently use a default.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,14 @@ def _read_knockback(raw: Any, where: str) -> KnockbackConfig:
     return KnockbackConfig(power=power, mode=mode)  # type: ignore[arg-type]
 
 
+def _read_tags(raw: Any, where: str) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or any(not isinstance(tag, str) or not tag for tag in raw):
+        raise GameplayDataError(f"{where}: 'tags' must be a list of non-empty strings")
+    return tuple(raw)
+
+
 def _read_hit(raw: Any, where: str) -> HitProperties:
     """Parse a hit block into :class:`HitProperties`."""
     if not isinstance(raw, dict):
@@ -84,6 +93,8 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             clash=str(raw.get("clash", "trade")),
             height=str(raw.get("height", "mid")),
             hit_level=str(raw.get("hit_level", "med")),
+            block_mask=str(raw.get("block_mask", "any")),
+            tags=_read_tags(raw.get("tags"), f"{where}.tags"),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -100,9 +111,7 @@ def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
         return HitboxSpec(
             size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
             offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
-            keyframes=_read_hitbox_keyframes(
-                raw.get("keyframes"), f"{where}.keyframes"
-            ),
+            keyframes=_read_hitbox_keyframes(raw.get("keyframes"), f"{where}.keyframes"),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid extra hitbox: {exc}") from exc
@@ -242,6 +251,8 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "clash": phase.hit.clash,
                     "height": phase.hit.height,
                     "hit_level": phase.hit.hit_level,
+                    "block_mask": phase.hit.block_mask,
+                    "tags": list(phase.hit.tags),
                 },
                 "extra_hitboxes": [
                     # P2: serialize each box's own keyframes (absent = static).
@@ -282,3 +293,37 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
         "lunge_speed_multiplier": definition.lunge_speed_multiplier,
         "attack_move_multiplier": definition.attack_move_multiplier,
     }
+
+
+def attacks_document(
+    attack_sets: Mapping[str, Mapping[str, AttackDefinition]],
+) -> dict[str, Any]:
+    """Serialize a complete attack bundle into the loadable JSON document shape."""
+    return {
+        "version": ATTACKS_VERSION,
+        "sets": {
+            set_name: {
+                name: attack_definition_to_dict(definition) for name, definition in attacks.items()
+            }
+            for set_name, attacks in attack_sets.items()
+        },
+    }
+
+
+def write_attacks_file(
+    path: str | Path,
+    attack_sets: Mapping[str, Mapping[str, AttackDefinition]],
+) -> Path:
+    """Write a complete attack bundle atomically and return its destination."""
+    import json
+
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp")
+    temporary.write_text(
+        json.dumps(attacks_document(attack_sets), indent=2, ensure_ascii=False, allow_nan=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(destination)
+    return destination

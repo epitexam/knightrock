@@ -231,6 +231,8 @@ class Combatant(Protocol):
         interrupt: bool = True,
         unblockable: bool = False,
         height: str = "mid",
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
@@ -248,6 +250,10 @@ class Combatant(Protocol):
             Whether the hit bypasses guard and parry.
         height : str
             Guard height checked against the crouch state.
+        block_mask : str
+            Posture mask checked before guard height.
+        hit_level : str
+            Guard pressure level affecting posture cost.
 
         Returns
         -------

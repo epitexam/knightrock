@@ -111,8 +111,8 @@ class ZoneContact:
 def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> bool:
     """Whether a zone is hittable by a hit carrying ``hit_tags``.
 
-    No hit carries tags yet (P3t1), so every zone is vulnerable by
-    construction; the matcher goes live when hit tags land.
+    Zone tags are invulnerability categories; matching hit categories make
+    that zone invulnerable.
     """
     if not zone_tags or not hit_tags:
         return True
@@ -180,12 +180,14 @@ def _eligible(box: OffensiveBox, target: Combatant) -> bool:
 
 
 def _first_vulnerable_zone(
-    target: Combatant, swept_boxes: tuple[pygame.FRect, ...]
+    target: Combatant,
+    swept_boxes: tuple[pygame.FRect, ...],
+    hit_tags: tuple[str, ...] = (),
 ) -> tuple[int, float] | None:
     """First vulnerable zone touched by any swept attack box (P2).
 
-    Zones are tested in order; the first zone overlapping a swept box wins.
-    The hit-vs-hurt tag matcher stays inert until hits carry tags (P3t1+).
+    Zones are tested in order; the first vulnerable zone overlapping a swept
+    box wins.
     """
     zones = _target_swept_zones(target)
     mults = _zone_mults(target)
@@ -194,7 +196,7 @@ def _first_vulnerable_zone(
         if not any(box.colliderect(zone) for box in swept_boxes):
             continue
         zone_tags = tags[index] if index < len(tags) else ()
-        if not _zone_vulnerable(zone_tags, ()):
+        if not _zone_vulnerable(zone_tags, hit_tags):
             continue
         return index, mults[index] if index < len(mults) else 1.0
     return None
@@ -220,6 +222,9 @@ class ContactSystem:
         self.zone_contacts: list[ZoneContact] = []
         #: Optional Axe G dump; enabled only under DEBUG + DEBUG_COMBAT_DUMP.
         self.trace = CombatTrace(enabled=CombatTrace.is_enabled())
+        self._nearby: list[SpatialHashMember] = []
+        self._candidates_buffer: list[Combatant] = []
+        self._seen: set[int] = set()
 
     def begin_tick(self) -> None:
         """Reset the per-tick metric accumulator (shared-instance wiring)."""
@@ -252,15 +257,13 @@ class ContactSystem:
             for target in self._candidates(box, target_list, order, entity_grid):
                 self.metrics.pairs_tested += 1
                 if box.kind == "melee":
-                    contact = _first_vulnerable_zone(target, box.swept)
+                    contact = _first_vulnerable_zone(target, box.swept, box.hit.tags)
                     if contact is None:
                         continue
                     self.metrics.overlaps += 1
                     self._resolve_melee(box, target, contact[0], contact[1])
                 else:
-                    target_box = (
-                        target.hurtbox if box.kind == "projectile" else target.hitbox
-                    )
+                    target_box = target.hurtbox if box.kind == "projectile" else target.hitbox
                     if not box.box.colliderect(target_box):
                         continue
                     self.metrics.overlaps += 1
@@ -279,10 +282,7 @@ class ContactSystem:
                             pairs_tested=self.metrics.pairs_tested,
                             overlaps=self.metrics.overlaps,
                             contacts=self.metrics.contacts,
-                            guarded=any(
-                                event.target is target
-                                for event in self.guard_events
-                            ),
+                            guarded=any(event.target is target for event in self.guard_events),
                             damage=box.hit.damage,
                         )
                     )
@@ -306,23 +306,30 @@ class ContactSystem:
         order: dict[int, int],
         entity_grid: EntityGrid | None,
     ) -> list[Combatant]:
-        """Broadphase: grid prune around the emitted geometry, group order kept."""
+        """Broadphase with caller-owned buffers and stable target order."""
         if entity_grid is None:
-            return [target for target in targets if _eligible(box, target)]
-        seen: set[int] = set()
-        nearby: list[SpatialHashMember] = []
+            self._candidates_buffer.clear()
+            self._candidates_buffer.extend(target for target in targets if _eligible(box, target))
+            return self._candidates_buffer
+        self._nearby.clear()
+        self._seen.clear()
         for swept in box.swept:
-            for member in entity_grid.near(swept):
-                key = id(member)
-                if key in seen or key not in order:
-                    continue
-                seen.add(key)
-                nearby.append(member)
-        candidates = cast(
-            list[Combatant], sorted(nearby, key=lambda member: order[id(member)])
+            if type(entity_grid) is EntityGrid:
+                entity_grid.append_near(swept, self._nearby, self._seen)
+            else:
+                for member in entity_grid.near(swept):
+                    key = id(member)
+                    if key not in self._seen:
+                        self._seen.add(key)
+                        self._nearby.append(member)
+        self._nearby.sort(key=lambda member: order.get(id(member), len(order)))
+        self._candidates_buffer.clear()
+        self._candidates_buffer.extend(
+            target
+            for member in self._nearby
+            if id(member) in order and _eligible(box, target := cast(Combatant, member))
         )
-        return [target for target in candidates if _eligible(box, target)]
-
+        return self._candidates_buffer
 
     def _resolve_melee(
         self, box: OffensiveBox, target: Combatant, zone_index: int, zone_mult: float
@@ -353,9 +360,7 @@ class ContactSystem:
             self._record_guard_event(result, target)
             if result.parried:
                 self._maybe_parry_stun(box.attacker)
-        magnitude = (
-            pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
-        )
+        magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
         self.impact = max(self.impact, magnitude)
         duration = (
             CombatSettings.HITSTOP_BASE
@@ -379,9 +384,7 @@ class ContactSystem:
         configured damage and knockback directly.
         """
         if box.attacker is not None:
-            result = HitResolver.resolve(
-                attacker=box.attacker, target=target, hit=box.hit
-            )
+            result = HitResolver.resolve(attacker=box.attacker, target=target, hit=box.hit)
             if not (result.applied or result.guarded):
                 return
             self._record_guard_event(result, target)

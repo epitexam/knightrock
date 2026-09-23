@@ -95,7 +95,24 @@ def test_overhead_hits_crouching_guard() -> None:
     assert outcome == "guard"
 
 
-def test_crouch_state_shrinks_pushbox() -> None:
+def test_block_mask_restricts_postures() -> None:
+    player = _guard_player()
+    guard = player.guard
+    assert guard.take_hit(10.0, False, block_mask="stand", crouching=False)[0] == "guard"
+    assert guard.take_hit(10.0, False, block_mask="stand", crouching=True)[0] == "none"
+    assert guard.take_hit(10.0, False, block_mask="crouch", crouching=True)[0] == "guard"
+    assert guard.take_hit(10.0, False, block_mask="crouch", crouching=False)[0] == "none"
+
+
+def test_heavy_hit_level_increases_guard_posture_cost() -> None:
+    player = _guard_player()
+    guard = player.guard
+    guard.take_hit(10.0, False, hit_level="light")
+    light_posture = guard.posture
+    guard.reset()
+    guard.take_hit(10.0, False, hit_level="heavy")
+    assert guard.posture < light_posture
+
     player = _guard_player()
     player.state_machine.current_state_name = "idle"
     player.on_surface["floor"] = True

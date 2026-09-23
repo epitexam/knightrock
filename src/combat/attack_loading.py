@@ -59,8 +59,10 @@ def _validate_keyframes(
     field: str,
     keyframes: tuple[HitboxKeyframe, ...],
     span: int,
+    limit_x: float,
+    limit_y: float,
 ) -> None:
-    """Keyframes must be strictly increasing and inside the phase span."""
+    """Keyframes must be ordered, in span, and inside the sprite envelope."""
     previous = -1
     for keyframe in keyframes:
         if keyframe.frame <= previous:
@@ -72,6 +74,13 @@ def _validate_keyframes(
             raise GameplayDataError(
                 f"Attack {name!r} phase {phase_index} {field}: keyframe "
                 f"{keyframe.frame} is outside the startup-to-active span 0..{span}"
+            )
+        if abs(keyframe.offset[0]) > limit_x or abs(keyframe.offset[1]) > limit_y:
+            raise GameplayDataError(
+                f"Attack {name!r} phase {phase_index} {field}: keyframe "
+                f"{keyframe.frame} offset {keyframe.offset} is outside the "
+                f"{ENVELOPE_MARGIN}x sprite envelope "
+                f"(|x| <= {limit_x}, |y| <= {limit_y})"
             )
         previous = keyframe.frame
 
@@ -93,7 +102,7 @@ def _validate_phase(name: str, phase_index: int, phase: PhaseDefinition) -> None
                 f"outside the {ENVELOPE_MARGIN}x sprite envelope "
                 f"(|x| <= {limit_x}, |y| <= {limit_y})"
             )
-        _validate_keyframes(name, phase_index, field, keyframes, span)
+        _validate_keyframes(name, phase_index, field, keyframes, span, limit_x, limit_y)
 
 
 def _validate_attack(name: str, definition: AttackDefinition) -> None:
@@ -139,9 +148,7 @@ def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
         _validate_attack(name, definition)
 
 
-def load_attacks(
-    combat: CombatComponent, attacks: Mapping[str, AttackDefinition]
-) -> None:
+def load_attacks(combat: CombatComponent, attacks: Mapping[str, AttackDefinition]) -> None:
     """Validate then register a mapping of attack definitions.
 
     Parameters

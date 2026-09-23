@@ -275,12 +275,19 @@ class Player(ControllerView, Entity):
         knockback: KnockbackConfig | None,
         source_center_x: float | None,
         height: str = "mid",
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> DamageResult:
         _kb = knockback if knockback is not None else NULL_KNOCKBACK
         in_air = not self.on_surface["floor"]
         crouching = self.state_machine.current_state_name == PlayerState.CROUCH
         outcome, chip, was_parry = self.guard.take_hit(
-            amount, in_air, height=height, crouching=crouching
+            amount,
+            in_air,
+            height=height,
+            crouching=crouching,
+            block_mask=block_mask,
+            hit_level=hit_level,
         )
         if outcome == "none":
             result = super().receive_damage(amount, source_center_x, knockback)
@@ -320,6 +327,8 @@ class Player(ControllerView, Entity):
         interrupt: bool = True,
         unblockable: bool = False,
         height: str = "mid",
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> DamageResult:
         if not self._can_receive_damage():
             return DamageResult()
@@ -338,7 +347,9 @@ class Player(ControllerView, Entity):
                     return DamageResult(guarded=True, parried=True)
 
             if self.is_guarding and self._faces_source(source_center_x):
-                return self._apply_guard_reaction(amount, knockback, source_center_x, height)
+                return self._apply_guard_reaction(
+                    amount, knockback, source_center_x, height, block_mask, hit_level
+                )
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 

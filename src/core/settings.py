@@ -117,6 +117,7 @@ class Combat:
     # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
     # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
     SWEEP_MAX_DISPLACEMENT_PX = 64.0
+    GEOMETRY_CHECKSUM_QUANTUM = 1.0 / 1024.0
 
 
 class Guard:
@@ -137,6 +138,8 @@ class Guard:
     PARRY_TRAUMA = 0.45
     BREAK_TRAUMA = 0.55
     GUARD_TRAUMA = 0.12
+    POSTURE_COST_MULT = {"light": 1.0, "med": 1.0, "heavy": 1.25}
+    BLOCK_MASK_POSTURE = {"any": None, "stand": False, "crouch": True}
     HEIGHT_BLOCK = {
         ("high", False): True,
         ("high", True): False,

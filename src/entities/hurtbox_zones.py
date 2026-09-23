@@ -32,14 +32,23 @@ class HurtboxZoneDef:
         Localized damage multiplier applied when a hit lands on the zone
         (``1.0`` = neutral; reserved ``head`` multiplier use case).
     tags :
-        Reserved invulnerability tags (P2: no hit carries tags yet, so no
-        zone is invulnerable; matched against hit tags in a later tier).
+        Static invulnerability tags matched against hit tags.
+    invuln_states :
+        Runtime states in which the zone is invulnerable. The built-in
+        ``airborne`` state is activated when the entity has no floor contact.
     """
 
     name: str = ""
     inflate: tuple[float, float] = (0.0, 0.0)
     mult: float = 1.0
     tags: tuple[str, ...] = field(default=())
+    invuln_states: tuple[str, ...] = field(default=())
+
+
+def _string_list(raw: Any, where: str) -> tuple[str, ...]:
+    if not isinstance(raw, list) or not all(isinstance(value, str) for value in raw):
+        raise GameplayDataError(f"{where}: must be a list of strings")
+    return tuple(raw)
 
 
 def read_hurtbox_zones(raw: Any, where: str) -> tuple[HurtboxZoneDef, ...] | None:
@@ -73,15 +82,17 @@ def read_hurtbox_zones(raw: Any, where: str) -> tuple[HurtboxZoneDef, ...] | Non
             raise GameplayDataError(f"{zone_where}: invalid numeric value: {exc}") from exc
         if not mult > 0.0:
             raise GameplayDataError(f"{zone_where}.mult: must be strictly positive")
-        tags_raw = zone_raw.get("tags", [])
-        if not isinstance(tags_raw, list) or not all(isinstance(tag, str) for tag in tags_raw):
-            raise GameplayDataError(f"{zone_where}.tags: must be a list of strings")
+        tags = _string_list(zone_raw.get("tags", []), f"{zone_where}.tags")
+        invuln_states = _string_list(
+            zone_raw.get("invuln_states", []), f"{zone_where}.invuln_states"
+        )
         zones.append(
             HurtboxZoneDef(
                 name=str(zone_raw.get("name", "")),
                 inflate=inflate,
                 mult=mult,
-                tags=tuple(tags_raw),
+                tags=tags,
+                invuln_states=invuln_states,
             )
         )
     if not zones:
@@ -101,10 +112,10 @@ def hurtbox_zones_to_dict(
             "inflate": list(zone.inflate),
             "mult": zone.mult,
             "tags": list(zone.tags),
+            **({"invuln_states": list(zone.invuln_states)} if zone.invuln_states else {}),
         }
         for zone in zones
     ]
 
 
 __all__ = ["HurtboxZoneDef", "hurtbox_zones_to_dict", "read_hurtbox_zones"]
-

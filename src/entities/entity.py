@@ -451,8 +451,12 @@ class Entity(Sprite):
 
     @property
     def hurtbox_tags(self) -> tuple[tuple[str, ...], ...]:
-        """Per-zone reserved invulnerability tags (parallel to ``hurtboxes``)."""
-        return tuple(zone.tags for zone in self._zones)
+        """Per-zone invulnerability tags, including active state tags."""
+        airborne = not self.on_surface.get("floor", False)
+        return tuple(
+            zone.tags + (("airborne",) if airborne and "airborne" in zone.invuln_states else ())
+            for zone in self._zones
+        )
 
     @property
     def hurtbox_mult(self) -> tuple[float, ...]:
@@ -542,9 +546,11 @@ class Entity(Sprite):
                 self._pushbox.height + inflate_y,
             )
             rect.center = self._pushbox.center
-        self._hurtbox_union = self._hurtbox_rects[0].unionall(
-            self._hurtbox_rects[1:]
-        ) if len(self._hurtbox_rects) > 1 else self._hurtbox_rects[0].copy()
+        self._hurtbox_union = (
+            self._hurtbox_rects[0].unionall(self._hurtbox_rects[1:])
+            if len(self._hurtbox_rects) > 1
+            else self._hurtbox_rects[0].copy()
+        )
 
     def face_movement(self, threshold: float = 0.1) -> None:
         """Orient the entity based on its current movement axis.
@@ -804,6 +810,8 @@ class Entity(Sprite):
         interrupt: bool = True,
         unblockable: bool = False,
         height: str = "mid",
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> DamageResult:
         """Public entry point for applying damage, knockback, and hit reactions.
 
@@ -1023,6 +1031,9 @@ class Entity(Sprite):
         self.rng.setstate(snapshot.rng_state)
         self.vitals.load_state(snapshot.vitals)
         self.combat.load_state(snapshot.combat)
+        verify_geometry = getattr(self.combat, "verify_geometry_checksum", None)
+        if callable(verify_geometry):
+            verify_geometry(snapshot.combat.geometry_checksum)
         self.state_machine.load_state(snapshot.state_machine)
         extra = snapshot.extra or {}
         self.gravity_scale = float(extra.get("gravity_scale", 1.0))

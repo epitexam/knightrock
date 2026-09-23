@@ -35,6 +35,7 @@ _STEP_KEY = pygame.K_F7
 #: Debug-only attack-replay key (F8): loops the last (or first) showcase
 #: attack while the player is idle, for overlay/timeline inspection.
 _REPLAY_KEY = pygame.K_F8
+_EXPORT_KEY = pygame.K_F9
 
 #: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
 #: anything else reaches the level untouched.
@@ -120,28 +121,38 @@ class GameplayScene(Scene):
         if self._route_to_panels(event):
             return
         if event.type == pygame.KEYDOWN and self.level is not None:
-            if event.key == _FREEZE_KEY and Debug.is_enabled():
-                self.frozen = not self.frozen
-                self._step_pending = False
-                return
-            if event.key == _STEP_KEY and Debug.is_enabled() and self.frozen:
-                self._step_pending = True
-                return
-            if event.key == _REPLAY_KEY and Debug.is_enabled():
-                spawn = getattr(self.level, "spawn_system", None)
-                toggle = getattr(spawn, "toggle_attack_replay", None)
-                if callable(toggle):
-                    toggle()
-                return
-            toggle = _OVERLAY_TOGGLES.get(event.key)
-            if toggle is not None:
-                ui_manager = self.level.renderer.ui_manager
-                ui_manager.world_ui.toggle(toggle)
-                if toggle == "panels":
-                    # F5 is also the reset key: the ``×`` closures and the
-                    # dropped positions are forgotten, so pressing it twice
-                    # always brings back the whole default stack.
-                    ui_manager.reset_debug_panels()
+            self._handle_gameplay_key(event.key)
+
+    def _handle_gameplay_key(self, key: int) -> None:
+        if self.level is None or not Debug.is_enabled():
+            return
+        if key == _FREEZE_KEY:
+            self.frozen = not self.frozen
+            self._step_pending = False
+            return
+        if key == _STEP_KEY and self.frozen:
+            self._step_pending = True
+            return
+        if key == _REPLAY_KEY:
+            spawn = getattr(self.level, "spawn_system", None)
+            toggle = getattr(spawn, "toggle_attack_replay", None)
+            if callable(toggle):
+                toggle()
+            return
+        if key == _EXPORT_KEY:
+            from src.application.attack_authoring import export_attack
+
+            spawn = getattr(self.level, "spawn_system", None)
+            selected = getattr(spawn, "selected_attack", None)
+            if callable(selected) and selected():
+                export_attack(self.game.gameplay_data.attack_sets, selected())
+            return
+        toggle = _OVERLAY_TOGGLES.get(key)
+        if toggle is not None:
+            ui_manager = self.level.renderer.ui_manager
+            ui_manager.world_ui.toggle(toggle)
+            if toggle == "panels":
+                ui_manager.reset_debug_panels()
 
     def _route_to_panels(self, event: pygame.event.Event) -> bool:
         """Let the debug panels swallow a mouse event (``×``, drag & drop).

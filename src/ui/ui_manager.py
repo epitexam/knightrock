@@ -99,6 +99,7 @@ class UIManager:
             "F6   freeze (debug)",
             "F7   step (frozen)",
             "F8   replay attack",
+            "F9   export attack",
             "×    close · drag move",
         ]
         return self.renderer.draw_panel(
