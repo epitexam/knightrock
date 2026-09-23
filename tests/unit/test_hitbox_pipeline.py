@@ -401,6 +401,77 @@ def test_golden_sky_launcher_trajectory() -> None:
     assert frames[-1] == ("idle", 0, None)
 
 
+def test_golden_special_attack_phase_transitions() -> None:
+    """Golden P0.1 : special_attack (5 phases), geometrie figee par phase.
+
+    Chaque phase demarre sur son propre startup (pas de saut depuis l ACTIVE
+    de la phase precedente) et change de taille (offset (0,-20) constant,
+    pas de keyframes). Premier ACTIVE de phase N = boite du startup de N.
+    """
+    frames = _drive("special_attack", PLAYER_ATTACKS)
+
+    assert len(frames) == 110  # 4 * 18 + 38
+    # Frontieres internes entre phases (le tick final idle ramene phase 0).
+    boundaries = [
+        i
+        for i in range(1, len(frames) - 1)
+        if frames[i][1] != frames[i - 1][1]
+    ]
+    assert boundaries == [17, 35, 53, 71]
+    assert [sub for sub, _, _ in frames].count("startup") == 26
+    assert [sub for sub, _, _ in frames].count("active") == 42
+    assert [sub for sub, _, _ in frames].count("recovery") == 41
+    # Tailles figees par phase : 30 -> 40 -> 50 -> 70 -> 90, centre constant.
+    phase_starts = [0, *boundaries]
+    phase_ends = [*boundaries, len(frames) - 1]
+    for phase, (start, end) in enumerate(zip(phase_starts, phase_ends)):
+        size = (30.0, 40.0, 50.0, 70.0, 90.0)[phase]
+        assert frames[start] == (
+            "startup",
+            phase,
+            (20.0, 0.0, size, size),
+        ), frames[start]
+        # Toute la phase voit la meme geometrie (pas de keyframes).
+        for _, ph, box in frames[start:end]:
+            if ph == phase and box is not None:
+                assert box == (20.0, 0.0, size, size)
+    assert frames[0] == ("startup", 0, (20.0, 0.0, 30.0, 30.0))
+    assert frames[-1] == ("idle", 0, None)
+
+
+def test_golden_claw_swipe_phase_transitions() -> None:
+    """Golden P0.1 : claw_swipe (2 phases), transition recovery -> startup.
+
+    Phase 0 : 40x20 offset (20,-4) -> centre (40,16) ; phase 1 : 48x24
+    offset (24,4) -> centre (44,24). Le premier tick de phase 1 expose la
+    geometrie du startup de phase 1 (jamais l ACTIVE de phase 0).
+    """
+    frames = _drive("claw_swipe", GOBLIN_ATTACKS)
+
+    assert len(frames) == 25  # 13 + 12
+    boundaries = [
+        i
+        for i in range(1, len(frames) - 1)
+        if frames[i][1] != frames[i - 1][1]
+    ]
+    assert boundaries == [12]
+    assert [sub for sub, _, _ in frames].count("startup") == 5
+    assert [sub for sub, _, _ in frames].count("active") == 10
+    assert frames[0] == ("startup", 0, (40.0, 16.0, 40.0, 20.0))
+    assert frames[12] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
+    assert all(
+        box == (40.0, 16.0, 40.0, 20.0)
+        for _, ph, box in frames[:12]
+        if box is not None and ph == 0
+    )
+    assert all(
+        box == (44.0, 24.0, 48.0, 24.0)
+        for _, ph, box in frames[12:-1]
+        if box is not None and ph == 1
+    )
+    assert frames[-1] == ("idle", 0, None)
+
+
 def _lethal_jumps(attacks: dict, name: str) -> list[float]:
     """Deplacements de centre vus par la detection (vers un tick ACTIVE).
 
