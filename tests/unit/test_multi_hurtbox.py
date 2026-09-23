@@ -152,6 +152,12 @@ def test_first_vulnerable_zone_wins_candidate() -> None:
     assert system.metrics.overlaps == 1
     assert system.metrics.contacts == 1
     assert health_before - target.health == pytest.approx(10.0 * 1.2)
+    # P2.4: the absorbing zone is remembered for dump/debug, not just applied.
+    zone_contacts = system.contact_system.zone_contacts
+    assert len(zone_contacts) == 1
+    assert zone_contacts[0].zone_index == 0
+    assert zone_contacts[0].zone_mult == pytest.approx(1.2)
+    assert zone_contacts[0].target_id == target.id
 
 
 def test_hurtbox_singular_is_union_of_zones() -> None:

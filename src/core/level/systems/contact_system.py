@@ -40,6 +40,7 @@ __all__ = [
     "ContactSystem",
     "GuardEvent",
     "OffensiveBox",
+    "ZoneContact",
 ]
 
 
@@ -94,6 +95,16 @@ class ContactOutcome:
     impact: float = 0.0
     hit_stop: float = 0.0
 
+
+@dataclass(frozen=True)
+class ZoneContact:
+    """One landed contact with the hurt zone that absorbed it (P2.4)."""
+
+    owner_id: str
+    target_id: str
+    zone_index: int
+    zone_mult: float
+    kind: str = "melee"
 
 
 def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> bool:
@@ -204,10 +215,13 @@ class ContactSystem:
         self.impact: float = 0.0
         self.hit_stop: float = 0.0
         self.guard_events: list[GuardEvent] = []
+        #: Contacts landed this resolve, with their absorbing zone (P2.4).
+        self.zone_contacts: list[ZoneContact] = []
 
     def begin_tick(self) -> None:
         """Reset the per-tick metric accumulator (shared-instance wiring)."""
         self.tick_metrics = CombatMetrics()
+        self.zone_contacts = []
 
     def resolve(
         self,
@@ -225,6 +239,8 @@ class ContactSystem:
         self.impact = 0.0
         self.hit_stop = 0.0
         self.guard_events = []
+        # zone_contacts accumulates across producers of the same tick
+        # (cleared only by begin_tick), mirroring tick_metrics.
         target_list = tuple(targets)
         order = {id(target): index for index, target in enumerate(target_list)}
 
@@ -236,7 +252,7 @@ class ContactSystem:
                     if contact is None:
                         continue
                     self.metrics.overlaps += 1
-                    self._resolve_melee(box, target, contact[1])
+                    self._resolve_melee(box, target, contact[0], contact[1])
                 else:
                     target_box = (
                         target.hurtbox if box.kind == "projectile" else target.hitbox
@@ -284,7 +300,7 @@ class ContactSystem:
 
 
     def _resolve_melee(
-        self, box: OffensiveBox, target: Combatant, zone_mult: float
+        self, box: OffensiveBox, target: Combatant, zone_index: int, zone_mult: float
     ) -> None:
         """Melee hit: shared resolver, per-zone damage, global hit-stop."""
         result = HitResolver.resolve(
@@ -299,6 +315,15 @@ class ContactSystem:
         if box.record_contact is not None:
             box.record_contact(target)
         self.metrics.contacts += 1
+        self.zone_contacts.append(
+            ZoneContact(
+                owner_id=box.owner_id,
+                target_id=getattr(target, "id", "") or "",
+                zone_index=zone_index,
+                zone_mult=zone_mult,
+                kind=box.kind,
+            )
+        )
         if result.guarded:
             self._record_guard_event(result, target)
             if result.parried:
@@ -343,6 +368,15 @@ class ContactSystem:
                 interrupt=box.interrupt,
             )
         self.metrics.contacts += 1
+        self.zone_contacts.append(
+            ZoneContact(
+                owner_id=box.owner_id,
+                target_id=getattr(target, "id", "") or "",
+                zone_index=0,
+                zone_mult=1.0,
+                kind=box.kind,
+            )
+        )
         if box.record_contact is not None:
             box.record_contact(target)
 

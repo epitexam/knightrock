@@ -12,6 +12,7 @@ pins the parity that matters:
 """
 
 import pygame
+import pytest
 from pygame.sprite import Group
 
 from src.combat.frame_data import HitProperties
@@ -26,6 +27,7 @@ from src.core.settings import Combat as CombatSettings
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import ProjectileConfig
 from src.physics.entity_grid import EntityGrid
+from src.entities.hurtbox_zones import HurtboxZoneDef
 from tests.unit.helpers import entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -104,6 +106,36 @@ def test_shared_engine_accumulates_tick_metrics_until_begin_tick() -> None:
     engine.begin_tick()
     assert engine.tick_metrics.contacts == 0
     assert engine.metrics.contacts == 1  # last-call view survives the reset
+    assert engine.zone_contacts == []  # P2.4 accumulator cleared with the tick
+
+
+def test_zone_index_propagated_to_resolver() -> None:
+    """P2.4: melee contact records which zone absorbed the hit."""
+    zones = (
+        HurtboxZoneDef(name="head", inflate=(0.0, -12.0), mult=1.2),
+        HurtboxZoneDef(name="torso", inflate=(0.0, 0.0), mult=1.0),
+    )
+    attacker = entity_at(
+        10.0,
+        faction="A",
+        definition=attack(
+            phase(startup=1, active=8, recovery=1, size=(200.0, 200.0), offset=(40.0, 0.0))
+        ),
+    )
+    target = entity_at(20.0, faction="B", hurtbox_zones=zones)
+    attacker.combat.capture_attack_origin()
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+
+    system = CombatSystem()
+    system.process_attacks([attacker, target])
+
+    contacts = system.contact_system.zone_contacts
+    assert len(contacts) == 1
+    assert contacts[0].zone_index == 0
+    assert contacts[0].zone_mult == pytest.approx(1.2)
+    assert contacts[0].kind == "melee"
 
 
 
