@@ -424,16 +424,16 @@ def test_golden_special_attack_phase_transitions() -> None:
     # Tailles figees par phase : 30 -> 40 -> 50 -> 70 -> 90, centre constant.
     phase_starts = [0, *boundaries]
     phase_ends = [*boundaries, len(frames) - 1]
-    for phase, (start, end) in enumerate(zip(phase_starts, phase_ends)):
-        size = (30.0, 40.0, 50.0, 70.0, 90.0)[phase]
+    for index, (start, end) in enumerate(zip(phase_starts, phase_ends, strict=True)):
+        size = (30.0, 40.0, 50.0, 70.0, 90.0)[index]
         assert frames[start] == (
             "startup",
-            phase,
+            index,
             (20.0, 0.0, size, size),
         ), frames[start]
         # Toute la phase voit la meme geometrie (pas de keyframes).
         for _, ph, box in frames[start:end]:
-            if ph == phase and box is not None:
+            if ph == index and box is not None:
                 assert box == (20.0, 0.0, size, size)
     assert frames[0] == ("startup", 0, (20.0, 0.0, 30.0, 30.0))
     assert frames[-1] == ("idle", 0, None)
