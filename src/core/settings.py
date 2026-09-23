@@ -117,6 +117,8 @@ class Combat:
     # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
     # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
     SWEEP_MAX_DISPLACEMENT_PX = 64.0
+    SHAPE_SWEEP_MAX_ITERATIONS = 16
+    SHAPE_CONTACT_EPSILON_PX = 0.001
     GEOMETRY_CHECKSUM_QUANTUM = 1.0 / 1024.0
 
 

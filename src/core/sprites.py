@@ -3,6 +3,7 @@ from typing import Any
 
 import pygame
 
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.settings import World
 from src.physics.platforms import update_moving_platform
 
@@ -33,6 +34,22 @@ class Sprite(pygame.sprite.Sprite):
             self.image.fill(color)
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
         self.old_rect: pygame.FRect = self.rect.copy()
+        self.contact_shape: ShapePose = ShapePose(ShapeKind.AABB, self.rect.size, self.rect.center)
+        self._previous_contact_shape: ShapePose | None = None
+
+    def sync_contact_shape(self) -> None:
+        self.contact_shape = ShapePose(
+            self.contact_shape.kind,
+            self.contact_shape.size,
+            self.rect.center,
+            self.contact_shape.angle,
+        )
+
+    def capture_contact_origin(self) -> None:
+        self._previous_contact_shape = self.contact_shape
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        return (SweptShape(self._previous_contact_shape, self.contact_shape),)
 
 
 class MovingPlatform(Sprite):

@@ -14,6 +14,7 @@ import pygame
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import PhaseDefinition
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapePose, SweptShape
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,12 @@ class CombatPort(AttackComboPort, Protocol):
 
     @property
     def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
+
+    @property
+    def attack_shapes(self) -> tuple[ShapePose, ...]: ...
+
+    @property
+    def swept_attack_shapes(self) -> tuple[SweptShape, ...]: ...
 
     @property
     def current_phase(self) -> PhaseDefinition | None: ...

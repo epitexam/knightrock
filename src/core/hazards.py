@@ -68,6 +68,7 @@ class OrbitingHazard(Sprite):
         x = self.center.x + math.cos(self.angle) * self.radius
         y = self.center.y + math.sin(self.angle) * self.radius
         self.rect.center = (x, y)
+        self.sync_contact_shape()
 
     def update(self, delta_time: float) -> None:
         if delta_time == 0.0 or self.radius <= 0:
@@ -123,6 +124,7 @@ class SpanHazard(Sprite):
         self.direction = 1
         if span is not None:
             self.rect.topleft = self.point_a.lerp(self.point_b, self.progress)
+        self.sync_contact_shape()
 
     def update(self, delta_time: float) -> None:
         if delta_time == 0.0:
@@ -136,4 +138,5 @@ class SpanHazard(Sprite):
         elif self.progress <= 0.0:
             self.progress, self.direction = 0.0, 1
         self.rect.topleft = self.point_a.lerp(self.point_b, self.progress)
+        self.sync_contact_shape()
         _tick_animation(self, delta_time)

@@ -46,6 +46,7 @@ UX rules (debug readability pass):
   F4 statics) via :meth:`WorldUI.toggle`, wired in ``GameplayScene``.
 """
 
+import math
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,7 @@ import pygame
 import pygame.gfxdraw
 from pygame.math import Vector2
 
+from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.core.settings import Debug
@@ -847,6 +849,75 @@ class WorldUI:
                 return boxes
         return (None,) * count
 
+    @staticmethod
+    def _offensive_shapes(combat: object) -> tuple[ShapePose, ...]:
+        shapes = getattr(combat, "attack_shapes", ())
+        return tuple(shapes) if isinstance(shapes, tuple) else ()
+
+    def _draw_shape(self, shape: ShapePose, color: Color, camera: Camera, width: int = 2) -> None:
+        center = camera.apply(
+            pygame.FRect(
+                shape.position[0] - shape.size[0] / 2.0,
+                shape.position[1] - shape.size[1] / 2.0,
+                shape.size[0],
+                shape.size[1],
+            )
+        ).center
+        if shape.kind is ShapeKind.CIRCLE:
+            pygame.draw.circle(self.display_surface, color, center, int(shape.size[0] / 2.0), width)
+            return
+        if shape.kind is ShapeKind.CAPSULE:
+            radians = math.radians(shape.angle)
+            half_length = shape.size[0] / 2.0
+            offset = (
+                int(round(math.cos(radians) * half_length)),
+                int(round(math.sin(radians) * half_length)),
+            )
+            start = (center[0] - offset[0], center[1] - offset[1])
+            end = (center[0] + offset[0], center[1] + offset[1])
+            pygame.draw.line(
+                self.display_surface,
+                color,
+                start,
+                end,
+                max(1, int(shape.size[1])),
+            )
+            return
+        if shape.kind is ShapeKind.OBB:
+            radians = math.radians(shape.angle)
+            cosine = math.cos(radians)
+            sine = math.sin(radians)
+            half_width = shape.size[0] / 2.0
+            half_height = shape.size[1] / 2.0
+            points = []
+            for local_x, local_y in (
+                (-half_width, -half_height),
+                (half_width, -half_height),
+                (half_width, half_height),
+                (-half_width, half_height),
+            ):
+                points.append(
+                    (
+                        int(round(center[0] + local_x * cosine - local_y * sine)),
+                        int(round(center[1] + local_x * sine + local_y * cosine)),
+                    )
+                )
+            pygame.draw.polygon(self.display_surface, color, points, width)
+            return
+        pygame.draw.rect(
+            self.display_surface,
+            color,
+            camera.apply(
+                pygame.FRect(
+                    shape.position[0] - shape.size[0] / 2.0,
+                    shape.position[1] - shape.size[1] / 2.0,
+                    shape.size[0],
+                    shape.size[1],
+                )
+            ),
+            width=width,
+        )
+
     def _draw_offensive_boxes(
         self,
         sprite: pygame.sprite.Sprite,
@@ -866,6 +937,7 @@ class WorldUI:
         placement.
         """
         outline = self._offensive_outline(combat)
+        shapes = self._offensive_shapes(combat)
         drawn: list[pygame.Rect] = []
         for index, attack_box in enumerate(attack_boxes):
             swept = swept_boxes[index] if index < len(swept_boxes) else None
@@ -873,12 +945,15 @@ class WorldUI:
                 self._draw_dashed_rect(camera.apply(swept), outline)
                 self._draw_motion_arrow(swept, attack_box, camera)
             screen_box = camera.apply(attack_box)
-            pygame.draw.rect(
-                self.display_surface,
-                outline,
-                screen_box,
-                width=2,
-            )
+            if index < len(shapes) and shapes[index].kind is not ShapeKind.AABB:
+                self._draw_shape(shapes[index], outline, camera)
+            else:
+                pygame.draw.rect(
+                    self.display_surface,
+                    outline,
+                    screen_box,
+                    width=2,
+                )
             drawn.append(
                 self._in_situ_dot(
                     (int(screen_box.x) + BOX_DOT_INSET, int(screen_box.y) + BOX_DOT_INSET),

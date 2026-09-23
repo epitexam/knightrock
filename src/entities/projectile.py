@@ -19,6 +19,7 @@ from pygame.sprite import Sprite
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 
 _PROJECTILE_ID_SEQUENCE = count()
 
@@ -31,6 +32,8 @@ class ProjectileConfig:
 
     size: tuple[float, float] = (12.0, 12.0)
     lifetime: float = 2.0
+    shape: ShapeKind = ShapeKind.AABB
+    angle: float = 0.0
     hit: HitProperties = field(
         default_factory=lambda: HitProperties(damage=5.0),
     )
@@ -49,6 +52,8 @@ class Projectile(Sprite):
         self.hitbox = pygame.FRect(0, 0, 8, 8)
         self.velocity = Vector2(0, 0)
         self.faction: str = "neutral"
+        self.contact_shape: ShapePose = ShapePose(ShapeKind.AABB, (8.0, 8.0))
+        self._previous_contact_shape: ShapePose | None = None
         self.config: ProjectileConfig = ProjectileConfig()
         self.life: float = 0.0
         self.active: bool = False
@@ -74,6 +79,13 @@ class Projectile(Sprite):
         """Arm a pooled instance for flight."""
         self.config = config
         self.hitbox = pygame.FRect(pos[0], pos[1], config.size[0], config.size[1])
+        self.contact_shape = ShapePose(
+            config.shape,
+            config.size,
+            (self.hitbox.centerx, self.hitbox.centery),
+            config.angle,
+        )
+        self._previous_contact_shape = None
         self.velocity = Vector2(velocity)
         self.faction = faction
         self.facing_right = self.velocity.x >= 0
@@ -93,11 +105,18 @@ class Projectile(Sprite):
         self.life = 0.0
         self.velocity.update(0, 0)
         self.targets_hit.clear()
+        self._previous_contact_shape = None
 
     def sync_rects(self) -> None:
         """Keep the integer ``rect`` (render/cull) on the float ``hitbox``."""
         assert self.rect is not None
         self.rect.topleft = (int(self.hitbox.x), int(self.hitbox.y))
+
+    def capture_contact_origin(self) -> None:
+        self._previous_contact_shape = self.contact_shape
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        return (SweptShape(self._previous_contact_shape, self.contact_shape),)
 
     def update(self, delta_time: float) -> None:
         """Integrate flight and age; expire without freeing (system frees)."""
@@ -105,6 +124,12 @@ class Projectile(Sprite):
             return
         self.hitbox.x += self.velocity.x * delta_time
         self.hitbox.y += self.velocity.y * delta_time
+        self.contact_shape = ShapePose(
+            self.contact_shape.kind,
+            self.contact_shape.size,
+            (self.hitbox.centerx, self.hitbox.centery),
+            self.contact_shape.angle,
+        )
         self.life -= delta_time
         if self.life <= 0.0:
             self.is_dead = True

@@ -21,6 +21,7 @@ from src.combat.combo_tracker import ComboTracker
 from src.combat.determinism import GeometryDesyncError, geometry_checksum
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
+from src.combat.shapes import ShapePose, SweptShape
 
 
 @dataclass
@@ -135,6 +136,16 @@ class CombatComponent:
     def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]:
         """Per-box swept rectangles (captured origin union current)."""
         return self.hitbox.swept_rects
+
+    @property
+    def attack_shapes(self) -> tuple[ShapePose, ...]:
+        """Live advanced offensive shapes."""
+        return self.hitbox.shapes
+
+    @property
+    def swept_attack_shapes(self) -> tuple[SweptShape, ...]:
+        """Per-shape boundary/current pairs for advanced CCD."""
+        return self.hitbox.swept_shapes
 
     def capture_attack_origin(self) -> None:
         """Freeze the live offensive geometry as the next tick's sweep origin."""
@@ -357,7 +368,7 @@ class CombatComponent:
             cooldowns=dict(self._cooldowns),
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
-            geometry_checksum=geometry_checksum(self.attack_boxes),
+            geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
@@ -382,7 +393,7 @@ class CombatComponent:
 
     def verify_geometry_checksum(self, expected: str) -> None:
         """Raise when live offensive geometry differs from a snapshot digest."""
-        actual = geometry_checksum(self.attack_boxes)
+        actual = geometry_checksum(self.attack_boxes, self.attack_shapes)
         if expected and actual != expected:
             raise GeometryDesyncError(
                 "combat geometry checksum mismatch after rollback: "
@@ -449,6 +460,8 @@ class NullCombatComponent:
         self.attack_box: pygame.FRect | None = None
         self.attack_boxes: tuple[pygame.FRect, ...] = ()
         self.swept_attack_boxes: tuple[pygame.FRect, ...] = ()
+        self.attack_shapes: tuple[ShapePose, ...] = ()
+        self.swept_attack_shapes: tuple[SweptShape, ...] = ()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()

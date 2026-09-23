@@ -16,6 +16,7 @@ from collections.abc import Callable
 import pygame
 
 from src.combat.combatant_protocol import Combatant
+from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, GuardEvent, OffensiveBox
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
@@ -85,6 +86,7 @@ class ProjectileSystem:
         for projectile in list(self.groups.projectile_sprites):
             if not isinstance(projectile, Projectile):
                 continue
+            projectile.capture_contact_origin()
             projectile.update(delta_time)
             if projectile.is_dead:
                 self._release(projectile)
@@ -125,6 +127,9 @@ class ProjectileSystem:
             box=projectile.hitbox,
             swept=(projectile.hitbox,),
             hit=config.hit,
+            swept_shapes=(
+                projectile.swept_contact_shapes() if config.shape is not ShapeKind.AABB else ()
+            ),
             faction=projectile.faction,
             owner_id=projectile.id,
             can_contact=projectile.can_contact,
@@ -133,9 +138,7 @@ class ProjectileSystem:
             stop_after_first=not config.pierce,
             record_contact=_record_target(projectile),
         )
-        outcome = self.contact_system.resolve(
-            (box,), self.groups.entity_sprites, entity_grid
-        )
+        outcome = self.contact_system.resolve((box,), self.groups.entity_sprites, entity_grid)
         self.guard_events.extend(outcome.guard_events)
         if outcome.metrics.contacts and not config.pierce:
             self._release(projectile)

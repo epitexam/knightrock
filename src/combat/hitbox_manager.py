@@ -6,7 +6,8 @@ import pygame
 
 from src.combat.attack_state import AttackStateMachine
 from src.combat.combatant_protocol import Combatant
-from src.combat.frame_data import PhaseDefinition
+from src.combat.frame_data import HitboxSpec, PhaseDefinition
+from src.combat.shapes import AnchorKind, ShapeKind, ShapePose, SweptShape, broadphase_aabb
 from src.combat.sweep import swept_box
 
 
@@ -31,6 +32,8 @@ class HitboxManager:
         self.rect: pygame.FRect | None = None
         self._pool: list[pygame.FRect] = []
         self._prev_pool: list[pygame.FRect] = []
+        self._shape_pool: list[ShapePose] = []
+        self._prev_shape_pool: list[ShapePose] = []
 
     @property
     def rects(self) -> tuple[pygame.FRect, ...]:
@@ -56,6 +59,27 @@ class HitboxManager:
                 rect,
             )
             for index, rect in enumerate(self._pool)
+        )
+
+    @property
+    def shapes(self) -> tuple[ShapePose, ...]:
+        """Live advanced shapes corresponding to the rectangle pool."""
+        return tuple(self._shape_pool)
+
+    @property
+    def prev_shapes(self) -> tuple[ShapePose, ...]:
+        """Copies of the advanced shapes captured at the tick boundary."""
+        return tuple(self._prev_shape_pool)
+
+    @property
+    def swept_shapes(self) -> tuple[SweptShape, ...]:
+        """Advanced shape pairs captured at the boundary and current state."""
+        return tuple(
+            SweptShape(
+                self._prev_shape_pool[index] if index < len(self._prev_shape_pool) else None,
+                shape,
+            )
+            for index, shape in enumerate(self._shape_pool)
         )
 
     def update(self, state: AttackStateMachine) -> None:
@@ -85,6 +109,8 @@ class HitboxManager:
         self.rect = None
         self._pool.clear()
         self._prev_pool.clear()
+        self._shape_pool.clear()
+        self._prev_shape_pool.clear()
 
     def capture_origin(self) -> None:
         """Copy the live pool as the sweep origin of the next tick.
@@ -94,33 +120,65 @@ class HitboxManager:
         pool rectangles are repositioned in place afterwards.
         """
         self._prev_pool = [rect.copy() for rect in self._pool]
+        self._prev_shape_pool = list(self._shape_pool)
 
     def clear_origin(self) -> None:
         """Forget the sweep origin (rollback hygiene, re-derived on next capture)."""
         self._prev_pool.clear()
+        self._prev_shape_pool.clear()
 
     def _position_rects(self, phase: PhaseDefinition, facing_right: bool, frame: int) -> None:
-        """Create or reposition every rectangle without per-tick allocation.
-
-        The primary box follows the phase's animated curve
-        (``hitbox_at``); each extra box follows its own curve
-        (``extra_box_at``), static by default.
-        """
-        specs = (
-            (phase.hitbox_at(frame)),
-            *(phase.extra_box_at(index, frame) for index in range(len(phase.extra_hitboxes))),
-        )
-        while len(self._pool) < len(specs):
+        """Create or reposition every rectangle and advanced shape."""
+        primary_geometry, primary_angle = phase.hitbox_shape_at(frame)
+        if not phase.hitbox_keyframes:
+            primary_angle = phase.hitbox_angle
+        shape_data = [
+            (phase.hitbox_spec, primary_geometry, primary_angle),
+        ]
+        for index, spec in enumerate(phase.extra_hitboxes):
+            geometry, angle = phase.extra_shape_at(index, frame)
+            if not spec.keyframes:
+                angle = spec.angle
+            shape_data.append((spec, geometry, angle))
+        while len(self._pool) < len(shape_data):
             self._pool.append(pygame.FRect(0, 0, 0, 0))
-        while len(self._pool) > len(specs):
+        while len(self._pool) > len(shape_data):
             self._pool.pop()
-        for rect, (size, offset) in zip(self._pool, specs, strict=True):
-            rect.size = size
+        while len(self._shape_pool) < len(shape_data):
+            self._shape_pool.append(ShapePose(ShapeKind.AABB, (1.0, 1.0)))
+        while len(self._shape_pool) > len(shape_data):
+            self._shape_pool.pop()
+        for index, (rect, (spec, (size, offset), angle)) in enumerate(
+            zip(self._pool, shape_data, strict=True)
+        ):
+            anchor = self._anchor_position(spec, facing_right)
             offset_x, offset_y = offset
             if not facing_right:
                 offset_x = -offset_x
-            rect.center = (
-                self._entity.hitbox.centerx + offset_x,
-                self._entity.hitbox.centery + offset_y,
-            )
+            position = (anchor[0] + offset_x, anchor[1] + offset_y)
+            shape_angle = -angle if not facing_right else angle
+            shape = ShapePose(spec.shape, size, position, shape_angle)
+            self._shape_pool[index] = shape
+            rect.size = self._broadphase_size(shape)
+            rect.center = position
         self.rect = self._pool[0]
+
+    def _anchor_position(self, spec: HitboxSpec, facing_right: bool) -> tuple[float, float]:
+        owner = self._entity.hitbox
+        if spec.anchor is AnchorKind.HIP:
+            position = (owner.centerx, owner.bottom)
+        elif spec.anchor is AnchorKind.CHEST:
+            position = (owner.centerx, owner.centery - owner.height * 0.25)
+        else:
+            position = owner.center
+        anchor_offset_x, anchor_offset_y = spec.anchor_offset
+        if not facing_right:
+            anchor_offset_x = -anchor_offset_x
+        return (position[0] + anchor_offset_x, position[1] + anchor_offset_y)
+
+    @staticmethod
+    def _broadphase_size(shape: ShapePose) -> tuple[float, float]:
+        if shape.kind is ShapeKind.AABB:
+            return shape.size
+        bounds = broadphase_aabb(shape)
+        return bounds.size

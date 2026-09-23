@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import NULL_KNOCKBACK
+from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 from src.core.settings import Combat as CombatSettings
 from src.physics.entity_grid import EntityGrid
@@ -46,21 +47,27 @@ class ContactDamageSystem:
             contact_system if contact_system is not None else ContactSystem()
         )
 
-    def produce_boxes(
-        self, entity_sprites: Iterable[Combatant]
-    ) -> tuple[OffensiveBox, ...]:
+    def produce_boxes(self, entity_sprites: Iterable[Combatant]) -> tuple[OffensiveBox, ...]:
         """One candidate box per moving-eligible entity (momentum-gated)."""
         boxes: list[OffensiveBox] = []
         for entity in entity_sprites:
-            if getattr(entity, "is_dead", False) or getattr(
-                entity, "is_invincible", False
-            ):
+            if getattr(entity, "is_dead", False) or getattr(entity, "is_invincible", False):
                 continue
             box = entity.hitbox
+            contact_shape = getattr(entity, "contact_shape", None)
+            swept_factory = getattr(entity, "swept_contact_shapes", None)
+            swept_shapes = (
+                swept_factory()
+                if contact_shape is not None
+                and contact_shape.kind is not ShapeKind.AABB
+                and callable(swept_factory)
+                else ()
+            )
             boxes.append(
                 OffensiveBox(
                     box=box,
                     swept=(box,),
+                    swept_shapes=swept_shapes,
                     hit=HitProperties(
                         damage=CombatSettings.CONTACT_DAMAGE_AMOUNT,
                         knockback=NULL_KNOCKBACK,

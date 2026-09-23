@@ -36,6 +36,8 @@ class HitCandidate:
     contacts: int
     guarded: bool
     damage: float
+    shape_kind: str = "aabb"
+    box_index: int = -1
 
 
 class CombatTrace:

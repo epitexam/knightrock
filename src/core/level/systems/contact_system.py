@@ -27,6 +27,12 @@ import pygame
 from src.combat.combatant_protocol import Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
+from src.combat.shapes import (
+    ShapeKind,
+    SweptShape,
+    shape_aabb_intersects,
+    swept_intersects_aabb,
+)
 from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
@@ -61,6 +67,7 @@ class OffensiveBox:
     faction: str | None
     owner_id: str
     can_contact: Callable[[str], bool]
+    swept_shapes: tuple[SweptShape, ...] = ()
     kind: str = "melee"
     attacker: Any = None
     charge_mult: float = 1.0
@@ -179,10 +186,19 @@ def _eligible(box: OffensiveBox, target: Combatant) -> bool:
     return box.accept is None or bool(box.accept(target))
 
 
+def _shape_swept_intersects(shape: SweptShape, target: pygame.FRect) -> bool:
+    if shape.current.kind is ShapeKind.AABB:
+        return False
+    if shape.previous is None:
+        return shape_aabb_intersects(shape.current, target)
+    return swept_intersects_aabb(shape.previous, shape.current, target)
+
+
 def _first_vulnerable_zone(
     target: Combatant,
     swept_boxes: tuple[pygame.FRect, ...],
     hit_tags: tuple[str, ...] = (),
+    swept_shapes: tuple[SweptShape, ...] = (),
 ) -> tuple[int, float] | None:
     """First vulnerable zone touched by any swept attack box (P2).
 
@@ -192,9 +208,15 @@ def _first_vulnerable_zone(
     zones = _target_swept_zones(target)
     mults = _zone_mults(target)
     tags = _zone_tags(target)
+    has_advanced = any(shape.current.kind is not ShapeKind.AABB for shape in swept_shapes)
+    has_aabb = any(shape.current.kind is ShapeKind.AABB for shape in swept_shapes)
     for index, zone in enumerate(zones):
-        if not any(box.colliderect(zone) for box in swept_boxes):
-            continue
+        advanced_hit = any(_shape_swept_intersects(shape, zone) for shape in swept_shapes)
+        if not advanced_hit:
+            if has_advanced and not has_aabb:
+                continue
+            if not any(box.colliderect(zone) for box in swept_boxes):
+                continue
         zone_tags = tags[index] if index < len(tags) else ()
         if not _zone_vulnerable(zone_tags, hit_tags):
             continue
@@ -257,14 +279,22 @@ class ContactSystem:
             for target in self._candidates(box, target_list, order, entity_grid):
                 self.metrics.pairs_tested += 1
                 if box.kind == "melee":
-                    contact = _first_vulnerable_zone(target, box.swept, box.hit.tags)
+                    contact = _first_vulnerable_zone(
+                        target,
+                        box.swept,
+                        box.hit.tags,
+                        box.swept_shapes,
+                    )
                     if contact is None:
                         continue
                     self.metrics.overlaps += 1
                     self._resolve_melee(box, target, contact[0], contact[1])
                 else:
                     target_box = target.hurtbox if box.kind == "projectile" else target.hitbox
-                    if not box.box.colliderect(target_box):
+                    shape_hit = any(
+                        _shape_swept_intersects(shape, target_box) for shape in box.swept_shapes
+                    )
+                    if not shape_hit and not box.box.colliderect(target_box):
                         continue
                     self.metrics.overlaps += 1
                     self._resolve_generic(box, target)
@@ -284,6 +314,14 @@ class ContactSystem:
                             contacts=self.metrics.contacts,
                             guarded=any(event.target is target for event in self.guard_events),
                             damage=box.hit.damage,
+                            shape_kind=next(
+                                (
+                                    shape.current.kind.value
+                                    for shape in box.swept_shapes
+                                    if shape.current.kind is not ShapeKind.AABB
+                                ),
+                                "aabb",
+                            ),
                         )
                     )
                 if box.stop_after_first:

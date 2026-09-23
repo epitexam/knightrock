@@ -14,7 +14,7 @@ class GameplayDataError(ValueError):
     """A gameplay JSON file is malformed (fail loudly, never guess)."""
 
 
-def read_json_object(path: str | Path, version: int) -> dict[str, Any]:
+def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[str, Any]:
     """Load a JSON object file and check its ``version`` field.
 
     Raises
@@ -31,8 +31,10 @@ def read_json_object(path: str | Path, version: int) -> dict[str, Any]:
         raise GameplayDataError(f"{path}: invalid JSON: {exc}") from exc
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{path}: top-level value must be an object")
-    if raw.get("version") != version:
+    supported = (version,) if isinstance(version, int) else version
+    if raw.get("version") not in supported:
+        expected = ", ".join(str(value) for value in supported)
         raise GameplayDataError(
-            f"{path}: unsupported version {raw.get('version')!r} (expected {version})"
+            f"{path}: unsupported version {raw.get('version')!r} (expected {expected})"
         )
     return raw

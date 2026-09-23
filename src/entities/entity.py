@@ -15,6 +15,7 @@ from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCom
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
@@ -197,6 +198,10 @@ class Entity(Sprite):
         # ``reset_position``/``load_state`` (no stale smear across a teleport
         # or a rollback; re-derived at the next capture).
         self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
+        self.contact_shape: ShapePose = ShapePose(
+            ShapeKind.AABB, self._pushbox.size, self._pushbox.center
+        )
+        self._previous_contact_shape: ShapePose | None = None
         # Initial derivation (the legacy code built ``_hurtbox`` inline here).
         self.sync_rects()
 
@@ -474,6 +479,10 @@ class Entity(Sprite):
         Called once per tick by the gameplay loop, before any movement.
         """
         self._prev_hurtboxes = tuple(rect.copy() for rect in self._hurtbox_rects)
+        self._previous_contact_shape = self.contact_shape
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        return (SweptShape(self._previous_contact_shape, self.contact_shape),)
 
     def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
         """Per-zone swept rectangles for the current tick (P1, D1/D4).
@@ -550,6 +559,12 @@ class Entity(Sprite):
             self._hurtbox_rects[0].unionall(self._hurtbox_rects[1:])
             if len(self._hurtbox_rects) > 1
             else self._hurtbox_rects[0].copy()
+        )
+        self.contact_shape = ShapePose(
+            self.contact_shape.kind,
+            self.contact_shape.size,
+            self._pushbox.center,
+            self.contact_shape.angle,
         )
 
     def face_movement(self, threshold: float = 0.1) -> None:
@@ -1023,6 +1038,7 @@ class Entity(Sprite):
         # P1 (D3) / P2: ``prev`` is re-derived at the next frontier capture;
         # no snapshot field carries it across a rollback.
         self._prev_hurtboxes = ()
+        self._previous_contact_shape = None
         self.velocity = Vector2(snapshot.velocity)
         self.on_surface = dict(snapshot.on_surface)
         self.facing_right = snapshot.facing_right

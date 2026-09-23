@@ -8,11 +8,13 @@ sub-states: startup, active, and recovery, measured in frames at a fixed
 reference frame rate.
 """
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import AnchorKind, EasingKind, ShapeKind, ShapePose, ease, interpolate_angle
 
 FRAME_RATE: int = 60
 """Reference frame rate in frames per second.
@@ -165,12 +167,15 @@ class HitboxKeyframe:
     frame: int
     size: tuple[float, float]
     offset: tuple[float, float]
+    angle: float = 0.0
 
     def __post_init__(self) -> None:
         if self.frame < 0:
             raise ValueError("Hitbox keyframe index cannot be negative")
         if not (self.size[0] > 0 and self.size[1] > 0):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.angle):
+            raise ValueError("Hitbox keyframe angle must be finite")
 
 
 BoxGeometry = tuple[tuple[float, float], tuple[float, float]]
@@ -225,6 +230,35 @@ def interpolate_keyframes(
     return (last.size, last.offset)
 
 
+def interpolate_shape_keyframes(
+    keyframes: tuple[HitboxKeyframe, ...],
+    static: BoxGeometry,
+    frame: int,
+    easing: EasingKind = EasingKind.LINEAR,
+) -> tuple[BoxGeometry, float]:
+    """Interpolate size, offset and angle at a phase frame."""
+    if not keyframes:
+        return static, 0.0
+    if frame <= keyframes[0].frame:
+        first = keyframes[0]
+        return (first.size, first.offset), first.angle
+    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
+        if frame <= after.frame:
+            progress = (frame - before.frame) / (after.frame - before.frame)
+            easing_progress = ease(easing, progress)
+            size = (
+                before.size[0] + (after.size[0] - before.size[0]) * easing_progress,
+                before.size[1] + (after.size[1] - before.size[1]) * easing_progress,
+            )
+            offset = (
+                before.offset[0] + (after.offset[0] - before.offset[0]) * easing_progress,
+                before.offset[1] + (after.offset[1] - before.offset[1]) * easing_progress,
+            )
+            return (size, offset), interpolate_angle(before.angle, after.angle, progress, easing)
+    last = keyframes[-1]
+    return (last.size, last.offset), last.angle
+
+
 @dataclass(frozen=True)
 class HitboxSpec:
     """Size and offset of a single offensive rectangle within a phase.
@@ -252,10 +286,20 @@ class HitboxSpec:
     size: tuple[float, float]
     offset: tuple[float, float]
     keyframes: tuple[HitboxKeyframe, ...] = ()
+    shape: ShapeKind = ShapeKind.AABB
+    angle: float = 0.0
+    easing: EasingKind = EasingKind.LINEAR
+    anchor: AnchorKind = AnchorKind.CENTER
+    anchor_offset: tuple[float, float] = (0.0, 0.0)
 
     def __post_init__(self) -> None:
         if not (self.size[0] > 0 and self.size[1] > 0):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.angle):
+            raise ValueError("Hitbox angle must be finite")
+        if not all(math.isfinite(value) for value in self.anchor_offset):
+            raise ValueError("Hitbox anchor offset must be finite")
+        ShapePose(self.shape, self.size, self.offset, self.angle)
         previous = -1
         for keyframe in self.keyframes:
             if keyframe.frame <= previous:
@@ -332,6 +376,11 @@ class PhaseDefinition:
     hitbox_size: tuple[float, float]
     hitbox_offset: tuple[float, float]
     hit: HitProperties
+    hitbox_shape: ShapeKind = ShapeKind.AABB
+    hitbox_angle: float = 0.0
+    hitbox_easing: EasingKind = EasingKind.LINEAR
+    hitbox_anchor: AnchorKind = AnchorKind.CENTER
+    hitbox_anchor_offset: tuple[float, float] = (0.0, 0.0)
     extra_hitboxes: tuple[HitboxSpec, ...] = ()
     hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
@@ -344,6 +393,11 @@ class PhaseDefinition:
             raise ValueError("An attack phase requires at least one active frame")
         if any(size <= 0 for size in self.hitbox_size):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.hitbox_angle):
+            raise ValueError("Hitbox angle must be finite")
+        if not all(math.isfinite(value) for value in self.hitbox_anchor_offset):
+            raise ValueError("Hitbox anchor offset must be finite")
+        ShapePose(self.hitbox_shape, self.hitbox_size, self.hitbox_offset, self.hitbox_angle)
         span = self.startup_frames + self.active_frames
         _check_keyframe_span(self.hitbox_keyframes, span, "Hitbox keyframe")
         for index, spec in enumerate(self.extra_hitboxes):
@@ -361,6 +415,29 @@ class PhaseDefinition:
             self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
         )
 
+    @property
+    def hitbox_spec(self) -> HitboxSpec:
+        """Return the primary hitbox using the extended shape model."""
+        return HitboxSpec(
+            size=self.hitbox_size,
+            offset=self.hitbox_offset,
+            keyframes=self.hitbox_keyframes,
+            shape=self.hitbox_shape,
+            angle=self.hitbox_angle,
+            easing=self.hitbox_easing,
+            anchor=self.hitbox_anchor,
+            anchor_offset=self.hitbox_anchor_offset,
+        )
+
+    def hitbox_shape_at(self, frame: int) -> tuple[BoxGeometry, float]:
+        """Interpolate the primary geometry and angle at a phase frame."""
+        return interpolate_shape_keyframes(
+            self.hitbox_keyframes,
+            (self.hitbox_size, self.hitbox_offset),
+            frame,
+            self.hitbox_easing,
+        )
+
     def extra_box_at(self, index: int, frame: int) -> BoxGeometry:
         """Interpolate extra box ``index`` at a phase ``frame``.
 
@@ -369,6 +446,16 @@ class PhaseDefinition:
         """
         spec = self.extra_hitboxes[index]
         return interpolate_keyframes(spec.keyframes, (spec.size, spec.offset), frame)
+
+    def extra_shape_at(self, index: int, frame: int) -> tuple[BoxGeometry, float]:
+        """Interpolate extra box geometry and angle at a phase frame."""
+        spec = self.extra_hitboxes[index]
+        return interpolate_shape_keyframes(
+            spec.keyframes,
+            (spec.size, spec.offset),
+            frame,
+            spec.easing,
+        )
 
     @property
     def total_frames(self) -> int:

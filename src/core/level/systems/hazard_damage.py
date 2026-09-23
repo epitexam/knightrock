@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 
 
@@ -40,11 +41,20 @@ class HazardDamageSystem:
                 continue
             damage = float(getattr(hazard, "damage", self.DEFAULT_DAMAGE))
             knockback = getattr(hazard, "knockback", None) or self.DEFAULT_KNOCKBACK
+            contact_shape = getattr(hazard, "contact_shape", None)
+            swept_shapes = (
+                hazard.swept_contact_shapes()
+                if contact_shape is not None
+                and contact_shape.kind is not ShapeKind.AABB
+                and callable(getattr(hazard, "swept_contact_shapes", None))
+                else ()
+            )
             boxes.append(
                 OffensiveBox(
                     box=box,
                     swept=(box,),
                     hit=HitProperties(damage=damage, knockback=knockback),
+                    swept_shapes=swept_shapes,
                     faction=None,
                     owner_id="",
                     can_contact=_always_contact,
@@ -57,6 +67,4 @@ class HazardDamageSystem:
     def process(self, entity_sprites: Iterable, hazard_sprites: Iterable) -> None:
         """Apply damage for every overlap between a hazard and a live entity."""
         entities = tuple(entity_sprites)
-        self.contact_system.resolve(
-            self.produce_boxes(entities, hazard_sprites), entities
-        )
+        self.contact_system.resolve(self.produce_boxes(entities, hazard_sprites), entities)
