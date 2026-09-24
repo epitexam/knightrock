@@ -8,8 +8,10 @@ from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
 from src.application.scenes.gameover_scene import GameOverScene
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.application.scenes.level_select_scene import LevelSelectScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.pause_scene import PauseScene
+from src.application.scenes.victory_scene import VictoryScene
 from src.core.level.level import Level
 from src.core.settings import Gameplay
 from tests.headless.conftest import make_programmatic_level_data
@@ -112,6 +114,7 @@ def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
 
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
     assert manager.game.running is False
@@ -121,11 +124,29 @@ def test_menu_navigation_supports_pointer(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
     menu.draw()
-    target = menu.view.item_rects[2].center
+    target = menu.view.item_rects[3].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
 
     assert manager.game.running is False
+
+
+def test_level_select_opens_from_menu_and_returns(manager: SceneManager):
+    manager.switch(MenuScene(manager.game))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, LevelSelectScene)
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+    assert isinstance(manager.current, MenuScene)
+
+
+def test_victory_can_open_level_select(manager: SceneManager):
+    manager.switch(VictoryScene(manager.game, level_id=0))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, LevelSelectScene)
 
 
 def _make_level(game_runtime) -> Level:
@@ -167,14 +188,14 @@ def test_gameplay_death_limit_pushes_game_over(manager: SceneManager):
     assert isinstance(manager.current, GameOverScene)
 
 
-def test_gameplay_completed_without_next_level_returns_to_menu(manager: SceneManager):
+def test_gameplay_completed_without_next_level_shows_victory(manager: SceneManager):
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
     gameplay.level.exit_reached = True
     gameplay.update(1 / 60)
 
-    assert isinstance(manager.current, MenuScene)
+    assert isinstance(manager.current, VictoryScene)
 
 
 def test_game_over_retry_restarts_the_level(manager: SceneManager):
@@ -218,7 +239,7 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
     menu = game_runtime.scene_manager.current
 
     assert "continue" in menu.options[0]
-    assert len(menu.options) == 4
+    assert len(menu.options) == 5
 
     routed = game_runtime.input_router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
     assert routed is not None

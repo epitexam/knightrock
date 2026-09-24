@@ -107,11 +107,12 @@ class GameplayScene(Scene):
 
     def _advance_level(self) -> None:
         from src.application.scenes.gameplay_scene import GameplayScene
-        from src.application.scenes.menu_scene import MenuScene
 
         next_id = self.game.level_manager.next_id(self.level_id)
         if next_id is None:
-            self.game.scene_manager.switch(MenuScene(self.game))
+            from src.application.scenes.victory_scene import VictoryScene
+
+            self.game.scene_manager.switch(VictoryScene(self.game, self.level_id))
         else:
             self.game.scene_manager.switch(GameplayScene(self.game, next_id))
 
