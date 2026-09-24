@@ -9,6 +9,33 @@ from src.core.input.input_state import InputState
 from src.core.settings import Input as InputSettings
 
 
+def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:
+    directions = {
+        direction
+        for direction in (
+            _axis_direction(keyboard_axis),
+            _axis_direction(analog_axis),
+            _axis_direction(hat_axis),
+        )
+        if direction != 0
+    }
+    if len(directions) > 1:
+        return 0.0
+    if keyboard_axis != 0.0:
+        return keyboard_axis
+    if analog_axis != 0.0:
+        return analog_axis
+    return hat_axis
+
+
+def _axis_direction(value: float) -> int:
+    if value > 0.0:
+        return 1
+    if value < 0.0:
+        return -1
+    return 0
+
+
 class InputProvider:
     def poll(self) -> InputState:
         raise NotImplementedError
@@ -25,6 +52,7 @@ class LocalInputProvider(InputProvider):
         self._joystick: JoystickType | None = None
         self._current_joy_buttons: dict[int, bool] = {}
         self._current_joy_axes: dict[int, float] = {}
+        self._current_joy_hats: dict[int, tuple[float, float]] = {}
 
     def connect_joystick(self, joystick: JoystickType) -> None:
         self._joystick = joystick
@@ -42,14 +70,27 @@ class LocalInputProvider(InputProvider):
         gameplay = self._bindings.gameplay
         self._current_joy_buttons = {}
         self._current_joy_axes = {}
+        self._current_joy_hats = {}
         if self._joystick:
             for index in range(self._joystick.get_numbuttons()):
                 self._current_joy_buttons[index] = bool(self._joystick.get_button(index))
             for index in range(self._joystick.get_numaxes()):
                 self._current_joy_axes[index] = self._joystick.get_axis(index)
+            for index in set(gameplay.gamepad_hats.values()):
+                self._current_joy_hats[index] = self._joystick.get_hat(index)
+
+        down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN)
+        if not down_held:
+            down_axis = self._apply_deadzone(
+                self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_DOWN)
+            )
+            down_held = down_axis > 0.0
+        if not down_held:
+            hat = self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_DOWN)
+            down_held = hat[1] > 0
 
         held = {
-            InputAction.MOVE_DOWN: self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN),
+            InputAction.MOVE_DOWN: down_held,
             InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
             or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
             InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
@@ -83,34 +124,40 @@ class LocalInputProvider(InputProvider):
             held_actions=frozenset(action for action, active in held.items() if active),
         )
 
-    def _calculate_move_axis(self, keys: tuple[bool, ...]) -> float:
+    def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
         bindings = self._bindings.gameplay
         axis_keys = bindings.keyboard[InputAction.MOVE_X]
         if not isinstance(axis_keys, tuple):
             raise ValueError("MOVE_X must bind two keyboard keys")
         left_key, right_key = axis_keys
-        keyboard_axis = float(keys[right_key]) - float(keys[left_key])
-        if keyboard_axis != 0.0:
-            return keyboard_axis
-        if self._joystick:
-            raw = self._current_joy_axes.get(bindings.gamepad_axes[InputAction.MOVE_X], 0.0)
-            analog = self._apply_deadzone(raw)
-            if analog != 0.0:
-                return analog
-            hat = self._joystick.get_hat(0)[0]
-            if hat != 0:
-                return float(hat)
-        return 0.0
+        keyboard_axis = float(self._key_value(keys, right_key)) - float(
+            self._key_value(keys, left_key)
+        )
+        analog = self._apply_deadzone(self._axis_value(bindings.gamepad_axes, InputAction.MOVE_X))
+        hat = float(self._hat_value(bindings.gamepad_hats, InputAction.MOVE_X)[0])
+        return resolve_move_axis(keyboard_axis, analog, hat)
 
-    def _key_held(self, keys: Sequence[bool], bindings: ActionMap, action: InputAction) -> bool:
+    @staticmethod
+    def _key_value(keys: Sequence[bool] | Mapping[int, bool], key: int) -> bool:
+        if isinstance(keys, Mapping):
+            return keys.get(key, False)
+        return keys[key]
+
+    def _key_held(
+        self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap, action: InputAction
+    ) -> bool:
         key = bindings[action]
-        return any(keys[code] for code in (key if isinstance(key, tuple) else (key,)))
+        codes = key if isinstance(key, tuple) else (key,)
+        return any(self._key_value(keys, code) for code in codes)
 
     def _button_held(self, bindings: ButtonMap, action: InputAction) -> bool:
         return self._current_joy_buttons.get(bindings[action], False)
 
     def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
         return self._current_joy_axes.get(bindings[action], 0.0)
+
+    def _hat_value(self, bindings: ButtonMap, action: InputAction) -> tuple[float, float]:
+        return self._current_joy_hats.get(bindings[action], (0.0, 0.0))
 
     @staticmethod
     def _combo_held(

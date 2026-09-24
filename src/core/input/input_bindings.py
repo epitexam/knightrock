@@ -65,6 +65,14 @@ class GameplayBindings:
             }
         )
     )
+    gamepad_hats: ButtonMap = field(
+        default_factory=lambda: _immutable(
+            {
+                InputAction.MOVE_X: 0,
+                InputAction.MOVE_DOWN: 0,
+            }
+        )
+    )
     keyboard_combos: ComboMap = field(
         default_factory=lambda: _immutable_combos(
             {InputAction.SPECIAL_ATTACK: (pygame.K_g, pygame.K_h)}

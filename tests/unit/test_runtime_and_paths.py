@@ -116,3 +116,81 @@ def test_first_added_joystick_is_assigned_without_private_state_access(
 
     assert game.joysticks == {7: joystick}
     connect_joystick.assert_called_once_with(joystick)
+
+
+def test_second_joystick_is_not_assigned_while_first_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = Game()
+    active = Mock()
+    active.get_instance_id.return_value = 7
+    second = Mock()
+    second.get_instance_id.return_value = 8
+    connect_joystick = Mock()
+    game.joysticks = {7: active}
+    game.input_provider.connect_joystick(active)  # type: ignore[arg-type]
+    monkeypatch.setattr(game.input_provider, "connect_joystick", connect_joystick)
+    monkeypatch.setattr(pygame.joystick, "Joystick", lambda _index: second)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.JOYDEVICEADDED, device_index=1)],
+    )
+
+    game._handle_events()
+
+    assert game.joysticks == {7: active, 8: second}
+    connect_joystick.assert_not_called()
+
+
+def test_removed_joystick_is_reassigned_to_remaining_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = Game()
+    removed = Mock()
+    removed.get_instance_id.return_value = 7
+    removed.get_name.return_value = "Removed controller"
+    replacement = Mock()
+    replacement.get_instance_id.return_value = 8
+    game.joysticks = {7: removed, 8: replacement}
+    game.input_provider.connect_joystick(removed)  # type: ignore[arg-type]
+    disconnect_joystick = Mock()
+    reassign_joystick = Mock()
+    monkeypatch.setattr(game.input_provider, "disconnect_joystick", disconnect_joystick)
+    monkeypatch.setattr(game.input_provider, "reassign_joystick", reassign_joystick)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.JOYDEVICEREMOVED, instance_id=7)],
+    )
+
+    game._handle_events()
+
+    assert game.joysticks == {8: replacement}
+    disconnect_joystick.assert_called_once_with(7)
+    reassign_joystick.assert_called_once_with({8: replacement})
+
+
+def test_removing_inactive_joystick_keeps_active_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    game = Game()
+    active = Mock()
+    active.get_instance_id.return_value = 7
+    removed = Mock()
+    removed.get_instance_id.return_value = 8
+    removed.get_name.return_value = "Inactive controller"
+    game.joysticks = {7: active, 8: removed}
+    game.input_provider.connect_joystick(active)  # type: ignore[arg-type]
+    reassign_joystick = Mock()
+    monkeypatch.setattr(game.input_provider, "reassign_joystick", reassign_joystick)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.JOYDEVICEREMOVED, instance_id=8)],
+    )
+
+    game._handle_events()
+
+    assert game.joysticks == {7: active}
+    reassign_joystick.assert_called_once_with({7: active})
