@@ -58,6 +58,15 @@ def test_input_manager_rejects_invalid_action_channels() -> None:
         manager.just_released(InputAction.MOVE_X)
 
 
+def test_input_state_rejects_invalid_invariants() -> None:
+    with pytest.raises(ValueError, match="move_axis"):
+        InputState(move_axis=2.0)
+    with pytest.raises(TypeError, match="frozenset"):
+        InputState(held_actions={InputAction.JUMP})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="gameplay"):
+        InputState(held_actions=frozenset({InputAction.UI_UP}))
+
+
 def test_input_manager_apply_remote_state_bypasses_provider() -> None:
     manager = InputManager()
     remote = InputState(
