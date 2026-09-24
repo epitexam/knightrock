@@ -246,8 +246,8 @@ uv run ruff check src tests --select C901   # cyclomatic complexity (threshold 1
 uv run mypy src                             # types
 ```
 
-> **Current baseline:** 861 tests passing · 91 % instruction coverage ·
-> 88 % branch coverage · Ruff clean · mypy clean on 127 files. Tests run headless
+> **Current baseline:** 906 tests passing · 91 % instruction coverage ·
+> 88 % branch coverage · Ruff clean · mypy clean on 128 files. Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 

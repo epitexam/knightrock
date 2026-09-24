@@ -10,6 +10,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+if __package__ in {None, ""}:
+    # Support ``python tests/benchmarks/contact_benchmark.py`` from the repo root.
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
@@ -63,6 +69,8 @@ def build_scenario(size: int, *, use_grid: bool) -> Scenario:
 
 def run_once(scenario: Scenario) -> int:
     """Run one measured pass and return the contact count."""
+    for target in scenario.targets:
+        target.vitals.reset()
     outcome = scenario.system.resolve(scenario.boxes, scenario.targets, scenario.grid)
     return outcome.metrics.contacts
 

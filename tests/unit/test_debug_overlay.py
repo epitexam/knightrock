@@ -765,10 +765,13 @@ def test_help_panel_lists_debug_keys() -> None:
     assert manager.draw_help_panel(10, 10) > 0
 
 
-def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
+def test_gameplay_scene_function_keys_toggle_overlay_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from src.application.scenes.gameplay_scene import GameplayScene
     from src.ui.ui_manager import UIManager
 
+    monkeypatch.setenv("DEBUG", "1")
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
     level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
@@ -782,6 +785,22 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
     assert world_ui.layers["boxes"] is False
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F5))
     assert world_ui.layers["panels"] is False
+
+
+def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from src.ui.ui_manager import UIManager
+
+    monkeypatch.delenv("DEBUG", raising=False)
+    ui_manager = UIManager(pygame.display.get_surface())
+    world_ui = ui_manager.world_ui
+    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
+    scene = GameplayScene(SimpleNamespace(), level_id=0, level=level)
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
+    assert world_ui.layers["labels"] is True
 
 
 def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
