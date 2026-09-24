@@ -16,7 +16,7 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
     gamepad = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
     assert keyboard == RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD)
-    assert mouse == RoutedInput(InputAction.UI_CONFIRM, InputDevice.MOUSE, position=(12, 24))
+    assert mouse == RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=(12, 24))
     assert gamepad == RoutedInput(InputAction.UI_CONFIRM, InputDevice.GAMEPAD)
     cancel = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
 
@@ -37,7 +37,9 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
 
     assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
-    assert repeated is None
+    assert repeated == RoutedInput(
+        InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.9, variant="repeat"
+    )
     assert release == RoutedInput(
         InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.1, variant="release"
     )
@@ -45,11 +47,14 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
 
 def test_router_preserves_new_game_and_cancel_variants() -> None:
     router = EventRouter()
+    rebound_router = EventRouter(InputBindings(menu=MenuBindings(new_game_key=pygame.K_x)))
 
     new_game = router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
+    rebound_new_game = rebound_router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x))
     cancel = router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_q))
 
     assert new_game == RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
+    assert rebound_new_game == new_game
     assert cancel == RoutedInput(InputAction.UI_CANCEL, InputDevice.KEYBOARD)
 
 

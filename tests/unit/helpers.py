@@ -22,6 +22,7 @@ from src.combat.frame_data import (
     PhaseDefinition,
 )
 from src.combat.knockback import KnockbackConfig
+from src.core.input.input_state import InputState
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
@@ -231,6 +232,16 @@ class InputStub:
     down_held: bool = False
 
 
+class ScriptedInputProvider:
+    def __init__(self, states: list[InputState]) -> None:
+        self._states = states
+
+    def poll(self) -> InputState:
+        if self._states:
+            return self._states.pop(0)
+        return InputState()
+
+
 class AttackerStub:
     """Minimal hit carrier: hitbox plus neutral combo tracking."""
 
@@ -238,11 +249,13 @@ class AttackerStub:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
         self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
 
+
 __all__ = [
     "AttackerStub",
     "InputStub",
     "SpyCombat",
     "SpyStateMachine",
+    "ScriptedInputProvider",
     "activate",
     "entity_at",
     "make_active_attacker",

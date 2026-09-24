@@ -7,6 +7,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+import pygame
+
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import (
     ActionMap,
@@ -124,6 +126,7 @@ def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
             "gamepad_buttons": _serialize_int_map(menu.gamepad_buttons),
             "gamepad_hats": _serialize_int_map(menu.gamepad_hats),
             "gamepad_axes": _serialize_int_map(menu.gamepad_axes),
+            "new_game_key": menu.new_game_key,
         },
     }
 
@@ -197,6 +200,11 @@ def bindings_from_dict(data: object) -> InputBindings:
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)
     menu_axes = _parse_int_map(menu_data["gamepad_axes"], menu_actions)
+    new_game_key = menu_data.get("new_game_key", pygame.K_n)
+    if new_game_key is not None and (
+        not isinstance(new_game_key, int) or isinstance(new_game_key, bool) or new_game_key < 0
+    ):
+        raise ValueError("menu.new_game_key must be a non-negative integer or null")
 
     _validate_context(
         gameplay_keyboard,
@@ -255,6 +263,7 @@ def bindings_from_dict(data: object) -> InputBindings:
         gamepad_buttons=menu_buttons,
         gamepad_hats=menu_hats,
         gamepad_axes=menu_axes,
+        new_game_key=new_game_key,
     )
     return InputBindings(gameplay=gameplay, menu=menu)
 

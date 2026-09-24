@@ -39,7 +39,7 @@ class EventRouter:
             )
         if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) == 1:
             return RoutedInput(
-                InputAction.UI_CONFIRM,
+                InputAction.UI_POINTER_DOWN,
                 InputDevice.MOUSE,
                 position=tuple(getattr(event, "pos", (0, 0))),
             )
@@ -80,7 +80,7 @@ class EventRouter:
         )
 
     def _route_keyboard(self, key: int) -> RoutedInput | None:
-        if key == pygame.K_n:
+        if key == self._bindings.menu.new_game_key:
             return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
         for action, binding in self._bindings.menu.keyboard.items():
             keys = binding if isinstance(binding, tuple) else (binding,)
@@ -114,9 +114,8 @@ class EventRouter:
         if abs(value) < InputSettings.UI_AXIS_TRIGGER_THRESHOLD:
             return None
         self._active_axes[key] = action
-        if active == action:
-            return None
-        return RoutedInput(action, InputDevice.GAMEPAD, value=value)
+        variant = "repeat" if active == action else None
+        return RoutedInput(action, InputDevice.GAMEPAD, value=value, variant=variant)
 
     def _axis_action(self, axis: int, value: float) -> InputAction | None:
         for action, bound_axis in self._bindings.menu.gamepad_axes.items():

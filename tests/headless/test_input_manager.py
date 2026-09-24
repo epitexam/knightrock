@@ -3,20 +3,11 @@ import pytest
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
-
-
-class ScriptedProvider:
-    def __init__(self, states: list[InputState]) -> None:
-        self._states = states
-
-    def poll(self) -> InputState:
-        if self._states:
-            return self._states.pop(0)
-        return InputState()
+from tests.unit.helpers import ScriptedInputProvider
 
 
 def test_input_manager_detects_action_edges() -> None:
-    provider = ScriptedProvider(
+    provider = ScriptedInputProvider(
         [InputState(), InputState(held_actions=frozenset({InputAction.JUMP}))]
     )
     manager = InputManager(provider)  # type: ignore[arg-type]
@@ -37,7 +28,7 @@ def test_input_manager_detects_action_edges() -> None:
 
 
 def test_input_manager_exposes_move_axis() -> None:
-    manager = InputManager(ScriptedProvider([InputState(move_axis=-0.8)]))  # type: ignore[arg-type]
+    manager = InputManager(ScriptedInputProvider([InputState(move_axis=-0.8)]))  # type: ignore[arg-type]
 
     manager.update()
 
@@ -85,7 +76,7 @@ def test_input_manager_apply_remote_state_bypasses_provider() -> None:
 
 
 def test_input_manager_attack_edges_are_independent() -> None:
-    provider = ScriptedProvider(
+    provider = ScriptedInputProvider(
         [
             InputState(held_actions=frozenset({InputAction.ATTACK_1, InputAction.ATTACK_2})),
             InputState(held_actions=frozenset({InputAction.ATTACK_2})),
@@ -105,7 +96,7 @@ def test_input_manager_attack_edges_are_independent() -> None:
 def test_set_provider_replaces_the_source() -> None:
     manager = InputManager()
     manager.set_provider(
-        ScriptedProvider([InputState(held_actions=frozenset({InputAction.GUARD}))])  # type: ignore[arg-type]
+        ScriptedInputProvider([InputState(held_actions=frozenset({InputAction.GUARD}))])  # type: ignore[arg-type]
     )
 
     manager.update()
