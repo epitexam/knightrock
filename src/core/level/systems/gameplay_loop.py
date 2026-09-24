@@ -19,6 +19,7 @@ from src.combat.combatant_protocol import Combatant
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.contact_system import ContactSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.notification_system import NotificationSystem
@@ -29,6 +30,7 @@ from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickOwner, TickSystem
+from src.entities.entity import Entity
 
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
@@ -69,8 +71,18 @@ class GameplayLoop:
         notification_system: NotificationSystem | None = None,
         tick_system: TickSystem | None = None,
         projectile_system: ProjectileSystem | None = None,
+        contact_system: ContactSystem | None = None,
     ) -> None:
-        self.combat_system: CombatSystem = CombatSystem()
+        # Unified offensive-contact pipeline (P4.1): one shared engine for
+        # melee, projectiles, hazards and contact damage (injected by Level
+        # in production; created here for combat-only test fixtures). Its
+        # tick accumulator is what the debug metrics panel surfaces.
+        self.contact_system: ContactSystem = (
+            contact_system if contact_system is not None else ContactSystem()
+        )
+        self.combat_system: CombatSystem = CombatSystem(
+            contact_system=self.contact_system
+        )
         self.separation_system: SeparationSystem = SeparationSystem()
         # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
         # pass at the start of process_combat_and_separation (positions are
@@ -108,6 +120,8 @@ class GameplayLoop:
         """Advance hit-stop timing and return the simulation delta."""
         simulation_suspended = self.combat_system.in_hit_stop
         self.combat_system.update_timer(delta_time)
+        if not simulation_suspended:
+            self.contact_system.begin_tick()
         return 0.0 if simulation_suspended else delta_time
 
     def update(
@@ -150,6 +164,18 @@ class GameplayLoop:
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
+            # P1 sweep (D1/D3): tick-frontier capture. One explicit capture
+            # per tick, before any movement or attack start of the tick —
+            # covering the pre-carry segment, unlike a start-of-``update``
+            # capture that would run after the platform carry. ``update``
+            # positioning stays pure/idempotent, so the double sync stays
+            # harmless. Covers spawn-adjacent sprites too (both sides of
+            # the loop boundary).
+            for sprite in groups.entity_sprites:
+                if isinstance(sprite, Entity):
+                    sprite.capture_sweep_origin()
+            for combatant in groups.combat_sprites:
+                combatant.combat.capture_attack_origin()
             platform.process(effective_delta)
             hazard.process(effective_delta)
             physics.process(effective_delta)
@@ -168,7 +194,10 @@ class GameplayLoop:
                 player._dash_started_this_frame = False
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
-            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
+            hazard_damage.process(
+                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
+            )
+            self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 
             respawn.process(effective_delta, groups.entity_sprites)
@@ -200,6 +229,19 @@ class GameplayLoop:
                 "in Level and pass it to GameplayLoop(...)."
             )
         return system
+
+    def _flush_combat_trace(self) -> None:
+        """Axe G: dump buffered HitCandidates when the debug trace is on.
+
+        Off-by-default (``DEBUG`` + ``DEBUG_COMBAT_DUMP``); the path lives
+        under ``logs/`` next to the rotating handler configured in main.
+        """
+        trace = getattr(self.contact_system, "trace", None)
+        if trace is None or not trace.enabled or len(trace) == 0:
+            return
+        from pathlib import Path  # local: keep import cost off the hot path
+
+        trace.drain_jsonl(Path("logs") / "combat_trace.jsonl")
 
     def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
         events = self._collect_guard_events()

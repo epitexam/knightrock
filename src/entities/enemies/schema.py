@@ -2,6 +2,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from src.combat.frame_data import AttackDefinition
+from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 @dataclass(frozen=True)
@@ -16,7 +17,11 @@ class EnemyConfig:
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)
     hurtbox_inflate: Sequence[float] = (0.0, 0.0)
+    # P2 multi-hurtbox: None = legacy fallback on ``hurtbox_inflate``.
+    hurtbox_zones: Sequence[HurtboxZoneDef] | None = None
     chase_speed: float = 120.0
+    # Patrol cruise; None derives Locomotion.ENEMY_PATROL_SPEED_MULT * chase_speed.
+    patrol_speed: float | None = None
     vision_range: float = 300.0
     attack_range: float = 60.0
     patrol_interval: float = 2.0

@@ -30,6 +30,29 @@ class FakeHazard:
         self.knockback = knockback
 
 
+class _MovingHazard:
+    def __init__(self, previous: pygame.FRect, current: pygame.FRect) -> None:
+        self.rect = current
+        self._previous = previous
+        self.damage = 25.0
+
+    def swept_contact_rect(self) -> pygame.FRect:
+        from src.combat.sweep import swept_box
+
+        return swept_box(self._previous, self.rect)
+
+
+def test_moving_hazard_sweeps_target_between_positions() -> None:
+    """A moving hazard catches a target crossed between discrete positions."""
+    target = make_entity(pygame.FRect(100, 100, 40, 40))
+    hazard = _MovingHazard(pygame.FRect(90, 100, 20, 40), pygame.FRect(150, 100, 20, 40))
+    system = HazardDamageSystem()
+
+    system.process([target], [hazard])
+
+    target.receive_damage.assert_called_once()
+
+
 def test_hazard_applies_configured_damage() -> None:
     entity = make_entity(pygame.FRect(0, 0, 40, 40))
     hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)

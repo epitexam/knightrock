@@ -7,6 +7,7 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
+from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
@@ -56,6 +57,10 @@ def _entity(**overrides) -> SimpleNamespace:
     base = {
         "hitbox": pygame.FRect(100, 100, 40, 48),
         "hurtbox": pygame.FRect(98, 98, 44, 52),
+        "hurtboxes": (pygame.FRect(98, 98, 44, 52),),
+        "hurtbox_zone_names": ("",),
+        "hurtbox_mult": (1.0,),
+        "hurtbox_tags": ((),),
         "velocity": Vector2(0, 0),
         "faction": "enemy",
         "health": 75.0,
@@ -144,6 +149,33 @@ def test_hitbox_color_follows_faction(world_ui: WorldUI) -> None:
     assert world_ui._hitbox_color(_entity(faction="enemy")) == Colors.red
     assert world_ui._hitbox_color(_entity(faction="player")) == Colors.debug_hitbox
     assert world_ui._hitbox_color(_entity(faction="neutral")) == Colors.light_grey
+
+
+def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
+    world_ui: WorldUI, camera: Camera
+) -> None:
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui._draw_shape(
+        ShapePose(ShapeKind.CIRCLE, (40.0, 40.0), (120.0, 120.0)),
+        Colors.debug_attack_box,
+        camera,
+    )
+    world_ui._draw_anchor((100.0, 100.0), camera)
+
+    assert surface.get_at((120, 101))[:3] == Colors.debug_attack_box
+    assert surface.get_at((100, 96))[:3] == Colors.debug_anchor
+
+
+def test_advanced_shape_debug_exposes_swept_pairs() -> None:
+    combat = SimpleNamespace(
+        swept_attack_shapes=(
+            SimpleNamespace(previous=ShapePose(ShapeKind.OBB, (20.0, 10.0), (0.0, 0.0))),
+        )
+    )
+
+    assert WorldUI._swept_shapes(combat, 1) == combat.swept_attack_shapes
+    assert WorldUI._swept_shapes(SimpleNamespace(), 1) == (None,)
 
 
 def test_projectile_label_shows_flight_data(world_ui: WorldUI) -> None:
@@ -637,6 +669,29 @@ def test_dead_entity_draws_no_health_bar(world_ui: WorldUI, camera: Camera) -> N
     assert world_ui._label_clearances(entity, anchor) == (0, 0)
 
 
+def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera) -> None:
+    """UI-7: the player's HP lives on the screen HUD, not above its sprite.
+
+    The gate sits in ``_has_health_bar``, so the bar is neither drawn nor
+    reserved by the debug label cards — and an enemy keeps its bar.
+    """
+    player = _entity(faction="player", health=100.0, max_health=100.0)
+    anchor = camera.apply(pygame.FRect(100, 100, 40, 48))
+    assert world_ui._health_bar_rect(player, anchor) is None
+    assert world_ui._label_clearances(player, anchor) == (0, 0)
+
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.draw_health_bars([player], camera)
+    # No bar painted anywhere in the column above the entity.
+    assert all(surface.get_at((int(anchor.centerx), y))[:3] == (0, 0, 0) for y in range(60, 100))
+
+    # An enemy right next to it still gets its bar (regression guard).
+    enemy = _entity(faction="enemy")
+    enemy_anchor = camera.apply(enemy.hitbox)
+    assert world_ui._health_bar_rect(enemy, enemy_anchor) is not None
+
+
 def test_world_cards_use_compact_fonts(world_ui: WorldUI) -> None:
     """Regression pin: entity cards stay smaller than the side debug panels."""
     assert (
@@ -710,12 +765,16 @@ def test_help_panel_lists_debug_keys() -> None:
     assert manager.draw_help_panel(10, 10) > 0
 
 
-def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
+def test_gameplay_scene_function_keys_toggle_overlay_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from src.application.scenes.gameplay_scene import GameplayScene
-    from src.ui.panel_renderer import PanelRenderer
+    from src.ui.ui_manager import UIManager
 
-    world_ui = WorldUI(PanelRenderer(pygame.display.get_surface()))
-    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=SimpleNamespace(world_ui=world_ui)))
+    monkeypatch.setenv("DEBUG", "1")
+    ui_manager = UIManager(pygame.display.get_surface())
+    world_ui = ui_manager.world_ui
+    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
     scene = GameplayScene(SimpleNamespace(), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
@@ -726,6 +785,22 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers() -> None:
     assert world_ui.layers["boxes"] is False
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F5))
     assert world_ui.layers["panels"] is False
+
+
+def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from src.ui.ui_manager import UIManager
+
+    monkeypatch.delenv("DEBUG", raising=False)
+    ui_manager = UIManager(pygame.display.get_surface())
+    world_ui = ui_manager.world_ui
+    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
+    scene = GameplayScene(SimpleNamespace(), level_id=0, level=level)
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
+    assert world_ui.layers["labels"] is True
 
 
 def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -774,6 +849,63 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls == {"input": 3, "level": 2}
 
 
+def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F7 while frozen runs exactly one tick, then holds again."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    monkeypatch.setenv("DEBUG", "1")
+    calls = {"level": 0}
+    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None))
+    level = SimpleNamespace(
+        update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
+        completed=False,
+        deaths=0,
+    )
+    scene = GameplayScene(game, level_id=0, level=level)
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))  # freeze
+    scene.update(1 / 60)
+    assert calls["level"] == 0
+
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F7))  # step
+    scene.update(1 / 60)
+    assert calls["level"] == 1
+
+    scene.update(1 / 60)  # pending step consumed: hold again
+    assert calls["level"] == 1
+
+    # F7 ignored while unfrozen (step is freeze-only).
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))  # unfreeze
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F7))
+    scene.update(1 / 60)
+    assert calls["level"] == 2  # normal unfrozen update, not a double-step
+
+
+def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F8 flips the attack-replay switch in debug mode, ignored otherwise."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.level.systems.spawn_system import SpawnSystem
+    from src.core.sprite_groups import SpriteGroups
+
+    spawn = SpawnSystem(SpriteGroups())
+    scene = GameplayScene(
+        SimpleNamespace(),
+        level_id=0,
+        level=SimpleNamespace(spawn_system=spawn),
+    )
+
+    monkeypatch.setenv("DEBUG", "1")
+    assert spawn.attack_replay is None
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is not None
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is None
+
+    monkeypatch.setenv("DEBUG", "0")
+    scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F8))
+    assert spawn.attack_replay is None
+
+
 def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: Camera) -> None:
     """The FROZEN tag reads red on black while the sim is held."""
     from src.application.scenes.gameplay_scene import GameplayScene
@@ -805,9 +937,76 @@ def test_debug_panels_can_be_hidden() -> None:
     assert surface is not None
 
     renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    assert surface.get_at((20, 60))[:3] != (0, 0, 0)
+    renderer.ui_manager.renderer.interaction.begin_frame()
+    assert renderer.ui_manager.renderer.interaction.panels
 
     surface.fill((0, 0, 0))
     renderer.ui_manager.world_ui.toggle("panels")
     renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    assert surface.get_at((20, 60))[:3] == (0, 0, 0)
+    assert renderer.ui_manager.renderer.interaction.panels == {}
+
+
+def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera: Camera) -> None:
+    """One attack header chip: gold name, phase, badges + timeline, no clutter.
+
+    The scattered pills (ATK + b0 + badge stack) merge into a single header in
+    the tier stack: glyphs on one row, the phase timeline tucked underneath on
+    the same card. It never meets the health bar, and the card clears it.
+    """
+    entity = _entity()
+    entity.combat.state.attack_name = "claw_swipe"
+    entity.combat.state.sub_state = SimpleNamespace(value="active")
+    entity.combat.state.frame_counter = 3
+    entity.combat.current_phase = SimpleNamespace(
+        startup_frames=4, active_frames=4, recovery_frames=4
+    )
+    entity.combat.state.phase_index = 0
+    entity.combat.targets_hit = set()
+    anchor = camera.apply(entity.hitbox)
+    bar = world_ui._health_bar_rect(entity, anchor)
+    assert bar is not None
+
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays([entity], camera)
+
+    rects = world_ui._annotation_rects.get(id(entity), ())
+    assert rects, "the attack header was not registered as an annotation"
+    assert all(not bar.colliderect(rect) for rect in rects)
+    header = min(rects, key=lambda rect: rect.top)
+    assert header.bottom <= bar.top  # stacked above the bar, never over it
+
+    # The card's default slot lifts past the annotation band, not just the bar.
+    above_lift, below_drop = world_ui._label_clearances(entity, anchor)
+    bar_clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
+    assert above_lift > bar_clearance
+    assert below_drop == 0
+
+
+def test_zone_shapes_carry_meaning_without_world_text(world_ui: WorldUI, camera: Camera) -> None:
+    """Zones read by shape: boosted = fill + thick outline, no world glyphs."""
+    entity = _entity()
+    entity.hurtboxes = (
+        pygame.FRect(100, 80, 40, 20),
+        pygame.FRect(100, 100, 40, 48),
+    )
+    entity.hurtbox_zone_names = ("head", "torso")
+    entity.hurtbox_mult = (1.2, 1.0)
+    entity.hurtbox_tags = ((), ())
+
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays([entity], camera)
+
+    # No zone text joins the annotation stack...
+    assert world_ui._annotation_rects.get(id(entity), ()) == ()
+    # ...but the boosted head zone paints its translucent fill + thick outline.
+    boosted = camera.apply(pygame.FRect(100, 80, 40, 20))
+    assert surface.get_at((int(boosted.centerx), int(boosted.centery)))[:3] != (0, 0, 0)
+    # ...and the full roster lives on the card's ZONE row, in zone colors.
+    segments = world_ui._label_segments(entity)
+    assert segments is not None
+    zone_row = next(line for line in segments if line[0][0] == "ZONE ")
+    assert zone_row[1][0].startswith("head x1.2")
+    assert zone_row[1][1] == Colors.debug_hurtbox_zones[0]
+    assert zone_row[3][1] == Colors.debug_hurtbox_zones[1]

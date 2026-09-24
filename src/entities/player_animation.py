@@ -11,6 +11,12 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
         ),
         AnimationSpec("run", "assets/graphics/player/run", AnimationSettings.RUN_FRAME_DURATION),
         AnimationSpec(
+            "walk", "assets/graphics/player/run", AnimationSettings.WALK_FRAME_DURATION
+        ),
+        AnimationSpec(
+            "walk_slow", "assets/graphics/player/run", AnimationSettings.WALK_SLOW_FRAME_DURATION
+        ),
+        AnimationSpec(
             "jump", "assets/graphics/player/jump", AnimationSettings.FRAME_DURATION, loop=False
         ),
         AnimationSpec("fall", "assets/graphics/player/fall", AnimationSettings.FRAME_DURATION),

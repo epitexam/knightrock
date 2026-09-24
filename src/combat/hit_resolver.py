@@ -109,12 +109,17 @@ class HitResolver:
         target: Combatant,
         hit: HitProperties,
         charge_multiplier: float = 1.0,
+        zone_mult: float = 1.0,
     ) -> DamageResult:
         """Calculate and apply damage, knockback, stagger, and finisher.
 
         The resolution flow:
 
-        1. Compute final damage = ``hit.damage × charge_multiplier × type_modifier``.
+        1. Compute final damage = ``hit.damage × charge_multiplier ×
+           zone_mult × type_modifier``. ``zone_mult`` is the P2 localized
+           damage multiplier (head ×1.2...); it scales damage only, never
+           knockback — the field is named ``damage_mult`` in the design
+           doc (§6.1), unlike the charge multiplier.
         2. Compute scaled knockback by applying ``charge_multiplier`` to the
            base knockback power vectors.
         3. Apply damage and inspect its explicit ``DamageResult``.
@@ -133,6 +138,8 @@ class HitResolver:
             Hit properties from the active phase definition.
         charge_multiplier : float
             Damage and knockback multiplier from charging (default 1.0).
+        zone_mult : float
+            P2 localized damage multiplier of the zone hit (default 1.0).
 
         Returns
         -------
@@ -145,7 +152,7 @@ class HitResolver:
         juggle_scale = 1.0
         if was_airborne:
             juggle_scale = _juggle_scale(attacker.combat.air_combo_count or 0)
-        final_damage = hit.damage * charge_multiplier * type_mult * juggle_scale
+        final_damage = hit.damage * charge_multiplier * zone_mult * type_mult * juggle_scale
 
         # DIZZY bonus: targets in dizzy state take extra damage
         if getattr(target, "state_machine", None) is not None:
@@ -170,7 +177,15 @@ class HitResolver:
 
         armor_absorbs_reaction = target.has_super_armor and not hit.super_armor_break
         applied_knockback = None if armor_absorbs_reaction else effective_knockback
-        result = target.receive_damage(final_damage, source_x, applied_knockback)
+        result = target.receive_damage(
+            final_damage,
+            source_x,
+            applied_knockback,
+            unblockable=hit.unblockable,
+            height=hit.height,
+            block_mask=hit.block_mask,
+            hit_level=hit.hit_level,
+        )
 
         # Guard, invincibility, death, or any future immunity is authoritative.
         if not result.applied:

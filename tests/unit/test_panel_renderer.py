@@ -36,6 +36,56 @@ def test_render_text_different_params_not_shared(renderer: PanelRenderer) -> Non
     assert surf_a is renderer.render_text("hello", renderer.debug_font, TEXT_MUTED)
 
 
+def test_render_text_cache_is_bounded_lru() -> None:
+    renderer = PanelRenderer(pygame.Surface((640, 480)), text_cache_capacity=2)
+
+    surface_a = renderer.render_text("a", renderer.debug_font, TEXT_MUTED)
+    surface_b = renderer.render_text("b", renderer.debug_font, TEXT_MUTED)
+    assert renderer.render_text("a", renderer.debug_font, TEXT_MUTED) is surface_a
+    renderer.render_text("c", renderer.debug_font, TEXT_MUTED)
+    assert renderer.render_text("a", renderer.debug_font, TEXT_MUTED) is surface_a
+    assert renderer.render_text("b", renderer.debug_font, TEXT_MUTED) is not surface_b
+
+    assert renderer.text_cache_stats == {"hits": 2, "misses": 4, "entries": 2}
+
+
+def test_clear_text_cache_empties_entries_and_resets_stats() -> None:
+    renderer = PanelRenderer(pygame.Surface((640, 480)))
+    renderer.render_text("cached", renderer.debug_font, TEXT_MUTED)
+    renderer.render_text("cached", renderer.debug_font, TEXT_MUTED)
+
+    renderer.clear_text_cache()
+
+    assert renderer.text_cache_stats == {"hits": 0, "misses": 0, "entries": 0}
+    assert renderer.render_text("cached", renderer.debug_font, TEXT_MUTED)
+    assert renderer.text_cache_stats == {"hits": 0, "misses": 1, "entries": 1}
+
+
+def test_text_cache_can_be_disabled() -> None:
+    renderer = PanelRenderer(pygame.Surface((640, 480)), text_cache_capacity=0)
+
+    renderer.render_text("a", renderer.debug_font, TEXT_MUTED)
+    renderer.render_text("a", renderer.debug_font, TEXT_MUTED)
+
+    assert renderer.text_cache_stats == {"hits": 0, "misses": 2, "entries": 0}
+
+
+def test_set_display_surface_resets_cache_and_clamps_drops() -> None:
+    renderer = PanelRenderer(pygame.Surface((1024, 768)))
+    renderer.render_text("cached", renderer.debug_font, TEXT_MUTED)
+    renderer.interaction.set_position("keys", (900, 700))
+
+    renderer.set_display_surface(pygame.Surface((640, 480)))
+
+    assert renderer.text_cache_stats["entries"] == 0
+    assert renderer.interaction.positions["keys"] == (630, 470)
+
+
+def test_text_cache_capacity_must_be_non_negative() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        PanelRenderer(pygame.Surface((640, 480)), text_cache_capacity=-1)
+
+
 def test_draw_panel_without_title_returns_height(renderer: PanelRenderer) -> None:
     height = renderer.draw_panel(10, 10, ["line1", "line2"])
     assert height > 0

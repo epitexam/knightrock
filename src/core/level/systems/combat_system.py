@@ -1,221 +1,254 @@
-"""Hit detection, deterministic contact collection, and global hit-stop timing."""
+"""Hit detection, hit-vs-hit priority/clash, and global hit-stop timing.
 
-from collections.abc import Iterable
+Detection itself is delegated to the unified
+:class:`~src.core.level.systems.contact_system.ContactSystem` (P4.1): this
+class owns the melee *producer* half (attacker eligibility, hit-vs-hit
+priority/clash) and the global hit-stop timer.
+"""
+
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import cast
 
 import pygame
 
 from src.combat.combatant_protocol import Combatant, CombatPort
-from src.combat.frame_data import HitProperties, PhaseDefinition
-from src.combat.hit_resolver import HitResolver
+from src.combat.frame_data import PhaseDefinition
+from src.combat.shapes import (
+    ShapeKind,
+    ShapePose,
+    SweptShape,
+    shape_shape_intersects,
+    swept_shape_shape_intersects,
+)
+from src.core.level.systems.contact_system import (
+    CombatMetrics,
+    ContactOutcome,
+    ContactSystem,
+    GuardEvent,
+    OffensiveBox,
+)
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Guard as GuardSettings
-from src.entities.enemies.enemy import Enemy
 from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHashMember
-from src.states.reaction_states import DIZZY_STATE
+
+__all__ = ["CombatMetrics", "CombatSystem", "ContactSystem", "GuardEvent"]
 
 
 @dataclass(frozen=True)
-class HitCandidate:
-    """Immutable contact captured before any hit reaction mutates combat state."""
-
+class _ReadyAttacker:
     attacker: Combatant
-    target: Combatant
-    hit: HitProperties
-    charge_multiplier: float
-
-
-@dataclass
-class CombatMetrics:
-    """Per-tick counters exposed to tests and debug tooling."""
-
-    pairs_tested: int = 0
-    overlaps: int = 0
-    contacts: int = 0
-
-
-@dataclass(frozen=True)
-class GuardEvent:
-    """Render-only guard outcome drained once per tick by the game loop."""
-
-    kind: str
-    target: Combatant
+    combat: CombatPort
+    attack_boxes: tuple[pygame.FRect, ...]
+    swept_boxes: tuple[pygame.FRect, ...]
+    attack_shapes: tuple[ShapePose, ...]
+    swept_shapes: tuple[SweptShape, ...]
+    phase: PhaseDefinition
 
 
 def _attacker_ready(
     attacker: Combatant,
-) -> tuple[CombatPort, tuple[pygame.FRect, ...], PhaseDefinition] | None:
-    """Attacker eligibility: alive, active phase, live boxes."""
+) -> _ReadyAttacker | None:
+    """Attacker eligibility: alive, active phase, live and swept boxes."""
     if attacker.is_dead:
         return None
     combat = attacker.combat
     attack_boxes = combat.attack_boxes
+    swept_boxes = combat.swept_attack_boxes
+    attack_shapes = tuple(getattr(combat, "attack_shapes", ()))
+    swept_shapes = tuple(getattr(combat, "swept_attack_shapes", ()))
     phase = combat.current_phase
     if not combat.state.is_active or not attack_boxes or phase is None:
         return None
-    return combat, attack_boxes, phase
-
-
-def _nearby_targets(
-    attack_boxes: tuple[pygame.FRect, ...],
-    combatants: tuple[Combatant, ...],
-    order: dict[int, int],
-    entity_grid: EntityGrid | None,
-) -> list[Combatant]:
-    """Geometric collection: local grid prune, then group order."""
-    if entity_grid is None:
-        return list(combatants)
-    # Query around every attack box (not the attacker's hitbox:
-    # the weapon reach is what matters), then restore group order
-    # so hit resolution matches the exhaustive loop
-    # deterministically. Only combatants have an entry in `order`,
-    # so the cast is safe.
-    seen: set[int] = set()
-    nearby: list[SpatialHashMember] = []
-    for attack_box in attack_boxes:
-        for member in entity_grid.near(attack_box):
-            if id(member) in order and id(member) not in seen:
-                seen.add(id(member))
-                nearby.append(member)
-    return cast(
-        list[Combatant],
-        sorted(nearby, key=lambda m: order[id(m)]),
+    # Per-index pairing preserved (D1): swept boxes follow the same order
+    # as the live boxes; a missing origin (spawn/resize) degenerates to cur.
+    if len(swept_boxes) != len(attack_boxes):
+        swept_boxes = attack_boxes
+    if len(attack_shapes) != len(attack_boxes):
+        attack_shapes = ()
+    if len(swept_shapes) != len(attack_shapes):
+        swept_shapes = ()
+    return _ReadyAttacker(
+        attacker, combat, attack_boxes, swept_boxes, attack_shapes, swept_shapes, phase
     )
 
 
-def _is_valid_target(attacker: Combatant, target: Combatant, combat: CombatPort) -> bool:
-    """Target eligibility: not self, alive, enemy faction, phase contact."""
-    if attacker is target or target.is_dead:
-        return False
-    if attacker.faction == target.faction:
-        return False
-    return bool(combat.can_contact(target.id))
+def _record_for(combat: CombatPort) -> Callable[[Combatant], None]:
+    """Adapter: the unified pipeline records targets, ports record ids."""
+
+    def record(target: Combatant) -> None:
+        combat.record_contact(target.id)
+
+    return record
+
+
+def _clash_point(
+    boxes_a: tuple[pygame.FRect, ...], boxes_b: tuple[pygame.FRect, ...]
+) -> tuple[float, float] | None:
+    """Center of the first overlapping swept pair: the clash spark anchor."""
+    for box_a in boxes_a:
+        for box_b in boxes_b:
+            if box_a.colliderect(box_b):
+                return box_a.clamp(box_b).center
+    return None
+
+
+def _hitbox_pairs_overlap(first: _ReadyAttacker, second: _ReadyAttacker) -> bool:
+    if first.swept_shapes and second.swept_shapes:
+        for first_shape in first.swept_shapes:
+            for second_shape in second.swept_shapes:
+                if (
+                    first_shape.current.kind is ShapeKind.AABB
+                    and second_shape.current.kind is ShapeKind.AABB
+                ):
+                    continue
+                if first_shape.current.kind is not second_shape.current.kind:
+                    if shape_shape_intersects(first_shape.current, second_shape.current):
+                        return True
+                elif first_shape.previous is None or second_shape.previous is None:
+                    if swept_shape_shape_intersects(
+                        first_shape.current,
+                        first_shape.current,
+                        second_shape.current,
+                        second_shape.current,
+                    ):
+                        return True
+                elif swept_shape_shape_intersects(
+                    first_shape.previous,
+                    first_shape.current,
+                    second_shape.previous,
+                    second_shape.current,
+                ):
+                    return True
+    return any(
+        box_a.colliderect(box_b) for box_a in first.swept_boxes for box_b in second.swept_boxes
+    )
 
 
 class CombatSystem:
     """Collect and resolve offensive contacts in two deterministic passes."""
 
-    def __init__(self) -> None:
+    def __init__(self, contact_system: ContactSystem | None = None) -> None:
+        self.contact_system: ContactSystem = (
+            contact_system if contact_system is not None else ContactSystem()
+        )
         self.hit_stop_timer: float = 0.0
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
         self.guard_events: list[GuardEvent] = []
+        self.last_clash: tuple[float, float] | None = None
 
     def process_attacks(
         self,
         combat_sprites: Iterable[Combatant],
         entity_grid: EntityGrid | None = None,
     ) -> None:
-        """Resolve contacts from a stable snapshot of active hitboxes.
+        """Resolve melee contacts from a stable snapshot of active hitboxes.
 
         Detection is completed before damage reactions are applied. This allows
         simultaneous attacks to trade instead of depending on sprite insertion
         order. The iterable is materialized once, avoiding repeated Pygame group
         copies and supporting generators safely.
 
-        When ``entity_grid`` is provided, target candidates are pruned through
-        it (query around each active attack box, O(n · k) instead of the legacy
-        exhaustive O(n²)); candidates are then sorted back into group order so
-        hit resolution happens exactly like the exhaustive loop. Without a
-        grid the pairs are tested exhaustively — still correct, just slower.
+        Hit-vs-hit priority/clash runs first (P3t1), then every surviving
+        attacker feeds the unified :class:`ContactSystem` (P4.1), which owns
+        broadphase, narrowphase and hit resolution; its counters and hit-stop
+        are merged back here so existing consumers keep reading the same
+        attributes.
         """
         self.metrics = CombatMetrics()
         self.impact = 0.0
         self.guard_events = []
+        self.last_clash = None
         if self.in_hit_stop:
             return
 
         combatants = tuple(combat_sprites)
-        candidates = self._collect_candidates(combatants, entity_grid)
-        self._resolve_candidates(candidates)
+        ready = self._collect_ready(combatants)
+        losers, clashed = self._resolve_hit_vs_hit(ready)
+        boxes = self._produce_boxes(ready, losers, clashed)
+        outcome = self.contact_system.resolve(boxes, combatants, entity_grid)
+        self._merge(outcome)
 
-    def _collect_candidates(
+    def _merge(self, outcome: ContactOutcome) -> None:
+        """Fold the unified pass's outcome into this system's public state."""
+        self.metrics.pairs_tested += outcome.metrics.pairs_tested
+        self.metrics.overlaps += outcome.metrics.overlaps
+        self.metrics.contacts += outcome.metrics.contacts
+        self.guard_events.extend(outcome.guard_events)
+        self.impact = max(self.impact, outcome.impact)
+        self.hit_stop_timer = max(self.hit_stop_timer, outcome.hit_stop)
+
+    def _produce_boxes(
         self,
-        combatants: tuple[Combatant, ...],
-        entity_grid: EntityGrid | None = None,
-    ) -> tuple[HitCandidate, ...]:
-        candidates: list[HitCandidate] = []
-        order = {id(combatant): index for index, combatant in enumerate(combatants)}
+        ready: list[_ReadyAttacker],
+        losers: set[int],
+        clashed: set[int],
+    ) -> tuple[OffensiveBox, ...]:
+        """Melee producer: one box per surviving ready attacker.
 
-        for attacker in combatants:
-            ready = _attacker_ready(attacker)
-            if ready is None:
+        The whole swept geometry travels in ``swept`` (P1); the first live
+        box is the discrete ``box`` so the record stays uniform across
+        producers.
+        """
+        boxes: list[OffensiveBox] = []
+        for entry in ready:
+            if id(entry.attacker) in losers or id(entry.attacker) in clashed:
                 continue
-            combat, attack_boxes, phase = ready
-            targets = _nearby_targets(attack_boxes, combatants, order, entity_grid)
-
-            for target in targets:
-                if not _is_valid_target(attacker, target, combat):
-                    continue
-
-                self.metrics.pairs_tested += 1
-                if not any(attack_box.colliderect(target.hurtbox) for attack_box in attack_boxes):
-                    continue
-
-                self.metrics.overlaps += 1
-                candidates.append(
-                    HitCandidate(
-                        attacker=attacker,
-                        target=target,
-                        hit=phase.hit,
-                        charge_multiplier=combat.charge_multiplier,
-                    )
+            combat = entry.combat
+            boxes.append(
+                OffensiveBox(
+                    box=entry.attack_boxes[0],
+                    swept=entry.swept_boxes,
+                    hit=entry.phase.hit,
+                    swept_shapes=entry.swept_shapes,
+                    faction=entry.attacker.faction,
+                    owner_id=entry.attacker.id,
+                    can_contact=combat.can_contact,
+                    record_contact=_record_for(combat),
+                    attacker=entry.attacker,
+                    charge_mult=combat.charge_multiplier,
                 )
-
-        return tuple(candidates)
-
-    def _resolve_candidates(self, candidates: tuple[HitCandidate, ...]) -> None:
-        for candidate in candidates:
-            result = HitResolver.resolve(
-                attacker=candidate.attacker,
-                target=candidate.target,
-                hit=candidate.hit,
-                charge_multiplier=candidate.charge_multiplier,
             )
-            if not (result.applied or result.guarded):
-                continue
+        return tuple(boxes)
 
-            candidate.attacker.combat.record_contact(candidate.target.id)
-            self.metrics.contacts += 1
-            if result.guarded:
-                kind = "guard"
-                if result.parried:
-                    kind = "parry"
-                elif result.guard_broken:
-                    kind = "break"
-                self.guard_events.append(GuardEvent(kind, candidate.target))
-                # Parry-stun: count consecutive perfect parries received by attacker
-                if result.parried and isinstance(candidate.attacker, Enemy):
-                    attacker = candidate.attacker
-                    attacker.parries_taken += 1
-                    if (
-                        attacker.parry_stun_threshold is not None
-                        and attacker.parries_taken >= attacker.parry_stun_threshold
-                    ):
-                        attacker.state_machine.change_state(
-                            DIZZY_STATE, force=True, duration=attacker.parry_stun_duration
-                        )
-                        attacker.parries_taken = 0
-                        self.guard_events.append(GuardEvent("stun", candidate.attacker))
-            magnitude = (
-                pygame.math.Vector2(candidate.hit.knockback.power).length()
-                * candidate.charge_multiplier
-            )
-            self.impact = max(self.impact, magnitude)
-            hitstop_duration = (
-                CombatSettings.HITSTOP_BASE
-                + candidate.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
-                + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
-            )
-            if result.parried:
-                hitstop_duration = max(hitstop_duration, GuardSettings.PARRY_HITSTOP)
-            self.hit_stop_timer = max(self.hit_stop_timer, hitstop_duration)
+    def _collect_ready(self, combatants: tuple[Combatant, ...]) -> list[_ReadyAttacker]:
+        return [
+            entry for attacker in combatants if (entry := _attacker_ready(attacker)) is not None
+        ]
 
-            # Reset consecutive parry counter when attacker deals real HP damage
-            if result.applied and hasattr(candidate.attacker, "parries_taken"):
-                candidate.attacker.parries_taken = 0
+    def _resolve_hit_vs_hit(self, ready: list[_ReadyAttacker]) -> tuple[set[int], set[int]]:
+        losers: set[int] = set()
+        clashed: set[int] = set()
+        for index_a in range(len(ready)):
+            for index_b in range(index_a + 1, len(ready)):
+                entry_a = ready[index_a]
+                entry_b = ready[index_b]
+                if entry_a.attacker.faction == entry_b.attacker.faction:
+                    continue
+                if id(entry_a.attacker) in clashed or id(entry_b.attacker) in clashed:
+                    continue
+                if not _hitbox_pairs_overlap(entry_a, entry_b):
+                    continue
+                self.metrics.overlaps += 1
+                pa = entry_a.phase.hit.priority
+                pb = entry_b.phase.hit.priority
+                if pa == pb:
+                    if entry_a.phase.hit.clash != "clash":
+                        continue
+                    entry_a.attacker.combat.cancel_attack()
+                    entry_b.attacker.combat.cancel_attack()
+                    clashed.add(id(entry_a.attacker))
+                    clashed.add(id(entry_b.attacker))
+                    self.guard_events.append(GuardEvent("clash", entry_a.attacker))
+                    self.guard_events.append(GuardEvent("clash", entry_b.attacker))
+                    self.hit_stop_timer = max(self.hit_stop_timer, CombatSettings.HITSTOP_BASE)
+                    self.last_clash = _clash_point(entry_a.swept_boxes, entry_b.swept_boxes)
+                elif pa > pb:
+                    entry_b.attacker.combat.cancel_attack()
+                    losers.add(id(entry_b.attacker))
+                else:
+                    entry_a.attacker.combat.cancel_attack()
+                    losers.add(id(entry_a.attacker))
+        return losers, clashed
 
     def update_timer(self, delta_time: float) -> None:
         """Advance the global hit-stop timer."""

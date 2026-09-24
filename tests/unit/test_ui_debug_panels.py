@@ -79,6 +79,23 @@ def test_performance_panel_includes_frame_time(ui_manager: UIManager) -> None:
     assert ui_manager.renderer.debug_font.get_height() > 0
 
 
+def test_performance_panel_reports_real_cache_size() -> None:
+    ui = UIManager(pygame.Surface((640, 480)))
+    ui.renderer.render_text("cache-probe", ui.renderer.debug_font, (255, 255, 255))
+
+    ui.draw_performance_panel(
+        fps=60.0,
+        sprite_count=0,
+        combat_count=0,
+        entity_count=0,
+        collision_count=0,
+        hit_stop=0.0,
+        spawn_cooldown=0.0,
+    )
+
+    assert ui.renderer.text_cache_stats["entries"] > 1
+
+
 def test_performance_panel_defaults_backward_compatible(ui_manager: UIManager) -> None:
     # New params are optional: the historic call stays valid.
     ui_manager.draw_performance_panel(

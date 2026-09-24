@@ -195,8 +195,14 @@ def build_respawn_level() -> Level:
 # 2000 -> 1500, which moves vy from tick 1 in every scenario. Proven the
 # sole cause: reverting only GRAVITY reproduces the three digests above
 # bit-identically, so no other pipeline change drifted these observables.
+# Re-captured RIDE for the locomotion feature (commit "locomotion: 3-tier
+# player walk/run states + enemy patrol_speed"): enemies now cruise at
+# patrol_speed (chase_speed * 0.5 by default) instead of chase_speed while
+# patrolling, which shifts goblin/slime positions from tick 1 onward.  The
+# other two scenarios do not observe patrol translation (enemies either
+# chase immediately or leave the frame of interest), so they stay valid.
 PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
-RIDE_DIGEST = "c9671a0de78ddc89437b4ace4593797056fe259e5a8e43730d14f92d961aaf06"
+RIDE_DIGEST = "c0cc9f89a96a035a4262edc744a3c754179d7ee9f7af71bbf9679c6fb5811057"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

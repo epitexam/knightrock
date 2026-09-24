@@ -10,7 +10,7 @@ capabilities, implementing the same public interface.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pygame
 
@@ -18,8 +18,10 @@ from src.combat.attack_state import AttackStateMachine, AttackStateSnapshot
 from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
 from src.combat.combatant_protocol import Combatant
 from src.combat.combo_tracker import ComboTracker
+from src.combat.determinism import GeometryDesyncError, geometry_checksum
 from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
+from src.combat.shapes import ShapePose, SweptShape
 
 
 @dataclass
@@ -38,8 +40,8 @@ class CombatSnapshot:
         Current combo count.
     combo_timer : float
         Remaining time for the combo window.
-    air_combo_count : int
-        Air-juggle hits in the current window (Phase 5 #4).
+    geometry_checksum : str
+        Canonical digest of the live offensive rectangles.
     """
 
     attack_state: AttackStateSnapshot
@@ -50,6 +52,7 @@ class CombatSnapshot:
     cooldowns: dict[str, float]
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
+    geometry_checksum: str = field(default="", compare=False)
 
 
 class CombatComponent:
@@ -128,6 +131,30 @@ class CombatComponent:
     def attack_boxes(self) -> tuple[pygame.FRect, ...]:
         """Every live offensive rectangle: primary box first, then extras."""
         return self.hitbox.rects
+
+    @property
+    def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-box swept rectangles (captured origin union current)."""
+        return self.hitbox.swept_rects
+
+    @property
+    def attack_shapes(self) -> tuple[ShapePose, ...]:
+        """Live advanced offensive shapes."""
+        return self.hitbox.shapes
+
+    @property
+    def swept_attack_shapes(self) -> tuple[SweptShape, ...]:
+        """Per-shape boundary/current pairs for advanced CCD."""
+        return self.hitbox.swept_shapes
+
+    @property
+    def attack_anchors(self) -> tuple[tuple[float, float], ...]:
+        """Resolved anchor points corresponding to live attack shapes."""
+        return self.hitbox.anchors
+
+    def capture_attack_origin(self) -> None:
+        """Freeze the live offensive geometry as the next tick's sweep origin."""
+        self.hitbox.capture_origin()
 
     @property
     def current_phase(self) -> PhaseDefinition | None:
@@ -243,6 +270,13 @@ class CombatComponent:
         self._cooldowns[name] = definition.cooldown
         self.combo.on_attack_started(definition.combo_reset)
 
+        # P1 starter seed (D1): all starts happen during ``Entity.update``,
+        # i.e. AFTER the tick-frontier capture, so without seeding ``prev``
+        # here the first ACTIVE tick would stay discrete. Position the
+        # startup frame-0 geometry in the pool, then copy it as origin.
+        self.sync_attack_box()
+        self.hitbox.capture_origin()
+
         return True
 
     def start_charge(self, name: str) -> bool:
@@ -317,6 +351,11 @@ class CombatComponent:
         self.hitbox.clear()
         self.charging.cancel()
 
+    def cancel_attack(self) -> None:
+        self.state.end()
+        self.hitbox.clear()
+        self.charging.cancel()
+
     def save_state(self) -> CombatSnapshot:
         """Capture the full combat state for a rollback frame.
 
@@ -334,6 +373,7 @@ class CombatComponent:
             cooldowns=dict(self._cooldowns),
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
+            geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
@@ -350,7 +390,20 @@ class CombatComponent:
         self.combo.restore(snapshot.combo_count, snapshot.combo_timer, snapshot.air_combo_count)
         self._cooldowns = dict(snapshot.cooldowns)
         self.charging.load_state(snapshot.charge_state)
+        # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
+        # at the next frontier capture; forgetting it here keeps the restore
+        # deterministic (never read stale geometry across a load).
+        self.hitbox.clear_origin()
         self.sync_attack_box()
+
+    def verify_geometry_checksum(self, expected: str) -> None:
+        """Raise when live offensive geometry differs from a snapshot digest."""
+        actual = geometry_checksum(self.attack_boxes, self.attack_shapes)
+        if expected and actual != expected:
+            raise GeometryDesyncError(
+                "combat geometry checksum mismatch after rollback: "
+                f"expected {expected}, got {actual}"
+            )
 
     def update(self, delta_time: float) -> None:
         """Tick all combat sub-systems.
@@ -411,6 +464,10 @@ class NullCombatComponent:
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
         self.attack_boxes: tuple[pygame.FRect, ...] = ()
+        self.swept_attack_boxes: tuple[pygame.FRect, ...] = ()
+        self.attack_shapes: tuple[ShapePose, ...] = ()
+        self.swept_attack_shapes: tuple[SweptShape, ...] = ()
+        self.attack_anchors: tuple[tuple[float, float], ...] = ()
         self.charge_multiplier: float = 1.0
         self.hurt_timer: float = 0.0
         self.state: _NullAttackState = _NullAttackState()
@@ -475,10 +532,16 @@ class NullCombatComponent:
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """No-op."""
 
+    def cancel_attack(self) -> None:
+        """No-op."""
+
     def update(self, delta_time: float) -> None:
         """No-op."""
 
     def sync_attack_box(self) -> None:
+        """No-op."""
+
+    def capture_attack_origin(self) -> None:
         """No-op."""
 
     def can_contact(self, target_id: str) -> bool:
@@ -523,15 +586,22 @@ class NullCombatComponent:
             combo_timer=0.0,
             cooldowns={},
             charge_state=ChargeSnapshot(),
+            geometry_checksum=geometry_checksum(()),
         )
 
     def load_state(self, snapshot: CombatSnapshot) -> None:
         """No-op."""
 
+    def verify_geometry_checksum(self, expected: str) -> None:
+        """Validate the empty null combat geometry."""
+        del expected
+
 
 class _NullHitboxManager:
     rect = None
     rects: tuple = ()
+    prev_rects: tuple = ()
+    swept_rects: tuple = ()
 
     def clear(self) -> None:
         """No-op."""

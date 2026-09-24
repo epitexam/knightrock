@@ -10,6 +10,7 @@ from src.application.events import EventBus, LevelStarted
 from src.core.level.level_data import LevelData
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
+from src.core.level.systems.contact_system import ContactSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -119,17 +120,24 @@ class Level:
         # and re-exposes the state they hold, while the gameplay loop owns the
         # order in which they run (audit F1.6).  Each one takes its
         # collaborators explicitly, so it stays independently testable.
+        # P4.1: one ContactSystem instance shared by all four offensive
+        # producers (melee via GameplayLoop, projectiles, hazards, contact).
+        self.contact_system = ContactSystem()
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
         self.hazard_system = HazardSystem(self.groups)
-        self.contact_damage_system = ContactDamageSystem()
-        self.hazard_damage_system = HazardDamageSystem()
+        self.contact_damage_system = ContactDamageSystem(contact_system=self.contact_system)
+        self.hazard_damage_system = HazardDamageSystem(contact_system=self.contact_system)
         self.respawn_system = PlayerRespawnSystem(self.player, level_data)
         self.progression_system = ProgressionSystem(self.groups.exit_sprites)
         self.camera_system = CameraSystem(self.camera)
         self.notification_system = NotificationSystem(events, level_id, level_data)
         self.tick_system = TickSystem()
-        self.projectile_system = ProjectileSystem(self.groups, spatial_hash=self.spatial_hash)
+        self.projectile_system = ProjectileSystem(
+            self.groups,
+            spatial_hash=self.spatial_hash,
+            contact_system=self.contact_system,
+        )
         self.spawn_system.projectile_system = self.projectile_system
 
         self.gameplay_loop = GameplayLoop(
@@ -145,6 +153,7 @@ class Level:
             notification_system=self.notification_system,
             tick_system=self.tick_system,
             projectile_system=self.projectile_system,
+            contact_system=self.contact_system,
         )
 
         if self.events is not None:
@@ -196,6 +205,12 @@ class Level:
         the gameplay loop's pipeline.
         """
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
+        if Debug.is_enabled():
+            renderer = getattr(self, "renderer", None)
+            if renderer is not None:
+                renderer.ui_manager.world_ui.update_metrics(
+                    self.gameplay_loop.contact_system.tick_metrics
+                )
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback (Phase 3 #3).
@@ -301,10 +316,22 @@ class Level:
             self.groups, debug_enabled, dt=frame_time / 1000.0
         )
         self.renderer.draw_health_bars(self.groups.entity_sprites)
+        for event in self.gameplay_loop.combat_system.guard_events:
+            if event.kind == "clash":
+                self.renderer.ui_manager.world_ui.note_clash(
+                    self.gameplay_loop.combat_system.last_clash
+                )
+        self.renderer.ui_manager.world_ui.draw_metrics_panel(
+            player=self.player,
+            hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
+        )
 
         if not debug_enabled:
             return dirty
 
+        # Bars painted over the debug overlays: stamp the clash ring again so
+        # a clash never hides behind an HP bar (this stamp spends no TTL).
+        self.renderer.ui_manager.world_ui.stamp_clash_marker(self.renderer.camera)
         self.renderer.draw_debug_panels(
             player=self.player,
             fps=fps,

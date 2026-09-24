@@ -9,9 +9,20 @@ UX rules (debug readability pass):
   every flag in its semantic color. Rows never collapse into one running
   sentence; static geometry (hazards, platforms, exits) gets an outline
   only — no text.
-- Vertical stack (debug): entity, then its health bar, then its label card —
-  the card floats above the bar and never covers it. Near the top of the
-  screen the bar flips below the entity and the card takes the freed space.
+- Vertical stack (debug): entity, then its health bar, then one attack header
+  chip per attacker (gold name + phase:frame + badges, timeline bar tucked
+  underneath, leader line to the first attack box), then its label card —
+  each tier reserves room for the tiers painted below it, so no tier covers
+  another. Near the top of the screen the bar flips below the entity, the
+  header follows it, and the card takes the freed space above.
+- Attack box indices ride their own box (a haloed solid/hollow dot in the
+  box corner) instead of floating in the tier stack: one header chip per
+  attacker, no constellation of pills.
+- Hurtbox zones read by shape, never by text: empty zones keep the legacy
+  thin green outline; boosted zones (mult != 1.0) add a translucent fill + a
+  thicker outline in the zone color; guarded zones (tags) draw a dashed seal.
+  Names, mults and tags live on the label card's ``ZONE`` row, never in the
+  world — zero glyphs to overlap, whatever the zone count.
 - Velocity vectors are arrows, not hairlines: a tapered shaft, a filled
   triangular head, a pivot dot on the entity and a dark rim so the silhouette
   survives a bright sky. The head length is clamped, and a minimum drawn
@@ -21,22 +32,39 @@ UX rules (debug readability pass):
   freshness window), gold on a parry, yellow for locomotion.
 - Labels never stack: each label dodges upward (then below its entity) to a
   free slot, and is dropped rather than overdrawn when no slot is left.
+- Health bars and attack annotations are placement obstacles too: the
+  placer keeps label cards clear of everything drawn between the entity
+  and its card, so neither a bar nor a timeline can end up painted over a
+  card drawn the same frame — and annotation text dodges the bar painted
+  after it. Every world-space annotation clamps back inside the display
+  instead of clipping at the screen edge.
+- The COMBAT counter panel joins the screen-space debug column flow — it
+  leads it, right under the pinned PERFORMANCE gauge — instead of blitting
+  at a fixed spot where side panels could overdraw it; it stays gated
+  behind ``Debug``.
 - Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
   F4 statics) via :meth:`WorldUI.toggle`, wired in ``GameplayScene``.
 """
 
+import math
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 import pygame
 import pygame.gfxdraw
 from pygame.math import Vector2
 
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
+from src.core.settings import Debug
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
 from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+
+if TYPE_CHECKING:
+    from src.combat.frame_data import PhaseDefinition
 
 #: Separator between tokens inside one label row (``HP``/``ATK``/``FX``).
 #: ``Colors.grey`` (80,85,95) is unreadable on the dark card fill, so labels
@@ -112,6 +140,11 @@ LABEL_NUDGE_PX = 28
 #: before being dropped: ~2 label heights of travel is plenty readable.
 LABEL_MAX_NUDGES = 6
 
+#: Extra padding between a placed label card and any health bar rectangle:
+#: the placer treats bars as obstacles, this keeps a breathing margin on
+#: top of the exact rect intersection test.
+LABEL_BAR_CLEARANCE = 2
+
 #: Toggleable overlay layers (F1-F5).
 OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics", "panels")
 
@@ -127,13 +160,100 @@ HEALTH_BAR_LABEL_GAP = 4
 #: between them (statics, projectiles, or labels layer with bars hidden).
 LABEL_ANCHOR_GAP = 8
 
+#: Attack-box outline detail: dashed sweep ghost width (px) and motion arrow
+#: head size (px).
+SWEEP_GHOST_WIDTH = 1
+SWEEP_ARROW_HEAD = 5
+
+#: Smallest per-tick motion that still draws a sweep ghost (px). Below the
+#: P1 geometry threshold on purpose: the ghost is render-only, collision
+#: thresholds in CombatSettings stay untouched.
+SWEEP_DISPLAY_MIN_PX = 1.0
+
+#: Compact badge per hit height: full names would cover the box.
+HIT_HEIGHT_BADGES = {
+    "high": "HIGH",
+    "mid": "MID",
+    "low": "LOW",
+    "overhead": "OVH",
+}
+
+#: Hurtbox zone styling (world px): empty zones (no mult, no tags) keep the
+#: legacy thin green outline; boosted zones (mult != 1.0) add a translucent
+#: fill + a thicker outline in the zone color; guarded/armored zones (tags)
+#: draw a dashed seal in the zone color. Names and mults never paint in the
+#: world — the zone card row carries them.
+ZONE_FILL_ALPHA = 48
+ZONE_OUTLINE_WIDTH = 1
+ZONE_BOOST_OUTLINE_WIDTH = 2
+ZONE_SEAL_DASH = 4
+ZONE_SEAL_GAP = 3
+ZONE_SEAL_WIDTH = 2
+
+#: Offensive outline by combat phase: startup telegraphs gold, the active
+#: window stays orange, recovery fades to grey.
+PHASE_OUTLINE_COLORS = {
+    "startup": Colors.gold,
+    "active": Colors.debug_attack_box,
+    "recovery": Colors.grey,
+}
+
+#: Attack header chip geometry (world px): gap between the glyph strip and the
+#: timeline bar tucked under it, the phase segments a touch taller than the
+#: legacy 4 px hairline so progress reads at range, and a thin divider rule
+#: between the chip edge and the leader line landing point.
+ATTACK_HEADER_TEXT_GAP = 4
+TIMELINE_BAR_HEIGHT = 6
+ATTACK_HEADER_RULE_GAP = 2
+
+#: Phase timeline length: per-phase-segment widths per frame, and the cap in
+#: world px. A wide attack shouldn't swallow the screen — the bar clamps and
+#: the segments shrink to fit, progress stays proportional.
+TIMELINE_PX_PER_FRAME = 3
+TIMELINE_MAX_WIDTH = 200
+
+#: Vertical gap between the stacked debug tiers around an entity (px):
+#: sprite -> health bar -> attack annotations (timeline, zone tags, badges)
+#: -> label card. Every tier reserves this much room for the tier above it,
+#: so the health bar painted after the overlays can never cover a timeline,
+#: and a card can never cover an annotation drawn before it.
+ANNOTATION_TIER_GAP = 4
+
+#: Upper bound on the dodge steps an annotation may take upward to clear
+#: the tiers below it before it is drawn anyway at the screen edge.
+ANNOTATION_MAX_DODGES = 16
+
+#: Shared dark fill of the annotation pills, and the padding inside the
+#: attack header chip. The header keeps the card-style backdrop (glyph row +
+#: timeline on one card); in-situ tags (zone names, box dots) use the halo
+#: instead — they ride their own box, not the stack above the sprite.
+ANNOTATION_CHIP_PAD = 3
+ANNOTATION_CHIP_FILL = (18, 20, 24, 210)
+
+#: Live combat counters update cadence: refresh every N debug ticks.
+METRICS_TICK_DIVISOR = 10
+
+#: Lifetime (s) of the world-space clash marker and its ring radius (px).
+CLASH_MARKER_LIFETIME = 0.35
+CLASH_MARKER_RADIUS = 18
+
+#: Per-frame TTL decay at the fixed 60 Hz debug cadence.
+CLASH_TICK_S = 1.0 / 60.0
+
+#: Unified COMBAT panel: collected once per metrics tick, drawn by the
+#: debug panel flow (never blitted at a fixed spot in the world layer).
+COMBAT_PANEL_TITLE = "COMBAT"
+
 #: One label row: ``(text, color)`` tokens laid out left to right.
 _Segments = list[list[tuple[str, Color]]]
 
 #: A collected label: sort key, colored rows, faction accent, screen
 #: anchor, clearance above (bar above the entity) and below (bar flipped
-#: under the entity near the top of the screen).
-_LabelRequest = tuple[tuple[int, float, float], _Segments, Color, pygame.FRect, int, int]
+#: under the entity near the top of the screen), and the sprite itself so
+#: the placer can treat its health bar as an obstacle.
+_LabelRequest = tuple[
+    tuple[int, float, float], _Segments, Color, pygame.FRect, int, int, pygame.sprite.Sprite
+]
 
 
 def arrow_outline(
@@ -174,6 +294,19 @@ def join_flag_tokens(flags: list[tuple[str, Color]]) -> list[tuple[str, Color]]:
     return joined
 
 
+#: Box-index dot geometry (world px): disc radius, dark rim width, white core
+#: radius for the hollow (non-first) dots, and inset inside the box corner.
+#: The dots are vector-drawn (filled circle + rim), never font glyphs: a
+#: ``●``/``○`` glyph at 14 px renders as a blurry blob on most systems.
+BOX_DOT_RADIUS = 5
+BOX_DOT_RIM_WIDTH = 2
+BOX_DOT_CORE_RADIUS = 2
+BOX_DOT_INSET = 4
+
+#: Dark rim around the box-index dots: the same card-dark as the halo rings.
+BOX_DOT_RIM: Color = (14, 16, 20)
+
+
 class WorldUI:
     """Render health bars and optional world-space diagnostics."""
 
@@ -181,6 +314,24 @@ class WorldUI:
         self.renderer = renderer
         self.display_surface = renderer.display_surface
         self.layers: dict[str, bool] = dict.fromkeys(OVERLAY_LAYERS, True)
+        self.metrics_text: tuple[str, ...] = ()
+        self._metrics_whiffs = 0
+        #: Colored ``(text, color)`` lines of the unified COMBAT panel,
+        #: refreshed by :meth:`draw_metrics_panel`, drawn by the debug flow.
+        self.combat_panel_lines: list[tuple[str, Color]] = []
+        self._metrics_tick = 0
+        self.clash_point: tuple[float, float] | None = None
+        self._clash_ttl: float = 0.0
+        #: Health-bar rects seen on the previous overlay frame: labels dodge
+        #: them too, since bars paint after cards but belong to the same
+        #: frame's stack (entity -> bar -> card).
+        self._previous_bar_obstacles: list[pygame.Rect] = []
+        #: Attack annotation rects drawn this frame, keyed by sprite id:
+        #: the band label cards reserve via ``_label_clearances``.
+        self._annotation_rects: dict[int, list[pygame.Rect]] = {}
+        #: Every annotation rect drawn this frame, flattened: placement
+        #: obstacles for ``_draw_labels`` (any card may overlap any band).
+        self._annotation_obstacles: list[pygame.Rect] = []
 
     def toggle(self, layer: str) -> bool:
         """Flip an overlay layer, returning its new state."""
@@ -190,8 +341,17 @@ class WorldUI:
         return self.layers[layer]
 
     def draw_debug_overlays(
-        self, all_sprites: Iterable[pygame.sprite.Sprite], camera: Camera
+        self,
+        all_sprites: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        delta_time: float | None = None,
     ) -> None:
+        # Fresh annotation bookkeeping: the rects drawn this frame feed both
+        # the card obstacles and the card clearances.
+        self._annotation_rects = {}
+        self._annotation_obstacles = []
+        if not any(self.layers[name] for name in ("boxes", "labels", "velocities", "statics")):
+            return
         viewport = self._viewport(camera)
         screen_width = self.display_surface.get_width()
 
@@ -201,7 +361,7 @@ class WorldUI:
         for sprite in all_sprites:
             if type(sprite) is pygame.sprite.Sprite:
                 continue  # static tiles: ~900/level, nothing useful to show
-            reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
+            reference = self._debug_reference(sprite)
             if reference is None or not viewport.colliderect(reference):
                 continue  # culled: off-screen, not worth a single pixel
             is_static = getattr(sprite, "hitbox", None) is None
@@ -211,21 +371,56 @@ class WorldUI:
                 self._draw_boxes(sprite, camera)
             if self.layers["velocities"]:
                 self._draw_velocity(sprite, camera)
-            if not self.layers["labels"] or is_static:
-                continue
-            segments = self._label_segments(sprite)
-            if segments is None:
-                continue
-            anchor = camera.apply(reference)
-            priority = self._label_priority(sprite, anchor)
-            above_lift, below_drop = self._label_clearances(sprite, anchor)
-            requests.append(
-                (priority, segments, self._label_color(sprite), anchor, above_lift, below_drop)
-            )
+            request = self._label_request(sprite, reference, is_static, camera)
+            if request is not None:
+                requests.append(request)
 
         if requests:
             requests.sort(key=lambda request: request[0])
-            self._draw_labels(requests, screen_width)
+            self._draw_labels(requests, screen_width, self.display_surface.get_height())
+
+        self._draw_clash_marker(camera, delta_time)
+
+    def _label_request(
+        self,
+        sprite: pygame.sprite.Sprite,
+        reference: pygame.FRect,
+        is_static: bool,
+        camera: Camera,
+    ) -> _LabelRequest | None:
+        if not self.layers["labels"] or is_static:
+            return None
+        segments = self._label_segments(sprite)
+        if segments is None:
+            return None
+        anchor = camera.apply(reference)
+        priority = self._label_priority(sprite, anchor)
+        above_lift, below_drop = self._label_clearances(sprite, anchor)
+        return (
+            priority,
+            segments,
+            self._label_color(sprite),
+            anchor,
+            above_lift,
+            below_drop,
+            sprite,
+        )
+
+    @staticmethod
+    def _debug_reference(sprite: pygame.sprite.Sprite) -> pygame.FRect | None:
+        reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
+        if reference is None:
+            return None
+        combat = getattr(sprite, "combat", None)
+        rectangles = [pygame.FRect(reference)]
+        for name in ("attack_boxes", "swept_attack_boxes"):
+            values = getattr(combat, name, ())
+            if isinstance(values, tuple):
+                rectangles.extend(pygame.FRect(value) for value in values if value is not None)
+        anchors = getattr(combat, "attack_anchors", ())
+        if isinstance(anchors, tuple):
+            rectangles.extend(pygame.FRect(anchor[0], anchor[1], 0.0, 0.0) for anchor in anchors)
+        return rectangles[0].unionall(rectangles[1:]) if len(rectangles) > 1 else rectangles[0]
 
     @staticmethod
     def _viewport(camera: Camera) -> pygame.Rect:
@@ -286,14 +481,195 @@ class WorldUI:
             return TEXT_WARN
         return TEXT_OK
 
+    @staticmethod
+    def _hurtbox_zones(
+        sprite: pygame.sprite.Sprite, collider: pygame.FRect
+    ) -> tuple[pygame.FRect, ...]:
+        """Hurt outlines to draw: multi-zone list first, legacy single fallback.
+
+        Zones identical to the collider are skipped (the collider outline
+        already covers them); a zone equal to the collider would otherwise
+        double-draw the same rectangle.
+        """
+        zones = getattr(sprite, "hurtboxes", None)
+        rects = tuple(zones) if zones is not None else (getattr(sprite, "hurtbox", None),)
+        return tuple(zone for zone in rects if zone is not None and zone is not collider)
+
+    def update_metrics(self, metrics: object) -> None:
+        self._metrics_tick += 1
+        if self._metrics_tick % METRICS_TICK_DIVISOR:
+            return
+        pairs = int(getattr(metrics, "pairs_tested", 0) or 0)
+        overlaps = int(getattr(metrics, "overlaps", 0) or 0)
+        contacts = int(getattr(metrics, "contacts", 0) or 0)
+        self._metrics_whiffs = max(0, pairs - overlaps)
+        self.metrics_text = (
+            f"pairs {pairs}",
+            f"overlaps {overlaps}",
+            f"contacts {contacts}",
+        )
+
+    def note_clash(self, point: tuple[float, float] | None) -> None:
+        """Record a fresh clash point (world px) to flash in the world."""
+        if point is not None:
+            self.clash_point = point
+            self._clash_ttl = CLASH_MARKER_LIFETIME
+
+    def draw_metrics_panel(
+        self,
+        metrics: object | None = None,
+        player: object | None = None,
+        hit_stop: float | None = None,
+    ) -> None:
+        """Refresh the cached COMBAT lines (drawn later by the debug flow).
+
+        The counters are cached once per metrics tick into
+        ``combat_panel_lines`` and blitted with the other screen panels by
+        :meth:`UIManager.draw_combat_panel`, so side panels can never stack
+        over them. Debug-only: nothing is collected when ``DEBUG`` is off.
+        """
+        if not Debug.is_enabled():
+            return
+        if metrics is not None:
+            self.update_metrics(metrics)
+        if not self.metrics_text:
+            return
+        lines: list[tuple[str, Color]] = [
+            *((line, Colors.off_white) for line in self.metrics_text),
+            (f"whiffs {self._metrics_whiffs}", TEXT_MUTED),
+        ]
+        attack = self._live_attack_text(player)
+        if attack is not None:
+            lines.append((f"atk {attack}", Colors.gold))
+        if hit_stop:
+            lines.append((f"hit-stop {hit_stop:.2f}s", TEXT_WARN))
+        if self._clash_ttl > 0.0:
+            lines.append(("CLASH", TEXT_CRIT))
+        self.combat_panel_lines = lines
+
+    def combat_panel(self) -> tuple[str, list[tuple[str, Color]]] | None:
+        """``(title, lines)`` for the debug panel flow, or ``None`` when empty."""
+        if not self.combat_panel_lines:
+            return None
+        return (COMBAT_PANEL_TITLE, self.combat_panel_lines)
+
+    @staticmethod
+    def _live_attack_text(player: object | None) -> str | None:
+        """``name substate frame`` for the player's running attack, if any."""
+        combat = getattr(player, "combat", None)
+        state = getattr(combat, "state", None)
+        name = getattr(state, "attack_name", None)
+        if not name:
+            return None
+        sub_state = getattr(state, "sub_state", "")
+        phase = getattr(sub_state, "value", sub_state)
+        frame = getattr(state, "frame_counter", 0)
+        return f"{name} {phase} f{frame}"
+
+    def _draw_clash_marker(self, camera: Camera, delta_time: float | None = None) -> None:
+        """Expanding ring at the last clash point; fades over its lifetime."""
+        if self._clash_ttl <= 0.0 or self.clash_point is None:
+            return
+        self._clash_ttl -= CLASH_TICK_S if delta_time is None else max(0.0, delta_time)
+        self._paint_clash_ring(camera)
+
+    def stamp_clash_marker(self, camera: Camera) -> None:
+        """Repaint the clash ring after the health bars, without decaying it.
+
+        The health bars paint after the debug overlays; this second stamp
+        lands on top of them so a clash ring is never hidden behind a bar.
+        """
+        if self._clash_ttl <= 0.0 or self.clash_point is None:
+            return
+        self._paint_clash_ring(camera)
+
+    def _paint_clash_ring(self, camera: Camera) -> None:
+        point = self.clash_point
+        if point is None:
+            return
+        anchor = camera.apply(pygame.FRect(point[0] - 1, point[1] - 1, 2, 2))
+        center = (round(anchor.centerx), round(anchor.centery))
+        progress = 1.0 - self._clash_ttl / CLASH_MARKER_LIFETIME
+        radius = round(CLASH_MARKER_RADIUS * (0.5 + progress))
+        pygame.draw.circle(self.display_surface, Colors.gold, center, radius, width=2)
+        arm = 5
+        pygame.draw.line(
+            self.display_surface,
+            Colors.white,
+            (center[0] - arm, center[1] - arm),
+            (center[0] + arm, center[1] + arm),
+            width=1,
+        )
+        pygame.draw.line(
+            self.display_surface,
+            Colors.white,
+            (center[0] - arm, center[1] + arm),
+            (center[0] + arm, center[1] - arm),
+            width=1,
+        )
+
+    def _clamp_annotation(self, rect: pygame.Rect) -> pygame.Rect:
+        """Shift an annotation rect back inside the display (never clipped)."""
+        if rect.right > self.display_surface.get_width():
+            rect.right = self.display_surface.get_width()
+        if rect.left < 0:
+            rect.left = 0
+        if rect.top < 0:
+            rect.top = 0
+        return rect
+
+    def _dodge_annotation(self, rect: pygame.Rect, obstacles: Iterable[pygame.Rect]) -> pygame.Rect:
+        """Shift ``rect`` up until it clears every tier drawn below/behind it.
+
+        Each step parks the rect ``ANNOTATION_TIER_GAP`` above the obstacle
+        it hit; a step always moves strictly upward, so the loop ends at
+        the screen edge where the rect is clamped and drawn anyway — a
+        cramped annotation beats a hidden one.
+        """
+        obstacles = list(obstacles)
+        for _ in range(ANNOTATION_MAX_DODGES):
+            hit = next((obstacle for obstacle in obstacles if rect.colliderect(obstacle)), None)
+            if hit is None:
+                break
+            rect.bottom = hit.top - ANNOTATION_TIER_GAP
+            if rect.top < 0:
+                rect.top = 0
+                break
+        return self._clamp_annotation(rect)
+
+    def _annotation_chip(
+        self,
+        label: pygame.Surface,
+        position: tuple[int, int],
+        obstacles: list[pygame.Rect] | None = None,
+    ) -> pygame.Rect:
+        """Draw a dark pill behind a little world annotation; return its rect.
+
+        The pill is sized around the glyph strip, dodges/clamps like any
+        other annotation tier, then paints the card-style fill + border
+        with the glyphs on top: tiny text stays legible on any sky instead
+        of floating as bare white writing.
+        """
+        rect = pygame.Rect(position[0], position[1], label.get_width(), label.get_height())
+        chip = rect.inflate(ANNOTATION_CHIP_PAD * 2, ANNOTATION_CHIP_PAD * 2)
+        if obstacles:
+            chip = self._dodge_annotation(chip, obstacles)
+        else:
+            chip = self._clamp_annotation(chip)
+        panel = pygame.Surface(chip.size, pygame.SRCALPHA)
+        pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
+        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
+        self.display_surface.blit(panel, chip.topleft)
+        self.display_surface.blit(
+            label, (chip.x + ANNOTATION_CHIP_PAD, chip.y + ANNOTATION_CHIP_PAD)
+        )
+        return chip
+
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
-        hurtbox = getattr(sprite, "hurtbox", None)
         combat = getattr(sprite, "combat", None)
-        attack_boxes = getattr(combat, "attack_boxes", None)
-        if attack_boxes is None:
-            legacy_box = getattr(combat, "attack_box", None)
-            attack_boxes = (legacy_box,) if legacy_box is not None else ()
+        attack_boxes = self._offensive_boxes(combat)
+        swept_boxes = self._swept_boxes(combat, len(attack_boxes))
 
         if collider is None:
             reference = getattr(sprite, "rect", None)
@@ -306,26 +682,69 @@ class WorldUI:
                     width=1,
                 )
             return
+        screen = camera.apply(collider)
+        # Tier stack for this entity: the health bar (painted after the
+        # overlays) plus every annotation already placed this frame. Each
+        # text annotation dodges the tiers below it, and is registered so
+        # the label cards reserve its band.
+        bar = self._health_bar_rect(sprite, screen)
+        tiers: list[pygame.Rect] = [bar] if bar is not None else []
+        annotations: list[pygame.Rect] = []
+        header_rect = self._attack_header_rect(sprite, collider, camera, [*tiers, *annotations])
+        if header_rect is not None:
+            annotations.append(header_rect)
         pygame.draw.rect(
             self.display_surface,
             self._hitbox_color(sprite),
             camera.apply(collider),
             width=1,
         )
-        if hurtbox is not None and hurtbox is not collider:
-            pygame.draw.rect(
-                self.display_surface,
-                Colors.debug_hurtbox,
-                camera.apply(hurtbox),
-                width=1,
+        # P2 multi-zone: shape tells the story, no text. Empty zones keep the
+        # legacy thin outline; boosted zones (mult != 1.0) add a translucent
+        # fill + a thicker outline; guarded zones (tags) draw a dashed seal.
+        # Names and mults live on the label card's zone row, never in the
+        # world — nothing to overlap, whatever the zone count.
+        zones = self._hurtbox_zones(sprite, collider)
+        mults = self._zone_mults(sprite, len(zones))
+        tags = self._zone_tags(sprite, len(zones))
+        for index, zone in enumerate(zones):
+            color = Colors.debug_hurtbox_zones[index % len(Colors.debug_hurtbox_zones)]
+            screen_zone = camera.apply(zone)
+            mult = mults[index] if index < len(mults) else 1.0
+            zone_tags = tags[index] if index < len(tags) else ()
+            if mult != 1.0:
+                fill = pygame.Surface(
+                    (max(1, int(screen_zone.width)), max(1, int(screen_zone.height))),
+                    pygame.SRCALPHA,
+                )
+                fill.fill((*color, ZONE_FILL_ALPHA))
+                self.display_surface.blit(fill, (screen_zone.x, screen_zone.y))
+                pygame.draw.rect(
+                    self.display_surface,
+                    color,
+                    screen_zone,
+                    width=ZONE_BOOST_OUTLINE_WIDTH,
+                )
+            else:
+                pygame.draw.rect(
+                    self.display_surface,
+                    color,
+                    screen_zone,
+                    width=ZONE_OUTLINE_WIDTH,
+                )
+            if zone_tags:
+                self._draw_zone_seal(screen_zone, color)
+        annotations.extend(
+            self._draw_offensive_boxes(
+                sprite,
+                collider,
+                combat,
+                attack_boxes,
+                swept_boxes,
+                camera,
+                [*tiers, *annotations],
             )
-        for attack_box in attack_boxes:
-            pygame.draw.rect(
-                self.display_surface,
-                Colors.debug_attack_box,
-                camera.apply(attack_box),
-                width=2,
-            )
+        )
         # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
         if float(getattr(sprite, "otg_timer", 0.0) or 0.0) > 0:
             pygame.draw.rect(
@@ -341,6 +760,377 @@ class WorldUI:
                 camera.apply(collider),
                 width=2,
             )
+        self._register_annotations(sprite, annotations)
+
+    def _register_annotations(self, sprite: pygame.sprite.Sprite, rects: list[pygame.Rect]) -> None:
+        """Record an entity's annotation rects for this frame.
+
+        The rects feed both the label-card obstacles (``_draw_labels``) and
+        the card clearances (``_label_clearances``), so a card reserves the
+        annotation band drawn between the entity and the card slot.
+        """
+        if not rects:
+            return
+        self._annotation_rects[id(sprite)] = list(rects)
+        self._annotation_obstacles.extend(rects)
+
+    @staticmethod
+    def _zone_mults(sprite: pygame.sprite.Sprite, count: int) -> tuple[float, ...]:
+        """Per-zone damage mults, neutral 1.0 past the known list."""
+        mults = getattr(sprite, "hurtbox_mult", None)
+        if not isinstance(mults, tuple):
+            return (1.0,) * count
+        values = tuple(float(mult) for mult in mults[:count])
+        return values + (1.0,) * (count - len(values))
+
+    @staticmethod
+    def _zone_tags(sprite: pygame.sprite.Sprite, count: int) -> tuple[tuple[str, ...], ...]:
+        """Per-zone invulnerability tags, empty past the known list."""
+        tags = getattr(sprite, "hurtbox_tags", None)
+        if not isinstance(tags, tuple):
+            return ((),) * count
+        values = tuple(tuple(zone) for zone in tags[:count])
+        return values + ((),) * (count - len(values))
+
+    def _draw_zone_seal(self, screen: pygame.FRect, color: Color) -> None:
+        """Dashed inset seal for guarded/armored zones (tags present)."""
+        x, y, w, h = screen.x, screen.y, screen.width, screen.height
+        inset = ZONE_BOOST_OUTLINE_WIDTH + 1
+        inner = pygame.FRect(x + inset, y + inset, max(0.0, w - inset * 2), max(0.0, h - inset * 2))
+        if inner.width <= 0 or inner.height <= 0:
+            return
+        step = ZONE_SEAL_DASH + ZONE_SEAL_GAP
+        cursor = inner.x
+        while cursor < inner.x + inner.width:
+            end = min(cursor + ZONE_SEAL_DASH, inner.x + inner.width)
+            pygame.draw.line(
+                self.display_surface, color, (cursor, inner.y), (end, inner.y), ZONE_SEAL_WIDTH
+            )
+            pygame.draw.line(
+                self.display_surface,
+                color,
+                (cursor, inner.y + inner.height),
+                (end, inner.y + inner.height),
+                ZONE_SEAL_WIDTH,
+            )
+            cursor += step
+        cursor = inner.y
+        while cursor < inner.y + inner.height:
+            end = min(cursor + ZONE_SEAL_DASH, inner.y + inner.height)
+            pygame.draw.line(
+                self.display_surface, color, (inner.x, cursor), (inner.x, end), ZONE_SEAL_WIDTH
+            )
+            pygame.draw.line(
+                self.display_surface,
+                color,
+                (inner.x + inner.width, cursor),
+                (inner.x + inner.width, end),
+                ZONE_SEAL_WIDTH,
+            )
+            cursor += step
+
+    @staticmethod
+    def _offensive_hit(combat: object) -> object | None:
+        phase = getattr(combat, "current_phase", None)
+        return getattr(phase, "hit", None)
+
+    def _offensive_badges(self, combat: object) -> tuple[str, ...]:
+        hit = self._offensive_hit(combat)
+        if hit is None:
+            return ()
+        badges: list[str] = []
+        shapes = self._offensive_shapes(combat)
+        if shapes:
+            badges.append(shapes[0].kind.value.upper())
+        priority = int(getattr(hit, "priority", 0) or 0)
+        if priority > 0:
+            badges.append(f"P{priority}")
+        if bool(getattr(hit, "unblockable", False)):
+            badges.append("UBL")
+        height = str(getattr(hit, "height", "mid") or "mid")
+        if height != "mid":
+            badges.append(HIT_HEIGHT_BADGES.get(height, height.upper()))
+        return tuple(badges)
+
+    def _offensive_outline(self, combat: object) -> Color:
+        state = getattr(combat, "state", None)
+        phase_name = getattr(getattr(state, "sub_state", None), "value", None)
+        if isinstance(phase_name, str):
+            return PHASE_OUTLINE_COLORS.get(phase_name, Colors.debug_attack_box)
+        return Colors.debug_attack_box
+
+    @staticmethod
+    def _offensive_boxes(combat: object) -> tuple:
+        boxes = getattr(combat, "attack_boxes", None)
+        if boxes is None:
+            legacy_box = getattr(combat, "attack_box", None)
+            return (legacy_box,) if legacy_box is not None else ()
+        return tuple(boxes)
+
+    @staticmethod
+    def _box_moved(swept: pygame.FRect, current: pygame.FRect) -> bool:
+        swept_center = Vector2(swept.centerx, swept.centery)
+        current_center = Vector2(current.centerx, current.centery)
+        if swept_center.distance_to(current_center) >= SWEEP_DISPLAY_MIN_PX:
+            return True
+        return (
+            abs(swept.width - current.width) >= SWEEP_DISPLAY_MIN_PX
+            or abs(swept.height - current.height) >= SWEEP_DISPLAY_MIN_PX
+        )
+
+    @staticmethod
+    def _swept_boxes(combat: object, count: int) -> tuple:
+        swept = getattr(combat, "swept_attack_boxes", None)
+        if callable(swept):
+            boxes = tuple(swept())
+            if len(boxes) == count:
+                return boxes
+        return (None,) * count
+
+    @staticmethod
+    def _swept_shapes(combat: object, count: int) -> tuple[SweptShape | None, ...]:
+        shapes = getattr(combat, "swept_attack_shapes", ())
+        if not isinstance(shapes, tuple) or len(shapes) != count:
+            return (None,) * count
+        return shapes
+
+    @staticmethod
+    def _attack_anchors(combat: object) -> tuple[tuple[float, float], ...]:
+        anchors = getattr(combat, "attack_anchors", ())
+        return tuple(anchors) if isinstance(anchors, tuple) else ()
+
+    @staticmethod
+    def _offensive_shapes(combat: object) -> tuple[ShapePose, ...]:
+        shapes = getattr(combat, "attack_shapes", ())
+        return tuple(shapes) if isinstance(shapes, tuple) else ()
+
+    def _draw_shape_once(
+        self,
+        shape: ShapePose,
+        color: Color,
+        camera: Camera,
+        width: int,
+    ) -> None:
+        center = camera.apply(
+            pygame.FRect(
+                shape.position[0] - shape.size[0] / 2.0,
+                shape.position[1] - shape.size[1] / 2.0,
+                shape.size[0],
+                shape.size[1],
+            )
+        ).center
+        if shape.kind is ShapeKind.CIRCLE:
+            pygame.draw.circle(self.display_surface, color, center, int(shape.size[0] / 2.0), width)
+            return
+        if shape.kind is ShapeKind.CAPSULE:
+            radians = math.radians(shape.angle)
+            half_length = shape.size[0] / 2.0
+            offset = (
+                math.cos(radians) * half_length,
+                math.sin(radians) * half_length,
+            )
+            start = (round(center[0] - offset[0]), round(center[1] - offset[1]))
+            end = (round(center[0] + offset[0]), round(center[1] + offset[1]))
+            diameter = max(1, int(shape.size[1]))
+            pygame.draw.line(self.display_surface, color, start, end, diameter)
+            radius = diameter / 2.0
+            pygame.draw.circle(self.display_surface, color, start, max(1, int(radius)), width)
+            pygame.draw.circle(self.display_surface, color, end, max(1, int(radius)), width)
+            return
+        if shape.kind is ShapeKind.OBB:
+            radians = math.radians(shape.angle)
+            cosine = math.cos(radians)
+            sine = math.sin(radians)
+            half_width = shape.size[0] / 2.0
+            half_height = shape.size[1] / 2.0
+            points = []
+            for local_x, local_y in (
+                (-half_width, -half_height),
+                (half_width, -half_height),
+                (half_width, half_height),
+                (-half_width, half_height),
+            ):
+                points.append(
+                    (
+                        int(round(center[0] + local_x * cosine - local_y * sine)),
+                        int(round(center[1] + local_x * sine + local_y * cosine)),
+                    )
+                )
+            pygame.draw.polygon(self.display_surface, color, points, width)
+            return
+        pygame.draw.rect(
+            self.display_surface,
+            color,
+            camera.apply(
+                pygame.FRect(
+                    shape.position[0] - shape.size[0] / 2.0,
+                    shape.position[1] - shape.size[1] / 2.0,
+                    shape.size[0],
+                    shape.size[1],
+                )
+            ),
+            width=width,
+        )
+
+    def _draw_shape(self, shape: ShapePose, color: Color, camera: Camera, width: int = 2) -> None:
+        self._draw_shape_once(shape, Colors.debug_shape_outline, camera, width + 2)
+        self._draw_shape_once(shape, color, camera, width)
+
+    def _draw_anchor(self, point: tuple[float, float], camera: Camera) -> None:
+        center = camera.apply(pygame.FRect(point[0], point[1], 0.0, 0.0)).center
+        radius = 5
+        pygame.draw.line(
+            self.display_surface,
+            Colors.debug_anchor,
+            (round(center[0] - radius), round(center[1])),
+            (round(center[0] + radius), round(center[1])),
+            1,
+        )
+        pygame.draw.line(
+            self.display_surface,
+            Colors.debug_anchor,
+            (round(center[0]), round(center[1] - radius)),
+            (round(center[0]), round(center[1] + radius)),
+            1,
+        )
+
+    def _draw_attack_geometry(
+        self,
+        attack_box: pygame.FRect,
+        swept: pygame.FRect | None,
+        shape: ShapePose | None,
+        swept_shape: SweptShape | None,
+        anchor: tuple[float, float] | None,
+        outline: Color,
+        camera: Camera,
+    ) -> None:
+        advanced = shape is not None and shape.kind is not ShapeKind.AABB
+        if advanced and shape is not None:
+            self._draw_dashed_rect(camera.apply(attack_box), Colors.debug_broadphase)
+        if swept is not None and swept != attack_box and self._box_moved(swept, attack_box):
+            self._draw_dashed_rect(camera.apply(swept), Colors.debug_sweep)
+            self._draw_motion_arrow(swept, attack_box, camera)
+        if advanced and swept_shape is not None and swept_shape.previous is not None:
+            previous = swept_shape.previous
+            self._draw_shape_once(previous, Colors.debug_sweep, camera, 1)
+            self._draw_motion_arrow(
+                pygame.FRect(
+                    previous.position[0] - previous.size[0] / 2.0,
+                    previous.position[1] - previous.size[1] / 2.0,
+                    previous.size[0],
+                    previous.size[1],
+                ),
+                attack_box,
+                camera,
+            )
+        if advanced and shape is not None:
+            self._draw_shape(shape, outline, camera)
+        else:
+            pygame.draw.rect(self.display_surface, outline, camera.apply(attack_box), width=2)
+        if anchor is not None:
+            self._draw_anchor(anchor, camera)
+
+    def _draw_offensive_boxes(
+        self,
+        sprite: pygame.sprite.Sprite,
+        collider: pygame.FRect | None,
+        combat: object,
+        attack_boxes: tuple,
+        swept_boxes: tuple,
+        camera: Camera,
+        obstacles: list[pygame.Rect] | None = None,
+    ) -> list[pygame.Rect]:
+        """Outline the attack boxes; dot in-situ indices; spray halo ghosts.
+
+        Box indices ride their own box (a haloed ``●`` top-left corner of each
+        box, ``○`` past the first) instead of floating in the tier stack: one
+        header chip per attacker, no constellation of pills. Returns the
+        in-situ dot rects so the caller can register them for label-card
+        placement.
+        """
+        outline = self._offensive_outline(combat)
+        shapes = self._offensive_shapes(combat)
+        swept_shapes = self._swept_shapes(combat, len(attack_boxes))
+        anchors = self._attack_anchors(combat)
+        drawn: list[pygame.Rect] = []
+        for index, attack_box in enumerate(attack_boxes):
+            swept = swept_boxes[index] if index < len(swept_boxes) else None
+            shape = shapes[index] if index < len(shapes) else None
+            swept_shape = swept_shapes[index] if index < len(swept_shapes) else None
+            anchor = anchors[index] if index < len(anchors) else None
+            self._draw_attack_geometry(
+                attack_box,
+                swept,
+                shape,
+                swept_shape,
+                anchor,
+                outline,
+                camera,
+            )
+            screen_box = camera.apply(attack_box)
+            drawn.append(
+                self._in_situ_dot(
+                    (int(screen_box.x) + BOX_DOT_INSET, int(screen_box.y) + BOX_DOT_INSET),
+                    outline,
+                    filled=index == 0,
+                )
+            )
+        return drawn
+
+    def _draw_dashed_rect(self, screen: pygame.FRect, color: Color) -> None:
+        x, y, width, height = screen.x, screen.y, screen.width, screen.height
+        for start, end in self._dashed_edges(x, y, width, height):
+            pygame.draw.line(self.display_surface, color, start, end, SWEEP_GHOST_WIDTH)
+
+    @staticmethod
+    def _dashed_edges(
+        x: float, y: float, width: float, height: float
+    ) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+        step = 2 * SWEEP_GHOST_WIDTH + 2
+        edges: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        cursor = x
+        while cursor < x + width:
+            end = min(cursor + SWEEP_GHOST_WIDTH + 2, x + width)
+            edges.append(((cursor, y), (end, y)))
+            edges.append(((cursor, y + height), (end, y + height)))
+            cursor += step
+        cursor = y
+        while cursor < y + height:
+            end = min(cursor + SWEEP_GHOST_WIDTH + 2, y + height)
+            edges.append(((x, cursor), (x, end)))
+            edges.append(((x + width, cursor), (x + width, end)))
+            cursor += step
+        return tuple(edges)
+
+    def _draw_motion_arrow(
+        self, swept: pygame.FRect, current: pygame.FRect, camera: Camera
+    ) -> None:
+        start = camera.apply(swept).center
+        end = camera.apply(current).center
+        delta = Vector2(end) - Vector2(start)
+        if delta.length_squared() < 1.0:
+            return
+        pygame.draw.line(self.display_surface, Colors.debug_attack_box, start, end)
+        direction = delta.normalize()
+        normal = Vector2(-direction.y, direction.x)
+        tip = Vector2(end)
+        left = tip - direction * SWEEP_ARROW_HEAD + normal * SWEEP_ARROW_HEAD
+        right = tip - direction * SWEEP_ARROW_HEAD - normal * SWEEP_ARROW_HEAD
+        pygame.draw.polygon(
+            self.display_surface, Colors.debug_attack_box, [tuple(tip), tuple(left), tuple(right)]
+        )
+
+    @staticmethod
+    def _timeline_progress(state: object, sub_state: object, phase: PhaseDefinition) -> int:
+        frame = int(getattr(state, "frame_counter", 0) or 0)
+        startup = int(getattr(phase, "startup_frames", 0) or 0)
+        active = int(getattr(phase, "active_frames", 0) or 0)
+        recovery = int(getattr(phase, "recovery_frames", 0) or 0)
+        if sub_state == "startup":
+            return min(frame, startup) * TIMELINE_PX_PER_FRAME
+        if sub_state == "active":
+            return (startup + min(frame, active)) * TIMELINE_PX_PER_FRAME
+        return (startup + active + min(frame, recovery)) * TIMELINE_PX_PER_FRAME
 
     def _draw_velocity(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         velocity = getattr(sprite, "velocity", None)
@@ -461,6 +1251,9 @@ class WorldUI:
         - header: faction-colored name (the enemy registry type for foes,
           the class name otherwise) plus off-white state
         - ``HP`` row: value tinted by the health ratio
+        - ``ZONE`` row (multi-zone sprites only): one ``name xmult`` token per
+          zone in its zone color — the world boxes carry no text, the full
+          roster lives here where rows never overlap
         - ``ATK`` row (while attacking): gold name, muted phase stats
         - flags row (active flags only, no tag — each flag reads on its
           own): last hit, stagger, OTG, gravity, air, ledge, ``|``-separated
@@ -480,6 +1273,10 @@ class WorldUI:
                 ]
             )
 
+        zone_line = self._zone_line(sprite)
+        if zone_line is not None:
+            lines.append(zone_line)
+
         attack_line = self._attack_line(sprite)
         if attack_line is not None:
             lines.append(attack_line)
@@ -488,6 +1285,202 @@ class WorldUI:
         if flags:
             lines.append(join_flag_tokens(flags))
         return lines
+
+    def _zone_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
+        """Zone roster row: ``name xmult`` per zone in its zone color.
+
+        Only for sprites carrying more than one zone worth naming: single
+        unnamed neutral zones (the legacy path) add no row. Tags ride the
+        token text (``[tag]``) since the world seal is shape-only.
+        """
+        names = getattr(sprite, "hurtbox_zone_names", None)
+        mults = getattr(sprite, "hurtbox_mult", None)
+        tags = getattr(sprite, "hurtbox_tags", None)
+        zones = getattr(sprite, "hurtboxes", None)
+        count = len(tuple(zones)) if zones is not None else 0
+        if count <= 1 and not names and not mults:
+            return None
+        tokens: list[tuple[str, Color]] = [("ZONE ", LABEL_TAG)]
+        named = False
+        for index in range(count):
+            name = names[index] if isinstance(names, tuple) and index < len(names) else ""
+            mult = mults[index] if isinstance(mults, tuple) and index < len(mults) else 1.0
+            zone_tags = tags[index] if isinstance(tags, tuple) and index < len(tags) else ()
+            label = f"{name} x{float(mult):g}" if name else f"x{float(mult):g}"
+            if name or float(mult) != 1.0 or zone_tags:
+                named = True
+            if zone_tags:
+                label += f" [{','.join(str(tag) for tag in zone_tags)}]"
+            if index > 0:
+                tokens.append(("| ", LABEL_SEP))
+            tokens.append(
+                (label + " ", Colors.debug_hurtbox_zones[index % len(Colors.debug_hurtbox_zones)])
+            )
+        return tokens if named else None
+
+    def _in_situ_dot(
+        self,
+        position: tuple[int, int],
+        color: Color,
+        filled: bool,
+    ) -> pygame.Rect:
+        """Box-index dot: vector disc in the box corner, ``filled`` = first box.
+
+        An attack may carry several boxes at once; the dot says which is
+        which, in code order: the first box (index 0, the one the header's
+        leader line points at) gets the solid disc, later boxes the ring.
+        The disc is drawn with primitives — dark rim, phase-colored face,
+        white core punched out for non-first boxes — never a ``●``/``○``
+        font glyph, which rasterizes as a blurry blob at 14 px. The dot
+        sits inside its own box corner (``BOX_DOT_INSET``), so it can never
+        collide with the header, the card, or a sibling dot.
+        """
+        center = (
+            position[0] + BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH,
+            position[1] + BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH,
+        )
+        pygame.draw.circle(
+            self.display_surface,
+            BOX_DOT_RIM,
+            center,
+            BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH,
+        )
+        pygame.draw.circle(self.display_surface, color, center, BOX_DOT_RADIUS)
+        if not filled:
+            pygame.draw.circle(self.display_surface, Colors.off_white, center, BOX_DOT_CORE_RADIUS)
+        side = (BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH) * 2 + 1
+        return pygame.Rect(center[0] - side // 2, center[1] - side // 2, side, side)
+
+    def _attack_header_rect(
+        self,
+        sprite: pygame.sprite.Sprite,
+        collider: pygame.FRect,
+        camera: Camera,
+        obstacles: list[pygame.Rect],
+    ) -> pygame.Rect | None:
+        """One chip naming the live attack: name, phase, badges.
+
+        Merges the scattered ``ATK`` pill + ``b{i}`` ids + gold badges into a
+        single header in the tier stack: glyphs on one row, the phase timeline
+        tucked underneath on the same card, a 1 px leader line to the first
+        attack box when boxes exist. ``None`` while idle (no name, no phase).
+        """
+        combat = getattr(sprite, "combat", None)
+        state = getattr(combat, "state", None)
+        attack_name = getattr(state, "attack_name", None)
+        phase: PhaseDefinition | None = getattr(combat, "current_phase", None)
+        attack_boxes = self._offensive_boxes(combat)
+        if attack_name is None or phase is None:
+            return None
+        sub_state = getattr(state, "sub_state", None)
+        frame_counter = int(getattr(state, "frame_counter", 0) or 0)
+        phase_value = getattr(sub_state, "value", sub_state)
+        phase_name = str(phase_value)
+        badges = " ".join(self._offensive_badges(combat))
+        tokens: list[tuple[str, Color]] = [
+            (f"{attack_name} ", Colors.gold),
+            (f"{phase_name}:{frame_counter}", Colors.off_white),
+        ]
+        if badges:
+            tokens.append((f" {badges}", Colors.gold))
+        glyphs = [
+            self.renderer.render_text(text, self.renderer.world_title_font, color)
+            for text, color in tokens
+        ]
+        text_w = sum(glyph.get_width() for glyph in glyphs)
+        title_h = max(glyph.get_height() for glyph in glyphs)
+        tl_widths, tl_rect_w = self._attack_timeline_widths(phase, state, phase_name)
+        chip_text_w = text_w + ANNOTATION_CHIP_PAD * 2
+        chip_tl_w = tl_rect_w + ANNOTATION_CHIP_PAD * 2
+        chip_w = max(chip_text_w, chip_tl_w)
+        chip_h = (
+            ANNOTATION_CHIP_PAD
+            + title_h
+            + ATTACK_HEADER_TEXT_GAP
+            + TIMELINE_BAR_HEIGHT
+            + ANNOTATION_CHIP_PAD
+        )
+        screen = camera.apply(collider)
+        bar = self._health_bar_rect(sprite, screen)
+        if bar is not None and bar.bottom <= screen.top:
+            anchor_y = bar.top - ANNOTATION_TIER_GAP
+        elif bar is not None:
+            anchor_y = bar.bottom + ANNOTATION_TIER_GAP + chip_h
+        else:
+            anchor_y = int(screen.top) - ANNOTATION_TIER_GAP
+        chip = pygame.Rect(int(screen.x), int(anchor_y - chip_h), chip_w, chip_h)
+        chip = self._dodge_annotation(chip, obstacles)
+        panel = pygame.Surface(chip.size, pygame.SRCALPHA)
+        pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
+        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
+        self.display_surface.blit(panel, chip.topleft)
+        cursor = chip.x + (chip_w - text_w) // 2
+        for glyph in glyphs:
+            self.display_surface.blit(glyph, (cursor, chip.y + ANNOTATION_CHIP_PAD))
+            cursor += glyph.get_width()
+        tl_x = chip.x + max(0, (chip_w - tl_rect_w) // 2)
+        tl_y = chip.y + ANNOTATION_CHIP_PAD + title_h + ATTACK_HEADER_TEXT_GAP
+        self._paint_attack_timeline(tl_x, tl_y, phase, tl_widths, state, phase_name)
+        if attack_boxes:
+            first = camera.apply(attack_boxes[0])
+            pygame.draw.line(
+                self.display_surface,
+                PANEL_BORDER,
+                (chip.centerx, chip.bottom + ATTACK_HEADER_RULE_GAP),
+                (int(first.centerx), int(first.top)),
+                1,
+            )
+        return chip
+
+    def _attack_timeline_widths(
+        self,
+        phase: PhaseDefinition,
+        state: object,
+        sub_state: object,
+    ) -> tuple[list[tuple[int, Color]], int]:
+        """Phase segment widths, shrunk to ``TIMELINE_MAX_WIDTH``; total width."""
+        startup = int(getattr(phase, "startup_frames", 0) or 0)
+        active = int(getattr(phase, "active_frames", 0) or 0)
+        recovery = int(getattr(phase, "recovery_frames", 0) or 0)
+        raw = [
+            max(1, startup * TIMELINE_PX_PER_FRAME),
+            max(1, active * TIMELINE_PX_PER_FRAME),
+            max(1, recovery * TIMELINE_PX_PER_FRAME),
+        ]
+        total = sum(raw)
+        if total > TIMELINE_MAX_WIDTH:
+            scaled = [max(1, round(width * TIMELINE_MAX_WIDTH / total)) for width in raw]
+            widths = scaled
+        else:
+            widths = raw
+        colors = (Colors.gold, Colors.debug_attack_box, Colors.light_grey)
+        return [(width, color) for width, color in zip(widths, colors, strict=True)], sum(widths)
+
+    def _paint_attack_timeline(
+        self,
+        x: int,
+        y: int,
+        phase: PhaseDefinition,
+        widths: list[tuple[int, Color]],
+        state: object,
+        sub_state: object,
+    ) -> None:
+        """Paint the phase segments at ``(x, y)`` with a progress outline."""
+        cursor = x
+        for width, color in widths:
+            pygame.draw.rect(
+                self.display_surface,
+                color,
+                pygame.Rect(cursor, y, width, TIMELINE_BAR_HEIGHT),
+            )
+            cursor += width
+        filled = self._timeline_progress(state, sub_state, phase)
+        pygame.draw.rect(
+            self.display_surface,
+            Colors.off_white,
+            pygame.Rect(x, y, min(filled, cursor - x), TIMELINE_BAR_HEIGHT),
+            width=1,
+        )
 
     def _attack_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
         """Attack row: gold name plus muted phase stats, ``None`` while idle."""
@@ -636,7 +1629,14 @@ class WorldUI:
 
     @staticmethod
     def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether ``draw_health_bars`` will draw a bar for this sprite."""
+        """Whether ``draw_health_bars`` will draw a bar for this sprite.
+
+        The player is excluded: its HP is read on the screen HUD (UI-7), a
+        world-space bar above it would be redundant. The gate sits here so
+        the debug label cards stop reserving room for a bar never drawn.
+        """
+        if WorldUI._faction(sprite) == "player":
+            return False
         if getattr(sprite, "is_dead", False):
             return False
         if not getattr(sprite, "max_health", 0):
@@ -672,33 +1672,84 @@ class WorldUI:
     def _label_clearances(
         self, sprite: pygame.sprite.Sprite, anchor: pygame.Rect | pygame.FRect
     ) -> tuple[int, int]:
-        """Vertical room the label card must leave for the health bar.
+        """Vertical room the label card must leave for the tiers below it.
 
-        Returns ``(above_lift, below_drop)``: when the bar sits above the
-        entity the card's default slot moves up by bar + gap; when the bar
-        flipped below (top of screen) the below-slots move down instead.
-        ``(0, 0)`` when no bar is drawn.
+        Returns ``(above_lift, below_drop)`` reserving — whichever applies —
+        the health bar and this frame's attack annotations (timeline, zone
+        tags, badges) for the sprite. The bar sits above the entity, or
+        flips below it near the top of the screen with the annotations
+        following it; annotations drawn without a bar (player, dead)
+        reserve their own band relative to the sprite. ``(0, 0)`` when
+        neither a bar nor annotations exist.
         """
+        bar_lift = 0
+        bar_drop = 0
         bar = self._health_bar_rect(sprite, anchor)
-        if bar is None:
-            return (0, 0)
-        # The padded card sticks out LABEL_PAD_Y below its content box, so
-        # the lift reserves bar + gap + padding: backgrounds touch neither
-        # the bar nor each other.
-        clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
-        if bar.bottom <= anchor.top:
-            return (clearance, 0)
-        return (0, clearance)
+        if bar is not None:
+            # The padded card sticks out LABEL_PAD_Y below its content box,
+            # so the lift reserves bar + gap + padding: backgrounds touch
+            # neither the bar nor each other.
+            clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
+            if bar.bottom <= anchor.top:
+                bar_lift = clearance
+            else:
+                bar_drop = clearance
+        annotation_rects = self._annotation_rects.get(id(sprite), ())
+        above_tops = [rect.top for rect in annotation_rects if rect.top < anchor.top]
+        below_bottoms = [rect.bottom for rect in annotation_rects if rect.bottom > anchor.bottom]
+        ann_lift = 0
+        if above_tops:
+            # Card background bottom sits ANNOTATION_TIER_GAP above the
+            # highest annotation band drawn above the sprite.
+            ann_lift = max(
+                0,
+                int(
+                    float(anchor.top)
+                    - LABEL_ANCHOR_GAP
+                    + LABEL_PAD_Y
+                    + ANNOTATION_TIER_GAP
+                    - min(above_tops)
+                ),
+            )
+        ann_drop = 0
+        if below_bottoms:
+            ann_drop = max(
+                0,
+                int(
+                    max(below_bottoms)
+                    + ANNOTATION_TIER_GAP
+                    + LABEL_PAD_Y
+                    - float(anchor.bottom)
+                    - LABEL_ANCHOR_GAP
+                ),
+            )
+        return (max(bar_lift, ann_lift), max(bar_drop, ann_drop))
 
     def _draw_labels(
         self,
         requests: list[_LabelRequest],
         screen_width: int,
+        screen_height: int,
     ) -> None:
-        """Draw collected labels, each dodging the ones already placed."""
-        screen_height = self.display_surface.get_height()
-        placed: list[pygame.Rect] = []
-        for _priority, segments, color, anchor, above_lift, below_drop in requests:
+        """Draw collected labels, each dodging the ones already placed.
+
+        The health bars drawn for the same sprites are registered as
+        obstacles first, then this frame's attack annotation rects: a card
+        keeps clear of both like of the other cards, so neither a bar nor
+        a timeline can end up painted over a placed card.
+        """
+        bar_obstacles: list[pygame.Rect] = []
+        for _priority, _segments, _color, anchor, _lifts, _drop, sprite in requests:
+            bar = self._health_bar_rect(sprite, anchor)
+            if bar is not None:
+                bar_obstacles.append(bar.inflate(LABEL_BAR_CLEARANCE * 2, LABEL_BAR_CLEARANCE * 2))
+        placed: list[pygame.Rect] = [
+            *bar_obstacles,
+            *self._previous_bar_obstacles,
+            *self._annotation_obstacles,
+        ]
+        self._previous_bar_obstacles = bar_obstacles
+        for _priority, segments, color, anchor, above_lift, below_drop, _sprite in requests:
             rect = self._place_label(
                 segments,
                 color,
@@ -729,9 +1780,10 @@ class WorldUI:
         compact regular world font. Slots run above the entity (nudging
         upward), then below it (nudging downward). ``above_lift`` reserves
         the health bar stacked between the entity and the card; ``below_drop``
-        does the same when the bar flipped under the entity. Returns the
+        does the same when the bar flipped under the entity. ``placed``
+        holds already-drawn cards *and* the bar/annotation obstacles. Returns the
         padded rect the card occupies, or ``None`` when every slot is taken
-        or off-screen — a dropped label beats an unreadable stack.
+        or cannot fit on-screen — a dropped label beats an unreadable stack.
         """
         title_font = self.renderer.world_title_font
         body_font = self.renderer.world_label_font
@@ -773,7 +1825,12 @@ class WorldUI:
         screen_height: int,
         below_drop: int = 0,
     ) -> list[pygame.Rect]:
-        """Slots to try, best first: above the entity, then below it."""
+        """Slots to try, best first: above the entity, then below it.
+
+        A slot that would stick out of the display is shifted back inside
+        (never clipped): the padded card must stay fully on-screen with its
+        text, so shrinking a slot would just push the text out of its panel.
+        """
         below = base.copy()
         below.midtop = (anchor.centerx, anchor.bottom + LABEL_ANCHOR_GAP + below_drop)
         slots = [base]
@@ -787,11 +1844,14 @@ class WorldUI:
         kept: list[pygame.Rect] = []
         for slot in slots:
             # The padded card sticks out LABEL_PAD_Y px on every side: keep slots
-            # whose *card* stays fully on-screen.
-            if slot.top - LABEL_PAD_Y < 0 or slot.bottom + LABEL_PAD_Y > screen_height:
-                continue  # off-screen: not a real option
-            slot.left = max(0, slot.left)
-            slot.right = min(screen_width, slot.right)
+            # whose *card* fits the display, shifted back inside when needed.
+            if slot.height + LABEL_PAD_Y * 2 > screen_height:
+                continue  # taller than the display: no fully visible position
+            if slot.top - LABEL_PAD_Y < 0:
+                slot.top = LABEL_PAD_Y
+            elif slot.bottom + LABEL_PAD_Y > screen_height:
+                slot.bottom = screen_height - LABEL_PAD_Y
+            slot.left = max(LABEL_PAD_X, min(slot.left, screen_width - slot.width - LABEL_PAD_X))
             kept.append(slot)
         return kept
 
@@ -855,7 +1915,7 @@ class WorldUI:
 
             health = getattr(entity, "health", 0)
             rect = getattr(entity, "hitbox", None) or getattr(entity, "rect", None)
-            if rect is None:
+            if rect is None or not camera.is_visible(rect):
                 continue
 
             screen_rect = camera.apply(rect)

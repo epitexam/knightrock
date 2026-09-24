@@ -207,6 +207,27 @@ class SpatialHash:
                     nearby.append(sprite)
         return nearby
 
+    def append_nearby(
+        self,
+        hitbox: pygame.Rect | pygame.FRect,
+        nearby: list[SpatialHashMember],
+        seen: set[int],
+    ) -> None:
+        """Append query members into caller-owned buffers without allocating a result list."""
+        margin = QUERY_MARGIN_PX
+        query = pygame.FRect(
+            hitbox.left - margin,
+            hitbox.top - margin,
+            hitbox.width + 2 * margin,
+            hitbox.height + 2 * margin,
+        )
+        for cell in self._cells_for_box(query):
+            for sprite in self.grid.get(cell, ()):
+                key = id(sprite)
+                if key not in seen:
+                    seen.add(key)
+                    nearby.append(sprite)
+
     @staticmethod
     def _box_of(sprite: SpatialHashMember) -> pygame.Rect | pygame.FRect | None:
         """Return a sprite's hitbox, falling back to its rect."""

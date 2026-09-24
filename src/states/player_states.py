@@ -8,6 +8,40 @@ from src.states.reaction_states import HurtState, KnockbackState, StaggerState
 from src.states.state_machine import State, StateMachine
 
 
+def _classify_ratio(ratio: float) -> str:
+    """Classify from idle/reaction states using pure ratio thresholds."""
+    if ratio >= Locomotion.WALK_PROMOTE:
+        return PlayerState.RUN.value
+    if ratio >= Locomotion.WALK_SLOW_PROMOTE:
+        return PlayerState.WALK.value
+    return PlayerState.WALK_SLOW.value
+
+
+def resolve_locomotion_state(entity: Any) -> str:
+    """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis."""
+    vx = abs(float(entity.velocity.x))
+    base = float(getattr(entity, "speed", 0.0) or 0.0) or Physics.PLAYER_SPEED
+    if base <= 0.0:
+        return PlayerState.WALK_SLOW.value
+    ratio = vx / base
+    current = str(getattr(getattr(entity, "state_machine", None), "current_state_name", "") or "")
+    if current in (PlayerState.RUN.value, PlayerState.RUN):
+        if ratio < Locomotion.WALK_DEMOTE:
+            return PlayerState.WALK.value
+        return PlayerState.RUN.value
+    if current in (PlayerState.WALK.value, PlayerState.WALK):
+        if ratio >= Locomotion.WALK_PROMOTE:
+            return PlayerState.RUN.value
+        if ratio < Locomotion.WALK_SLOW_DEMOTE:
+            return PlayerState.WALK_SLOW.value
+        return PlayerState.WALK.value
+    if current in (PlayerState.WALK_SLOW.value, PlayerState.WALK_SLOW):
+        if ratio >= Locomotion.WALK_SLOW_PROMOTE:
+            return PlayerState.WALK.value
+        return PlayerState.WALK_SLOW.value
+    return _classify_ratio(ratio)
+
+
 def player_ground_return(entity: Any) -> str:
     """Return the landing state name for the player.
 
@@ -15,7 +49,9 @@ def player_ground_return(entity: Any) -> str:
     place (archived duplication from ARCH-05).
     """
     if entity.on_surface["floor"]:
-        return "run" if (entity.left_held or entity.right_held) else "idle"
+        if entity.left_held or entity.right_held:
+            return resolve_locomotion_state(entity)
+        return "idle"
     return "fall"
 
 
@@ -46,12 +82,12 @@ class PlayerIdleState(PlayerBaseState):
         if not self.entity.on_surface["floor"]:
             return "fall"
         if self.entity.left_held or self.entity.right_held:
-            return "run"
+            return resolve_locomotion_state(self.entity)
         return None
 
 
-class PlayerRunState(PlayerBaseState):
-    """Represent the PlayerRun state."""
+class PlayerGroundLocomotionState(PlayerBaseState):
+    """Shared update for walk_slow / walk / run on the ground."""
 
     def update(self, delta_time: float) -> str | None:
         """Update the current state."""
@@ -66,7 +102,19 @@ class PlayerRunState(PlayerBaseState):
             and abs(self.entity.velocity.x) < Locomotion.RUN_STOP_SPEED_PX_S
         ):
             return "idle"
-        return None
+        return resolve_locomotion_state(self.entity)
+
+
+class PlayerRunState(PlayerGroundLocomotionState):
+    """Represent the PlayerRun state."""
+
+
+class PlayerWalkState(PlayerGroundLocomotionState):
+    """Mid-speed ground tier (analog input / combat movement multiplier)."""
+
+
+class PlayerWalkSlowState(PlayerGroundLocomotionState):
+    """Slow ground tier (Guard MOVE_MULT, partial analog stick)."""
 
 
 class PlayerJumpState(PlayerBaseState):
@@ -129,6 +177,54 @@ class PlayerChargeState(PlayerBaseState):
                 return "attack"
             return self.ground_return()
         return None
+
+
+class PlayerCrouchState(PlayerBaseState):
+    def __init__(self, entity: Any):
+        super().__init__(entity, tags=["crouch", "busy"])
+        self._stood_height: float = 0.0
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.velocity.x = 0
+        self._stood_height = self.entity.hitbox.height
+        bottom = self.entity.hitbox.bottom
+        self.entity.hitbox.height = self._stood_height * Physics.CROUCH_HEIGHT_FACTOR
+        self.entity.hitbox.bottom = bottom
+        self.entity.sync_rects()
+
+    def update(self, delta_time: float) -> str | None:
+        self.entity.handle_jump()
+        if self.entity.velocity.y < 0:
+            return "jump"
+        if not self.entity.on_surface["floor"]:
+            return "fall"
+        if not _wants_crouch(self.entity):
+            if self._can_stand():
+                return self.ground_return()
+            return None
+        return None
+
+    def exit(self, next_state: str | None = None) -> None:
+        if self._stood_height <= 0:
+            return
+        bottom = self.entity.hitbox.bottom
+        self.entity.hitbox.height = self._stood_height
+        self.entity.hitbox.bottom = bottom
+        self.entity.handle_collisions("horizontal")
+        self.entity.sync_rects()
+        self._stood_height = 0.0
+
+    def _can_stand(self) -> bool:
+        if self._stood_height <= 0:
+            return True
+        probe = self.entity.hitbox.copy()
+        probe.height = self._stood_height
+        probe.bottom = self.entity.hitbox.bottom
+        for sprite in self.entity.collision_sprites:
+            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            if box is not None and probe.colliderect(box):
+                return False
+        return True
 
 
 class PlayerAttackState(PlayerBaseState):
@@ -344,6 +440,8 @@ class PlayerState(str, Enum):
     """Enumeration of player states for type safety and refactoring reliability."""
 
     IDLE = "idle"
+    WALK_SLOW = "walk_slow"
+    WALK = "walk"
     RUN = "run"
     JUMP = "jump"
     FALL = "fall"
@@ -354,6 +452,7 @@ class PlayerState(str, Enum):
     DASH = "dash"
     STAGGER = "stagger"
     CHARGE = "charge"
+    CROUCH = "crouch"
     KNOCKBACK = "knockback"
     DIZZY = "dizzy"
 
@@ -361,6 +460,7 @@ class PlayerState(str, Enum):
 ATTACK_FORBIDDEN_STATES = {
     PlayerState.WALL_SLIDE,
     PlayerState.GUARD,
+    PlayerState.CROUCH,
     PlayerState.HURT,
     PlayerState.DASH,
     PlayerState.STAGGER,
@@ -403,6 +503,8 @@ def _can_guard(player: Any) -> bool:
     if not (player.guard_held and player.guard.can_use()):
         return False
     current = player.state_machine.current_state_name
+    if current == PlayerState.CROUCH:
+        return False
     # Allow guard cancel from dash after cancel window
     if current == PlayerState.DASH:
         return dash_cancel_open(player)
@@ -440,17 +542,37 @@ def _can_attack_interrupt(player: Any) -> bool:
     return current not in ATTACK_FORBIDDEN_STATES
 
 
+def _wants_crouch(player: Any) -> bool:
+    down = bool(getattr(player, "down_held", False))
+    grounded = bool(player.on_surface.get("floor", False))
+    return down and grounded
+
+
+def _can_crouch(player: Any) -> bool:
+    if not _wants_crouch(player):
+        return False
+    return player.state_machine.current_state_name in (
+        PlayerState.IDLE,
+        PlayerState.WALK_SLOW,
+        PlayerState.WALK,
+        PlayerState.RUN,
+    )
+
+
 def configure_player_state_machine(player: Any) -> None:
-    """Build the 12-state player machine (moved from Player, audit F1.1)."""
+    """Build the 16-state player machine (moved from Player, audit F1.1)."""
     sm = StateMachine(player)
     player.state_machine = sm
     sm.add_state(PlayerState.IDLE, PlayerIdleState(player))
+    sm.add_state(PlayerState.WALK_SLOW, PlayerWalkSlowState(player))
+    sm.add_state(PlayerState.WALK, PlayerWalkState(player))
     sm.add_state(PlayerState.RUN, PlayerRunState(player))
     sm.add_state(PlayerState.JUMP, PlayerJumpState(player))
     sm.add_state(PlayerState.FALL, PlayerFallState(player))
     sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))
     sm.add_state(PlayerState.ATTACK, PlayerAttackState(player))
     sm.add_state(PlayerState.CHARGE, PlayerChargeState(player))
+    sm.add_state(PlayerState.CROUCH, PlayerCrouchState(player))
     sm.add_state(PlayerState.GUARD, PlayerGuardState(player))
     sm.add_state(PlayerState.HURT, PlayerHurtState(player))
     sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
@@ -460,4 +582,5 @@ def configure_player_state_machine(player: Any) -> None:
     sm.set_initial_state(PlayerState.IDLE)
     sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
     sm.add_interrupt(PlayerState.GUARD, lambda: _can_guard(player), priority=60)
+    sm.add_interrupt(PlayerState.CROUCH, lambda: _can_crouch(player), priority=30)
     sm.add_interrupt(PlayerState.ATTACK, lambda: _can_attack_interrupt(player), priority=40)

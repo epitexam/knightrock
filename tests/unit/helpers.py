@@ -6,6 +6,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 ``from tests.unit.helpers import ...``.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.frame_data import (
+    FRAME_RATE,
     AttackDefinition,
     HitboxKeyframe,
     HitboxSpec,
@@ -21,6 +23,7 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.entities.entity import Entity
+from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 def make_phase(
@@ -34,6 +37,10 @@ def make_phase(
     keyframes: tuple[tuple[int, tuple[float, float], tuple[float, float]], ...] = (),
     damage: int = 10,
     reset_targets: bool = True,
+    unblockable: bool = False,
+    priority: int = 0,
+    clash: str = "trade",
+    height: str = "mid",
 ) -> PhaseDefinition:
     """Build a single phase definition with sensible defaults."""
     return PhaseDefinition(
@@ -52,16 +59,25 @@ def make_phase(
         hit=HitProperties(
             damage=damage,
             knockback=KnockbackConfig(power=(0.0, 0.0)),
+            unblockable=unblockable,
+            priority=priority,
+            clash=clash,
+            height=height,
         ),
         reset_targets=reset_targets,
     )
 
 
 def make_attack(*phases: PhaseDefinition, lock_direction: bool = True) -> AttackDefinition:
-    """Build an attack definition wrapping the given phases."""
+    """Build an attack definition wrapping the given phases.
+
+    The cooldown matches the attack's own duration: the strict loader
+    (``attack_loading``) rejects shorter ones.
+    """
+    total_frames = sum(phase.total_frames for phase in phases)
     return AttackDefinition(
         phases=phases,
-        cooldown=0.0,
+        cooldown=total_frames / FRAME_RATE,
         lock_direction=lock_direction,
     )
 
@@ -77,6 +93,7 @@ def make_entity(
     attacks: dict[str, AttackDefinition] | None = None,
     invincibility: float = 0.0,
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
+    hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
 ) -> Entity:
     """Build a bare :class:`Entity` in isolated sprite groups."""
     return Entity(
@@ -91,6 +108,7 @@ def make_entity(
         attacks=attacks,
         invincibility_duration=invincibility,
         hurtbox_inflate=hurtbox_inflate,
+        hurtbox_zones=hurtbox_zones,
     )
 
 
@@ -100,6 +118,7 @@ def entity_at(
     faction: str = "neutral",
     definition: AttackDefinition | None = None,
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
+    hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
 ) -> Entity:
     """Place an entity at ``(x, 0)`` with an optional ``test`` attack."""
     attacks = {"test": definition} if definition is not None else None
@@ -108,6 +127,7 @@ def entity_at(
         faction=faction,
         attacks=attacks,
         hurtbox_inflate=hurtbox_inflate,
+        hurtbox_zones=hurtbox_zones,
     )
 
 
@@ -128,11 +148,14 @@ class _ActiveAttackerCombat(SimpleNamespace):
             state=SimpleNamespace(is_active=True),
             attack_box=attack_box,
             attack_boxes=(attack_box,),
+            swept_attack_boxes=(attack_box,),
             current_phase=SimpleNamespace(hit=hit),
             charge_multiplier=1.0,
             targets_hit=targets_hit,
             can_contact=lambda target_id: target_id not in targets_hit,
             record_contact=targets_hit.add,
+            capture_attack_origin=lambda: None,
+            cancel_attack=lambda: None,
         )
         self._air_count = 0
 
@@ -159,6 +182,14 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         faction="enemy",
         hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
         combat=combat,
+        hurtbox=target.hurtbox.copy(),
+        hurtboxes=target.hurtboxes,
+        hurtbox_mult=target.hurtbox_mult,
+        hurtbox_tags=target.hurtbox_tags,
+        hurtbox_zone_names=target.hurtbox_zone_names,
+        swept_hurtbox=lambda: target.swept_hurtbox(),
+        swept_hurtboxes=lambda: target.swept_hurtboxes(),
+        capture_sweep_origin=target.capture_sweep_origin,
     )
 
 
@@ -206,7 +237,6 @@ class AttackerStub:
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
         self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
-
 
 __all__ = [
     "AttackerStub",

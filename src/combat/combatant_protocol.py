@@ -14,6 +14,7 @@ import pygame
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import PhaseDefinition
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapePose, SweptShape
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,11 @@ class AttackerPort(Protocol):
 
 @runtime_checkable
 class CombatPort(AttackComboPort, Protocol):
-    """Minimal combat component surface exposed by a combatant."""
+    """Minimal combat component surface exposed by a combatant.
+
+    P1 sweep members: ``swept_attack_boxes`` feeds the grid query and the
+    contact test; ``capture_attack_origin`` is the tick-frontier hook.
+    """
 
     @property
     def is_hurt(self) -> bool: ...
@@ -85,6 +90,18 @@ class CombatPort(AttackComboPort, Protocol):
     def attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
 
     @property
+    def swept_attack_boxes(self) -> tuple[pygame.FRect, ...]: ...
+
+    @property
+    def attack_shapes(self) -> tuple[ShapePose, ...]: ...
+
+    @property
+    def swept_attack_shapes(self) -> tuple[SweptShape, ...]: ...
+
+    @property
+    def attack_anchors(self) -> tuple[tuple[float, float], ...]: ...
+
+    @property
     def current_phase(self) -> PhaseDefinition | None: ...
 
     @property
@@ -103,9 +120,13 @@ class CombatPort(AttackComboPort, Protocol):
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
+    def cancel_attack(self) -> None: ...
+
     def reset_hurt_state(self) -> None: ...
 
     def sync_attack_box(self) -> None: ...
+
+    def capture_attack_origin(self) -> None: ...
 
     def can_contact(self, target_id: str) -> bool: ...
 
@@ -127,7 +148,10 @@ class Combatant(Protocol):
     hitbox : pygame.FRect
         Collision rectangle representing the entity's body.
     hurtbox : pygame.FRect
-        Rectangle that incoming attacks must overlap to register a hit.
+        Union of the damage-receiving zones that incoming attacks must
+        overlap to register a hit.
+    hurtboxes : tuple[pygame.FRect, ...]
+        Every damage-receiving zone (P2; single legacy zone by default).
     faction : str | None
         Faction identifier for friendly-fire rules.
     facing_right : bool
@@ -161,7 +185,43 @@ class Combatant(Protocol):
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Collision rectangle used for incoming attacks."""
+        """Collision rectangle used for incoming attacks (union of zones)."""
+        ...
+
+    @property
+    def hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Every damage-receiving zone (P2; single legacy zone by default)."""
+        ...
+
+    @property
+    def hurtbox_mult(self) -> tuple[float, ...]:
+        """Per-zone localized damage multipliers (parallel to ``hurtboxes``)."""
+        ...
+
+    @property
+    def hurtbox_tags(self) -> tuple[tuple[str, ...], ...]:
+        """Per-zone reserved invulnerability tags (parallel to ``hurtboxes``)."""
+        ...
+
+    @property
+    def hurtbox_zone_names(self) -> tuple[str, ...]:
+        """Per-zone debug names (parallel to ``hurtboxes``)."""
+        ...
+
+    def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        """Per-zone swept rectangles for the current tick (P1 sweep)."""
+        ...
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        """Union of the per-zone swept rectangles (legacy single-view API)."""
+        ...
+
+    def swept_pushbox(self) -> pygame.FRect:
+        """Physical body rectangle swept over the current tick."""
+        ...
+
+    def capture_sweep_origin(self) -> None:
+        """Freeze the current zones as the next tick's sweep origin (P1/D3)."""
         ...
 
     @property
@@ -183,6 +243,10 @@ class Combatant(Protocol):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
+        unblockable: bool = False,
+        height: str = "mid",
+        block_mask: str = "any",
+        hit_level: str = "med",
     ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
@@ -196,6 +260,14 @@ class Combatant(Protocol):
             Knockback impulse.
         interrupt : bool
             Whether the hit may interrupt the current action.
+        unblockable : bool
+            Whether the hit bypasses guard and parry.
+        height : str
+            Guard height checked against the crouch state.
+        block_mask : str
+            Posture mask checked before guard height.
+        hit_level : str
+            Guard pressure level affecting posture cost.
 
         Returns
         -------

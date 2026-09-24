@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Physics
+from src.core.settings import Locomotion, Physics
 from src.states.player_states import (
     ATTACK_FORBIDDEN_STATES,
     PlayerState,
@@ -15,6 +15,7 @@ from src.states.player_states import (
     configure_player_state_machine,
     dash_cancel_open,
     player_ground_return,
+    resolve_locomotion_state,
 )
 from src.states.state_machine import StateMachine
 
@@ -27,6 +28,7 @@ def _make_entity(**overrides) -> SimpleNamespace:
     defaults = {
         "on_surface": {"floor": True, "left": False, "right": False},
         "velocity": pygame.Vector2(0, 0),
+        "speed": Physics.PLAYER_SPEED,
         "move_axis": 0.0,
         "left_held": False,
         "right_held": False,
@@ -40,12 +42,72 @@ def _make_entity(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
+# --- resolve_locomotion_state ---
+
+
+def _locomotion_entity(ratio: float, current: str | None = None) -> SimpleNamespace:
+    speed = Physics.PLAYER_SPEED
+    return SimpleNamespace(
+        velocity=pygame.Vector2(ratio * speed, 0),
+        speed=speed,
+        state_machine=SimpleNamespace(current_state_name=current),
+    )
+
+
+def test_resolve_locomotion_classifies_by_ratio_from_idle() -> None:
+    assert resolve_locomotion_state(_locomotion_entity(0.0)) == "walk_slow"
+    assert resolve_locomotion_state(_locomotion_entity(0.5)) == "walk"
+    assert resolve_locomotion_state(_locomotion_entity(0.8)) == "run"
+    assert resolve_locomotion_state(_locomotion_entity(1.0)) == "run"
+
+
+def test_resolve_locomotion_hysteresis_walk_to_run() -> None:
+    assert resolve_locomotion_state(_locomotion_entity(0.7, "walk")) == "walk"
+    assert resolve_locomotion_state(_locomotion_entity(0.8, "walk")) == "run"
+
+
+def test_resolve_locomotion_hysteresis_run_to_walk() -> None:
+    assert resolve_locomotion_state(_locomotion_entity(0.7, "run")) == "run"
+    assert resolve_locomotion_state(_locomotion_entity(0.64, "run")) == "walk"
+
+
+def test_resolve_locomotion_hysteresis_walk_to_walk_slow() -> None:
+    assert resolve_locomotion_state(_locomotion_entity(0.4, "walk")) == "walk"
+    assert resolve_locomotion_state(_locomotion_entity(
+        Locomotion.WALK_SLOW_DEMOTE - 0.01, "walk"
+    )) == "walk_slow"
+
+
+def test_resolve_locomotion_hysteresis_walk_slow_to_walk() -> None:
+    assert resolve_locomotion_state(
+        _locomotion_entity(Locomotion.WALK_SLOW_PROMOTE, "walk_slow")
+    ) == "walk"
+    assert resolve_locomotion_state(_locomotion_entity(0.49, "walk_slow")) == "walk_slow"
+
+
+def test_resolve_locomotion_walk_slow_from_idle_without_speed_attr() -> None:
+    entity = SimpleNamespace(
+        velocity=pygame.Vector2(0, 0),
+        state_machine=SimpleNamespace(current_state_name=None),
+    )
+    assert resolve_locomotion_state(entity) == "walk_slow"
+
+
 # --- player_ground_return ---
 
 
-def test_player_ground_return_run_when_moving_on_floor() -> None:
-    entity = _make_entity(left_held=False, right_held=True)
+def test_player_ground_return_locomotion_when_moving_on_floor() -> None:
+    entity = _make_entity(
+        left_held=False,
+        right_held=True,
+        velocity=pygame.Vector2(Physics.PLAYER_SPEED, 0),
+    )
     assert player_ground_return(entity) == "run"
+
+
+def test_player_ground_return_walk_slow_when_barely_moving_on_floor() -> None:
+    entity = _make_entity(left_held=True, right_held=False)
+    assert player_ground_return(entity) == "walk_slow"
 
 
 def test_player_ground_return_idle_when_still_on_floor() -> None:
@@ -165,11 +227,14 @@ def test_can_attack_interrupt_false_when_not_attacking() -> None:
 def test_attack_forbidden_states_contains_expected_members() -> None:
     assert PlayerState.WALL_SLIDE in ATTACK_FORBIDDEN_STATES
     assert PlayerState.GUARD in ATTACK_FORBIDDEN_STATES
+    assert PlayerState.CROUCH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.HURT in ATTACK_FORBIDDEN_STATES
     assert PlayerState.DASH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.STAGGER in ATTACK_FORBIDDEN_STATES
     assert PlayerState.KNOCKBACK in ATTACK_FORBIDDEN_STATES
     assert PlayerState.IDLE not in ATTACK_FORBIDDEN_STATES
+    assert PlayerState.WALK_SLOW not in ATTACK_FORBIDDEN_STATES
+    assert PlayerState.WALK not in ATTACK_FORBIDDEN_STATES
     assert PlayerState.RUN not in ATTACK_FORBIDDEN_STATES
 
 
@@ -196,6 +261,7 @@ def test_configure_state_machine_sets_all_states() -> None:
     configure_player_state_machine(entity)
     sm = entity.state_machine
     assert sm.current_state_name == "idle"
+    assert len(list(PlayerState)) == 16
     for state_name in PlayerState:
         assert state_name.value in sm.states
 
@@ -204,11 +270,12 @@ def test_configure_state_machine_registers_interrupts() -> None:
     entity = _make_entity(dash=_dash_stub(), guard=_guard_stub())
     configure_player_state_machine(entity)
     sm = entity.state_machine
-    assert len(sm._interrupts) == 3
+    assert len(sm._interrupts) == 4
     targets = {t for _, t, _ in sm._interrupts}
     assert PlayerState.DASH.value in targets
     assert PlayerState.GUARD.value in targets
     assert PlayerState.ATTACK.value in targets
+    assert PlayerState.CROUCH.value in targets
 
 
 # --- Dash cancel window ---

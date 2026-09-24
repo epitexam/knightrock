@@ -1,6 +1,13 @@
 """Phase 5 test bench: debug commands + showcase attack catalog."""
 
+import os
+from types import SimpleNamespace
+
+import pygame
+import pytest
+
 from src.combat.attack_data import PLAYER_ATTACKS
+from src.core.colors import Colors
 from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.level.systems.spawn_system import (
     DEBUG_ATTACKS,
@@ -12,6 +19,29 @@ from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from tests.unit.helpers import make_entity
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _headless_display() -> None:
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    pygame.init()
+    pygame.display.set_mode((1024, 768))
+
+
+@pytest.fixture()
+def world_ui():
+    from src.ui.panel_renderer import PanelRenderer
+    from src.ui.world_ui import WorldUI
+
+    return WorldUI(PanelRenderer(pygame.display.get_surface()))
+
+
+@pytest.fixture()
+def camera():
+    from src.core.rendering.camera import Camera as _Camera
+
+    return _Camera(1024, 768)
 
 
 def _player() -> object:
@@ -60,6 +90,60 @@ def test_trigger_test_attack_rejects_unknown_name() -> None:
     assert system.trigger_test_attack(_player(), "nope") is False
 
 
+def test_attack_replay_restarts_attack_when_idle() -> None:
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+
+    assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
+    assert system.trigger_test_attack(player, "twin_fangs")
+    # Replay waits while the attack runs, then restarts once idle.
+    system.tick_attack_replay(player)
+    assert player.combat.is_attacking
+    while player.combat.is_attacking:
+        player.combat.update(1 / 60)
+        player.combat.sync_attack_box()
+        system.debug_cooldowns.clear()
+        system.tick_attack_replay(player)
+    # Drain the combat-side cooldown so start_attack may fire again.
+    for _ in range(180):
+        player.combat.update(1 / 60)
+        player.combat.sync_attack_box()
+        system.debug_cooldowns.clear()
+        system.tick_attack_replay(player)
+        if player.combat.is_attacking:
+            break
+    assert player.combat.is_attacking
+
+
+def test_attack_replay_toggle_returns_state() -> None:
+    system = SpawnSystem(SpriteGroups())
+    assert system.attack_replay is None
+    name = system.toggle_attack_replay()
+    assert name is not None
+    assert system.attack_replay == name
+    assert system.toggle_attack_replay() is None
+    assert system.attack_replay is None
+
+
+def test_attack_replay_ignored_while_attacking_or_on_cooldown() -> None:
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    system.toggle_attack_replay("twin_fangs")
+
+    # Cooldown armed: tick is a no-op even when idle.
+    system.debug_cooldowns["twin_fangs"] = 0.5
+    system.tick_attack_replay(player)
+    assert not player.combat.is_attacking
+
+    # Attacking: replay must not interrupt.
+    system.debug_cooldowns.clear()
+    assert system.trigger_test_attack(player, "twin_fangs")
+    combat = player.combat
+    started = combat.state.frame_counter
+    system.tick_attack_replay(player)
+    assert combat.state.frame_counter == started
+
+
 def test_fire_test_projectile_needs_a_system() -> None:
     assert SpawnSystem(SpriteGroups()).fire_test_projectile(_player()) is None
 
@@ -106,6 +190,136 @@ def test_spawn_juggle_dummy_is_airborne_and_rising() -> None:
 
 
 def test_debug_juggle_key_is_bound() -> None:
-    import pygame
-
     assert pygame.K_c == DEBUG_JUGGLE_KEY
+
+
+def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
+    from src.ui.world_ui import WorldUI
+
+    surface = world_ui.display_surface
+    combat = SimpleNamespace(
+        attack_boxes=(pygame.FRect(100, 100, 30, 20),),
+        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 30, 20),),
+        state=SimpleNamespace(attack_name=None),
+        current_phase=None,
+    )
+    entity = SimpleNamespace(
+        hitbox=pygame.FRect(60, 100, 40, 48),
+        hurtbox=pygame.FRect(60, 100, 40, 48),
+        hurtboxes=None,
+        combat=combat,
+        faction="player",
+        otg_timer=0.0,
+        gravity_scale=1.0,
+    )
+    surface.fill((0, 0, 0))
+    world_ui.draw_debug_overlays([entity], camera)
+    box_pixels = sum(
+        1
+        for x in range(100, 130)
+        for y in range(100, 120)
+        if surface.get_at((x, y))[:3] == Colors.debug_attack_box
+    )
+    assert box_pixels > 0
+    assert WorldUI._swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
+
+
+def test_swept_ghost_exposes_previous_origin(world_ui, camera) -> None:
+    from src.ui.world_ui import WorldUI
+
+    combat = SimpleNamespace(
+        attack_boxes=(pygame.FRect(120, 100, 30, 20),),
+        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 50, 20),),
+    )
+    swept = WorldUI._swept_boxes(combat, 1)
+    assert swept[0] != combat.attack_boxes[0]
+    assert swept[0].width == 50.0
+
+
+def test_attack_timeline_marks_phase_progress(world_ui) -> None:
+    from src.ui.world_ui import WorldUI
+
+    state = SimpleNamespace(attack_name="jab", frame_counter=2)
+    phase = SimpleNamespace(startup_frames=4, active_frames=4, recovery_frames=4)
+    assert WorldUI._timeline_progress(state, "startup", phase) == 2 * 3
+    assert WorldUI._timeline_progress(state, "active", phase) == (4 + 2) * 3
+    assert WorldUI._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * 3
+
+
+def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
+    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    assert world_ui.metrics_text == ()
+    for _ in range(8):
+        world_ui.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
+    assert world_ui.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
+
+
+def test_live_attack_text_formats_player_state(world_ui) -> None:
+    from src.ui.world_ui import WorldUI
+
+    player = SimpleNamespace(
+        combat=SimpleNamespace(
+            state=SimpleNamespace(attack_name="jab", sub_state="active", frame_counter=3)
+        )
+    )
+    assert WorldUI._live_attack_text(player) == "jab active f3"
+    assert WorldUI._live_attack_text(None) is None
+    idle = SimpleNamespace(combat=SimpleNamespace(state=SimpleNamespace(attack_name=None)))
+    assert WorldUI._live_attack_text(idle) is None
+
+
+def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:
+    player = SimpleNamespace(
+        combat=SimpleNamespace(
+            state=SimpleNamespace(attack_name="jab", sub_state="startup", frame_counter=1)
+        )
+    )
+    for _ in range(10):
+        world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    world_ui.note_clash((10.0, 10.0))
+    world_ui.draw_metrics_panel(player=player, hit_stop=0.05)
+    assert world_ui.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
+    assert world_ui._clash_ttl > 0.0
+
+
+def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
+    world_ui.note_clash((42.0, 7.0))
+    assert world_ui.clash_point == (42.0, 7.0)
+    assert world_ui._clash_ttl > 0.0
+    world_ui.note_clash(None)
+    assert world_ui.clash_point == (42.0, 7.0)
+
+
+def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
+    from src.ui.world_ui import CLASH_MARKER_LIFETIME, WorldUI
+
+    surface = world_ui.display_surface
+    surface.fill((0, 0, 0))
+    world_ui.note_clash((120.0, 110.0))
+    assert world_ui._clash_ttl == CLASH_MARKER_LIFETIME
+    world_ui._draw_clash_marker(camera)
+    gold_pixels = sum(
+        1
+        for x in range(90, 150)
+        for y in range(80, 140)
+        if surface.get_at((x, y))[:3] == Colors.gold
+    )
+    assert gold_pixels > 0
+
+    surface.fill((0, 0, 0))
+    for _ in range(30):
+        world_ui._draw_clash_marker(camera)
+    assert world_ui._clash_ttl <= 0.0
+    surface.fill((0, 0, 0))
+    world_ui._draw_clash_marker(camera)
+    assert (
+        sum(
+            1
+            for x in range(90, 150)
+            for y in range(80, 140)
+            if surface.get_at((x, y))[:3] == Colors.gold
+        )
+        == 0
+    )
+    assert WorldUI._draw_clash_marker  # bound method still wired in overlays

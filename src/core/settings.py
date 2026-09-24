@@ -14,7 +14,7 @@ class Display:
     # Simulation runs at 60 Hz (Simulation.TICK_RATE); rendering at 120 FPS
     # keeps motion smooth without redrawing the same state 2 frames out of 3
     # as the previous 180 FPS setting did (audit F1.4/F6.1).
-    FPS = 180
+    FPS = 60
     TITLE = "Knightrock"
 
 
@@ -50,6 +50,7 @@ class Physics:
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05
     DASH_WALL_BOUNCE = 0.5
+    CROUCH_HEIGHT_FACTOR = 0.6
 
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0
@@ -106,6 +107,19 @@ class Combat:
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
     DIZZY_DAMAGE_MULT = 1.5
+    # P1 sweep CCD (D1) : borne BASSE en deplacement mesure, pas en vitesse.
+    # Distance euclidienne des centres par index de boite ; en dessous, le
+    # sweep est inutile (goldens stables) et `swept = cur`.
+    SWEEP_MIN_DISPLACEMENT_PX = 4.0
+    # P1 sweep CCD (D4) : borne HAUTE. Au-dela (respawn, teleport, carry
+    # anormal), `swept = cur` : pas de smear geant, pas de touche fantome.
+    # Invariant a dt sim fixe (TIMESTEP = 1/60) :
+    # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
+    # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
+    SWEEP_MAX_DISPLACEMENT_PX = 64.0
+    SHAPE_SWEEP_MAX_ITERATIONS = 16
+    SHAPE_CONTACT_EPSILON_PX = 0.001
+    GEOMETRY_CHECKSUM_QUANTUM = 1.0 / 1024.0
 
 
 class Guard:
@@ -126,6 +140,18 @@ class Guard:
     PARRY_TRAUMA = 0.45
     BREAK_TRAUMA = 0.55
     GUARD_TRAUMA = 0.12
+    POSTURE_COST_MULT = {"light": 1.0, "med": 1.0, "heavy": 1.25}
+    BLOCK_MASK_POSTURE = {"any": None, "stand": False, "crouch": True}
+    HEIGHT_BLOCK = {
+        ("high", False): True,
+        ("high", True): False,
+        ("mid", False): True,
+        ("mid", True): True,
+        ("low", False): False,
+        ("low", True): True,
+        ("overhead", False): True,
+        ("overhead", True): False,
+    }
 
 
 class CameraShake:
@@ -318,13 +344,23 @@ class GameFeel:
 
 
 class Locomotion:
-    """Movement damping and stop thresholds."""
+    """Movement damping, stop thresholds and ground speed tiers."""
 
     TURN_DEADZONE = 0.1
     STOP_SPEED_PX_S = 0.5
     RUN_STOP_SPEED_PX_S = 0.1
     WALL_JUMP_DAMPING = 10.0
     VELOCITY_EPSILON = 0.01
+    # Ground tiers as |velocity.x| / entity.speed, with hysteresis so the
+    # state does not flicker while acceleration crosses a boundary.
+    # Demote below *_DEMOTE, promote at/above *_PROMOTE (PROMOTE > DEMOTE).
+    WALK_SLOW_DEMOTE = 0.35  # walk -> walk_slow (covers Guard.MOVE_MULT)
+    WALK_SLOW_PROMOTE = 0.50  # walk_slow -> walk
+    WALK_DEMOTE = 0.65  # run -> walk
+    WALK_PROMOTE = 0.80  # walk -> run
+    # Enemy patrol cruise as a fraction of chase_speed when config omits
+    # an explicit patrol_speed.
+    ENEMY_PATROL_SPEED_MULT = 0.5
 
 
 class AI:
@@ -351,6 +387,9 @@ class Animation:
 
     FRAME_DURATION = 0.10
     RUN_FRAME_DURATION = 0.08
+    # Walk tiers reuse the run sprite-sheet with a slower frame clock.
+    WALK_FRAME_DURATION = 0.12
+    WALK_SLOW_FRAME_DURATION = 0.18
     ATTACK_FRAME_DURATION = 0.07
     HIT_FRAME_DURATION = 0.08
     HAZARD_FRAME_DURATION = 0.12

@@ -20,4 +20,8 @@ class HazardSystem:
 
     def process(self, delta_time: float) -> None:
         """Advance every hazard sprite."""
+        for hazard in self.groups.hazard_sprites:
+            capture = getattr(hazard, "capture_contact_origin", None)
+            if callable(capture):
+                capture()
         self.groups.hazard_sprites.update(delta_time)

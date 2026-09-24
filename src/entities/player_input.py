@@ -39,6 +39,7 @@ class PlayerInputHandler:
         player.left_held = im.left_held
         player.right_held = im.right_held
         player.guard_held = im.guard_held
+        player.down_held = im.down_held
         player.fast_fall = im.down_held
 
         if im.guard_just_pressed:

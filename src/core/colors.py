@@ -64,7 +64,16 @@ class Colors:
 
     debug_hitbox: ClassVar[Color] = (80, 140, 210)
     debug_hurtbox: ClassVar[Color] = (80, 210, 120)
+    debug_hurtbox_zones: ClassVar[tuple[Color, ...]] = (
+        (80, 210, 120),
+        (90, 170, 235),
+        (235, 200, 90),
+    )
     debug_attack_box: ClassVar[Color] = (230, 120, 60)
+    debug_shape_outline: ClassVar[Color] = (20, 22, 28)
+    debug_broadphase: ClassVar[Color] = (80, 220, 230)
+    debug_sweep: ClassVar[Color] = (170, 130, 245)
+    debug_anchor: ClassVar[Color] = (255, 255, 255)
     debug_static: ClassVar[Color] = (140, 145, 155)
     debug_velocity: ClassVar[Color] = (245, 230, 90)
     debug_otg: ClassVar[Color] = (80, 220, 230)

@@ -8,11 +8,13 @@ sub-states: startup, active, and recovery, measured in frames at a fixed
 reference frame rate.
 """
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import AnchorKind, EasingKind, ShapeKind, ShapePose, ease, interpolate_angle
 
 FRAME_RATE: int = 60
 """Reference frame rate in frames per second.
@@ -83,6 +85,22 @@ class HitProperties:
         If True, this hit may connect during the OTG protection window
         granted on landing from a juggle (Phase 5 #4). Ground hits
         otherwise bounce off a recently knocked-down victim.
+    unblockable : bool
+        If True, the hit bypasses guard and parry (chip/posture unchanged).
+    priority : int
+        Hit-vs-hit rank for simultaneous box overlaps (higher wins).
+    clash : str
+        Equal-priority outcome: ``"trade"`` (both connect) or
+        ``"clash"`` (both attacks cancel with a clash event).
+    height : str
+        Guard height: ``"high"``, ``"mid"``, ``"low"`` or ``"overhead"``.
+        Checked against ``Guard.HEIGHT_BLOCK`` with the target crouching.
+    block_mask : str
+        Posture allowed to block this hit: ``"any"``, ``"stand"`` or ``"crouch"``.
+    tags : tuple[str, ...]
+        Category tags used by hurt-zone invulnerability matching.
+    hit_level : str
+        Guard pressure level: ``"light"``, ``"med"`` or ``"heavy"``.
     """
 
     damage: float
@@ -93,6 +111,13 @@ class HitProperties:
     is_finisher: bool = False
     juggle_gravity_mult: float = 1.0
     otg_allowed: bool = False
+    unblockable: bool = False
+    priority: int = 0
+    clash: str = "trade"
+    height: str = "mid"
+    hit_level: str = "med"
+    block_mask: str = "any"
+    tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.damage < 0:
@@ -101,32 +126,20 @@ class HitProperties:
             raise ValueError("Hit stagger cannot be negative")
         if self.juggle_gravity_mult <= 0:
             raise ValueError("Juggle gravity multiplier must be strictly positive")
-
-
-@dataclass(frozen=True)
-class HitboxSpec:
-    """Size and offset of a single offensive rectangle within a phase.
-
-    A phase always carries its legacy primary box (``hitbox_size`` /
-    ``hitbox_offset``); each entry of ``PhaseDefinition.extra_hitboxes``
-    adds one disjoint box following the same convention: ``size`` is the
-    rectangle dimensions in pixels, ``offset`` its center relative to the
-    owner's hitbox center (mirrored on the x-axis when facing left).
-
-    Attributes
-    ----------
-    size : tuple[float, float]
-        Width and height in pixels, both strictly positive.
-    offset : tuple[float, float]
-        Center offset ``(x, y)`` relative to the owner's hitbox center.
-    """
-
-    size: tuple[float, float]
-    offset: tuple[float, float]
-
-    def __post_init__(self) -> None:
-        if not (self.size[0] > 0 and self.size[1] > 0):
-            raise ValueError("Hitbox dimensions must be strictly positive")
+        if self.priority < 0:
+            raise ValueError("Hit priority cannot be negative")
+        if self.clash not in ("trade", "clash"):
+            raise ValueError("Hit clash must be 'trade' or 'clash'")
+        if self.height not in ("high", "mid", "low", "overhead"):
+            raise ValueError("Hit height must be 'high', 'mid', 'low' or 'overhead'")
+        if self.hit_level not in ("light", "med", "heavy"):
+            raise ValueError("Hit level must be 'light', 'med' or 'heavy'")
+        if self.block_mask not in ("any", "stand", "crouch"):
+            raise ValueError("Block mask must be 'any', 'stand' or 'crouch'")
+        if not isinstance(self.tags, tuple) or any(
+            not isinstance(tag, str) or not tag for tag in self.tags
+        ):
+            raise ValueError("Hit tags must be a tuple of non-empty strings")
 
 
 @dataclass(frozen=True)
@@ -154,12 +167,144 @@ class HitboxKeyframe:
     frame: int
     size: tuple[float, float]
     offset: tuple[float, float]
+    angle: float = 0.0
 
     def __post_init__(self) -> None:
         if self.frame < 0:
             raise ValueError("Hitbox keyframe index cannot be negative")
         if not (self.size[0] > 0 and self.size[1] > 0):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.angle):
+            raise ValueError("Hitbox keyframe angle must be finite")
+
+
+BoxGeometry = tuple[tuple[float, float], tuple[float, float]]
+"""``(size, offset)`` pair interpolated from keyframes for one box."""
+
+
+def _check_keyframe_span(keyframes: tuple[HitboxKeyframe, ...], span: int, label: str) -> None:
+    """Validate increasing frames within the startup-to-active ``span``."""
+    previous = -1
+    for keyframe in keyframes:
+        if keyframe.frame <= previous:
+            raise ValueError(f"{label}s must use strictly increasing frames")
+        if keyframe.frame > span:
+            raise ValueError(f"{label} exceeds the startup-to-active frame span")
+        previous = keyframe.frame
+
+
+def interpolate_keyframes(
+    keyframes: tuple[HitboxKeyframe, ...],
+    static: BoxGeometry,
+    frame: int,
+) -> BoxGeometry:
+    """Linearly interpolate ``(size, offset)`` at a phase ``frame``.
+
+    ``frame`` counts from the start of startup (``0`` = phase start),
+    matching ``AttackStateMachine.frame_counter`` within each sub-state.
+    With no keyframes the static box is returned. Otherwise the
+    surrounding keyframes are interpolated linearly; outside their range
+    the nearest endpoint is held.
+    """
+    if not keyframes:
+        return static
+    if frame <= keyframes[0].frame:
+        first = keyframes[0]
+        return (first.size, first.offset)
+    # Pairwise walk over offset slices: the second slice is one shorter
+    # by construction, so strict=True would always raise (B905 exempt).
+    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
+        if frame <= after.frame:
+            span = after.frame - before.frame
+            blend = (frame - before.frame) / span
+            size = (
+                before.size[0] + (after.size[0] - before.size[0]) * blend,
+                before.size[1] + (after.size[1] - before.size[1]) * blend,
+            )
+            offset = (
+                before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
+                before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
+            )
+            return (size, offset)
+    last = keyframes[-1]
+    return (last.size, last.offset)
+
+
+def interpolate_shape_keyframes(
+    keyframes: tuple[HitboxKeyframe, ...],
+    static: BoxGeometry,
+    frame: int,
+    easing: EasingKind = EasingKind.LINEAR,
+) -> tuple[BoxGeometry, float]:
+    """Interpolate size, offset and angle at a phase frame."""
+    if not keyframes:
+        return static, 0.0
+    if frame <= keyframes[0].frame:
+        first = keyframes[0]
+        return (first.size, first.offset), first.angle
+    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
+        if frame <= after.frame:
+            progress = (frame - before.frame) / (after.frame - before.frame)
+            easing_progress = ease(easing, progress)
+            size = (
+                before.size[0] + (after.size[0] - before.size[0]) * easing_progress,
+                before.size[1] + (after.size[1] - before.size[1]) * easing_progress,
+            )
+            offset = (
+                before.offset[0] + (after.offset[0] - before.offset[0]) * easing_progress,
+                before.offset[1] + (after.offset[1] - before.offset[1]) * easing_progress,
+            )
+            return (size, offset), interpolate_angle(before.angle, after.angle, progress, easing)
+    last = keyframes[-1]
+    return (last.size, last.offset), last.angle
+
+
+@dataclass(frozen=True)
+class HitboxSpec:
+    """Size and offset of a single offensive rectangle within a phase.
+
+    A phase always carries its legacy primary box (``hitbox_size`` /
+    ``hitbox_offset``); each entry of ``PhaseDefinition.extra_hitboxes``
+    adds one disjoint box following the same convention: ``size`` is the
+    rectangle dimensions in pixels, ``offset`` its center relative to the
+    owner's hitbox center (mirrored on the x-axis when facing left).
+    ``keyframes`` optionally animates the box over the phase's
+    startup-to-active frames (same samples as the primary curve);
+    empty = static box. Span validation lives in
+    ``PhaseDefinition.__post_init__`` (the spec alone cannot know it).
+
+    Attributes
+    ----------
+    size : tuple[float, float]
+        Width and height in pixels, both strictly positive.
+    offset : tuple[float, float]
+        Center offset ``(x, y)`` relative to the owner's hitbox center.
+    keyframes : tuple[HitboxKeyframe, ...]
+        Optional animated samples for this box (empty = static).
+    """
+
+    size: tuple[float, float]
+    offset: tuple[float, float]
+    keyframes: tuple[HitboxKeyframe, ...] = ()
+    shape: ShapeKind = ShapeKind.AABB
+    angle: float = 0.0
+    easing: EasingKind = EasingKind.LINEAR
+    anchor: AnchorKind = AnchorKind.CENTER
+    anchor_offset: tuple[float, float] = (0.0, 0.0)
+
+    def __post_init__(self) -> None:
+        if not (self.size[0] > 0 and self.size[1] > 0):
+            raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.angle):
+            raise ValueError("Hitbox angle must be finite")
+        if not all(math.isfinite(value) for value in self.anchor_offset):
+            raise ValueError("Hitbox anchor offset must be finite")
+        ShapePose(self.shape, self.size, self.offset, self.angle)
+        previous = -1
+        for keyframe in self.keyframes:
+            if keyframe.frame <= previous:
+                raise ValueError("Hitbox keyframes must use strictly increasing frames")
+            previous = keyframe.frame
 
 
 @dataclass(frozen=True)
@@ -231,6 +376,11 @@ class PhaseDefinition:
     hitbox_size: tuple[float, float]
     hitbox_offset: tuple[float, float]
     hit: HitProperties
+    hitbox_shape: ShapeKind = ShapeKind.AABB
+    hitbox_angle: float = 0.0
+    hitbox_easing: EasingKind = EasingKind.LINEAR
+    hitbox_anchor: AnchorKind = AnchorKind.CENTER
+    hitbox_anchor_offset: tuple[float, float] = (0.0, 0.0)
     extra_hitboxes: tuple[HitboxSpec, ...] = ()
     hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
@@ -243,47 +393,69 @@ class PhaseDefinition:
             raise ValueError("An attack phase requires at least one active frame")
         if any(size <= 0 for size in self.hitbox_size):
             raise ValueError("Hitbox dimensions must be strictly positive")
+        if not math.isfinite(self.hitbox_angle):
+            raise ValueError("Hitbox angle must be finite")
+        if not all(math.isfinite(value) for value in self.hitbox_anchor_offset):
+            raise ValueError("Hitbox anchor offset must be finite")
+        ShapePose(self.hitbox_shape, self.hitbox_size, self.hitbox_offset, self.hitbox_angle)
         span = self.startup_frames + self.active_frames
-        previous = -1
-        for keyframe in self.hitbox_keyframes:
-            if keyframe.frame <= previous:
-                raise ValueError("Hitbox keyframes must use strictly increasing frames")
-            if keyframe.frame > span:
-                raise ValueError("Hitbox keyframe exceeds the startup-to-active frame span")
-            previous = keyframe.frame
+        _check_keyframe_span(self.hitbox_keyframes, span, "Hitbox keyframe")
+        for index, spec in enumerate(self.extra_hitboxes):
+            _check_keyframe_span(spec.keyframes, span, f"Extra hitbox #{index} keyframe")
 
-    def hitbox_at(self, frame: int) -> tuple[tuple[float, float], tuple[float, float]]:
+    def hitbox_at(self, frame: int) -> BoxGeometry:
         """Interpolate the primary ``(size, offset)`` at a phase ``frame``.
 
         ``frame`` counts from the start of startup (``0`` = phase start),
         matching ``AttackStateMachine.frame_counter`` within each
-        sub-state. With no keyframes the static legacy box is returned.
-        Otherwise the surrounding keyframes are interpolated linearly;
-        outside their range the nearest endpoint is held.
+        sub-state. Delegates to :func:`interpolate_keyframes` over the
+        primary curve (static legacy box when empty).
         """
-        if not self.hitbox_keyframes:
-            return (self.hitbox_size, self.hitbox_offset)
-        keyframes = self.hitbox_keyframes
-        if frame <= keyframes[0].frame:
-            first = keyframes[0]
-            return (first.size, first.offset)
-        # Pairwise walk over offset slices: the second slice is one shorter
-        # by construction, so strict=True would always raise (B905 exempt).
-        for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
-            if frame <= after.frame:
-                span = after.frame - before.frame
-                blend = (frame - before.frame) / span
-                size = (
-                    before.size[0] + (after.size[0] - before.size[0]) * blend,
-                    before.size[1] + (after.size[1] - before.size[1]) * blend,
-                )
-                offset = (
-                    before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
-                    before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
-                )
-                return (size, offset)
-        last = keyframes[-1]
-        return (last.size, last.offset)
+        return interpolate_keyframes(
+            self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
+        )
+
+    @property
+    def hitbox_spec(self) -> HitboxSpec:
+        """Return the primary hitbox using the extended shape model."""
+        return HitboxSpec(
+            size=self.hitbox_size,
+            offset=self.hitbox_offset,
+            keyframes=self.hitbox_keyframes,
+            shape=self.hitbox_shape,
+            angle=self.hitbox_angle,
+            easing=self.hitbox_easing,
+            anchor=self.hitbox_anchor,
+            anchor_offset=self.hitbox_anchor_offset,
+        )
+
+    def hitbox_shape_at(self, frame: int) -> tuple[BoxGeometry, float]:
+        """Interpolate the primary geometry and angle at a phase frame."""
+        return interpolate_shape_keyframes(
+            self.hitbox_keyframes,
+            (self.hitbox_size, self.hitbox_offset),
+            frame,
+            self.hitbox_easing,
+        )
+
+    def extra_box_at(self, index: int, frame: int) -> BoxGeometry:
+        """Interpolate extra box ``index`` at a phase ``frame``.
+
+        Each box follows its own curve (static ``(size, offset)`` when it
+        carries no keyframes); the primary curve is never reused here.
+        """
+        spec = self.extra_hitboxes[index]
+        return interpolate_keyframes(spec.keyframes, (spec.size, spec.offset), frame)
+
+    def extra_shape_at(self, index: int, frame: int) -> tuple[BoxGeometry, float]:
+        """Interpolate extra box geometry and angle at a phase frame."""
+        spec = self.extra_hitboxes[index]
+        return interpolate_shape_keyframes(
+            spec.keyframes,
+            (spec.size, spec.offset),
+            frame,
+            spec.easing,
+        )
 
     @property
     def total_frames(self) -> int:

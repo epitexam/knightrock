@@ -14,6 +14,7 @@ from src.combat.frame_data import (
     PhaseDefinition,
 )
 from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
 
 PLAYER_ATTACKS = {
     "light_attack": AttackDefinition(
@@ -306,6 +307,101 @@ PLAYER_ATTACKS = {
         combo_reset=True,
         lunge_speed_multiplier=0.0,
         attack_move_multiplier=0.1,
+    ),
+    "p5_shapes": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=1,
+                active_frames=2,
+                recovery_frames=1,
+                hitbox_size=(24.0, 24.0),
+                hitbox_offset=(36.0, -4.0),
+                hitbox_shape=ShapeKind.CIRCLE,
+                hitbox_anchor=AnchorKind.WEAPON,
+                hitbox_anchor_offset=(8.0, -10.0),
+                hit=HitProperties(
+                    damage=8.0,
+                    knockback=KnockbackConfig(power=(120.0, -40.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.1,
+                ),
+            ),
+            PhaseDefinition(
+                startup_frames=2,
+                active_frames=4,
+                recovery_frames=2,
+                hitbox_size=(36.0, 16.0),
+                hitbox_offset=(34.0, -8.0),
+                hitbox_shape=ShapeKind.CAPSULE,
+                hitbox_angle=20.0,
+                hitbox_easing=EasingKind.EASE_IN_OUT,
+                hitbox_anchor=AnchorKind.HAND,
+                hitbox_anchor_offset=(10.0, -4.0),
+                hitbox_keyframes=(
+                    HitboxKeyframe(0, (28.0, 14.0), (31.0, -6.0), 0.0),
+                    HitboxKeyframe(6, (44.0, 18.0), (38.0, -10.0), 30.0),
+                ),
+                hit=HitProperties(
+                    damage=10.0,
+                    knockback=KnockbackConfig(power=(180.0, -60.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.2,
+                ),
+            ),
+            PhaseDefinition(
+                startup_frames=3,
+                active_frames=4,
+                recovery_frames=3,
+                hitbox_size=(48.0, 24.0),
+                hitbox_offset=(32.0, -10.0),
+                hitbox_shape=ShapeKind.OBB,
+                hitbox_angle=30.0,
+                hitbox_easing=EasingKind.EASE_IN,
+                hitbox_anchor=AnchorKind.WEAPON,
+                hitbox_anchor_offset=(12.0, -6.0),
+                hitbox_keyframes=(
+                    HitboxKeyframe(0, (40.0, 20.0), (22.0, -8.0), 20.0),
+                    HitboxKeyframe(7, (56.0, 28.0), (36.0, -12.0), 45.0),
+                ),
+                hit=HitProperties(
+                    damage=12.0,
+                    knockback=KnockbackConfig(power=(240.0, -100.0)),
+                    damage_type=DamageType.BLUNT,
+                    stagger=0.3,
+                ),
+            ),
+        ),
+        cooldown=0.5,
+        lock_direction=True,
+        combo_reset=True,
+    ),
+    "circle_burst": AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=2,
+                active_frames=4,
+                recovery_frames=2,
+                hitbox_size=(20.0, 20.0),
+                hitbox_offset=(12.0, 0.0),
+                hitbox_shape=ShapeKind.CIRCLE,
+                hitbox_easing=EasingKind.EASE_OUT,
+                hitbox_anchor=AnchorKind.WEAPON,
+                hitbox_anchor_offset=(4.0, -6.0),
+                hitbox_keyframes=(
+                    HitboxKeyframe(0, (20.0, 20.0), (12.0, 0.0), 0.0),
+                    HitboxKeyframe(6, (40.0, 40.0), (24.0, 0.0), 0.0),
+                ),
+                hit=HitProperties(
+                    damage=12.0,
+                    knockback=KnockbackConfig(power=(180.0, -60.0)),
+                    damage_type=DamageType.PIERCE,
+                    stagger=0.2,
+                ),
+            ),
+        ),
+        cooldown=0.25,
+        lock_direction=True,
+        combo_reset=True,
     ),
 }
 

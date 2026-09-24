@@ -8,6 +8,7 @@ from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import AttackDefinition
 from src.core.colors import Colors
 from src.core.settings import Combat, Guard, Physics
+from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 def _default_attacks() -> dict[str, AttackDefinition]:
@@ -118,6 +119,8 @@ class PlayerConfig:
     hurt_duration: float = Combat.PLAYER_HURT_DURATION
     invincibility_duration: float = Combat.INVINCIBILITY_DURATION
     faction: str = "player"
+    # P2 multi-hurtbox: None = legacy fallback on ``hurtbox_inflate``.
+    hurtbox_zones: tuple[HurtboxZoneDef, ...] | None = None
 
 
 DEFAULT_PLAYER_CONFIG = PlayerConfig(

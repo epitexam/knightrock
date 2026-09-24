@@ -52,9 +52,10 @@ class EnemyPatrolState(State):
     """Patrol state: the enemy moves back and forth in a single direction."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and initialize patrol direction and timer."""
+        """Enter the state and initialize patrol direction, timer, speed."""
         self.patrol_timer = self.entity.patrol_interval
         self.direction = self.entity.patrol_direction
+        self.entity.speed = self.entity.patrol_speed
 
     def update(self, delta_time: float) -> str | None:
         """Update the state, move the enemy, and check for player detection."""
@@ -94,8 +95,9 @@ class EnemyChaseState(State):
         self.leap_glide_timer = 0.0
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and face the player."""
+        """Enter the state, face the player, and pick up chase speed."""
         self.entity.face_player()
+        self.entity.speed = self.entity.chase_speed
         self.leap_glide_timer = 0.0
 
     def update(self, delta_time: float) -> str | None:

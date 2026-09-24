@@ -149,8 +149,12 @@ frame cost predictable:
   Projectiles are labelled with speed, lifetime and pierce; tiles are skipped
   and static props render without text.
 - **Toggles** — `F1` boxes · `F2` labels · `F3` velocities · `F4` statics ·
-  `F5` panels · `F6` freeze the simulation (debug only). The full list is
-  recalled on-screen by the `DEBUG KEYS` panel.
+  `F5` panels · `F6` freeze the simulation (debug only). `F7` steps one tick,
+  `F8` replays an attack and `F9` exports it. Multi-box indices are drawn as
+  in-situ vector points: the first is filled and the following ones hollow.
+  Melee, projectile AABB and moving-hazard geometry use swept collision;
+  static hazards and contact damage retain discrete collision. The full list
+  is recalled on-screen by the `DEBUG KEYS` panel.
 
 ## Physics engine (assists on by default)
 
@@ -208,6 +212,7 @@ a data problem.
 |---|---|
 | `DEBUG=1` | Enable the debug overlay and hotkeys. |
 | `KNIGHTROCK_DATA_DIR` | Alternate root containing `gameplay/*.json` (modders, tests). |
+| `KNIGHTROCK_EXPORT_DIR` | Destination for F9 attack exports (default `~/.knightrock/exports/`). |
 | `KNIGHTROCK_SAVE_DIR` | Override the save directory (default `~/.knightrock/`). |
 | `SDL_VIDEODRIVER=dummy` | Headless rendering (CI, automated tests). |
 | `SDL_AUDIODRIVER=dummy` | Headless audio (CI, automated tests). |
@@ -242,9 +247,9 @@ uv run ruff check src tests --select C901   # cyclomatic complexity (threshold 1
 uv run mypy src                             # types
 ```
 
-> **Current baseline:** 665 tests passing · 91 % instruction coverage ·
-> 88 % branch coverage · Ruff clean (197 files formatted) · mypy clean on
-> 120 files. Tests run headless through the `SDL_*_DRIVER=dummy` variables, so
+> **Current baseline:** 910 tests passing · 91 % instruction coverage ·
+> 88 % branch coverage · Ruff clean · mypy clean on 128 files. Tests run headless
+> through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
 ## Packaging & releases
