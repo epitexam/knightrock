@@ -8,7 +8,7 @@ Contraintes :
 
 - aucun commit dans cette étape ;
 - ne pas modifier le comportement gameplay validé par les goldens sans preuve et test associé ;
-- conserver P0–P5 ; le sweep melee reste actif, avec extension prévue aux projectiles AABB et hazards mobiles ;
+- conserver P0–P5 ; le sweep melee reste actif et le sweep AABB est étendu aux projectiles et hazards mobiles ;
 - traiter la modification existante de `src/core/settings.py` comme un changement hors périmètre ;
 - valider toute modification documentaire contre le code réellement présent.
 
@@ -68,7 +68,7 @@ Actions :
 - remplacer chaque « ouvert » par « clos », « clos par décision produit » ou « hors périmètre » ;
 - supprimer les preuves historiques contredites par le code ;
 - ajouter des preuves basées sur les chemins et tests actuels ;
-- conserver O7 comme « clos par décision produit » ;
+- conserver O7 comme « clos par décision produit » pour hazards statiques/contact, avec sweep multi-producteurs actif ;
 ### A.4 Cohérence documentaire
 
 Le nombre de tests, le statut P5, les statuts O1–O9, les limites produit et les commandes de validation doivent correspondre à l’état réel du dépôt.
@@ -111,7 +111,13 @@ Réception : le test isolé et la suite complète passent dans les modes adapté
 
 ### C.1 Lancement
 
-Le lancement direct de `tests/benchmarks/contact_benchmark.py` échoue actuellement avec `ModuleNotFoundError: src`. Retenir soit un bootstrap d’import, soit la commande documentée :
+Le benchmark est directement lançable avec :
+
+```bash
+uv run python tests/benchmarks/contact_benchmark.py
+```
+
+La commande module reste disponible pour compatibilité :
 
 ```bash
 PYTHONPATH=. uv run python -m tests.benchmarks.contact_benchmark
@@ -121,7 +127,7 @@ PYTHONPATH=. uv run python -m tests.benchmarks.contact_benchmark
 
 ### C.2 Mesure d’un contact réel
 
-Le préchauffage marque actuellement les cibles via `targets_hit`, donc les itérations suivantes produisent `contacts=0`.
+Le préchauffage était initialement source de `contacts=0` à cause de `targets_hit`. Le harness remet désormais les cibles à leur état de départ avant chaque résolution.
 
 Actions :
 
@@ -133,7 +139,7 @@ Actions :
 
 ### C.3 Documentation
 
-Mettre à jour la section 2.2, la section 10 et O4 avec la commande exacte, Python, pygame, plateforme, itérations, répétitions, version JSON, résultat et règle de comparaison entre révisions.
+Mettre à jour la section 2.2, la section 10 et O4 avec la commande exacte, Python, pygame, plateforme, itérations, répétitions, version JSON, résultat et règle de comparaison entre révisions — terminé dans la recette du 2026-09-24.
 
 
 ## 5. Phase D — Qualité globale

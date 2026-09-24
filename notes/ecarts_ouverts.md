@@ -17,7 +17,7 @@
 | O8 | Offset des keyframes | Clos | `_validate_keyframes`, `test_attack_validation.py` |
 | O9 | Indices debug | Clos par décision de forme | `world_ui.py`, points `●/○`, `test_debug_overlay.py` |
 
-**Limites hors périmètre :** grab/throw/command-grab, extension du sweep aux projectiles/hazards/contact, réseau et rééquilibrage global.
+**Limites hors périmètre :** grab/throw/command-grab, extension du sweep aux hazards statiques ou au contact damage, réseau et rééquilibrage global.
 
 ## Preuves et décisions
 

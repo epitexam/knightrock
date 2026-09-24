@@ -152,8 +152,9 @@ frame cost predictable:
   `F5` panels · `F6` freeze the simulation (debug only). `F7` steps one tick,
   `F8` replays an attack and `F9` exports it. Multi-box indices are drawn as
   in-situ vector points: the first is filled and the following ones hollow.
-  The bilateral sweep is melee-only; projectiles, hazards and contact use
-  discrete collision. The full list is recalled on-screen by the `DEBUG KEYS` panel.
+  Melee, projectile AABB and moving-hazard geometry use swept collision;
+  static hazards and contact damage retain discrete collision. The full list
+  is recalled on-screen by the `DEBUG KEYS` panel.
 
 ## Physics engine (assists on by default)
 
