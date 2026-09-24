@@ -152,14 +152,16 @@ def test_edge_labels_shift_inside_the_screen(
     assert screen.contains(placed[0]), f"card {placed[0]} sticks out of the display"
 
 
-def test_combat_panel_only_collects_when_debug_is_enabled(ui: UIManager) -> None:
+def test_combat_panel_only_collects_when_debug_is_enabled(
+    ui: UIManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """DEBUG unset: draw_metrics_panel collects nothing; with DEBUG it does."""
-    os.environ.pop("DEBUG", None)
+    monkeypatch.delenv("DEBUG", raising=False)
     ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=1, overlaps=1, contacts=1))
     ui.world_ui.draw_metrics_panel()
     assert ui.world_ui.combat_panel() is None
 
-    os.environ["DEBUG"] = "1"
+    monkeypatch.setenv("DEBUG", "1")
     for _ in range(10):  # metrics refresh every 10th tick, as in game
         ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
     ui.world_ui.draw_metrics_panel()
@@ -170,9 +172,11 @@ def test_combat_panel_only_collects_when_debug_is_enabled(ui: UIManager) -> None
     assert lines[0][0] == "pairs 2"
 
 
-def test_draw_combat_panel_flows_through_the_layout(ui: UIManager) -> None:
+def test_draw_combat_panel_flows_through_the_layout(
+    ui: UIManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The COMBAT panel is drawn inside the column flow, not at a fixed spot."""
-    os.environ["DEBUG"] = "1"
+    monkeypatch.setenv("DEBUG", "1")
     surface = pygame.Surface((640, 480))
     surface.fill((0, 0, 0))
     ui.renderer.display_surface = surface

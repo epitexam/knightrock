@@ -5,7 +5,6 @@ import os
 
 from src.core.game import Game
 
-
 LOGGING_CONFIG: dict = {
     "version": 1,
     "disable_existing_loggers": False,
