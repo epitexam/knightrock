@@ -4,26 +4,9 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.core.input.input_manager import InputManager
 from src.entities.enemies.factory import create_enemy
 from src.entities.player import Player
-
-
-class MockInputManager:
-    """Mock input manager for testing."""
-
-    def __init__(self):
-        self.move_axis = 0.0
-        self.left_held = False
-        self.right_held = False
-        self.guard_held = False
-        self.guard_just_pressed = False
-        self.down_held = False
-        self.jump_just_pressed = False
-        self.dash_just_pressed = False
-        self.reset_just_pressed = False
-        self.attack1_just_pressed = False
-        self.attack2_just_pressed = False
-        self.attack2_just_released = False
 
 
 class MockPlayer:
@@ -65,7 +48,7 @@ class TestCombatComponentInitialization:
         groups = Group()
         collision_sprites = Group()
         moving_platforms = []
-        input_manager = MockInputManager()
+        input_manager = InputManager()
 
         player = Player(
             pos=(100, 100),
@@ -109,7 +92,7 @@ class TestCombatComponentInitialization:
         groups = Group()
         collision_sprites = Group()
         moving_platforms = []
-        input_manager = MockInputManager()
+        input_manager = InputManager()
 
         player = Player(
             pos=(100, 100),

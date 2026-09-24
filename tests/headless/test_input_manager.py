@@ -42,8 +42,7 @@ def test_input_manager_exposes_move_axis() -> None:
     manager.update()
 
     assert manager.axis(InputAction.MOVE_X) == -0.8
-    assert manager.left_held is True
-    assert manager.right_held is False
+    assert manager.axis(InputAction.MOVE_X) < 0.0
 
 
 def test_input_manager_rejects_invalid_action_channels() -> None:
