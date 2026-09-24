@@ -94,7 +94,7 @@ class MenuBindings:
                 InputAction.UI_RIGHT: pygame.K_RIGHT,
                 InputAction.UI_CONFIRM: (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE),
                 InputAction.UI_BACK: pygame.K_ESCAPE,
-                InputAction.UI_CANCEL: pygame.K_ESCAPE,
+                InputAction.UI_CANCEL: pygame.K_q,
             }
         )
     )

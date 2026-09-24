@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 import pygame
 
+from src.core.input.event_router import RoutedInput
+
 if TYPE_CHECKING:
     from src.core.game import Game
 
@@ -29,6 +31,9 @@ class Scene(ABC):
 
     def handle_event(self, event: pygame.event.Event) -> None:  # noqa: B027
         """Process a single Pygame event."""
+
+    def handle_routed(self, routed_input: RoutedInput) -> None:  # noqa: B027
+        """Process a routed input action."""
 
     @abstractmethod
     def update(self, delta_time: float) -> None:
