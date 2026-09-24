@@ -49,17 +49,35 @@ class EventRouter:
                 InputDevice.MOUSE,
                 position=tuple(getattr(event, "pos", (0, 0))),
             )
+        if event.type in (
+            pygame.JOYBUTTONDOWN,
+            pygame.JOYDEVICEREMOVED,
+            pygame.JOYHATMOTION,
+            pygame.JOYAXISMOTION,
+        ):
+            return self._route_gamepad(event)
+        return None
+
+    def _route_gamepad(self, event: pygame.event.Event) -> RoutedInput | None:
         if event.type == pygame.JOYBUTTONDOWN:
             return self._route_gamepad_button(getattr(event, "button", -1))
-        if event.type == pygame.JOYHATMOTION:
-            return self._route_hat(getattr(event, "value", (0, 0)))
-        if event.type == pygame.JOYAXISMOTION:
-            return self._route_axis(
-                getattr(event, "instance_id", 0),
-                getattr(event, "axis", -1),
-                getattr(event, "value", 0.0),
+        if event.type == pygame.JOYDEVICEREMOVED:
+            instance_id = getattr(event, "instance_id", 0)
+            for key in tuple(self._active_axes):
+                if key[0] == instance_id:
+                    self._active_axes.pop(key, None)
+            return RoutedInput(
+                InputAction.UI_CANCEL,
+                InputDevice.GAMEPAD,
+                variant="device_removed",
             )
-        return None
+        if event.type == pygame.JOYHATMOTION:
+            return self._route_hat(getattr(event, "hat", 0), getattr(event, "value", (0, 0)))
+        return self._route_axis(
+            getattr(event, "instance_id", 0),
+            getattr(event, "axis", -1),
+            getattr(event, "value", 0.0),
+        )
 
     def _route_keyboard(self, key: int) -> RoutedInput | None:
         if key == pygame.K_n:
@@ -76,31 +94,23 @@ class EventRouter:
                 return RoutedInput(action, InputDevice.GAMEPAD)
         return None
 
-    def _route_hat(self, value: tuple[int, int]) -> RoutedInput | None:
-        x, y = value
-        if y < 0:
-            action = InputAction.UI_UP
-        elif y > 0:
-            action = InputAction.UI_DOWN
-        elif x < 0:
-            action = InputAction.UI_LEFT
-        elif x > 0:
-            action = InputAction.UI_RIGHT
-        else:
-            return None
-        return RoutedInput(action, InputDevice.GAMEPAD, value=float(x or y))
-
-    def _route_axis(self, instance_id: int, axis: int, value: float) -> RoutedInput | None:
-        action = self._axis_action(axis, value)
+    def _route_hat(self, hat: int, value: tuple[int, int]) -> RoutedInput | None:
+        action = self._hat_action(hat, value)
         if action is None:
             return None
+        return RoutedInput(action, InputDevice.GAMEPAD, value=float(value[0] or value[1]))
+
+    def _route_axis(self, instance_id: int, axis: int, value: float) -> RoutedInput | None:
         key = (instance_id, axis)
         active = self._active_axes.get(key)
         if value == 0.0 or abs(value) <= InputSettings.UI_AXIS_RELEASE_THRESHOLD:
             self._active_axes.pop(key, None)
-            if active != action:
+            if active is None:
                 return None
-            return RoutedInput(action, InputDevice.GAMEPAD, value=value)
+            return RoutedInput(active, InputDevice.GAMEPAD, value=value, variant="release")
+        action = self._axis_action(axis, value)
+        if action is None:
+            return None
         if abs(value) < InputSettings.UI_AXIS_TRIGGER_THRESHOLD:
             return None
         self._active_axes[key] = action
@@ -108,10 +118,31 @@ class EventRouter:
             return None
         return RoutedInput(action, InputDevice.GAMEPAD, value=value)
 
-    @staticmethod
-    def _axis_action(axis: int, value: float) -> InputAction | None:
-        if axis == 0:
-            return InputAction.UI_LEFT if value < 0.0 else InputAction.UI_RIGHT
-        if axis == 1:
-            return InputAction.UI_UP if value < 0.0 else InputAction.UI_DOWN
+    def _axis_action(self, axis: int, value: float) -> InputAction | None:
+        for action, bound_axis in self._bindings.menu.gamepad_axes.items():
+            if bound_axis != axis:
+                continue
+            if action in (InputAction.UI_LEFT, InputAction.UI_RIGHT):
+                if (value < 0.0) == (action is InputAction.UI_LEFT):
+                    return action
+                continue
+            if action in (InputAction.UI_UP, InputAction.UI_DOWN):
+                if (value < 0.0) == (action is InputAction.UI_UP):
+                    return action
+                continue
+        return None
+
+    def _hat_action(self, hat: int, value: tuple[int, int]) -> InputAction | None:
+        x, y = value
+        for action, bound_hat in self._bindings.menu.gamepad_hats.items():
+            if bound_hat != hat:
+                continue
+            if y < 0 and action is InputAction.UI_UP:
+                return action
+            if y > 0 and action is InputAction.UI_DOWN:
+                return action
+            if x < 0 and action is InputAction.UI_LEFT:
+                return action
+            if x > 0 and action is InputAction.UI_RIGHT:
+                return action
         return None

@@ -102,7 +102,6 @@ class MenuBindings:
         default_factory=lambda: _immutable(
             {
                 InputAction.UI_CONFIRM: 0,
-                InputAction.UI_BACK: 1,
                 InputAction.UI_CANCEL: 1,
             }
         )

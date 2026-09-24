@@ -34,7 +34,10 @@ class PauseScene(Scene):
     def handle_routed(self, routed_input: RoutedInput) -> None:
         if routed_input.action in (InputAction.UI_CONFIRM, InputAction.UI_BACK):
             self.game.scene_manager.pop()
-        elif routed_input.action is InputAction.UI_CANCEL:
+        elif (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        ):
             self.game.scene_manager.switch(MenuScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:

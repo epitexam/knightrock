@@ -35,7 +35,10 @@ class GameOverScene(Scene):
     def handle_routed(self, routed_input: RoutedInput) -> None:
         if routed_input.action is InputAction.UI_CONFIRM:
             self.game.scene_manager.switch(GameplayScene(self.game, self.level_id))
-        elif routed_input.action is InputAction.UI_CANCEL:
+        elif (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        ):
             self.game.scene_manager.switch(MenuScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:

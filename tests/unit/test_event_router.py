@@ -1,8 +1,11 @@
+from types import MappingProxyType
+
 import pygame
 
 from src.application.input_dispatcher import InputDispatcher
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
+from src.core.input.input_bindings import InputBindings, MenuBindings
 
 
 def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
@@ -15,6 +18,9 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
     assert keyboard == RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD)
     assert mouse == RoutedInput(InputAction.UI_CONFIRM, InputDevice.MOUSE, position=(12, 24))
     assert gamepad == RoutedInput(InputAction.UI_CONFIRM, InputDevice.GAMEPAD)
+    cancel = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
+
+    assert cancel == RoutedInput(InputAction.UI_CANCEL, InputDevice.GAMEPAD)
 
 
 def test_router_maps_hat_and_axis_with_release_threshold() -> None:
@@ -32,7 +38,9 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
     assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
     assert repeated is None
-    assert release == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.1)
+    assert release == RoutedInput(
+        InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.1, variant="release"
+    )
 
 
 def test_router_preserves_new_game_and_cancel_variants() -> None:
@@ -43,6 +51,44 @@ def test_router_preserves_new_game_and_cancel_variants() -> None:
 
     assert new_game == RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
     assert cancel == RoutedInput(InputAction.UI_CANCEL, InputDevice.KEYBOARD)
+
+
+def test_router_uses_custom_menu_axis_and_hat_bindings() -> None:
+    menu = MenuBindings(
+        gamepad_axes=MappingProxyType(
+            {
+                InputAction.UI_LEFT: 7,
+                InputAction.UI_RIGHT: 7,
+                InputAction.UI_UP: 8,
+                InputAction.UI_DOWN: 8,
+            }
+        ),
+        gamepad_hats=MappingProxyType(
+            {
+                InputAction.UI_LEFT: 3,
+                InputAction.UI_RIGHT: 3,
+                InputAction.UI_UP: 3,
+                InputAction.UI_DOWN: 3,
+            }
+        ),
+    )
+    router = EventRouter(InputBindings(menu=menu))
+
+    axis = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=1, axis=7, value=-1.0))
+    hat = router.route(pygame.event.Event(pygame.JOYHATMOTION, instance_id=1, hat=3, value=(-1, 0)))
+
+    assert axis == RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD, value=-1.0)
+    assert hat == RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD, value=-1.0)
+
+
+def test_router_reports_joystick_removal() -> None:
+    router = EventRouter()
+
+    removed = router.route(pygame.event.Event(pygame.JOYDEVICEREMOVED, instance_id=9))
+
+    assert removed == RoutedInput(
+        InputAction.UI_CANCEL, InputDevice.GAMEPAD, variant="device_removed"
+    )
 
 
 def test_dispatcher_forwards_raw_and_routed_inputs() -> None:
