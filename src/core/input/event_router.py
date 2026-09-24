@@ -126,7 +126,8 @@ class EventRouter:
                     return action
                 continue
             if action in (InputAction.UI_UP, InputAction.UI_DOWN):
-                if (value < 0.0) == (action is InputAction.UI_UP):
+                is_up = value > 0.0 if self._bindings.menu.invert_y else value < 0.0
+                if is_up == (action is InputAction.UI_UP):
                     return action
                 continue
         return None

@@ -147,6 +147,7 @@ class MenuBindings:
         )
     )
     new_game_key: int | None = pygame.K_n
+    invert_y: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "keyboard", _immutable_keys(dict(self.keyboard)))

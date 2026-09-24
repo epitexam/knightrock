@@ -33,6 +33,10 @@ class OptionsScene(Scene):
                 MenuItem("scale", f"UI scale: {settings.ui_scale:.1f}x"),
                 MenuItem("fullscreen", f"Fullscreen: {'on' if settings.fullscreen else 'off'}"),
                 MenuItem("vsync", f"VSync: {'on' if settings.vsync else 'off'}"),
+                MenuItem(
+                    "invert_y",
+                    f"Stick Y: {'inverted' if settings.bindings.menu.invert_y else 'normal'}",
+                ),
                 MenuItem("back", "Back"),
             )
         )
@@ -61,6 +65,13 @@ class OptionsScene(Scene):
             self._apply(replace(self.game.settings, fullscreen=not self.game.settings.fullscreen))
         elif action == "vsync":
             self._apply(replace(self.game.settings, vsync=not self.game.settings.vsync))
+        elif action == "invert_y":
+            menu = replace(
+                self.game.settings.bindings.menu,
+                invert_y=not self.game.settings.bindings.menu.invert_y,
+            )
+            bindings = replace(self.game.settings.bindings, menu=menu)
+            self._apply(self.game.settings.with_bindings(bindings))
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()
