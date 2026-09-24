@@ -67,7 +67,10 @@ def game_runtime(tmp_path):
     """An initialized ``Game`` (dummy display) without running the loop."""
     from src.core.game import Game
 
-    game = Game(save_path=tmp_path / "savegame.json")
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
     game.display_surface = pygame.display.get_surface()
     game.clock = pygame.time.Clock()
     return game

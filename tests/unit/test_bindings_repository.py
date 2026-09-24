@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+from types import MappingProxyType
 
 from src.core.input.bindings_repository import BindingsRepository, bindings_to_dict
-from src.core.input.input_bindings import InputBindings
+from src.core.input.input_actions import InputAction
+from src.core.input.input_bindings import InputBindings, MenuBindings
 
 
 def test_bindings_roundtrip_through_versioned_repository(tmp_path: Path) -> None:
@@ -14,6 +16,27 @@ def test_bindings_roundtrip_through_versioned_repository(tmp_path: Path) -> None
 
     assert loaded == bindings
     assert json.loads(repository.path.read_text(encoding="utf-8")) == bindings_to_dict(bindings)
+
+
+def test_custom_bindings_roundtrip_after_schema_validation(tmp_path: Path) -> None:
+    repository = BindingsRepository(tmp_path / "settings.json")
+    menu = MenuBindings(
+        gamepad_axes=MappingProxyType(
+            {
+                InputAction.UI_LEFT: 7,
+                InputAction.UI_RIGHT: 7,
+                InputAction.UI_UP: 8,
+                InputAction.UI_DOWN: 8,
+            }
+        )
+    )
+    bindings = InputBindings(menu=menu)
+
+    repository.save(bindings)
+    loaded = repository.load()
+
+    assert loaded == bindings
+    assert loaded.menu.gamepad_axes[InputAction.UI_RIGHT] == 7
 
 
 def test_missing_bindings_file_uses_defaults(tmp_path: Path) -> None:

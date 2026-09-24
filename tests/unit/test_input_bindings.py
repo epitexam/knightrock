@@ -2,7 +2,7 @@ import pygame
 import pytest
 
 from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings
+from src.core.input.input_bindings import GameplayBindings, InputBindings
 
 
 def test_default_bindings_are_separated_by_context() -> None:
@@ -35,6 +35,16 @@ def test_default_bindings_are_immutable() -> None:
 
     with pytest.raises(TypeError):
         bindings.gameplay.keyboard[InputAction.JUMP] = pygame.K_x
+
+
+def test_custom_bindings_are_copied_into_immutable_mappings() -> None:
+    keyboard = {InputAction.JUMP: pygame.K_SPACE}
+    gameplay = GameplayBindings(keyboard=keyboard)
+    keyboard[InputAction.JUMP] = pygame.K_x
+
+    assert gameplay.keyboard[InputAction.JUMP] == pygame.K_SPACE
+    with pytest.raises(TypeError):
+        gameplay.keyboard[InputAction.JUMP] = pygame.K_x
 
 
 def test_default_combos_are_typed_and_nonempty() -> None:

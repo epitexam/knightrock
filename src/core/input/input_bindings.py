@@ -82,6 +82,26 @@ class GameplayBindings:
         default_factory=lambda: _immutable_combos({InputAction.SPECIAL_ATTACK: (1, 3)})
     )
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "keyboard", _immutable_keys(dict(self.keyboard)))
+        object.__setattr__(self, "gamepad_buttons", _immutable(dict(self.gamepad_buttons)))
+        object.__setattr__(self, "gamepad_axes", _immutable(dict(self.gamepad_axes)))
+        object.__setattr__(self, "gamepad_hats", _immutable(dict(self.gamepad_hats)))
+        object.__setattr__(
+            self,
+            "keyboard_combos",
+            _immutable_combos(
+                {action: tuple(keys) for action, keys in self.keyboard_combos.items()}
+            ),
+        )
+        object.__setattr__(
+            self,
+            "gamepad_combos",
+            _immutable_combos(
+                {action: tuple(keys) for action, keys in self.gamepad_combos.items()}
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class MenuBindings:
@@ -126,6 +146,12 @@ class MenuBindings:
             }
         )
     )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "keyboard", _immutable_keys(dict(self.keyboard)))
+        object.__setattr__(self, "gamepad_buttons", _immutable(dict(self.gamepad_buttons)))
+        object.__setattr__(self, "gamepad_hats", _immutable(dict(self.gamepad_hats)))
+        object.__setattr__(self, "gamepad_axes", _immutable(dict(self.gamepad_axes)))
 
 
 @dataclass(frozen=True)
