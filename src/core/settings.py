@@ -289,6 +289,11 @@ class Input:
     """Input thresholds and buffering windows."""
 
     AXIS_DEADZONE = 0.1
+    DASH_AXIS_THRESHOLD = 0.5
+    UI_AXIS_TRIGGER_THRESHOLD = 0.5
+    UI_AXIS_RELEASE_THRESHOLD = 0.25
+    UI_REPEAT_INITIAL_DELAY = 0.4
+    UI_REPEAT_INTERVAL = 0.1
     ATTACK_BUFFER_WINDOW = 0.2
 
 

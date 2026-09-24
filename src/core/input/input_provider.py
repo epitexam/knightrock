@@ -1,9 +1,12 @@
+from collections.abc import Mapping, Sequence
+
 import pygame
 from pygame.joystick import JoystickType
 
 from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import InputBindings
+from src.core.input.input_bindings import ActionMap, AxisMap, ButtonMap, ComboMap, InputBindings
 from src.core.input.input_state import InputState
+from src.core.settings import Input as InputSettings
 
 
 class InputProvider:
@@ -36,11 +39,7 @@ class LocalInputProvider(InputProvider):
 
     def poll(self) -> InputState:
         keys = pygame.key.get_pressed()
-        kb = self._bindings.keyboard
-        buttons = self._bindings.gamepad_buttons
-        axes = self._bindings.gamepad_axes
-        keyboard_combos = self._bindings.keyboard_combos
-        gamepad_combos = self._bindings.gamepad_combos
+        gameplay = self._bindings.gameplay
         self._current_joy_buttons = {}
         self._current_joy_axes = {}
         if self._joystick:
@@ -50,44 +49,52 @@ class LocalInputProvider(InputProvider):
                 self._current_joy_axes[index] = self._joystick.get_axis(index)
 
         held = {
-            InputAction.MOVE_DOWN: bool(keys[kb["move_down"]]),
-            InputAction.GUARD: bool(keys[kb["guard"]])
-            or self._current_joy_buttons.get(buttons["guard"], False),
-            InputAction.JUMP: bool(keys[kb["jump"]])
-            or self._current_joy_buttons.get(buttons["jump"], False),
-            InputAction.DASH: bool(keys[kb["dash"]])
-            or self._current_joy_axes.get(axes["dash"], 0.0) > 0.5,
-            InputAction.RESET: bool(keys[kb["reset"]])
-            or self._current_joy_buttons.get(buttons["reset"], False),
+            InputAction.MOVE_DOWN: self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN),
+            InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
+            InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.JUMP),
+            InputAction.DASH: self._key_held(keys, gameplay.keyboard, InputAction.DASH)
+            or self._axis_value(gameplay.gamepad_axes, InputAction.DASH)
+            > InputSettings.DASH_AXIS_THRESHOLD,
+            InputAction.RESET: self._key_held(keys, gameplay.keyboard, InputAction.RESET)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.RESET),
         }
-        special_keyboard = all(keys[key] for key in keyboard_combos["special_attack"])
-        special_gamepad = all(
-            self._current_joy_buttons.get(button, False)
-            for button in gamepad_combos["special_attack"]
+        special_keyboard = self._combo_held(
+            keys, gameplay.keyboard_combos, InputAction.SPECIAL_ATTACK
+        )
+        special_gamepad = self._combo_held(
+            self._current_joy_buttons, gameplay.gamepad_combos, InputAction.SPECIAL_ATTACK
         )
         if special_keyboard or special_gamepad:
             held[InputAction.SPECIAL_ATTACK] = True
         else:
-            for action, name in (
-                (InputAction.ATTACK_1, "attack1"),
-                (InputAction.ATTACK_2, "attack2"),
-                (InputAction.ATTACK_3, "attack3"),
-                (InputAction.ATTACK_4, "attack4"),
+            for action in (
+                InputAction.ATTACK_1,
+                InputAction.ATTACK_2,
+                InputAction.ATTACK_3,
+                InputAction.ATTACK_4,
             ):
-                held[action] = bool(keys[kb[name]]) or self._current_joy_buttons.get(
-                    buttons[name], False
+                held[action] = self._key_held(keys, gameplay.keyboard, action) or (
+                    self._button_held(gameplay.gamepad_buttons, action)
                 )
         return InputState(
-            move_axis=self._calculate_move_axis(keys, kb, axes),
+            move_axis=self._calculate_move_axis(keys),
             held_actions=frozenset(action for action, active in held.items() if active),
         )
 
-    def _calculate_move_axis(self, keys: tuple[bool, ...], kb: dict, axes: dict) -> float:
-        keyboard_axis = float(keys[kb["move_right"]]) - float(keys[kb["move_left"]])
+    def _calculate_move_axis(self, keys: tuple[bool, ...]) -> float:
+        bindings = self._bindings.gameplay
+        axis_keys = bindings.keyboard[InputAction.MOVE_X]
+        if not isinstance(axis_keys, tuple):
+            raise ValueError("MOVE_X must bind two keyboard keys")
+        left_key, right_key = axis_keys
+        keyboard_axis = float(keys[right_key]) - float(keys[left_key])
         if keyboard_axis != 0.0:
             return keyboard_axis
         if self._joystick:
-            analog = self._apply_deadzone(self._current_joy_axes.get(axes["move_x"], 0.0))
+            raw = self._current_joy_axes.get(bindings.gamepad_axes[InputAction.MOVE_X], 0.0)
+            analog = self._apply_deadzone(raw)
             if analog != 0.0:
                 return analog
             hat = self._joystick.get_hat(0)[0]
@@ -95,9 +102,27 @@ class LocalInputProvider(InputProvider):
                 return float(hat)
         return 0.0
 
+    def _key_held(self, keys: Sequence[bool], bindings: ActionMap, action: InputAction) -> bool:
+        key = bindings[action]
+        return any(keys[code] for code in (key if isinstance(key, tuple) else (key,)))
+
+    def _button_held(self, bindings: ButtonMap, action: InputAction) -> bool:
+        return self._current_joy_buttons.get(bindings[action], False)
+
+    def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
+        return self._current_joy_axes.get(bindings[action], 0.0)
+
     @staticmethod
-    def _apply_deadzone(value: float, deadzone: float = 0.2) -> float:
-        if abs(value) < deadzone:
+    def _combo_held(
+        current: Sequence[bool] | Mapping[int, bool], bindings: ComboMap, action: InputAction
+    ) -> bool:
+        combo = bindings.get(action, ())
+        return bool(combo) and all(current[code] for code in combo)
+
+    @staticmethod
+    def _apply_deadzone(value: float) -> float:
+        value = max(-1.0, min(1.0, value))
+        if abs(value) < InputSettings.AXIS_DEADZONE:
             return 0.0
-        sign = 1.0 if value > 0 else -1.0
-        return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+        magnitude = (abs(value) - InputSettings.AXIS_DEADZONE) / (1.0 - InputSettings.AXIS_DEADZONE)
+        return magnitude if value > 0.0 else -magnitude
