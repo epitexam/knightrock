@@ -106,7 +106,7 @@ class MenuModel:
         if action is InputAction.UI_CONFIRM:
             if variant == "new_game":
                 return "new_game", variant
-            return self.activate(), variant
+            return self.activate(self._current), variant
         return None, variant
 
     def _nearest_enabled(self, selected: int) -> int:

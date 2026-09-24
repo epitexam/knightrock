@@ -107,6 +107,26 @@ def test_menu_escape_stops_the_game(manager: SceneManager):
     assert manager.game.running is False
 
 
+def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
+    manager.switch(MenuScene(manager.game))
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
+
+    assert manager.game.running is False
+
+
+def test_menu_navigation_supports_pointer(manager: SceneManager):
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+    menu.draw()
+    target = menu.view.item_rects[1].center
+
+    manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
+
+    assert manager.game.running is False
+
+
 def _make_level(game_runtime) -> Level:
     return Level(
         pygame.display.get_surface(),
