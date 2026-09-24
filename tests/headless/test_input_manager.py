@@ -1,88 +1,104 @@
-"""InputManager orchestration tests with a scripted provider (Phase 1 #10)."""
+import pytest
 
+from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
+from tests.unit.helpers import ScriptedInputProvider
 
 
-class ScriptedProvider:
-    """Provider returning an InputState sequence, then a neutral state."""
-
-    def __init__(self, states: list[InputState]) -> None:
-        self._states = states
-        self.poll_count = 0
-
-    def poll(self) -> InputState:
-        if self._states:
-            self.poll_count += 1
-            return self._states.pop(0)
-        return InputState()
-
-
-def test_input_manager_detects_just_pressed_edges() -> None:
-    provider = ScriptedProvider([InputState(), InputState(jump_held=True)])
+def test_input_manager_detects_action_edges() -> None:
+    provider = ScriptedInputProvider(
+        [InputState(), InputState(held_actions=frozenset({InputAction.JUMP}))]
+    )
     manager = InputManager(provider)  # type: ignore[arg-type]
 
     manager.update()
-    assert manager.jump_just_pressed is False
+    assert manager.just_pressed(InputAction.JUMP) is False
 
     manager.update()
-    assert manager.jump_just_pressed is True
+    assert manager.held(InputAction.JUMP) is True
+    assert manager.just_pressed(InputAction.JUMP) is True
 
     manager.update()
-    # The button is still held: no more rising edge.
-    assert manager.jump_just_pressed is False
-
-
-def test_input_manager_applies_move_axis_deadzone() -> None:
-    provider = ScriptedProvider([InputState(move_axis=0.05)])
-    manager = InputManager(provider)  # type: ignore[arg-type]
+    assert manager.just_pressed(InputAction.JUMP) is False
+    assert manager.just_released(InputAction.JUMP) is True
 
     manager.update()
-
-    assert manager.left_held is False
-    assert manager.right_held is False
-    assert manager.move_axis == 0.05
+    assert manager.just_released(InputAction.JUMP) is False
 
 
-def test_input_manager_resolves_direction_from_axis() -> None:
-    provider = ScriptedProvider([InputState(move_axis=-0.8)])
-    manager = InputManager(provider)  # type: ignore[arg-type]
+def test_input_manager_exposes_move_axis() -> None:
+    manager = InputManager(ScriptedInputProvider([InputState(move_axis=-0.8)]))  # type: ignore[arg-type]
 
     manager.update()
 
-    assert manager.left_held is True
-    assert manager.right_held is False
+    assert manager.axis(InputAction.MOVE_X) == -0.8
+    assert manager.axis(InputAction.MOVE_X) < 0.0
+
+
+def test_input_manager_rejects_invalid_action_channels() -> None:
+    manager = InputManager()
+
+    with pytest.raises(ValueError, match="analog action"):
+        manager.axis(InputAction.JUMP)
+    with pytest.raises(ValueError, match="axis"):
+        manager.held(InputAction.MOVE_X)
+    with pytest.raises(ValueError, match="axis"):
+        manager.just_pressed(InputAction.MOVE_X)
+    with pytest.raises(ValueError, match="axis"):
+        manager.just_released(InputAction.MOVE_X)
+
+
+def test_input_state_rejects_invalid_invariants() -> None:
+    with pytest.raises(ValueError, match="move_axis"):
+        InputState(move_axis=2.0)
+    with pytest.raises(TypeError, match="frozenset"):
+        InputState(held_actions={InputAction.JUMP})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="gameplay"):
+        InputState(held_actions=frozenset({InputAction.UI_UP}))
 
 
 def test_input_manager_apply_remote_state_bypasses_provider() -> None:
-    manager = InputManager()  # nul provider
-    remote = InputState(move_axis=0.7, attack1_held=True)
+    manager = InputManager()
+    remote = InputState(
+        move_axis=0.7,
+        held_actions=frozenset({InputAction.ATTACK_1}),
+    )
 
     manager.apply_remote_state(remote)
 
-    assert manager.move_axis == 0.7
-    assert manager.attack1_held is True
-    # Transition from the initial empty state: rising edge detected.
-    assert manager.attack1_just_pressed is True
+    assert manager.axis(InputAction.MOVE_X) == 0.7
+    assert manager.held(InputAction.ATTACK_1) is True
+    assert manager.just_pressed(InputAction.ATTACK_1) is True
 
     manager.apply_remote_state(remote)
-    # State identical to the previous one: no more rising edge.
-    assert manager.attack1_just_pressed is False
+    assert manager.just_pressed(InputAction.ATTACK_1) is False
 
 
 def test_input_manager_attack_edges_are_independent() -> None:
-    provider = ScriptedProvider(
+    provider = ScriptedInputProvider(
         [
-            InputState(attack1_held=True, attack2_held=True),
-            InputState(attack1_held=False, attack2_held=True),
+            InputState(held_actions=frozenset({InputAction.ATTACK_1, InputAction.ATTACK_2})),
+            InputState(held_actions=frozenset({InputAction.ATTACK_2})),
         ]
     )
     manager = InputManager(provider)  # type: ignore[arg-type]
 
     manager.update()
-    assert manager.attack1_just_pressed is True
-    assert manager.attack2_just_pressed is True
+    assert manager.just_pressed(InputAction.ATTACK_1) is True
+    assert manager.just_pressed(InputAction.ATTACK_2) is True
 
     manager.update()
-    assert manager.attack1_just_released is True
-    assert manager.attack2_just_pressed is False
+    assert manager.just_released(InputAction.ATTACK_1) is True
+    assert manager.just_pressed(InputAction.ATTACK_2) is False
+
+
+def test_set_provider_replaces_the_source() -> None:
+    manager = InputManager()
+    manager.set_provider(
+        ScriptedInputProvider([InputState(held_actions=frozenset({InputAction.GUARD}))])  # type: ignore[arg-type]
+    )
+
+    manager.update()
+
+    assert manager.held(InputAction.GUARD) is True

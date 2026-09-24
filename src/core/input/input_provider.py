@@ -1,191 +1,177 @@
-"""
-Hardware-specific input collection using Pygame.
-
-Provides classes responsible for reading raw input data from local devices
-(keyboard and gamepad) and converting them into a generic InputState. This
-isolates Pygame dependencies from the core game logic and state machine.
-"""
+from collections.abc import Mapping, Sequence
 
 import pygame
 from pygame.joystick import JoystickType
 
-from src.core.input.input_bindings import InputBindings
+from src.core.input.input_actions import InputAction
+from src.core.input.input_bindings import ActionMap, AxisMap, ButtonMap, ComboMap, InputBindings
 from src.core.input.input_state import InputState
+from src.core.settings import Input as InputSettings
+
+
+def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:
+    directions = {
+        direction
+        for direction in (
+            _axis_direction(keyboard_axis),
+            _axis_direction(analog_axis),
+            _axis_direction(hat_axis),
+        )
+        if direction != 0
+    }
+    if len(directions) > 1:
+        return 0.0
+    if keyboard_axis != 0.0:
+        return keyboard_axis
+    if analog_axis != 0.0:
+        return analog_axis
+    return hat_axis
+
+
+def _axis_direction(value: float) -> int:
+    if value > 0.0:
+        return 1
+    if value < 0.0:
+        return -1
+    return 0
 
 
 class InputProvider:
-    """Abstract base class for input sources."""
-
     def poll(self) -> InputState:
-        """Retrieve the current input state from the source."""
         raise NotImplementedError
 
 
 class NullInputProvider(InputProvider):
-    """Default provider that yields an empty input state."""
-
     def poll(self) -> InputState:
-        """Return a default, empty InputState."""
         return InputState()
 
 
 class LocalInputProvider(InputProvider):
-    """Reads hardware inputs from keyboard and gamepad using Pygame.
-
-    Manages joystick connections, deadzones, and custom bindings, translating
-    raw hardware states into the generic InputState structure.
-    """
-
     def __init__(self, bindings: InputBindings | None = None) -> None:
-        """Initialize the LocalInputProvider with custom or default bindings.
-
-        Parameters
-        ----------
-        bindings : Optional[InputBindings]
-            The hardware codes mapping. Defaults to InputBindings() if not provided.
-        """
-        self._bindings: InputBindings = bindings or InputBindings()
+        self._bindings = bindings or InputBindings()
         self._joystick: JoystickType | None = None
         self._current_joy_buttons: dict[int, bool] = {}
         self._current_joy_axes: dict[int, float] = {}
+        self._current_joy_hats: dict[int, tuple[float, float]] = {}
 
     def connect_joystick(self, joystick: JoystickType) -> None:
-        """Handle the connection of a new joystick.
-
-        Parameters
-        ----------
-        joystick : JoystickType
-            The Pygame joystick object that was connected.
-        """
         self._joystick = joystick
 
     def disconnect_joystick(self, instance_id: int) -> None:
-        """Handle the disconnection of the active joystick.
-
-        Parameters
-        ----------
-        instance_id : int
-            The instance ID of the disconnected joystick.
-        """
         if self._joystick and self._joystick.get_instance_id() == instance_id:
             self._joystick = None
 
     def reassign_joystick(self, joysticks: dict[int, JoystickType]) -> None:
-        """Reassign the active joystick from available devices.
-
-        Parameters
-        ----------
-        joysticks : dict[int, JoystickType]
-            A dictionary of currently connected joysticks.
-        """
         if not self._joystick and joysticks:
-            self._joystick = list(joysticks.values())[0]
+            self._joystick = next(iter(joysticks.values()))
 
     def poll(self) -> InputState:
-        """Read local hardware states and return an InputState snapshot."""
         keys = pygame.key.get_pressed()
-        kb = self._bindings.keyboard
-        btns = self._bindings.gamepad_buttons
-        axes = self._bindings.gamepad_axes
-        kb_combos = self._bindings.keyboard_combos
-        joy_combos = self._bindings.gamepad_combos
-
+        gameplay = self._bindings.gameplay
         self._current_joy_buttons = {}
         self._current_joy_axes = {}
-
+        self._current_joy_hats = {}
         if self._joystick:
-            for i in range(self._joystick.get_numbuttons()):
-                self._current_joy_buttons[i] = bool(self._joystick.get_button(i))
-            for i in range(self._joystick.get_numaxes()):
-                self._current_joy_axes[i] = self._joystick.get_axis(i)
+            for index in range(self._joystick.get_numbuttons()):
+                self._current_joy_buttons[index] = bool(self._joystick.get_button(index))
+            for index in range(self._joystick.get_numaxes()):
+                self._current_joy_axes[index] = self._joystick.get_axis(index)
+            for index in set(gameplay.gamepad_hats.values()):
+                self._current_joy_hats[index] = self._joystick.get_hat(index)
 
-        state = InputState()
-        state.move_axis = self._calculate_move_axis(keys, kb, axes)
-        state.down_held = keys[kb["move_down"]]
-        state.guard_held = keys[kb["guard"]] or self._current_joy_buttons.get(btns["guard"], False)
-        state.jump_held = keys[kb["jump"]] or self._current_joy_buttons.get(btns["jump"], False)
-        state.dash_held = keys[kb["dash"]] or self._current_joy_axes.get(axes["dash"], 0.0) > 0.5
-        state.reset_held = keys[kb["reset"]] or self._current_joy_buttons.get(btns["reset"], False)
+        down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN)
+        if not down_held:
+            down_axis = self._apply_deadzone(
+                self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_DOWN)
+            )
+            down_held = down_axis > 0.0
+        if not down_held:
+            hat = self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_DOWN)
+            down_held = hat[1] > 0
 
-        special_kb_held = all(keys[k] for k in kb_combos.get("special_attack", []))
-        special_joy_held = all(
-            self._current_joy_buttons.get(b, False) for b in joy_combos.get("special_attack", [])
+        held = {
+            InputAction.MOVE_DOWN: down_held,
+            InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
+            InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.JUMP),
+            InputAction.DASH: self._key_held(keys, gameplay.keyboard, InputAction.DASH)
+            or self._axis_value(gameplay.gamepad_axes, InputAction.DASH)
+            > InputSettings.DASH_AXIS_THRESHOLD,
+            InputAction.RESET: self._key_held(keys, gameplay.keyboard, InputAction.RESET)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.RESET),
+        }
+        special_keyboard = self._combo_held(
+            keys, gameplay.keyboard_combos, InputAction.SPECIAL_ATTACK
+        )
+        special_gamepad = self._combo_held(
+            self._current_joy_buttons, gameplay.gamepad_combos, InputAction.SPECIAL_ATTACK
+        )
+        if special_keyboard or special_gamepad:
+            held[InputAction.SPECIAL_ATTACK] = True
+        else:
+            for action in (
+                InputAction.ATTACK_1,
+                InputAction.ATTACK_2,
+                InputAction.ATTACK_3,
+                InputAction.ATTACK_4,
+            ):
+                held[action] = self._key_held(keys, gameplay.keyboard, action) or (
+                    self._button_held(gameplay.gamepad_buttons, action)
+                )
+        return InputState(
+            move_axis=self._calculate_move_axis(keys),
+            held_actions=frozenset(action for action, active in held.items() if active),
         )
 
-        if special_kb_held or special_joy_held:
-            state.special_attack_held = True
-            state.attack1_held = False
-            state.attack2_held = False
-            state.attack3_held = False
-            state.attack4_held = False
-        else:
-            state.attack1_held = keys[kb["attack1"]] or self._current_joy_buttons.get(
-                btns["attack1"], False
-            )
-            state.attack2_held = keys[kb["attack2"]] or self._current_joy_buttons.get(
-                btns["attack2"], False
-            )
-            state.attack3_held = keys[kb["attack3"]] or self._current_joy_buttons.get(
-                btns["attack3"], False
-            )
-            state.attack4_held = keys[kb["attack4"]] or self._current_joy_buttons.get(
-                btns["attack4"], False
-            )
-
-        return state
-
-    def _calculate_move_axis(self, keys: tuple[bool, ...], kb: dict, axes: dict) -> float:
-        """Calculate the horizontal movement axis from keyboard and gamepad.
-
-        Prioritizes keyboard input over gamepad analog sticks and D-pads.
-
-        Parameters
-        ----------
-        keys : tuple[bool, ...]
-            The current state of all keyboard keys from Pygame.
-        kb : dict
-            The keyboard bindings dictionary.
-        axes : dict
-            The gamepad axes bindings dictionary.
-
-        Returns
-        -------
-        float
-            The normalized horizontal axis value (-1.0 to 1.0).
-        """
-        kb_axis = float(keys[kb["move_right"]]) - float(keys[kb["move_left"]])
-
-        if kb_axis != 0.0:
-            return kb_axis
-
-        if self._joystick:
-            raw = self._current_joy_axes.get(axes["move_x"], 0.0)
-            analog = self._apply_deadzone(raw)
-            if analog != 0.0:
-                return analog
-            hat = self._joystick.get_hat(0)[0]
-            if hat != 0:
-                return float(hat)
-
-        return 0.0
+    def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
+        bindings = self._bindings.gameplay
+        axis_keys = bindings.keyboard[InputAction.MOVE_X]
+        if not isinstance(axis_keys, tuple):
+            raise ValueError("MOVE_X must bind two keyboard keys")
+        left_key, right_key = axis_keys
+        keyboard_axis = float(self._key_value(keys, right_key)) - float(
+            self._key_value(keys, left_key)
+        )
+        analog = self._apply_deadzone(self._axis_value(bindings.gamepad_axes, InputAction.MOVE_X))
+        hat = float(self._hat_value(bindings.gamepad_hats, InputAction.MOVE_X)[0])
+        return resolve_move_axis(keyboard_axis, analog, hat)
 
     @staticmethod
-    def _apply_deadzone(value: float, deadzone: float = 0.2) -> float:
-        """Apply a radial deadzone to an analog axis value.
+    def _key_value(keys: Sequence[bool] | Mapping[int, bool], key: int) -> bool:
+        if isinstance(keys, Mapping):
+            return keys.get(key, False)
+        return keys[key]
 
-        Parameters
-        ----------
-        value : float
-            The raw axis value from the gamepad.
-        deadzone : float
-            The threshold below which input is ignored.
+    def _key_held(
+        self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap, action: InputAction
+    ) -> bool:
+        key = bindings[action]
+        codes = key if isinstance(key, tuple) else (key,)
+        return any(self._key_value(keys, code) for code in codes)
 
-        Returns
-        -------
-        float
-            The normalized axis value after applying the deadzone.
-        """
-        if abs(value) < deadzone:
+    def _button_held(self, bindings: ButtonMap, action: InputAction) -> bool:
+        return self._current_joy_buttons.get(bindings[action], False)
+
+    def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
+        return self._current_joy_axes.get(bindings[action], 0.0)
+
+    def _hat_value(self, bindings: ButtonMap, action: InputAction) -> tuple[float, float]:
+        return self._current_joy_hats.get(bindings[action], (0.0, 0.0))
+
+    @staticmethod
+    def _combo_held(
+        current: Sequence[bool] | Mapping[int, bool], bindings: ComboMap, action: InputAction
+    ) -> bool:
+        combo = bindings.get(action, ())
+        if isinstance(current, Mapping):
+            return bool(combo) and all(current.get(code, False) for code in combo)
+        return bool(combo) and all(current[code] for code in combo)
+
+    @staticmethod
+    def _apply_deadzone(value: float) -> float:
+        value = max(-1.0, min(1.0, value))
+        if abs(value) < InputSettings.AXIS_DEADZONE:
             return 0.0
-        sign = 1.0 if value > 0 else -1.0
-        return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+        magnitude = (abs(value) - InputSettings.AXIS_DEADZONE) / (1.0 - InputSettings.AXIS_DEADZONE)
+        return magnitude if value > 0.0 else -magnitude

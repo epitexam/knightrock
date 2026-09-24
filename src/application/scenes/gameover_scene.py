@@ -10,6 +10,8 @@ from src.application.scene import Scene
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.application.scenes.menu_scene import MenuScene
+from src.core.input.event_router import RoutedInput
+from src.core.input.input_actions import InputAction
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK
 
@@ -30,12 +32,13 @@ class GameOverScene(Scene):
     def update(self, delta_time: float) -> None:
         """Game over: nothing to simulate."""
 
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type != pygame.KEYDOWN:
-            return
-        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+    def handle_routed(self, routed_input: RoutedInput) -> None:
+        if routed_input.action is InputAction.UI_CONFIRM:
             self.game.scene_manager.switch(GameplayScene(self.game, self.level_id))
-        elif event.key == pygame.K_q:
+        elif (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        ):
             self.game.scene_manager.switch(MenuScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:

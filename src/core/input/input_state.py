@@ -1,51 +1,20 @@
-"""
-Data structures for representing input states.
-
-Defines the InputState dataclass used to transfer input snapshots
-between hardware providers, network layers, and the game logic.
-"""
-
 from dataclasses import dataclass
 
+from src.core.input.input_actions import InputAction
 
-@dataclass
+
+@dataclass(frozen=True)
 class InputState:
-    """Represents a snapshot of all player inputs for a single logic tick.
-
-    Attributes
-    ----------
-    move_axis : float
-        Horizontal movement axis, typically ranging from -1.0 to 1.0.
-    down_held : bool
-        Whether the down action is currently held (fast fall).
-    guard_held : bool
-        Whether the guard action is currently held.
-    jump_held : bool
-        Whether the jump action is currently held.
-    dash_held : bool
-        Whether the dash action is currently held.
-    attack1_held : bool
-        Whether the primary attack action is currently held.
-    attack2_held : bool
-        Whether the secondary attack action is currently held.
-    attack3_held : bool
-        Whether the tertiary attack action is currently held.
-    attack4_held : bool
-        Whether the quaternary attack action is currently held.
-    reset_held : bool
-        Whether the reset action is currently held.
-    special_attack_held : bool
-        Whether the special attack combination is currently held.
-    """
-
     move_axis: float = 0.0
-    down_held: bool = False
-    guard_held: bool = False
-    jump_held: bool = False
-    dash_held: bool = False
-    attack1_held: bool = False
-    attack2_held: bool = False
-    attack3_held: bool = False
-    attack4_held: bool = False
-    reset_held: bool = False
-    special_attack_held: bool = False
+    held_actions: frozenset[InputAction] = frozenset()
+
+    def __post_init__(self) -> None:
+        if not -1.0 <= self.move_axis <= 1.0:
+            raise ValueError("move_axis must be between -1.0 and 1.0")
+        if not isinstance(self.held_actions, frozenset):
+            raise TypeError("held_actions must be a frozenset")
+        if any(
+            not isinstance(action, InputAction) or action.value.startswith("ui_")
+            for action in self.held_actions
+        ):
+            raise ValueError("InputState only accepts gameplay actions")

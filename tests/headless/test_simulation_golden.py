@@ -23,6 +23,8 @@ import pygame
 import pytest
 
 from src.combat.knockback import NULL_KNOCKBACK
+from src.core.input.input_manager import InputManager
+from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.core.paths import PROJECT_ROOT
@@ -41,20 +43,6 @@ requires_assets = pytest.mark.skipif(
     not PLAYER_ASSET_DIR.is_dir(),
     reason="needs the untracked assets/graphics tree to build a real Level",
 )
-
-
-class InputStub:
-    """Same minimal contract as the headless test fixture."""
-
-    move_axis = 1.0
-    left_held = right_held = guard_held = down_held = False
-    guard_just_pressed = False
-    jump_just_pressed = dash_just_pressed = reset_just_pressed = False
-    attack1_just_pressed = attack2_just_pressed = attack2_just_released = False
-    attack3_just_pressed = attack4_just_pressed = special_attack_just_pressed = False
-
-    def update(self) -> None:
-        """No-op."""
 
 
 def _object(name: str, x: float, y: float) -> ObjectData:
@@ -79,7 +67,9 @@ def _build(level_config: LevelConfig, objects: list[ObjectData]) -> Level:
         object_layers={"Entities": ObjectLayerData(name="Entities", objects=objects)},
         config=level_config,
     )
-    return Level(pygame.display.get_surface(), data, InputStub())
+    input_manager = InputManager()
+    input_manager.apply_remote_state(InputState(move_axis=1.0))
+    return Level(pygame.display.get_surface(), data, input_manager)
 
 
 def build_physics_level() -> Level:
@@ -202,7 +192,7 @@ def build_respawn_level() -> Level:
 # other two scenarios do not observe patrol translation (enemies either
 # chase immediately or leave the frame of interest), so they stay valid.
 PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
-RIDE_DIGEST = "c0cc9f89a96a035a4262edc744a3c754179d7ee9f7af71bbf9679c6fb5811057"
+RIDE_DIGEST = "3c103b21909777fba17a79c801f239dca30a1ac69b93cda8340a11ad9fc9a5a8"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

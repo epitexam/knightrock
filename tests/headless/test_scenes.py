@@ -126,6 +126,16 @@ def test_gameplay_escape_pushes_pause(manager: SceneManager):
     assert manager.current is gameplay
 
 
+def test_pause_confirm_resumes_gameplay(manager: SceneManager):
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+    manager.push(PauseScene(manager.game, level_id=0))
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert manager.current is gameplay
+
+
 def test_gameplay_death_limit_pushes_game_over(manager: SceneManager):
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
@@ -189,7 +199,9 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
     assert "continue" in menu.options[0]
     assert len(menu.options) == 3
 
-    menu.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
+    routed = game_runtime.input_router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
+    assert routed is not None
+    menu.handle_routed(routed)
 
     assert isinstance(game_runtime.scene_manager.current, GameplayScene)
     assert game_runtime.scene_manager.current.level_id == 0
@@ -209,7 +221,11 @@ def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
     game_runtime.scene_manager.switch(MenuScene(game_runtime))
 
     menu = game_runtime.scene_manager.current
-    menu.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    routed = game_runtime.input_router.route(
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
+    )
+    assert routed is not None
+    menu.handle_routed(routed)
 
     assert isinstance(game_runtime.scene_manager.current, GameplayScene)
     assert game_runtime.scene_manager.current.level_id == 1

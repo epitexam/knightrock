@@ -11,6 +11,8 @@ from src.application.events import EventBus, LevelCompleted, LevelStarted, Playe
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
+from src.core.input.bindings_repository import BindingsRepository
+from src.core.input.event_router import EventRouter
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
@@ -31,11 +33,14 @@ class Game:
     (Phase 2 #5) — subscribers must never mutate the simulation.
     """
 
-    def __init__(self, save_path: Path | None = None) -> None:
+    def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
         self.display_surface: pygame.Surface | None = None
         self.joysticks: dict[int, JoystickType] = {}
-        self.input_provider = LocalInputProvider()
+        self.bindings_repository = BindingsRepository(bindings_path)
+        self.input_bindings = self.bindings_repository.load()
+        self.input_router = EventRouter(self.input_bindings)
+        self.input_provider = LocalInputProvider(self.input_bindings)
         self.input_manager = InputManager(self.input_provider)
         # Gameplay data driven by JSON (Phase 3 #4): attack sets, enemy
         # configs, player config and level registry. Falls back to the

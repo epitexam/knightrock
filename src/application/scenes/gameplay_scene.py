@@ -8,6 +8,8 @@ import pygame
 
 from src.application.scene import Scene
 from src.core.colors import Colors
+from src.core.input.event_router import RoutedInput
+from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
 
@@ -114,15 +116,16 @@ class GameplayScene(Scene):
             self.game.scene_manager.switch(GameplayScene(self.game, next_id))
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            from src.application.scenes.pause_scene import PauseScene
-
-            self.game.scene_manager.push(PauseScene(self.game, self.level_id))
-            return
         if self._route_to_panels(event):
             return
         if event.type == pygame.KEYDOWN and self.level is not None:
             self._handle_gameplay_key(event.key)
+
+    def handle_routed(self, routed_input: RoutedInput) -> None:
+        if routed_input.action is InputAction.UI_BACK:
+            from src.application.scenes.pause_scene import PauseScene
+
+            self.game.scene_manager.push(PauseScene(self.game, self.level_id))
 
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:

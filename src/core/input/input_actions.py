@@ -1,0 +1,25 @@
+from enum import StrEnum
+
+
+class InputAction(StrEnum):
+    MOVE_X = "move_x"
+    MOVE_DOWN = "move_down"
+    JUMP = "jump"
+    DASH = "dash"
+    GUARD = "guard"
+    RESET = "reset"
+    ATTACK_1 = "attack1"
+    ATTACK_2 = "attack2"
+    ATTACK_3 = "attack3"
+    ATTACK_4 = "attack4"
+    SPECIAL_ATTACK = "special_attack"
+    UI_UP = "ui_up"
+    UI_DOWN = "ui_down"
+    UI_LEFT = "ui_left"
+    UI_RIGHT = "ui_right"
+    UI_CONFIRM = "ui_confirm"
+    UI_BACK = "ui_back"
+    UI_CANCEL = "ui_cancel"
+    UI_POINTER_MOVE = "ui_pointer_move"
+    UI_POINTER_DOWN = "ui_pointer_down"
+    UI_POINTER_UP = "ui_pointer_up"

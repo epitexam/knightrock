@@ -18,6 +18,8 @@ import os
 import pygame
 import pytest
 
+from src.core.input.input_actions import InputAction
+from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.entities.enemies.factory import create_enemy
 from src.entities.entity import Entity
@@ -55,28 +57,9 @@ def _extract_entity_state(entity: Entity) -> dict[str, object]:
     }
 
 
-def _script_tick(level: Level, inputs: dict[str, object]) -> None:
-    for key, value in inputs.items():
-        setattr(level.input_manager, key, value)
+def _script_tick(level: Level, inputs: InputState) -> None:
+    level.input_manager.apply_remote_state(inputs)
     level.update(1 / 60)
-
-
-def _default_inputs() -> dict[str, object]:
-    return {
-        "move_axis": 0.0,
-        "left_held": False,
-        "right_held": False,
-        "guard_held": False,
-        "jump_just_pressed": False,
-        "dash_just_pressed": False,
-        "reset_just_pressed": False,
-        "attack1_just_pressed": False,
-        "attack2_just_pressed": False,
-        "attack2_just_released": False,
-        "attack3_just_pressed": False,
-        "attack4_just_pressed": False,
-        "special_attack_just_pressed": False,
-    }
 
 
 def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
@@ -84,14 +67,13 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     level.rollback_enabled = True
     level.rollback = type(level.rollback)(capacity=64)
 
-    script = [_default_inputs() for _ in range(20)]
-    # Scripted motion so the state visibly changes between ticks.
-    for t in range(3, 8):
-        script[t]["move_axis"] = 1.0
-    for t in range(10, 14):
-        script[t]["move_axis"] = -1.0
-    script[6]["jump_just_pressed"] = True
-    script[15]["jump_just_pressed"] = True
+    script = [InputState() for _ in range(20)]
+    for tick in range(3, 8):
+        script[tick] = InputState(move_axis=1.0)
+    for tick in range(10, 14):
+        script[tick] = InputState(move_axis=-1.0)
+    script[6] = InputState(held_actions=frozenset({InputAction.JUMP}))
+    script[15] = InputState(held_actions=frozenset({InputAction.JUMP}))
 
     rollback_tick = 9
 
@@ -115,6 +97,21 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     end_state_second_pass = _extract_entity_state(level.player)
 
     assert end_state_second_pass == end_state_first_pass
+
+
+def test_rollback_restores_input_edges_for_replayed_actions(build_level) -> None:
+    level = build_level()
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=8)
+    held_jump = InputState(held_actions=frozenset({InputAction.JUMP}))
+
+    _script_tick(level, InputState())
+    _script_tick(level, held_jump)
+    assert level.rollback.rollback_to(level, 0) is True
+
+    level.input_manager.apply_remote_state(held_jump)
+
+    assert level.input_manager.just_pressed(InputAction.JUMP) is True
 
 
 def test_rollback_resurrects_killed_enemy(build_level) -> None:

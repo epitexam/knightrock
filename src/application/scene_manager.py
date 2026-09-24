@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import pygame
 
+from src.application.input_dispatcher import InputDispatcher
 from src.application.scene import Scene
 
 if TYPE_CHECKING:
@@ -25,6 +26,7 @@ class SceneManager:
     def __init__(self, game: Game) -> None:
         self.game = game
         self._stack: list[Scene] = []
+        self.input_dispatcher = InputDispatcher(game.input_router)
 
     @property
     def current(self) -> Scene | None:
@@ -53,7 +55,7 @@ class SceneManager:
     def handle_event(self, event: pygame.event.Event) -> None:
         """Forward an event to the active scene."""
         if self.current is not None:
-            self.current.handle_event(event)
+            self.input_dispatcher.dispatch(self.current, event)
 
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""

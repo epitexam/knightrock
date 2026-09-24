@@ -9,6 +9,8 @@ import pygame
 from src.application.scene import Scene
 from src.application.scenes.menu_panel import draw_centered_menu_panel
 from src.application.scenes.menu_scene import MenuScene
+from src.core.input.event_router import RoutedInput
+from src.core.input.input_actions import InputAction
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_OK, TEXT_WARN
 
@@ -29,12 +31,13 @@ class PauseScene(Scene):
     def update(self, delta_time: float) -> None:
         """Paused: the frozen gameplay scene below does not advance."""
 
-    def handle_event(self, event: pygame.event.Event) -> None:
-        if event.type != pygame.KEYDOWN:
-            return
-        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
+    def handle_routed(self, routed_input: RoutedInput) -> None:
+        if routed_input.action in (InputAction.UI_CONFIRM, InputAction.UI_BACK):
             self.game.scene_manager.pop()
-        elif event.key == pygame.K_q:
+        elif (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        ):
             self.game.scene_manager.switch(MenuScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:
