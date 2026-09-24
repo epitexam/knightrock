@@ -22,7 +22,11 @@ class PauseScene(Scene):
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)
         self.level_id = level_id
-        items = (MenuItem("resume", "Resume"), MenuItem("menu", "Back to menu"))
+        items = (
+            MenuItem("resume", "Resume"),
+            MenuItem("options", "Options"),
+            MenuItem("menu", "Back to menu"),
+        )
         self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
         self.view = MenuView()
@@ -47,6 +51,10 @@ class PauseScene(Scene):
             self.game.scene_manager.pop()
         elif action == "menu":
             self.game.scene_manager.switch(MenuScene(self.game))
+        elif action == "options":
+            from src.application.scenes.options_scene import OptionsScene
+
+            self.game.scene_manager.push(OptionsScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()

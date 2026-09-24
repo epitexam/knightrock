@@ -57,6 +57,12 @@ class SceneManager:
         if self.current is not None:
             self.input_dispatcher.dispatch(self.current, event)
 
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        for scene in self._stack:
+            setter = getattr(scene, "set_display_surface", None)
+            if callable(setter):
+                setter(display_surface)
+
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""
         if self.current is not None:

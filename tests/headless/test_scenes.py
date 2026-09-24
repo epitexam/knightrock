@@ -111,6 +111,7 @@ def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
     manager.switch(MenuScene(manager.game))
 
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
     assert manager.game.running is False
@@ -120,7 +121,7 @@ def test_menu_navigation_supports_pointer(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
     menu.draw()
-    target = menu.view.item_rects[1].center
+    target = menu.view.item_rects[2].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
 
@@ -217,7 +218,7 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
     menu = game_runtime.scene_manager.current
 
     assert "continue" in menu.options[0]
-    assert len(menu.options) == 3
+    assert len(menu.options) == 4
 
     routed = game_runtime.input_router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n))
     assert routed is not None

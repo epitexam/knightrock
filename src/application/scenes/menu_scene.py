@@ -29,15 +29,21 @@ class MenuScene(Scene):
             items = (
                 MenuItem("continue", f"Continue (level {save.last_level_id})"),
                 MenuItem("new_game", "New game"),
+                MenuItem("options", "Options"),
                 MenuItem("quit", "Quit"),
             )
             self.options = (
                 f"ENTER: continue (level {save.last_level_id})",
                 "N: new game",
+                "OPTIONS",
                 "ESC: quit",
             )
         else:
-            items = (MenuItem("play", "Play"), MenuItem("quit", "Quit"))
+            items = (
+                MenuItem("play", "Play"),
+                MenuItem("options", "Options"),
+                MenuItem("quit", "Quit"),
+            )
             self.options = ("ENTER: play", "ESC: quit")
         self.model = MenuModel(items)
         self.view = MenuView()
@@ -57,6 +63,10 @@ class MenuScene(Scene):
             self.game.scene_manager.switch(GameplayScene(self.game, start_id))
         elif action == "new_game":
             self.game.scene_manager.switch(GameplayScene(self.game, 0))
+        elif action == "options":
+            from src.application.scenes.options_scene import OptionsScene
+
+            self.game.scene_manager.push(OptionsScene(self.game))
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()

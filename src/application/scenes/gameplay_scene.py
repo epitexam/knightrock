@@ -127,6 +127,12 @@ class GameplayScene(Scene):
 
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
 
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        self.game.display_surface = display_surface
+        if self.level is not None:
+            self.level.display_surface = display_surface
+            self.level.renderer.set_display_surface(display_surface)
+
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:
             return False

@@ -54,6 +54,9 @@ class LocalInputProvider(InputProvider):
         self._current_joy_axes: dict[int, float] = {}
         self._current_joy_hats: dict[int, tuple[float, float]] = {}
 
+    def set_bindings(self, bindings: InputBindings) -> None:
+        self._bindings = bindings
+
     def connect_joystick(self, joystick: JoystickType) -> None:
         self._joystick = joystick
 

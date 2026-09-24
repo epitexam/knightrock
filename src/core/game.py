@@ -11,7 +11,7 @@ from src.application.events import EventBus, LevelCompleted, LevelStarted, Playe
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
-from src.core.input.bindings_repository import BindingsRepository
+from src.application.settings_store import SettingsStore, UserSettings
 from src.core.input.event_router import EventRouter
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
@@ -37,8 +37,9 @@ class Game:
         os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
         self.display_surface: pygame.Surface | None = None
         self.joysticks: dict[int, JoystickType] = {}
-        self.bindings_repository = BindingsRepository(bindings_path)
-        self.input_bindings = self.bindings_repository.load()
+        self.settings_store = SettingsStore(bindings_path)
+        self.settings = self.settings_store.load()
+        self.input_bindings = self.settings.bindings
         self.input_router = EventRouter(self.input_bindings)
         self.input_provider = LocalInputProvider(self.input_bindings)
         self.input_manager = InputManager(self.input_provider)
@@ -86,12 +87,32 @@ class Game:
         pygame.init()
         pygame.joystick.init()
 
-        self.display_surface = pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
+        self.display_surface = self._configure_display()
         pygame.display.set_caption(Display.TITLE)
 
         self.clock = pygame.time.Clock()
         self._accumulator = 0.0
         self.scene_manager.switch(MenuScene(self))
+
+    def apply_settings(self, settings: UserSettings) -> None:
+        self.settings = settings
+        self.input_bindings = settings.bindings
+        self.input_router = EventRouter(self.input_bindings)
+        self.input_provider.set_bindings(self.input_bindings)
+        self.settings_store.save(settings)
+        if self.display_surface is not None:
+            self.display_surface = self._configure_display()
+            self.scene_manager.set_display_surface(self.display_surface)
+
+    def _configure_display(self) -> pygame.Surface:
+        flags = pygame.RESIZABLE
+        if self.settings.fullscreen:
+            flags |= pygame.FULLSCREEN | pygame.SCALED
+        return pygame.display.set_mode(
+            (self.settings.width, self.settings.height),
+            flags,
+            vsync=1 if self.settings.vsync else 0,
+        )
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
