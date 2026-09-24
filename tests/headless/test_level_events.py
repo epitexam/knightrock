@@ -3,32 +3,9 @@
 import pygame
 
 from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
 from tests.headless.conftest import make_programmatic_level_data
-
-
-class MockInputManager:
-    """Minimal input stub (same contract as the conftest fixture)."""
-
-    def __init__(self) -> None:
-        self.move_axis = 0.0
-        self.left_held = False
-        self.right_held = False
-        self.guard_held = False
-        self.guard_just_pressed = False
-        self.down_held = False
-        self.jump_just_pressed = False
-        self.dash_just_pressed = False
-        self.reset_just_pressed = False
-        self.attack1_just_pressed = False
-        self.attack2_just_pressed = False
-        self.attack2_just_released = False
-        self.attack3_just_pressed = False
-        self.attack4_just_pressed = False
-        self.special_attack_just_pressed = False
-
-    def update(self) -> None:
-        """No-op."""
 
 
 def build_level_with_bus(events: EventBus | None) -> Level:
@@ -36,7 +13,7 @@ def build_level_with_bus(events: EventBus | None) -> Level:
     return Level(
         pygame.display.get_surface(),
         make_programmatic_level_data(),
-        MockInputManager(),
+        InputManager(),
         level_id=7,
         events=events,
     )

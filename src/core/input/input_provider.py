@@ -117,6 +117,8 @@ class LocalInputProvider(InputProvider):
         current: Sequence[bool] | Mapping[int, bool], bindings: ComboMap, action: InputAction
     ) -> bool:
         combo = bindings.get(action, ())
+        if isinstance(current, Mapping):
+            return bool(combo) and all(current.get(code, False) for code in combo)
         return bool(combo) and all(current[code] for code in combo)
 
     @staticmethod

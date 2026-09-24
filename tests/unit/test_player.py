@@ -1,25 +1,12 @@
 import pygame
 import pytest
 
+from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
+from src.core.input.input_state import InputState
 from src.core.settings import Physics
 from src.entities.player import Player
 from src.states.player_states import _can_dash
-
-#: Edge-triggered input flags the fake input manager exposes: a stale True
-#: would re-fire on every frame, so the stepper clears them all up front.
-_EDGE_FLAGS = (
-    "dash_just_pressed",
-    "attack1_just_pressed",
-    "attack2_just_pressed",
-    "attack2_just_released",
-    "attack3_just_pressed",
-    "attack4_just_pressed",
-    "special_attack_just_pressed",
-    "guard_just_pressed",
-    "jump_just_pressed",
-    "reset_just_pressed",
-)
 
 
 @pytest.fixture
@@ -52,17 +39,19 @@ def _make_player(input_manager) -> Player:
 
 
 def _step(
-    player: Player, input_manager, frames: int, *, press: str | None = None, hold=None
+    player: Player,
+    input_manager: InputManager,
+    frames: int,
+    *,
+    press: InputAction | None = None,
+    hold: frozenset[InputAction] = frozenset(),
 ) -> None:
-    """Advance the player, optionally pressing one edge input on frame 0."""
     for index in range(frames):
-        for name in _EDGE_FLAGS:
-            setattr(input_manager, name, False)
-        for name, value in (hold or {}).items():
-            setattr(input_manager, name, value)
+        held_actions = set(hold)
         if press is not None and index == 0:
-            setattr(input_manager, press, True)
-        player.on_surface["floor"] = True  # emulate standing on solid ground
+            held_actions.add(press)
+        input_manager.apply_remote_state(InputState(held_actions=frozenset(held_actions)))
+        player.on_surface["floor"] = True
         player.velocity.y = 0.0
         player.update(1 / 60)
 
@@ -90,7 +79,7 @@ def test_attack4_starts_the_dash_attack(mock_input_manager):
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
 
-    _step(player, mock_input_manager, 1, press="attack4_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
 
     assert player.state_machine.current_state_name == "attack"
     assert player.combat.state.attack_name == "dash_attack"
@@ -108,11 +97,11 @@ def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_m
     monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
-    _step(player, mock_input_manager, 1, press="dash_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.DASH)
     assert player.state_machine.current_state_name == "dash"
 
     # One frame in: 0.016s elapsed, under the 0.03s window.
-    _step(player, mock_input_manager, 1, press="attack4_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
 
     assert player.state_machine.current_state_name == "dash"
     assert player.combat.is_attacking is False
@@ -122,12 +111,12 @@ def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
     """Dash then F: the attack takes over and the dash perks drop with it."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
-    _step(player, mock_input_manager, 1, press="dash_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.DASH)
     assert player.state_machine.current_state_name == "dash"
     assert player.is_invincible is True
     squished_width = player.hitbox.width
 
-    _step(player, mock_input_manager, 1, press="attack4_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
 
     assert player.state_machine.current_state_name == "attack"
     assert player.combat.state.attack_name == "dash_attack"
@@ -139,15 +128,15 @@ def test_guard_still_cancels_the_dash(mock_input_manager):
     """The guard cancel predates the attack one: keep both working."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
-    _step(player, mock_input_manager, 1, press="dash_just_pressed")
+    _step(player, mock_input_manager, 1, press=InputAction.DASH)
     assert player.state_machine.current_state_name == "dash"
 
     _step(
         player,
         mock_input_manager,
         1,
-        press="guard_just_pressed",
-        hold={"guard_held": True},
+        press=InputAction.GUARD,
+        hold=frozenset({InputAction.GUARD}),
     )
 
     assert player.state_machine.current_state_name == "guard"
