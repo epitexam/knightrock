@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from src.core.input.input_state import InputState
 from src.entities.entity import EntitySnapshot
 
 
@@ -47,5 +48,7 @@ class LevelSnapshot:
     exit_reached: bool
     player_dead_emitted: bool
     completed_emitted: bool
+    input_current: InputState = field(default_factory=InputState)
+    input_previous: InputState = field(default_factory=InputState)
     entities: dict[str, EntitySnapshot] = field(default_factory=dict)
     platforms: list[PlatformSnapshot] = field(default_factory=list)

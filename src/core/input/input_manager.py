@@ -20,6 +20,13 @@ class InputManager:
         self._prev_state = self._current_state
         self._current_state = self._provider.poll()
 
+    def snapshot(self) -> tuple[InputState, InputState]:
+        return self._current_state, self._prev_state
+
+    def restore_snapshot(self, current: InputState, previous: InputState) -> None:
+        self._current_state = current
+        self._prev_state = previous
+
     def axis(self, action: InputAction) -> float:
         if action is not InputAction.MOVE_X:
             raise ValueError(f"Action {action.value} is not an analog action")

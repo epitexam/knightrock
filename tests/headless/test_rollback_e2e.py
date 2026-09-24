@@ -99,6 +99,21 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     assert end_state_second_pass == end_state_first_pass
 
 
+def test_rollback_restores_input_edges_for_replayed_actions(build_level) -> None:
+    level = build_level()
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=8)
+    held_jump = InputState(held_actions=frozenset({InputAction.JUMP}))
+
+    _script_tick(level, InputState())
+    _script_tick(level, held_jump)
+    assert level.rollback.rollback_to(level, 0) is True
+
+    level.input_manager.apply_remote_state(held_jump)
+
+    assert level.input_manager.just_pressed(InputAction.JUMP) is True
+
+
 def test_rollback_resurrects_killed_enemy(build_level) -> None:
     level = build_level()
     level.rollback_enabled = True

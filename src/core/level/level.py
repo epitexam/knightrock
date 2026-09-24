@@ -238,6 +238,7 @@ class Level:
             for platform in self.groups.moving_platforms
         ]
 
+        input_current, input_previous = self.input_manager.snapshot()
         return LevelSnapshot(
             tick=self.tick,
             hit_stop_timer=self.gameplay_loop.combat_system.hit_stop_timer,
@@ -246,6 +247,8 @@ class Level:
             exit_reached=self.exit_reached,
             player_dead_emitted=self.notification_system.player_dead_emitted,
             completed_emitted=self.notification_system.completed_emitted,
+            input_current=input_current,
+            input_previous=input_previous,
             entities=entities,
             platforms=platforms,
         )
@@ -266,6 +269,7 @@ class Level:
         self.exit_reached = snapshot.exit_reached
         self.notification_system.player_dead_emitted = snapshot.player_dead_emitted
         self.notification_system.completed_emitted = snapshot.completed_emitted
+        self.input_manager.restore_snapshot(snapshot.input_current, snapshot.input_previous)
 
         # Reap entities that did not exist at capture time (e.g. a debug
         # spawn after the target tick) — they must not pollute the restored
