@@ -47,15 +47,20 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
 
 def test_router_uses_inverted_y_and_ui_deadzone_for_xbox() -> None:
     router = EventRouter()
+    inverted_router = EventRouter(InputBindings(menu=MenuBindings(invert_y=True)))
     deadzone = router.route(
         pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.4)
     )
-    up = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.8))
-    down = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=-0.8))
+    up = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=-0.8))
+    down = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.8))
+    inverted_up = inverted_router.route(
+        pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.8)
+    )
 
     assert deadzone is None
-    assert up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=0.8)
-    assert down == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=-0.8)
+    assert up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-0.8)
+    assert down == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=0.8)
+    assert inverted_up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=0.8)
 
 
 def test_router_preserves_new_game_and_cancel_variants() -> None:

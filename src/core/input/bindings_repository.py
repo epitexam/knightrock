@@ -200,7 +200,7 @@ def bindings_from_dict(data: object) -> InputBindings:
         not isinstance(new_game_key, int) or isinstance(new_game_key, bool) or new_game_key < 0
     ):
         raise ValueError("menu.new_game_key must be a non-negative integer or null")
-    invert_y = menu_data.get("invert_y", True)
+    invert_y = menu_data.get("invert_y", False)
     if not isinstance(invert_y, bool):
         raise ValueError("menu.invert_y must be boolean")
 
