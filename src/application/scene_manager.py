@@ -38,10 +38,12 @@ class SceneManager:
         for scene_ in reversed(self._stack):
             scene_.exit()
         self._stack.clear()
+        self.input_dispatcher.router.reset()
         self._push(scene)
 
     def push(self, scene: Scene) -> None:
         """Suspend the current scene and start ``scene`` on top."""
+        self.input_dispatcher.router.reset()
         self._push(scene)
 
     def pop(self) -> None:
@@ -49,6 +51,7 @@ class SceneManager:
         if not self._stack:
             return
         self._stack.pop().exit()
+        self.input_dispatcher.router.reset()
         if not self._stack:
             self.game.running = False
 
@@ -56,6 +59,11 @@ class SceneManager:
         """Forward an event to the active scene."""
         if self.current is not None:
             self.input_dispatcher.dispatch(self.current, event)
+
+    def poll_held_repeats(self) -> None:
+        """Forward les repeats joystick (stick tenu sans nouvel event)."""
+        if self.current is not None:
+            self.input_dispatcher.poll_held_repeats(self.current)
 
     def set_display_surface(self, display_surface: pygame.Surface) -> None:
         for scene in self._stack:

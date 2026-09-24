@@ -290,10 +290,12 @@ class Input:
 
     AXIS_DEADZONE = 0.1
     DASH_AXIS_THRESHOLD = 0.5
-    UI_AXIS_TRIGGER_THRESHOLD = 0.65
-    UI_AXIS_RELEASE_THRESHOLD = 0.35
-    UI_REPEAT_INITIAL_DELAY = 0.4
-    UI_REPEAT_INTERVAL = 0.1
+    UI_AXIS_TRIGGER_THRESHOLD = 0.5
+    UI_AXIS_RELEASE_THRESHOLD = 0.3
+    # Stick tenu : 0.25s avant la 1re répétition puis 1 pas / 80ms.
+    # Au-delà (~0.4/0.1) la navigation paraît "collée" / en retard.
+    UI_REPEAT_INITIAL_DELAY = 0.22
+    UI_REPEAT_INTERVAL = 0.06
     ATTACK_BUFFER_WINDOW = 0.2
 
 

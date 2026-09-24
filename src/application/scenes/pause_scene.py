@@ -30,6 +30,8 @@ class PauseScene(Scene):
         self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
         self.view = MenuView()
+        self._overlay: pygame.Surface | None = None
+        self._overlay_size: tuple[int, int] = (0, 0)
 
     def update(self, delta_time: float) -> None:
         return None
@@ -60,7 +62,11 @@ class PauseScene(Scene):
         surface = pygame.display.get_surface()
         if surface is None:
             return None
-        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        size = surface.get_size()
+        if self._overlay is None or self._overlay_size != size:
+            self._overlay = pygame.Surface(size, pygame.SRCALPHA)
+            self._overlay_size = size
+        overlay = self._overlay
         overlay.fill((8, 10, 14, 190))
         surface.blit(overlay, (0, 0))
         self.view.draw(surface, self.TITLE, self.model, top=220, title_color=TEXT_WARN)

@@ -40,7 +40,7 @@ class Game:
         self.settings_store = SettingsStore(bindings_path)
         self.settings = self.settings_store.load()
         self.input_bindings = self.settings.bindings
-        self.input_router = EventRouter(self.input_bindings)
+        self.input_router = EventRouter(self.input_bindings, joystick_reader=lambda: self.joysticks)
         self.input_provider = LocalInputProvider(self.input_bindings)
         self.input_manager = InputManager(self.input_provider)
         # Gameplay data driven by JSON (Phase 3 #4): attack sets, enemy
@@ -97,7 +97,7 @@ class Game:
     def apply_settings(self, settings: UserSettings) -> None:
         self.settings = settings
         self.input_bindings = settings.bindings
-        self.input_router = EventRouter(self.input_bindings)
+        self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self.settings_store.save(settings)
         if self.display_surface is not None:
@@ -140,6 +140,7 @@ class Game:
             self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME)
 
             self._handle_events()
+            self.scene_manager.poll_held_repeats()
 
             while self._accumulator >= Simulation.TIMESTEP:
                 self.scene_manager.update(Simulation.TIMESTEP)
@@ -162,6 +163,7 @@ class Game:
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
                 logger.info(f"Connected controller : {joy.get_name()}")
+                self.input_router.notify_joystick_connected(joy.get_instance_id(), joy)
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
@@ -169,6 +171,7 @@ class Game:
                 disconnected_joy = self.joysticks[event.instance_id]
                 logger.info(f"Controller disconnected : {disconnected_joy.get_name()}")
                 self.input_provider.disconnect_joystick(event.instance_id)
+                self.input_router.notify_joystick_removed(event.instance_id)
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 

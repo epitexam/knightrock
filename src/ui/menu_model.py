@@ -99,6 +99,11 @@ class MenuModel:
         rects: list[pygame.Rect],
         variant: str | None = None,
     ) -> tuple[str | None, str | None]:
+        if variant == "release":
+            # Le relâchement du stick ne doit jamais déplacer le curseur :
+            # sans ce garde, chaque press (move +1) était suivi d'un
+            # second move au release -> double-pas / sensation de lag.
+            return None, variant
         if action is InputAction.UI_UP:
             return self.move(-1), variant
         if action is InputAction.UI_DOWN:

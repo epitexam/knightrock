@@ -8,6 +8,14 @@ class MenuView:
     def __init__(self, scale: float = 1.0) -> None:
         self._scale = self._valid_scale(scale)
         self._item_rects: list[pygame.Rect] = []
+        self._fonts: dict[float, tuple[pygame.font.Font, pygame.font.Font]] = {}
+        self._panel_cache: pygame.Surface | None = None
+        self._panel_cache_size: tuple[int, int] = (0, 0)
+        # Cache des textes rendus : un .render() par frame et par item
+        # alloue une Surface + déclenche du GC -> micro-freezes à 60fps.
+        # Clé = (font-id, texte, couleur) ; invalidé au changement de sélection.
+        self._text_cache: dict[tuple[int, str, tuple[int, int, int]], pygame.Surface] = {}
+        self._text_cache_key: tuple[tuple[str, ...], int, float] | None = None
 
     @property
     def item_rects(self) -> list[pygame.Rect]:
@@ -26,15 +34,18 @@ class MenuView:
         title_color: tuple[int, int, int] = TEXT_TITLE,
     ) -> pygame.Rect:
         scale = self._scale
-        title_font = pygame.font.SysFont("Consolas", max(1, int(48 * scale)), bold=True)
-        item_font = pygame.font.SysFont("Consolas", max(1, int(32 * scale)))
+        title_font, item_font = self._fonts_for(scale)
         labels = [
             f"> {item.label}" if index == model.current_index else item.label
             for index, item in enumerate(model.items)
         ]
-        title_surface = title_font.render(title, True, title_color)
+        cache_key = (tuple(labels), model.current_index, scale)
+        if cache_key != self._text_cache_key:
+            self._text_cache.clear()
+            self._text_cache_key = cache_key
+        title_surface = self._render_cached(title_font, title, title_color)
         item_surfaces = [
-            item_font.render(label, True, self._color(index, model))
+            self._render_cached(item_font, label, self._color(index, model))
             for index, label in enumerate(labels)
         ]
         padding = max(8, int(28 * scale))
@@ -49,7 +60,7 @@ class MenuView:
         )
         panel_x = (surface.get_width() - panel_width) // 2
         panel_y = top
-        panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel = self._panel_for(panel_width, panel_height)
         panel.fill((*PANEL_BG[:3], 230))
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), max(1, int(2 * scale)))
         surface.blit(panel, (panel_x, panel_y))
@@ -73,8 +84,44 @@ class MenuView:
             return TEXT_MUTED
         return TEXT_WARN if index == model.current_index else TEXT_OK
 
+    def _render_cached(
+        self, font: pygame.font.Font, text: str, color: tuple[int, int, int]
+    ) -> pygame.Surface:
+        key = (id(font), text, color)
+        cached = self._text_cache.get(key)
+        if cached is None:
+            cached = font.render(text, True, color)
+            self._text_cache[key] = cached
+        return cached
+
+    def _fonts_for(self, scale: float) -> tuple[pygame.font.Font, pygame.font.Font]:
+        """Cache les Font par scale : SysFont coûte cher à chaque frame."""
+        cached = self._fonts.get(scale)
+        if cached is None:
+            cached = (
+                pygame.font.SysFont("Consolas", max(1, int(48 * scale)), bold=True),
+                pygame.font.SysFont("Consolas", max(1, int(32 * scale))),
+            )
+            self._fonts[scale] = cached
+        return cached
+
+    def _panel_for(self, width: int, height: int) -> pygame.Surface:
+        """Réutilise la surface du panneau au lieu d'en allouer une/frame."""
+        if self._panel_cache is None or self._panel_cache_size != (width, height):
+            self._panel_cache = pygame.Surface((width, height), pygame.SRCALPHA)
+            self._panel_cache_size = (width, height)
+        return self._panel_cache
+
     @staticmethod
     def _valid_scale(scale: float) -> float:
         if scale not in (0.8, 1.0, 1.2):
             raise ValueError("UI scale must be 0.8, 1.0 or 1.2")
         return scale
+
+    def reset_cache(self) -> None:
+        """Vide les fonts/surfaces cachées (changement de display)."""
+        self._fonts.clear()
+        self._panel_cache = None
+        self._panel_cache_size = (0, 0)
+        self._text_cache.clear()
+        self._text_cache_key = None

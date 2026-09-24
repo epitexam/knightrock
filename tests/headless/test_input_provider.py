@@ -93,10 +93,10 @@ def test_down_uses_keyboard_then_analog_then_hat(
     assert InputAction.MOVE_DOWN in provider.poll().held_actions
 
     joystick.axes[1] = 0.0
-    joystick.hat = (0, 1)
+    joystick.hat = (0, -1)
     assert InputAction.MOVE_DOWN in provider.poll().held_actions
 
-    joystick.hat = (0, -1)
+    joystick.hat = (0, 1)
     assert InputAction.MOVE_DOWN not in provider.poll().held_actions
 
 

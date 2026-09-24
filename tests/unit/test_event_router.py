@@ -6,6 +6,7 @@ from src.application.input_dispatcher import InputDispatcher
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings, MenuBindings
+from src.core.settings import Input as InputSettings
 
 
 def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
@@ -24,22 +25,37 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
 
 
 def test_router_maps_hat_and_axis_with_release_threshold() -> None:
-    router = EventRouter()
+    now = [10.0]
 
-    hat = router.route(pygame.event.Event(pygame.JOYHATMOTION, value=(0, -1)))
+    class Stick:
+        def __init__(self, value: float) -> None:
+            self.value = value
+
+        def get_axis(self, _axis: int) -> float:
+            return self.value
+
+    stick = Stick(0.9)
+    router = EventRouter(clock=lambda: now[0], joystick_reader=lambda: {4: stick})
+
+    hat = router.route(pygame.event.Event(pygame.JOYHATMOTION, instance_id=7, hat=0, value=(0, 1)))
     press = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=0, value=0.8))
-    repeated = router.route(
+    flooded = router.route(
         pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=0, value=0.9)
     )
+    now[0] += InputSettings.UI_REPEAT_INITIAL_DELAY + 0.01
+    repeated = router.poll_repeats()
+    stick.value = 0.1
     release = router.route(
         pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=0, value=0.1)
     )
 
-    assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-1.0)
+    assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
-    assert repeated == RoutedInput(
-        InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.9, variant="repeat"
-    )
+    # Stick tenu : les événements intermédiaires sont filtrés (throttle).
+    assert flooded is None
+    assert repeated == [
+        RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.9, variant="repeat")
+    ]
     assert release == RoutedInput(
         InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.1, variant="release"
     )

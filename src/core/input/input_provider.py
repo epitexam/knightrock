@@ -90,7 +90,7 @@ class LocalInputProvider(InputProvider):
             down_held = down_axis > 0.0
         if not down_held:
             hat = self._hat_value(gameplay.gamepad_hats, InputAction.MOVE_DOWN)
-            down_held = hat[1] > 0
+            down_held = hat[1] < 0
 
         held = {
             InputAction.MOVE_DOWN: down_held,
