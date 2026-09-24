@@ -42,6 +42,12 @@ class HazardDamageSystem:
             damage = float(getattr(hazard, "damage", self.DEFAULT_DAMAGE))
             knockback = getattr(hazard, "knockback", None) or self.DEFAULT_KNOCKBACK
             contact_shape = getattr(hazard, "contact_shape", None)
+            swept_rect_factory = getattr(hazard, "swept_contact_rect", None)
+            swept_rect = (
+                swept_rect_factory()
+                if callable(swept_rect_factory)
+                else box
+            )
             swept_shapes = (
                 hazard.swept_contact_shapes()
                 if contact_shape is not None
@@ -52,7 +58,7 @@ class HazardDamageSystem:
             boxes.append(
                 OffensiveBox(
                     box=box,
-                    swept=(box,),
+                    swept=(swept_rect,),
                     hit=HitProperties(damage=damage, knockback=knockback),
                     swept_shapes=swept_shapes,
                     faction=None,
@@ -64,7 +70,14 @@ class HazardDamageSystem:
             )
         return tuple(boxes)
 
-    def process(self, entity_sprites: Iterable, hazard_sprites: Iterable) -> None:
+    def process(
+        self,
+        entity_sprites: Iterable,
+        hazard_sprites: Iterable,
+        entity_grid=None,
+    ) -> None:
         """Apply damage for every overlap between a hazard and a live entity."""
         entities = tuple(entity_sprites)
-        self.contact_system.resolve(self.produce_boxes(entities, hazard_sprites), entities)
+        self.contact_system.resolve(
+            self.produce_boxes(entities, hazard_sprites), entities, entity_grid
+        )

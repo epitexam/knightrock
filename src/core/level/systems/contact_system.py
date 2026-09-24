@@ -5,8 +5,9 @@ emits :class:`OffensiveBox` records; this system runs the shared pipeline:
 
 1. broadphase: ``EntityGrid.near`` over the emitted geometry (exhaustive
    over the target sequence when no grid is given);
-2. narrowphase: P1 swept boxes vs P2 swept hurt zones (melee) or the
-   discrete hurt/hit box (projectile, hazard, contact damage);
+2. narrowphase: swept attack/contact geometry vs swept target geometry
+   for melee, projectiles and moving hazards, with the legacy discrete
+   contact-damage path retained;
 3. resolve: ``HitResolver`` for melee and projectile boxes, direct
    ``receive_damage`` for hazard/contact boxes (legacy semantics: no
    attacker ``CombatPort``, configurable ``interrupt``, no global hit-stop).
@@ -55,10 +56,11 @@ __all__ = [
 class OffensiveBox:
     """One offensive contact emitted by a producer.
 
-    ``box`` is the discrete geometry (projectile/hazard/contact hitboxes,
-    primary melee box); ``swept`` is the whole-tick geometry used by the
-    melee narrowphase. ``record_contact`` is called with the *target* once a
-    hit landed, so a producer can remember it (and release itself).
+    ``box`` is the discrete current geometry; ``swept`` is the whole-tick
+    geometry used for broadphase/narrowphase. Projectiles and moving hazards
+    populate it from their previous/current rectangles. ``record_contact`` is
+    called with the *target* once a hit landed, so a producer can remember it
+    (and release itself).
     """
 
     box: pygame.FRect
@@ -186,6 +188,21 @@ def _eligible(box: OffensiveBox, target: Combatant) -> bool:
     return box.accept is None or bool(box.accept(target))
 
 
+def _swept_target_box(box: OffensiveBox, target: Combatant) -> pygame.FRect:
+    """Return the target geometry swept only for swept offensive producers."""
+    if box.kind == "projectile":
+        swept = getattr(target, "swept_hurtbox", None)
+        if callable(swept):
+            return cast(pygame.FRect, swept())
+        return target.hurtbox
+    if box.kind == "hazard":
+        swept = getattr(target, "swept_pushbox", None)
+        if callable(swept):
+            return cast(pygame.FRect, swept())
+        return target.hitbox
+    return target.hitbox
+
+
 def _shape_swept_intersects(shape: SweptShape, target: pygame.FRect) -> bool:
     if shape.current.kind is ShapeKind.AABB:
         return False
@@ -290,11 +307,12 @@ class ContactSystem:
                     self.metrics.overlaps += 1
                     self._resolve_melee(box, target, contact[0], contact[1])
                 else:
-                    target_box = target.hurtbox if box.kind == "projectile" else target.hitbox
+                    target_box = _swept_target_box(box, target)
                     shape_hit = any(
                         _shape_swept_intersects(shape, target_box) for shape in box.swept_shapes
                     )
-                    if not shape_hit and not box.box.colliderect(target_box):
+                    swept_hit = any(swept.colliderect(target_box) for swept in box.swept)
+                    if not shape_hit and not swept_hit:
                         continue
                     self.metrics.overlaps += 1
                     self._resolve_generic(box, target)

@@ -20,6 +20,7 @@ from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.combat.sweep import swept_box
 
 _PROJECTILE_ID_SEQUENCE = count()
 
@@ -54,6 +55,7 @@ class Projectile(Sprite):
         self.faction: str = "neutral"
         self.contact_shape: ShapePose = ShapePose(ShapeKind.AABB, (8.0, 8.0))
         self._previous_contact_shape: ShapePose | None = None
+        self._previous_contact_rect: pygame.FRect | None = None
         self.config: ProjectileConfig = ProjectileConfig()
         self.life: float = 0.0
         self.active: bool = False
@@ -86,6 +88,7 @@ class Projectile(Sprite):
             config.angle,
         )
         self._previous_contact_shape = None
+        self._previous_contact_rect = None
         self.velocity = Vector2(velocity)
         self.faction = faction
         self.facing_right = self.velocity.x >= 0
@@ -106,6 +109,7 @@ class Projectile(Sprite):
         self.velocity.update(0, 0)
         self.targets_hit.clear()
         self._previous_contact_shape = None
+        self._previous_contact_rect = None
 
     def sync_rects(self) -> None:
         """Keep the integer ``rect`` (render/cull) on the float ``hitbox``."""
@@ -114,6 +118,11 @@ class Projectile(Sprite):
 
     def capture_contact_origin(self) -> None:
         self._previous_contact_shape = self.contact_shape
+        self._previous_contact_rect = self.hitbox.copy()
+
+    def swept_contact_rect(self) -> pygame.FRect:
+        """Return the projectile AABB swept over the current tick."""
+        return swept_box(self._previous_contact_rect, self.hitbox)
 
     def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
         return (SweptShape(self._previous_contact_shape, self.contact_shape),)

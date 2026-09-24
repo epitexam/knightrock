@@ -8,15 +8,16 @@ Contraintes :
 
 - aucun commit dans cette étape ;
 - ne pas modifier le comportement gameplay validé par les goldens sans preuve et test associé ;
-- conserver P0–P5 et les décisions produit documentées, notamment le sweep melee-only pour projectiles, hazards et contact ;
+- conserver P0–P5 ; le sweep melee reste actif, avec extension prévue aux projectiles AABB et hazards mobiles ;
 - traiter la modification existante de `src/core/settings.py` comme un changement hors périmètre ;
 - valider toute modification documentaire contre le code réellement présent.
 
 État observé :
 
-- `pytest -q` : **906 tests passés** dans l’ordre actuel ;
+- `pytest -q` : **910 tests passés** dans l’ordre actuel ;
 - `mypy src` : **128 fichiers analysés, aucune erreur** ;
 - `ruff check .` : propre ;
+- sweep AABB actif pour melee, projectiles et hazards mobiles ; hazards statiques et contact damage restent discrets ;
 - le test UI est désormais hermétique avec et sans `DEBUG=1` ;
 - le benchmark est directement lançable et produit des contacts réels 1/16/64 ;
 - le rapport principal et `notes/ecarts_ouverts.md` sont synchronisés avec P5/O1–O9.
@@ -53,7 +54,7 @@ Actions :
 - remplacer « P5 non engagé » et « formes avancées hors périmètre » par « P5 implémenté » ;
 - documenter AABB, cercle, capsule, OBB, rotation, easing, anchors et keyframes ;
 - documenter `test_hitbox_shapes.py` et `test_p5_integration.py` ;
-- conserver la limite : le sweep bilateral reste melee-only ;
+- conserver la limite : le sweep bilateral melee reste actif ; ajouter le sweep AABB projectile et hazard mobile ; contact reste discret ;
 - mettre à jour le modèle JSON et les règles de validation réelles ;
 - supprimer les mentions obsolètes de `block_mask`, `hit_level` ou tags « absents ».
 

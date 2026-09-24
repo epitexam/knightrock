@@ -198,6 +198,7 @@ class Entity(Sprite):
         # ``reset_position``/``load_state`` (no stale smear across a teleport
         # or a rollback; re-derived at the next capture).
         self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
+        self._prev_pushbox: pygame.FRect | None = None
         self.contact_shape: ShapePose = ShapePose(
             ShapeKind.AABB, self._pushbox.size, self._pushbox.center
         )
@@ -479,7 +480,12 @@ class Entity(Sprite):
         Called once per tick by the gameplay loop, before any movement.
         """
         self._prev_hurtboxes = tuple(rect.copy() for rect in self._hurtbox_rects)
+        self._prev_pushbox = self._pushbox.copy()
         self._previous_contact_shape = self.contact_shape
+
+    def swept_pushbox(self) -> pygame.FRect:
+        """Return the physical pushbox swept over the current tick."""
+        return swept_box(self._prev_pushbox, self._pushbox)
 
     def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
         return (SweptShape(self._previous_contact_shape, self.contact_shape),)
@@ -734,6 +740,8 @@ class Entity(Sprite):
         self.vitals.reset()
         # P1 (D4) / P2: respawn/teleport is a discontinuity — no swept smear.
         self._prev_hurtboxes = ()
+        self._prev_pushbox = None
+        self._previous_contact_shape = None
 
         self.combat.reset()
 
@@ -1038,6 +1046,7 @@ class Entity(Sprite):
         # P1 (D3) / P2: ``prev`` is re-derived at the next frontier capture;
         # no snapshot field carries it across a rollback.
         self._prev_hurtboxes = ()
+        self._prev_pushbox = None
         self._previous_contact_shape = None
         self.velocity = Vector2(snapshot.velocity)
         self.on_surface = dict(snapshot.on_surface)

@@ -9,6 +9,7 @@ from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import ProjectileConfig
 from src.physics.entity_grid import EntityGrid
+from src.physics.spatial_hash import SpatialHash
 from tests.unit.helpers import make_entity
 
 
@@ -108,7 +109,63 @@ def test_wall_collision_releases_projectile() -> None:
     assert system.pool.available == 1
 
 
-def test_grid_and_exhaustive_paths_agree() -> None:
+def test_projectile_aabb_sweeps_target_between_ticks() -> None:
+    """A fast projectile catches a target crossed between discrete positions."""
+    target = make_entity(pos=(95.0, 105.0), faction="enemy", size=(5.0, 5.0))
+    groups = _groups_with_target(target)
+    system = ProjectileSystem(groups)
+    projectile = system.spawn(
+        _config(),
+        pos=(70.0, 105.0),
+        velocity=(2400.0, 0.0),
+        faction="player",
+    )
+
+    system.process(1 / 60)
+
+    assert projectile.hitbox.x == 110.0
+    assert target.health == 90.0
+
+
+def test_projectile_wall_sweep_catches_wall_between_positions() -> None:
+    """A projectile cannot pass through a wall between discrete positions."""
+    target = make_entity(pos=(1000.0, 1000.0), faction="enemy")
+    groups = _groups_with_target(target)
+    wall = pygame.sprite.Sprite()
+    wall.rect = pygame.Rect(95, 100, 10, 10)
+    groups.collision_sprites.add(wall)
+    system = ProjectileSystem(groups)
+
+    system.spawn(
+        _config(),
+        pos=(70.0, 105.0),
+        velocity=(2400.0, 0.0),
+        faction="player",
+    )
+    system.process(1 / 60)
+
+    assert not groups.projectile_sprites
+    assert system.pool.available == 1
+
+
+def test_projectile_wall_sweep_with_spatial_hash_catches_wall_between_positions() -> None:
+    """The swept wall query remains correct with the environment hash."""
+    target = make_entity(pos=(1000.0, 1000.0), faction="enemy")
+    groups = _groups_with_target(target)
+    wall = pygame.sprite.Sprite()
+    wall.rect = pygame.Rect(95, 100, 10, 10)
+    groups.collision_sprites.add(wall)
+    spatial_hash = SpatialHash()
+    spatial_hash.add(wall)
+    system = ProjectileSystem(groups, spatial_hash=spatial_hash)
+
+    system.spawn(_config(), pos=(70.0, 105.0), velocity=(2400.0, 0.0), faction="player")
+    system.process(1 / 60)
+
+    assert not groups.projectile_sprites
+
+
+def test_projectile_grid_and_exhaustive_paths_agree() -> None:
     def run(with_grid: bool) -> float:
         target = make_entity(pos=(100.0, 100.0), faction="enemy")
         groups = _groups_with_target(target)

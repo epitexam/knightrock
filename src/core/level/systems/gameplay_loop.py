@@ -194,7 +194,9 @@ class GameplayLoop:
                 player._dash_started_this_frame = False
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
-            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites)
+            hazard_damage.process(
+                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
+            )
             self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 

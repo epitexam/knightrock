@@ -216,6 +216,10 @@ class Combatant(Protocol):
         """Union of the per-zone swept rectangles (legacy single-view API)."""
         ...
 
+    def swept_pushbox(self) -> pygame.FRect:
+        """Physical body rectangle swept over the current tick."""
+        ...
+
     def capture_sweep_origin(self) -> None:
         """Freeze the current zones as the next tick's sweep origin (P1/D3)."""
         ...

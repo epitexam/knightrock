@@ -16,7 +16,7 @@ from collections.abc import Callable
 import pygame
 
 from src.combat.combatant_protocol import Combatant
-from src.combat.shapes import ShapeKind
+from src.combat.shapes import ShapeKind, shape_aabb_intersects, swept_intersects_aabb
 from src.core.level.systems.contact_system import ContactSystem, GuardEvent, OffensiveBox
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
@@ -97,16 +97,25 @@ class ProjectileSystem:
             self._resolve_contacts(projectile, entity_grid)
 
     def _hit_wall(self, projectile: Projectile) -> bool:
-        """True when the flying box truly overlaps static collision geometry."""
-        if self.spatial_hash is not None:
-            for sprite in self.spatial_hash.get_nearby(projectile.hitbox):
-                box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
-                if box is not None and pygame.FRect(box).colliderect(projectile.hitbox):
-                    return True
-            return False
-        for sprite in self.groups.collision_sprites:
+        """True when the swept flying box overlaps static collision geometry."""
+        swept_rect = projectile.swept_contact_rect()
+        shape_sweeps = projectile.swept_contact_shapes()
+        for sprite in (
+            self.spatial_hash.get_nearby(swept_rect)
+            if self.spatial_hash is not None
+            else self.groups.collision_sprites
+        ):
             box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
-            if box is not None and pygame.FRect(box).colliderect(projectile.hitbox):
+            if box is None:
+                continue
+            box = pygame.FRect(box)
+            shape_hit = any(
+                (shape_aabb_intersects(shape.current, box) if shape.previous is None
+                 else swept_intersects_aabb(shape.previous, shape.current, box))
+                for shape in shape_sweeps
+                if shape.current.kind is not ShapeKind.AABB
+            )
+            if shape_hit or swept_rect.colliderect(box):
                 return True
         return False
 
@@ -125,7 +134,7 @@ class ProjectileSystem:
         config = projectile.config
         box = OffensiveBox(
             box=projectile.hitbox,
-            swept=(projectile.hitbox,),
+            swept=(projectile.swept_contact_rect(),),
             hit=config.hit,
             swept_shapes=(
                 projectile.swept_contact_shapes() if config.shape is not ShapeKind.AABB else ()

@@ -1,7 +1,7 @@
 # Écarts hitbox — état de conformité 2026-09-24
 
 > Synthèse courante des écarts O1–O9. La source historique détaillée reste `notes/hitbox_amelioration.md`.
-> Cette version décrit uniquement le code présent sur `audit-hitbox-partial-compliance`.
+> Cette version décrit uniquement le code présent sur `hitbox/rework`.
 
 ## Récapitulatif
 
@@ -13,7 +13,7 @@
 | O4 | Benchmark de contact | Clos | `tests/benchmarks/contact_benchmark.py`, contacts 1/16/64 |
 | O5 | Export JSON F9 | Clos | `src/application/attack_authoring.py`, `test_attack_authoring.py` |
 | O6 | Perf et déterminisme | Clos | buffers de broadphase, `geometry_checksum`, tests associés |
-| O7 | Sweep melee-only | Clos par décision produit | `projectile_system.py`, `hazard_damage.py`, `contact_damage.py` |
+| O7 | Sweep multi-producteurs | Clos | `projectile_system.py`, `hazard_damage.py`, `contact_system.py` ; contact reste discret |
 | O8 | Offset des keyframes | Clos | `_validate_keyframes`, `test_attack_validation.py` |
 | O9 | Indices debug | Clos par décision de forme | `world_ui.py`, points `●/○`, `test_debug_overlay.py` |
 
@@ -63,9 +63,9 @@ F9 exporte l’attaque sélectionnée vers un JSON relisible dans `KNIGHTROCK_EX
 
 **Tests :** `tests/unit/test_geometry_checksum.py`, `tests/unit/test_p5_integration.py`, `tests/unit/test_contact_unified.py`.
 
-### O7 — Sweep melee-only
+### O7 — Sweep multi-producteurs
 
-Le sweep bilatéral est volontairement limité au melee. Les projectiles, hazards et contact conservent une collision discrète et émettent un `swept` trivial. Toute extension nécessite une nouvelle décision produit.
+Le sweep AABB bilatéral est actif pour la melee, les projectiles AABB et les hazards mobiles. Les hazards statiques restent discrets et le contact damage conserve sa collision discrete. Les projectiles utilisent aussi le swept pour la broadphase, la narrowphase et les collisions contre les murs ; les formes avancées conservent leur broadphase AABB swept et leur narrowphase de forme.
 
 **Tests :** `tests/unit/test_contact_unified.py`, `tests/unit/test_projectile_system.py`, `tests/unit/test_hazard_damage.py`.
 
@@ -83,10 +83,10 @@ Les indices de boîte sont dessinés comme points vectoriels `●/○` en place 
 
 ## Recette de référence
 
-- `pytest -q` : **906 passed** ;
+- `pytest -q` : **910 passed** ;
 - `ruff check .` : propre ;
 - `mypy src` : propre, 128 fichiers ;
 - benchmark de contact : reproductible, contacts 1/16/64 ;
 - tests UI : hermétiques avec et sans `DEBUG=1`.
 
-Dernière mise à jour : 2026-09-24, branche `audit-hitbox-partial-compliance`, aucun commit.
+Dernière mise à jour : 2026-09-24, branche `hitbox/rework`, modifications non commitées.

@@ -2,9 +2,9 @@
 
 - **Date :** 2026-09-20 (ameliore 2026-09-20 preuves ; 2026-09-22 gap audit ; **2026-09-23 re-audit doc** ; **2026-09-24 conformite partielle**)
 - **Perimetre :** `src/combat/`, `src/physics/`, `src/entities/entity.py` + `hurtbox_zones.py`, `src/core/level/systems/combat_system.py` + `contact_system.py`, `src/core/level/systems/projectile_system.py`, `src/core/level/systems/hazard_damage.py`, `data/gameplay/attacks.json`, `data/gameplay/enemies.json` (zones goblin P2), `src/ui/world_ui.py` (debug)
-- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **905** (voir §10)
+- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **910** (voir §10)
 - **Statut grab (rappel) :** aucun systeme de grab/throw/command-grab n existe. Seul faux positif : `generator.throw()` dans un test.
-- **Base de tests :** **906 tests verts** (`pytest -q` le 2026-09-24), `ruff check .` propre, `mypy src` propre (128 fichiers) — detail §10.
+- **Base de tests :** **910 tests verts** (`pytest -q` le 2026-09-24), `ruff check .` propre, `mypy src` propre (128 fichiers) — detail §10.
 - **Lecture du diagnostic :** §3 decrit l etat **pre-P0** ; chaque item clos porte une balise `**[clos Pn]**` (etat actuel = code + §10). Ne pas re-traiter un item balise clos sans nouveau repro.
 
 ## Sommaire
@@ -222,11 +222,7 @@ Cas a risque d origine : `dash_attack` (lunge frame 1, boite 70x24, offset 42 px
 keyframes `sweeping_arc` (28 -> 70 px en 6 frames), chutes ~25 px/tick
 (1500 px/s a 60 Hz) contre cibles fines. `QUERY_MARGIN_PX=32` protege la
  broadphase (requete elargie), pas la narrowphase.
-**Limite confirmee :** le sweep bilateral prev+cur reste limite au chemin
-**melee** ; projectiles / hazards / contact emettent `swept=(box,)` trivial et
-resolvent en `colliderect` discret (`projectile_system.py:126`,
-`hazard_damage.py:46`, `contact_damage.py:63`, branchement
-`contact_system.py:261-264`).
+**Sweep actif :** la swept geometry est utilisée par la melee, les projectiles AABB et les hazards mobiles. Les hazards statiques restent discrets, et le contact damage conserve sa collision discrete. Les projectiles et hazards swept leur broadphase, leur narrowphase et leurs collisions contre les murs ou les cibles.
 
 Symptomes d origine : coups rapides qui passent au travers, whiffs visuels
 injustes sur lunge et cibles fines.
@@ -940,7 +936,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 ### 7.3 Criteres globaux
 
-- **906 tests verts** de référence (`pytest -q` le 2026-09-24 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 128 fichiers.
+- **910 tests verts** de référence (`pytest -q` le 2026-09-24 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 128 fichiers.
 - Aucune regression visuelle sur les 5 attaques vitrines (`twin_fangs`, `sweeping_arc`, `sky_launcher`, `otg_slam`, `special_attack`).
 - Determinisme : deux runs meme seed = memes `CombatMetrics` et memes positions.
 - Rollback : `save/load` + capture frontiere re-derive `prev` (aucun champ snapshot) et ne rate aucun contact au tick suivant.
@@ -989,7 +985,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 | Palier | Date | pytest | ruff | mypy | Repro 2.1 rejoué | Bench 2.2 (1v1/4v4/8v8) | Note |
 |---|---|---|---|---|---|---|---|
-| **Recette courante** | **2026-09-24** | **906 passed** | **ruff check . propre** | **mypy src propre (128 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Branche `audit-hitbox-partial-compliance`, tests UI hermétiques, benchmark direct reproductible |
+| **Recette courante** | **2026-09-24** | **910 passed** | **ruff check . propre** | **mypy src propre (128 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Sweep projectile AABB, sweep hazard mobile, murs et cibles balayées ; tests UI hermétiques |
 
 Les lignes P0–Re-audit ci-dessous sont conservées comme historique de chantier et ne décrivent pas l’état courant.
 | Ref (pre-P0) | 2026-09-20 | 719 passed | propre hors `main.py`* | propre (120 fichiers) | trou confirme | 0.003 / 0.029 / 0.075 ms | rapport takeover-ready, sans scripts |
