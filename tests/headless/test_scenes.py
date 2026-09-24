@@ -126,6 +126,16 @@ def test_gameplay_escape_pushes_pause(manager: SceneManager):
     assert manager.current is gameplay
 
 
+def test_pause_confirm_resumes_gameplay(manager: SceneManager):
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+    manager.push(PauseScene(manager.game, level_id=0))
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert manager.current is gameplay
+
+
 def test_gameplay_death_limit_pushes_game_over(manager: SceneManager):
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
