@@ -21,7 +21,10 @@ class MenuAction(StrEnum):
 
 
 class MenuModel:
-    def __init__(self, items: list[MenuItem] | tuple[MenuItem, ...] = ()) -> None:
+    def __init__(
+        self, items: list[MenuItem] | tuple[MenuItem, ...] = (), *, wrap: bool = False
+    ) -> None:
+        self._wrap = wrap
         self._items: tuple[MenuItem, ...] = ()
         self._current = -1
         self._hovered = -1
@@ -57,7 +60,11 @@ class MenuModel:
             return None
         start = self._current if self._current >= 0 else 0
         for offset in range(1, len(self._items) + 1):
-            index = (start + direction * offset) % len(self._items)
+            index = start + direction * offset
+            if self._wrap:
+                index %= len(self._items)
+            elif not 0 <= index < len(self._items):
+                break
             if self._items[index].enabled:
                 self._current = index
                 return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN

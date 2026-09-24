@@ -11,7 +11,8 @@ def test_menu_model_moves_with_wrap_and_skips_disabled_items() -> None:
             MenuItem("one", "One"),
             MenuItem("locked", "Locked", False),
             MenuItem("two", "Two"),
-        ]
+        ],
+        wrap=True,
     )
 
     assert model.current_index == 0
@@ -21,6 +22,17 @@ def test_menu_model_moves_with_wrap_and_skips_disabled_items() -> None:
     assert model.current_index == 0
     assert model.move(-1) == "move_up"
     assert model.current_index == 2
+
+
+def test_menu_model_does_not_wrap_up_or_down_by_default() -> None:
+    model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
+
+    assert model.move(-1) is None
+    assert model.current_index == 0
+    assert model.move(1) == "move_down"
+    assert model.current_index == 1
+    assert model.move(1) is None
+    assert model.current_index == 1
 
 
 def test_menu_model_handles_hover_activation_and_empty_state() -> None:
