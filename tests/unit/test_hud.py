@@ -96,6 +96,17 @@ def test_health_and_posture_anchor_to_the_bottom_left_corner() -> None:
     assert layout.health_bar.x > HUD_MARGIN
 
 
+def test_hud_scale_changes_player_geometry() -> None:
+    normal = _hud().layout(_player())
+    scaled_hud = _hud()
+    scaled_hud.set_scale(1.2)
+    scaled = scaled_hud.layout(_player())
+
+    assert isinstance(normal, HudLayout)
+    assert isinstance(scaled, HudLayout)
+    assert scaled.health_bar.height > normal.health_bar.height
+
+
 def test_full_health_fills_the_whole_bar() -> None:
     layout = _hud().layout(_player())
     assert layout.health_fill == layout.health_bar

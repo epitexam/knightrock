@@ -1,6 +1,7 @@
 """Tests for resource lookup and the top-level game runtime boundary."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -194,3 +195,17 @@ def test_removing_inactive_joystick_keeps_active_device(
 
     assert game.joysticks == {7: active}
     reassign_joystick.assert_called_once_with({7: active})
+
+
+def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+
+    game.apply_settings(replace(game.settings, width=800, height=600, vsync=True))
+
+    assert game.display_surface is not None
+    assert game.display_surface.get_size() == (800, 600)
+    assert game.settings.vsync is True

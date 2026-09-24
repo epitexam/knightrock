@@ -103,6 +103,7 @@ class Game:
         if self.display_surface is not None:
             self.display_surface = self._configure_display()
             self.scene_manager.set_display_surface(self.display_surface)
+            self.scene_manager.set_ui_scale(settings.ui_scale)
 
     def _configure_display(self) -> pygame.Surface:
         flags = pygame.RESIZABLE

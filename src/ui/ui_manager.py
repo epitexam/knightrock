@@ -84,6 +84,9 @@ class UIManager:
         self.renderer.set_display_surface(display_surface)
         self.world_ui.display_surface = display_surface
 
+    def set_ui_scale(self, scale: float) -> None:
+        self.hud.set_scale(scale)
+
     def draw_state_panel(
         self,
         x: int,

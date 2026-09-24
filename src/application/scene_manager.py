@@ -63,6 +63,12 @@ class SceneManager:
             if callable(setter):
                 setter(display_surface)
 
+    def set_ui_scale(self, scale: float) -> None:
+        for scene in self._stack:
+            setter = getattr(scene, "set_ui_scale", None)
+            if callable(setter):
+                setter(scale)
+
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""
         if self.current is not None:

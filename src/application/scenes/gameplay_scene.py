@@ -134,6 +134,10 @@ class GameplayScene(Scene):
             self.level.display_surface = display_surface
             self.level.renderer.set_display_surface(display_surface)
 
+    def set_ui_scale(self, scale: float) -> None:
+        if self.level is not None:
+            self.level.renderer.ui_manager.set_ui_scale(scale)
+
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:
             return False

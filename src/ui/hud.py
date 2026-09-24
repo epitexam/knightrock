@@ -114,9 +114,18 @@ class HUD:
 
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
+        self._scale = 1.0
         #: HUD rects painted last frame: presented again so a gauge that
         #: shrinks (or a combo that expires) does not leave stale pixels.
         self._previous_dirty: list[pygame.Rect] = []
+
+    def set_scale(self, scale: float) -> None:
+        if scale not in (0.8, 1.0, 1.2):
+            raise ValueError("UI scale must be 0.8, 1.0 or 1.2")
+        self._scale = scale
+
+    def _px(self, value: int) -> int:
+        return max(1, int(value * self._scale))
 
     def layout(self, player: Any) -> HudLayout | None:
         """Compute the frame's rects and colors without drawing anything."""
@@ -124,7 +133,7 @@ class HUD:
             return None
 
         screen_w, screen_h = self.renderer.display_surface.get_size()
-        bar_w = bar_width_for(screen_w)
+        bar_w = int(bar_width_for(screen_w) * self._scale)
         health_ratio = _ratio(getattr(player, "health", 0.0), getattr(player, "max_health", 0.0))
         posture_ratio = _ratio(
             getattr(player, "guard_posture", 0.0), getattr(player, "guard_posture_max", 0.0)
@@ -135,12 +144,12 @@ class HUD:
             self.renderer.render_text(label, self.renderer.label_font, TEXT_MUTED).get_width()
             for label in HUD_BAR_LABELS
         )
-        bar_x = HUD_MARGIN + label_w + HUD_LABEL_GAP
-        health_y = screen_h - HUD_MARGIN - HUD_BAR_HEIGHT
-        posture_y = health_y - HUD_BAR_GAP - HUD_BAR_HEIGHT
+        bar_x = self._px(HUD_MARGIN) + label_w + self._px(HUD_LABEL_GAP)
+        health_y = screen_h - self._px(HUD_MARGIN) - self._px(HUD_BAR_HEIGHT)
+        posture_y = health_y - self._px(HUD_BAR_GAP) - self._px(HUD_BAR_HEIGHT)
 
-        health_bar = pygame.Rect(bar_x, health_y, bar_w, HUD_BAR_HEIGHT)
-        posture_bar = pygame.Rect(bar_x, posture_y, bar_w, HUD_BAR_HEIGHT)
+        health_bar = pygame.Rect(bar_x, health_y, bar_w, self._px(HUD_BAR_HEIGHT))
+        posture_bar = pygame.Rect(bar_x, posture_y, bar_w, self._px(HUD_BAR_HEIGHT))
 
         pips = self._dash_pips(player, screen_w, screen_h)
         combo_text, combo_pos, combo_bar, combo_fill = self._combo(
@@ -172,13 +181,21 @@ class HUD:
         """
         total = max(0, int(getattr(player, "max_dash_charges", 0) or 0))
         filled = max(0, min(total, int(getattr(player, "dash_charges", 0) or 0)))
-        y = screen_h - HUD_MARGIN - HUD_PIP_SIZE
-        left = screen_w - HUD_MARGIN - total * HUD_PIP_SIZE - (total - 1) * HUD_PIP_GAP
+        y = screen_h - self._px(HUD_MARGIN) - self._px(HUD_PIP_SIZE)
+        left = (
+            screen_w
+            - self._px(HUD_MARGIN)
+            - total * self._px(HUD_PIP_SIZE)
+            - (total - 1) * self._px(HUD_PIP_GAP)
+        )
 
         return tuple(
             (
                 pygame.Rect(
-                    left + index * (HUD_PIP_SIZE + HUD_PIP_GAP), y, HUD_PIP_SIZE, HUD_PIP_SIZE
+                    left + index * (self._px(HUD_PIP_SIZE) + self._px(HUD_PIP_GAP)),
+                    y,
+                    self._px(HUD_PIP_SIZE),
+                    self._px(HUD_PIP_SIZE),
                 ),
                 index < filled,
             )
@@ -200,15 +217,15 @@ class HUD:
         screen_w, screen_h = screen
         text = f"x{count}"
         text_surf = self.renderer.render_text(text, self.renderer.label_font, HUD_COMBO_COLOR)
-        top_of_pips = min((rect.top for rect, _ in pips), default=screen_h - HUD_MARGIN)
+        top_of_pips = min((rect.top for rect, _ in pips), default=screen_h - self._px(HUD_MARGIN))
 
         bar = pygame.Rect(
-            screen_w - HUD_MARGIN - text_surf.get_width(),
-            top_of_pips - HUD_COMBO_BAR_GAP - HUD_COMBO_BAR_HEIGHT,
+            screen_w - self._px(HUD_MARGIN) - text_surf.get_width(),
+            top_of_pips - self._px(HUD_COMBO_BAR_GAP) - self._px(HUD_COMBO_BAR_HEIGHT),
             text_surf.get_width(),
-            HUD_COMBO_BAR_HEIGHT,
+            self._px(HUD_COMBO_BAR_HEIGHT),
         )
-        text_pos = (bar.x, bar.y - HUD_COMBO_BAR_GAP - text_surf.get_height())
+        text_pos = (bar.x, bar.y - self._px(HUD_COMBO_BAR_GAP) - text_surf.get_height())
         ratio = _ratio(getattr(combat, "combo_timer", 0.0), Combat.COMBO_WINDOW)
         return text, text_pos, bar, _fill(bar, ratio)
 
@@ -265,7 +282,7 @@ class HUD:
         surface = self.renderer.display_surface
         label_surf = self.renderer.render_text(label, self.renderer.label_font, TEXT_MUTED)
         label_pos = (
-            bar.x - HUD_LABEL_GAP - label_surf.get_width(),
+            bar.x - self._px(HUD_LABEL_GAP) - label_surf.get_width(),
             bar.centery - label_surf.get_height() // 2,
         )
         surface.blit(label_surf, label_pos)
