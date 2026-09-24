@@ -15,7 +15,8 @@ def test_bindings_roundtrip_through_versioned_repository(tmp_path: Path) -> None
     loaded = repository.load()
 
     assert loaded == bindings
-    assert json.loads(repository.path.read_text(encoding="utf-8")) == bindings_to_dict(bindings)
+    payload = json.loads(repository.path.read_text(encoding="utf-8"))
+    assert payload["bindings"] == bindings_to_dict(bindings)
 
 
 def test_custom_bindings_roundtrip_after_schema_validation(tmp_path: Path) -> None:

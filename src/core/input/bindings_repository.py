@@ -1,11 +1,7 @@
-import json
-import logging
 import os
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
 
 import pygame
 
@@ -20,8 +16,6 @@ from src.core.input.input_bindings import (
     KeyBinding,
     MenuBindings,
 )
-
-logger = logging.getLogger(__name__)
 
 BINDINGS_FORMAT_VERSION = 1
 
@@ -273,22 +267,15 @@ class BindingsRepository:
         self.path = path or default_bindings_path()
 
     def load(self) -> InputBindings:
-        try:
-            data: Any = json.loads(self.path.read_text(encoding="utf-8"))
-            return bindings_from_dict(data)
-        except OSError, ValueError, TypeError, KeyError, json.JSONDecodeError:
-            logger.warning("Unable to load input bindings, using defaults")
-            return InputBindings()
+        from src.application.settings_store import SettingsStore
+
+        return SettingsStore(self.path).load().bindings
 
     def save(self, bindings: InputBindings) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(bindings_to_dict(bindings), indent=2)
-        with tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=self.path.parent, delete=False
-        ) as temporary:
-            temporary.write(payload)
-            temporary_path = Path(temporary.name)
-        temporary_path.replace(self.path)
+        from src.application.settings_store import SettingsStore
+
+        store = SettingsStore(self.path)
+        store.save(store.load().with_bindings(bindings))
 
 
 def default_bindings_path() -> Path:
