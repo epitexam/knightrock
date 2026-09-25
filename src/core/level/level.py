@@ -333,6 +333,11 @@ class Level:
             self.groups, debug_enabled, dt=frame_time / 1000.0, alpha=alpha
         )
         bar_rects = self.renderer.draw_health_bars(self.groups.entity_sprites)
+        # The world fill erases the union of the sprite rects, and the bars are
+        # painted outside it. Declaring them makes the *next* frame refresh and
+        # present the area they occupy, so a bar that moves cannot leave a
+        # stripe of stale pixels behind it.
+        self.renderer.add_overlay_rects(bar_rects)
         if dirty is not None:
             # HP bars are painted after ``Renderer.draw`` computed its dirty
             # set, and a bar is not necessarily inside its sprite's rect: it

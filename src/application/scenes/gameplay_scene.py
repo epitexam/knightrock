@@ -224,6 +224,11 @@ class GameplayScene(Scene):
         hud_rects = ui_manager.draw_hud(getattr(self.level, "player", None))
         if rects is not None:
             rects.extend(hud_rects)
+        # The HUD sits below the world, outside the area the renderer erases.
+        # Declaring it here makes the next frame refresh the gauges' area, so a
+        # shrinking bar or an expiring combo cannot leave stale pixels. The
+        # world HP bars were declared by Level.draw; keep both.
+        self.level.renderer.add_overlay_rects(hud_rects)
         if self.frozen:
             self._draw_frozen_tag()
         return rects

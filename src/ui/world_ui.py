@@ -1908,14 +1908,25 @@ class WorldUI:
             cursor_y += row_height + LABEL_LINE_GAP
 
     def draw_health_bars(
-        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
+        self,
+        entities: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        screen_rects: dict[int, pygame.Rect] | None = None,
     ) -> list[pygame.Rect]:
         """Draw the always-on HP bars; return the rects they occupy.
 
-        The caller merges those rects into the frame's presentation set. A bar
-        is not always inside its own sprite's dirty rect: it flips below the
-        entity near the top of the screen, and its 30px minimum width is wider
-        than a narrow sprite, so it can spill on every side.
+        ``screen_rects`` maps ``id(sprite)`` to the rect the world pass
+        actually blitted that sprite at. The render interpolates between
+        simulation ticks, so a sprite is drawn partway towards its next
+        position while ``camera.apply`` would place it at the current one.
+        Anchoring the bar to the blitted rect keeps it on the sprite it
+        belongs to instead of trailing half a tick behind it, which showed up
+        as a horizontal stripe of stale bar-coloured pixels.
+
+        The caller also needs these rects to present the frame, since a bar is
+        not always inside its sprite's dirty rect: it flips below the entity
+        near the top of the screen, and its 30px minimum width is wider than a
+        narrow sprite, so it can spill on every side.
         """
         drawn: list[pygame.Rect] = []
         for entity in entities:
@@ -1928,7 +1939,9 @@ class WorldUI:
             if rect is None or not camera.is_visible(rect):
                 continue
 
-            screen_rect = camera.apply(rect)
+            screen_rect = (screen_rects.get(id(entity)) if screen_rects else None) or camera.apply(
+                rect
+            )
             background_rect = self._health_bar_rect(entity, screen_rect)
             if background_rect is None:
                 continue

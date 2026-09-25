@@ -1,5 +1,5 @@
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from time import perf_counter
 from typing import Any, cast
 
@@ -13,7 +13,13 @@ from src.core.sprite_groups import SpriteGroups
 from src.ui.panel_renderer import PanelLayout
 from src.ui.ui_manager import UIManager
 
-HEALTH_BAR_CLEARANCE_PX = 18
+# The HP bar sits this far above the entity and is this tall; the dirty rect
+# of every sprite has to leave room for both on every side, because a bar
+# wider than a narrow sprite overhangs it and flips below near the screen top.
+HEALTH_BAR_HEIGHT = 6
+HEALTH_BAR_ANCHOR_GAP = 8
+HEALTH_BAR_SIDE_CLEARANCE_PX = 30
+HEALTH_BAR_CLEARANCE_PX = HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
 # Above either, the partial update costs more than the full refresh it avoids.
 DIRTY_RECT_COUNT_LIMIT = 64
 DIRTY_AREA_RATIO_LIMIT = 0.6
@@ -103,7 +109,13 @@ class Renderer:
         # tick, in [0, 1], fed from the loop's accumulator.
         self.alpha = 0.0
         self._previous_positions: dict[int, pygame.Rect] = {}
-        self._sim_rects: list[pygame.Rect] = []
+        self._remembered_rects: dict[int, pygame.Rect] = {}
+        self._sim_rects: list[tuple[pygame.Rect, bool]] = []
+        self._barrows: list[tuple[pygame.Surface, pygame.Rect, bool]] = []
+        # Rects painted after the world pass (HUD, HP bars); folded into the
+        # erase and the present on the next frame. See add_overlay_rects.
+        self._overlay_rects: list[pygame.Rect] = []
+        self._previous_overlay_rects: list[pygame.Rect] = []
         self._debug_samples: dict[str, deque[float]] = {
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
@@ -201,12 +213,31 @@ class Renderer:
         return Colors.sky_blue
 
     @staticmethod
-    def _to_dirty_rect(rect: pygame.Rect | pygame.FRect) -> pygame.Rect:
-        """Convert a world-space FRect to an int screen rect with headroom."""
+    def _to_dirty_rect(rect: pygame.Rect | pygame.FRect, headroom: bool = False) -> pygame.Rect:
+        """Convert a world-space rect to an int screen rect with headroom.
+
+        ``headroom`` is only what the HP bar above the entity needs, and only
+        the sprite that actually draws a bar asks for it. A bar is 30px wide
+        at minimum and centred on the sprite, so a narrow entity is narrower
+        than its own bar; and near the top of the screen the bar flips below
+        the entity rather than above. With headroom only on the top edge, the
+        bar was painted outside the region the next frame erases, leaving a
+        6px-tall stripe of bar-coloured pixels behind every moving enemy.
+        """
         dirty = pygame.Rect(rect)
-        dirty.top -= HEALTH_BAR_CLEARANCE_PX
-        dirty.height += HEALTH_BAR_CLEARANCE_PX
-        return dirty
+        if not headroom:
+            return dirty
+        # Not an inflate: the bar needs a *full* gap on each side, and it can
+        # sit either above or below the entity. A bar is 30px wide and
+        # centred, so a narrow entity must grow by half its overhang per side.
+        overhang = max(0, (HEALTH_BAR_SIDE_CLEARANCE_PX - dirty.width) // 2)
+        vertical = HEALTH_BAR_HEIGHT + HEALTH_BAR_ANCHOR_GAP
+        return pygame.Rect(
+            dirty.left - overhang,
+            dirty.top - vertical,
+            dirty.width + overhang * 2,
+            dirty.height + vertical * 2,
+        )
 
     def draw(
         self,
@@ -222,6 +253,9 @@ class Renderer:
         a pure function of the loop state and stays reproducible.
         """
         self.alpha = clamp_unit(alpha)
+        # Fresh pass: the overlay rects are re-declared by the callers after
+        # this world draw (the HUD and the HP bars), so start from empty.
+        self.clear_overlay_rects()
         # One transform for the whole pass: ``is_visible``/``apply`` run once
         # per visible sprite and the camera cannot move mid-draw.
         self.camera.begin_frame()
@@ -238,20 +272,30 @@ class Renderer:
             self._record_debug_sample("world_ui_ms", (perf_counter() - started) * 1000.0)
             return None
 
-        dirty = [self._to_dirty_rect(screen_rect) for _, screen_rect in blits]
+        dirty = [
+            self._to_dirty_rect(screen_rect, headroom) for _, screen_rect, headroom in self._barrows
+        ]
         # An interpolated sprite is blitted partway between two ticks, but the
         # overlays drawn on top of it (HP bars) and the next tick's blit both
         # use the simulation's own rect, so the region it will occupy has to be
         # refreshed too. Deduplicated because a sprite that did not move this
         # frame has one rect, not two.
         dirty += [
-            self._to_dirty_rect(rect)
-            for rect in self._sim_rects
-            if not any(rect == screen for _, screen in blits)
+            self._to_dirty_rect(rect, headroom)
+            for rect, headroom in self._sim_rects
+            if not any(rect == screen for _, screen, _ in self._barrows)
         ]
         dirty += [self._to_dirty_rect(screen_rect) for _, screen_rect in ghost_draws]
-        update_rects = [*dirty, *self._previous_dirty]
+        # Overlay rects painted after the last world pass (HUD, HP bars) and
+        # their previous position are refreshed too, so a shrinking gauge or a
+        # moving bar is erased instead of leaving a stripe behind.
+        update_rects = [
+            *dirty,
+            *self._previous_dirty,
+            *self._previous_overlay_rects,
+        ]
         self._previous_dirty = dirty
+        self._previous_overlay_rects = self._overlay_rects
         area = update_rects[0].unionall(update_rects[1:]) if update_rects else None
         if area is not None and self._exceeds_dirty_budget(area, len(update_rects)):
             # The union covers most of the screen: the per-rect bookkeeping
@@ -276,6 +320,30 @@ class Renderer:
                     self.display_surface.blit(surface, screen_rect)
             self._draw_flashes(flashes, area)
         return update_rects
+
+    def _blitted_rects(self) -> dict[int, pygame.Rect]:
+        """``id(sprite) -> screen rect`` for the sprites drawn this frame."""
+        remembered = getattr(self, "_remembered_rects", None)
+        return dict(remembered) if remembered else {}
+
+    def add_overlay_rects(self, rects: Sequence[pygame.Rect]) -> None:
+        """Declare screen rects painted on top of this frame's world pass.
+
+        The world fill erases the union of the sprite rects, and
+        ``pygame.display.update`` presents the per-sprite rects. Anything
+        painted on top afterwards -- the HUD gauges, the world HP bars -- lives
+        outside that union: it is written to the surface, but on the next frame
+        the erase never reaches it and it is never re-presented, so a gauge
+        that shrinks leaves its old pixels behind as a stripe of stale colour.
+        Registering the rects here folds them into both the erase and the
+        present on the following frame, so the area painted and the area
+        refreshed always agree.
+        """
+        self._overlay_rects.extend(rects)
+
+    def clear_overlay_rects(self) -> None:
+        """Drop the declared overlay rects (start of a fresh pass)."""
+        self._overlay_rects = []
 
     def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
         """The one sprite that can be a dashing player, or None.
@@ -343,11 +411,16 @@ class Renderer:
         for sprite, (_, screen_rect) in zip(sprites, blits, strict=False):
             remembered[id(sprite)] = screen_rect
         self._previous_positions = remembered
+        self._remembered_rects = dict(remembered)
 
     def _collect_visible_blits(
         self, groups: SpriteGroups
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute screen rects for every visible plane.
+
+        Also fills ``_sim_rects`` with the simulation rect of every visible
+        sprite and whether its dirty rect needs HP-bar headroom, so the two
+        can never disagree about which sprite owns a bar.
 
         The FX plane is deliberately *not* scaled through ``_scaled_image``:
         FX particles rebuild their ``image`` every tick, so each one is a new
@@ -357,13 +430,21 @@ class Renderer:
         short-lived by nature, so they go through ``_scaled_image_once``.
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
+        barrows: list[tuple[pygame.Surface, pygame.Rect, bool]] = []
         culled: list[pygame.sprite.Sprite] = []
+        # A sprite whose dirty rect needs HP-bar headroom. Only the entities
+        # that ``draw_health_bars`` will actually bar: widening every terrain
+        # tile by 30px on each side would be pure overdraw, ~900 times a level.
+        self._barred: set[int] = set()
         self._sim_rects = []
         cached_planes = (*groups.all_sprites, *groups.fg_sprites)
         for sprite in cached_planes:
             if self.camera.is_visible(sprite.rect):
                 sim_rect = self._screen_rect(sprite)
-                self._sim_rects.append(sim_rect)
+                headroom = self._has_health_bar(sprite)
+                self._sim_rects.append((sim_rect, headroom))
+                if headroom:
+                    self._barred.add(id(sprite))
                 screen_rect = self._interpolated_rect(sprite, sim_rect)
                 culled.append(sprite)
                 image = self._scaled_image(sprite.image)
@@ -371,15 +452,32 @@ class Renderer:
                 # this branch is resolved by identity rather than by a
                 # ``getattr`` walk over every tile of the level.
                 if self._dashing_player is not None and sprite is self._dashing_player:
-                    blits.append(dash_frame(image, screen_rect))
-                else:
-                    blits.append((image, screen_rect))
+                    image, screen_rect = dash_frame(image, screen_rect)
+                blits.append((image, screen_rect))
+                barrows.append((image, screen_rect, headroom))
         for sprite in groups.fx_sprites:
             if self.camera.is_visible(sprite.rect):
                 screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
-                blits.append((self._scaled_image_once(sprite.image), screen_rect))
+                surface = self._scaled_image_once(sprite.image)
+                blits.append((surface, screen_rect))
+                barrows.append((surface, screen_rect, False))
         self._remember_positions(blits, culled)
+        self._barrows = barrows
         return blits
+
+    @staticmethod
+    def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
+        """Whether ``draw_health_bars`` will paint a bar over this sprite.
+
+        Mirrors the gate in ``WorldUI._has_health_bar`` so the dirty rect is
+        widened for exactly the sprites that get a bar. A sprite whose bar is
+        skipped must not pay the 30px side clearance.
+        """
+        if getattr(sprite, "faction", None) == "player":
+            return False
+        if getattr(sprite, "is_dead", False):
+            return False
+        return bool(getattr(sprite, "max_health", 0))
 
     def _screen_rect(self, sprite: pygame.sprite.Sprite) -> pygame.Rect:
         rect = sprite.rect
@@ -478,8 +576,15 @@ class Renderer:
             self.display_surface.blit(surface, screen_rect)
 
     def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite]) -> list[pygame.Rect]:
-        """Draw the HP bars; return the rects they occupy, to be presented."""
-        return self.ui_manager.draw_health_bars(entities, self.camera)
+        """Draw the HP bars; return the rects they occupy, to be presented.
+
+        The bars are anchored to the rects this frame blitted, not to the
+        simulation position: the world pass interpolates between ticks, so a
+        bar drawn at the simulation position sits half a tick behind its own
+        sprite, which reads as a stripe of stale pixels trailing a moving
+        enemy.
+        """
+        return self.ui_manager.draw_health_bars(entities, self.camera, self._blitted_rects())
 
     def draw_debug_panels(
         self,

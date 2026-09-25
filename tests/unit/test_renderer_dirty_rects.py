@@ -8,7 +8,8 @@ import pytest
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import (
     DIRTY_RECT_COUNT_LIMIT,
-    HEALTH_BAR_CLEARANCE_PX,
+    HEALTH_BAR_ANCHOR_GAP,
+    HEALTH_BAR_HEIGHT,
     Renderer,
 )
 from src.core.sprite_groups import SpriteGroups
@@ -33,6 +34,18 @@ class StaticSprite(pygame.sprite.Sprite):
         self.rect = pygame.FRect(topleft, size)
 
 
+class BarredSprite(StaticSprite):
+    """An entity that ``draw_health_bars`` will put a bar over."""
+
+    faction = "enemy"
+    is_dead = False
+    max_health = 100
+
+    def __init__(self, topleft: tuple[float, float], size: int = 24):
+        super().__init__(topleft, (size, size))
+        self.health = 100
+
+
 def make_renderer() -> tuple[Renderer, SpriteGroups, pygame.Surface]:
     surface = pygame.Surface((64, 64))
     # zoom=1.0: these tests assert world-space screen rects, not the zoom.
@@ -47,16 +60,43 @@ def test_draw_without_sprites_returns_no_dirty_rects():
     assert renderer.draw(groups) == []
 
 
-def test_draw_returns_sprite_rect_with_health_bar_clearance():
+def test_only_a_barred_sprite_gets_bar_headroom():
+    """A static tile is not barred, so it must not pay the clearance.
+
+    Headroom exists to cover the HP bar. Widening every terrain tile by 30px
+    per side would be pure overdraw on ~900 sprites a level.
+    """
     renderer, groups, _ = make_renderer()
-    sprite = StaticSprite((10, 10))
-    groups.all_sprites.add(sprite)
+    groups.all_sprites.add(StaticSprite((10, 10)))
 
     dirty = renderer.draw(groups)
 
     assert len(dirty) == 1
     assert dirty[0].collidepoint(10, 10)
-    assert dirty[0].top <= 10 - HEALTH_BAR_CLEARANCE_PX
+    assert dirty[0].top == 10  # no clearance on a tile
+
+
+def test_a_barred_entity_gets_clearance_on_every_side():
+    """The bar is 30px wide and flips below near the top: clear all round.
+
+    With headroom only on the top edge, the bar painted outside the region
+    the next frame erases, leaving a 6px stripe behind every moving enemy.
+    """
+    renderer, groups, _ = make_renderer()
+    groups.all_sprites.add(BarredSprite((20, 20)))
+
+    dirty = renderer.draw(groups)
+
+    assert len(dirty) == 1
+    rect = dirty[0]
+    assert rect.collidepoint(20, 20)  # the sprite
+    # The bar spans 30px centred on a narrow sprite, so the rect must be wider
+    # than the sprite on both sides and taller both ways (for the flip below).
+    assert rect.width >= 30
+    assert rect.top <= 20 - (HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT)
+    assert rect.bottom > 20 + HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
+    assert rect.left < 20
+    assert rect.right > 20
 
 
 def test_draw_keeps_previous_frame_region_to_avoid_ghosts():
