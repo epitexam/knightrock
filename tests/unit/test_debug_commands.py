@@ -197,9 +197,10 @@ def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
     from src.ui.world_ui import WorldUI
 
     surface = world_ui.display_surface
+    attack_box = pygame.FRect(100, 100, 30, 20)
     combat = SimpleNamespace(
-        attack_boxes=(pygame.FRect(100, 100, 30, 20),),
-        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 30, 20),),
+        attack_boxes=(attack_box,),
+        swept_attack_boxes=lambda: (attack_box,),
         state=SimpleNamespace(attack_name=None),
         current_phase=None,
     )
@@ -212,12 +213,16 @@ def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
         otg_timer=0.0,
         gravity_scale=1.0,
     )
+    # Sample where the camera actually puts the box: the overlay draws in screen
+    # space, so a hardcoded window silently stops matching the box as soon as
+    # ``GameplayCamera.ZOOM`` changes.
+    drawn = pygame.Rect(camera.apply(attack_box))
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
     box_pixels = sum(
         1
-        for x in range(100, 130)
-        for y in range(100, 120)
+        for x in range(drawn.left, drawn.right)
+        for y in range(drawn.top, drawn.bottom)
         if surface.get_at((x, y))[:3] == Colors.debug_attack_box
     )
     assert box_pixels > 0
