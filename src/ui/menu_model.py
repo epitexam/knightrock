@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -81,7 +82,7 @@ class MenuModel:
                 return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
         return None
 
-    def hover(self, position: tuple[int, int], rects: list[pygame.Rect]) -> str | None:
+    def hover(self, position: tuple[int, int], rects: Sequence[pygame.Rect]) -> str | None:
         self._hovered = -1
         for index, rect in enumerate(rects):
             if (
@@ -107,7 +108,7 @@ class MenuModel:
         self,
         action: InputAction,
         position: tuple[int, int] | None,
-        rects: list[pygame.Rect],
+        rects: Sequence[pygame.Rect],
         variant: str | None = None,
     ) -> tuple[str | None, str | None]:
         if self.is_release(variant):

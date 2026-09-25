@@ -60,6 +60,7 @@ class CellHit:
 
 class ControlsView:
     COLUMN_HEADERS = ("KEYBOARD / MOUSE", "GAMEPAD")
+    TEXT_CACHE_LIMIT = 512
 
     def __init__(self, scale: float = 1.0) -> None:
         self._scale = self._valid_scale(scale)
@@ -68,6 +69,11 @@ class ControlsView:
         self._surface_size: tuple[int, int] = (0, 0)
         self._cells: list[CellHit] = []
         self._row_rects: list[pygame.Rect] = []
+        self._panel_cache: pygame.Surface | None = None
+        self._panel_size: tuple[int, int] = (0, 0)
+        self._strip_cache: pygame.Surface | None = None
+        self._strip_size: tuple[int, int] = (0, 0)
+        self._text_cache: dict[tuple[int, str, tuple[int, int, int], int], pygame.Surface] = {}
 
     @property
     def row_rects(self) -> list[pygame.Rect]:
@@ -103,17 +109,23 @@ class ControlsView:
         panel_rect, x, y, columns, cell_width, label_width, row_height = layout
         padding, gap = 18, 18
 
-        panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
-        panel.fill((*PANEL_BG[:3], 235))
-        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), 2)
+        panel = self._panel_for(panel_rect.size)
         surface.blit(panel, panel_rect)
-        surface.blit(title_font.render(title, True, TEXT_TITLE), (x, panel_rect.y + padding))
+        surface.blit(
+            self._render_cached(title_font, title, TEXT_TITLE, panel_rect.width),
+            (x, panel_rect.y + padding),
+        )
         if subtitle:
-            surface.blit(small_font.render(subtitle, True, TEXT_MUTED), (x, y))
+            surface.blit(
+                self._render_cached(small_font, subtitle, TEXT_MUTED, panel_rect.width),
+                (x, y),
+            )
             y += small_font.get_height() + 8
 
         for cell_x, header in zip(columns, self.COLUMN_HEADERS, strict=True):
-            surface.blit(small_font.render(header, True, TEXT_MUTED), (cell_x, y))
+            surface.blit(
+                self._render_cached(small_font, header, TEXT_MUTED, cell_width), (cell_x, y)
+            )
 
         self._cells = []
         self._row_rects = []
@@ -123,10 +135,10 @@ class ControlsView:
             row_rect = pygame.Rect(x, row_y, panel_rect.width - padding * 2, row_height)
             self._row_rects.append(row_rect)
             if index == selected_row:
-                strip = pygame.Surface(row_rect.size, pygame.SRCALPHA)
-                strip.fill((*TEXT_WARN[:3], 35))
-                surface.blit(strip, row_rect)
-            surface.blit(self._fit(item_font, row.label, label_width - gap, TEXT_OK), (x, row_y))
+                surface.blit(self._strip_for(row_rect.size), row_rect)
+            surface.blit(
+                self._render_cached(item_font, row.label, TEXT_OK, label_width - gap), (x, row_y)
+            )
             cells = ((KEYBOARD_COLUMN, row.keyboard), (GAMEPAD_COLUMN, row.gamepad))
             for column, cell in cells:
                 if cell is None:
@@ -134,7 +146,8 @@ class ControlsView:
                 cell_x = columns[column]
                 color = TEXT_CRIT if cell.warn else TEXT_MUTED if cell.muted else TEXT_OK
                 surface.blit(
-                    self._fit(item_font, cell.text, cell_width - 8, color), (cell_x, row_y)
+                    self._render_cached(item_font, cell.text, color, cell_width - 8),
+                    (cell_x, row_y),
                 )
                 hit = pygame.Rect(cell_x - 4, row_y - 2, cell_width, row_height)
                 if index == selected_row and column == selected_column:
@@ -150,7 +163,10 @@ class ControlsView:
 
         footer_y = panel_rect.bottom - gap - 20 * len(footers)
         for footer in footers:
-            surface.blit(small_font.render(footer, True, TEXT_WARN), (x, footer_y))
+            surface.blit(
+                self._render_cached(small_font, footer, TEXT_WARN, panel_rect.width),
+                (x, footer_y),
+            )
             footer_y += 20
         return panel_rect
 
@@ -202,16 +218,70 @@ class ControlsView:
         )
         self._font_key = self._scale
 
+    def _panel_for(self, size: tuple[int, int]) -> pygame.Surface:
+        """Return the filled panel background, rebuilt only when resized.
+
+        Allocating and filling a full-panel ``SRCALPHA`` surface every frame
+        was the single most expensive part of this view.
+        """
+        if self._panel_cache is None or self._panel_size != size:
+            panel = pygame.Surface(size, pygame.SRCALPHA)
+            panel.fill((*PANEL_BG[:3], 235))
+            pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), 2)
+            self._panel_cache = panel
+            self._panel_size = size
+        return self._panel_cache
+
+    def _strip_for(self, size: tuple[int, int]) -> pygame.Surface:
+        """Return the focus highlight strip, rebuilt only when resized."""
+        if self._strip_cache is None or self._strip_size != size:
+            strip = pygame.Surface(size, pygame.SRCALPHA)
+            strip.fill((*TEXT_WARN[:3], 35))
+            self._strip_cache = strip
+            self._strip_size = size
+        return self._strip_cache
+
+    def _render_cached(
+        self, font: pygame.font.Font, text: str, color: tuple[int, int, int], max_width: int
+    ) -> pygame.Surface:
+        """Render truncated text, memoised on (font, text, colour, width).
+
+        The binding grid issues roughly 30 ``render`` calls per frame; without
+        this each one allocated a Surface, which showed up as micro-freezes.
+        """
+        key = (id(font), text, color, max_width)
+        cached = self._text_cache.get(key)
+        if cached is None:
+            cached = self._fit(font, text, max_width, color)
+            if len(self._text_cache) >= self.TEXT_CACHE_LIMIT:
+                self._text_cache.clear()
+            self._text_cache[key] = cached
+        return cached
+
     @staticmethod
     def _fit(
         font: pygame.font.Font, text: str, max_width: int, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        result = text
-        while result and font.size(result)[0] > max_width:
-            result = result[:-1]
-        if result != text:
-            result = f"{result[:-1]}…" if result else ""
-        return font.render(result, True, color)
+        """Render ``text`` truncated to ``max_width`` with a trailing ellipsis.
+
+        The longest fitting prefix is found by binary search: a prefix's width
+        grows monotonically with its length, and the previous
+        shrink-one-character-at-a-time loop re-measured the whole remaining
+        string on every iteration, which is quadratic and cost 0.83ms for a
+        single long label.
+        """
+        if not text or font.size(text)[0] <= max_width:
+            return font.render(text, True, color)
+        low, high = 0, len(text)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if font.size(text[:middle])[0] <= max_width:
+                low = middle
+            else:
+                high = middle - 1
+        if low == 0:
+            return font.render("", True, color)
+        return font.render(f"{text[: low - 1]}…", True, color)
 
     @staticmethod
     def _valid_scale(scale: float) -> float:

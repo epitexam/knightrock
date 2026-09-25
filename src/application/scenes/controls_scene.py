@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 import pygame
 
@@ -44,6 +44,7 @@ class RebindSpec:
 class ControlsScene(Scene):
     MENU_SECTION: str = "menu"
     GAMEPLAY_SECTION: str = "gameplay"
+    _key_names: ClassVar[dict[int, str]] = {}
     SECTIONS: dict[str, tuple[RebindSpec, ...]] = {
         MENU_SECTION: (
             RebindSpec("Move up", InputAction.UI_UP),
@@ -93,6 +94,10 @@ class ControlsScene(Scene):
         self._status: str | None = None
         self._ignore_routed = False
         self._ignore_mouse_capture = False
+        self._rows_cache: list[BindingRow] | None = None
+        self._rows_bindings: object = None
+        self._rows_capture: tuple[int, int] | None = None
+        self._rows_index = -1
 
     @property
     def capturing(self) -> bool:
@@ -104,6 +109,27 @@ class ControlsScene(Scene):
 
     @property
     def rows(self) -> list[BindingRow]:
+        """The binding grid, memoised on everything the cells depend on.
+
+        Building the row graph ran two cell formatters per row per frame,
+        including a ``pygame.key.name`` lookup for every bound key. The result
+        is a pure function of the bindings, the pending capture and the
+        selected row, so it is rebuilt only when one of those changes.
+        """
+        bindings = self.game.settings.bindings
+        if (
+            self._rows_cache is None
+            or self._rows_bindings is not bindings
+            or self._rows_capture != self._capture
+            or self._rows_index != self.model.current_index
+        ):
+            self._rows_cache = self._build_rows()
+            self._rows_bindings = bindings
+            self._rows_capture = self._capture
+            self._rows_index = self.model.current_index
+        return self._rows_cache
+
+    def _build_rows(self) -> list[BindingRow]:
         result = [
             BindingRow(spec.label, self._keyboard_cell(spec), self._gamepad_cell(spec))
             for spec in self.specs
@@ -585,8 +611,21 @@ class ControlsScene(Scene):
         if value is None:
             return "unbound"
         codes = ControlsScene._codes(value)
-        names = (pygame.key.name(code).upper() for code in codes)
+        names = (ControlsScene._key_name(code) for code in codes)
         return " / ".join(names)
+
+    @staticmethod
+    def _key_name(code: int) -> str:
+        """``pygame.key.name`` uppercased, memoised.
+
+        SDL looks the name up in a table on every call; the grid asks for one
+        per bound key, per row, per frame.
+        """
+        cached = ControlsScene._key_names.get(code)
+        if cached is None:
+            cached = pygame.key.name(code).upper()
+            ControlsScene._key_names[code] = cached
+        return cached
 
     @staticmethod
     def _index_text(value: object) -> str:

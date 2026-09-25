@@ -112,8 +112,51 @@ def test_menu_escape_stops_the_game(manager: SceneManager):
     manager.switch(MenuScene(manager.game))
 
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+    assert manager.game.running is True
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
 
     assert manager.game.running is False
+
+
+def test_menu_quit_confirmation_defaults_to_no(manager: SceneManager):
+    """Un menu principal: ni Échap ni la ligne Quit ne coupent plus net."""
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+    assert menu.confirming is True
+    assert manager.game.running is True
+    assert menu.confirm_model.current_item.action == "no"
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert menu.confirming is False
+    assert manager.game.running is True
+
+
+def test_menu_quit_confirmation_cancels_on_back(manager: SceneManager):
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+
+    assert menu.confirming is False
+    assert manager.game.running is True
+
+
+def test_menu_quit_confirmation_is_armed_by_the_quit_row(manager: SceneManager):
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+    menu.draw()
+    target = menu.view.item_rects[-1].center
+
+    manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
+
+    assert menu.confirming is True
+    assert manager.game.running is True
 
 
 def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
@@ -124,7 +167,7 @@ def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
-    assert manager.game.running is False
+    assert manager.game.running is True
 
 
 def test_menu_navigation_supports_pointer(manager: SceneManager):
@@ -135,7 +178,7 @@ def test_menu_navigation_supports_pointer(manager: SceneManager):
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
 
-    assert manager.game.running is False
+    assert manager.game.running is True
 
 
 def test_options_opens_from_menu_and_pause(manager: SceneManager):
@@ -435,6 +478,9 @@ def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: P
     assert game.settings.bindings.menu.keyboard[InputAction.UI_DOWN] == pygame.K_x
     # L'appui qui termine la capture était routé (X = ui_down) : neutralisé.
     assert menu_controls.model.current_index == 1
+    # Les écritures sont groupées par frame : la boucle les vide, ce test drive
+    # le SceneManager sans boucle, il demande donc le flush explicitement.
+    game.flush_settings()
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert saved["bindings"]["menu"]["keyboard"]["ui_down"] == pygame.K_x
 

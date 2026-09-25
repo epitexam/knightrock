@@ -35,6 +35,17 @@ UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
     InputAction.UI_CANCEL,
 )
 
+# Seules les directions de navigation.auto-répètent au clavier : répéter une
+# validation ou un retour ferait ouvrir puis refermer un menu en boucle.
+REPEATABLE_UI_ACTIONS: frozenset[InputAction] = frozenset(
+    {
+        InputAction.UI_UP,
+        InputAction.UI_DOWN,
+        InputAction.UI_LEFT,
+        InputAction.UI_RIGHT,
+    }
+)
+
 
 class EventRouter:
     def __init__(
@@ -49,6 +60,8 @@ class EventRouter:
         self._axis_last_value: dict[tuple[int, int], float] = {}
         self._active_hats: dict[tuple[int, int], tuple[InputAction | None, int, int]] = {}
         self._hat_next_repeat: dict[tuple[int, int], float] = {}
+        self._active_keys: dict[int, InputAction] = {}
+        self._key_next_repeat: dict[int, float] = {}
         self._clock = clock or time.monotonic
         self._joystick_reader = joystick_reader
         self._connected_joysticks: dict[int, object] = {}
@@ -56,6 +69,9 @@ class EventRouter:
     def route(self, event: pygame.event.Event) -> RoutedInput | None:
         if event.type == pygame.KEYDOWN:
             return self._route_keyboard(getattr(event, "key", -1))
+        if event.type == pygame.KEYUP:
+            self._release_key(getattr(event, "key", -1))
+            return None
         if event.type == pygame.MOUSEMOTION:
             return RoutedInput(
                 InputAction.UI_POINTER_MOVE,
@@ -112,12 +128,34 @@ class EventRouter:
 
     def _route_keyboard(self, key: int) -> RoutedInput | None:
         if key == self._bindings.menu.new_game_key:
+            self._arm_key(key, InputAction.UI_CONFIRM, repeatable=False)
             return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
         for action, binding in self._bindings.menu.keyboard.items():
             keys = binding if isinstance(binding, tuple) else (binding,)
             if key in keys:
+                self._arm_key(key, action, repeatable=action in REPEATABLE_UI_ACTIONS)
                 return RoutedInput(action, InputDevice.KEYBOARD)
         return None
+
+    def _arm_key(self, key: int, action: InputAction, *, repeatable: bool) -> None:
+        """Arm or disarm a key's auto-repeat when it is pressed.
+
+        The stick and the d-pad already auto-repeat while held, so a keyboard
+        doing a single step per press made menu navigation feel broken: a long
+        menu needed one press per row. Repeats are limited to the four
+        navigation directions, because repeating a confirm or a back would make
+        a held key open a menu, close it, and open it again.
+        """
+        if not repeatable:
+            self._release_key(key)
+            return
+        self._active_keys[key] = action
+        self._key_next_repeat[key] = self._clock() + InputSettings.UI_REPEAT_INITIAL_DELAY
+
+    def _release_key(self, key: int) -> None:
+        """Stop repeating a key, called on release and on every router reset."""
+        self._active_keys.pop(key, None)
+        self._key_next_repeat.pop(key, None)
 
     def _route_gamepad_button(self, button: int) -> RoutedInput | None:
         action = self._menu_button_action(button)
@@ -167,6 +205,8 @@ class EventRouter:
         self._axis_last_value.clear()
         self._active_hats.clear()
         self._hat_next_repeat.clear()
+        self._active_keys.clear()
+        self._key_next_repeat.clear()
 
     def set_bindings(self, bindings: InputBindings) -> None:
         self._bindings = bindings
@@ -202,6 +242,25 @@ class EventRouter:
         repeats: list[RoutedInput] = []
         repeats.extend(self._poll_axis_repeats(now))
         repeats.extend(self._poll_hat_repeats(now))
+        repeats.extend(self._poll_key_repeats(now))
+        return repeats
+
+    def _poll_key_repeats(self, now: float) -> list[RoutedInput]:
+        """Auto-repeat the navigation keys still held down.
+
+        ``reset()`` clears the held keys, and every push, pop and switch calls
+        it, so a key held across a scene transition cannot keep repeating into
+        the new scene: it has to be pressed again.
+        """
+        repeats: list[RoutedInput] = []
+        for key, action in tuple(self._active_keys.items()):
+            next_repeat = self._key_next_repeat.get(key)
+            if next_repeat is None:
+                continue
+            if now < next_repeat:
+                continue
+            self._key_next_repeat[key] = now + InputSettings.UI_REPEAT_INTERVAL
+            repeats.append(RoutedInput(action, InputDevice.KEYBOARD, variant="repeat"))
         return repeats
 
     def _poll_axis_repeats(self, now: float) -> list[RoutedInput]:

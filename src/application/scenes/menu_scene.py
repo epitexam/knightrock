@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 
 class MenuScene(Scene):
     TITLE = "KNIGHTROCK"
+    CONFIRM_TITLE = "QUIT?"
+    CONFIRM_ITEMS = (MenuItem("no", "No, go back"), MenuItem("yes", "Yes, quit"))
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -50,16 +52,39 @@ class MenuScene(Scene):
             self.options = ("ENTER: play", "ESC: quit")
         self.model = MenuModel(items)
         self.view = MenuView()
+        self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
+        self.confirm_view = MenuView()
+        self._confirming = False
+
+    @property
+    def confirming(self) -> bool:
+        """Whether the quit confirmation is currently armed."""
+        return self._confirming
+
+    def _arm_quit(self) -> None:
+        """Ask for confirmation instead of quitting straight away.
+
+        Quitting on a single stray Escape threw away the run without warning,
+        so the prompt is drawn under the menu and defaults to "No".
+        """
+        self._confirming = True
+        self.confirm_model.set_items(self.CONFIRM_ITEMS, 0)
+
+    def _disarm_quit(self) -> None:
+        self._confirming = False
 
     def update(self, delta_time: float) -> None:
         return None
 
     def handle_routed(self, routed_input: RoutedInput) -> None:
+        if self._confirming:
+            self._handle_confirm(routed_input)
+            return
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )
         if action == "quit" or routed_input.action is InputAction.UI_BACK:
-            self.game.running = False
+            self._arm_quit()
         elif action in ("play", "continue"):
             save = self.game.save_game
             start_id = save.last_level_id if save.is_unlocked(save.last_level_id) else 0
@@ -75,10 +100,37 @@ class MenuScene(Scene):
 
             self.game.scene_manager.push(OptionsScene(self.game))
 
+    def _handle_confirm(self, routed_input: RoutedInput) -> None:
+        """Route input to the confirmation panel, which owns it while armed."""
+        if (
+            routed_input.action is InputAction.UI_BACK
+            or routed_input.action is InputAction.UI_CANCEL
+        ):
+            self._disarm_quit()
+            return
+        action, _ = self.confirm_model.handle_routed(
+            routed_input.action,
+            routed_input.position,
+            self.confirm_view.item_rects,
+            routed_input.variant,
+        )
+        if action == "yes":
+            self.game.running = False
+        elif action == "no":
+            self._disarm_quit()
+
+    def set_ui_scale(self, scale: float) -> None:
+        self.view.set_scale(scale)
+        self.confirm_view.set_scale(scale)
+
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()
         if surface is None:
             return None
         surface.fill(Colors.dark_grey)
-        self.view.draw(surface, self.TITLE, self.model, top=180)
+        panel = self.view.draw(surface, self.TITLE, self.model, top=180)
+        if self._confirming:
+            self.confirm_view.draw(
+                surface, self.CONFIRM_TITLE, self.confirm_model, top=panel.bottom + 24
+            )
         return None

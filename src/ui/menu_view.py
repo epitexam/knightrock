@@ -1,7 +1,17 @@
+from collections.abc import Sequence
+
 import pygame
 
 from src.ui.menu_model import MenuModel
-from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_MUTED, TEXT_OK, TEXT_TITLE, TEXT_WARN
+from src.ui.styles import (
+    GOLD,
+    PANEL_BG,
+    PANEL_BORDER,
+    TEXT_MUTED,
+    TEXT_OK,
+    TEXT_TITLE,
+    TEXT_WARN,
+)
 
 
 class MenuView:
@@ -19,18 +29,35 @@ class MenuView:
         self._text_cache_key: tuple[tuple[str, ...], int, float] | None = None
 
     @property
-    def item_rects(self) -> list[pygame.Rect]:
-        return list(self._item_rects)
+    def item_rects(self) -> Sequence[pygame.Rect]:
+        """Live item rectangles from the last draw.
+
+        Returned without copying: the list is rebuilt in ``draw`` and no caller
+        mutates it, so copying it on every routed input only allocated.
+        """
+        return self._item_rects
 
     def set_scale(self, scale: float) -> None:
-        self._scale = self._valid_scale(scale)
+        """Set the UI scale, discarding caches only when it really changed.
+
+        Several scenes call this from ``draw()`` with the current setting on
+        every frame. Invalidating the font/panel/text caches unconditionally
+        rebuilt two ``SysFont`` objects and re-rendered every label each frame
+        (0.82ms instead of 0.07ms at 1920x1080), so an unchanged scale must
+        be a no-op.
+        """
+        scale = self._valid_scale(scale)
+        if scale == self._scale:
+            return
+        self._scale = scale
         self.reset_cache()
 
     def set_display_surface(self, display_surface: pygame.Surface) -> None:
         size = display_surface.get_size()
-        if size != self._surface_size:
-            self._surface_size = size
-            self.reset_cache()
+        if size == self._surface_size:
+            return
+        self._surface_size = size
+        self.reset_cache()
 
     def draw(
         self,
@@ -40,7 +67,16 @@ class MenuView:
         *,
         top: int,
         title_color: tuple[int, int, int] = TEXT_TITLE,
+        highlighted: int = -1,
+        highlight_color: tuple[int, int, int] = GOLD,
     ) -> pygame.Rect:
+        """Draw the panel and return its rect.
+
+        ``highlighted`` paints one row in ``highlight_color`` for a limited
+        time, which is how a value row reports a change the player just made.
+        It is a separate colour because the selected row is already amber, so
+        reusing that would hide the flash on the very row that changed.
+        """
         if self._surface_size != surface.get_size():
             self._surface_size = surface.get_size()
             self.reset_cache()
@@ -56,7 +92,9 @@ class MenuView:
             self._text_cache_key = cache_key
         title_surface = self._render_cached(title_font, title, title_color)
         item_surfaces = [
-            self._render_cached(item_font, label, self._color(index, model))
+            self._render_cached(
+                item_font, label, self._color(index, model, highlighted, highlight_color)
+            )
             for index, label in enumerate(labels)
         ]
         padding = max(8, int(28 * scale))
@@ -97,10 +135,18 @@ class MenuView:
             self._item_rects.append(rect)
         return pygame.Rect(panel_x, panel_y, panel_width, panel_height)
 
-    def _color(self, index: int, model: MenuModel) -> tuple[int, int, int]:
+    def _color(
+        self,
+        index: int,
+        model: MenuModel,
+        highlighted: int = -1,
+        highlight_color: tuple[int, int, int] = GOLD,
+    ) -> tuple[int, int, int]:
         item = model.items[index]
         if not item.enabled:
             return TEXT_MUTED
+        if index == highlighted:
+            return highlight_color
         return TEXT_WARN if index == model.current_index else TEXT_OK
 
     def _render_cached(

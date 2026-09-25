@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 class VideoScene(Scene):
     TITLE = "VIDEO"
     SCALE_VALUES: tuple[float, ...] = (0.8, 1.0, 1.2)
+    VALUE_FLASH_SECONDS = 0.5
     # La fenêtre n'est pas redimensionnable : la taille choisie est le viewport
     # logique stable du jeu (culling caméra, budget de streaming). La liste des
     # presets appartient à ``ResolutionScene``, l'écran de sélection ; elle est
@@ -34,7 +35,21 @@ class VideoScene(Scene):
         super().__init__(game)
         self.model = MenuModel()
         self.view = MenuView(game.settings.ui_scale)
+        self._signature = self._current_signature()
+        self._flash_row = -1
+        self._flash_remaining = 0.0
         self._rebuild()
+
+    def _current_signature(self) -> tuple[int, int, bool, bool, float]:
+        """The settings this screen renders, used to skip redundant rebuilds."""
+        settings = self.game.settings
+        return (
+            settings.width,
+            settings.height,
+            settings.fullscreen,
+            settings.vsync,
+            settings.ui_scale,
+        )
 
     def _rebuild(self, selected_action: str | None = None) -> None:
         settings = self.game.settings
@@ -53,7 +68,22 @@ class VideoScene(Scene):
         self.model.set_items(items, selected)
 
     def update(self, delta_time: float) -> None:
-        return None
+        """Tick down the value-change flash."""
+        if self._flash_remaining > 0.0:
+            self._flash_remaining = max(0.0, self._flash_remaining - delta_time)
+            if self._flash_remaining == 0.0:
+                self._flash_row = -1
+
+    def _flash_value_change(self) -> None:
+        """Mark the focused row as just changed, for ``VALUE_FLASH_SECONDS``.
+
+        Cycling a value with ←/→ changes the label, but the label is also what
+        marks the row as selected, so without a distinct colour the player got
+        no confirmation that the press landed.
+        """
+        current = self.model.current_item
+        self._flash_row = self.model.current_index if current is not None else -1
+        self._flash_remaining = self.VALUE_FLASH_SECONDS if self._flash_row >= 0 else 0.0
 
     def handle_routed(self, routed: RoutedInput) -> None:
         if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
@@ -157,6 +187,8 @@ class VideoScene(Scene):
         selected_action = self.model.current_item.action if self.model.current_item else None
         self.game.apply_settings(settings)
         self._rebuild(selected_action)
+        self._signature = self._current_signature()
+        self._flash_value_change()
 
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)
@@ -164,13 +196,15 @@ class VideoScene(Scene):
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()
         if surface is not None:
-            # The resolution can change under this screen (the picker is pushed
-            # on top and pops back), and ``pop()`` does not re-enter the scene
-            # below, so the labels are refreshed from the live settings here.
-            # The focused action is carried over: rebuilding with no selection
-            # would snap the cursor back to the first row on every frame.
-            focused = self.model.current_item.action if self.model.current_item else None
-            self._rebuild(focused)
-            self.view.set_scale(self.game.settings.ui_scale)
-            self.view.draw(surface, self.TITLE, self.model, top=150)
+            if self._current_signature() != self._signature:
+                self._signature = self._current_signature()
+                focused = self.model.current_item.action if self.model.current_item else None
+                self._rebuild(focused)
+            self.view.draw(
+                surface,
+                self.TITLE,
+                self.model,
+                top=150,
+                highlighted=self._flash_row,
+            )
         return None

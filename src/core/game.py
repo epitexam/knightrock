@@ -62,6 +62,7 @@ class Game:
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
+        self._settings_dirty = False
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -99,15 +100,51 @@ class Game:
         self.scene_manager.switch(MenuScene(self))
 
     def apply_settings(self, settings: UserSettings) -> None:
+        """Apply new settings, recreating the window only when it must change.
+
+        ``set_mode`` tears the window down and invalidates every surface
+        ``AssetLibrary`` has converted, so calling it for a pure UI scale change
+        caused a visible flicker and a full re-conversion of the art on every
+        step of the scale slider. VSync is part of the signature because it is
+        a ``set_mode`` argument and would otherwise only apply on restart.
+        """
+        previous = self.settings
         self.settings = settings
         self.input_bindings = settings.bindings
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
-        self.settings_store.save(settings)
+        self._persist_settings()
         if self.display_surface is not None:
-            self.display_surface = self._configure_display()
-            self.scene_manager.set_display_surface(self.display_surface)
+            if self._mode_signature(previous) != self._mode_signature(settings):
+                self.display_surface = self._configure_display()
+                self.scene_manager.set_display_surface(self.display_surface)
             self.scene_manager.set_ui_scale(settings.ui_scale)
+
+    @staticmethod
+    def _mode_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:
+        """The settings that require a new ``pygame.display.set_mode`` call."""
+        return (settings.width, settings.height, settings.fullscreen, settings.vsync)
+
+    def _persist_settings(self) -> None:
+        """Queue the settings for a write, coalesced to one per frame.
+
+        ``SettingsStore.save`` re-reads, rewrites and atomically replaces the
+        JSON file, which blocked the frame on every keypress in the Video menu
+        and on every captured key during rebinding. Marking the state dirty and
+        flushing it from the loop keeps a burst of changes (holding a key on
+        the resolution row) down to a single write.
+        """
+        self._settings_dirty = True
+
+    def flush_settings(self) -> None:
+        """Write the pending settings immediately, if any."""
+        if not self._settings_dirty:
+            return
+        self._settings_dirty = False
+        try:
+            self.settings_store.save(self.settings)
+        except OSError:
+            logger.exception("Unable to persist the settings")
 
     def apply_bindings(self, bindings: InputBindings) -> None:
         """Met à jour les bindings sans recréer l'affichage (rebinding en jeu).
@@ -120,7 +157,7 @@ class Game:
         self.input_bindings = self.settings.bindings
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
-        self.settings_store.save(self.settings)
+        self._persist_settings()
 
     def _configure_display(self) -> pygame.Surface:
         """Create the window at the logical resolution chosen in the menu.
@@ -153,6 +190,7 @@ class Game:
             self._handle_fatal_error(error)
             raise SystemExit(1) from error
         finally:
+            self.flush_settings()
             pygame.quit()
 
     def quit(self) -> None:
@@ -169,6 +207,7 @@ class Game:
 
             self._handle_events()
             self.scene_manager.poll_held_repeats()
+            self.flush_settings()
 
             while self._accumulator >= Simulation.TIMESTEP:
                 self.scene_manager.update(Simulation.TIMESTEP)

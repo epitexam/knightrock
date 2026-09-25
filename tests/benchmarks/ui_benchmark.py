@@ -10,6 +10,17 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 
+from src.application.scene import Scene
+from src.application.scenes.controls_category_scene import ControlsCategoryScene
+from src.application.scenes.controls_scene import ControlsScene
+from src.application.scenes.gameover_scene import GameOverScene
+from src.application.scenes.level_select_scene import LevelSelectScene
+from src.application.scenes.menu_scene import MenuScene
+from src.application.scenes.options_scene import OptionsScene
+from src.application.scenes.pause_scene import PauseScene
+from src.application.scenes.resolution_scene import ResolutionScene
+from src.application.scenes.victory_scene import VictoryScene
+from src.application.scenes.video_scene import VideoScene
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 
@@ -97,13 +108,60 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
             frame_time=16.0,
         )
         panel_samples.append((perf_counter() - started) * 1000.0)
-    return {
+    result = {
         "p50": _percentile(panel_samples, 0.50),
         "p95": _percentile(panel_samples, 0.95),
         "p99": _percentile(panel_samples, 0.99),
         "max": max(panel_samples),
         "cache_entries": float(renderer.ui_manager.renderer.text_cache_stats["entries"]),
     }
+    result.update(_menu_samples(size, iterations))
+    return result
+
+
+def _menu_scenes(game) -> dict[str, Scene]:
+    """One instance of every full-screen menu, keyed by display name."""
+    return {
+        "MenuScene": MenuScene(game),
+        "OptionsScene": OptionsScene(game),
+        "VideoScene": VideoScene(game),
+        "ResolutionScene": ResolutionScene(game),
+        "ControlsCategoryScene": ControlsCategoryScene(game),
+        "ControlsScene": ControlsScene(game, ControlsScene.MENU_SECTION),
+        "ControlsGameplayScene": ControlsScene(game, ControlsScene.GAMEPLAY_SECTION),
+        "LevelSelectScene": LevelSelectScene(game),
+        "PauseScene": PauseScene(game, level_id=0),
+        "GameOverScene": GameOverScene(game, level_id=0),
+        "VictoryScene": VictoryScene(game, level_id=0),
+    }
+
+
+def _menu_samples(size: tuple[int, int], iterations: int) -> dict[str, float]:
+    """Per-frame draw cost of each menu screen.
+
+    The menu frames are the ones a player stares at while nothing moves, so a
+    dropped cache there is pure waste. Reported as ``menu/<name>`` keys; the
+    dummy SDL driver has no fast renderer, so these are CPU-only figures and
+    the absolute values are not representative of a real window.
+    """
+    from src.core.game import Game
+
+    game = Game()
+    game.display_surface = pygame.display.get_surface()
+    game.clock = pygame.time.Clock()
+    results: dict[str, float] = {}
+    for name, scene in _menu_scenes(game).items():
+        game.scene_manager.switch(scene)
+        for _ in range(20):
+            game.scene_manager.draw()
+        samples: list[float] = []
+        for _ in range(iterations):
+            started = perf_counter()
+            game.scene_manager.draw()
+            samples.append((perf_counter() - started) * 1000.0)
+        results[f"menu/{name}/p50"] = _percentile(samples, 0.50)
+        results[f"menu/{name}/p95"] = _percentile(samples, 0.95)
+    return results
 
 
 def main() -> None:
