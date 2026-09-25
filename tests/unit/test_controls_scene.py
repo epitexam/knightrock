@@ -514,3 +514,53 @@ def test_repeated_presses_walk_one_row_at_a_time() -> None:
         )
 
     assert controls.model.current_index == 3
+
+
+def test_resolution_picker_selection_survives_a_redraw() -> None:
+    """Regression: the cursor used to snap back to the current size every frame.
+
+    ``draw`` rebuilt the list to refresh the ``(current)`` marker, and
+    ``set_items`` re-selects the current resolution, so walking down the list
+    was impossible: the next frame undid the move. The list must only be
+    rebuilt when the applied size actually changes.
+    """
+    pygame.font.init()
+    game = _game()
+    pygame.display.set_mode((1440, 900))
+    scene = ResolutionScene(game)
+    start = scene.model.current_index
+
+    seen: list[int] = []
+    for _ in range(3):
+        scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+        scene.draw()  # the frame that runs right after the input
+        seen.append(scene.model.current_index)
+
+    assert seen == [start + 1, start + 2, start + 3]
+    assert scene.model.current_index == start + 3
+    assert scene.model.current_item is not None
+    assert scene.model.current_item.action.startswith("res:")
+
+
+def test_resolution_picker_refreshes_the_marker_when_the_size_changes() -> None:
+    """The ``(current)`` marker still follows an externally applied size."""
+    from dataclasses import replace as dataclass_replace
+
+    game = _game()
+    pygame.display.set_mode((1440, 900))
+    scene = ResolutionScene(game)
+    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+    moved_to = scene.model.current_item.action
+    assert moved_to is not None
+
+    game.settings = dataclass_replace(game.settings, width=1920, height=1080)
+    scene.draw()
+
+    current = [
+        item.label
+        for item in scene.model.items
+        if item.label.endswith(ResolutionScene.CURRENT_SUFFIX)
+    ]
+    assert current == ["1920 x 1080" + ResolutionScene.CURRENT_SUFFIX]
+    assert scene.model.current_item is not None
+    assert scene.model.current_item.action == moved_to, "the cursor must not jump on refresh"

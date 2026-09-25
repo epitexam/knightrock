@@ -211,6 +211,11 @@ class Game:
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 
+            # Mouse positions are dispatched as-is: with ``pygame.SCALED``
+            # Pygame already reports ``event.pos`` in the logical surface space
+            # (0..width), which is the space every hit rect is computed in.
+            # Mapping them again here would scale the pointer twice and send
+            # every click off-target in fullscreen.
             self.scene_manager.handle_event(event)
 
     def _handle_fatal_error(self, error: Exception) -> None:

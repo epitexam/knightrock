@@ -33,7 +33,7 @@ class GameplayCamera:
     #: Gameplay zoom. 1.15 removes ~15% of the visible world on every axis
     #: (a 1440x900 window then shows a ~1252x783 world area) and scales the
     #: sprites, their health bars and their debug overlays accordingly.
-    ZOOM = 1.15
+    ZOOM = 1.25
 
 
 class World:

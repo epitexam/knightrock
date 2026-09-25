@@ -47,9 +47,13 @@ class ResolutionScene(Scene):
         super().__init__(game)
         self.model = MenuModel()
         self.view = MenuView(game.settings.ui_scale)
+        self._signature = self._current_signature()
         self._rebuild()
 
-    def _rebuild(self) -> None:
+    def _current_signature(self) -> tuple[int, int]:
+        return (self.game.settings.width, self.game.settings.height)
+
+    def _rebuild(self, selected_action: str | None = None) -> None:
         settings = self.game.settings
         current = (settings.width, settings.height)
         items = [
@@ -57,10 +61,19 @@ class ResolutionScene(Scene):
             for width, height in RESOLUTIONS
         ]
         items.append(MenuItem("back", "Back"))
-        selected = next(
-            (index for index, (w, h) in enumerate(RESOLUTIONS) if (w, h) == current),
-            0,
-        )
+        if selected_action is not None:
+            # Keep the cursor where the player left it: rebuilding on every
+            # frame would otherwise snap it back to the current resolution and
+            # make the list impossible to walk down.
+            selected = next(
+                (i for i, item in enumerate(items) if item.action == selected_action),
+                0,
+            )
+        else:
+            selected = next(
+                (index for index, (w, h) in enumerate(RESOLUTIONS) if (w, h) == current),
+                0,
+            )
         self.model.set_items(items, selected)
 
     @classmethod
@@ -105,8 +118,12 @@ class ResolutionScene(Scene):
         surface = pygame.display.get_surface()
         if surface is None:
             return None
-        # Rebuilt every frame: applying a size recreates the window, so the
-        # "(current)" marker must follow the settings, not the last pick.
-        self._rebuild()
+        # Refreshed only when the applied size actually changes (window
+        # recreation can happen under this screen), so the "(current)" marker
+        # follows the settings without touching the cursor the player moved.
+        if self._current_signature() != self._signature:
+            self._signature = self._current_signature()
+            focused = self.model.current_item.action if self.model.current_item else None
+            self._rebuild(focused)
         self.view.draw(surface, self.TITLE, self.model, top=120, title_color=TEXT_OK)
         return None
