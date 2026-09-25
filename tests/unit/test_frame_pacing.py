@@ -1,4 +1,4 @@
-"""The loop must be paced exactly once.
+"""The loop must be paced exactly once, and the clock must stay fed.
 
 ``clock.tick(60)`` sleeps to hold 60fps, and with vsync the present blocks
 until the vertical blank. Doing both paces the loop twice, and the two
@@ -6,6 +6,13 @@ waiters do not add up: a frame lands just past the blank, the present then
 waits for the *next* one, and the frame after finds its sleep already
 elapsed. The cadence alternates between on time and one refresh late, which
 reads as a small stutter rather than as a steady frame rate.
+
+The clock still has to be ticked, though. A ``pygame.time.Clock`` only
+updates its own timing when ``tick`` is called, so a vsync path that skips it
+entirely leaves ``get_fps()`` at 0.0 -- the whole frame rate readout, stuck
+at zero while the game plainly runs. The target handed to ``tick`` is
+therefore a rate a real present never reaches, not 60: the present stays the
+only pacer, and the meter still gets its numbers.
 """
 
 import os
@@ -32,12 +39,13 @@ def _pacing_display() -> None:
 class _FakeClock:
     """A clock that records the rates it was asked to hold."""
 
-    def __init__(self) -> None:
+    def __init__(self, elapsed: int = 16) -> None:
         self.slept: list[int] = []
+        self.elapsed = elapsed
 
     def tick(self, fps: int) -> int:
         self.slept.append(fps)
-        return 16
+        return self.elapsed
 
 
 @pytest.fixture()
@@ -49,7 +57,6 @@ def fake_clock() -> _FakeClock:
 def runtime(tmp_path) -> Game:
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     runtime.display_surface = pygame.display.get_surface()
-    runtime._last_tick_ms = 1000
     return runtime
 
 
@@ -62,59 +69,74 @@ def test_vsync_off_uses_the_clock_as_the_pacer(runtime: Game, fake_clock) -> Non
     assert fake_clock.slept == [Display.FPS], "without vsync the clock holds the rate"
 
 
-def test_vsync_on_lets_the_present_pace(runtime: Game, fake_clock, monkeypatch) -> None:
-    """Sleeping as well would wait twice for the same refresh."""
+def test_vsync_on_still_ticks_the_clock(runtime: Game, fake_clock) -> None:
+    """Skipping ``tick`` is what left the FPS readout at 0.0."""
     runtime.settings = replace(runtime.settings, vsync=True)
     runtime.clock = fake_clock  # type: ignore[assignment]
-    monkeypatch.setattr(pygame.time, "get_ticks", lambda: 1030)
 
     runtime._frame_delta()
 
-    assert fake_clock.slept == [], "the present paces, the clock must not sleep"
-    assert runtime._last_tick_ms == 1030
+    assert fake_clock.slept, "a Clock that is never ticked reports 0.0 fps"
 
 
-def test_vsync_on_bills_the_real_elapsed_time(runtime: Game, monkeypatch) -> None:
+def test_vsync_on_never_asks_the_clock_to_hold_60(runtime: Game, fake_clock) -> None:
+    """Targeting 60 would sleep on top of the present and pace the loop twice.
+
+    The rate asked for is the safety ceiling, which a 60Hz present takes
+    about 16.7ms to beat, so the target never bites.
+    """
     runtime.settings = replace(runtime.settings, vsync=True)
-    monkeypatch.setattr(pygame.time, "get_ticks", lambda: 1017)
+    runtime.clock = fake_clock  # type: ignore[assignment]
+
+    runtime._frame_delta()
+
+    assert fake_clock.slept == [game_module.DISPLAY_SAFETY_CEILING_FPS]
+    assert game_module.DISPLAY_SAFETY_CEILING_FPS > Display.FPS
+
+
+def test_the_safety_ceiling_sits_below_a_real_refresh(runtime: Game, fake_clock) -> None:
+    """A working 60Hz present must never trip the ceiling.
+
+    The ceiling is 1000/125 = 8ms, comfortably under the 16.7ms a vsync
+    present takes, so it only ever catches a present that does not block.
+    """
+    assert 1000 / game_module.DISPLAY_SAFETY_CEILING_FPS < 1000 / Display.FPS
+    runtime.settings = replace(runtime.settings, vsync=True)
+    runtime.clock = _FakeClock(elapsed=17)  # type: ignore[assignment]
 
     assert runtime._frame_delta() == pytest.approx(0.017)
 
 
-def test_a_present_that_does_not_block_still_gets_a_speed_limit(runtime: Game, monkeypatch) -> None:
+def test_a_present_that_does_not_block_still_gets_a_speed_limit(runtime: Game) -> None:
     """A display ignoring the vsync flag must not let the loop run flat out.
 
-    A tight loop measures 0ms between frames, so the floor has to cover zero
-    as well: guarding on ``0 < elapsed`` let exactly the runaway case through.
+    The ceiling is handed to the clock, so a frame that arrives in 0ms is
+    held to the 8ms floor rather than being allowed to run away.
     """
     runtime.settings = replace(runtime.settings, vsync=True)
-    waited: list[int] = []
-    monkeypatch.setattr(pygame.time, "wait", waited.append)
-    floor = game_module.DISPLAY_SAFETY_FLOOR_MS
-    # First read is the frame length (0ms), second the moment after waiting.
-    monkeypatch.setattr(pygame.time, "get_ticks", iter([1000, 1000 + floor]).__next__)
+    runtime.clock = pygame.time.Clock()
 
     runtime._frame_delta()
 
-    assert waited == [floor]
+    assert runtime.clock.get_time() <= 1000 / game_module.DISPLAY_SAFETY_CEILING_FPS + 1
 
 
-def test_a_normal_vsync_frame_is_never_short_circuited(runtime: Game, monkeypatch) -> None:
-    """The safety floor is below a real refresh, so a 60Hz present skips it."""
+def test_the_frame_delta_is_the_clock_delta(runtime: Game) -> None:
+    """One clock, one measurement: the loop bills what the meter reports."""
     runtime.settings = replace(runtime.settings, vsync=True)
-    waited: list[int] = []
-    monkeypatch.setattr(pygame.time, "wait", waited.append)
-    monkeypatch.setattr(pygame.time, "get_ticks", lambda: 1017)
+    runtime.clock = _FakeClock(elapsed=12)  # type: ignore[assignment]
 
-    runtime._frame_delta()
-
-    assert waited == []
+    assert runtime._frame_delta() == pytest.approx(0.012)
 
 
-def test_initialising_resets_the_wall_clock(runtime: Game) -> None:
+def test_initialising_resets_the_clock_baseline(runtime: Game) -> None:
     """Level loading can take seconds; the first frame must not bill it."""
-    runtime._last_tick_ms = 0
-
     runtime._initialize()
+    assert runtime.clock is not None
 
-    assert runtime._last_tick_ms > 0
+    runtime.clock.tick(60)
+    first = runtime.clock.get_time()
+    runtime._initialize()
+    runtime.clock.tick(0)
+
+    assert runtime.clock.get_time() < first, "the baseline must restart at init"
