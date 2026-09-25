@@ -174,3 +174,39 @@ def test_a_full_tick_draws_the_current_position() -> None:
     blitted = next(rect for _, rect, _ in renderer._barrows if rect.width == 16)
 
     assert blitted.topleft == pygame.Rect(renderer.camera.apply(body.rect)).topleft
+
+
+def test_a_frame_carrying_the_hud_never_presents_partially() -> None:
+    """The HUD is painted after the render decides what to present.
+
+    Its rects can therefore only join the set on the *next* frame, so a
+    partial present would show the gauges one frame stale: a band along the
+    bottom of the window alternating between the old and the new fill. The
+    HUD is on screen throughout gameplay, so a frame carrying overlay rects
+    is not allowed to take the partial path at all.
+    """
+    renderer, groups, body = make()
+    renderer.add_overlay_rects([pygame.Rect(0, HEIGHT - 40, WIDTH, 40)])
+
+    rects = renderer.draw(groups)
+
+    assert rects is None, "a frame with overlay rects must repaint everything"
+
+
+def test_a_frame_without_overlays_still_uses_the_partial_path() -> None:
+    """The guard is about overlays, not a blanket full refresh.
+
+    A sparse scene whose previous frame was equally sparse still takes the
+    partial path, so the refresh stays available to whatever does not paint
+    on top of the world pass.
+    """
+    renderer, _groups, _body = make()
+    groups = SpriteGroups()
+    groups.all_sprites.add(Tile(0.0, 0.0))
+    groups.all_sprites.add(Body(40.0))
+
+    first = renderer.draw(groups)
+    second = renderer.draw(groups)
+
+    assert first is not None
+    assert second is not None

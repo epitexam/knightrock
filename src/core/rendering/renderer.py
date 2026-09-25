@@ -272,13 +272,9 @@ class Renderer:
         self._previous_dirty = dirty
         self._previous_overlay_rects = self._overlay_rects
         area = update_rects[0].unionall(update_rects[1:]) if update_rects else None
-        if area is not None and self._exceeds_dirty_budget(area, len(update_rects)):
-            # The union covers most of the screen: the per-rect bookkeeping
-            # and SDL's per-rect present cost are then pure overhead, since
-            # filling the whole screen and blitting what is visible is both
-            # simpler and cheaper. Measured on a viewport-filling scene this
-            # hybrid was ~10% *slower* than the plain full refresh it was
-            # meant to avoid.
+        if area is not None and self._must_refresh_fully(area, len(update_rects)):
+            # Erase exactly the region that will be refreshed: every pixel
+            # that changed since the last presented frame is repainted.
             self.display_surface.fill(self.background_color)
             self._draw_ghosts(ghost_draws)
             for surface, screen_rect in blits:
@@ -327,6 +323,29 @@ class Renderer:
             if is_player_dashing(sprite):
                 return cast("pygame.sprite.Sprite", sprite)
         return None
+
+    def _must_refresh_fully(self, area: pygame.Rect, rect_count: int) -> bool:
+        """Whether the frame must repaint the whole surface instead of a region.
+
+        Two reasons, and the second is the one that matters here.
+
+        The obvious one: once the union approaches the viewport, the frame is
+        filled, culled and blitted almost as if there were no dirty tracking,
+        plus a per-rect cost on the present. Measured on a viewport-filling
+        scene the partial path was ~10% *slower* than the plain full refresh
+        it was meant to avoid.
+
+        The other: the HUD and the HP bars are painted *after* this pass
+        decides what to present, so their rects can only enter the set on the
+        following frame. Presenting a region while they sit outside it is how
+        they end up one frame stale -- a band along the bottom of the window
+        that flickers between the old and the new gauge. The HUD is always on
+        screen during gameplay, so a frame carrying overlay rects is not
+        allowed to take the partial path at all.
+        """
+        if self._overlay_rects or self._previous_overlay_rects:
+            return True
+        return self._exceeds_dirty_budget(area, rect_count)
 
     def _exceeds_dirty_budget(self, area: pygame.Rect, rect_count: int) -> bool:
         """Whether the partial update has stopped being worth its cost.
