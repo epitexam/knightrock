@@ -155,6 +155,20 @@ class Game:
         """
         self._settings_dirty = True
 
+    def render_alpha(self) -> float:
+        """How far the presentation sits into the pending simulation tick.
+
+        The loop accumulates real time and drains it in fixed steps, so after
+        the last tick a fraction of a step is always left over. That fraction
+        is how far ahead of the simulation the picture is: 0 means the
+        picture matches the last completed tick exactly, 1 that a whole tick
+        is already owed. Handing it to the renderer blends each sprite from
+        its last drawn position towards the one the next tick will write,
+        which is what removes the judder of a fixed-step sim on a
+        variable-rate display.
+        """
+        return self._accumulator / Simulation.TIMESTEP
+
     def flush_settings(self) -> None:
         """Write the pending settings immediately, if any."""
         if not self._settings_dirty:
@@ -243,6 +257,11 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
                 return
+
+            # Latched before any filtering: the provider reads a per-poll
+            # keyboard snapshot, so a tap shorter than a frame would otherwise
+            # be over before the simulation ever looks at it.
+            self.input_provider.note_event(event)
 
             if event.type == pygame.VIDEORESIZE:
                 # La fenêtre n'est pas redimensionnable : la résolution est

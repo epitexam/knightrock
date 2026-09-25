@@ -41,6 +41,14 @@ class InputProvider:
     def poll(self) -> InputState:
         raise NotImplementedError
 
+    def note_event(self, event: pygame.event.Event) -> None:
+        """Optionally latch an input edge seen between two polls.
+
+        Providers that read a state snapshot rather than an event stream
+        (a keyboard polled per frame) need this to see taps shorter than a
+        poll interval. Providers fed by an event stream can ignore it.
+        """
+
 
 class NullInputProvider(InputProvider):
     def poll(self) -> InputState:
@@ -54,6 +62,7 @@ class LocalInputProvider(InputProvider):
         self._current_joy_buttons: dict[int, bool] = {}
         self._current_joy_axes: dict[int, float] = {}
         self._current_joy_hats: dict[int, tuple[float, float]] = {}
+        self._latched_keys: set[int] = set()
 
     def set_bindings(self, bindings: InputBindings) -> None:
         self._bindings = bindings
@@ -68,6 +77,25 @@ class LocalInputProvider(InputProvider):
     def reassign_joystick(self, joysticks: dict[int, JoystickType]) -> None:
         if not self._joystick and joysticks:
             self._joystick = next(iter(joysticks.values()))
+
+    def note_event(self, event: pygame.event.Event) -> None:
+        """Latch a keyboard edge seen between two polls.
+
+        ``pygame.key.get_pressed()`` is a *state* read: a key pressed and
+        released between two polls -- which happens whenever a tap is shorter
+        than the frame, and the game runs two simulation ticks per presented
+        frame -- is already back up and therefore invisible. The game already
+        drains the whole event queue each frame, so it hands the edges here
+        and the next poll reports the action as held for exactly one tick.
+
+        Only KEYDOWN is latched. A KEYUP carries no action of its own, and
+        holding the latch through it would make a release look like a press.
+        """
+        if event.type != pygame.KEYDOWN:
+            return
+        key = int(getattr(event, "key", -1))
+        if key >= 0:
+            self._latched_keys.add(key)
 
     def poll(self) -> InputState:
         keys = pygame.key.get_pressed()
@@ -131,10 +159,14 @@ class LocalInputProvider(InputProvider):
                 held[action] = self._key_held(keys, gameplay.keyboard, action) or (
                     self._button_held(gameplay.gamepad_buttons, action)
                 )
-        return InputState(
+        state = InputState(
             move_axis=self._calculate_move_axis(keys),
             held_actions=frozenset(action for action, active in held.items() if active),
         )
+        # Consumed: a latched tap must not be reported again on the next poll,
+        # or the action would be held for as long as no new key was pressed.
+        self._latched_keys.clear()
+        return state
 
     def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
         bindings = self._bindings.gameplay
@@ -179,7 +211,11 @@ class LocalInputProvider(InputProvider):
             # Action détachée depuis l'écran Contrôles : jamais active.
             return False
         codes = binding if isinstance(binding, tuple) else (binding,)
-        return any(self._key_value(keys, code) for code in codes)
+        if any(self._key_value(keys, code) for code in codes):
+            return True
+        # A tap shorter than the poll interval is already back up in the
+        # snapshot, so the latched KEYDOWN is the only trace it left.
+        return bool(self._latched_keys.intersection(codes))
 
     @staticmethod
     def _pad_indices(bindings: ButtonMap, action: InputAction) -> tuple[int, ...]:

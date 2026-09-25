@@ -118,6 +118,79 @@ def test_damage_flashes_only_scan_entities() -> None:
     assert len(flashes) == 1
 
 
+def test_the_render_interpolates_between_ticks() -> None:
+    """A sprite between two ticks is drawn partway between them.
+
+    The simulation is fixed-step at 60Hz while a frame presents at whatever
+    the display does, so the position a tick wrote is on average half a tick
+    stale. Drawing it as-is showed that same image twice whenever two ticks
+    ran per frame, which reads as judder.
+    """
+    renderer, groups = make_renderer()
+    renderer.draw(groups)
+    assert renderer.alpha == pytest.approx(0.0)
+
+    renderer.draw(groups, alpha=0.5)
+    assert renderer.alpha == pytest.approx(0.5)
+
+
+def test_interpolation_moves_a_sprite_partway_toward_its_next_tick() -> None:
+    """At half a tick, the sprite must be halfway between the two positions."""
+    renderer, groups = make_renderer()
+    tile = Tile((8.0, 8.0))
+    groups.all_sprites.add(tile)
+    renderer.draw(groups)
+    tile.rect.x = 48.0
+
+    renderer.alpha = 0.5
+    blits = renderer._collect_visible_blits(groups)
+
+    assert blits[0][1].x == pytest.approx(28.0)
+
+
+def test_a_full_alpha_draws_the_current_position() -> None:
+    renderer, groups = make_renderer()
+    tile = Tile((8.0, 8.0))
+    groups.all_sprites.add(tile)
+    renderer.draw(groups)
+    tile.rect.x = 48.0
+
+    renderer.alpha = 1.0
+    blits = renderer._collect_visible_blits(groups)
+
+    assert blits[0][1].x == pytest.approx(48.0)
+
+
+def test_a_sprite_is_never_interpolated_backwards() -> None:
+    """Only a sprite that moved since the last tick has a previous position.
+
+    A freshly spawned tile has none, and reading its position as "previous"
+    would drag it from the origin on its first frame.
+    """
+    renderer, groups = make_renderer()
+    tile = Tile((100.0, 8.0))
+    groups.all_sprites.add(tile)
+
+    renderer.alpha = 0.5
+    blits = renderer._collect_visible_blits(groups)
+
+    assert blits[0][1].x == pytest.approx(100.0)
+
+
+def test_a_reversed_move_still_interpolates_forward() -> None:
+    """Direction does not matter: the blend is between the two positions."""
+    renderer, groups = make_renderer()
+    tile = Tile((100.0, 8.0))
+    groups.all_sprites.add(tile)
+    renderer.draw(groups)
+    tile.rect.x = 60.0
+
+    renderer.alpha = 0.5
+    blits = renderer._collect_visible_blits(groups)
+
+    assert blits[0][1].x == pytest.approx(80.0)
+
+
 def test_the_ghost_pass_only_scans_entities() -> None:
     """A dashing player in ``all_sprites`` alone must not produce a ghost.
 

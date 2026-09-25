@@ -206,7 +206,17 @@ class GameplayScene(Scene):
         clock = self.game.clock
         fps = clock.get_fps() if clock else 0.0
         frame_time = clock.get_time() if clock else 0.0
-        rects = self.level.draw(fps, game=self.game, frame_time=frame_time)
+        # Duck-typed: tests drive this scene with a lightweight game stand-in,
+        # which has no accumulator to read a tick fraction from. Such a
+        # runtime gets no interpolation, which is the correct fallback.
+        render_alpha = getattr(self.game, "render_alpha", None)
+        alpha = render_alpha() if callable(render_alpha) else 0.0
+        rects = self.level.draw(
+            fps,
+            game=self.game,
+            frame_time=frame_time,
+            alpha=alpha,
+        )
         # Always-on player gauges (UI-7): drawn last so the HUD stays on top of
         # the world and of the debug panels, and never hidden by F5. Its rects
         # join the dirty set, since a non-debug frame presents those only.

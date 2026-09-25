@@ -312,6 +312,7 @@ class Level:
         fps: float,
         game: Any = None,
         frame_time: float = 0.0,
+        alpha: float = 0.0,
     ) -> list[pygame.Rect] | None:
         """
         Render the level and all overlays.
@@ -324,10 +325,11 @@ class Level:
             fps: Current frames per second, used for debug display.
             game: The Game instance (used by the debug SCENE panel).
             frame_time: Last frame duration in ms (debug PERFORMANCE panel).
+            alpha: Position within the pending simulation tick, in [0, 1].
         """
         debug_enabled = Debug.is_enabled()
         dirty: list[pygame.Rect] | None = self.renderer.draw(
-            self.groups, debug_enabled, dt=frame_time / 1000.0
+            self.groups, debug_enabled, dt=frame_time / 1000.0, alpha=alpha
         )
         bar_rects = self.renderer.draw_health_bars(self.groups.entity_sprites)
         if dirty is not None:
