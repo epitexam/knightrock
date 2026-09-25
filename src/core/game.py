@@ -27,18 +27,17 @@ from src.data.provider import GameplayData, load_gameplay_data
 
 logger = logging.getLogger(__name__)
 
-#: Ceiling a vsync frame is allowed to reach, i.e. an 8ms floor. A working
-#: vsync presents in about 16.7ms, so this never fires; it only catches a
-#: present that does not block and would let the loop run flat out.
+#: Ceiling a vsync frame is allowed to reach, as a runaway backstop only.
 #:
-#: Expressed as a rate handed to ``Clock.tick`` rather than as a manual
-#: ``pygame.time.wait``. A manual wait happens *outside* the window ``Clock``
-#: measures, so the FPS readout never sees it and reported 243.9 for a loop
-#: actually running at 125. Worse, skipping ``tick`` altogether on this path
-#: left the readout at 0.0, because a ``Clock`` only updates its own timing
-#: when ``tick`` is called. ``tick(rate)`` sleeps only when the frame came in
-#: under the floor, keeps the cadence, and keeps the meter honest.
-DISPLAY_SAFETY_CEILING_FPS = 125
+#: A working vsync presents once per refresh -- 16.7ms at 60Hz, 4.2ms at
+#: 240Hz -- and that present is the pacer, so this target must never bite. It
+#: is derived from ``Display.FPS`` rather than hardcoded so that raising the
+#: configured frame rate cannot leave the ceiling *below* it: a fixed 125 sat
+#: under a 240 target and quietly halved the frame rate the user had asked
+#: for, with vsync on and nothing on screen to say so. The multiplier is
+#: generous on purpose, clearing any real refresh rate by a wide margin, so
+#: the only thing it ever catches is a present that does not block at all.
+DISPLAY_SAFETY_CEILING_FPS = Display.FPS * 4
 
 
 class Game:
@@ -261,12 +260,15 @@ class Game:
         one refresh late. That reads as a small stutter every other frame
         rather than as a steady 30fps.
 
-        The clock is still ticked, against a rate a real present never reaches
-        (125fps, an 8ms floor) rather than against 60. A 60Hz present takes
-        about 16.7ms, so the target never bites and the present stays the only
-        pacer; a display that ignores the vsync flag gets capped instead of
-        running flat out. Ticking the clock is also what feeds its FPS meter,
-        which reads 0.0 for a loop that never ticks it.
+        The clock is still ticked, against a runaway ceiling far above any
+        real refresh rate rather than against 60. A present takes 16.7ms at
+        60Hz and 4.2ms at 240Hz, so that target never bites and the present
+        stays the only pacer; a display that ignores the vsync flag gets held
+        to the ceiling instead of running flat out. Ticking the clock is also
+        what feeds its FPS meter, which reads 0.0 for a loop that never ticks
+        it -- and a manual ``pygame.time.wait`` would not do, since a wait
+        lands outside the window the clock measures and the meter would miss
+        it entirely.
         """
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")

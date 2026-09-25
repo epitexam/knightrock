@@ -79,11 +79,14 @@ def test_vsync_on_still_ticks_the_clock(runtime: Game, fake_clock) -> None:
     assert fake_clock.slept, "a Clock that is never ticked reports 0.0 fps"
 
 
-def test_vsync_on_never_asks_the_clock_to_hold_60(runtime: Game, fake_clock) -> None:
-    """Targeting 60 would sleep on top of the present and pace the loop twice.
+def test_vsync_on_never_asks_the_clock_to_hold_the_configured_rate(
+    runtime: Game, fake_clock
+) -> None:
+    """Targeting ``Display.FPS`` would sleep on top of the present.
 
-    The rate asked for is the safety ceiling, which a 60Hz present takes
-    about 16.7ms to beat, so the target never bites.
+    The clock is paced at 60 with vsync off, so asking for the same rate with
+    vsync on would wait twice for one refresh. The rate asked for instead is
+    the runaway ceiling, which no real present reaches.
     """
     runtime.settings = replace(runtime.settings, vsync=True)
     runtime.clock = fake_clock  # type: ignore[assignment]
@@ -91,16 +94,37 @@ def test_vsync_on_never_asks_the_clock_to_hold_60(runtime: Game, fake_clock) -> 
     runtime._frame_delta()
 
     assert fake_clock.slept == [game_module.DISPLAY_SAFETY_CEILING_FPS]
+    assert game_module.DISPLAY_SAFETY_CEILING_FPS != Display.FPS
+
+
+def test_the_ceiling_never_caps_the_frame_rate_the_user_asked_for() -> None:
+    """The ceiling is a runaway backstop, not a frame rate control.
+
+    A fixed 125 sat below a 240 target, so with vsync on the game quietly ran
+    at half the configured rate and nothing on screen said so. Deriving the
+    ceiling from ``Display.FPS`` makes that unreachable: raising the target
+    can never leave the ceiling underneath it.
+    """
     assert game_module.DISPLAY_SAFETY_CEILING_FPS > Display.FPS
 
 
-def test_the_safety_ceiling_sits_below_a_real_refresh(runtime: Game, fake_clock) -> None:
+def test_the_ceiling_clears_any_real_refresh_rate() -> None:
+    """The ceiling has to sit above the fastest present it may meet.
+
+    A 60Hz present takes 16.7ms and a 240Hz one 4.2ms. The ceiling is
+    compared against the *configured* rate rather than a hardcoded 240, so
+    raising the target cannot push a real refresh past it either.
+    """
+    floor_ms = 1000 / game_module.DISPLAY_SAFETY_CEILING_FPS
+    assert floor_ms < 1000 / Display.FPS / 2
+
+
+def test_a_normal_vsync_frame_is_never_short_circuited(runtime: Game) -> None:
     """A working 60Hz present must never trip the ceiling.
 
-    The ceiling is 1000/125 = 8ms, comfortably under the 16.7ms a vsync
-    present takes, so it only ever catches a present that does not block.
+    The ceiling's floor sits well under the 16.7ms a 60Hz present takes, so
+    it only ever catches a present that does not block.
     """
-    assert 1000 / game_module.DISPLAY_SAFETY_CEILING_FPS < 1000 / Display.FPS
     runtime.settings = replace(runtime.settings, vsync=True)
     runtime.clock = _FakeClock(elapsed=17)  # type: ignore[assignment]
 
