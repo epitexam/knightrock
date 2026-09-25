@@ -11,6 +11,7 @@ class MenuView:
         self._fonts: dict[float, tuple[pygame.font.Font, pygame.font.Font]] = {}
         self._panel_cache: pygame.Surface | None = None
         self._panel_cache_size: tuple[int, int] = (0, 0)
+        self._surface_size: tuple[int, int] = (0, 0)
         # Cache des textes rendus : un .render() par frame et par item
         # alloue une Surface + déclenche du GC -> micro-freezes à 60fps.
         # Clé = (font-id, texte, couleur) ; invalidé au changement de sélection.
@@ -23,6 +24,13 @@ class MenuView:
 
     def set_scale(self, scale: float) -> None:
         self._scale = self._valid_scale(scale)
+        self.reset_cache()
+
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        size = display_surface.get_size()
+        if size != self._surface_size:
+            self._surface_size = size
+            self.reset_cache()
 
     def draw(
         self,
@@ -33,6 +41,9 @@ class MenuView:
         top: int,
         title_color: tuple[int, int, int] = TEXT_TITLE,
     ) -> pygame.Rect:
+        if self._surface_size != surface.get_size():
+            self._surface_size = surface.get_size()
+            self.reset_cache()
         scale = self._scale
         title_font, item_font = self._fonts_for(scale)
         labels = [
@@ -50,16 +61,24 @@ class MenuView:
         ]
         padding = max(8, int(28 * scale))
         title_gap = max(4, int(16 * scale))
-        item_height = max(20, int(40 * scale))
+        available_height = max(120, surface.get_height() - top - 16)
+        item_height = min(
+            max(20, int(40 * scale)),
+            max(
+                20,
+                (available_height - padding * 2 - title_surface.get_height() - title_gap)
+                // max(1, len(labels)),
+            ),
+        )
         content_width = max(
             [surface.get_width() for surface in item_surfaces] + [title_surface.get_width()]
         )
-        panel_width = content_width + padding * 2
+        panel_width = min(content_width + padding * 2, max(240, surface.get_width() - 24))
         panel_height = (
             padding * 2 + title_surface.get_height() + title_gap + item_height * len(labels)
         )
         panel_x = (surface.get_width() - panel_width) // 2
-        panel_y = top
+        panel_y = min(top, max(8, surface.get_height() - panel_height - 8))
         panel = self._panel_for(panel_width, panel_height)
         panel.fill((*PANEL_BG[:3], 230))
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), max(1, int(2 * scale)))

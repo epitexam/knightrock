@@ -57,6 +57,7 @@ class ControlsView:
         self._scale = self._valid_scale(scale)
         self._fonts: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font] | None = None
         self._font_key: float | None = None
+        self._surface_size: tuple[int, int] = (0, 0)
         self._cells: list[CellHit] = []
         self._row_rects: list[pygame.Rect] = []
 
@@ -66,6 +67,11 @@ class ControlsView:
 
     def cell_at(self, position: tuple[int, int]) -> CellHit | None:
         return next((cell for cell in self._cells if cell.rect.collidepoint(position)), None)
+
+    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+        self._surface_size = display_surface.get_size()
+        self._cells = []
+        self._row_rects = []
 
     def set_scale(self, scale: float) -> None:
         self._scale = self._valid_scale(scale)
@@ -82,45 +88,36 @@ class ControlsView:
         top: int,
         footers: tuple[str, ...] = (),
     ) -> pygame.Rect:
+        layout = self._layout(surface, subtitle, rows, top, footers)
         self._ensure_fonts()
         assert self._fonts is not None
         title_font, item_font, small_font = self._fonts
-        margin, padding, gap = 12, 18, 18
-        width = min(surface.get_width() - margin * 2, 900)
-        row_height = max(20, min(34, int(30 * self._scale)))
-        head = 102 + (small_font.get_height() if subtitle else 0)
-        height = head + row_height * len(rows) + gap + 20 * len(footers)
-        panel_rect = pygame.Rect((surface.get_width() - width) // 2, top, width, height)
+        panel_rect, x, y, columns, cell_width, label_width, row_height = layout
+        padding, gap = 18, 18
+
         panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
         panel.fill((*PANEL_BG[:3], 235))
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), 2)
         surface.blit(panel, panel_rect)
-
-        x = panel_rect.x + padding
         surface.blit(title_font.render(title, True, TEXT_TITLE), (x, panel_rect.y + padding))
-        y = panel_rect.y + padding + title_font.get_height()
         if subtitle:
             surface.blit(small_font.render(subtitle, True, TEXT_MUTED), (x, y))
             y += small_font.get_height() + 8
 
-        label_width = int(width * 0.34)
-        cell_width = (width - padding * 2 - label_width - gap) // 2
-        columns = (x + label_width, x + label_width + cell_width + gap)
-        for _column, (cell_x, header) in enumerate(zip(columns, self.COLUMN_HEADERS, strict=True)):
+        for cell_x, header in zip(columns, self.COLUMN_HEADERS, strict=True):
             surface.blit(small_font.render(header, True, TEXT_MUTED), (cell_x, y))
 
         self._cells = []
         self._row_rects = []
         for index, row in enumerate(rows):
             row_y = y + 26 + index * row_height
-            row_rect = pygame.Rect(x, row_y, width - padding * 2, row_height)
+            row_rect = pygame.Rect(x, row_y, panel_rect.width - padding * 2, row_height)
             self._row_rects.append(row_rect)
             if index == selected_row:
                 strip = pygame.Surface(row_rect.size, pygame.SRCALPHA)
                 strip.fill((*TEXT_WARN[:3], 35))
                 surface.blit(strip, row_rect)
             surface.blit(self._fit(item_font, row.label, label_width - gap, TEXT_OK), (x, row_y))
-
             cells = ((KEYBOARD_COLUMN, row.keyboard), (GAMEPAD_COLUMN, row.gamepad))
             for column, cell in cells:
                 if cell is None:
@@ -131,7 +128,7 @@ class ControlsView:
                     self._fit(item_font, cell.text, cell_width - 8, color), (cell_x, row_y)
                 )
                 hit = pygame.Rect(cell_x - 4, row_y - 2, cell_width, row_height)
-                if index == selected_row and column == selected_column and row.rebindable:
+                if index == selected_row and column == selected_column:
                     pygame.draw.rect(surface, TEXT_WARN, hit, 1)
                 if row.rebindable:
                     self._cells.append(CellHit(index, column, hit))
@@ -141,6 +138,44 @@ class ControlsView:
             surface.blit(small_font.render(footer, True, TEXT_WARN), (x, footer_y))
             footer_y += 20
         return panel_rect
+
+    def _layout(
+        self,
+        surface: pygame.Surface,
+        subtitle: str,
+        rows: list[BindingRow],
+        top: int,
+        footers: tuple[str, ...],
+    ) -> tuple[pygame.Rect, int, int, tuple[int, int], int, int, int]:
+        self._ensure_fonts()
+        assert self._fonts is not None
+        _, _, small_font = self._fonts
+        scale = self._scale
+        margin, padding, gap = 12, 18, 18
+        width = min(surface.get_width() - margin * 2, 900)
+        head = 102 + (small_font.get_height() if subtitle else 0)
+        available = max(80, surface.get_height() - top - 8)
+        row_height = max(
+            14,
+            min(
+                34,
+                int(30 * scale),
+                (available - head - gap - 20 * len(footers)) // max(1, len(rows)),
+            ),
+        )
+        height = head + row_height * len(rows) + gap + 20 * len(footers)
+        panel = pygame.Rect(
+            (surface.get_width() - width) // 2,
+            min(top, max(8, surface.get_height() - height - 8)),
+            width,
+            height,
+        )
+        x = panel.x + padding
+        y = panel.y + padding + self._fonts[0].get_height()
+        label_width = int(width * 0.34)
+        cell_width = (width - padding * 2 - label_width - gap) // 2
+        columns = (x + label_width, x + label_width + cell_width + gap)
+        return panel, x, y, columns, cell_width, label_width, row_height
 
     def _ensure_fonts(self) -> None:
         if self._fonts is not None and self._font_key == self._scale:

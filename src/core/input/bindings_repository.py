@@ -78,6 +78,27 @@ def _parse_key_value(value: object, action: InputAction, allow_pair: bool) -> Ke
     raise ValueError("invalid key binding")
 
 
+def _repair_menu_direction_conflicts(bindings: ActionMap) -> ActionMap:
+    """Restore defaults for every arrow involved in an old conflict."""
+    defaults = {
+        InputAction.UI_UP: pygame.K_UP,
+        InputAction.UI_DOWN: pygame.K_DOWN,
+        InputAction.UI_LEFT: pygame.K_LEFT,
+        InputAction.UI_RIGHT: pygame.K_RIGHT,
+    }
+    result = dict(bindings)
+    by_key: dict[int, list[InputAction]] = {}
+    for action in defaults:
+        value = result.get(action)
+        if isinstance(value, int):
+            by_key.setdefault(value, []).append(action)
+    for actions in by_key.values():
+        if len(actions) > 1:
+            for action in actions:
+                result[action] = defaults[action]
+    return MappingProxyType(result)
+
+
 def _parse_action_map(
     data: object, allowed: set[InputAction], allow_pair: bool = False
 ) -> ActionMap:
@@ -219,6 +240,10 @@ def bindings_from_dict(data: object) -> InputBindings:
     gameplay_keyboard_combos = _parse_combo_map(gameplay_data["keyboard_combos"], gameplay_actions)
     gameplay_gamepad_combos = _parse_combo_map(gameplay_data["gamepad_combos"], gameplay_actions)
     menu_keyboard = _parse_action_map(menu_data["keyboard"], menu_actions)
+    # Anciens fichiers : la capture d'une flèche a parfois laissé deux
+    # directions de menu sur la même touche. Répare ce conflit sans écraser
+    # les autres remaps personnalisés.
+    menu_keyboard = _repair_menu_direction_conflicts(menu_keyboard)
     menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 from src.application.scenes.options_scene import OptionsScene
@@ -39,6 +40,39 @@ def test_options_can_return_to_previous_scene() -> None:
     scene.handle_routed(RoutedInput(InputAction.UI_BACK, InputDevice.KEYBOARD))
 
     assert calls == ["pop"]
+
+
+def test_options_resets_video_ui_and_invert_y_without_touching_controls() -> None:
+    game = _game()
+    custom_bindings = replace(
+        game.settings.bindings,
+        menu=replace(game.settings.bindings.menu, invert_y=True),
+    )
+    game.settings = replace(
+        game.settings,
+        bindings=custom_bindings,
+        ui_scale=1.2,
+        fullscreen=True,
+        vsync=True,
+    )
+    scene = OptionsScene(game)
+    for _ in range(len(scene.model.items)):
+        current = scene.model.current_item
+        if current is not None and current.action == "reset":
+            break
+        scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+    scene.handle_routed(_confirm())
+
+    defaults = UserSettings()
+    assert game.settings.ui_scale == defaults.ui_scale
+    assert game.settings.fullscreen == defaults.fullscreen
+    assert game.settings.vsync == defaults.vsync
+    assert game.settings.bindings.menu.invert_y == defaults.bindings.menu.invert_y
+    assert game.settings.bindings.gameplay == defaults.bindings.gameplay
+
+
+def _confirm() -> RoutedInput:
+    return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)
 
 
 def test_options_back_via_gamepad_and_mouse() -> None:

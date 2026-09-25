@@ -11,7 +11,12 @@ import pygame
 from src.application.scene import Scene
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.core.input.input_bindings import GameplayBindings, MenuBindings, PadBinding
+from src.core.input.input_bindings import (
+    GameplayBindings,
+    InputBindings,
+    MenuBindings,
+    PadBinding,
+)
 from src.ui.controls_view import (
     GAMEPAD_COLUMN,
     KEYBOARD_COLUMN,
@@ -33,6 +38,7 @@ class RebindSpec:
     label: str
     action: InputAction | None
     pair: bool = False
+    side: int | None = None
 
 
 class ControlsScene(Scene):
@@ -50,7 +56,8 @@ class ControlsScene(Scene):
             RebindSpec("New game shortcut", None),
         ),
         GAMEPLAY_SECTION: (
-            RebindSpec("Move left / right", InputAction.MOVE_X, True),
+            RebindSpec("Move left", InputAction.MOVE_X, side=0),
+            RebindSpec("Move right", InputAction.MOVE_X, side=1),
             RebindSpec("Crouch / fast fall", InputAction.MOVE_DOWN),
             RebindSpec("Jump", InputAction.JUMP),
             RebindSpec("Dash", InputAction.DASH),
@@ -71,7 +78,7 @@ class ControlsScene(Scene):
         self.specs = self.SECTIONS[section]
         self.model = MenuModel(
             tuple(MenuItem(f"rebind_{index}", spec.label) for index, spec in enumerate(self.specs))
-            + (MenuItem("back", "Back"),)
+            + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
         self.view = ControlsView(game.settings.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
@@ -97,6 +104,14 @@ class ControlsScene(Scene):
         ]
         result.append(
             BindingRow(
+                "Reset to defaults",
+                BindingCell("Reset this section"),
+                BindingCell("Keyboard + gamepad"),
+                RowKind.BACK,
+            )
+        )
+        result.append(
+            BindingRow(
                 "Back",
                 BindingCell("Esc / right click"),
                 BindingCell("B / right click"),
@@ -113,6 +128,8 @@ class ControlsScene(Scene):
             value = self.game.settings.bindings.menu.new_game_key
         else:
             value = self._context().keyboard.get(spec.action)
+        if spec.side is not None and isinstance(value, tuple):
+            value = value[spec.side]
         key_text = self._key_text(value)
         if spec.action is not None and self.section == self.MENU_SECTION:
             mouse_button = self.game.settings.bindings.menu.mouse_buttons.get(spec.action)
@@ -125,22 +142,26 @@ class ControlsScene(Scene):
             return BindingCell("Press button / axis / d-pad…", True)
         if spec.action is None:
             return BindingCell("not available", muted=True)
-        return BindingCell(self._gamepad_text(spec.action))
+        return BindingCell(self._gamepad_text(spec))
 
     def _context(self) -> GameplayBindings | MenuBindings:
         bindings = self.game.settings.bindings
         return bindings.gameplay if self.section == self.GAMEPLAY_SECTION else bindings.menu
 
-    def _gamepad_text(self, action: InputAction) -> str:
+    def _gamepad_text(self, spec: RebindSpec) -> str:
+        if spec.action is None:
+            return "unbound"
         context = self._context()
         parts: list[str] = []
-        button = context.gamepad_buttons.get(action)
+        button = context.gamepad_buttons.get(spec.action)
+        if spec.side is not None and isinstance(button, tuple):
+            button = button[spec.side]
         if button is not None:
             parts.append(f"button {self._index_text(button)}")
-        axis = context.gamepad_axes.get(action)
+        axis = context.gamepad_axes.get(spec.action)
         if axis is not None:
             parts.append(f"axis {axis}")
-        hat = context.gamepad_hats.get(action)
+        hat = context.gamepad_hats.get(spec.action)
         if hat is not None:
             parts.append(f"hat {self._index_text(hat)}")
         return " / ".join(parts) or "unbound"
@@ -195,14 +216,20 @@ class ControlsScene(Scene):
             if activate:
                 self._start_capture(hit.row, hit.column)
             return
-        if activate and any(
-            rect.collidepoint(position) for rect in self.view.row_rects[len(self.specs) :]
-        ):
-            self.game.scene_manager.pop()
+        if activate:
+            for index, rect in enumerate(self.view.row_rects):
+                if rect.collidepoint(position) and index >= len(self.specs):
+                    if index == len(self.specs):
+                        self._reset()
+                    else:
+                        self.game.scene_manager.pop()
+                    return
 
     def _activate(self) -> None:
         row = self.model.current_index
         if row == len(self.specs):
+            self._reset()
+        elif row == len(self.specs) + 1:
             self.game.scene_manager.pop()
         else:
             self._start_capture(row, self.selected_column)
@@ -211,7 +238,7 @@ class ControlsScene(Scene):
         if 0 <= row < len(self.specs):
             self._capture = (row, column)
             self._pending.clear()
-            self._status = "Esc / B cancels; Delete / right click unbinds"
+            self._status = "Esc / right click cancels; Delete unbinds keyboard"
 
     def _cancel_capture(self) -> None:
         self._capture = None
@@ -237,7 +264,9 @@ class ControlsScene(Scene):
         if key == pygame.K_DELETE:
             self._clear_keyboard(spec)
             return
-        if spec.pair:
+        if spec.side is not None:
+            self._apply_keyboard(spec, (key,))
+        elif spec.pair:
             if key not in self._pending:
                 self._pending.append(key)
             if len(self._pending) == 2:
@@ -276,7 +305,10 @@ class ControlsScene(Scene):
         if spec.action is None:
             self._status = "This shortcut is keyboard-only"
             return
-        if spec.pair:
+        if spec.side is not None:
+            self._ignore_routed = True
+            self._apply_buttons(spec, (button,))
+        elif spec.pair:
             if button not in self._pending:
                 self._pending.append(button)
             if len(self._pending) == 2:
@@ -303,6 +335,16 @@ class ControlsScene(Scene):
         normalized = (int(value[0]), int(value[1]))
         self._ignore_routed = self.game.input_router.would_route_hat(hat, normalized)
 
+    def _reset(self) -> None:
+        defaults = InputBindings()
+        bindings = self.game.settings.bindings
+        if self.section == self.GAMEPLAY_SECTION:
+            bindings = replace(bindings, gameplay=defaults.gameplay)
+        else:
+            bindings = replace(bindings, menu=defaults.menu)
+        self._apply_bindings(bindings)
+        self._status = "Defaults restored"
+
     def _clear_keyboard(self, spec: RebindSpec) -> None:
         if spec.action is None:
             menu = replace(self.game.settings.bindings.menu, new_game_key=None)
@@ -326,6 +368,9 @@ class ControlsScene(Scene):
             return
         context = self._context()
         keyboard = dict(context.keyboard)
+        value = self._merge_side_value(context, spec, value)
+        if spec.action is not None and spec.side is not None and value is None:
+            return
         codes = set(self._codes(value))
         for action, other in list(keyboard.items()):
             if action == spec.action:
@@ -346,6 +391,22 @@ class ControlsScene(Scene):
             keyboard[spec.action] = value
         self._replace_context(keyboard=keyboard)
 
+    def _merge_side_value(
+        self,
+        context: GameplayBindings | MenuBindings,
+        spec: RebindSpec,
+        value: int | tuple[int, ...] | None,
+    ) -> int | tuple[int, ...] | None:
+        if spec.action is None or spec.side is None or value is None:
+            return value
+        current = context.keyboard.get(spec.action)
+        if isinstance(current, tuple) and len(current) == 2:
+            pair = [current[0], current[1]]
+        else:
+            pair = [pygame.K_LEFT, pygame.K_RIGHT]
+        pair[spec.side] = cast(int, value)
+        return pair[0], pair[1]
+
     def _apply_mouse_button(self, spec: RebindSpec, button: int) -> None:
         if spec.action is None:
             return
@@ -363,7 +424,16 @@ class ControlsScene(Scene):
             return
         context = self._context()
         current = dict(context.gamepad_buttons)
-        value: PadBinding = buttons[0] if len(buttons) == 1 else buttons
+        if spec.side is not None and spec.action is not None:
+            previous = context.gamepad_buttons.get(spec.action)
+            if isinstance(previous, tuple) and len(previous) == 2:
+                pair = [previous[0], previous[1]]
+            else:
+                pair = [0, 1]
+            pair[spec.side] = buttons[0]
+            value: PadBinding = (pair[0], pair[1])
+        else:
+            value = buttons[0] if len(buttons) == 1 else buttons
         for action, other in list(current.items()):
             if action != spec.action and set(self._codes(other)) & set(buttons):
                 if self.section == self.MENU_SECTION and action in (

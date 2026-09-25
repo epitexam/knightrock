@@ -211,6 +211,60 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
     assert game.settings.vsync is True
 
 
+def test_internal_set_mode_resize_event_does_not_reconfigure_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Le VIDEORESIZE produit par set_mode ne doit pas créer une boucle."""
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    assert game.display_surface is not None
+    current_size = game.display_surface.get_size()
+    reconfigure = Mock(side_effect=game._configure_display)
+    monkeypatch.setattr(game, "_configure_display", reconfigure)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [
+            pygame.event.Event(
+                pygame.VIDEORESIZE, w=current_size[0], h=current_size[1], size=current_size
+            )
+        ],
+    )
+
+    game._handle_events()
+
+    reconfigure.assert_not_called()
+    assert game.display_surface.get_size() == current_size
+
+
+def test_fullscreen_set_mode_resize_feedback_does_not_change_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Le retour SDL 1024x768 du mode plein écran est ignoré."""
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    game.apply_settings(replace(game.settings, fullscreen=True))
+    assert (game.settings.width, game.settings.height) == (1440, 900)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=1024, h=768, size=(1024, 768))],
+    )
+
+    game._handle_events()
+
+    assert game.settings.fullscreen is True
+    assert (game.settings.width, game.settings.height) == (1440, 900)
+    assert game.display_surface is not None
+    assert game.display_surface.get_size() == (1440, 900)
+
+
 def test_user_resize_rebuilds_the_display_without_persisting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

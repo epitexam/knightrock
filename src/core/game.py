@@ -67,6 +67,7 @@ class Game:
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
+        self._internal_resize_pending = False
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -110,6 +111,7 @@ class Game:
         self.input_provider.set_bindings(self.input_bindings)
         self.settings_store.save(settings)
         if self.display_surface is not None:
+            self._internal_resize_pending = True
             self.display_surface = self._configure_display()
             self.scene_manager.set_display_surface(self.display_surface)
             self.scene_manager.set_ui_scale(settings.ui_scale)
@@ -149,11 +151,23 @@ class Game:
             max(MIN_WINDOW_WIDTH, min(width, MAX_WINDOW_WIDTH)),
             max(MIN_WINDOW_HEIGHT, min(height, MAX_WINDOW_HEIGHT)),
         )
+        # pygame.display.set_mode() peut générer un VIDEORESIZE pour la
+        # nouvelle surface. Si la taille de l'événement est déjà celle de la
+        # surface courante, il s'agit de ce feedback interne et non d'un drag
+        # utilisateur : ne pas rappeler set_mode() indéfiniment.
+        if self.settings.fullscreen:
+            # En plein écran, la taille de l'événement SDL peut être celle
+            # du desktop et ne correspond pas à la surface SCALED. Ce n'est
+            # pas un resize utilisateur : ne jamais rappeler set_mode().
+            return
+        if self.display_surface is not None and size == self.display_surface.get_size():
+            return
         if size == (self.settings.width, self.settings.height):
             return
         self.settings = replace(self.settings, width=size[0], height=size[1])
         if self.display_surface is None:
             return
+        self._internal_resize_pending = True
         self.display_surface = self._configure_display()
         self.scene_manager.set_display_surface(self.display_surface)
 
@@ -195,15 +209,20 @@ class Game:
                 pygame.display.update(dirty_rects)
 
     def _handle_events(self) -> None:
+        internal_resize_batch = self._internal_resize_pending
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == pygame.VIDEORESIZE:
-                # Redimensionnement utilisateur : surface recréée et propagée
-                # aux scènes (renderer, caméra, HUD), sans redémarrer.
-                self._resize_display(int(getattr(event, "w", 0)), int(getattr(event, "h", 0)))
+                # Redimensionnement utilisateur : en plein écran SDL peut
+                # signaler la taille du desktop, ce qui doit être ignoré.
+                # En fenêtre, le drapeau interne protège le batch set_mode().
+                if internal_resize_batch or self.settings.fullscreen:
+                    pass
+                else:
+                    self._resize_display(int(getattr(event, "w", 0)), int(getattr(event, "h", 0)))
 
             if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks
@@ -223,6 +242,7 @@ class Game:
                 self.input_provider.reassign_joystick(self.joysticks)
 
             self.scene_manager.handle_event(event)
+        self._internal_resize_pending = False
 
     def _handle_fatal_error(self, error: Exception) -> None:
         logger.error(f"FATAL ERROR: {error}")

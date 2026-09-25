@@ -70,12 +70,23 @@ class SceneManager:
             setter = getattr(scene, "set_display_surface", None)
             if callable(setter):
                 setter(display_surface)
+            view = getattr(scene, "view", None)
+            view_setter = getattr(view, "set_display_surface", None)
+            if callable(view_setter):
+                view_setter(display_surface)
+            view_scale = getattr(view, "set_scale", None)
+            if callable(view_scale):
+                view_scale(self.game.settings.ui_scale)
 
     def set_ui_scale(self, scale: float) -> None:
         for scene in self._stack:
             setter = getattr(scene, "set_ui_scale", None)
             if callable(setter):
                 setter(scale)
+            view = getattr(scene, "view", None)
+            view_setter = getattr(view, "set_scale", None)
+            if callable(view_setter):
+                view_setter(scale)
 
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""
@@ -101,3 +112,4 @@ class SceneManager:
     def _push(self, scene: Scene) -> None:
         self._stack.append(scene)
         scene.enter()
+        self.set_ui_scale(self.game.settings.ui_scale)

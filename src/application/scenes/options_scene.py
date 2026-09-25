@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
-from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
 from src.core.input.event_router import RoutedInput
@@ -39,9 +38,9 @@ class OptionsScene(Scene):
                     "invert_y",
                     f"Stick Y: {'inverted' if settings.bindings.menu.invert_y else 'normal'}",
                 ),
-                MenuItem("controls_menu", "Menu controls"),
+                MenuItem("controls", "Controls"),
                 MenuItem("video", "Video settings"),
-                MenuItem("controls_gameplay", "Gameplay controls"),
+                MenuItem("reset", "Reset options"),
                 MenuItem("back", "Back"),
             )
         )
@@ -78,10 +77,29 @@ class OptionsScene(Scene):
             self._toggle_invert_y()
         elif action == "video":
             self.game.scene_manager.push(VideoScene(self.game))
-        elif action == "controls_menu":
-            self._open_controls(ControlsScene.MENU_SECTION)
-        elif action == "controls_gameplay":
-            self._open_controls(ControlsScene.GAMEPLAY_SECTION)
+        elif action == "controls":
+            from src.application.scenes.controls_category_scene import ControlsCategoryScene
+
+            self.game.scene_manager.push(ControlsCategoryScene(self.game))
+        elif action == "reset":
+            self._reset()
+
+    def _reset(self) -> None:
+        defaults = UserSettings()
+        current_bindings = self.game.settings.bindings
+        default_menu = defaults.bindings.menu
+        self._apply(
+            replace(
+                self.game.settings,
+                ui_scale=defaults.ui_scale,
+                fullscreen=defaults.fullscreen,
+                vsync=defaults.vsync,
+                bindings=replace(
+                    current_bindings,
+                    menu=replace(current_bindings.menu, invert_y=default_menu.invert_y),
+                ),
+            )
+        )
 
     def _cycle_scale(self) -> None:
         index = self.SCALE_VALUES.index(self.game.settings.ui_scale)
@@ -99,10 +117,6 @@ class OptionsScene(Scene):
         )
         bindings = replace(self.game.settings.bindings, menu=menu)
         self._apply(self.game.settings.with_bindings(bindings))
-
-    def _open_controls(self, section: str) -> None:
-        """Empile l'écran de rebinding (audit UI-5)."""
-        self.game.scene_manager.push(ControlsScene(self.game, section))
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()

@@ -9,6 +9,7 @@ import pytest
 from src.application.save_game import SaveGame
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
+from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.gameover_scene import GameOverScene
 from src.application.scenes.gameplay_scene import GameplayScene
@@ -379,29 +380,68 @@ def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: P
     manager.switch(options)
     for _ in range(len(options.model.items)):
         current = options.model.current_item
-        if current is not None and current.action == "controls_menu":
+        if current is not None and current.action == "controls":
             break
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
 
     controls = manager.current
-    assert isinstance(controls, ControlsScene)
+    assert isinstance(controls, ControlsCategoryScene)
+    assert [item.action for item in controls.model.items] == ["menu", "gameplay", "back"]
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    menu_controls = manager.current
+    assert isinstance(menu_controls, ControlsScene)
+    assert menu_controls.section == ControlsScene.MENU_SECTION
+
+    manager.pop()
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    gameplay_controls = manager.current
+    assert isinstance(gameplay_controls, ControlsScene)
+    assert gameplay_controls.section == ControlsScene.GAMEPLAY_SECTION
+
+    manager.pop()
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    menu_controls = manager.current
+    assert isinstance(menu_controls, ControlsScene)
+    assert menu_controls.section == ControlsScene.MENU_SECTION
 
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-    assert controls.capturing
+    assert menu_controls.capturing
 
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x))
 
     assert game.settings.bindings.menu.keyboard[InputAction.UI_DOWN] == pygame.K_x
     # L'appui qui termine la capture était routé (X = ui_down) : neutralisé.
-    assert controls.model.current_index == 1
+    assert menu_controls.model.current_index == 1
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert saved["bindings"]["menu"]["keyboard"]["ui_down"] == pygame.K_x
 
     # Le routeur applique le nouveau binding pour la suite du parcours.
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x))
-    assert controls.model.current_index == 2
+    assert menu_controls.model.current_index == 2
+
+
+def test_options_controls_is_a_category_with_two_submenus(manager: SceneManager) -> None:
+    options = OptionsScene(manager.game)
+    manager.switch(options)
+    for _ in range(len(options.model.items)):
+        current = options.model.current_item
+        if current is not None and current.action == "controls":
+            break
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    category = manager.current
+    assert isinstance(category, ControlsCategoryScene)
+    assert [item.action for item in category.model.items] == ["menu", "gameplay", "back"]
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert isinstance(manager.current, ControlsScene)
+    assert manager.current.section == ControlsScene.MENU_SECTION
 
 
 def test_controls_capture_cancels_with_escape_before_leaving(manager: SceneManager) -> None:
@@ -428,8 +468,8 @@ def test_controls_rebinds_a_pad_button_and_can_reassign_b(manager: SceneManager)
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
-    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
-    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    for _ in range(3):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert controls.capturing
 
@@ -452,6 +492,7 @@ def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) 
         MenuScene(game),
         LevelSelectScene(game),
         OptionsScene(game),
+        ControlsCategoryScene(manager.game),
         ControlsScene(game, ControlsScene.MENU_SECTION),
         ControlsScene(game, ControlsScene.GAMEPLAY_SECTION),
         PauseScene(game, level_id=0),

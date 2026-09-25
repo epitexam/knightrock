@@ -27,6 +27,22 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
     assert cancel == RoutedInput(InputAction.UI_BACK, InputDevice.GAMEPAD)
 
 
+def test_default_keyboard_navigation_actions_are_unique_and_routable() -> None:
+    router = EventRouter()
+    expected = {
+        pygame.K_UP: InputAction.UI_UP,
+        pygame.K_DOWN: InputAction.UI_DOWN,
+        pygame.K_LEFT: InputAction.UI_LEFT,
+        pygame.K_RIGHT: InputAction.UI_RIGHT,
+        pygame.K_RETURN: InputAction.UI_CONFIRM,
+        pygame.K_ESCAPE: InputAction.UI_BACK,
+    }
+    for key, action in expected.items():
+        assert router.route(pygame.event.Event(pygame.KEYDOWN, key=key)) == RoutedInput(
+            action, InputDevice.KEYBOARD
+        )
+
+
 def test_router_maps_hat_and_axis_with_release_threshold() -> None:
     now = [10.0]
 
