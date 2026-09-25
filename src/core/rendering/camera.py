@@ -163,6 +163,33 @@ class Camera:
             rect.height * zoom,
         )
 
+    def apply_covering(self, rect: pygame.FRect) -> pygame.Rect:
+        """Screen rectangle for a world rect, rounded *outward* to cover it.
+
+        ``apply`` returns exact fractional bounds, and ``pygame.Rect`` built
+        from those truncates them. Truncation always rounds a rectangle *in*:
+        the world tile at the far edge of a level maps to x 1427.5..1440.0 on
+        a 1440-wide screen, and comes out as ``Rect(1427, .., 12)``, which
+        stops at 1438. The last column of the window is then never painted by
+        anything and keeps whatever the background fill left there -- a
+        one-pixel line of sky down the right edge of the screen, and another
+        along the bottom. It only shows once the camera is pushed against the
+        clamp, which in practice means when the player dashes into a corner of
+        the map.
+
+        Rounding the near edges down and the far edges up keeps the true
+        extent: the rect grows by at most a pixel, so neighbours may overlap
+        by a pixel instead of leaving a gap between them, and no pixel the
+        caller meant to cover is dropped.
+        """
+        self._ensure_frame()
+        zoom = self.zoom
+        left = math.floor((rect.x + self._shift) * zoom)
+        top = math.floor((rect.y + self._shift_y) * zoom)
+        right = math.ceil((rect.x + rect.width + self._shift) * zoom)
+        bottom = math.ceil((rect.y + rect.height + self._shift_y) * zoom)
+        return pygame.Rect(left, top, right - left, bottom - top)
+
     def is_visible(self, rect: pygame.FRect) -> bool:
         """Check if a world rectangle intersects the zoomed camera viewport.
 

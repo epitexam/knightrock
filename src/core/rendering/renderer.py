@@ -400,7 +400,7 @@ class Renderer:
                 barrows.append((image, screen_rect, headroom))
         for sprite in groups.fx_sprites:
             if self.camera.is_visible(sprite.rect):
-                screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
+                screen_rect = self.camera.apply_covering(sprite.rect)
                 surface = self._scaled_image_once(sprite.image)
                 blits.append((surface, screen_rect))
                 barrows.append((surface, screen_rect, False))
@@ -425,7 +425,7 @@ class Renderer:
         rect = sprite.rect
         if rect is None:
             return pygame.Rect(0, 0, 0, 0)
-        return pygame.Rect(self.camera.apply(pygame.FRect(rect)))
+        return self.camera.apply_covering(pygame.FRect(rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """White damage-flash overlays for recently hit entities.
@@ -443,7 +443,7 @@ class Renderer:
             overlay = self._white_silhouette(sprite.image)
             overlay = overlay.copy()
             overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
-            screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
+            screen_rect = self.camera.apply_covering(sprite.rect)
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
@@ -497,7 +497,7 @@ class Renderer:
         has to be mapped: reusing the camera transform keeps the zoom and the
         shake identical to every other sprite, and costs no rescale per frame.
         """
-        return self.camera.apply(world_rect).center
+        return self.camera.apply_covering(world_rect).center
 
     def _spawn_afterimage(self, groups: SpriteGroups) -> None:
         """Snapshot dashing players into fading ghosts.
@@ -519,9 +519,7 @@ class Renderer:
             # stretch is applied once here, at spawn; only the centre is mapped
             # per frame afterwards, so the trail costs no rescale per tick.
             ghost = self._scaled_image_once(ghost)
-            ghost = dash_frame(
-                ghost, pygame.Rect(self.camera.apply(sprite.rect)), apply_tint=False
-            )[0]
+            ghost = dash_frame(ghost, self.camera.apply_covering(sprite.rect), apply_tint=False)[0]
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))

@@ -214,3 +214,45 @@ def test_a_resolution_change_keeps_the_zoom_on_the_new_viewport() -> None:
     assert camera.zoom == 1.15
     assert (camera.width, camera.height) == (1280, 720)
     assert camera.viewport_width == pytest.approx(1280 / 1.15)
+
+
+def test_a_screen_rect_covers_the_pixels_it_was_meant_to_cover() -> None:
+    """Screen rects round outward, so the zoomed extent is never trimmed.
+
+    ``pygame.Rect`` truncates the fractional bounds ``apply`` returns, which
+    always rounds a rectangle *in*. The tile at the far edge of a level maps
+    to x 1427.5..1440.0 on a 1440-wide screen and came out as
+    ``Rect(1427, .., 12)``, stopping at 1438: the last column of the window
+    was painted by nothing and kept the background fill. The camera only
+    reaches that alignment when it is pushed against its clamp, which in
+    practice means dashing into a corner of the map.
+    """
+    camera = Camera(1440, 900)
+    camera.set_world_size(2560, 1920)
+    camera.offset.x = 2560 - camera.viewport_width
+    camera.offset.y = 1920 - camera.viewport_height
+    camera._previous_offset = pygame.Vector2(camera.offset)
+    camera.begin_frame(1.0)
+
+    right_edge = camera.apply_covering(pygame.FRect(2496.0, 1856.0, 64.0, 64.0))
+    bottom_edge = camera.apply_covering(pygame.FRect(0.0, 1856.0, 64.0, 64.0))
+
+    assert right_edge.right == 1440, "the last column of the window must be painted"
+    assert bottom_edge.bottom == 900, "the last row of the window must be painted"
+
+
+def test_a_screen_rect_left_of_the_view_rounds_down_not_toward_zero() -> None:
+    """Negative screen coordinates floor, they do not truncate toward zero.
+
+    Truncation would move a sprite sitting off the left edge one pixel to the
+    right, so its first visible column would show the neighbouring tile's
+    pixel instead of its own.
+    """
+    camera = Camera(1440, 900)
+    camera.set_world_size(2560, 1920)
+    camera.begin_frame(1.0)
+
+    rect = camera.apply_covering(pygame.FRect(-40.0, -40.0, 64.0, 64.0))
+
+    assert rect.left == -50
+    assert rect.top == -50
