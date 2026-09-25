@@ -41,6 +41,8 @@ class VictoryScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return
         if routed_input.action is InputAction.UI_CANCEL:
+            # Bouton B (manette) = retour menu, comme ESC / clic droit.
+            # (device_removed = manette débranchée : on retourne au menu aussi.)
             self.game.scene_manager.switch(MenuScene(self.game))
             return
         action, _ = self.model.handle_routed(

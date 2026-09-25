@@ -39,3 +39,16 @@ def test_options_can_return_to_previous_scene() -> None:
     scene.handle_routed(RoutedInput(InputAction.UI_BACK, InputDevice.KEYBOARD))
 
     assert calls == ["pop"]
+
+
+def test_options_back_via_gamepad_and_mouse() -> None:
+    """Bouton B (manette) et clic droit = retour, comme ESC."""
+    calls: list[str] = []
+    game = _game()
+    game.scene_manager.pop = lambda: calls.append("pop")
+
+    OptionsScene(game).handle_routed(RoutedInput(InputAction.UI_BACK, InputDevice.GAMEPAD))
+    OptionsScene(game).handle_routed(RoutedInput(InputAction.UI_BACK, InputDevice.MOUSE))
+    OptionsScene(game).handle_routed(RoutedInput(InputAction.UI_CANCEL, InputDevice.GAMEPAD))
+
+    assert calls == ["pop", "pop", "pop"]

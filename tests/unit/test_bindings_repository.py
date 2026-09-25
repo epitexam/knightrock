@@ -57,6 +57,34 @@ def test_corrupted_or_unknown_bindings_fall_back_to_defaults(tmp_path: Path) -> 
     assert repository.load() == InputBindings()
 
 
+def test_legacy_file_without_back_button_mirrors_cancel_binding(tmp_path: Path) -> None:
+    """Fichier écrit avant le retour universel : le bouton B devient ui_back."""
+    path = tmp_path / "settings.json"
+    repository = BindingsRepository(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    buttons = payload["bindings"]["menu"]["gamepad_buttons"]
+    del buttons["ui_back"]
+    buttons["ui_cancel"] = 3  # bouton X : ancien binding utilisateur
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = repository.load()
+
+    assert loaded.menu.gamepad_buttons[InputAction.UI_BACK] == 3
+    assert loaded.menu.gamepad_buttons[InputAction.UI_CANCEL] == 3
+
+
+def test_back_button_can_be_bound_apart_from_cancel(tmp_path: Path) -> None:
+    repository = BindingsRepository(tmp_path / "settings.json")
+    buttons = MappingProxyType({**InputBindings().menu.gamepad_buttons, InputAction.UI_CANCEL: 8})
+
+    repository.save(InputBindings(menu=MenuBindings(gamepad_buttons=buttons)))
+    loaded = repository.load()
+
+    assert loaded.menu.gamepad_buttons[InputAction.UI_BACK] == 1
+    assert loaded.menu.gamepad_buttons[InputAction.UI_CANCEL] == 8
+
+
 def test_repository_keeps_ui_actions_out_of_gameplay_context(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text(

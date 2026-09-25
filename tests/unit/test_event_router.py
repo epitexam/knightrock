@@ -14,14 +14,17 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
 
     keyboard = router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
     mouse = router.route(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(12, 24)))
+    right_click = router.route(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=3, pos=(5, 5)))
     gamepad = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
     assert keyboard == RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD)
     assert mouse == RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=(12, 24))
+    assert right_click == RoutedInput(InputAction.UI_BACK, InputDevice.MOUSE)
     assert gamepad == RoutedInput(InputAction.UI_CONFIRM, InputDevice.GAMEPAD)
     cancel = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
 
-    assert cancel == RoutedInput(InputAction.UI_CANCEL, InputDevice.GAMEPAD)
+    # Bouton B (manette) = retour : routé vers UI_BACK et UI_CANCEL.
+    assert cancel == RoutedInput(InputAction.UI_BACK, InputDevice.GAMEPAD)
 
 
 def test_router_maps_hat_and_axis_with_release_threshold() -> None:
@@ -150,3 +153,31 @@ def test_dispatcher_forwards_raw_and_routed_inputs() -> None:
 
     assert scene.raw == 1
     assert scene.routed == [RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)]
+
+
+def test_router_peeks_whether_a_key_or_button_would_route() -> None:
+    """``would_route_*`` : peek sans état pour l'écran Contrôles (UI-5)."""
+    router = EventRouter()
+
+    assert router.would_route_key(pygame.K_DOWN) is True
+    assert router.would_route_key(pygame.K_n) is True  # raccourci nouvelle partie
+    assert router.would_route_key(pygame.K_x) is False
+    assert router.would_route_button(1) is True
+    assert router.would_route_button(9) is False
+
+    # Le peek suit les bindings courants, sans consommer d'événement.
+    router.set_bindings(
+        InputBindings(
+            menu=MenuBindings(
+                keyboard=MappingProxyType({InputAction.UI_UP: pygame.K_x}),
+                new_game_key=None,
+            )
+        )
+    )
+
+    assert router.would_route_key(pygame.K_x) is True
+    assert router.would_route_key(pygame.K_DOWN) is False
+    assert router.would_route_key(pygame.K_n) is False
+    assert router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x)) == RoutedInput(
+        InputAction.UI_UP, InputDevice.KEYBOARD
+    )

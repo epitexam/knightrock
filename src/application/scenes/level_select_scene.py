@@ -40,6 +40,14 @@ class LevelSelectScene(Scene):
         if routed_input.action is InputAction.UI_BACK:
             self.game.scene_manager.pop()
             return
+        # Bouton B (manette) = retour, comme ESC / clic droit.
+        # (device_removed garde son sens système : on l'ignore ici.)
+        if (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        ):
+            self.game.scene_manager.pop()
+            return
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )

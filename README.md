@@ -7,8 +7,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-665%20passing-brightgreen)](#tests--quality)
-[![coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen)](#tests--quality)
+[![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
 ---
@@ -40,9 +40,9 @@
 | **Frame-data combat** | Startup / active / recovery phases, chargeable heavies, combos, juggles, OTG guard and multi-hitbox attacks. |
 | **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms and spatial hashing. |
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
-| **Scene stack** | Menu, gameplay, pause and game-over scenes with a synchronous, ordered [event bus](#architecture). |
+| **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 665 tests, 91 % instruction / 88 % branch coverage, Ruff (lint, format, `C901`) and strict mypy — all blocking in CI. |
+| **Quality gates** | 981 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy — all blocking in CI. |
 
 ---
 
@@ -90,7 +90,8 @@ DEBUG=1 uv run python main.py
 | Attack 4 — dash attack (lunge; cancels a dash) | `F` |
 | Special attack | `G` + `H` |
 | Pause / resume | `Esc` / `Enter` |
-| Menu navigation | `Enter` / `N` / `Esc` |
+| Menu navigation | `Enter` / `N` |
+| Back in menus | `Esc` / right click |
 
 **Gamepad**
 
@@ -106,6 +107,14 @@ DEBUG=1 uv run python main.py
 | Reset | `7` |
 | Dash | Axis `2` |
 | Special attack | `1` + `3` |
+| Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
+| Back in menus | `1` (`B`) |
+
+**In-game screens:** the main menu and the pause screen open **Options** (UI
+scale, fullscreen, vsync, stick Y) and **Controls**, which rebinds any keyboard
+key or pad button (two keys for left/right). Choices are written to
+`~/.knightrock/settings.json` and apply without restarting. The window is
+resizable; the surface, camera and HUD follow the new size.
 
 **Debug spawns:** `G` goblin · `P` slime · `T` dummy.
 
@@ -225,13 +234,13 @@ Run the suite:
 uv run pytest
 ```
 
-Coverage — CI enforces an 80 % instruction threshold (currently **91 %**):
+Coverage — CI enforces an 80 % instruction threshold (currently **89 %**):
 
 ```bash
 uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
-Branch coverage is measured separately (currently **88 %**) and is *not*
+Branch coverage is measured separately (currently **86 %**) and is *not*
 compared against the instruction percentage:
 
 ```bash
@@ -247,8 +256,8 @@ uv run ruff check src tests --select C901   # cyclomatic complexity (threshold 1
 uv run mypy src                             # types
 ```
 
-> **Current baseline:** 910 tests passing · 91 % instruction coverage ·
-> 88 % branch coverage · Ruff clean · mypy clean on 128 files. Tests run headless
+> **Current baseline:** 981 tests passing · 89 % instruction coverage ·
+> 86 % branch coverage · Ruff clean · mypy clean on 138 files. Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
@@ -273,7 +282,8 @@ uv run --with pyinstaller==6.22.2 pyinstaller knightrock.spec --noconfirm --clea
 ```
 src/
 ├── application/   Scene stack, event bus, save game
-│   └── scenes/    menu · gameplay · pause · game over · menu panel
+│   └── scenes/    menu · level select · options · controls · gameplay ·
+│                  pause · game over · victory
 ├── core/          Bootstrap (game.py), settings, paths, colors, fx
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
@@ -324,5 +334,7 @@ docs/ · notes/     Refactoring plans and audit reports
 
 - `docs/plans/` — refactoring plans (knockback debug arrow, reaction authority).
 - `notes/audit.md` and `notes/audit_phase5.md` — code audits (written in French).
+- `notes/audit_ui.md` and `notes/audit_controles.md` — UI and input audits, with
+  the delivery matrix and acceptance checklist (written in French).
 - `notes/refactoring_handoff.md` — refactoring backlog and measured baselines
   (written in French).

@@ -209,3 +209,51 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
     assert game.display_surface is not None
     assert game.display_surface.get_size() == (800, 600)
     assert game.settings.vsync is True
+
+
+def test_user_resize_rebuilds_the_display_without_persisting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """§9 : un VIDEORESIZE recrée la surface et la propage aux scènes."""
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    propagate = Mock()
+    monkeypatch.setattr(game.scene_manager, "set_display_surface", propagate)
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=800, h=600, size=(800, 600))],
+    )
+
+    game._handle_events()
+
+    assert (game.settings.width, game.settings.height) == (800, 600)
+    assert game.display_surface is not None
+    assert game.display_surface.get_size() == (800, 600)
+    propagate.assert_called_once_with(game.display_surface)
+    # La taille reste en mémoire : le drag n'écrit pas settings.json.
+    assert not (tmp_path / "settings.json").exists()
+
+
+def test_user_resize_is_clamped_to_the_supported_bounds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    monkeypatch.setattr(
+        pygame.event,
+        "get",
+        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=100, h=100, size=(100, 100))],
+    )
+
+    game._handle_events()
+
+    assert (game.settings.width, game.settings.height) == (320, 240)
+    assert game.display_surface is not None
+    assert game.display_surface.get_size() == (320, 240)

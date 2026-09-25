@@ -14,6 +14,13 @@ from src.core.settings import Display
 
 SETTINGS_FORMAT_VERSION = 1
 
+# Bornes vidéo acceptées : elles valident ``settings.json`` et servent aussi de
+# clamp au redimensionnement utilisateur (``Game._resize_display``).
+MIN_WINDOW_WIDTH = 320
+MIN_WINDOW_HEIGHT = 240
+MAX_WINDOW_WIDTH = 7680
+MAX_WINDOW_HEIGHT = 4320
+
 
 @dataclass(frozen=True)
 class UserSettings:
@@ -51,8 +58,15 @@ class UserSettings:
         ui = data.get("ui", {})
         if not isinstance(video, dict) or not isinstance(ui, dict):
             raise ValueError("settings sections must be objects")
-        width = _bounded_int(video.get("width", Display.WIDTH), "video.width", 320, 7680)
-        height = _bounded_int(video.get("height", Display.HEIGHT), "video.height", 240, 4320)
+        width = _bounded_int(
+            video.get("width", Display.WIDTH), "video.width", MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH
+        )
+        height = _bounded_int(
+            video.get("height", Display.HEIGHT),
+            "video.height",
+            MIN_WINDOW_HEIGHT,
+            MAX_WINDOW_HEIGHT,
+        )
         fullscreen = _bounded_bool(video.get("fullscreen", False), "video.fullscreen")
         vsync = _bounded_bool(video.get("vsync", False), "video.vsync")
         scale = ui.get("scale", 1.0)

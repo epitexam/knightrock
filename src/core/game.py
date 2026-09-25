@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 import pygame
@@ -11,8 +12,16 @@ from src.application.events import EventBus, LevelCompleted, LevelStarted, Playe
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
-from src.application.settings_store import SettingsStore, UserSettings
+from src.application.settings_store import (
+    MAX_WINDOW_HEIGHT,
+    MAX_WINDOW_WIDTH,
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
+    SettingsStore,
+    UserSettings,
+)
 from src.core.input.event_router import EventRouter
+from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
@@ -105,6 +114,19 @@ class Game:
             self.scene_manager.set_display_surface(self.display_surface)
             self.scene_manager.set_ui_scale(settings.ui_scale)
 
+    def apply_bindings(self, bindings: InputBindings) -> None:
+        """Met à jour les bindings sans recréer l'affichage (rebinding en jeu).
+
+        ``apply_settings`` reconstruit la fenêtre (échelle UI, plein écran…) :
+        inacceptable à chaque capture de touche de l'écran Contrôles. Ici on ne
+        persiste que les bindings et on réarme routeur + provider.
+        """
+        self.settings = self.settings.with_bindings(bindings)
+        self.input_bindings = self.settings.bindings
+        self.input_router.set_bindings(self.input_bindings)
+        self.input_provider.set_bindings(self.input_bindings)
+        self.settings_store.save(self.settings)
+
     def _configure_display(self) -> pygame.Surface:
         flags = pygame.RESIZABLE
         if self.settings.fullscreen:
@@ -114,6 +136,26 @@ class Game:
             flags,
             vsync=1 if self.settings.vsync else 0,
         )
+
+    def _resize_display(self, width: int, height: int) -> None:
+        """Recrée la surface après un redimensionnement utilisateur (§9).
+
+        La nouvelle taille est gardée en mémoire seulement : réécrire
+        ``settings.json`` à chaque événement de drag serait du bruit disque.
+        Le prochain ``apply_settings`` (option vidéo, échelle UI…) la
+        persistera au passage.
+        """
+        size = (
+            max(MIN_WINDOW_WIDTH, min(width, MAX_WINDOW_WIDTH)),
+            max(MIN_WINDOW_HEIGHT, min(height, MAX_WINDOW_HEIGHT)),
+        )
+        if size == (self.settings.width, self.settings.height):
+            return
+        self.settings = replace(self.settings, width=size[0], height=size[1])
+        if self.display_surface is None:
+            return
+        self.display_surface = self._configure_display()
+        self.scene_manager.set_display_surface(self.display_surface)
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -157,6 +199,11 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
                 return
+
+            if event.type == pygame.VIDEORESIZE:
+                # Redimensionnement utilisateur : surface recréée et propagée
+                # aux scènes (renderer, caméra, HUD), sans redémarrer.
+                self._resize_display(int(getattr(event, "w", 0)), int(getattr(event, "h", 0)))
 
             if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks

@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 import pygame
 from pygame.joystick import JoystickType
@@ -79,10 +80,17 @@ class LocalInputProvider(InputProvider):
                 self._current_joy_buttons[index] = bool(self._joystick.get_button(index))
             for index in range(self._joystick.get_numaxes()):
                 self._current_joy_axes[index] = self._joystick.get_axis(index)
-            for index in set(gameplay.gamepad_hats.values()):
+            hat_indices = {
+                index
+                for binding in gameplay.gamepad_hats.values()
+                for index in (binding if isinstance(binding, tuple) else (binding,))
+            }
+            for index in hat_indices:
                 self._current_joy_hats[index] = self._joystick.get_hat(index)
 
         down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN)
+        if not down_held:
+            down_held = self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_DOWN)
         if not down_held:
             down_axis = self._apply_deadzone(
                 self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_DOWN)
@@ -99,6 +107,7 @@ class LocalInputProvider(InputProvider):
             InputAction.JUMP: self._key_held(keys, gameplay.keyboard, InputAction.JUMP)
             or self._button_held(gameplay.gamepad_buttons, InputAction.JUMP),
             InputAction.DASH: self._key_held(keys, gameplay.keyboard, InputAction.DASH)
+            or self._button_held(gameplay.gamepad_buttons, InputAction.DASH)
             or self._axis_value(gameplay.gamepad_axes, InputAction.DASH)
             > InputSettings.DASH_AXIS_THRESHOLD,
             InputAction.RESET: self._key_held(keys, gameplay.keyboard, InputAction.RESET)
@@ -129,16 +138,32 @@ class LocalInputProvider(InputProvider):
 
     def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
         bindings = self._bindings.gameplay
-        axis_keys = bindings.keyboard[InputAction.MOVE_X]
-        if not isinstance(axis_keys, tuple):
-            raise ValueError("MOVE_X must bind two keyboard keys")
-        left_key, right_key = axis_keys
-        keyboard_axis = float(self._key_value(keys, right_key)) - float(
-            self._key_value(keys, left_key)
-        )
+        keyboard_axis = self._keyboard_axis_value(keys, bindings.keyboard)
+        if keyboard_axis == 0.0:
+            keyboard_axis = self._pad_button_axis_value(bindings.gamepad_buttons)
         analog = self._apply_deadzone(self._axis_value(bindings.gamepad_axes, InputAction.MOVE_X))
         hat = float(self._hat_value(bindings.gamepad_hats, InputAction.MOVE_X)[0])
         return resolve_move_axis(keyboard_axis, analog, hat)
+
+    def _keyboard_axis_value(
+        self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap
+    ) -> float:
+        axis_keys = bindings.get(InputAction.MOVE_X)
+        if not isinstance(axis_keys, tuple) or len(axis_keys) != 2:
+            # MOVE_X détachée depuis l'écran Contrôles : axe clavier nul.
+            return 0.0
+        left_key, right_key = axis_keys
+        return float(self._key_value(keys, right_key)) - float(self._key_value(keys, left_key))
+
+    def _pad_button_axis_value(self, bindings: ButtonMap) -> float:
+        """D-pad exposé en boutons : paire (gauche, droite) liée à MOVE_X."""
+        indices = self._pad_indices(bindings, InputAction.MOVE_X)
+        if len(indices) != 2:
+            return 0.0
+        left, right = indices
+        return float(self._current_joy_buttons.get(right, False)) - float(
+            self._current_joy_buttons.get(left, False)
+        )
 
     @staticmethod
     def _key_value(keys: Sequence[bool] | Mapping[int, bool], key: int) -> bool:
@@ -149,18 +174,36 @@ class LocalInputProvider(InputProvider):
     def _key_held(
         self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap, action: InputAction
     ) -> bool:
-        key = bindings[action]
-        codes = key if isinstance(key, tuple) else (key,)
+        binding = bindings.get(action)
+        if binding is None:
+            # Action détachée depuis l'écran Contrôles : jamais active.
+            return False
+        codes = binding if isinstance(binding, tuple) else (binding,)
         return any(self._key_value(keys, code) for code in codes)
 
+    @staticmethod
+    def _pad_indices(bindings: ButtonMap, action: InputAction) -> tuple[int, ...]:
+        """Indices SDL liés à ``action`` (1 index, ou la paire de MOVE_X)."""
+        binding = bindings.get(action)
+        if binding is None:
+            return ()
+        return binding if isinstance(binding, tuple) else (binding,)
+
     def _button_held(self, bindings: ButtonMap, action: InputAction) -> bool:
-        return self._current_joy_buttons.get(bindings[action], False)
+        return any(
+            self._current_joy_buttons.get(index, False)
+            for index in self._pad_indices(bindings, action)
+        )
 
     def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
-        return self._current_joy_axes.get(bindings[action], 0.0)
+        bindings = cast(Mapping[InputAction, int], bindings)
+        index = bindings.get(action)
+        return 0.0 if index is None else self._current_joy_axes.get(index, 0.0)
 
     def _hat_value(self, bindings: ButtonMap, action: InputAction) -> tuple[float, float]:
-        return self._current_joy_hats.get(bindings[action], (0.0, 0.0))
+        indices = self._pad_indices(bindings, action)
+        index = indices[0] if indices else None
+        return (0.0, 0.0) if index is None else self._current_joy_hats.get(index, (0.0, 0.0))
 
     @staticmethod
     def _combo_held(

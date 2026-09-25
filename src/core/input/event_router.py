@@ -25,6 +25,17 @@ class RoutedInput:
     variant: str | None = None
 
 
+# Priorité fixe des boutons de menu : l'écran Contrôles réécrit les maps, donc
+# l'ordre du dict du fichier n'est plus un contrat. UI_BACK passe avant
+# UI_CANCEL pour que le bouton B reste le retour même quand les deux actions le
+# partagent (défaut historique), UI_CONFIRM avant tout le reste.
+UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
+    InputAction.UI_CONFIRM,
+    InputAction.UI_BACK,
+    InputAction.UI_CANCEL,
+)
+
+
 class EventRouter:
     def __init__(
         self,
@@ -57,6 +68,10 @@ class EventRouter:
                 InputDevice.MOUSE,
                 position=tuple(getattr(event, "pos", (0, 0))),
             )
+        if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) != 1:
+            action = self._mouse_button_action(getattr(event, "button", -1))
+            if action is not None:
+                return RoutedInput(action, InputDevice.MOUSE)
         if event.type == pygame.MOUSEBUTTONUP and getattr(event, "button", 0) == 1:
             return RoutedInput(
                 InputAction.UI_POINTER_UP,
@@ -105,9 +120,30 @@ class EventRouter:
         return None
 
     def _route_gamepad_button(self, button: int) -> RoutedInput | None:
-        for action, binding in self._bindings.menu.gamepad_buttons.items():
+        action = self._menu_button_action(button)
+        if action is None:
+            return None
+        return RoutedInput(action, InputDevice.GAMEPAD)
+
+    def _mouse_button_action(self, button: int) -> InputAction | None:
+        bindings = self._bindings.menu.mouse_buttons
+        for action in UI_BUTTON_PRIORITY:
+            if bindings.get(action) == button:
+                return action
+        for action, binding in bindings.items():
             if binding == button:
-                return RoutedInput(action, InputDevice.GAMEPAD)
+                return action
+        return None
+
+    def _menu_button_action(self, button: int) -> InputAction | None:
+        """Action de menu émise par ``button`` (priorité fixe, pas d'ordre dict)."""
+        bindings = self._bindings.menu.gamepad_buttons
+        for action in UI_BUTTON_PRIORITY:
+            if bindings.get(action) == button:
+                return action
+        for action, binding in bindings.items():
+            if binding == button:
+                return action
         return None
 
     def notify_joystick_connected(self, instance_id: int, joystick: object) -> None:
@@ -135,6 +171,31 @@ class EventRouter:
     def set_bindings(self, bindings: InputBindings) -> None:
         self._bindings = bindings
         self.reset()
+
+    def would_route_key(self, key: int) -> bool:
+        """Whether a ``KEYDOWN`` of ``key`` emits an action (peek, no state).
+
+        Utilisé par l'écran Contrôles : l'événement qui termine une capture ne
+        doit pas exécuter l'action qu'il route (valider, revenir…).
+        """
+        if key == self._bindings.menu.new_game_key:
+            return True
+        return any(
+            key in (binding if isinstance(binding, tuple) else (binding,))
+            for binding in self._bindings.menu.keyboard.values()
+        )
+
+    def would_route_button(self, button: int) -> bool:
+        """Whether a ``JOYBUTTONDOWN`` of ``button`` emits an action (peek)."""
+        return self._menu_button_action(button) is not None
+
+    def would_route_axis(self, axis: int, value: float) -> bool:
+        """Whether a ``JOYAXISMOTION`` emits a UI action (peek, no state)."""
+        return self._axis_action(axis, value) is not None
+
+    def would_route_hat(self, hat: int, value: tuple[int, int]) -> bool:
+        """Whether a ``JOYHATMOTION`` emits a UI action (peek, no state)."""
+        return self._hat_action(hat, value) is not None
 
     def poll_repeats(self) -> list[RoutedInput]:
         now = self._clock()

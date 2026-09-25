@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
+from src.application.scenes.controls_scene import ControlsScene
+from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
@@ -37,6 +39,9 @@ class OptionsScene(Scene):
                     "invert_y",
                     f"Stick Y: {'inverted' if settings.bindings.menu.invert_y else 'normal'}",
                 ),
+                MenuItem("controls_menu", "Menu controls"),
+                MenuItem("video", "Video settings"),
+                MenuItem("controls_gameplay", "Gameplay controls"),
                 MenuItem("back", "Back"),
             )
         )
@@ -45,33 +50,59 @@ class OptionsScene(Scene):
         return None
 
     def handle_routed(self, routed_input: RoutedInput) -> None:
-        if routed_input.action is InputAction.UI_BACK:
+        if self._is_back(routed_input):
             self.game.scene_manager.pop()
             return
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )
+        self._handle_action(action)
+
+    @staticmethod
+    def _is_back(routed_input: RoutedInput) -> bool:
+        return routed_input.action is InputAction.UI_BACK or (
+            routed_input.action is InputAction.UI_CANCEL
+            and routed_input.variant != "device_removed"
+        )
+
+    def _handle_action(self, action: str | None) -> None:
         if action == "back":
             self.game.scene_manager.pop()
         elif action == "scale":
-            index = self.SCALE_VALUES.index(self.game.settings.ui_scale)
-            self._apply(
-                replace(
-                    self.game.settings,
-                    ui_scale=self.SCALE_VALUES[(index + 1) % len(self.SCALE_VALUES)],
-                )
-            )
+            self._cycle_scale()
         elif action == "fullscreen":
             self._apply(replace(self.game.settings, fullscreen=not self.game.settings.fullscreen))
         elif action == "vsync":
             self._apply(replace(self.game.settings, vsync=not self.game.settings.vsync))
         elif action == "invert_y":
-            menu = replace(
-                self.game.settings.bindings.menu,
-                invert_y=not self.game.settings.bindings.menu.invert_y,
+            self._toggle_invert_y()
+        elif action == "video":
+            self.game.scene_manager.push(VideoScene(self.game))
+        elif action == "controls_menu":
+            self._open_controls(ControlsScene.MENU_SECTION)
+        elif action == "controls_gameplay":
+            self._open_controls(ControlsScene.GAMEPLAY_SECTION)
+
+    def _cycle_scale(self) -> None:
+        index = self.SCALE_VALUES.index(self.game.settings.ui_scale)
+        self._apply(
+            replace(
+                self.game.settings,
+                ui_scale=self.SCALE_VALUES[(index + 1) % len(self.SCALE_VALUES)],
             )
-            bindings = replace(self.game.settings.bindings, menu=menu)
-            self._apply(self.game.settings.with_bindings(bindings))
+        )
+
+    def _toggle_invert_y(self) -> None:
+        menu = replace(
+            self.game.settings.bindings.menu,
+            invert_y=not self.game.settings.bindings.menu.invert_y,
+        )
+        bindings = replace(self.game.settings.bindings, menu=menu)
+        self._apply(self.game.settings.with_bindings(bindings))
+
+    def _open_controls(self, section: str) -> None:
+        """Empile l'écran de rebinding (audit UI-5)."""
+        self.game.scene_manager.push(ControlsScene(self.game, section))
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()
