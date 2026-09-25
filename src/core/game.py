@@ -27,6 +27,10 @@ from src.data.provider import GameplayData, load_gameplay_data
 
 logger = logging.getLogger(__name__)
 
+#: Floor under which a vsync frame sleeps. A working vsync presents in about
+#: 16.7ms, so this never fires; it only catches a present that does not block.
+DISPLAY_SAFETY_FLOOR_MS = 8
+
 
 class Game:
     """Application runtime: display, input, and the scene stack.
@@ -65,6 +69,7 @@ class Game:
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
         self._settings_dirty = False
+        self._last_tick_ms = 0
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -99,6 +104,9 @@ class Game:
 
         self.clock = pygame.time.Clock()
         self._accumulator = 0.0
+        # Level loading took an arbitrary amount of wall time; the first
+        # vsync frame must not bill all of it to the simulation.
+        self._last_tick_ms = pygame.time.get_ticks()
         self.scene_manager.switch(MenuScene(self))
 
     def apply_settings(self, settings: UserSettings) -> None:
@@ -230,13 +238,44 @@ class Game:
         """Stop the loop at the end of the current frame."""
         self.running = False
 
+    def _frame_delta(self) -> float:
+        """Seconds elapsed since the previous frame, for the fixed-step accumulator.
+
+        With vsync off, the clock is the pacer: it sleeps to hold 60fps.
+
+        With vsync on, the present already blocks until the vertical blank, so
+        sleeping here as well paces the loop twice. The two waiters do not add
+        up cleanly -- a frame lands just past the blank, the present then
+        waits for the *next* one, and the frame after finds its sleep already
+        elapsed -- so the cadence alternates between on time and one refresh
+        late. That reads as a small stutter every other frame rather than as a
+        steady 30fps. Letting the present be the only pacer keeps every frame
+        exactly one refresh apart.
+        """
+        if not self.settings.vsync:
+            if self.clock is None:
+                raise RuntimeError("The game runtime is not initialized")
+            return self.clock.tick(Display.FPS) / 1000.0
+        now = pygame.time.get_ticks()
+        previous, self._last_tick_ms = self._last_tick_ms, now
+        elapsed_ms = max(0, now - previous)
+        # If the present does not actually block -- a display that ignores the
+        # vsync flag -- nothing is pacing the loop and it would run flat out.
+        # Sleeping only when the frame came in far too early keeps a safety
+        # net without reintroducing the double wait on a working setup.
+        if elapsed_ms < DISPLAY_SAFETY_FLOOR_MS:
+            pygame.time.wait(DISPLAY_SAFETY_FLOOR_MS - elapsed_ms)
+            now = pygame.time.get_ticks()
+            elapsed_ms = max(0, now - previous)
+            self._last_tick_ms = now
+        return elapsed_ms / 1000.0
+
     def _run_loop(self) -> None:
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
 
         while self.running:
-            raw_delta = self.clock.tick(Display.FPS) / 1000.0
-            self._accumulator += min(raw_delta, Simulation.MAX_FRAME_TIME)
+            self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
 
             self._handle_events()
             self.scene_manager.poll_held_repeats()
