@@ -39,8 +39,11 @@ class Camera:
         self._shift = 0.0
         self._shift_y = 0.0
         self._viewport: pygame.FRect | None = None
+        #: Offset the camera had when the last tick finished, so the draw can
+        #: show it partway towards the current one. See begin_frame.
+        self._previous_offset = pygame.math.Vector2(0.0, 0.0)
 
-    def begin_frame(self) -> None:
+    def begin_frame(self, alpha: float = 1.0) -> None:
         """Recompute the per-frame transform, once for the whole draw pass.
 
         ``is_visible`` and ``apply`` run once per visible sprite, ~1000 times
@@ -50,15 +53,25 @@ class Camera:
         across a frame -- the camera does not move while a frame is being
         drawn -- so the values are derived here and read afterwards.
 
+        ``alpha`` is the position inside the pending simulation tick, in
+        [0, 1], and the offset is blended from where it was when the last tick
+        finished towards where the tick just left it. Blending the *camera*
+        rather than each sprite is what keeps the frame coherent: every sprite
+        then moves by the same amount, so a sprite that only just entered the
+        view cannot sit ahead of its interpolated neighbours and leave a seam
+        of background along the leading edge. It also keeps the debug overlay
+        aligned for free, since the overlay maps through this same transform.
+
         Any code that mutates the camera between frames must call this, or go
         through ``follow``/``set_viewport_size``/``set_zoom`` which do.
         """
         self._shake = self.shake_offset()
-        self._shift = -self.offset.x + self._shake.x
-        self._shift_y = -self.offset.y + self._shake.y
-        self._viewport = pygame.FRect(
-            self.offset.x, self.offset.y, self.viewport_width, self.viewport_height
-        )
+        alpha = min(max(alpha, 0.0), 1.0)
+        x = self._previous_offset.x + (self.offset.x - self._previous_offset.x) * alpha
+        y = self._previous_offset.y + (self.offset.y - self._previous_offset.y) * alpha
+        self._shift = -x + self._shake.x
+        self._shift_y = -y + self._shake.y
+        self._viewport = pygame.FRect(x, y, self.viewport_width, self.viewport_height)
 
     def _ensure_frame(self) -> None:
         if self._viewport is None:
@@ -98,6 +111,9 @@ class Camera:
         self.world_height = world_height
 
     def follow(self, target_rect: pygame.FRect, delta_time: float) -> None:
+        # Where the draw left off last frame: the next begin_frame blends from
+        # here towards wherever this tick ends up.
+        self._previous_offset.update(self.offset.x, self.offset.y)
         target_x = target_rect.centerx - self.viewport_width / 2.0
         target_y = target_rect.centery - self.viewport_height / 2.0
 

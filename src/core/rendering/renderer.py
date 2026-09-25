@@ -23,18 +23,6 @@ HEALTH_BAR_CLEARANCE_PX = HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
 # Above either, the partial update costs more than the full refresh it avoids.
 DIRTY_RECT_COUNT_LIMIT = 64
 DIRTY_AREA_RATIO_LIMIT = 0.6
-# An alpha at or above this is a whole tick already elapsed: nothing to blend.
-ALPHA_FULL_THRESHOLD = 1.0
-
-
-def clamp_unit(value: float) -> float:
-    """Clamp a tick fraction into [0, 1]."""
-    return 0.0 if value < 0.0 else 1.0 if value > 1.0 else value
-
-
-def alpha_is_full(value: float) -> bool:
-    """Whether the tick fraction means "a whole tick has already elapsed"."""
-    return value >= ALPHA_FULL_THRESHOLD
 
 
 """Headroom above each sprite rect where WorldUI draws health bars."""
@@ -107,10 +95,6 @@ class Renderer:
         self._dashing_player: object | None = None
         # Render interpolation: how far the presentation sits into the current
         # tick, in [0, 1], fed from the loop's accumulator.
-        self.alpha = 0.0
-        self._previous_positions: dict[int, pygame.Rect] = {}
-        self._remembered_rects: dict[int, pygame.Rect] = {}
-        self._sim_rects: list[tuple[pygame.Rect, bool]] = []
         self._barrows: list[tuple[pygame.Surface, pygame.Rect, bool]] = []
         # Rects painted after the world pass (HUD, HP bars); folded into the
         # erase and the present on the next frame. See add_overlay_rects.
@@ -250,22 +234,14 @@ class Renderer:
 
         ``alpha`` is the position within the current simulation tick, in
         [0, 1]. It is passed rather than read from the clock so the blend is
-        a pure function of the loop state and stays reproducible.
+        a pure function of the loop state and stays reproducible. The camera
+        applies it, so every sprite, the HP bars and the debug overlay read
+        one transform and cannot drift apart.
         """
-        # Debug mode pins the blend to the current tick. The overlay annotates
-        # in world space and maps through ``camera.apply``, i.e. at the
-        # simulation position, while interpolated sprites are drawn partway
-        # towards their next one. Mixing the two detaches every box, label and
-        # line from the sprite it describes by up to half a tick, which while
-        # moving reads as annotations stuck to the previous position. Debug
-        # output is for reading exact positions, so it stays exact.
-        self.alpha = 1.0 if debug_enabled else clamp_unit(alpha)
+        self.camera.begin_frame(alpha)
         # Fresh pass: the overlay rects are re-declared by the callers after
         # this world draw (the HUD and the HP bars), so start from empty.
         self.clear_overlay_rects()
-        # One transform for the whole pass: ``is_visible``/``apply`` run once
-        # per visible sprite and the camera cannot move mid-draw.
-        self.camera.begin_frame()
         self._dashing_player = self._find_dashing_player(groups)
         blits = self._collect_visible_blits(groups)
         ghost_draws = self._update_afterimages(groups, dt)
@@ -279,18 +255,10 @@ class Renderer:
             self._record_debug_sample("world_ui_ms", (perf_counter() - started) * 1000.0)
             return None
 
+        # A sprite that carries an HP bar needs room for it: the bar is 30px
+        # wide, centred, and flips below near the top of the screen.
         dirty = [
             self._to_dirty_rect(screen_rect, headroom) for _, screen_rect, headroom in self._barrows
-        ]
-        # An interpolated sprite is blitted partway between two ticks, but the
-        # overlays drawn on top of it (HP bars) and the next tick's blit both
-        # use the simulation's own rect, so the region it will occupy has to be
-        # refreshed too. Deduplicated because a sprite that did not move this
-        # frame has one rect, not two.
-        dirty += [
-            self._to_dirty_rect(rect, headroom)
-            for rect, headroom in self._sim_rects
-            if not any(rect == screen for _, screen, _ in self._barrows)
         ]
         dirty += [self._to_dirty_rect(screen_rect) for _, screen_rect in ghost_draws]
         # Overlay rects painted after the last world pass (HUD, HP bars) and
@@ -327,11 +295,6 @@ class Renderer:
                     self.display_surface.blit(surface, screen_rect)
             self._draw_flashes(flashes, area)
         return update_rects
-
-    def _blitted_rects(self) -> dict[int, pygame.Rect]:
-        """``id(sprite) -> screen rect`` for the sprites drawn this frame."""
-        remembered = getattr(self, "_remembered_rects", None)
-        return dict(remembered) if remembered else {}
 
     def add_overlay_rects(self, rects: Sequence[pygame.Rect]) -> None:
         """Declare screen rects painted on top of this frame's world pass.
@@ -382,52 +345,14 @@ class Renderer:
             return False
         return bool(area.width * area.height > surface_area * DIRTY_AREA_RATIO_LIMIT)
 
-    def _interpolated_rect(
-        self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect
-    ) -> pygame.Rect:
-        """``screen_rect`` moved to partway between the last two ticks.
-
-        The simulation is fixed-step while the presentation is not, so the
-        position a tick wrote is on average half a tick stale and gets shown
-        twice whenever two ticks run per frame. Blending towards the next
-        tick's position removes that judder.
-
-        A sprite with no recorded previous position -- freshly spawned, or
-        not moved by the last tick -- is drawn where it is, so nothing ever
-        interpolates in from the origin.
-        """
-        previous = self._previous_positions.get(id(sprite))
-        if previous is None or alpha_is_full(self.alpha):
-            return screen_rect
-        if previous == screen_rect:
-            return screen_rect
-        return pygame.Rect(
-            previous.x + (screen_rect.x - previous.x) * self.alpha,
-            previous.y + (screen_rect.y - previous.y) * self.alpha,
-            screen_rect.width,
-            screen_rect.height,
-        )
-
-    def _remember_positions(
-        self,
-        blits: list[tuple[pygame.Surface, pygame.Rect]],
-        sprites: list[pygame.sprite.Sprite],
-    ) -> None:
-        """Record this frame's screen rects as next frame's starting point."""
-        remembered: dict[int, pygame.Rect] = {}
-        for sprite, (_, screen_rect) in zip(sprites, blits, strict=False):
-            remembered[id(sprite)] = screen_rect
-        self._previous_positions = remembered
-        self._remembered_rects = dict(remembered)
-
     def _collect_visible_blits(
         self, groups: SpriteGroups
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute screen rects for every visible plane.
 
-        Also fills ``_sim_rects`` with the simulation rect of every visible
-        sprite and whether its dirty rect needs HP-bar headroom, so the two
-        can never disagree about which sprite owns a bar.
+        Also fills ``_barrows`` with each blit and whether its dirty rect needs
+        HP-bar headroom, so the two can never disagree about which sprite owns
+        a bar.
 
         The FX plane is deliberately *not* scaled through ``_scaled_image``:
         FX particles rebuild their ``image`` every tick, so each one is a new
@@ -438,22 +363,14 @@ class Renderer:
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
         barrows: list[tuple[pygame.Surface, pygame.Rect, bool]] = []
-        culled: list[pygame.sprite.Sprite] = []
         # A sprite whose dirty rect needs HP-bar headroom. Only the entities
         # that ``draw_health_bars`` will actually bar: widening every terrain
         # tile by 30px on each side would be pure overdraw, ~900 times a level.
-        self._barred: set[int] = set()
-        self._sim_rects = []
         cached_planes = (*groups.all_sprites, *groups.fg_sprites)
         for sprite in cached_planes:
             if self.camera.is_visible(sprite.rect):
-                sim_rect = self._screen_rect(sprite)
                 headroom = self._has_health_bar(sprite)
-                self._sim_rects.append((sim_rect, headroom))
-                if headroom:
-                    self._barred.add(id(sprite))
-                screen_rect = self._interpolated_rect(sprite, sim_rect)
-                culled.append(sprite)
+                screen_rect = self._screen_rect(sprite)
                 image = self._scaled_image(sprite.image)
                 # Only a player can be dashing, and a player is an entity, so
                 # this branch is resolved by identity rather than by a
@@ -468,7 +385,6 @@ class Renderer:
                 surface = self._scaled_image_once(sprite.image)
                 blits.append((surface, screen_rect))
                 barrows.append((surface, screen_rect, False))
-        self._remember_positions(blits, culled)
         self._barrows = barrows
         return blits
 
@@ -591,7 +507,7 @@ class Renderer:
         sprite, which reads as a stripe of stale pixels trailing a moving
         enemy.
         """
-        return self.ui_manager.draw_health_bars(entities, self.camera, self._blitted_rects())
+        return self.ui_manager.draw_health_bars(entities, self.camera)
 
     def draw_debug_panels(
         self,
