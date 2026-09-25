@@ -12,13 +12,16 @@ from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
 from src.ui.panel_renderer import PanelLayout
 from src.ui.ui_manager import UIManager
+from src.ui.world_ui import HEALTH_BAR_ANCHOR_GAP, HEALTH_BAR_HEIGHT
 
-# The HP bar sits this far above the entity and is this tall; the dirty rect
-# of every sprite has to leave room for both on every side, because a bar
-# wider than a narrow sprite overhangs it and flips below near the screen top.
-HEALTH_BAR_HEIGHT = 6
-HEALTH_BAR_ANCHOR_GAP = 8
+#: Width an HP bar needs beside a narrow sprite, since the bar is a fixed
+#: width and overhangs the entity it belongs to. Only the renderer needs this:
+#: nothing is drawn from it.
 HEALTH_BAR_SIDE_CLEARANCE_PX = 30
+# The bar's own geometry -- height and the gap entity->bar -- belongs to
+# ``world_ui``, which is what actually draws it. It used to be redefined
+# here, which meant the erase could be computed from a different height than
+# the bar was drawn at: the two agreed by hand, and nothing kept them agreeing.
 HEALTH_BAR_CLEARANCE_PX = HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
 # Above either, the partial update costs more than the full refresh it avoids.
 DIRTY_RECT_COUNT_LIMIT = 64

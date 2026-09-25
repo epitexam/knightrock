@@ -195,3 +195,40 @@ def test_debug_mode_returns_none_for_full_refresh():
     groups.all_sprites.add(sprite)
 
     assert renderer.draw(groups, debug_enabled=True) is None
+
+
+def test_the_bar_clearance_is_derived_from_the_geometry_the_bar_is_drawn_with() -> None:
+    """The erase headroom and the drawn bar must not be two independent copies.
+
+    The renderer used to redefine the bar height and the entity->bar gap that
+    ``world_ui`` already owned, so the two agreed only by hand. Change one and
+    the erase would be computed from a height the bar no longer has, and the
+    part sticking out of the erased region would be left behind as a stripe --
+    the exact artefact the headroom exists to prevent.
+    """
+    from src.core.rendering.renderer import HEALTH_BAR_CLEARANCE_PX
+    from src.ui.world_ui import HEALTH_BAR_ANCHOR_GAP, HEALTH_BAR_HEIGHT
+
+    assert HEALTH_BAR_CLEARANCE_PX == HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
+
+
+def test_the_reserved_band_covers_the_bar_it_is_reserved_for() -> None:
+    """The headroom must reach the far edge of the bar it exists to cover.
+
+    Measured through the real renderer rather than through the constants, so
+    this fails if the drawn bar grows past the space the renderer reserves.
+    The label card deliberately sits outside this band: it is covered by the
+    overlay rects ``draw_health_bars`` declares, not by the sprite headroom.
+    """
+    from src.ui.world_ui import HEALTH_BAR_ANCHOR_GAP, HEALTH_BAR_HEIGHT
+
+    renderer, groups, _ = make_renderer()
+    groups.all_sprites.add(BarredSprite((20, 20)))
+
+    dirty = renderer.draw(groups)
+    assert len(dirty) == 1
+    rect = dirty[0]
+    needed = HEALTH_BAR_ANCHOR_GAP + HEALTH_BAR_HEIGHT
+    assert rect.top <= 20 - needed, (
+        f"le bandeau reserve arrive a y={rect.top}, il faut <= {20 - needed}"
+    )
