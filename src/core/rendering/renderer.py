@@ -252,7 +252,14 @@ class Renderer:
         [0, 1]. It is passed rather than read from the clock so the blend is
         a pure function of the loop state and stays reproducible.
         """
-        self.alpha = clamp_unit(alpha)
+        # Debug mode pins the blend to the current tick. The overlay annotates
+        # in world space and maps through ``camera.apply``, i.e. at the
+        # simulation position, while interpolated sprites are drawn partway
+        # towards their next one. Mixing the two detaches every box, label and
+        # line from the sprite it describes by up to half a tick, which while
+        # moving reads as annotations stuck to the previous position. Debug
+        # output is for reading exact positions, so it stays exact.
+        self.alpha = 1.0 if debug_enabled else clamp_unit(alpha)
         # Fresh pass: the overlay rects are re-declared by the callers after
         # this world draw (the HUD and the HP bars), so start from empty.
         self.clear_overlay_rects()
