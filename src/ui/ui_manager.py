@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Any
 
 import pygame
@@ -425,7 +426,7 @@ class UIManager:
         self.world_ui.draw_debug_overlays(all_sprites, camera, delta_time)
 
     def draw_health_bars(
-        self, entities: pygame.sprite.Group | list, camera: Camera
+        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
     ) -> list[pygame.Rect]:
         """Draw the HP bars; return the rects they occupy.
 

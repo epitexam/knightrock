@@ -41,13 +41,13 @@ def _tick_animation(sprite: AnimatedSprite, delta_time: float, facing_right: boo
 class OrbitingHazard(Sprite):
     def __init__(
         self,
-        pos,
-        surf,
-        radius,
-        start_angle,
-        end_angle,
-        speed,
-        groups=None,
+        pos: tuple[float, float],
+        surf: pygame.Surface,
+        radius: float,
+        start_angle: float,
+        end_angle: float,
+        speed: float,
+        groups: pygame.sprite.AbstractGroup | None = None,
         damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
         animator: Animator | None = None,
     ):
@@ -90,11 +90,11 @@ class OrbitingHazard(Sprite):
 class SpanHazard(Sprite):
     def __init__(
         self,
-        pos,
-        surf,
-        speed,
-        flip,
-        groups=None,
+        pos: tuple[float, float],
+        surf: pygame.Surface,
+        speed: float,
+        flip: bool,
+        groups: pygame.sprite.AbstractGroup | None = None,
         damage: float = HazardDamageSystem.DEFAULT_DAMAGE,
         animator: Animator | None = None,
         span: Sequence[Sequence[float]] | None = None,

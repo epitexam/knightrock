@@ -31,7 +31,7 @@ Ces écarts sont à traiter avant les lots de navigation de `notes/audit_ui.md`.
 
 - **HEAD :** `afe044f` (`master`, également `origin/master`).
 - **Périmètre :** `src/core/input/`, `src/core/game.py`, `src/entities/player_input.py`, `src/core/settings.py`, scènes de menu et tests input/runtime.
-- **Validation de référence :** 52 tests ciblés passés ; `ruff check src tests`, `mypy src` (128 fichiers) et `git diff --check` passés.
+- **Validation de référence :** 52 tests ciblés passés ; `ruff check src tests`, `mypy src` (142 fichiers) et `git diff --check` passés.
 - **Limite :** les périphériques physiques et la lecture réelle d’un contrôleur ne sont pas simulés par cette validation.
 
 ## 3. Matrice d’état
@@ -526,7 +526,7 @@ Références utiles :
 - Arbitrage avec `notes/audit_ui.md` §3/§5 : l’écran Contrôles reste de
   responsabilité UI ; le routeur, les bindings et les seuils restent couverts ici.
 - Correction des patterns : 2026-09-24, après fact-check de l’audit réécrit.
-- Validation de référence : 52 tests ciblés passés ; Ruff, mypy (128 fichiers) et `git diff --check` passés.
+- Validation de référence : 52 tests ciblés passés ; Ruff, mypy (142 fichiers) et `git diff --check` passés.
 - Les constats et décisions utiles de l’ancienne version sont conservés ; les patterns implicites sont maintenant nommés et les non-objectifs sont explicités.
 - Aucun code de contrôle n’a été modifié lors de cette correction documentaire.
 - L’implémentation des lots reste volontairement bloquée jusqu’à validation de ce document.

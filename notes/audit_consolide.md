@@ -1,7 +1,7 @@
 # Audit consolidé - Tâches restantes Knightrock
 
 > **État au 2026-09-19 (rev `e0fa07d`, branche `master`) :** vérifié un par un
-> contre le code. **719 tests verts** (`719 passed`), `ruff check` clean,
+> contre le code. **1092 tests verts** (`1092 passed`), `ruff check` clean,
 > `mypy src` clean (120 fichiers).
 >
 > **Historique :** remplace `notes/audit.md` (86% : Phases 1-3 + 5 faites),
@@ -37,7 +37,7 @@
 
 ## 2. Tâches restantes
 
-### R-1 - `Display.FPS` 180 vers 60/120 + VSYNC (reliquat Phase 1)
+### R-1 - `Display.FPS` 180 vers 60/120 + VSYNC (reliquat Phase 1) — **CLOS 2026-09-25**
 
 | Champ | Contenu |
 |---|---|
@@ -202,7 +202,7 @@ uv run ruff check src --select C901
 - [ ] R-4 : constructeur obligatoire OU cloture justifiee, ordre preserve.
 - [ ] R-5 : table de propriete ecrite, etats preserves.
 - [ ] R-6 : `rollback_to` qualifie, 4 ignores traites un par un.
-- [ ] R-7 : overrides reduits ou justifies, seuils alignes.
+- [x] R-7 : overrides supprimes (aucun `[[tool.mypy.overrides]]` restant) et `disallow_incomplete_defs` passe en global, 2026-09-25.
 - [ ] R-8 : docstring pool a jour, equilibrage consigne ou reporte.
 - [ ] R-9 : decision ecrite (faire maintenant ou au besoin feature).
-- [ ] Suite verte (`719 passed` au 2026-09-19), ruff, format et mypy bloquants, aucun test desactive pour masquer une regression.
+- [x] Suite verte (`1092 passed` au 2026-09-25), ruff, format et mypy bloquants, aucun test desactive pour masquer une regression.

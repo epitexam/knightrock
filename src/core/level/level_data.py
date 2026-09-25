@@ -3,6 +3,7 @@ Data structures for parsed TMX level data.
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import pygame
 import pytmx
@@ -77,7 +78,7 @@ class LevelData:
         return self.height * self.tile_size
 
     @classmethod
-    def from_tmx(cls, tmx_map) -> LevelData:
+    def from_tmx(cls, tmx_map: Any) -> LevelData:
         """
         Build a LevelData instance from a pytmx TiledMap.
 
@@ -110,7 +111,7 @@ class LevelData:
         )
 
 
-def _object_from_tmx(obj) -> ObjectData:
+def _object_from_tmx(obj: Any) -> ObjectData:
     """Convert a pytmx object to our ObjectData structure."""
     raw_points = getattr(obj, "points", None)
     points = [(float(px), float(py)) for px, py in raw_points] if raw_points else None

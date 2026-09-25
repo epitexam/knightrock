@@ -83,10 +83,10 @@ Les indices de boîte sont dessinés comme points vectoriels `●/○` en place 
 
 ## Recette de référence
 
-- `pytest -q` : **910 passed** ;
+- `pytest -q` : **1092 passed** ;
 - `ruff check .` : propre ;
-- `mypy src` : propre, 128 fichiers ;
+- `mypy src` : propre, 142 fichiers ;
 - benchmark de contact : reproductible, contacts 1/16/64 ;
 - tests UI : hermétiques avec et sans `DEBUG=1`.
 
-Dernière mise à jour : 2026-09-24, branche `hitbox/rework`, modifications non commitées.
+Dernière mise à jour : 2026-09-25, branche `master`.

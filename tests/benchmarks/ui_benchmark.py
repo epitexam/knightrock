@@ -1,9 +1,29 @@
+"""Frame cost of the debug panels and of every menu screen.
+
+Run it from the repo root::
+
+    uv run python tests/benchmarks/ui_benchmark.py
+
+The dummy SDL driver has no fast renderer, so the absolute numbers are
+CPU-only and not representative of a real window; the per-scene ratios are
+the actionable part. The ``menu/*`` keys cover the menu screens, whose
+frames are redrawn 60 times a second while nothing moves.
+"""
+
 from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
 from time import perf_counter
 from types import SimpleNamespace
+
+if __package__ in {None, ""}:
+    # Support ``python tests/benchmarks/ui_benchmark.py`` from the repo root:
+    # the ``src`` imports below need the repo root on the path first. The SDL
+    # drivers must also be chosen before pygame is imported.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")

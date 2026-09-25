@@ -1,6 +1,6 @@
 import math
 from collections.abc import Iterable
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import pygame
 from pygame.math import Vector2
@@ -215,7 +215,7 @@ def resolve_jump(entity: JumpEntity) -> None:
         entity.jump_buffer_timer = 0.0
 
 
-def apply_jump_cut(entity, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:
+def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:
     """Cut a rising jump short on button release (variable jump height).
 
     Neutral at the default divisor (1.0): the velocity is untouched.

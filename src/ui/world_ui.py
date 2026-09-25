@@ -48,7 +48,7 @@ UX rules (debug readability pass):
 
 import math
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame
 import pygame.gfxdraw
@@ -1245,7 +1245,7 @@ class WorldUI:
             return [[(self._projectile_line(sprite), Colors.yellow)]]
         return None
 
-    def _entity_segments(self, sprite: pygame.sprite.Sprite, state_machine) -> _Segments:
+    def _entity_segments(self, sprite: pygame.sprite.Sprite, state_machine: Any) -> _Segments:
         """One row per datum, every token paired with its display color.
 
         - header: faction-colored name (the enemy registry type for foes,
@@ -1584,7 +1584,7 @@ class WorldUI:
         return flags
 
     @staticmethod
-    def _entity_lines(sprite: pygame.sprite.Sprite, state_machine) -> list[str]:
+    def _entity_lines(sprite: pygame.sprite.Sprite, state_machine: Any) -> list[str]:
         state_name = state_machine.current_state_name or "None"
         head = f"{type(sprite).__name__} {state_name}"
         health = getattr(sprite, "health", None)

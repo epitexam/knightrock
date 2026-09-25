@@ -9,11 +9,22 @@ on:
   pull_request:
     branches:
       - master
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # A hung test would otherwise burn the full 6h default budget.
+    timeout-minutes: 15
+    env:
+      # Defence in depth: each test module also sets these itself, so one
+      # without its own fixture cannot fail on collection order alone.
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -24,7 +35,9 @@ jobs:
         with:
           enable-cache: true
       - name: Install dependencies
-        run: uv sync --dev
+        # --frozen: a lockfile that no longer matches pyproject.toml must fail
+        # the build rather than silently re-resolve and hide the drift.
+        run: uv sync --frozen --dev
       - name: Lint (ruff check)
         run: uv run ruff check src tests main.py tools
       - name: Format check (ruff format)

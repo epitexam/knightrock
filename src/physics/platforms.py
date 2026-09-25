@@ -1,15 +1,18 @@
+from collections.abc import Iterable
+from typing import Any, cast
+
 import pygame
 
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
-def _blocks(sprite, candidate: pygame.Rect) -> bool:
+def _blocks(sprite: Any, candidate: pygame.Rect) -> bool:
     """Whether ``sprite``'s box overlaps ``candidate``."""
     box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
     return box is not None and box.colliderect(candidate)
 
 
-def _static_blockers(platform, candidate: pygame.Rect):
+def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | None:
     """The static terrain that could block ``candidate``.
 
     Prefers the spatial hash: a full scan of the level's collision tiles was
@@ -23,7 +26,7 @@ def _static_blockers(platform, candidate: pygame.Rect):
         return None
     spatial_hash = getattr(platform, "spatial_hash", None)
     if spatial_hash is not None:
-        return spatial_hash.get_nearby(candidate)
+        return cast("Iterable[Any]", spatial_hash.get_nearby(candidate))
     return (
         s
         for s in static_sprites
@@ -31,7 +34,7 @@ def _static_blockers(platform, candidate: pygame.Rect):
     )
 
 
-def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
+def _limit_to_clear(platform: Any, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
     """Shorten a platform's step so it never overlaps static terrain.
 
     Returns the allowed step (possibly a zero vector) and whether the
@@ -52,7 +55,7 @@ def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Ve
     return step * 0, True
 
 
-def update_moving_platform(platform, delta_time: float) -> None:
+def update_moving_platform(platform: Any, delta_time: float) -> None:
     """Update a moving platform's position along its waypoints."""
     platform.old_rect = platform.rect.copy()
     platform.old_hitbox = platform.hitbox.copy()

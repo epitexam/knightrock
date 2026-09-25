@@ -1,3 +1,5 @@
+from typing import Any
+
 import pygame
 
 from src.core.settings import Separation as Sep
@@ -67,7 +69,7 @@ class SeparationSystem:
             ent_b.sync_rects()
 
     @staticmethod
-    def _push(ent_a, ent_b, delta_a: float, delta_b: float, axis: str) -> None:
+    def _push(ent_a: Any, ent_b: Any, delta_a: float, delta_b: float, axis: str) -> None:
         if ent_a.pushable and ent_b.pushable:
             setattr(ent_a.hitbox, axis, getattr(ent_a.hitbox, axis) + delta_a)
             setattr(ent_b.hitbox, axis, getattr(ent_b.hitbox, axis) + delta_b)

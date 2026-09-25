@@ -14,8 +14,8 @@ Contraintes :
 
 État observé :
 
-- `pytest -q` : **910 tests passés** dans l’ordre actuel ;
-- `mypy src` : **128 fichiers analysés, aucune erreur** ;
+- `pytest -q` : **1092 tests passés** dans l’ordre actuel ;
+- `mypy src` : **142 fichiers analysés, aucune erreur** ;
 - `ruff check .` : propre ;
 - sweep AABB actif pour melee, projectiles et hazards mobiles ; hazards statiques et contact damage restent discrets ;
 - le test UI est désormais hermétique avec et sans `DEBUG=1` ;

@@ -4,11 +4,13 @@ Builds game objects from parsed level data using registries for extensibility.
 
 import functools
 import logging
+from collections.abc import Sequence
 
 import pygame
 
 from src.core.colors import Colors
 from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
+from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
 from src.core.level.systems.hazard_damage import HazardDamageSystem
@@ -24,8 +26,11 @@ logger = logging.getLogger(__name__)
 TILE_LAYER_HANDLERS: Registry = Registry("tile layer")
 OBJECT_FACTORIES: Registry = Registry("object")
 
+#: Tiled tile layer as ``(x, y, surface)`` triples.
+TileList = Sequence[tuple[int, int, pygame.Surface]]
 
-def _build_terrain(tiles, groups: SpriteGroups) -> None:
+
+def _build_terrain(tiles: TileList, groups: SpriteGroups) -> None:
     """Create solid terrain sprites from tile layer tiles."""
     for x, y, surf in tiles:
         Sprite(
@@ -35,7 +40,7 @@ def _build_terrain(tiles, groups: SpriteGroups) -> None:
         )
 
 
-def _build_decor(tiles, groups: SpriteGroups, *, foreground: bool) -> None:
+def _build_decor(tiles: TileList, groups: SpriteGroups, *, foreground: bool) -> None:
     """Create decorative sprites from tile layer tiles."""
     target = groups.fg_sprites if foreground else groups.all_sprites
     for x, y, surf in tiles:
@@ -46,7 +51,7 @@ def _build_decor(tiles, groups: SpriteGroups, *, foreground: bool) -> None:
         )
 
 
-def _build_one_way_platforms(tiles, groups: SpriteGroups) -> None:
+def _build_one_way_platforms(tiles: TileList, groups: SpriteGroups) -> None:
     """Create one-way platform tiles: solid on top, pass-through elsewhere.
 
     An entity standing on top is supported (floor contact); jumping from
@@ -252,11 +257,11 @@ class WorldBuilder:
     static images (if they have one) or logged as ignored.
     """
 
-    def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None):
+    def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
         self.level_data = level_data
         self.gameplay_data = gameplay_data
 
-    def build(self, groups: SpriteGroups, input_manager):
+    def build(self, groups: SpriteGroups, input_manager: InputManager) -> Player:
         """
         Build all sprites and return the player instance.
 
@@ -285,7 +290,7 @@ class WorldBuilder:
 
         return player
 
-    def _build_player(self, groups: SpriteGroups, input_manager):
+    def _build_player(self, groups: SpriteGroups, input_manager: InputManager) -> Player | None:
         """Locate the player object and instantiate it."""
         config = self.gameplay_data.player if self.gameplay_data is not None else None
         for layer in self.level_data.object_layers.values():
@@ -304,7 +309,7 @@ class WorldBuilder:
                     return player
         return None
 
-    def _build_object(self, obj: ObjectData, groups: SpriteGroups, player) -> None:
+    def _build_object(self, obj: ObjectData, groups: SpriteGroups, player: Player | None) -> None:
         """
         Build a single object from an object layer.
 

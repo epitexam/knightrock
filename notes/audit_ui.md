@@ -27,10 +27,10 @@ l’audio (lot 5, optionnel) et un tutoriel de contrôles gameplay (UI-8, partie
 - **HEAD :** `afe044f` (`master`)
 - **Historique UI :** `4f8b025` → `1f5e3fa` → état courant
 - **Périmètre :** `src/application/`, `src/ui/`, `src/core/game.py`, `src/core/input/`, `src/core/settings.py`, tests associés.
-- **Validation de référence :** suite complète à 910 tests ; Ruff et mypy propres.
+- **Validation de référence :** suite complète à 1092 tests ; Ruff et mypy propres.
 - **Mise à jour d’état :** 2026-09-24, branche `feat/audit-ui-implementation` —
-  981 tests verts avec et sans `DEBUG`, 89 % instructions / 86 % branches,
-  Ruff et mypy (138 fichiers) propres.
+  1092 tests verts avec et sans `DEBUG`, 89 % instructions / 86 % branches,
+  Ruff et mypy (142 fichiers, sans override) propres.
 
 Les références de lignes de l’ancienne version ne sont pas reproduites telles quelles : elles sont remplacées par les chemins de fichiers et les tests qui définissent désormais le contrat.
 

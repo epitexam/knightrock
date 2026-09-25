@@ -396,7 +396,6 @@ class ControlsScene(Scene):
         self._apply_buttons(spec, (button,))
 
     def _capture_axis(self, axis: int, value: float) -> None:
-
         capture = self._capture
         if capture is None or capture[1] != GAMEPAD_COLUMN or abs(value) < 0.6:
             return

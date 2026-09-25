@@ -2,10 +2,13 @@
 
 from collections.abc import Iterable
 
+from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.physics.entity_grid import EntityGrid
+from src.physics.spatial_hash import SpatialHashMember
 
 
 def _always_contact(_target_id: str) -> bool:
@@ -68,9 +71,9 @@ class HazardDamageSystem:
 
     def process(
         self,
-        entity_sprites: Iterable,
-        hazard_sprites: Iterable,
-        entity_grid=None,
+        entity_sprites: Iterable[Combatant],
+        hazard_sprites: Iterable[SpatialHashMember],
+        entity_grid: EntityGrid | None = None,
     ) -> None:
         """Apply damage for every overlap between a hazard and a live entity."""
         entities = tuple(entity_sprites)

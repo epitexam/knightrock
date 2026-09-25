@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-1092%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -43,7 +43,7 @@
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 981 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy — all blocking in CI. |
+| **Quality gates** | 1092 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI, over `src`, `tests`, `main.py` and `tools/`. |
 
 ---
 
@@ -179,7 +179,7 @@ frame cost predictable:
 
 ## Gameplay camera
 
-The camera follows the player and applies a **gameplay zoom** of `1.15`
+The camera follows the player and applies a **gameplay zoom** of `1.25`
 (`GameplayCamera.ZOOM` in `src/core/settings.py`), so it draws the world
 larger and shows ~15% less of it on each axis. The framing is deliberately
 tight: the player sees less of what is coming, which keeps tension and
@@ -294,14 +294,24 @@ uv run pytest --cov=src --cov-branch --cov-report=term-missing
 Static analysis — every check below is **blocking in CI**:
 
 ```bash
-uv run ruff check src tests                 # lint
-uv run ruff format --check src tests        # formatting
-uv run ruff check src tests --select C901   # cyclomatic complexity (threshold 10)
-uv run mypy src                             # types
+uv run ruff check src tests main.py tools            # lint
+uv run ruff format --check src tests main.py tools   # formatting
+uv run ruff check src tests --select C901            # complexity (threshold 10)
+uv run mypy src main.py tools                         # types
 ```
 
-> **Current baseline:** 981 tests passing · 89 % instruction coverage ·
-> 86 % branch coverage · Ruff clean · mypy clean on 138 files. Tests run headless
+`src` carries no mypy per-module override any more, and
+`disallow_incomplete_defs` is on globally, so a partially annotated signature
+is a CI failure rather than something mypy quietly accepts. The same gates run
+locally through `pre-commit`:
+
+```bash
+uv run pre-commit install   # once
+uv run pre-commit run --all-files
+```
+
+> **Current baseline:** 1092 tests passing · 89 % instruction coverage ·
+> 86 % branch coverage · Ruff clean · mypy clean on 142 files. Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
@@ -333,9 +343,9 @@ src/
 │   ├── level/     Level facade + ordered fixed-tick systems
 │   ├── rendering/ Camera, renderer, dirty-rect presentation
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
-│   └── animation/ Asset library and animator
-├── combat/        Frame data, combat component/system, hit resolver,
-│                  knockback, charge and combo tracking
+│                   Asset library and animator (`core/asset_library.py`)
+├── combat/        Frame data, hit resolver, knockback, charge and combo
+│                  tracking (CombatSystem lives in core/level/systems/)
 ├── entities/      Entity base, player + controllers, projectiles, vitals
 │   └── enemies/   Data-driven configs, factory, per-type behaviour
 ├── physics/       Collisions, gravity, movement, spatial hash, entity grid
@@ -344,7 +354,7 @@ src/
 └── data/          Strict JSON loaders + in-code fallback values
 data/gameplay/     Tracked JSON gameplay values (attacks, enemies, player, levels)
 assets/            TMX levels and sprites — required at runtime (git-ignored)
-docs/ · notes/     Refactoring plans and audit reports
+notes/             Refactoring plans, audit reports and open gaps
 ```
 
 **Reading the code, module by module**
@@ -376,9 +386,8 @@ docs/ · notes/     Refactoring plans and audit reports
 
 ## Documentation
 
-- `docs/plans/` — refactoring plans (knockback debug arrow, reaction authority).
-- `notes/audit.md` and `notes/audit_phase5.md` — code audits (written in French).
+- `notes/audit_consolide.md` — consolidated code audit (written in French).
 - `notes/audit_ui.md` and `notes/audit_controles.md` — UI and input audits, with
   the delivery matrix and acceptance checklist (written in French).
-- `notes/refactoring_handoff.md` — refactoring backlog and measured baselines
+- `notes/ecarts_ouverts.md` — open gaps and the measured reference baseline
   (written in French).

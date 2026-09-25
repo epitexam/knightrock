@@ -44,6 +44,8 @@ def test_contact_damage_applies_to_fast_overlapping_pair():
 
 
 def test_contact_damage_ignores_slow_pair():
+    # The momentum threshold is covered in test_contact_unified.py; this file
+    # only needs the pair to be below it, which two zero-speed entities are.
     a, b = PairEntity(0, "player", speed=0.0), PairEntity(20, "enemy", speed=0.0)
 
     ContactDamageSystem().process(pygame.sprite.Group(a, b))

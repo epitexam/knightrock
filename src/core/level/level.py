@@ -7,6 +7,7 @@ from typing import Any
 import pygame
 
 from src.application.events import EventBus, LevelStarted
+from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
@@ -54,7 +55,7 @@ class Level:
         self,
         display_surface: pygame.Surface,
         level_data: LevelData,
-        input_manager,
+        input_manager: InputManager,
         level_id: int = 0,
         events: EventBus | None = None,
         rollback_enabled: bool = False,

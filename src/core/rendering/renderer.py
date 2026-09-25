@@ -1,11 +1,13 @@
 from collections import deque
+from collections.abc import Iterable
 from time import perf_counter
 from typing import Any, cast
 
 import pygame
 
-from src.core.colors import BG_COLORS, Colors
+from src.core.colors import BG_COLORS, Color, Colors
 from src.core.level.level_data import LevelConfig
+from src.core.rendering.camera import Camera
 from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
 from src.ui.panel_renderer import PanelLayout
@@ -73,7 +75,12 @@ class Renderer:
     everything and returns ``None`` (full-screen update).
     """
 
-    def __init__(self, display_surface, camera, config: LevelConfig | None = None):
+    def __init__(
+        self,
+        display_surface: pygame.Surface,
+        camera: Camera,
+        config: LevelConfig | None = None,
+    ) -> None:
         self.display_surface = display_surface
         self.camera = camera
         self.ui_manager = UIManager(display_surface)
@@ -186,7 +193,7 @@ class Renderer:
         return result
 
     @staticmethod
-    def _resolve_background_color(config):
+    def _resolve_background_color(config: LevelConfig | None) -> Color:
         if config is not None and config.bg:
             color = BG_COLORS.get(config.bg)
             if color is not None:
@@ -194,7 +201,7 @@ class Renderer:
         return Colors.sky_blue
 
     @staticmethod
-    def _to_dirty_rect(rect) -> pygame.Rect:
+    def _to_dirty_rect(rect: pygame.Rect | pygame.FRect) -> pygame.Rect:
         """Convert a world-space FRect to an int screen rect with headroom."""
         dirty = pygame.Rect(rect)
         dirty.top -= HEALTH_BAR_CLEARANCE_PX
@@ -207,7 +214,7 @@ class Renderer:
         debug_enabled: bool = False,
         dt: float = 0.0,
         alpha: float = 0.0,
-    ):
+    ) -> list[pygame.Rect] | None:
         """Draw the world; return dirty rects, or None for a full refresh.
 
         ``alpha`` is the position within the current simulation tick, in
@@ -270,7 +277,7 @@ class Renderer:
             self._draw_flashes(flashes, area)
         return update_rects
 
-    def _find_dashing_player(self, groups: SpriteGroups) -> object | None:
+    def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
         """The one sprite that can be a dashing player, or None.
 
         ``is_player_dashing`` needs three attribute lookups to answer, and
@@ -300,7 +307,9 @@ class Renderer:
             return False
         return bool(area.width * area.height > surface_area * DIRTY_AREA_RATIO_LIMIT)
 
-    def _interpolated_rect(self, sprite, screen_rect: pygame.Rect) -> pygame.Rect:
+    def _interpolated_rect(
+        self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect
+    ) -> pygame.Rect:
         """``screen_rect`` moved to partway between the last two ticks.
 
         The simulation is fixed-step while the presentation is not, so the
@@ -324,14 +333,20 @@ class Renderer:
             screen_rect.height,
         )
 
-    def _remember_positions(self, blits, sprites) -> None:
+    def _remember_positions(
+        self,
+        blits: list[tuple[pygame.Surface, pygame.Rect]],
+        sprites: list[pygame.sprite.Sprite],
+    ) -> None:
         """Record this frame's screen rects as next frame's starting point."""
         remembered: dict[int, pygame.Rect] = {}
         for sprite, (_, screen_rect) in zip(sprites, blits, strict=False):
             remembered[id(sprite)] = screen_rect
         self._previous_positions = remembered
 
-    def _collect_visible_blits(self, groups: SpriteGroups):
+    def _collect_visible_blits(
+        self, groups: SpriteGroups
+    ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute screen rects for every visible plane.
 
         The FX plane is deliberately *not* scaled through ``_scaled_image``:
@@ -342,7 +357,7 @@ class Renderer:
         short-lived by nature, so they go through ``_scaled_image_once``.
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
-        culled: list[object] = []
+        culled: list[pygame.sprite.Sprite] = []
         self._sim_rects = []
         cached_planes = (*groups.all_sprites, *groups.fg_sprites)
         for sprite in cached_planes:
@@ -366,10 +381,13 @@ class Renderer:
         self._remember_positions(blits, culled)
         return blits
 
-    def _screen_rect(self, sprite) -> pygame.Rect:
-        return pygame.Rect(self.camera.apply(sprite.rect))
+    def _screen_rect(self, sprite: pygame.sprite.Sprite) -> pygame.Rect:
+        rect = sprite.rect
+        if rect is None:
+            return pygame.Rect(0, 0, 0, 0)
+        return pygame.Rect(self.camera.apply(pygame.FRect(rect)))
 
-    def _collect_flashes(self, groups: SpriteGroups):
+    def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """White damage-flash overlays for recently hit entities.
 
         Only entities can flash (they are the only ones with a
@@ -392,12 +410,18 @@ class Renderer:
             flashes.append((overlay, screen_rect))
         return flashes
 
-    def _draw_flashes(self, flashes, area=None) -> None:
+    def _draw_flashes(
+        self,
+        flashes: list[tuple[pygame.Surface, pygame.Rect]],
+        area: pygame.Rect | None = None,
+    ) -> None:
         for overlay, screen_rect in flashes:
             if area is None or area.colliderect(screen_rect):
                 self.display_surface.blit(overlay, screen_rect)
 
-    def _update_afterimages(self, groups: SpriteGroups, dt: float):
+    def _update_afterimages(
+        self, groups: SpriteGroups, dt: float
+    ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Maintain the dash ghost trail (render-only, capped + fading)."""
         live: list[tuple[pygame.Surface, pygame.Rect, float]] = []
         for surface, screen_rect, ttl in self._ghosts:
@@ -436,35 +460,41 @@ class Renderer:
             self._ghosts.append((ghost, ghost_rect, Afterimage.TTL))
             self._ghosts = self._ghosts[-Afterimage.MAX :]
 
-    def _draw_ghosts(self, ghost_draws, area=None) -> None:
+    def _draw_ghosts(
+        self,
+        ghost_draws: list[tuple[pygame.Surface, pygame.Rect]],
+        area: pygame.Rect | None = None,
+    ) -> None:
         for surface, screen_rect in ghost_draws:
             if area is None or area.colliderect(screen_rect):
                 self.display_surface.blit(surface, screen_rect)
 
-    def _draw_full(self, groups: SpriteGroups, blits) -> None:
+    def _draw_full(
+        self, groups: SpriteGroups, blits: list[tuple[pygame.Surface, pygame.Rect]]
+    ) -> None:
         """Full-screen repaint (debug mode or fallback)."""
         self.display_surface.fill(self.background_color)
         for surface, screen_rect in blits:
             self.display_surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities) -> list[pygame.Rect]:
+    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite]) -> list[pygame.Rect]:
         """Draw the HP bars; return the rects they occupy, to be presented."""
         return self.ui_manager.draw_health_bars(entities, self.camera)
 
     def draw_debug_panels(
         self,
-        player,
-        fps,
-        sprite_count,
-        combat_count,
-        entity_count,
-        collision_count,
-        hit_stop,
-        spawn_cooldown,
+        player: Any,
+        fps: float,
+        sprite_count: int,
+        combat_count: int,
+        entity_count: int,
+        collision_count: int,
+        hit_stop: float,
+        spawn_cooldown: float,
         game: Any = None,
         frame_time: float = 0.0,
         cache_size: int | None = None,
-    ):
+    ) -> None:
         started = perf_counter()
         self.ui_manager.renderer.interaction.begin_frame()
         if not self.ui_manager.world_ui.layers.get("panels", True):

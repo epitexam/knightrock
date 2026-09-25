@@ -4,7 +4,7 @@ Generic registry for extensible dispatch of handlers by name.
 
 import logging
 from collections.abc import Callable
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class Registry(Generic[T]):
         self._kind = kind
         self._handlers: dict[str, Callable[..., T]] = {}
 
-    def register(self, name: str):
+    def register(self, name: str) -> Callable[[Callable[..., T]], Callable[..., T]]:
         """
         Decorator to register a function for a given name.
 
@@ -50,7 +50,7 @@ class Registry(Generic[T]):
         """Return True if a handler is registered for the given name."""
         return name in self._handlers
 
-    def dispatch(self, name: str, *args, **kwargs) -> T | None:
+    def dispatch(self, name: str, *args: Any, **kwargs: Any) -> T | None:
         """
         Invoke the handler for the given name with the provided arguments.
 

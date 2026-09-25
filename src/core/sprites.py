@@ -66,7 +66,7 @@ class MovingPlatform(Sprite):
         surf: pygame.Surface,
         waypoints: Sequence[tuple[float, float]],
         speed: float,
-        groups=None,
+        groups: pygame.sprite.AbstractGroup | Iterable[pygame.sprite.AbstractGroup] | None = None,
         collision_sprites: Iterable[Any] | None = None,
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
@@ -86,11 +86,15 @@ class MovingPlatform(Sprite):
         self.old_hitbox: pygame.FRect = self.hitbox.copy()
         self.pos = pygame.math.Vector2(self.rect.topleft)
 
-    def update(self, delta_time: float):
+    def update(self, delta_time: float) -> None:
         update_moving_platform(self, delta_time)
 
 
 class LevelExit(Sprite):
-    def __init__(self, pos: tuple[float, float], groups=None):
+    def __init__(
+        self,
+        pos: tuple[float, float],
+        groups: pygame.sprite.AbstractGroup | None = None,
+    ) -> None:
         surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE), pygame.SRCALPHA)
         super().__init__(pos, color=None, surf=surf, groups=groups)
