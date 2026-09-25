@@ -313,7 +313,10 @@ class WorldUI:
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
         self.display_surface = renderer.display_surface
-        self.layers: dict[str, bool] = dict.fromkeys(OVERLAY_LAYERS, True)
+        # ``statics`` starts off: a level carries ~970 terrain tiles whose
+        # outline tells you nothing, and drawing them cost 2.8ms a frame in
+        # ``_debug_reference`` alone. F4 brings the layer back.
+        self.layers: dict[str, bool] = {name: name != "statics" for name in OVERLAY_LAYERS}
         self.metrics_text: tuple[str, ...] = ()
         self._metrics_whiffs = 0
         #: Colored ``(text, color)`` lines of the unified COMBAT panel,
@@ -359,14 +362,21 @@ class WorldUI:
         # dodge each other instead of stacking on shared screen space.
         requests: list[_LabelRequest] = []
         for sprite in all_sprites:
+            # Terrain tiles are ~970 of a level's sprites and have no hitbox,
+            # no combat state and no velocity. Gating them here, before
+            # ``_debug_reference``, is what keeps the overlay cheap: that
+            # helper builds one to three FRects per call. The exact-type test
+            # that used to sit on top of it never matched, because the tiles
+            # are a ``pygame.sprite.Sprite`` *subclass*, so every tile paid
+            # for the allocation before the ``statics`` toggle could save it.
             if type(sprite) is pygame.sprite.Sprite:
-                continue  # static tiles: ~900/level, nothing useful to show
-            reference = self._debug_reference(sprite)
-            if reference is None or not viewport.colliderect(reference):
-                continue  # culled: off-screen, not worth a single pixel
+                continue
             is_static = getattr(sprite, "hitbox", None) is None
             if is_static and not self.layers["statics"]:
                 continue
+            reference = self._debug_reference(sprite)
+            if reference is None or not viewport.colliderect(reference):
+                continue  # culled: off-screen, not worth a single pixel
             if self.layers["boxes"]:
                 self._draw_boxes(sprite, camera)
             if self.layers["velocities"]:

@@ -42,6 +42,9 @@ class Body(pygame.sprite.Sprite):
         self.image = pygame.Surface((16, 16), pygame.SRCALPHA)
         self.image.fill((255, 0, 0, 255))
         self.rect = pygame.FRect(x, 100, 16, 16)
+        #: An entity carries a hitbox; terrain tiles carry only a rect, which
+        #: is what makes them statics for the overlay.
+        self.hitbox = pygame.FRect(x, 100, 16, 16)
 
 
 def make() -> tuple[Renderer, SpriteGroups, Body]:
@@ -88,3 +91,51 @@ def test_gameplay_still_interpolates() -> None:
     blitted = renderer._barrows[0][1]
 
     assert blitted.x == pytest.approx(50.0), "halfway between 40 and 60"
+
+
+class Terrain(pygame.sprite.Sprite):
+    """A terrain tile: a rect, no hitbox. What a level is mostly made of."""
+
+    faction = None
+    is_dead = False
+    max_health = 0
+
+    def __init__(self, x: float) -> None:
+        super().__init__()
+        self.image = pygame.Surface((16, 16), pygame.SRCALPHA)
+        self.image.fill((80, 120, 80, 255))
+        self.rect = pygame.FRect(x, 100, 16, 16)
+
+
+def test_terrain_does_not_reach_the_reference_builder() -> None:
+    """The overlay must not build hitboxes for the ~970 tiles of a level.
+
+    ``_debug_reference`` allocates one to three FRects per call, and the gate
+    that used to protect it tested ``type(sprite) is pygame.sprite.Sprite``,
+    which never matches: the tiles are a *subclass*. So every tile paid for
+    the allocation before the ``statics`` toggle could skip it, and the toggle
+    defaulted to on. A level carried 972 sprites, 970 of them tiles.
+    """
+    renderer, groups, body = make()
+    world_ui = renderer.ui_manager.world_ui
+    calls: list[object] = []
+    original = world_ui._debug_reference
+    world_ui._debug_reference = lambda sprite: (  # type: ignore[method-assign]
+        calls.append(sprite) or original(sprite)
+    )
+    sprites: list[pygame.sprite.Sprite] = [body]
+    for index in range(5):
+        sprites.append(Terrain(40.0 + index * 16))
+
+    world_ui.draw_debug_overlays(sprites, renderer.camera, 0.0)
+
+    assert calls == [body], "only the entity should reach the reference builder"
+
+
+def test_the_statics_layer_can_still_bring_the_tiles_back() -> None:
+    """F4 remains a way to see terrain, the default just stops paying for it."""
+    renderer, groups, _body = make()
+    world_ui = renderer.ui_manager.world_ui
+    assert world_ui.layers["statics"] is False
+    world_ui.toggle("statics")
+    assert world_ui.layers["statics"] is True
