@@ -120,6 +120,11 @@ class Level:
         self.spatial_hash.add_all(self.groups.collision_sprites)
         for entity in self.groups.entity_sprites:
             entity.spatial_hash = self.spatial_hash
+        for platform in self.groups.moving_platforms:
+            # Same reason: the platform checks the terrain it would phase
+            # through every tick, and that check was a full scan of every
+            # collision tile in the level.
+            platform.spatial_hash = self.spatial_hash
 
         # Systems assembled by the level (audit F1.2/§4): the level owns them
         # and re-exposes the state they hold, while the gameplay loop owns the

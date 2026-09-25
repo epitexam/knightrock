@@ -8,7 +8,7 @@ import pytest
 
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.sprite_groups import SpriteGroups
-from src.core.sprites import MovingPlatform
+from src.core.sprites import MovingPlatform, Sprite
 from src.physics.platforms import update_moving_platform
 from src.physics.spatial_hash import SpatialHash
 
@@ -88,6 +88,57 @@ def test_platform_stops_at_static_terrain_instead_of_phasing_through() -> None:
     # the far waypoint at x=200.
     assert max_x <= 90.0
     assert platform.rect.x <= 30.0
+
+
+@pytest.mark.parametrize("use_hash", [False, True])
+def test_platform_blocked_by_terrain_behaves_the_same_through_the_spatial_hash(
+    use_hash: bool,
+) -> None:
+    """The grid must not change where a platform stops.
+
+    The terrain check asks *whether* something blocks, never in what order, so
+    the grid query can only differ in cost. This pins that: a level wired
+    through the grid must stop at exactly the same place as a bare scan.
+    """
+    blocker = SimpleNamespace(hitbox=pygame.FRect(90.0, 0.0, 64.0, 32.0))
+    groups = SpriteGroups()
+    tile = Sprite((0.0, 0.0), surf=pygame.Surface((64, 32)))
+    tile.hitbox = pygame.FRect(90.0, 0.0, 64.0, 32.0)
+    groups.collision_sprites.add(tile)
+    blocker = tile
+    platform = MovingPlatform(
+        (0.0, 0.0),
+        pygame.Surface((64, 32)),
+        waypoints=[(0.0, 0.0), (200.0, 0.0)],
+        speed=50.0,
+        collision_sprites=groups.collision_sprites,
+    )
+    if use_hash:
+        grid = SpatialHash(cell_size=128)
+        grid.add_all(groups.collision_sprites)
+        platform.spatial_hash = grid
+
+    trace: list[float] = []
+    for _ in range(40):
+        update_moving_platform(platform, 0.5)
+        assert not platform.hitbox.colliderect(blocker.hitbox)
+        trace.append(platform.rect.x)
+
+    assert max(trace) <= 90.0
+    assert platform.rect.x <= 30.0
+    # Same motion as the bare-scan path, tick for tick.
+    reference = MovingPlatform(
+        (0.0, 0.0),
+        pygame.Surface((64, 32)),
+        waypoints=[(0.0, 0.0), (200.0, 0.0)],
+        speed=50.0,
+        collision_sprites=groups.collision_sprites,
+    )
+    expected: list[float] = []
+    for _ in range(40):
+        update_moving_platform(reference, 0.5)
+        expected.append(reference.rect.x)
+    assert trace == expected
 
 
 def test_platform_without_collision_reference_keeps_legacy_ghost_move() -> None:

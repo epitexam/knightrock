@@ -77,6 +77,10 @@ class MovingPlatform(Sprite):
         # Static colliders the platform must not phase through (None keeps
         # the legacy ghost behaviour for synthetic setups and tests).
         self.collision_sprites = collision_sprites
+        # Optional grid over those colliders, so the movement check queries
+        # its neighbourhood instead of the whole level. None falls back to
+        # the full scan.
+        self.spatial_hash: Any = None
 
         self.hitbox: pygame.FRect = self.rect.copy()
         self.old_hitbox: pygame.FRect = self.hitbox.copy()

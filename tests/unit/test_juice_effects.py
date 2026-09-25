@@ -114,7 +114,10 @@ def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
     sprite = _dashing_player()
+    # The ghost pass walks entity_sprites: a dashing player is an entity, and
+    # scanning all_sprites for it was the cost this change removed.
     groups.all_sprites.add(sprite)
+    groups.entity_sprites.add(sprite)
 
     first = renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
     assert len(renderer._ghosts) == 1
@@ -301,7 +304,9 @@ def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
-    groups.all_sprites.add(_dashing_player())
+    dasher = _dashing_player()
+    groups.all_sprites.add(dasher)
+    groups.entity_sprites.add(dasher)
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 

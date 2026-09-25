@@ -3,6 +3,34 @@ import pygame
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
+def _blocks(sprite, candidate: pygame.Rect) -> bool:
+    """Whether ``sprite``'s box overlaps ``candidate``."""
+    box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+    return box is not None and box.colliderect(candidate)
+
+
+def _static_blockers(platform, candidate: pygame.Rect):
+    """The static terrain that could block ``candidate``.
+
+    Prefers the spatial hash: a full scan of the level's collision tiles was
+    the single most expensive thing in the simulation tick, for one platform.
+    ``get_nearby`` returns a superset of the real blockers (it inflates the
+    query) but never omits one, and the caller only asks *whether* something
+    blocks, so the extra candidates cost nothing and the order is irrelevant.
+    """
+    static_sprites = getattr(platform, "collision_sprites", None)
+    if not static_sprites:
+        return None
+    spatial_hash = getattr(platform, "spatial_hash", None)
+    if spatial_hash is not None:
+        return spatial_hash.get_nearby(candidate)
+    return (
+        s
+        for s in static_sprites
+        if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
+    )
+
+
 def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
     """Shorten a platform's step so it never overlaps static terrain.
 
@@ -11,19 +39,14 @@ def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Ve
     itself are ignored: only the world's static colliders block.  Platforms
     without a ``collision_sprites`` reference keep the legacy ghost move.
     """
-    static_sprites = getattr(platform, "collision_sprites", None)
-    if not static_sprites:
-        return step, False
     for divisor in _BLOCK_DIVISORS:
         candidate = platform.hitbox.copy()
         candidate.x += step.x / divisor
         candidate.y += step.y / divisor
-        blocked = any(
-            (box := getattr(s, "hitbox", getattr(s, "rect", None))) is not None
-            and box.colliderect(candidate)
-            for s in static_sprites
-            if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
-        )
+        blockers = _static_blockers(platform, candidate)
+        if blockers is None:
+            return step, False
+        blocked = any(_blocks(s, candidate) for s in blockers)
         if not blocked:
             return step / divisor, False
     return step * 0, True

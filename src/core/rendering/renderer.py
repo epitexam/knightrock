@@ -1,6 +1,6 @@
 from collections import deque
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import pygame
 
@@ -12,6 +12,9 @@ from src.ui.panel_renderer import PanelLayout
 from src.ui.ui_manager import UIManager
 
 HEALTH_BAR_CLEARANCE_PX = 18
+# Above either, the partial update costs more than the full refresh it avoids.
+DIRTY_RECT_COUNT_LIMIT = 64
+DIRTY_AREA_RATIO_LIMIT = 0.6
 """Headroom above each sprite rect where WorldUI draws health bars."""
 
 DASH_STRETCH_X = 1.6
@@ -71,6 +74,10 @@ class Renderer:
         # from ``id(image)`` alone can be hit by a freed surface whose id was
         # recycled, which would hand back a stale, wrongly sized blit.
         self._scaled_cache: dict[tuple[int, float], tuple[pygame.Surface, pygame.Surface]] = {}
+        # White damage-flash silhouettes, keyed by ``id(image)`` like
+        # ``_scaled_cache`` and holding the source for the same reason.
+        self._flash_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
+        self._dashing_player: object | None = None
         self._debug_samples: dict[str, deque[float]] = {
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
@@ -82,6 +89,7 @@ class Renderer:
         self.camera.set_viewport_size(display_surface.get_width(), display_surface.get_height())
         self._previous_dirty.clear()
         self._scaled_cache.clear()
+        self._flash_cache.clear()
 
     def _scaled_image(self, image: pygame.Surface) -> pygame.Surface:
         """Scale ``image`` by the camera zoom, caching the result.
@@ -105,6 +113,29 @@ class Renderer:
         )
         self._scaled_cache[key] = (image, scaled)
         return scaled
+
+    def _white_silhouette(self, image: pygame.Surface) -> pygame.Surface:
+        """A white copy of ``image`` keeping its alpha, memoised per image.
+
+        Building a mask and converting it to a surface costs 6.8us, and a
+        flashing entity redraws for the whole 0.1s of its flash, so this was
+        the most expensive per-sprite operation on the hit-feedback path. The
+        silhouette only depends on the source image, never on the flash
+        intensity, so it is built once per image and the caller copies it to
+        set its own alpha.
+
+        The source is kept in the cached value: an ``id``-keyed dict can be
+        handed a freed surface whose id was recycled, which would return a
+        silhouette of the wrong size.
+        """
+        key = id(image)
+        cached = self._flash_cache.get(key)
+        if cached is not None:
+            return cached[1]
+        mask = pygame.mask.from_surface(image)
+        silhouette = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
+        self._flash_cache[key] = (image, silhouette)
+        return silhouette
 
     def _scaled_image_once(self, image: pygame.Surface) -> pygame.Surface:
         """Scale a transient surface by the zoom, without caching it.
@@ -153,6 +184,10 @@ class Renderer:
 
     def draw(self, groups: SpriteGroups, debug_enabled: bool = False, dt: float = 0.0):
         """Draw the world; return dirty rects, or None for a full refresh."""
+        # One transform for the whole pass: ``is_visible``/``apply`` run once
+        # per visible sprite and the camera cannot move mid-draw.
+        self.camera.begin_frame()
+        self._dashing_player = self._find_dashing_player(groups)
         blits = self._collect_visible_blits(groups)
         ghost_draws = self._update_afterimages(groups, dt)
         flashes = self._collect_flashes(groups)
@@ -170,6 +205,19 @@ class Renderer:
         update_rects = [*dirty, *self._previous_dirty]
         self._previous_dirty = dirty
         area = update_rects[0].unionall(update_rects[1:]) if update_rects else None
+        if area is not None and self._exceeds_dirty_budget(area, len(update_rects)):
+            # The union covers most of the screen: the per-rect bookkeeping
+            # and SDL's per-rect present cost are then pure overhead, since
+            # filling the whole screen and blitting what is visible is both
+            # simpler and cheaper. Measured on a viewport-filling scene this
+            # hybrid was ~10% *slower* than the plain full refresh it was
+            # meant to avoid.
+            self.display_surface.fill(self.background_color)
+            self._draw_ghosts(ghost_draws)
+            for surface, screen_rect in blits:
+                self.display_surface.blit(surface, screen_rect)
+            self._draw_flashes(flashes)
+            return None
         if area is not None:
             # Erase exactly the region that will be refreshed: every pixel
             # that changed since the last presented frame is repainted.
@@ -180,6 +228,36 @@ class Renderer:
                     self.display_surface.blit(surface, screen_rect)
             self._draw_flashes(flashes, area)
         return update_rects
+
+    def _find_dashing_player(self, groups: SpriteGroups) -> object | None:
+        """The one sprite that can be a dashing player, or None.
+
+        ``is_player_dashing`` needs three attribute lookups to answer, and
+        ``_collect_visible_blits`` used to ask it of every visible sprite on
+        the level -- about a thousand, to find at most one. Resolving it once
+        turns that into an identity comparison in the blit loop.
+        """
+        for sprite in groups.entity_sprites:
+            if is_player_dashing(sprite):
+                return cast("pygame.sprite.Sprite", sprite)
+        return None
+
+    def _exceeds_dirty_budget(self, area: pygame.Rect, rect_count: int) -> bool:
+        """Whether the partial update has stopped being worth its cost.
+
+        Dirty rects pay off when little of the screen changes. They stop
+        paying off as soon as their union approaches the whole viewport: the
+        region is then filled, culled and blitted almost as if there were no
+        dirty tracking, plus a per-rect cost on the present. Both guards are
+        deliberately loose -- this only has to catch the degenerate case, not
+        to micro-tune the crossover.
+        """
+        if rect_count > DIRTY_RECT_COUNT_LIMIT:
+            return True
+        surface_area = self.display_surface.get_width() * self.display_surface.get_height()
+        if surface_area <= 0:
+            return False
+        return bool(area.width * area.height > surface_area * DIRTY_AREA_RATIO_LIMIT)
 
     def _collect_visible_blits(self, groups: SpriteGroups):
         """Camera-cull and compute screen rects for every visible plane.
@@ -197,7 +275,10 @@ class Renderer:
             if self.camera.is_visible(sprite.rect):
                 screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
                 image = self._scaled_image(sprite.image)
-                if is_player_dashing(sprite):
+                # Only a player can be dashing, and a player is an entity, so
+                # this branch is resolved by identity rather than by a
+                # ``getattr`` walk over every tile of the level.
+                if self._dashing_player is not None and sprite is self._dashing_player:
                     blits.append(dash_frame(image, screen_rect))
                 else:
                     blits.append((image, screen_rect))
@@ -208,14 +289,20 @@ class Renderer:
         return blits
 
     def _collect_flashes(self, groups: SpriteGroups):
-        """White damage-flash overlays for recently hit entities."""
+        """White damage-flash overlays for recently hit entities.
+
+        Only entities can flash (they are the only ones with a
+        ``flash_timer``), so this walks ``entity_sprites``: scanning
+        ``all_sprites`` cost a ``getattr`` on every tile of the level, ~1000
+        of them, to find at most a handful of flashes.
+        """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
-        for sprite in (*groups.all_sprites, *groups.fg_sprites):
+        for sprite in groups.entity_sprites:
             timer = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
             if timer <= 0.0 or not self.camera.is_visible(sprite.rect):
                 continue
-            mask = pygame.mask.from_surface(sprite.image)
-            overlay = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
+            overlay = self._white_silhouette(sprite.image)
+            overlay = overlay.copy()
             overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
             screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
             overlay = self._scaled_image_once(overlay)
@@ -246,8 +333,13 @@ class Renderer:
         return [(surface, screen_rect) for surface, screen_rect, _ in self._ghosts]
 
     def _spawn_afterimage(self, groups: SpriteGroups) -> None:
-        """Snapshot dashing players into fading ghosts."""
-        for sprite in groups.all_sprites:
+        """Snapshot dashing players into fading ghosts.
+
+        The dashing player is an entity, so this walks ``entity_sprites``
+        rather than the whole level: ``all_sprites`` meant a full-group
+        ``is_player_dashing`` scan several times a second.
+        """
+        for sprite in groups.entity_sprites:
             if not is_player_dashing(sprite):
                 continue
             if not self.camera.is_visible(sprite.rect):

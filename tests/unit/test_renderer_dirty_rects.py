@@ -6,7 +6,11 @@ import pygame
 import pytest
 
 from src.core.rendering.camera import Camera
-from src.core.rendering.renderer import HEALTH_BAR_CLEARANCE_PX, Renderer
+from src.core.rendering.renderer import (
+    DIRTY_RECT_COUNT_LIMIT,
+    HEALTH_BAR_CLEARANCE_PX,
+    Renderer,
+)
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -83,6 +87,66 @@ def test_background_is_repainted_only_over_dirty_area():
     renderer.draw(groups)
 
     assert surface.get_at((63, 63)) == (1, 2, 3)
+
+
+def test_a_viewport_filling_union_falls_back_to_a_full_refresh() -> None:
+    """The partial update must give up when its union covers the screen.
+
+    Once the union approaches the viewport the frame is filled, culled and
+    blitted almost as if there were no dirty tracking, and it still pays a
+    per-rect present cost. Measured, that hybrid was slower than the plain
+    full refresh it was meant to avoid.
+    """
+    surface = pygame.Surface((64, 64))
+    camera = Camera(64, 64, zoom=1.0)
+    camera.set_world_size(64, 64)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    groups.all_sprites.add(StaticSprite((0, 0), size=(64, 64)))
+
+    assert renderer.draw(groups) is None
+
+
+def test_a_full_refresh_repaints_everything() -> None:
+    """The fallback path must still draw the world, not just clear it."""
+    surface = pygame.Surface((64, 64))
+    camera = Camera(64, 64, zoom=1.0)
+    camera.set_world_size(64, 64)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    groups.all_sprites.add(StaticSprite((0, 0), size=(64, 64)))
+
+    renderer.draw(groups)
+
+    assert surface.get_at((32, 32))[:3] == (255, 0, 0)
+
+
+def test_a_small_dirty_region_is_kept() -> None:
+    """The guard must not fire on a frame that really is a partial update."""
+    surface = pygame.Surface((640, 640))
+    camera = Camera(640, 640, zoom=1.0)
+    camera.set_world_size(640, 640)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    groups.all_sprites.add(StaticSprite((10, 10), size=(8, 8)))
+
+    dirty = renderer.draw(groups)
+
+    assert dirty is not None
+    assert len(dirty) == 1
+
+
+def test_too_many_rects_falls_back_even_when_the_area_is_small() -> None:
+    """Many scattered rects are also not worth presenting one by one."""
+    surface = pygame.Surface((640, 640))
+    camera = Camera(640, 640, zoom=1.0)
+    camera.set_world_size(640, 640)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    for index in range(DIRTY_RECT_COUNT_LIMIT + 2):
+        groups.all_sprites.add(StaticSprite((index * 9, 0), size=(4, 4)))
+
+    assert renderer.draw(groups) is None
 
 
 def test_debug_mode_returns_none_for_full_refresh():

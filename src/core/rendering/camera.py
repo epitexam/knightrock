@@ -33,6 +33,36 @@ class Camera:
         self.world_height = 0.0
         self.trauma = 0.0
         self._shake_time = 0.0
+        # Per-frame transform, recomputed once instead of per sprite. See
+        # begin_frame.
+        self._shake = pygame.math.Vector2(0.0, 0.0)
+        self._shift = 0.0
+        self._shift_y = 0.0
+        self._viewport: pygame.FRect | None = None
+
+    def begin_frame(self) -> None:
+        """Recompute the per-frame transform, once for the whole draw pass.
+
+        ``is_visible`` and ``apply`` run once per visible sprite, ~1000 times
+        per frame on a full level, and both used to rebuild their inputs every
+        call: an ``FRect`` viewport per cull, and a fresh ``Vector2`` plus two
+        ``sin``/``cos`` for the shake per transform. All of it is constant
+        across a frame -- the camera does not move while a frame is being
+        drawn -- so the values are derived here and read afterwards.
+
+        Any code that mutates the camera between frames must call this, or go
+        through ``follow``/``set_viewport_size``/``set_zoom`` which do.
+        """
+        self._shake = self.shake_offset()
+        self._shift = -self.offset.x + self._shake.x
+        self._shift_y = -self.offset.y + self._shake.y
+        self._viewport = pygame.FRect(
+            self.offset.x, self.offset.y, self.viewport_width, self.viewport_height
+        )
+
+    def _ensure_frame(self) -> None:
+        if self._viewport is None:
+            self.begin_frame()
 
     @staticmethod
     def _valid_zoom(zoom: float) -> float:
@@ -54,12 +84,14 @@ class Camera:
         """Change the framing and re-clamp so the viewport stays in world."""
         self.zoom = self._valid_zoom(zoom)
         self._clamp_to_world()
+        self._viewport = None
 
     def set_viewport_size(self, width: int, height: int) -> None:
         """Update the display size (a resolution or a window change)."""
         self.width = width
         self.height = height
         self._clamp_to_world()
+        self._viewport = None
 
     def set_world_size(self, world_width: float, world_height: float) -> None:
         self.world_width = world_width
@@ -77,6 +109,7 @@ class Camera:
         self.trauma = max(0.0, self.trauma - CameraShake.DECAY_PER_S * delta_time)
 
         self._clamp_to_world()
+        self._viewport = None
 
     def add_trauma(self, amount: float) -> None:
         """Feed impact shake (clamped); heavy launches shake the most."""
@@ -105,14 +138,13 @@ class Camera:
 
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
         """Map a world rectangle to screen coordinates (translate + zoom)."""
-        shake = self.shake_offset()
+        self._ensure_frame()
         zoom = self.zoom
-        screen = rect.move(-self.offset.x + shake.x, -self.offset.y + shake.y)
         return pygame.FRect(
-            screen.x * zoom,
-            screen.y * zoom,
-            screen.width * zoom,
-            screen.height * zoom,
+            (rect.x + self._shift) * zoom,
+            (rect.y + self._shift_y) * zoom,
+            rect.width * zoom,
+            rect.height * zoom,
         )
 
     def is_visible(self, rect: pygame.FRect) -> bool:
@@ -124,7 +156,6 @@ class Camera:
         Returns:
             True if the rectangle intersects the camera viewport, False otherwise.
         """
-        camera_rect = pygame.FRect(
-            self.offset.x, self.offset.y, self.viewport_width, self.viewport_height
-        )
-        return camera_rect.colliderect(rect)
+        self._ensure_frame()
+        assert self._viewport is not None
+        return self._viewport.colliderect(rect)
