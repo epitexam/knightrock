@@ -31,7 +31,8 @@ class StaticSprite(pygame.sprite.Sprite):
 
 def make_renderer() -> tuple[Renderer, SpriteGroups, pygame.Surface]:
     surface = pygame.Surface((64, 64))
-    camera = Camera(64, 64)
+    # zoom=1.0: these tests assert world-space screen rects, not the zoom.
+    camera = Camera(64, 64, zoom=1.0)
     camera.set_world_size(128, 128)
     return Renderer(surface, camera), SpriteGroups(), surface
 

@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 import traceback
-from dataclasses import replace
 from pathlib import Path
 
 import pygame
@@ -13,10 +12,6 @@ from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import (
-    MAX_WINDOW_HEIGHT,
-    MAX_WINDOW_WIDTH,
-    MIN_WINDOW_HEIGHT,
-    MIN_WINDOW_WIDTH,
     SettingsStore,
     UserSettings,
 )
@@ -67,7 +62,6 @@ class Game:
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
-        self._internal_resize_pending = False
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -111,7 +105,6 @@ class Game:
         self.input_provider.set_bindings(self.input_bindings)
         self.settings_store.save(settings)
         if self.display_surface is not None:
-            self._internal_resize_pending = True
             self.display_surface = self._configure_display()
             self.scene_manager.set_display_surface(self.display_surface)
             self.scene_manager.set_ui_scale(settings.ui_scale)
@@ -130,7 +123,18 @@ class Game:
         self.settings_store.save(self.settings)
 
     def _configure_display(self) -> pygame.Surface:
-        flags = pygame.RESIZABLE
+        """Create the window at the logical resolution chosen in the menu.
+
+        The window is deliberately **not** resizable: the selected resolution
+        is the stable gameplay viewport the camera culling and the level
+        streaming budget are computed against. A user drag would change that
+        viewport mid-run, so the only way to change it is the Video menu.
+
+        In fullscreen ``pygame.SCALED`` keeps the logical aspect ratio and
+        letterboxes (black bars) the leftover desktop area instead of
+        stretching the image or distorting the menus.
+        """
+        flags = 0
         if self.settings.fullscreen:
             flags |= pygame.FULLSCREEN | pygame.SCALED
         return pygame.display.set_mode(
@@ -138,38 +142,6 @@ class Game:
             flags,
             vsync=1 if self.settings.vsync else 0,
         )
-
-    def _resize_display(self, width: int, height: int) -> None:
-        """Recrée la surface après un redimensionnement utilisateur (§9).
-
-        La nouvelle taille est gardée en mémoire seulement : réécrire
-        ``settings.json`` à chaque événement de drag serait du bruit disque.
-        Le prochain ``apply_settings`` (option vidéo, échelle UI…) la
-        persistera au passage.
-        """
-        size = (
-            max(MIN_WINDOW_WIDTH, min(width, MAX_WINDOW_WIDTH)),
-            max(MIN_WINDOW_HEIGHT, min(height, MAX_WINDOW_HEIGHT)),
-        )
-        # pygame.display.set_mode() peut générer un VIDEORESIZE pour la
-        # nouvelle surface. Si la taille de l'événement est déjà celle de la
-        # surface courante, il s'agit de ce feedback interne et non d'un drag
-        # utilisateur : ne pas rappeler set_mode() indéfiniment.
-        if self.settings.fullscreen:
-            # En plein écran, la taille de l'événement SDL peut être celle
-            # du desktop et ne correspond pas à la surface SCALED. Ce n'est
-            # pas un resize utilisateur : ne jamais rappeler set_mode().
-            return
-        if self.display_surface is not None and size == self.display_surface.get_size():
-            return
-        if size == (self.settings.width, self.settings.height):
-            return
-        self.settings = replace(self.settings, width=size[0], height=size[1])
-        if self.display_surface is None:
-            return
-        self._internal_resize_pending = True
-        self.display_surface = self._configure_display()
-        self.scene_manager.set_display_surface(self.display_surface)
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -209,20 +181,18 @@ class Game:
                 pygame.display.update(dirty_rects)
 
     def _handle_events(self) -> None:
-        internal_resize_batch = self._internal_resize_pending
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
                 return
 
             if event.type == pygame.VIDEORESIZE:
-                # Redimensionnement utilisateur : en plein écran SDL peut
-                # signaler la taille du desktop, ce qui doit être ignoré.
-                # En fenêtre, le drapeau interne protège le batch set_mode().
-                if internal_resize_batch or self.settings.fullscreen:
-                    pass
-                else:
-                    self._resize_display(int(getattr(event, "w", 0)), int(getattr(event, "h", 0)))
+                # La fenêtre n'est pas redimensionnable : la résolution est
+                # pilotée uniquement par le menu vidéo. SDL peut encore
+                # annoncer un VIDEORESIZE lors d'un set_mode() interne ou d'un
+                # basculement plein écran ; on l'ignore pour que le viewport
+                # logique reste stable et qu'aucune boucle ne naisse.
+                continue
 
             if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks
@@ -242,7 +212,6 @@ class Game:
                 self.input_provider.reassign_joystick(self.joysticks)
 
             self.scene_manager.handle_event(event)
-        self._internal_resize_pending = False
 
     def _handle_fatal_error(self, error: Exception) -> None:
         logger.error(f"FATAL ERROR: {error}")

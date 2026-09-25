@@ -211,103 +211,85 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
     assert game.settings.vsync is True
 
 
-def test_internal_set_mode_resize_event_does_not_reconfigure_again(
+def test_video_resize_event_never_changes_the_logical_resolution(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Le VIDEORESIZE produit par set_mode ne doit pas créer une boucle."""
+    """Un VIDEORESIZE ne peut pas modifier le viewport logique.
+
+    La fenêtre n'est plus redimensionnable : la résolution ne change que via
+    le menu vidéo. SDL peut annoncer un VIDEORESIZE lors d'un ``set_mode()``
+    interne ou d'un basculement plein écran (il peut notamment rapporter la
+    taille du desktop) : l'ignorer garantit un viewport stable et interdit
+    toute boucle ``set_mode()`` / ``VIDEORESIZE``.
+    """
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
     game._initialize()
-    assert game.display_surface is not None
-    current_size = game.display_surface.get_size()
     reconfigure = Mock(side_effect=game._configure_display)
     monkeypatch.setattr(game, "_configure_display", reconfigure)
-    monkeypatch.setattr(
-        pygame.event,
-        "get",
-        lambda: [
-            pygame.event.Event(
-                pygame.VIDEORESIZE, w=current_size[0], h=current_size[1], size=current_size
-            )
-        ],
-    )
+    for event_size in ((1024, 768), (800, 600), (1920, 1080)):
+        monkeypatch.setattr(
+            pygame.event,
+            "get",
+            lambda size=event_size: [
+                pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size)
+            ],
+        )
 
-    game._handle_events()
+        game._handle_events()
 
-    reconfigure.assert_not_called()
-    assert game.display_surface.get_size() == current_size
-
-
-def test_fullscreen_set_mode_resize_feedback_does_not_change_settings(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Le retour SDL 1024x768 du mode plein écran est ignoré."""
-    game = Game(
-        save_path=tmp_path / "savegame.json",
-        bindings_path=tmp_path / "settings.json",
-    )
-    game._initialize()
-    game.apply_settings(replace(game.settings, fullscreen=True))
-    assert (game.settings.width, game.settings.height) == (1440, 900)
-    monkeypatch.setattr(
-        pygame.event,
-        "get",
-        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=1024, h=768, size=(1024, 768))],
-    )
-
-    game._handle_events()
-
-    assert game.settings.fullscreen is True
     assert (game.settings.width, game.settings.height) == (1440, 900)
     assert game.display_surface is not None
     assert game.display_surface.get_size() == (1440, 900)
+    reconfigure.assert_not_called()
 
 
-def test_user_resize_rebuilds_the_display_without_persisting(
+def test_window_is_not_resizable_and_fullscreen_keeps_the_logical_ratio(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """§9 : un VIDEORESIZE recrée la surface et la propage aux scènes."""
+    """Fenêtre fixe en mode fenêtre, ``SCALED`` (letterbox) en plein écran."""
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    set_mode = Mock(wraps=pygame.display.set_mode)
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+
+    game.apply_settings(replace(game.settings, width=1280, height=720, fullscreen=False))
+
+    windowed_flags = set_mode.call_args.args[1]
+    assert not windowed_flags & pygame.RESIZABLE
+    assert not windowed_flags & pygame.FULLSCREEN
+    assert set_mode.call_args.args[0] == (1280, 720)
+
+    game.apply_settings(replace(game.settings, fullscreen=True))
+
+    fullscreen_flags = set_mode.call_args.args[1]
+    assert fullscreen_flags & pygame.FULLSCREEN
+    assert fullscreen_flags & pygame.SCALED
+    assert not fullscreen_flags & pygame.RESIZABLE
+
+
+def test_changing_the_video_resolution_propagates_the_new_viewport(
+    tmp_path: Path,
+) -> None:
+    """Le menu vidéo reste le seul moyen de changer de résolution."""
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
     game._initialize()
     propagate = Mock()
-    monkeypatch.setattr(game.scene_manager, "set_display_surface", propagate)
-    monkeypatch.setattr(
-        pygame.event,
-        "get",
-        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=800, h=600, size=(800, 600))],
-    )
 
-    game._handle_events()
+    game.apply_settings(replace(game.settings, width=1920, height=1080))
+    game.scene_manager.set_display_surface = propagate  # type: ignore[method-assign]
 
-    assert (game.settings.width, game.settings.height) == (800, 600)
+    game.apply_settings(replace(game.settings, width=1280, height=720))
+
+    assert (game.settings.width, game.settings.height) == (1280, 720)
     assert game.display_surface is not None
-    assert game.display_surface.get_size() == (800, 600)
+    assert game.display_surface.get_size() == (1280, 720)
     propagate.assert_called_once_with(game.display_surface)
-    # La taille reste en mémoire : le drag n'écrit pas settings.json.
-    assert not (tmp_path / "settings.json").exists()
-
-
-def test_user_resize_is_clamped_to_the_supported_bounds(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    game = Game(
-        save_path=tmp_path / "savegame.json",
-        bindings_path=tmp_path / "settings.json",
-    )
-    game._initialize()
-    monkeypatch.setattr(
-        pygame.event,
-        "get",
-        lambda: [pygame.event.Event(pygame.VIDEORESIZE, w=100, h=100, size=(100, 100))],
-    )
-
-    game._handle_events()
-
-    assert (game.settings.width, game.settings.height) == (320, 240)
-    assert game.display_surface is not None
-    assert game.display_surface.get_size() == (320, 240)

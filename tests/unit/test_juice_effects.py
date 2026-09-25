@@ -108,7 +108,8 @@ def _dashing_player() -> DashSprite:
 
 def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     surface = pygame.Surface((64, 64))
-    camera = Camera(64, 64)
+    # zoom=1.0: this test measures the ghost in world-sized pixels.
+    camera = Camera(64, 64, zoom=1.0)
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
@@ -132,7 +133,7 @@ def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
 
 def test_idle_player_spawns_no_ghosts() -> None:
     surface = pygame.Surface((64, 64))
-    camera = Camera(64, 64)
+    camera = Camera(64, 64, zoom=1.0)
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
@@ -295,7 +296,8 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
 
 def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     surface = pygame.Surface((64, 64))
-    camera = Camera(64, 64)
+    # zoom=1.0: this test asserts world-sized ghost geometry.
+    camera = Camera(64, 64, zoom=1.0)
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()

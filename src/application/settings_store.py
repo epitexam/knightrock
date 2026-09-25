@@ -14,8 +14,9 @@ from src.core.settings import Display
 
 SETTINGS_FORMAT_VERSION = 1
 
-# Bornes vidéo acceptées : elles valident ``settings.json`` et servent aussi de
-# clamp au redimensionnement utilisateur (``Game._resize_display``).
+# Bornes vidéo acceptées : elles valident ``settings.json`` pour rejeter un
+# fichier corrompu ou hors limites. La fenêtre n'étant pas redimensionnable,
+# les dimensions ne sont modifiées que par le menu vidéo.
 MIN_WINDOW_WIDTH = 320
 MIN_WINDOW_HEIGHT = 240
 MAX_WINDOW_WIDTH = 7680

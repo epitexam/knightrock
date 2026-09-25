@@ -45,7 +45,8 @@ def world_ui() -> WorldUI:
 
 @pytest.fixture()
 def camera() -> Camera:
-    return Camera(1024, 768)
+    # zoom=1.0: these tests assert world-space geometry, not the zoom.
+    return Camera(1024, 768, zoom=1.0)
 
 
 def _named(name: str, **attrs) -> SimpleNamespace:

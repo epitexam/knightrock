@@ -64,6 +64,13 @@ class Renderer:
         self._previous_dirty: list[pygame.Rect] = []
         self._ghosts: list[tuple[pygame.Surface, pygame.Rect, float]] = []
         self._ghost_timer: float = 0.0
+        # Zoomed sprite surfaces: ``(id(image), zoom) -> (image, scaled)``.
+        # Scaling a surface every frame for every visible sprite is expensive,
+        # so each (source image, zoom) pair is scaled once and reused. The
+        # source is kept *in the cached value* on purpose: a dict key built
+        # from ``id(image)`` alone can be hit by a freed surface whose id was
+        # recycled, which would hand back a stale, wrongly sized blit.
+        self._scaled_cache: dict[tuple[int, float], tuple[pygame.Surface, pygame.Surface]] = {}
         self._debug_samples: dict[str, deque[float]] = {
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
@@ -72,9 +79,49 @@ class Renderer:
     def set_display_surface(self, display_surface: pygame.Surface) -> None:
         self.display_surface = display_surface
         self.ui_manager.set_display_surface(display_surface)
-        self.camera.width = display_surface.get_width()
-        self.camera.height = display_surface.get_height()
+        self.camera.set_viewport_size(display_surface.get_width(), display_surface.get_height())
         self._previous_dirty.clear()
+        self._scaled_cache.clear()
+
+    def _scaled_image(self, image: pygame.Surface) -> pygame.Surface:
+        """Scale ``image`` by the camera zoom, caching the result.
+
+        Returns the image untouched when the zoom is 1 (the previous, unzoomed
+        behaviour) so a de-zoomed build never pays for scaling.
+        """
+        zoom = self.camera.zoom
+        if zoom == 1.0:
+            return image
+        key = (id(image), zoom)
+        cached = self._scaled_cache.get(key)
+        if cached is not None:
+            return cached[1]
+        width = max(1, round(image.get_width() * zoom))
+        height = max(1, round(image.get_height() * zoom))
+        scaled = (
+            pygame.transform.smoothscale(image, (width, height))
+            if zoom > 1.0
+            else pygame.transform.scale(image, (width, height))
+        )
+        self._scaled_cache[key] = (image, scaled)
+        return scaled
+
+    def _scaled_image_once(self, image: pygame.Surface) -> pygame.Surface:
+        """Scale a transient surface by the zoom, without caching it.
+
+        Afterimages and damage flashes build a brand new surface every frame,
+        so caching them by ``id()`` would grow the cache forever. They are
+        short-lived by nature, so scaling them directly is both correct and
+        cheap enough.
+        """
+        zoom = self.camera.zoom
+        if zoom == 1.0:
+            return image
+        width = max(1, round(image.get_width() * zoom))
+        height = max(1, round(image.get_height() * zoom))
+        if zoom > 1.0:
+            return pygame.transform.smoothscale(image, (width, height))
+        return pygame.transform.scale(image, (width, height))
 
     def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
         self._debug_samples[name].append(elapsed_ms)
@@ -140,10 +187,11 @@ class Renderer:
         for sprite in (*groups.all_sprites, *groups.fg_sprites, *groups.fx_sprites):
             if self.camera.is_visible(sprite.rect):
                 screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
+                image = self._scaled_image(sprite.image)
                 if is_player_dashing(sprite):
-                    blits.append(dash_frame(sprite.image, screen_rect))
+                    blits.append(dash_frame(image, screen_rect))
                 else:
-                    blits.append((sprite.image, screen_rect))
+                    blits.append((image, screen_rect))
         return blits
 
     def _collect_flashes(self, groups: SpriteGroups):
@@ -157,6 +205,7 @@ class Renderer:
             overlay = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
             overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
             screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
+            overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
             flashes.append((overlay, screen_rect))
@@ -193,6 +242,9 @@ class Renderer:
             ghost = sprite.image.copy()
             # Speed tint: the trail reads as energy, not a plain snapshot.
             ghost.fill((170, 220, 255), special_flags=pygame.BLEND_RGB_MULT)
+            # Zoom before the dash stretch: ``dash_frame`` sizes itself from the
+            # image, so a world-sized ghost would stay small on screen.
+            ghost = self._scaled_image_once(ghost)
             screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
             ghost, ghost_rect = dash_frame(ghost, screen_rect, apply_tint=False)
             self._ghosts.append((ghost, ghost_rect, Afterimage.TTL))

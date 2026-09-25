@@ -42,9 +42,9 @@ Les références de lignes de l’ancienne version ne sont pas reproduites telle
 | Menus souris | Hover, clic gauche, clic droit = retour | **Clos** | `MenuModel.hover`, `test_scenes.py` (pointeur) |
 | Menus manette | Boutons, hat et stick (repeats inclus) | **Clos** | `event_router._route_hat/_route_axis`, `test_menu_navigation_supports_stick_and_hat` |
 | Modèle focus/hover | `MenuModel` + `MenuView` (rects, wrap, items désactivés) | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py` |
-| Scène Options | UI scale, plein écran, vsync, stick Y, contrôles | **Clos** | `options_scene.py`, `test_options_scene.py` |
+| Scène Options | Hub de navigation (Video settings, Controls) | **Clos** | `options_scene.py`, `test_options_scene.py` |
 | Rebinding/persistance | Écran Contrôles + `settings.json` versionné | **Clos** | `settings_store.py`, `controls_scene.py`, `test_controls_scene.py` |
-| Réglages vidéo | Fenêtre `RESIZABLE`, plein écran, vsync, redimensionnement | **Clos** | `game.py` (`_configure_display`, `_resize_display`) |
+| Réglages vidéo | Résolutions prédéfinies (écran de sélection), plein écran `SCALED` (letterbox), vsync | **Clos** | `game.py` (`_configure_display`), `video_scene.py`, `resolution_scene.py` |
 | Audio | Absent (asset de navigation fourni) | Ouvert | lot 5 optionnel : aucun mixer / `Sound` |
 | HUD joueur | Vie, posture, dash et combo | **Clos** | `src/ui/hud.py`, `GameplayScene.draw` |
 | Panneau COMBAT hors debug | Gaté | **Clos** | `WorldUI.draw_metrics_panel`, tests debug |
@@ -78,9 +78,9 @@ Le debug conserve déjà hitboxes, hurtboxes, vecteurs, labels, timeline, panels
 | UI-1 Navigation souris | **Clos** | `MenuModel.hover`, `MenuView.item_rects`, parcours pointeur headless |
 | UI-2 Navigation manette | **Clos** | `event_router` (boutons, hat, stick, repeats), tests headless |
 | UI-3 Modèle de sélection | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py`, tests unitaires |
-| UI-4 Options | **Clos** | `options_scene.py`, accessible depuis menu et pause |
+| UI-4 Options | **Clos** | `options_scene.py` : hub sans réglage propre, chaque valeur dans l'écran qui la possède (Video / Controls) |
 | UI-5 Rebinding et settings | **Clos** | `settings_store.py` + `controls_scene.py` (capture touche/bouton + persistance) |
-| UI-6 Vidéo | **Clos** | `game.py` : `RESIZABLE`, `FULLSCREEN|SCALED`, vsync, `VIDEORESIZE` |
+| UI-6 Vidéo | **Clos** | `game.py` : fenêtre **non redimensionnable** (viewport logique stable), `FULLSCREEN|SCALED` avec letterbox, vsync, `VIDEORESIZE` ignoré |
 | UI-8 Aide aux contrôles | Partiel | l’écran Contrôles liste les bindings ; pas de tutoriel gameplay |
 | UI-9 Parcours de progression | **Clos** | `level_select_scene.py`, `victory_scene.py`, tests headless |
 | UI-10 Audio | Ouvert | lot 5 optionnel : aucun mixer / `Sound` (asset de navigation fourni) |
@@ -129,7 +129,7 @@ Il n’existe pas de scène Options. Elle doit être accessible depuis le menu p
 pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
 ```
 
-Il n’y a pas de `RESIZABLE`, `FULLSCREEN`, `SCALED` ou vsync. L’ancien audit indiquait `FPS = 180` : la valeur actuelle est `FPS = 60`, tandis que le commentaire mentionne 120 FPS. Le problème courant est l’absence de réglages vidéo et l’incohérence commentaire/valeur.
+Avant l’implémentation de la UI, `Game._initialize()` appelait `pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))` en dur, sans `RESIZABLE`, `FULLSCREEN`, `SCALED` ni vsync. L’état livré expose désormais un menu **Video** (résolutions prédéfinies, plein écran letterbox, vsync) et une fenêtre **non redimensionnable**, afin que la résolution choisie reste le viewport stable du jeu (culling caméra, budget de rendu).
 
 ### UI-8 — Aide aux contrôles
 
@@ -223,9 +223,17 @@ Livré en complément (vérification 2026-09-24) :
   par ESC / clic droit / bouton B. La capture est neutralisée côté routeur par
   `EventRouter.would_route_key` / `would_route_button` : l’appui qui termine la
   capture ne déclenche pas l’action qu’il route ;
-- **redimensionnement** (`Game._resize_display`) : `VIDEORESIZE` recrée la surface,
-  clampe la taille aux bornes de `settings_store` et la propage aux scènes ; la
-  taille reste en mémoire et sera persistée au prochain `apply_settings` ;
+- **vidéo** (`Game._configure_display`) : la fenêtre n'est **pas** redimensionnable.
+  La résolution vient de la liste prédéfinie du menu vidéo (`VideoScene.RESOLUTIONS`)
+  et constitue le viewport logique stable du jeu (culling caméra, budget de
+  rendu). En plein écran, `pygame.FULLSCREEN | pygame.SCALED` conserve le ratio et
+  remplit l'écart avec des barres noires. `VIDEORESIZE` est ignoré : il ne peut
+  plus modifier les réglages (ce qui interdit aussi toute boucle
+  `set_mode()` / `VIDEORESIZE`) ;
+- **viewport caméra** (`Level`) : la caméra est dimensionnée depuis la surface
+  réelle, plus depuis les constantes `Display` — sinon un changement de
+  résolution laisserait la caméra plus grande que la fenêtre et le culling
+  écarterait des sprites visibles ;
 - **nettoyage** : `src/application/scenes/menu_panel.py` supprimé (code mort, plus
   aucun appelant de production) ; tous les écrans passent par `MenuView`.
 

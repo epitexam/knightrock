@@ -76,9 +76,15 @@ class ControlsScene(Scene):
             raise ValueError(f"unknown controls section: {section}")
         self.section = section
         self.specs = self.SECTIONS[section]
+        items = tuple(
+            MenuItem(f"rebind_{index}", spec.label) for index, spec in enumerate(self.specs)
+        )
+        if section == self.MENU_SECTION:
+            # The invert-Y toggle is a real navigation row, not decoration:
+            # it must be reachable with ↑↓ and activatable, like Reset/Back.
+            items += (MenuItem("invert_y", "Invert stick Y"),)
         self.model = MenuModel(
-            tuple(MenuItem(f"rebind_{index}", spec.label) for index, spec in enumerate(self.specs))
-            + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
+            items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
         self.view = ControlsView(game.settings.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
@@ -102,6 +108,11 @@ class ControlsScene(Scene):
             BindingRow(spec.label, self._keyboard_cell(spec), self._gamepad_cell(spec))
             for spec in self.specs
         ]
+        if self.section == self.MENU_SECTION:
+            # The stick Y inversion is a control setting, not a video one, so
+            # it lives here next to the bindings it affects. It is a toggle,
+            # not a remappable slot: no cell to capture.
+            result.append(self._invert_y_row())
         result.append(
             BindingRow(
                 "Reset to defaults",
@@ -119,6 +130,15 @@ class ControlsScene(Scene):
             )
         )
         return result
+
+    def _invert_y_row(self) -> BindingRow:
+        inverted = self.game.settings.bindings.menu.invert_y
+        return BindingRow(
+            "Invert stick Y",
+            BindingCell("normal" if not inverted else "inverted"),
+            BindingCell("left stick", muted=True),
+            RowKind.BACK,
+        )
 
     def _keyboard_cell(self, spec: RebindSpec) -> BindingCell:
         if self._capture == (self.model.current_index, KEYBOARD_COLUMN):
@@ -175,6 +195,17 @@ class ControlsScene(Scene):
             return
         if self._capture is not None:
             return
+        # This screen moves the cursor through ``MenuModel.move`` directly
+        # instead of ``MenuModel.handle_routed``, so it has to honour the same
+        # release contract: the router emits one extra event carrying the held
+        # action when the stick returns to neutral, and acting on it made a
+        # single press skip two rows — the controls screens felt unresponsive
+        # with a pad.
+        if MenuModel.is_release(routed_input.variant):
+            return
+        self._navigate(routed_input)
+
+    def _navigate(self, routed_input: RoutedInput) -> None:
         action = routed_input.action
         if action is InputAction.UI_BACK or (
             action is InputAction.UI_CANCEL and routed_input.variant != "device_removed"
@@ -209,30 +240,51 @@ class ControlsScene(Scene):
             self._capture_hat(getattr(event, "hat", -1), getattr(event, "value", (0, 0)))
 
     def _pointer(self, position: tuple[int, int], activate: bool) -> None:
+        """Hover moves the focus; a click acts exactly like Enter on that row.
+
+        The whole row is a target, not just the two binding cells: the label
+        gutter and the row padding carry no cell of their own, and leaving
+        them dead made the pointer focus look like it skipped rows.
+        """
         hit = self.view.cell_at(position)
         if hit is not None:
             self.model.set_items(self.model.items, hit.row)
             self.selected_column = hit.column
             if activate:
-                self._start_capture(hit.row, hit.column)
+                # A non-rebindable row (invert Y, Reset, Back) focuses like any
+                # other, but a click activates it instead of opening a capture
+                # it could never fill.
+                if hit.rebindable:
+                    self._start_capture(hit.row, hit.column)
+                else:
+                    self._activate()
             return
-        if activate:
-            for index, rect in enumerate(self.view.row_rects):
-                if rect.collidepoint(position) and index >= len(self.specs):
-                    if index == len(self.specs):
-                        self._reset()
-                    else:
-                        self.game.scene_manager.pop()
-                    return
+        for index, rect in enumerate(self.view.row_rects):
+            if not rect.collidepoint(position):
+                continue
+            self.model.set_items(self.model.items, index)
+            if activate:
+                self._activate()
+            return
 
     def _activate(self) -> None:
-        row = self.model.current_index
-        if row == len(self.specs):
+        action = self.model.current_item.action if self.model.current_item else None
+        if action == "invert_y":
+            self._toggle_invert_y()
+        elif action == "reset":
             self._reset()
-        elif row == len(self.specs) + 1:
+        elif action == "back":
             self.game.scene_manager.pop()
         else:
-            self._start_capture(row, self.selected_column)
+            self._start_capture(self.model.current_index, self.selected_column)
+
+    def _toggle_invert_y(self) -> None:
+        menu = replace(
+            self.game.settings.bindings.menu,
+            invert_y=not self.game.settings.bindings.menu.invert_y,
+        )
+        self._apply_bindings(replace(self.game.settings.bindings, menu=menu))
+        self._status = "Stick Y inverted" if menu.invert_y else "Stick Y normal"
 
     def _start_capture(self, row: int, column: int) -> None:
         if 0 <= row < len(self.specs):

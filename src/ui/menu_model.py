@@ -21,6 +21,17 @@ class MenuAction(StrEnum):
 
 
 class MenuModel:
+    @staticmethod
+    def is_release(variant: str | None) -> bool:
+        """Whether a routed input is a stick/hat *release*.
+
+        The router emits one release event when a held direction goes back to
+        neutral, carrying the action that was active. Acting on it would add a
+        second step for a single press (the very "double pas" the UI report
+        described), so every consumer must check this before moving.
+        """
+        return variant == "release"
+
     def __init__(
         self, items: list[MenuItem] | tuple[MenuItem, ...] = (), *, wrap: bool = False
     ) -> None:
@@ -99,7 +110,7 @@ class MenuModel:
         rects: list[pygame.Rect],
         variant: str | None = None,
     ) -> tuple[str | None, str | None]:
-        if variant == "release":
+        if self.is_release(variant):
             # Le relâchement du stick ne doit jamais déplacer le curseur :
             # sans ce garde, chaque press (move +1) était suivi d'un
             # second move au release -> double-pas / sensation de lag.

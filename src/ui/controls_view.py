@@ -48,6 +48,14 @@ class CellHit:
     row: int
     column: int
     rect: pygame.Rect
+    rebindable: bool = True
+    """Whether a click here starts a capture, as opposed to only focusing.
+
+    Non-rebindable rows (the invert-Y toggle, Reset, Back) must still be
+    hoverable, otherwise the pointer focus silently skips them: ``cell_at``
+    is what the scene queries on hover, and a row missing from ``_cells``
+    can never receive the focus highlight.
+    """
 
 
 class ControlsView:
@@ -109,6 +117,7 @@ class ControlsView:
 
         self._cells = []
         self._row_rects = []
+        focus_rect: pygame.Rect | None = None
         for index, row in enumerate(rows):
             row_y = y + 26 + index * row_height
             row_rect = pygame.Rect(x, row_y, panel_rect.width - padding * 2, row_height)
@@ -129,9 +138,15 @@ class ControlsView:
                 )
                 hit = pygame.Rect(cell_x - 4, row_y - 2, cell_width, row_height)
                 if index == selected_row and column == selected_column:
-                    pygame.draw.rect(surface, TEXT_WARN, hit, 1)
-                if row.rebindable:
-                    self._cells.append(CellHit(index, column, hit))
+                    focus_rect = hit
+                # Every drawn cell is registered: hovering a non-rebindable row
+                # (invert Y, Reset, Back) must still move the focus. The
+                # ``rebindable`` flag then tells the scene whether a click
+                # starts a capture or activates the row.
+                self._cells.append(CellHit(index, column, hit, row.rebindable))
+
+        if focus_rect is not None:
+            pygame.draw.rect(surface, TEXT_WARN, focus_rect, 1)
 
         footer_y = panel_rect.bottom - gap - 20 * len(footers)
         for footer in footers:

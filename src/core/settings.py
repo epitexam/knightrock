@@ -18,6 +18,24 @@ class Display:
     TITLE = "Knightrock"
 
 
+class GameplayCamera:
+    """Gameplay camera framing (see ``src/core/rendering/camera.py``).
+
+    ``ZOOM`` is the gameplay camera scale. A value above ``1`` draws the
+    world larger and shrinks the visible world area, which tightens the
+    framing on the player and hides what is far ahead — more tension, less
+    free information. This is the non-cinematic default; a future cinematic
+    camera would drive its own zoom instead of reusing this constant.
+
+    Set ``ZOOM = 1.0`` to restore the previous fully de-zoomed framing.
+    """
+
+    #: Gameplay zoom. 1.15 removes ~15% of the visible world on every axis
+    #: (a 1440x900 window then shows a ~1252x783 world area) and scales the
+    #: sprites, their health bars and their debug overlays accordingly.
+    ZOOM = 1.15
+
+
 class World:
     """World and tilemap dimensions."""
 

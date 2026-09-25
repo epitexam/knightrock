@@ -75,7 +75,8 @@ def test_grounded_entity_still_stops_dead() -> None:
 
 
 def test_camera_shake_decays_and_is_deterministic() -> None:
-    first, second = Camera(800, 600), Camera(800, 600)
+    # zoom=1.0: same ticks must give the same world-space pixels.
+    first, second = Camera(800, 600, zoom=1.0), Camera(800, 600, zoom=1.0)
     first.add_trauma(2.0)  # clamped to 1.0
     second.add_trauma(1.0)
     assert first.trauma == pytest.approx(1.0)
@@ -87,7 +88,8 @@ def test_camera_shake_decays_and_is_deterministic() -> None:
 
 
 def test_camera_rests_without_trauma() -> None:
-    camera = Camera(800, 600)
+    # zoom=1.0: an unzoomed, unshaken camera is the identity mapping.
+    camera = Camera(800, 600, zoom=1.0)
     box = pygame.FRect(100, 100, 40, 40)
     assert camera.apply(box) == box
     assert camera.shake_offset() == Vector2(0, 0)

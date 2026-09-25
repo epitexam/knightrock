@@ -22,6 +22,7 @@
 - [Controls](#controls)
 - [Phase 5 test bench](#phase-5-test-bench-hitbox--advanced-combat)
 - [Debug overlay](#debug-overlay-debug1)
+- [Gameplay camera](#gameplay-camera)
 - [Physics engine](#physics-engine-assists-on-by-default)
 - [Knockback & hit feedback](#knockback--hit-feedback)
 - [Data-driven gameplay](#data-driven-gameplay)
@@ -110,11 +111,22 @@ DEBUG=1 uv run python main.py
 | Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
 | Back in menus | `1` (`B`) |
 
-**In-game screens:** the main menu and the pause screen open **Options** (UI
-scale, fullscreen, vsync, stick Y) and **Controls**, which rebinds any keyboard
-key or pad button (two keys for left/right). Choices are written to
-`~/.knightrock/settings.json` and apply without restarting. The window is
-resizable; the surface, camera and HUD follow the new size.
+**In-game screens:** the main menu and the pause screen open **Options**, which
+is a navigation hub — every setting lives in the screen that owns it:
+
+- **Video settings** — resolution, fullscreen, VSync, UI scale. The **Resolution**
+  row opens a dedicated picker listing every supported size at once, with the
+  one in use marked `(current)`; `←`/`→` still nudge the value inline.
+- **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
+  inversion) and *Gameplay controls* (key/button rebinding).
+
+Choices are written to `~/.knightrock/settings.json` and apply without
+restarting. Each sub-menu has its own **Reset** that restores exactly what it
+owns. The window is **not** resizable: the resolution is picked from a fixed
+preset list, and that logical size is the stable gameplay viewport (camera
+culling and the level rendering budget are computed against it). In fullscreen
+the ratio is preserved and the leftover desktop area is filled with black bars
+(`pygame.SCALED`).
 
 **Debug spawns:** `G` goblin · `P` slime · `T` dummy.
 
@@ -164,6 +176,38 @@ frame cost predictable:
   Melee, projectile AABB and moving-hazard geometry use swept collision;
   static hazards and contact damage retain discrete collision. The full list
   is recalled on-screen by the `DEBUG KEYS` panel.
+
+## Gameplay camera
+
+The camera follows the player and applies a **gameplay zoom** of `1.15`
+(`GameplayCamera.ZOOM` in `src/core/settings.py`), so it draws the world
+larger and shows ~15% less of it on each axis. The framing is deliberately
+tight: the player sees less of what is coming, which keeps tension and
+apprehension instead of giving a free map of the surroundings.
+
+`Camera` keeps two distinct sizes:
+
+| Size | Meaning |
+|---|---|
+| `width` / `height` | the window, i.e. the canvas everything is painted on |
+| `viewport_width` / `viewport_height` | the visible world area (`size / zoom`) |
+
+Consequences that fall out of that single source of truth:
+
+- `Camera.apply()` translates **and** scales world coordinates, so sprites,
+  health bars, hitboxes, labels and the debug overlays all follow the zoom
+  without special-casing;
+- `Camera.is_visible()` culls against the zoomed world viewport, so a higher
+  zoom also draws fewer sprites (cheaper frames, and the basis for a
+  view-based level streaming budget);
+- the camera keeps the player centered, the camera shake still works, and the
+  world clamping uses the zoomed viewport rather than the window;
+- the zoom is **render-only**: sprite sizes, hitboxes, physics and the
+  deterministic simulation are untouched, so goldens stay valid.
+
+Set `GameplayCamera.ZOOM = 1.0` to restore the previous fully de-zoomed
+framing. A future cinematic camera would drive its own zoom instead of
+reusing that constant.
 
 ## Physics engine (assists on by default)
 

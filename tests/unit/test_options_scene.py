@@ -1,7 +1,14 @@
-from dataclasses import replace
+"""The Options screen is a navigation hub: no setting of its own.
+
+Each value lives in the screen that owns it (Video settings, Controls), so a
+setting has a single source of truth and a single place to change it.
+"""
+
 from types import SimpleNamespace
 
+from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
+from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -20,15 +27,47 @@ def _game() -> SimpleNamespace:
     return game
 
 
-def test_options_cycles_ui_scale_and_persists_runtime_settings() -> None:
+def _confirm() -> RoutedInput:
+    return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)
+
+
+def _actions(scene) -> list[str]:
+    return [item.action for item in scene.model.items]
+
+
+def test_options_is_a_category_hub_without_duplicated_settings() -> None:
+    """No toggle in the hub: the display/control values live elsewhere."""
+    scene = OptionsScene(_game())
+
+    assert _actions(scene) == ["video", "controls", "back"]
+
+
+def test_options_holds_no_video_or_stick_toggle() -> None:
+    """The previous Fullscreen/VSync/UI scale/Stick Y rows are gone here."""
+    scene = OptionsScene(_game())
+    labels = " ".join(item.label.lower() for item in scene.model.items)
+
+    for removed in ("fullscreen", "vsync", "scale", "stick"):
+        assert removed not in labels
+
+
+def test_options_has_no_reset_because_it_owns_nothing() -> None:
+    """Each sub-menu resets what it owns; a hub with no value has no reset."""
+    assert "reset" not in _actions(OptionsScene(_game()))
+
+
+def test_options_opens_the_video_and_controls_screens() -> None:
+    pushed: list[object] = []
     game = _game()
+    game.scene_manager.push = pushed.append
     scene = OptionsScene(game)
 
-    scene.handle_routed(RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD))
+    scene.handle_routed(_confirm())
+    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+    scene.handle_routed(_confirm())
 
-    assert game.settings.ui_scale == 1.2
-    assert scene.model.current_item is not None
-    assert scene.model.current_item.action == "scale"
+    assert isinstance(pushed[0], VideoScene)
+    assert isinstance(pushed[1], ControlsCategoryScene)
 
 
 def test_options_can_return_to_previous_scene() -> None:
@@ -42,39 +81,6 @@ def test_options_can_return_to_previous_scene() -> None:
     assert calls == ["pop"]
 
 
-def test_options_resets_video_ui_and_invert_y_without_touching_controls() -> None:
-    game = _game()
-    custom_bindings = replace(
-        game.settings.bindings,
-        menu=replace(game.settings.bindings.menu, invert_y=True),
-    )
-    game.settings = replace(
-        game.settings,
-        bindings=custom_bindings,
-        ui_scale=1.2,
-        fullscreen=True,
-        vsync=True,
-    )
-    scene = OptionsScene(game)
-    for _ in range(len(scene.model.items)):
-        current = scene.model.current_item
-        if current is not None and current.action == "reset":
-            break
-        scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-    scene.handle_routed(_confirm())
-
-    defaults = UserSettings()
-    assert game.settings.ui_scale == defaults.ui_scale
-    assert game.settings.fullscreen == defaults.fullscreen
-    assert game.settings.vsync == defaults.vsync
-    assert game.settings.bindings.menu.invert_y == defaults.bindings.menu.invert_y
-    assert game.settings.bindings.gameplay == defaults.bindings.gameplay
-
-
-def _confirm() -> RoutedInput:
-    return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)
-
-
 def test_options_back_via_gamepad_and_mouse() -> None:
     """Bouton B (manette) et clic droit = retour, comme ESC."""
     calls: list[str] = []
@@ -86,3 +92,14 @@ def test_options_back_via_gamepad_and_mouse() -> None:
     OptionsScene(game).handle_routed(RoutedInput(InputAction.UI_CANCEL, InputDevice.GAMEPAD))
 
     assert calls == ["pop", "pop", "pop"]
+
+
+def test_video_menu_owns_every_display_setting() -> None:
+    assert _actions(VideoScene(_game())) == [
+        "resolution",
+        "fullscreen",
+        "vsync",
+        "scale",
+        "reset",
+        "back",
+    ]

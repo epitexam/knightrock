@@ -257,6 +257,24 @@ def _make_level(game_runtime) -> Level:
     )
 
 
+def test_level_camera_viewport_matches_the_chosen_resolution(manager: SceneManager):
+    """Le viewport caméra est la résolution choisie, pas les constantes Display.
+
+    La fenêtre n'étant pas redimensionnable, la résolution du menu vidéo est
+    le viewport stable du jeu. Si la caméra gardait 1440x900 dans une fenêtre
+    1280x720, des sprites visibles seraient écartés par le culling.
+    """
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    for width, height in ((1280, 720), (1920, 1080)):
+        surface = pygame.Surface((width, height))
+        gameplay.set_display_surface(surface)
+
+        assert gameplay.level is not None
+        assert (gameplay.level.camera.width, gameplay.level.camera.height) == (width, height)
+
+
 def test_gameplay_escape_pushes_pause(manager: SceneManager):
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)

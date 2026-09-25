@@ -26,7 +26,7 @@ from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
-from src.core.settings import Debug, Display
+from src.core.settings import Debug
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
@@ -85,7 +85,12 @@ class Level:
 
         self.groups = SpriteGroups()
 
-        self.camera = Camera(Display.WIDTH, Display.HEIGHT)
+        # Le viewport de la caméra est celui de la surface réelle, pas les
+        # constantes Display : avec une fenêtre non redimensionnable, la
+        # résolution est celle choisie dans le menu vidéo. Le culling se fait
+        # sur cette zone, donc une caméra à 1440x900 dans une fenêtre 1280x720
+        # laisserait invisibles des sprites et fausserait le budget de rendu.
+        self.camera = Camera(display_surface.get_width(), display_surface.get_height())
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
