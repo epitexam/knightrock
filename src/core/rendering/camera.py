@@ -181,13 +181,19 @@ class Camera:
         extent: the rect grows by at most a pixel, so neighbours may overlap
         by a pixel instead of leaving a gap between them, and no pixel the
         caller meant to cover is dropped.
+
+        The far edges are taken from ``apply``'s own result rather than
+        recomputed from the world rect. ``(x + w) * z`` and ``x * z + w * z``
+        disagree in the last bit, and ``ceil`` of a value one bit below the
+        true one lands a whole pixel short, which is the very bug this
+        replaces.
         """
         self._ensure_frame()
-        zoom = self.zoom
-        left = math.floor((rect.x + self._shift) * zoom)
-        top = math.floor((rect.y + self._shift_y) * zoom)
-        right = math.ceil((rect.x + rect.width + self._shift) * zoom)
-        bottom = math.ceil((rect.y + rect.height + self._shift_y) * zoom)
+        exact = self.apply(rect)
+        left = math.floor(exact.x)
+        top = math.floor(exact.y)
+        right = math.ceil(exact.right)
+        bottom = math.ceil(exact.bottom)
         return pygame.Rect(left, top, right - left, bottom - top)
 
     def is_visible(self, rect: pygame.FRect) -> bool:

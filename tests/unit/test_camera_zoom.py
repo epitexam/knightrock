@@ -1,6 +1,7 @@
 """Gameplay camera zoom: framing, culling and scaled presentation."""
 
 import os
+import random
 
 import pygame
 import pytest
@@ -256,3 +257,38 @@ def test_a_screen_rect_left_of_the_view_rounds_down_not_toward_zero() -> None:
 
     assert rect.left == -50
     assert rect.top == -50
+
+
+@pytest.mark.parametrize("zoom", [0.5, 1.0, 1.25, 1.5, 2.0, 3.7])
+def test_a_covering_rect_always_contains_the_exact_extent(zoom: float) -> None:
+    """The invariant holds for any world size, zoom, offset and rect.
+
+    The far edges come from ``apply``'s own result rather than being
+    recomputed from the world rect: ``(x + w) * z`` and ``x * z + w * z``
+    disagree in the last bit, and ``ceil`` of a value one bit below the true
+    one lands a whole pixel short, which is the bug this replaces. Fuzzing
+    every combination is what caught it.
+    """
+    rng = random.Random(20260925)
+    camera = Camera(1440, 900, zoom=zoom)
+    camera.set_world_size(8000, 600)
+    view_w, view_h = camera.viewport_width, camera.viewport_height
+
+    for _ in range(400):
+        camera.offset.x = rng.uniform(-50.0, 8000.0 - view_w + 50.0)
+        camera.offset.y = rng.uniform(-50.0, 600.0 - view_h + 50.0)
+        camera._previous_offset = pygame.Vector2(camera.offset)
+        camera.begin_frame(rng.random())
+        world = pygame.FRect(
+            rng.uniform(-100.0, 8000.0),
+            rng.uniform(-100.0, 600.0),
+            rng.uniform(0.5, 200.0),
+            rng.uniform(0.5, 200.0),
+        )
+        exact = camera.apply(world)
+        got = camera.apply_covering(world)
+
+        assert got.left <= exact.left
+        assert got.top <= exact.top
+        assert got.right >= exact.right
+        assert got.bottom >= exact.bottom
