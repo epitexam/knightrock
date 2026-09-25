@@ -412,11 +412,7 @@ def test_golden_special_attack_phase_transitions() -> None:
 
     assert len(frames) == 110  # 4 * 18 + 38
     # Frontieres internes entre phases (le tick final idle ramene phase 0).
-    boundaries = [
-        i
-        for i in range(1, len(frames) - 1)
-        if frames[i][1] != frames[i - 1][1]
-    ]
+    boundaries = [i for i in range(1, len(frames) - 1) if frames[i][1] != frames[i - 1][1]]
     assert boundaries == [17, 35, 53, 71]
     assert [sub for sub, _, _ in frames].count("startup") == 26
     assert [sub for sub, _, _ in frames].count("active") == 42
@@ -449,20 +445,14 @@ def test_golden_claw_swipe_phase_transitions() -> None:
     frames = _drive("claw_swipe", GOBLIN_ATTACKS)
 
     assert len(frames) == 25  # 13 + 12
-    boundaries = [
-        i
-        for i in range(1, len(frames) - 1)
-        if frames[i][1] != frames[i - 1][1]
-    ]
+    boundaries = [i for i in range(1, len(frames) - 1) if frames[i][1] != frames[i - 1][1]]
     assert boundaries == [12]
     assert [sub for sub, _, _ in frames].count("startup") == 5
     assert [sub for sub, _, _ in frames].count("active") == 10
     assert frames[0] == ("startup", 0, (40.0, 16.0, 40.0, 20.0))
     assert frames[12] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
     assert all(
-        box == (40.0, 16.0, 40.0, 20.0)
-        for _, ph, box in frames[:12]
-        if box is not None and ph == 0
+        box == (40.0, 16.0, 40.0, 20.0) for _, ph, box in frames[:12] if box is not None and ph == 0
     )
     assert all(
         box == (44.0, 24.0, 48.0, 24.0)

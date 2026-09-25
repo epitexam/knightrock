@@ -10,9 +10,7 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
             "idle", "assets/graphics/player/idle", AnimationSettings.FRAME_DURATION * 1.2
         ),
         AnimationSpec("run", "assets/graphics/player/run", AnimationSettings.RUN_FRAME_DURATION),
-        AnimationSpec(
-            "walk", "assets/graphics/player/run", AnimationSettings.WALK_FRAME_DURATION
-        ),
+        AnimationSpec("walk", "assets/graphics/player/run", AnimationSettings.WALK_FRAME_DURATION),
         AnimationSpec(
             "walk_slow", "assets/graphics/player/run", AnimationSettings.WALK_SLOW_FRAME_DURATION
         ),

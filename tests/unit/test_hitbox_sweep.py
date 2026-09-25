@@ -55,7 +55,9 @@ def test_lunge_frame1_sweeps_transition_tick() -> None:
 
 def test_startup_ge2_seeds_naturally_via_capture() -> None:
     """(b') `startup >= 2` : `prev` du 1er ACTIVE = startup, via capture."""
-    definition = attack(phase(startup=2, active=4, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0)))
+    definition = attack(
+        phase(startup=2, active=4, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0))
+    )
     attacker = entity_at(10.0, faction="A", definition=definition)
     target = entity_at(20.0, faction="B")
 

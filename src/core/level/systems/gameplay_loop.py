@@ -80,9 +80,7 @@ class GameplayLoop:
         self.contact_system: ContactSystem = (
             contact_system if contact_system is not None else ContactSystem()
         )
-        self.combat_system: CombatSystem = CombatSystem(
-            contact_system=self.contact_system
-        )
+        self.combat_system: CombatSystem = CombatSystem(contact_system=self.contact_system)
         self.separation_system: SeparationSystem = SeparationSystem()
         # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
         # pass at the start of process_combat_and_separation (positions are
@@ -194,9 +192,7 @@ class GameplayLoop:
                 player._dash_started_this_frame = False
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
-            hazard_damage.process(
-                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
-            )
+            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
             self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 

@@ -92,9 +92,7 @@ def test_read_attacks_file_extra_hitbox_keyframes_roundtrip(tmp_path: Path) -> N
     size, offset = phase.extra_box_at(0, 3)
     assert size[0] == pytest.approx(20.0 + 20.0 / 3)
     assert offset[0] == pytest.approx(-30.0 + 20.0 / 3)
-    serialized = attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0][
-        "extra_hitboxes"
-    ]
+    serialized = attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0]["extra_hitboxes"]
     assert serialized[0]["keyframes"] == [
         {"frame": 0, "size": [20.0, 20.0], "offset": [-30.0, 0.0]},
         {"frame": 9, "size": [40.0, 20.0], "offset": [-10.0, 0.0]},

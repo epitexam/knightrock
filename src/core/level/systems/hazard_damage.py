@@ -43,11 +43,7 @@ class HazardDamageSystem:
             knockback = getattr(hazard, "knockback", None) or self.DEFAULT_KNOCKBACK
             contact_shape = getattr(hazard, "contact_shape", None)
             swept_rect_factory = getattr(hazard, "swept_contact_rect", None)
-            swept_rect = (
-                swept_rect_factory()
-                if callable(swept_rect_factory)
-                else box
-            )
+            swept_rect = swept_rect_factory() if callable(swept_rect_factory) else box
             swept_shapes = (
                 hazard.swept_contact_shapes()
                 if contact_shape is not None
