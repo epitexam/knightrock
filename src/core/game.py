@@ -15,6 +15,8 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
+from src.core import fx
+from src.core.asset_library import shared_library
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -117,8 +119,25 @@ class Game:
         if self.display_surface is not None:
             if self._mode_signature(previous) != self._mode_signature(settings):
                 self.display_surface = self._configure_display()
+                # set_mode leaves every surface converted for the *previous*
+                # display format stale. AssetLibrary has no display to compare
+                # against, so it must be invalidated explicitly or the next
+                # frame blits through a software alpha path, then pays a full
+                # re-decode and re-conversion of the art.
+                self._invalidate_assets()
                 self.scene_manager.set_display_surface(self.display_surface)
             self.scene_manager.set_ui_scale(settings.ui_scale)
+
+    @staticmethod
+    def _invalidate_assets() -> None:
+        """Drop every surface derived from the old display format.
+
+        Two independent caches sit on top of the art: ``AssetLibrary`` and the
+        module-level frame cache in ``fx``. Clearing only the first would let
+        the second hand back pre-reformat surfaces anyway.
+        """
+        shared_library().clear()
+        fx.clear_frame_cache()
 
     @staticmethod
     def _mode_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:

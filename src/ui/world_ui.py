@@ -1907,7 +1907,17 @@ class WorldUI:
                 cursor_x += surface.get_width()
             cursor_y += row_height + LABEL_LINE_GAP
 
-    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite], camera: Camera) -> None:
+    def draw_health_bars(
+        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
+    ) -> list[pygame.Rect]:
+        """Draw the always-on HP bars; return the rects they occupy.
+
+        The caller merges those rects into the frame's presentation set. A bar
+        is not always inside its own sprite's dirty rect: it flips below the
+        entity near the top of the screen, and its 30px minimum width is wider
+        than a narrow sprite, so it can spill on every side.
+        """
+        drawn: list[pygame.Rect] = []
         for entity in entities:
             max_health = getattr(entity, "max_health", 0)
             if not max_health:
@@ -1922,7 +1932,7 @@ class WorldUI:
             background_rect = self._health_bar_rect(entity, screen_rect)
             if background_rect is None:
                 continue
-
+            drawn.append(background_rect)
             pygame.draw.rect(self.display_surface, (35, 37, 40), background_rect)
             health_ratio = max(0.0, min(1.0, health / max_health))
             health_width = background_rect.width * health_ratio
@@ -1936,3 +1946,4 @@ class WorldUI:
                     (background_rect.x, background_rect.y, health_width, background_rect.height),
                 )
             pygame.draw.rect(self.display_surface, PANEL_BORDER, background_rect, width=1)
+        return drawn

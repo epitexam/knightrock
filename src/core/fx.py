@@ -606,6 +606,18 @@ def particle_frames() -> list[pygame.Surface] | None:
         return None
 
 
+def clear_frame_cache() -> None:
+    """Forget the memoized frames and whether the assets are missing.
+
+    A display format change (``pygame.display.set_mode``) invalidates every
+    converted surface, so this second cache layer has to be dropped with
+    ``AssetLibrary`` or it would keep handing back stale ones.
+    """
+    global _frames_cache, _frames_miss
+    _frames_cache = None
+    _frames_miss = False
+
+
 def _puff_rng(entity: Any) -> random.Random:
     """The entity's own RNG when it has one, else a throwaway instance."""
     rng = getattr(entity, "rng", None)

@@ -424,8 +424,15 @@ class UIManager:
     ) -> None:
         self.world_ui.draw_debug_overlays(all_sprites, camera, delta_time)
 
-    def draw_health_bars(self, entities: pygame.sprite.Group | list, camera: Camera) -> None:
-        self.world_ui.draw_health_bars(entities, camera)
+    def draw_health_bars(
+        self, entities: pygame.sprite.Group | list, camera: Camera
+    ) -> list[pygame.Rect]:
+        """Draw the HP bars; return the rects they occupy.
+
+        The caller merges them into the frame's presentation set, otherwise a
+        bar drawn outside its sprite's dirty rect never reaches the screen.
+        """
+        return self.world_ui.draw_health_bars(entities, camera)
 
     def draw_hud(self, player: Any) -> list[pygame.Rect]:
         """Always-on player gauges: health, guard posture, dash, combo (UI-7).

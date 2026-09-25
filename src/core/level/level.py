@@ -324,7 +324,15 @@ class Level:
         dirty: list[pygame.Rect] | None = self.renderer.draw(
             self.groups, debug_enabled, dt=frame_time / 1000.0
         )
-        self.renderer.draw_health_bars(self.groups.entity_sprites)
+        bar_rects = self.renderer.draw_health_bars(self.groups.entity_sprites)
+        if dirty is not None:
+            # HP bars are painted after ``Renderer.draw`` computed its dirty
+            # set, and a bar is not necessarily inside its sprite's rect: it
+            # flips below the entity near the top of the screen, and its 30px
+            # minimum width is wider than a narrow sprite. Without merging its
+            # rects the bar survives on screen only while something else
+            # happens to repaint that area.
+            dirty = [*dirty, *bar_rects]
         for event in self.gameplay_loop.combat_system.guard_events:
             if event.kind == "clash":
                 self.renderer.ui_manager.world_ui.note_clash(

@@ -37,17 +37,17 @@ def _menu_display() -> None:
 
 
 @pytest.fixture()
-def surface() -> pygame.Surface:
-    return pygame.display.get_surface()
-
-
-@pytest.fixture()
 def game(tmp_path):
     """A runtime bound to a temporary settings file, without the main loop."""
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     runtime.display_surface = pygame.display.get_surface()
     runtime.clock = pygame.time.Clock()
     return runtime
+
+
+@pytest.fixture()
+def surface() -> pygame.Surface:
+    return pygame.display.get_surface()
 
 
 @pytest.fixture()

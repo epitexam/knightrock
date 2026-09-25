@@ -182,9 +182,18 @@ class Renderer:
         return update_rects
 
     def _collect_visible_blits(self, groups: SpriteGroups):
-        """Camera-cull and compute screen rects for every visible plane."""
+        """Camera-cull and compute screen rects for every visible plane.
+
+        The FX plane is deliberately *not* scaled through ``_scaled_image``:
+        FX particles rebuild their ``image`` every tick, so each one is a new
+        Surface object and each one would add a permanent entry to the scale
+        cache. Caching them grew the cache by one retained surface per FX
+        sprite per tick, for the whole session, with no eviction. They are
+        short-lived by nature, so they go through ``_scaled_image_once``.
+        """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
-        for sprite in (*groups.all_sprites, *groups.fg_sprites, *groups.fx_sprites):
+        cached_planes = (*groups.all_sprites, *groups.fg_sprites)
+        for sprite in cached_planes:
             if self.camera.is_visible(sprite.rect):
                 screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
                 image = self._scaled_image(sprite.image)
@@ -192,6 +201,10 @@ class Renderer:
                     blits.append(dash_frame(image, screen_rect))
                 else:
                     blits.append((image, screen_rect))
+        for sprite in groups.fx_sprites:
+            if self.camera.is_visible(sprite.rect):
+                screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
+                blits.append((self._scaled_image_once(sprite.image), screen_rect))
         return blits
 
     def _collect_flashes(self, groups: SpriteGroups):
@@ -261,8 +274,9 @@ class Renderer:
         for surface, screen_rect in blits:
             self.display_surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities) -> None:
-        self.ui_manager.draw_health_bars(entities, self.camera)
+    def draw_health_bars(self, entities) -> list[pygame.Rect]:
+        """Draw the HP bars; return the rects they occupy, to be presented."""
+        return self.ui_manager.draw_health_bars(entities, self.camera)
 
     def draw_debug_panels(
         self,
