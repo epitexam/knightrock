@@ -13,6 +13,7 @@ why they stay on their sprites without any special case.
 """
 
 import os
+from types import SimpleNamespace
 
 import pygame
 import pytest
@@ -210,3 +211,49 @@ def test_a_frame_without_overlays_still_uses_the_partial_path() -> None:
 
     assert first is not None
     assert second is not None
+
+
+def test_a_dash_ghost_stays_anchored_to_the_world_while_the_camera_moves() -> None:
+    """A ghost remembers where it was in the world, not where it was on screen.
+
+    The trail used to store the screen rect computed once, at spawn, so it
+    stayed nailed to the window while the world scrolled underneath: during a
+    dash the ghost slid backwards across the screen instead of hanging in the
+    world, and one spawned near an edge sat against that edge for its whole
+    life. Mapping the world anchor through the camera every frame keeps the
+    trail attached to the ground the player actually ran over.
+    """
+    renderer, _groups, _body = make()
+    groups = SpriteGroups()
+    dasher = DashingPlayer(100.0, 100.0)
+    groups.entity_sprites.add(dasher)
+    groups.all_sprites.add(dasher)
+
+    renderer.draw(groups, dt=1.0)
+    spawn = renderer._ghosts[0]
+    assert spawn[2] > 0.0, "the dash should have spawned a ghost"
+
+    # the world stays put, the camera pans right underneath the trail
+    before = renderer._update_afterimages(groups, 1 / 60)[0][1]
+    renderer.camera.follow(pygame.FRect(400.0, 100.0, 32, 32), 1 / 60)
+    renderer.camera.begin_frame(1.0)
+    after = renderer._update_afterimages(groups, 1 / 60)[0][1]
+
+    assert after.x < before.x, "the ghost must travel with the world, not the window"
+
+
+class DashingPlayer(pygame.sprite.Sprite):
+    """A player in the dash state, which is what spawns the ghost trail."""
+
+    faction = "player"
+    is_dead = False
+    max_health = 100
+    health = 100
+
+    def __init__(self, x: float, y: float) -> None:
+        super().__init__()
+        self.image = pygame.Surface((32, 32), pygame.SRCALPHA)
+        self.image.fill((200, 200, 255, 255))
+        self.rect = pygame.FRect(x, y, 32, 32)
+        self.hitbox = pygame.FRect(x, y, 32, 32)
+        self.state_machine = SimpleNamespace(current_state_name="dash")

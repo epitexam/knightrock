@@ -80,7 +80,7 @@ class Renderer:
         self.ui_manager = UIManager(display_surface)
         self.background_color = self._resolve_background_color(config)
         self._previous_dirty: list[pygame.Rect] = []
-        self._ghosts: list[tuple[pygame.Surface, pygame.Rect, float]] = []
+        self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
         self._ghost_timer: float = 0.0
         # Zoomed sprite surfaces: ``(id(image), zoom) -> (image, scaled)``.
         # Scaling a surface every frame for every visible sprite is expensive,
@@ -462,20 +462,42 @@ class Renderer:
     def _update_afterimages(
         self, groups: SpriteGroups, dt: float
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
-        """Maintain the dash ghost trail (render-only, capped + fading)."""
-        live: list[tuple[pygame.Surface, pygame.Rect, float]] = []
-        for surface, screen_rect, ttl in self._ghosts:
+        """Maintain the dash ghost trail (render-only, capped + fading).
+
+        Each ghost keeps the world rectangle it was spawned over, and its
+        screen position is mapped through the camera again every frame. It
+        used to store the screen rect computed once, at spawn: the ghost then
+        stayed nailed to the window while the world scrolled underneath it,
+        so during a dash -- the one time the camera moves far enough per tick
+        to see -- the trail slid backwards across the screen instead of hanging
+        in the world, and a ghost spawned near an edge could sit against that
+        edge for its whole life.
+        """
+        live: list[tuple[pygame.Surface, pygame.FRect, float]] = []
+        for surface, world_rect, ttl in self._ghosts:
             ttl -= dt
             if ttl > 0.0:
                 surface.set_alpha(int(255 * ttl / Afterimage.TTL))
-                live.append((surface, screen_rect, ttl))
+                live.append((surface, world_rect, ttl))
         self._ghosts = live
         if dt > 0.0:
             self._ghost_timer += dt
             if self._ghost_timer >= Afterimage.SPAWN_EVERY:
                 self._ghost_timer = 0.0
                 self._spawn_afterimage(groups)
-        return [(surface, screen_rect) for surface, screen_rect, _ in self._ghosts]
+        return [
+            (surface, surface.get_rect(center=self._ghost_center(world_rect)))
+            for surface, world_rect, _ in self._ghosts
+        ]
+
+    def _ghost_center(self, world_rect: pygame.FRect) -> tuple[float, float]:
+        """Where a ghost anchored to ``world_rect`` lands on screen this frame.
+
+        The stretched surface was already sized at spawn, so only the centre
+        has to be mapped: reusing the camera transform keeps the zoom and the
+        shake identical to every other sprite, and costs no rescale per frame.
+        """
+        return self.camera.apply(world_rect).center
 
     def _spawn_afterimage(self, groups: SpriteGroups) -> None:
         """Snapshot dashing players into fading ghosts.
@@ -493,11 +515,16 @@ class Renderer:
             # Speed tint: the trail reads as energy, not a plain snapshot.
             ghost.fill((170, 220, 255), special_flags=pygame.BLEND_RGB_MULT)
             # Zoom before the dash stretch: ``dash_frame`` sizes itself from the
-            # image, so a world-sized ghost would stay small on screen.
+            # image, so a world-sized ghost would stay small on screen. The
+            # stretch is applied once here, at spawn; only the centre is mapped
+            # per frame afterwards, so the trail costs no rescale per tick.
             ghost = self._scaled_image_once(ghost)
-            screen_rect = pygame.Rect(self.camera.apply(sprite.rect))
-            ghost, ghost_rect = dash_frame(ghost, screen_rect, apply_tint=False)
-            self._ghosts.append((ghost, ghost_rect, Afterimage.TTL))
+            ghost = dash_frame(
+                ghost, pygame.Rect(self.camera.apply(sprite.rect)), apply_tint=False
+            )[0]
+            # The world rect is copied because the player's own rect is mutated
+            # in place every tick, which would drag the ghost along with it.
+            self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
             self._ghosts = self._ghosts[-Afterimage.MAX :]
 
     def _draw_ghosts(
