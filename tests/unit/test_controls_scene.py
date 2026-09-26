@@ -8,6 +8,7 @@ from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
+from src.ui.grid_view import GridView
 
 
 def _game() -> SimpleNamespace:
@@ -363,7 +364,7 @@ def test_hovering_a_non_rebindable_cell_does_not_open_a_capture() -> None:
     )
     assert cell is not None, "the invert-Y row must expose a hoverable cell"
     assert cell.row == index
-    assert cell.rebindable is False
+    assert cell.activatable is False
 
     controls.handle_routed(
         RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=cell.rect.center)
@@ -443,14 +444,39 @@ def test_resolution_picker_lists_every_preset_and_marks_the_current_one() -> Non
     scene = ResolutionScene(game)
     labels = [item.label for item in scene.model.items]
 
-    assert len(labels) == len(RESOLUTIONS) + 1
-    for width, height in RESOLUTIONS:
-        assert any(label.startswith(f"{width} x {height}") for label in labels)
-    current = [label for label in labels if label.endswith(ResolutionScene.CURRENT_SUFFIX)]
-    assert current == [
-        f"{UserSettings().width} x {UserSettings().height}" + ResolutionScene.CURRENT_SUFFIX
-    ]
+    assert labels == [f"{width} x {height}" for width, height in RESOLUTIONS] + ["Back"]
     assert scene.model.items[-1].action == "back"
+
+    # The marker is a column of values, not a suffix glued to one label, so the
+    # sizes line up and only the row in use carries a readable state.
+    states = [row.cells[1].text for row in scene.rows[:-1] if row.cells[1] is not None]
+    assert states == [
+        ResolutionScene.CURRENT_MARK
+        if (width, height) == (game.settings.width, game.settings.height)
+        else ResolutionScene.EMPTY_MARK
+        for width, height in RESOLUTIONS
+    ]
+
+
+def test_resolution_picker_names_every_aspect_it_offers() -> None:
+    """The ASPECT column is the shape the player will actually get.
+
+    ``1366 x 768`` is the preset that is not exactly 16:9, so it is reported as
+    approximate: the exact ``683:384`` would be true and useless.
+    """
+    game = _game()
+    scene = ResolutionScene(game)
+
+    aspects = [row.cells[0].text for row in scene.rows[:-1] if row.cells[0] is not None]
+    assert aspects == [
+        "16:9",
+        "16:9",
+        "~16:9",
+        "16:10",
+        "16:9",
+        "16:9",
+        "16:9",
+    ]
 
 
 def test_resolution_picker_preselects_the_active_resolution() -> None:
@@ -582,7 +608,7 @@ def test_resolution_picker_selection_survives_a_redraw() -> None:
 
 
 def test_resolution_picker_refreshes_the_marker_when_the_size_changes() -> None:
-    """The ``(current)`` marker still follows an externally applied size."""
+    """The ``current`` state still follows an externally applied size."""
     from dataclasses import replace as dataclass_replace
 
     game = _game()
@@ -595,11 +621,68 @@ def test_resolution_picker_refreshes_the_marker_when_the_size_changes() -> None:
     game.settings = dataclass_replace(game.settings, width=1920, height=1080)
     scene.draw()
 
-    current = [
-        item.label
-        for item in scene.model.items
-        if item.label.endswith(ResolutionScene.CURRENT_SUFFIX)
+    marked = [
+        row.label
+        for row in scene.rows
+        if row.cells[1] is not None and row.cells[1].text == ResolutionScene.CURRENT_MARK
     ]
-    assert current == ["1920 x 1080" + ResolutionScene.CURRENT_SUFFIX]
+    assert marked == ["1920 x 1080"]
     assert scene.model.current_item is not None
     assert scene.model.current_item.action == moved_to, "the cursor must not jump on refresh"
+
+
+def test_resolution_picker_wears_the_mapping_screen_panel() -> None:
+    """The picker is drawn by the shared grid panel, with its columns and hints.
+
+    Regression of the design request: the screen used to be a content-sized
+    menu list with the marker glued to a label, and now shares the controls
+    screen's frame — headers, a focus strip on the selected row and a footer.
+    """
+    pygame.font.init()
+    game = _game()
+    pygame.display.set_mode((1440, 900))
+    scene = ResolutionScene(game)
+    assert isinstance(scene.view, GridView)
+    assert scene.COLUMN_HEADERS == ("ASPECT", "STATE")
+
+    scene.draw()
+
+    assert len(scene.view.row_rects) == len(scene.model.items)
+    # The STATE column is registered as a hit, on the focused row and
+    # activatable (a click picks the size), exactly like a binding cell — and
+    # the focus ring frames it, so the cell a click would change is the one
+    # framed.
+    selected = scene.view.row_rects[scene.model.current_index]
+    hit = next(
+        (
+            candidate
+            for x in range(selected.left, selected.right)
+            if (candidate := scene.view.cell_at((x, selected.centery))) is not None
+            and candidate.column == scene.STATE_COLUMN
+        ),
+        None,
+    )
+    assert hit is not None, "the STATE column must be hit-testable"
+    assert hit.row == scene.model.current_index
+    assert hit.activatable is True
+
+
+def test_resolution_picker_pointer_focuses_then_applies_a_row() -> None:
+    """Rows are hit-testable through ``row_rects``, like the bindings grid."""
+    pygame.font.init()
+    game = _game()
+    pygame.display.set_mode((1440, 900))
+    scene = ResolutionScene(game)
+    scene.draw()
+
+    target = next(
+        size for size in RESOLUTIONS if size != (game.settings.width, game.settings.height)
+    )
+    row = scene.view.row_rects[RESOLUTIONS.index(target)]
+    scene.handle_routed(
+        RoutedInput(InputAction.UI_POINTER_MOVE, InputDevice.MOUSE, position=row.center)
+    )
+
+    assert scene.model.current_index == RESOLUTIONS.index(target)
+    assert scene.model.current_item is not None
+    assert scene.model.current_item.action == f"res:{target[0]}x{target[1]}"

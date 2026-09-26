@@ -17,12 +17,14 @@ import pygame
 import pytest
 
 from src.application.scenes.pause_scene import PauseScene
+from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.game import Game
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
 from src.core.settings import Input as InputSettings
 from src.ui.controls_view import BindingCell, BindingRow, ControlsView
+from src.ui.grid_view import GridView
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 from src.ui.styles import GOLD
@@ -169,6 +171,49 @@ def test_video_scene_rebuilds_once_when_a_setting_changes(manager) -> None:
     assert len(rebuilt) == 1
 
 
+def test_resolution_picker_does_not_rebuild_when_settings_are_stable(manager) -> None:
+    """The picker's rows and its text cache must survive an idle frame.
+
+    The screen is drawn by the same grid panel as the bindings screen, so it
+    has to hold the same contract: rebuilding the rows per frame would mint
+    fresh label strings and invalidate the panel's text cache, which is exactly
+    the cost the panel's memoisation exists to avoid.
+    """
+    scene = ResolutionScene(manager.game)
+    manager.switch(scene)
+    scene.draw()
+    rebuilt: list[int] = []
+    original = scene._rebuild
+    scene._rebuild = lambda selected_action=None: (
+        rebuilt.append(1),
+        original(selected_action),
+    )[-1]
+    rows = scene.rows
+
+    scene.draw()
+    scene.draw()
+
+    assert rebuilt == []
+    assert scene.rows is rows
+
+
+def test_resolution_picker_rebuilds_once_when_the_size_changes(manager) -> None:
+    scene = ResolutionScene(manager.game)
+    manager.switch(scene)
+    scene.draw()
+    rebuilt: list[int] = []
+    original = scene._rebuild
+    scene._rebuild = lambda selected_action=None: (
+        rebuilt.append(1),
+        original(selected_action),
+    )[-1]
+
+    manager.game.settings = replace(manager.game.settings, width=1920, height=1080)
+    scene.draw()
+
+    assert len(rebuilt) == 1
+
+
 def test_controls_view_allocates_no_new_surface_when_stable(surface, counter) -> None:
     """The panel and the focus strip are cached by size, not rebuilt per frame."""
     rows = [
@@ -188,12 +233,12 @@ def test_controls_view_caches_rendered_text(surface) -> None:
     rows = [BindingRow("Move up", BindingCell("Up"), BindingCell("button 12"))]
     view = ControlsView(1.0)
     view.draw(surface, "MENU CONTROLS", "Keyboard", rows, selected_row=0, selected_column=0, top=80)
-    first = {id(text) for text in view._text_cache.values()}
+    first = {id(text) for text in view._grid._text_cache.values()}
     assert first
 
     view.draw(surface, "MENU CONTROLS", "Keyboard", rows, selected_row=0, selected_column=0, top=80)
 
-    assert {id(text) for text in view._text_cache.values()} == first
+    assert {id(text) for text in view._grid._text_cache.values()} == first
 
 
 @pytest.mark.parametrize(
@@ -207,14 +252,14 @@ def test_controls_view_caches_rendered_text(surface) -> None:
 )
 def test_fit_leaves_short_labels_untouched(text: str, max_width: int, expected: str) -> None:
     font = pygame.font.SysFont("Consolas", 22)
-    rendered = ControlsView._fit(font, text, max_width, (255, 255, 255))
+    rendered = GridView._fit(font, text, max_width, (255, 255, 255))
     assert rendered.get_width() == font.size(expected)[0]
 
 
 def test_fit_truncates_with_an_ellipsis() -> None:
     font = pygame.font.SysFont("Consolas", 22)
     text = "Left Joystick Axis 2 (Down)"
-    narrow = ControlsView._fit(font, text, 40, (255, 255, 255))
+    narrow = GridView._fit(font, text, 40, (255, 255, 255))
 
     assert narrow.get_width() <= 40
     assert narrow.get_width() < font.size(text)[0]
@@ -230,7 +275,7 @@ def test_fit_handles_a_very_long_label_quickly() -> None:
     text = "Left Joystick Axis 2 (Down) extended label " * 12
 
     start = pygame.time.get_ticks()
-    ControlsView._fit(font, text, 60, (255, 255, 255))
+    GridView._fit(font, text, 60, (255, 255, 255))
     elapsed_ms = pygame.time.get_ticks() - start
 
     assert elapsed_ms < 50

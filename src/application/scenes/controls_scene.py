@@ -312,10 +312,10 @@ class ControlsScene(Scene):
             moved = self._focus(hit.row, hit.column)
             if not activate:
                 return moved
-            # A non-rebindable row (invert Y, Reset, Back) focuses like any
-            # other, but a click activates it instead of opening a capture
-            # it could never fill.
-            if hit.rebindable:
+            # A row that cannot be acted on (invert Y, Reset, Back) focuses
+            # like any other, but a click activates it instead of opening a
+            # capture it could never fill.
+            if hit.activatable:
                 return self._start_capture(hit.row, hit.column)
             return self._activate()
         for index, rect in enumerate(self.view.row_rects):

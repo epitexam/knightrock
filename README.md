@@ -116,8 +116,10 @@ DEBUG=1 uv run python main.py
 is a navigation hub — every setting lives in the screen that owns it:
 
 - **Video settings** — resolution, fullscreen, VSync, UI scale. The **Resolution**
-  row opens a dedicated picker listing every supported size at once, with the
-  one in use marked `(current)`; `←`/`→` still nudge the value inline.
+  row opens a dedicated picker that draws in the same panel as the controls
+  screen — title, `ASPECT` / `STATE` columns, a focus strip and a hint line —
+  listing every supported size at once with the one in use marked `current`;
+  `←`/`→` still nudge the value inline.
 - **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
   inversion) and *Gameplay controls* (key/button rebinding).
 
