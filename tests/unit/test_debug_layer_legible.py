@@ -174,3 +174,108 @@ def test_a_panel_hit_box_is_the_size_of_the_button_it_belongs_to() -> None:
         assert close_box_rect(100, 100, scale).width == max(6, round(14 * scale))
     interaction = _renderer(1.8889).interaction
     assert interaction.scale == pytest.approx(1.8889)
+
+
+# --------------------------------------------------------------------------
+# 3. A key that cannot act says so.
+# --------------------------------------------------------------------------
+
+
+def _game(tmp_path, monkeypatch, debug: bool) -> Game:
+    monkeypatch.setenv("KNIGHTROCK_SAVE_DIR", str(tmp_path / "home"))
+    monkeypatch.setenv("DEBUG", "1" if debug else "0")
+    game = Game(
+        save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json"
+    )
+    game._initialize()
+    return game
+
+
+def test_f_keys_without_the_flag_explain_themselves_instead_of_doing_nothing(
+    tmp_path, monkeypatch
+) -> None:
+    """The second failure: a silent dead key is indistinguishable from a bug.
+
+    Every F-key is debug-only, and without ``--debug`` they did nothing at all:
+    no overlay, no log, no hint. The fix is not to make the overlay
+    unconditional -- a player who asked for no panels should get no panels -- but
+    to name the flag, once.
+    """
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    game = _game(tmp_path, monkeypatch, debug=False)
+    game.scene_manager.switch(GameplayScene(game, 0))
+    for _ in range(3):
+        game.step()
+    assert not Debug.is_enabled()
+
+    pygame.event.post(
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F1, mod=0, unicode="", scancode=0)
+    )
+    game._handle_events()
+
+    assert game.notice_lines, "F1 with no debug flag must say something"
+    assert any("--debug" in line for line in game.notice_lines)
+    assert any("F1" in line or "F-keys" in line for line in game.notice_lines)
+
+
+def test_the_notice_is_shown_once_and_then_expires(tmp_path, monkeypatch) -> None:
+    """A hint that repeats is a permanent overlay, which is what it warns about."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    game = _game(tmp_path, monkeypatch, debug=False)
+    game.scene_manager.switch(GameplayScene(game, 0))
+    for _ in range(3):
+        game.step()
+
+    for key in (pygame.K_F1, pygame.K_F2, pygame.K_F3):
+        pygame.event.post(
+            pygame.event.Event(pygame.KEYDOWN, key=key, mod=0, unicode="", scancode=0)
+        )
+        game._handle_events()
+    assert game.notice_lines, "a second key should not need a second hint"
+    assert sum(1 for _ in game.notice_lines) == 2
+
+    for _ in range(600):
+        game.step()
+    assert game.notice_lines == (), "the notice has to go away on its own"
+
+
+def test_with_the_flag_there_is_no_notice_and_the_layers_still_flip(
+    tmp_path, monkeypatch
+) -> None:
+    """The flag path is unchanged: no nagging, and F1 still toggles."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    game = _game(tmp_path, monkeypatch, debug=True)
+    game.scene_manager.switch(GameplayScene(game, 0))
+    for _ in range(3):
+        game.step()
+    scene = game.scene_manager.current
+    world_ui = scene.level.renderer.ui_manager.world_ui
+    before = world_ui.layers["boxes"]
+
+    pygame.event.post(
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F1, mod=0, unicode="", scancode=0)
+    )
+    game._handle_events()
+
+    assert world_ui.layers["boxes"] is not before
+    assert game.notice_lines == ()
+
+
+def test_an_unrelated_key_never_produces_a_notice(tmp_path, monkeypatch) -> None:
+    """Only the debug keys. A notice on every keypress is noise."""
+    from src.application.scenes.gameplay_scene import GameplayScene
+
+    game = _game(tmp_path, monkeypatch, debug=False)
+    game.scene_manager.switch(GameplayScene(game, 0))
+    for _ in range(3):
+        game.step()
+
+    pygame.event.post(
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0, unicode=" ", scancode=0)
+    )
+    game._handle_events()
+
+    assert game.notice_lines == ()

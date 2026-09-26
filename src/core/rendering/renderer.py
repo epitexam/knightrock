@@ -420,6 +420,7 @@ class Renderer:
         game: Any = None,
         frame_time: float = 0.0,
         cache_size: int | None = None,
+        counter: Any = None,
     ) -> None:
         started = perf_counter()
         self.ui_manager.renderer.interaction.begin_frame()
@@ -447,6 +448,7 @@ class Renderer:
             cache_size=cache_size,
             layout=layout,
             debug_stats=self.debug_metrics_snapshot(),
+            counter=counter,
         )
         if compact_panels():
             self.ui_manager.draw_compact_panel(player, layout, game)

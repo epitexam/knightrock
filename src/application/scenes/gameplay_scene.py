@@ -75,6 +75,9 @@ class GameplayScene(Scene):
         self.level: Level | None = level
         self.frozen = False
         self._step_pending = False
+        #: One message per session: a hint that repeats every frame is a
+        #: permanent overlay, which is the thing it was warning against.
+        self._dead_key_notice_shown = False
 
     def enter(self) -> None:
         if self.level is None:
@@ -152,6 +155,25 @@ class GameplayScene(Scene):
             self.level.surface = surface
             self.level.renderer.set_surface(surface)
 
+    def draw_frame_counter(self) -> None:
+        """Paint the frame timings, if the setting asks for them.
+
+        Drawn by the gameplay scene rather than by the HUD on its own, because
+        the HUD draws itself from a player and the readout has to be there
+        whether or not there is one -- a level that has not spawned yet, a
+        death screen, a menu stacked over the world.
+        """
+        # Duck-typed, like ``render_alpha`` above: a lightweight runtime driving
+        # this scene in a test has no settings and no counter, and draws nothing
+        # rather than raising. Both absences are honest answers.
+        settings = getattr(self.game, "settings", None)
+        counter = getattr(self.game, "frame_counter", None)
+        if self.level is None or counter is None:
+            return
+        if settings is not None and not settings.frame_counter:
+            return
+        self.level.renderer.ui_manager.hud.draw_frame_counter(counter.lines())
+
     def set_ui_scale(self, scale: float) -> None:
         if self.level is not None:
             self.level.renderer.ui_manager.set_ui_scale(scale)
@@ -177,7 +199,10 @@ class GameplayScene(Scene):
         return False
 
     def _handle_gameplay_key(self, key: int) -> None:
-        if self.level is None or not Debug.is_enabled():
+        if self.level is None:
+            return
+        if not Debug.is_enabled():
+            self._explain_dead_key(key)
             return
         if key == _FREEZE_KEY:
             self.frozen = not self.frozen
@@ -200,6 +225,39 @@ class GameplayScene(Scene):
             ui_manager.world_ui.toggle(toggle)
             if toggle == "panels":
                 ui_manager.reset_debug_panels()
+
+    #: What each function key is for, for the one message that names them all.
+    _KEY_PURPOSE = {
+        _FREEZE_KEY: "hold the simulation still",
+        _STEP_KEY: "advance one tick while frozen",
+        _REPLAY_KEY: "loop an attack",
+        _EXPORT_KEY: "export an attack",
+        _PANEL_FOCUS_KEY: "cycle the debug panels",
+        _PANEL_LAYOUT_KEY: "panel layout",
+    }
+
+    def _explain_dead_key(self, key: int) -> None:
+        """Say, once, that the debug keys need the flag.
+
+        Every F-key in this class is debug-only, and without ``--debug`` they
+        were *silent*: no overlay, no log, no hint. A key that does nothing and
+        says nothing cannot be told from a key that is broken, and the honest
+        answer here was to name the flag rather than to make the whole overlay
+        unconditional -- which would put a frame counter's worth of panels in
+        front of a player who asked for none.
+        """
+        if not (key in _OVERLAY_TOGGLES or key in self._KEY_PURPOSE):
+            return
+        if self._dead_key_notice_shown:
+            return
+        self._dead_key_notice_shown = True
+        purpose = self._KEY_PURPOSE.get(key, "toggle the overlay")
+        notice = getattr(self.game, "notice", None)
+        if callable(notice):
+            notice(
+                f"F-keys are debug-only -- {purpose}",
+                "Start with:  python main.py --debug",
+            )
 
     def _route_to_panels(self, event: pygame.event.Event) -> bool:
         """Let the debug panels swallow a mouse event (``×``, drag & drop).
@@ -244,6 +302,12 @@ class GameplayScene(Scene):
         # declared about them any more: the next frame erases the whole target,
         # so a shrinking bar or an expiring combo cannot leave a stripe behind.
         self.level.renderer.ui_manager.draw_hud(getattr(self.level, "player", None))
+        # Last of all: the readout is a tool, and a tool that another overlay
+        # can cover is a tool that is sometimes wrong.
+        self.draw_frame_counter()
+        notice = getattr(self.game, "notice_lines", ())  # absent: nothing to say
+        if notice:
+            self.level.renderer.ui_manager.hud.draw_notice(notice)
         if self.frozen:
             self._draw_frozen_tag()
 

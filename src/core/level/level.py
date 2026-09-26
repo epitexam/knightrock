@@ -347,6 +347,7 @@ class Level:
         # a clash never hides behind an HP bar (this stamp spends no TTL).
         self.renderer.ui_manager.world_ui.stamp_clash_marker(self.renderer.camera)
         self.renderer.draw_debug_panels(
+            counter=getattr(game, "frame_counter", None),
             player=self.player,
             fps=fps,
             sprite_count=len(self.groups.all_sprites),

@@ -108,3 +108,34 @@ class _InstantClock:
 
     def get_time(self) -> int:
         return 0
+
+
+def test_the_loop_measures_every_frame_whether_or_not_anything_is_drawn(
+    tmp_path, monkeypatch
+) -> None:
+    """Measurement unconditional, painting conditional.
+
+    Two clock reads per frame cost about a tenth of a microsecond; a number
+    that is only collected while it is on screen cannot be compared with the run
+    where it was off, which is the comparison the whole readout exists for.
+    """
+    monkeypatch.setenv("KNIGHTROCK_SAVE_DIR", str(tmp_path / "home"))
+    monkeypatch.setenv("DEBUG", "0")
+    game = Game(save_path=tmp_path / "s.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    game.settings = game.settings.with_video(frame_counter=False)
+    # A clock that returns instantly: this test is about sampling, not pacing,
+    # and the real one would spend the frame asleep.
+    game.clock = _InstantClock()
+
+    for _ in range(5):
+        game.step()
+
+    assert len(game.frame_counter.frame_samples) == 5
+    assert game.frame_counter.pacer == "limite 60"
+    # ... and the scene is asked for lines only when the setting says so.
+    drawn: list[tuple[str, ...]] = []
+    original = game.frame_counter.lines
+    game.frame_counter.lines = lambda: drawn.append(original()) or original()  # type: ignore[method-assign]
+    game.scene_manager.draw(game._draw_target())
+    assert drawn == [], "a disabled readout must not be asked for its lines"

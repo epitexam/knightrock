@@ -120,6 +120,7 @@ def test_video_menu_owns_every_display_setting() -> None:
         "vsync",
         "frame_limit",
         "scale",
+        "frame_counter",
         "reset",
         "back",
         "info",
