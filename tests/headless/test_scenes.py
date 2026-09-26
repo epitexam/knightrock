@@ -18,10 +18,11 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.victory_scene import VictoryScene
+from src.core.display.viewport import Viewport
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Gameplay
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 class RecordingScene(Scene):
@@ -293,7 +294,7 @@ def test_victory_can_open_level_select(manager: SceneManager):
 
 def _make_level(game_runtime) -> Level:
     return Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )
@@ -305,20 +306,50 @@ def test_the_camera_viewport_ignores_the_video_resolution(manager: SceneManager)
     The camera used to be built from the window's pixel size, so the slice of
     world the player saw was decided by a video setting: at a large enough
     resolution a whole level fitted on screen. The viewport is now the framing,
-    and nothing the player can configure moves it.
+    and the only thing that moves it is the render scale -- a sharpness choice
+    that multiplies the framing by a whole number, so it changes how large the
+    world is drawn and never how much of it is shown.
     """
     from src.core.display.framing import DEFAULT_FRAMING
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
-    expected = (DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
-    for width, height in ((1280, 720), (1920, 1080), (2560, 1440)):
-        gameplay.set_surface(pygame.Surface((width, height)))
+    for scale in (1, 2, 3):
+        surface = Viewport(DEFAULT_FRAMING, scale).surface
+        gameplay.set_surface(surface)
 
         assert gameplay.level is not None
         camera = gameplay.level.camera
-        assert (camera.viewport_width, camera.viewport_height) == expected
+        assert (camera.viewport_width, camera.viewport_height) == DEFAULT_FRAMING.size
+        assert camera.scale == scale
+        # And the framing still covers the target exactly, at every scale.
+        camera.begin_frame(1.0)
+        covered = camera.apply_covering(
+            pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
+        )
+        assert covered.size == surface.get_size()
+
+
+def test_the_window_never_reaches_the_camera(manager: SceneManager) -> None:
+    """A window resize changes the presentation and nothing else.
+
+    Applying window sizes through ``set_surface`` is refused outright, because a
+    surface that is not a render target cannot be drawn into -- the game builds
+    one from the framing and a scale, and the window is presented from it.
+    """
+    from src.core.display.framing import DEFAULT_FRAMING
+
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+    assert gameplay.level is not None
+    before = (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height)
+
+    with pytest.raises(ValueError):
+        gameplay.set_surface(pygame.Surface((1280, 720)))
+
+    assert (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height) == (before)
+    assert before == DEFAULT_FRAMING.size
 
 
 def test_gameplay_escape_pushes_pause(manager: SceneManager):

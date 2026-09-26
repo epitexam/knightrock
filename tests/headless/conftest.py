@@ -10,6 +10,8 @@ import os
 import pygame
 import pytest
 
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.viewport import DEFAULT_RENDER_SCALE, Viewport
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.core.settings import Display
@@ -22,6 +24,17 @@ def _headless_pygame_display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((min(Display.WIDTH, 640), min(Display.HEIGHT, 480)))
+
+
+def make_viewport(scale: int = DEFAULT_RENDER_SCALE) -> Viewport:
+    """A render target, the way the game builds one.
+
+    Tests used to hand ``pygame.display.get_surface()`` straight to a Level,
+    which is the coupling this rework removed: the window is not what anything is
+    drawn into. It happens to still work under the dummy driver, and it is the
+    reason a fixture can quietly disagree with the game about what a frame is.
+    """
+    return Viewport(DEFAULT_FRAMING, scale)
 
 
 def make_programmatic_level_data() -> LevelData:
@@ -52,12 +65,11 @@ def build_level(mock_input_manager):
     """Factory returning a real player-populated ``Level``."""
 
     def _build() -> Level:
-        level = Level(
-            pygame.display.get_surface(),
+        return Level(
+            make_viewport().surface,
             make_programmatic_level_data(),
             mock_input_manager,
         )
-        return level
 
     return _build
 

@@ -94,21 +94,25 @@ class Renderer:
         changes, and that is ``Presentation``'s business.
         """
         self.surface = surface
+        # The camera owns the scale, so it has to hear about the new target in
+        # the same breath. Skipping this leaves the rectangles at the old scale
+        # while the images move to the new one, which is the mismatch that draws
+        # a world at the wrong size with no error anywhere.
+        self.camera.set_target(surface)
         self.ui_manager.set_surface(surface)
         self._scaled_cache.clear()
         self._flash_cache.clear()
 
     @property
-    def _render_scale(self) -> float:
-        """Target pixels per world unit, read off the two sizes we are given.
+    def _render_scale(self) -> int:
+        """Target pixels per world unit, as the camera computed it.
 
-        Derived rather than passed so the renderer cannot be handed a scale that
-        disagrees with the surface it is drawing into.
+        Not derived here as well. Two derivations of the same number is one too
+        many, and this is the one that matters: the camera uses it for the
+        rectangles, so a disagreement would scale the images and not the rects
+        and the frame would show a world half the size it claims to.
         """
-        world_width = self.camera.framing.width
-        if world_width <= 0:
-            return 1.0
-        return self.surface.get_width() / world_width
+        return self.camera.scale
 
     def _scaled_image(self, image: pygame.Surface) -> pygame.Surface:
         """Scale ``image`` to the render scale, caching the result.
@@ -117,7 +121,7 @@ class Renderer:
         scaling.
         """
         scale = self._render_scale
-        if scale == 1.0:
+        if scale == 1:
             return image
         key = id(image)
         cached = self._scaled_cache.get(key)
@@ -159,24 +163,23 @@ class Renderer:
         cheap enough.
         """
         scale = self._render_scale
-        if scale == 1.0:
+        if scale == 1:
             return image
         return self._rescale(image, scale)
 
     @staticmethod
-    def _rescale(image: pygame.Surface, scale: float) -> pygame.Surface:
-        """Scale a surface by ``scale``, smoothing only when enlarging.
+    def _rescale(image: pygame.Surface, scale: int) -> pygame.Surface:
+        """Scale a surface by an integer factor, nearest neighbour.
 
-        Enlarging an already-integral factor is the case that matters, since
-        the render scale is an integer: the nearest-neighbour path then
-        reproduces every source pixel exactly. Shrinking is also nearest, where
-        smoothing would only soften a sprite that is on its way out.
+        Nearest because the factor is an integer: the art is authored at one
+        pixel per world unit and this reproduces every source pixel exactly, so
+        an upscaled sprite is a clean block of whole pixels rather than a
+        smoothed approximation of one. Smoothing belongs to the present step,
+        which is the only place a non-integer factor ever appears.
         """
-        width = max(1, round(image.get_width() * scale))
-        height = max(1, round(image.get_height() * scale))
-        if scale > 1.0:
-            return pygame.transform.smoothscale(image, (width, height))
-        return pygame.transform.scale(image, (width, height))
+        return pygame.transform.scale(
+            image, (max(1, image.get_width() * scale), max(1, image.get_height() * scale))
+        )
 
     def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
         self._debug_samples[name].append(elapsed_ms)

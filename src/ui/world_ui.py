@@ -460,12 +460,9 @@ class WorldUI:
         )
         return visible.inflate(margin * 2, margin * 2)
 
-    def _target_scale(self, camera: Camera) -> float:
-        """Target pixels per world unit, from the two sizes we are given."""
-        world_width = camera.viewport_width
-        if world_width <= 0:
-            return 1.0
-        return self.surface.get_width() / world_width
+    def _target_scale(self, camera: Camera) -> int:
+        """Target pixels per world unit, as the camera computed it."""
+        return camera.scale
 
     @staticmethod
     def _display_name(sprite: pygame.sprite.Sprite) -> str:

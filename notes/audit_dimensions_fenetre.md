@@ -192,7 +192,50 @@ session réelle avant de considérer cette migration comme récettée :
 5. brancher un second écran en cours de session puis relancer ;
 6. sur Wayland : le placement de la fenêtre et le comportement du plein écran.
 
-## 9. Ce que la vraie session a cassé
+## 9. Ce que la revue a cassé
+
+Une passe de relecture a demandé si le chemin de rendu était réellement adapté.
+Il l'était — et la réponse était fausse, parce que la question avait été posée
+sur la forme plutôt que sur le fond.
+
+**La caméra ne peut pas être une translation pure.** J'avais supprimé son
+échelle enJuguant que « la magnification appartient au pipeline d'assets ». C'est
+faux : la magnification s'applique aux **rectangles** autant qu'aux images. La
+cible vaut `Framing × échelle`, donc un rectangle monde doit être multiplié pour
+atterrir sur les bons pixels.
+
+Concrètement, à l'échelle 2 : un sprite de 64 unités était agrandi en 128 px
+puis blité dans un rect de 64 px — et `pygame.blit` **rééchantillonne la source
+pour l'ajuster à la destination**, sans rien dire. Le monde était donc dessiné à
+la moitié de la densité qu'annonce le cadrage, et n'occupait que le **quart
+supérieur gauche** de la cible. C'est ce que « tout est cassé » décrivait, et
+c'était ma régression.
+
+La correction : la caméra a de nouveau une échelle, mais elle n'est plus une
+constante divisée par la taille de la fenêtre — elle est **l'entier dont la
+cible a été construite**, lu sur la cible par `Camera.for_target`. La propriété
+qui compte survit intacte : `viewport = Framing × échelle`, donc le monde visible
+est le cadrage et ne dépend d'aucun réglage.
+
+Trois conséquences de conception, qui valent d'être écrites parce que chacune
+aurait dû être posée avant :
+
+- **une cible qui ne correspond à aucun entier est refusée**, pas arrondie.
+  Arrondir dessinerait le monde à une densité que personne n'a demandée et le
+  cadrage cesserait de décrire ce qui est à l'écran ;
+- **la caméra détient l'échelle et le renderer la lit.** Deux dérivations du même
+  nombre, c'est une de trop : la caméra s'en sert pour les rectangles, donc un
+  désaccordscale les images et pas les rects — précisément le bug ci-dessus ;
+- **`Renderer.set_surface` prévient la caméra.** Sans cela, un changement
+  d'échelle de rendu laissait la caméra à l'ancienne valeur.
+
+Le test de chaîne des surfaces ne l'avait pas vu, et c'est instructif : il
+vérifiait l'**identité** des objets, pas la géométrie. Une chaîne de surfaces
+peut être entièrement correcte et dessiner une frame cassée. Il vérifie
+maintenant qu'un sprite agrandi et son rect de blit font la même taille, à
+chaque échelle.
+
+## 10. Ce que la vraie session a cassé
 
 Le premier passage sur la machine de développement (Wayland, deux écrans :
 2560×1440 @180 Hz en primaire, 1920×1080 @60 Hz à sa gauche) a invalidé une

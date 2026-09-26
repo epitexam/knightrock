@@ -13,13 +13,14 @@ import pygame
 import pytest
 
 from src.core import fx
-from src.core.display.framing import Framing
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.viewport import Viewport
 from src.core.game import Game
 from src.core.level.level import Level
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 @pytest.fixture()
@@ -55,10 +56,15 @@ class _RebuiltSprite(_Sprite):
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
 
 
-def make_renderer(framing: Framing | None = None) -> tuple[Renderer, SpriteGroups]:
-    framing = framing or Framing(320.0, 240.0)
-    surface = pygame.Surface((320, 240))
-    camera = Camera(framing)
+def make_renderer(scale: int = 1) -> tuple[Renderer, SpriteGroups]:
+    """A renderer on a target built the way the game builds one.
+
+    The framing is the game's, not a test's own: a test that picks a framing
+    and a surface separately can produce a pair the game would refuse, and then
+    it tests a configuration that cannot occur.
+    """
+    surface = Viewport(DEFAULT_FRAMING, scale).surface
+    camera = Camera.for_target(surface)
     camera.set_world_size(640, 480)
     return Renderer(surface, camera), SpriteGroups()
 
@@ -70,7 +76,7 @@ def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
     retained one surface per particle per tick for the whole session, with no
     eviction: a minute of combat was measured retaining tens of megabytes.
     """
-    renderer, groups = make_renderer(Framing(160.0, 120.0))
+    renderer, groups = make_renderer(2)
     groups.all_sprites.add(_Sprite())
     for _ in range(200):
         particle = _RebuiltSprite()
@@ -84,7 +90,7 @@ def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
 
 def test_static_sprites_are_still_cached_across_frames() -> None:
     """The fix must not disable caching for the planes that benefit from it."""
-    renderer, groups = make_renderer(Framing(160.0, 120.0))
+    renderer, groups = make_renderer(2)
     groups.all_sprites.add(_Sprite())
 
     renderer._collect_visible_blits(groups)
@@ -95,12 +101,14 @@ def test_static_sprites_are_still_cached_across_frames() -> None:
 
 def test_fx_sprites_are_still_scaled_to_the_render_scale() -> None:
     """Not caching FX must not skip the render scale."""
-    renderer, groups = make_renderer(Framing(160.0, 120.0))
+    renderer, groups = make_renderer(2)
     groups.fx_sprites.add(_RebuiltSprite())
 
     blits = renderer._collect_visible_blits(groups)
 
     assert [surface.get_size() for surface, _ in blits] == [(80, 80)]
+    # And the rect agrees, or pygame silently resamples the source to fit it.
+    assert [rect.size for _, rect in blits] == [(80, 80)]
 
 
 def test_health_bars_report_the_rects_they_paint() -> None:
@@ -110,7 +118,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
     minimum width is wider than a narrow sprite, so it is not always inside
     the sprite's own rect.
     """
-    renderer, groups = make_renderer()
+    renderer, groups = make_renderer(1)
     entity = _Sprite((100.0, 100.0), size=16)
     entity.max_health = 100
     entity.health = 40
@@ -122,7 +130,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
 
 
 def test_health_bars_report_nothing_without_health() -> None:
-    renderer, _ = make_renderer()
+    renderer, _ = make_renderer(1)
     entity = _Sprite()
     entity.max_health = 0
     entity.health = 0
@@ -190,7 +198,7 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     that a bar actually reaches the pixels.
     """
     level = Level(
-        pygame.Surface((320, 240)),
+        make_viewport().surface,
         make_programmatic_level_data(),
         mock_input_manager,
     )

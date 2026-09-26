@@ -7,7 +7,6 @@ from typing import Any
 import pygame
 
 from src.application.events import EventBus, LevelStarted
-from src.core.display.framing import DEFAULT_FRAMING
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
 from src.core.level.systems.camera_system import CameraSystem
@@ -88,10 +87,11 @@ class Level:
         self.groups = SpriteGroups()
 
         # La caméra ne connaît plus la fenêtre : elle reçoit le cadrage, qui est
-        # une constante en unités monde. C'est ce qui fait qu'une résolution ne
-        # peut plus élargir ce que le joueur voit — le viewport est le même sur
-        # un portable 1366x768 et sur un écran 4K.
-        self.camera = Camera(DEFAULT_FRAMING)
+        # une constante en unités monde, et lit son échelle sur la cible de rendu
+        # qu'on lui passe. C'est ce qui fait qu'une résolution ne peut plus
+        # élargir ce que le joueur voit — le viewport est le même sur un portable
+        # 1366x768 et sur un écran 4K.
+        self.camera = Camera.for_target(surface)
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the

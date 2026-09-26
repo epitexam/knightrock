@@ -23,7 +23,7 @@ from src.core.display.size_mode import SizeMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 class RecordingFeedback:
@@ -204,7 +204,7 @@ def test_the_gameplay_scene_publishes_nothing_for_the_player_keys(
     be heard — at the menu auto-repeat rate for the whole level.
     """
     level = Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )
@@ -222,7 +222,7 @@ def test_opening_the_pause_from_gameplay_is_published(
 ) -> None:
     """The one sound the gameplay scene owes: the pause menu opening."""
     level = Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )

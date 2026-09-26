@@ -1,17 +1,15 @@
 """Level → app event integration tests (Phase 2 #5)."""
 
-import pygame
-
 from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 def build_level_with_bus(events: EventBus | None) -> Level:
     """Build a programmatic Level with the given bus."""
     return Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         InputManager(),
         level_id=7,

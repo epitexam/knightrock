@@ -16,6 +16,7 @@ import pygame
 import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING, Framing
+from src.core.display.viewport import Viewport
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
@@ -287,25 +288,67 @@ class _FlashingEntity(pygame.sprite.Sprite):
         self.flash_timer = 0.05
 
 
-def _renderer(surface_size: tuple[int, int], scale: int) -> Renderer:
-    framing = DEFAULT_FRAMING
-    surface = pygame.Surface(framing.viewport_size(scale))
-    renderer = Renderer(surface, Camera(framing))
-    assert surface.get_size() == surface_size
-    return renderer
+def _renderer(scale: int) -> Renderer:
+    """A renderer on a target built the way the game builds one."""
+    surface = Viewport(DEFAULT_FRAMING, scale).surface
+    return Renderer(surface, Camera.for_target(surface))
 
 
-def test_the_render_scale_comes_from_the_two_sizes_and_nowhere_else() -> None:
-    """A 2x target is two pixels per world unit, and the camera cannot say otherwise."""
-    renderer = _renderer((2304, 1296), 2)
-    assert renderer._render_scale == 2.0
+def test_the_camera_reads_its_scale_off_the_target() -> None:
+    """And not the other way round: a scale passed next to a target of another
+    size would scale the images and not the rectangles, and the world would be
+    drawn at half the density the framing claims."""
+    for scale in (1, 2, 3):
+        surface = Viewport(DEFAULT_FRAMING, scale).surface
+        assert Camera.for_target(surface).scale == scale
+        assert Renderer(surface, Camera.for_target(surface))._render_scale == scale
 
+
+@pytest.mark.parametrize("size", [(1400, 900), (640, 480), (0, 0), (2305, 1296)])
+def test_a_target_that_does_not_match_the_framing_is_refused(size) -> None:
+    """Rounding a mismatched ratio would draw a world at a density nobody asked
+    for, and the framing would stop describing what is on screen."""
+    with pytest.raises(ValueError):
+        Camera.for_target(pygame.Surface(size))
+
+
+def test_a_two_to_one_target_scales_the_image_and_the_rect_together() -> None:
+    """The bug this file was extended for: image scaled, rect not, and pygame
+    silently resizes the source to fit the destination."""
+    renderer = _renderer(2)
     image = pygame.Surface((10, 20))
-    assert renderer._scaled_image(image).get_size() == (20, 40)
+    rect = pygame.FRect(0.0, 0.0, 10.0, 20.0)
+    renderer.camera.offset.update(0, 0)
+    renderer.camera.begin_frame(1.0)
+
+    scaled = renderer._scaled_image(image)
+    covering = renderer.camera.apply_covering(rect)
+
+    assert renderer._render_scale == 2
+    assert scaled.get_size() == (20, 40)
+    assert covering.size == scaled.get_size(), (
+        "a blit whose source and destination differ is silently resampled, which "
+        "is how the world ends up drawn at the wrong size"
+    )
+
+
+def test_the_framing_covers_the_whole_target_at_every_scale() -> None:
+    """The other half: the visible world has to *be* the target, not a corner."""
+    for scale in (1, 2, 3):
+        surface = Viewport(DEFAULT_FRAMING, scale).surface
+        camera = Camera.for_target(surface)
+        camera.offset.update(0, 0)
+        camera.begin_frame(1.0)
+
+        covered = camera.apply_covering(
+            pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
+        )
+
+        assert covered.size == surface.get_size()
 
 
 def test_a_one_to_one_target_pays_nothing_for_scaling() -> None:
-    renderer = _renderer((1152, 648), 1)
+    renderer = _renderer(1)
     image = pygame.Surface((10, 20))
 
     assert renderer._scaled_image(image) is image
@@ -313,9 +356,9 @@ def test_a_one_to_one_target_pays_nothing_for_scaling() -> None:
 
 
 def test_the_scaled_cache_is_keyed_by_the_image_alone() -> None:
-    """The key used to carry the zoom; the render scale is fixed per target, so
-    an image can only ever have one scaled form."""
-    renderer = _renderer((2304, 1296), 2)
+    """The key used to carry the zoom. The scale is fixed for a target, so an
+    image can only ever have one scaled form."""
+    renderer = _renderer(2)
     image = pygame.Surface((8, 8))
 
     first = renderer._scaled_image(image)
@@ -324,33 +367,38 @@ def test_the_scaled_cache_is_keyed_by_the_image_alone() -> None:
 
 
 def test_adopting_a_new_target_drops_the_scale_cache() -> None:
-    renderer = _renderer((2304, 1296), 2)
+    renderer = _renderer(2)
     renderer._scaled_image(pygame.Surface((8, 8)))
     assert renderer._scaled_cache
 
-    renderer.set_surface(pygame.Surface(DEFAULT_FRAMING.viewport_size(1)))
+    new_target = Viewport(DEFAULT_FRAMING, 1).surface
+    renderer.set_surface(new_target)
 
     assert not renderer._scaled_cache
-    assert renderer._render_scale == 1.0
+    assert renderer._render_scale == 1
+    assert renderer.camera.scale == 1
 
 
-def test_a_new_target_does_not_disturb_the_camera() -> None:
-    """The old code resized the camera with the window. It must not any more:
-    that coupling is the bug, and a test on it is the only thing keeping it
-    out."""
-    renderer = _renderer((2304, 1296), 2)
+def test_a_new_target_does_not_disturb_what_the_camera_shows() -> None:
+    """The scale moves with the target; the *framing* must not.
+
+    The old code resized the camera with the window, which is the original bug:
+    the visible world was a function of a video setting. A new target changes
+    how large the world is drawn and nothing about how much of it is shown."""
+    renderer = _renderer(2)
     before = (renderer.camera.viewport_width, renderer.camera.viewport_height)
 
-    renderer.set_surface(pygame.Surface((800, 600)))
+    renderer.set_surface(Viewport(DEFAULT_FRAMING, 1).surface)
 
     assert (renderer.camera.viewport_width, renderer.camera.viewport_height) == before
+    assert renderer.camera.scale == 1, "the scale does follow the target"
 
 
 def test_draw_returns_nothing_and_paints_the_whole_target() -> None:
     """No partial presentation any more, so there is no rect set to return."""
     groups = SpriteGroups()
     groups.all_sprites.add(StaticSprite((0, 0)))
-    renderer = _renderer((1152, 648), 1)
+    renderer = _renderer(1)
     renderer.background_color = (7, 9, 11)
 
     assert renderer.draw(groups) is None
@@ -364,7 +412,7 @@ def test_the_background_is_erased_every_frame() -> None:
     whole target now, so the one-frame-late overlay bookkeeping is gone."""
     groups = SpriteGroups()
     groups.all_sprites.add(StaticSprite((0, 0), size=(64, 64)))
-    renderer = _renderer((1152, 648), 1)
+    renderer = _renderer(1)
     renderer.background_color = (3, 5, 7)
     renderer.draw(groups)
 
@@ -378,7 +426,7 @@ def test_a_flashing_entity_is_collected_without_touching_the_scale_cache() -> No
     groups = SpriteGroups()
     entity = _FlashingEntity()
     groups.entity_sprites.add(entity)
-    renderer = _renderer((1152, 648), 1)
+    renderer = _renderer(1)
     renderer.camera.begin_frame(1.0)
 
     assert renderer._collect_flashes(groups)

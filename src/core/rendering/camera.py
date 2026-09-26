@@ -17,10 +17,21 @@ class Camera:
     once at load, and the camera only says where in the world the frame is
     looking.
 
-    So the transform is ``screen = world - offset`` and nothing else. That is
-    not a simplification for its own sake: it means the magnification cannot
-    change between the moment the gameplay decides what is visible and the
-    moment the picture is drawn, so the two cannot disagree.
+    There is a scale, and it is not optional: the render target is
+    ``framing * scale`` pixels, so a world rectangle has to be multiplied to
+    land on the right pixels. What changed is where the scale comes from. It
+    used to be a constant divided by the *window* size, which made the visible
+    world a function of a video setting; it is now the integer the render target
+    was built with, which the window cannot influence.
+
+    The mistake worth recording: making the camera a *pure translation* looks
+    right -- the magnification belongs to the asset pipeline -- and it breaks
+    the frame, because the magnification applies to the rectangles as much as to
+    the images. At a 2x target a 64-unit sprite was scaled to 128px and then
+    blitted into a 64px rect, and ``pygame.blit`` resizes the source to fit the
+    destination, so the world was drawn at half the density the framing claims
+    and occupied a quarter of the frame. Pure translation is only correct when
+    one world unit is one target pixel, i.e. at a 1x target.
 
     ``apply()`` maps a world rectangle to render-target coordinates by
     translating it; ``is_visible()`` culls against the framing rect. Every
@@ -28,9 +39,13 @@ class Camera:
     those two, so none of them can drift from the others.
     """
 
-    def __init__(self, framing: Framing = DEFAULT_FRAMING):
+    def __init__(self, framing: Framing = DEFAULT_FRAMING, scale: int = 1):
         self.offset = pygame.math.Vector2(0, 0)
         self.framing = framing
+        #: Target pixels per world unit. The target is ``framing * scale``, so
+        #: this is not a free parameter: it is read back off the target rather
+        #: than configured, by :meth:`for_target`.
+        self.scale = max(1, int(scale))
         self.world_width = 0.0
         self.world_height = 0.0
         self.trauma = 0.0
@@ -44,6 +59,44 @@ class Camera:
         #: Offset the camera had when the last tick finished, so the draw can
         #: show it partway towards the current one. See begin_frame.
         self._previous_offset = pygame.math.Vector2(0.0, 0.0)
+
+    @classmethod
+    def for_target(cls, target: pygame.Surface, framing: Framing = DEFAULT_FRAMING) -> Camera:
+        """A camera whose scale is read off the render target.
+
+        Deriving the scale from the surface it has to draw into is what keeps
+        the two from disagreeing: a scale passed alongside a target of a
+        different size produces a frame whose rectangles and images do not
+        match, and nothing about that is visible until the level looks wrong.
+
+        A non-integral ratio means the target does not match the framing, which
+        is a wiring mistake rather than a configuration; it is refused rather
+        than rounded, because a rounded scale would draw the world at a density
+        the player never asked for and the framing contract would no longer
+        describe what is on screen.
+        """
+        width = target.get_width() / framing.width
+        height = target.get_height() / framing.height
+        scale = round(width)
+        if scale < 1 or abs(width - scale) > 1e-6 or abs(height - scale) > 1e-6:
+            raise ValueError(
+                f"Render target {target.get_size()} does not match framing "
+                f"{framing.size} times an integer scale"
+            )
+        return cls(framing, scale)
+
+    def set_target(self, target: pygame.Surface) -> None:
+        """Adopt a new render target and re-read the scale from it.
+
+        The camera's offset, shake and framing are untouched: a render-scale
+        change is a sharpness decision, not a change of what is being looked at.
+        Only the scale moves, and it has to move here rather than in the
+        renderer -- a renderer holding its own copy of the number is how the
+        images and the rectangles end up scaled differently.
+        """
+        adopted = Camera.for_target(target, self.framing)
+        self.scale = adopted.scale
+        self._viewport = None
 
     def begin_frame(self, alpha: float = 1.0) -> None:
         """Recompute the per-frame transform, once for the whole draw pass.
@@ -137,12 +190,18 @@ class Camera:
             self.offset.y = -(view_h - self.world_height) / 2.0
 
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
-        """Map a world rectangle to render-target coordinates (translation only)."""
+        """Map a world rectangle to render-target coordinates."""
         self._ensure_frame()
-        return pygame.FRect(rect.x + self._shift, rect.y + self._shift_y, rect.width, rect.height)
+        scale = self.scale
+        return pygame.FRect(
+            (rect.x + self._shift) * scale,
+            (rect.y + self._shift_y) * scale,
+            rect.width * scale,
+            rect.height * scale,
+        )
 
     def apply_covering(self, rect: pygame.FRect) -> pygame.Rect:
-        """Screen rectangle for a world rect, rounded *outward* to cover it.
+        """Target rectangle for a world rect, rounded *outward* to cover it.
 
         ``apply`` returns exact fractional bounds, and ``pygame.Rect`` built
         from those truncates them. Truncation always rounds a rectangle *in*:

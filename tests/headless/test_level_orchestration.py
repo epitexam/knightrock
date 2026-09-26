@@ -6,6 +6,7 @@ TMX asset required — and advanced tick by tick.
 
 import pygame
 
+from src.core.display.framing import DEFAULT_FRAMING
 from src.core.sprites import Sprite
 from tests.headless.conftest import make_programmatic_level_data
 
@@ -67,15 +68,24 @@ def test_level_data_round_trips_through_world_builder(build_level) -> None:
     assert level.level_data.pixel_height == 10 * 64
 
 
-def test_level_supports_draw_pass(build_level) -> None:
-    """Full-screen rendering must not crash (dummy SDL)."""
+def test_level_draws_into_its_render_target_and_not_the_window(build_level) -> None:
+    """A frame must not crash, and must land where the target is.
+
+    This used to assert the opposite -- that the level's surface *was* the
+    window -- which is the coupling the rework removed. A Level draws into a
+    render target of a fixed size; the window is presented from it and nothing
+    is drawn there.
+    """
     level = build_level()
     player = level.player
     pygame.draw.rect(level.surface, (0, 0, 0), player.hitbox)
 
-    level.draw(fps=60.0)
+    assert level.draw(fps=60.0) is None
 
-    assert level.surface is pygame.display.get_surface()
+    window = pygame.display.get_surface()
+    assert window is not None
+    assert level.surface is not window
+    assert level.surface.get_size() == DEFAULT_FRAMING.viewport_size(level.camera.scale)
 
 
 def test_programmatic_level_data_has_no_colliders(build_level) -> None:

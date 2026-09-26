@@ -27,7 +27,8 @@ from src.core.rendering.renderer import Renderer  # noqa: E402
 
 
 def _renderer(scale: int) -> Renderer:
-    return Renderer(Viewport(DEFAULT_FRAMING, scale).surface, Camera(DEFAULT_FRAMING))
+    target = Viewport(DEFAULT_FRAMING, scale).surface
+    return Renderer(target, Camera.for_target(target))
 
 
 def _chain(renderer: Renderer) -> list[pygame.Surface]:
@@ -86,23 +87,60 @@ def test_the_camera_does_not_know_the_target_size() -> None:
 
 
 def test_the_render_scale_is_derived_not_stored() -> None:
-    """Read off the two sizes, so a scale that disagrees with the surface is
-    not expressible."""
+    """It comes from the camera, which reads it off the target.
+
+    A second derivation in the renderer would be one too many: the camera uses
+    the number for the rectangles, so a disagreement scales the images and not
+    the rects, and the frame shows a world at the wrong size with no error.
+    """
     for scale in (1, 2, 3):
         renderer = _renderer(scale)
-        assert renderer._render_scale == float(scale)
+        assert renderer._render_scale == scale
+        assert renderer._render_scale == renderer.camera.scale
 
-        # A surface of a different scale moves the derivation with it.
+        # A surface of a different scale moves it, because the camera hears
+        # about the new target.
         renderer.set_surface(Viewport(DEFAULT_FRAMING, 1).surface)
-        assert renderer._render_scale == 1.0
+        assert renderer._render_scale == 1
+        assert renderer.camera.scale == 1
 
 
 def test_the_debug_overlay_and_the_renderer_agree_on_the_scale() -> None:
-    """Two independent derivations of the same number; they must not drift."""
+    """Both read the camera's, so they cannot drift apart."""
     for scale in (1, 2, 3):
         renderer = _renderer(scale)
         overlay = renderer.ui_manager.world_ui
         assert overlay._target_scale(renderer.camera) == renderer._render_scale
+
+
+@pytest.mark.parametrize("scale", [1, 2, 3])
+def test_the_frame_is_geometry_coherent_at_every_scale(scale: int) -> None:
+    """Surface identity was not enough, and that is how the scale bug survived.
+
+    A chain of surfaces can all be the right object and still draw a broken
+    frame, if the camera's scale and the renderer's disagree: the rectangles
+    come from the camera, the images from the renderer, and ``pygame.blit``
+    resamples a source to fit a destination that does not match without saying
+    anything. So the check has to be that a sprite's scaled image and its blit
+    rect are the same size, at every scale.
+    """
+    from src.core.sprite_groups import SpriteGroups
+
+    renderer = _renderer(scale)
+    groups = SpriteGroups()
+    sprite = pygame.sprite.Sprite()
+    sprite.image = pygame.Surface((64, 64), pygame.SRCALPHA)
+    sprite.image.fill((0, 255, 0, 255))
+    sprite.rect = pygame.FRect(0.0, 0.0, 64.0, 64.0)
+    groups.all_sprites.add(sprite)
+
+    image, rect = renderer._collect_visible_blits(groups)[0]
+
+    assert renderer.camera.scale == scale
+    assert image.get_size() == (64 * scale, 64 * scale)
+    assert rect.size == image.get_size(), (
+        "a blit whose source and destination differ is silently resampled"
+    )
 
 
 def test_a_frame_reaches_the_target_and_nothing_else() -> None:
