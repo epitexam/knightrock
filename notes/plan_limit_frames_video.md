@@ -10,7 +10,6 @@ Contraintes :
 - ne pas modifier le comportement par défaut (la cible actuelle reste `Display.FPS`) ;
 - ne pas faire entrer la limite dans `_mode_signature` : elle s'applique à chaud, sans recréer la fenêtre ;
 - ne pas bumper `SETTINGS_FORMAT_VERSION` : la clé est optionnelle avec défaut ;
-- traiter la modification non commitée de `src/core/settings.py` (`Display.FPS` 60 → 240) comme un changement hors périmètre ;
 - valider chaque affirmation chiffrée contre le code réellement présent.
 
 État observé :
@@ -18,7 +17,9 @@ Contraintes :
 - `pytest -q` : **1117 tests passés** ;
 - `mypy src` : **142 fichiers analysés, aucune erreur** ;
 - `ruff check src tests` et `ruff format --check src tests` : propres ;
-- `Display.FPS = 240` dans l'arbre de travail, **non commité** (état commité : 60) ;
+- `Display.FPS = 60` (`src/core/settings.py:17`) ; une valeur supérieure a été
+  essayée puis revertie pendant la rédaction de ce plan, sans commit. Le
+  plafond doit rester robuste à ce réglage, d'où la dérivation en §4.2 ;
 - `UserSettings` (`src/application/settings_store.py:27`) contient `width`, `height`, `fullscreen`, `vsync`, `ui_scale` — **pas de limite de frames** ;
 - `Display.FPS` n'est consommé que par `Game._frame_delta` et par la dérivation du plafond anti-emballement.
 
@@ -75,7 +76,7 @@ La simulation tourne à `Simulation.TICK_RATE = 60` (`src/core/settings.py:294`)
 | sujet | choix | justification |
 |---|---|---|
 | nom du réglage | `Frame limit` | ne pas promettre ce que le vsync ignore |
-| défaut | `Display.FPS` (240) | préserve le comportement actuel ; sinon `tick(0)` ferait passer le jeu de 240 à ~500 fps en consommant un cœur |
+| défaut | `Display.FPS` (60) | préserve le comportement actuel ; sinon `tick(0)` ferait tourner la boucle à la vitesse maximale (~500 fps sur cette machine) en consommant un cœur |
 | min | **20** | période 50 ms contre un plafond dur de 100 ms → 2× de marge ; 3 ticks/frame pile |
 | max | **500** | au-delà la limite est inatteignable (frame ~2 ms) ; sert à rejeter un JSON bricolé |
 | valeurs exposées | `Uncapped, 20, 30, 60, 120, 144, 240` | 20/30/60 divisent 60 ; 144 couvre un écran 144 Hz sans deviner |
