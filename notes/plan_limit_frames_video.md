@@ -1,5 +1,20 @@
 # Plan d'implémentation — Limite de frames dans le menu vidéo
 
+> **Exécuté le 2026-09-26** sur `feat/display-cadrage-system`, avec deux écarts
+> par rapport au plan ci-dessous, tous deux dictés par la structure livrée :
+>
+> - le champ s'appelle `frame_limit` et non `fps_limit`, parce que le plan
+>   disait lui-même de ne pas nommer la chose « FPS » ;
+> - le taux réel de l'écran vient de `get_desktop_refresh_rates()[index]` et non
+>   de `get_current_refresh_rate()`, qui **lève `No open window`** tant que la
+>   fenêtre n'existe pas — et ne voit que l'écran courant de toute façon.
+>
+> Une observation du plan a été confirmée et étendue : il disait qu'un plafond
+> sous 10 fps tronque le delta et met le jeu au ralenti. C'est exact, et c'est
+> ce qui a fait ajouter `Simulation.MAX_TICKS_PER_FRAME` — parce que tronquer le
+> delta borne une frame, alors qu'une surcharge *soutenue* se solde par une
+> dette qui, elle, ne l'était pas. Voir `notes/audit_dimensions_fenetre.md` §3.
+
 ## 0. Objet et contraintes
 
 Ce plan décrit l'ajout d'un réglage de limite de frames dans `VideoScene`, aujourd'hui absent.

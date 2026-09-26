@@ -75,7 +75,7 @@ Les références de lignes de l’ancienne version ne sont pas reproduites telle
 | Modèle focus/hover | `MenuModel` + `MenuView` (rects, wrap, items désactivés) | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py` |
 | Scène Options | Hub de navigation (Video settings, Controls) | **Clos** | `options_scene.py`, `test_options_scene.py` |
 | Rebinding/persistance | Écran Contrôles + `settings.json` versionné | **Clos** | `settings_store.py`, `controls_scene.py`, `test_controls_scene.py` |
-| Réglages vidéo | Résolutions prédéfinies (écran de sélection), plein écran `SCALED` (letterbox), vsync | **Clos** | `game.py` (`_configure_display`), `video_scene.py`, `resolution_scene.py` |
+| Réglages vidéo | Mode d'écran, tailles dérivées du bureau, letterbox maison, vsync vérifié | **Clos** | `src/core/display/`, `video_scene.py`, `resolution_scene.py` |
 | Audio | **Partiel** — sons d'interface livrés (navigation, validation, retour) ; musique, sons gameplay et volume ouverts | Ouvert | `core/audio.py`, `InputDispatcher._apply`, `test_audio.py`, `test_ui_audio.py` |
 | HUD joueur | Vie, posture, dash et combo | **Clos** | `src/ui/hud.py`, `GameplayScene.draw` |
 | Panneau COMBAT hors debug | Gaté | **Clos** | `WorldUI.draw_metrics_panel`, tests debug |
@@ -133,13 +133,13 @@ Deux règles ont été ajoutées le 2026-09-25 et sont à considérer comme du c
 | UI-3 Modèle de sélection | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py`, tests unitaires |
 | UI-4 Options | **Clos** | `options_scene.py` : hub sans réglage propre, chaque valeur dans l'écran qui la possède (Video / Controls) |
 | UI-5 Rebinding et settings | **Clos** | `settings_store.py` + `controls_scene.py` (capture touche/bouton + persistance) |
-| UI-6 Vidéo | **Clos** | `game.py` : fenêtre **non redimensionnable** (viewport logique stable), `FULLSCREEN|SCALED` avec letterbox, vsync, `VIDEORESIZE` ignoré ; cadence livrée (voir UI-14) |
+| UI-6 Vidéo | **Rouvert puis re-clos 2026-09-26** | Le verdict d'origine était faux : voir §5 ci-dessous. Livré : `src/core/display/` (Framing / Viewport / Stage / Presentation), fenêtre redimensionnable, letterbox maison, mode d'écran et taille derivés du bureau, schéma settings v2, vsync vérifié par `is_vsync()` |
 | UI-8 Aide aux contrôles | Partiel | l’écran Contrôles liste les bindings ; pas de tutoriel gameplay |
 | UI-9 Parcours de progression | **Clos** | `level_select_scene.py`, `victory_scene.py`, tests headless |
 | UI-10 Audio | **Partiel** | sons d'interface livrés (navigation, validation, retour) ; §5 UI-10. Musique, sons gameplay et volume ouverts |
 | UI-13 Accessibilité UI | **Clos** | `ui.scale` persisté, `MenuView` recalculé à chaque dessin |
-| UI-14 Cohérence de frame et cadence | **Clos** | `Camera.begin_frame` / `apply_covering`, `add_overlay_rects`, `Game._frame_delta`, `test_frame_coherence.py`, `test_frame_pacing.py`, `test_no_stale_pixels.py` |
-| UI-15 Limite de frames (menu vidéo) | Ouvert, planifié | lot 7, `notes/plan_limit_frames_video.md` ; `UserSettings` n’a pas encore `fps_limit` |
+| UI-14 Cohérence de frame et cadence | **Clos** | `Camera.begin_frame` / `apply_covering` conservés ; l'appareil de dirty rects a été **supprimé** (cible fixe = rafraîchi complet), `Game._frame_delta` / `_run_ticks`, `test_frame_coherence.py`, `test_frame_pacing.py`, `test_no_stale_pixels.py` |
+| UI-15 Limite de frames (menu vidéo) | **Clos 2026-09-26** | `UserSettings.frame_limit` (None = non plafonné), ligne du menu vidéo, `Game._frame_target` ; plan de `notes/plan_limit_frames_video.md` exécuté avec `get_desktop_refresh_rates()` |
 
 Comportements de retour verrouillés par des tests (toute modification demande une
 décision explicite et la mise à jour des deux documents) :
@@ -458,17 +458,24 @@ Livré en complément (vérification 2026-09-24) :
   par ESC / clic droit / bouton B. La capture est neutralisée côté routeur par
   `EventRouter.would_route_key` / `would_route_button` : l’appui qui termine la
   capture ne déclenche pas l’action qu’il route ;
-- **vidéo** (`Game._configure_display`) : la fenêtre n'est **pas** redimensionnable.
-  La résolution vient de la liste prédéfinie du menu vidéo (`VideoScene.RESOLUTIONS`)
-  et constitue le viewport logique stable du jeu (culling caméra, budget de
-  rendu). En plein écran, `pygame.FULLSCREEN | pygame.SCALED` conserve le ratio et
-  remplit l'écart avec des barres noires. `VIDEORESIZE` est ignoré : il ne peut
-  plus modifier les réglages (ce qui interdit aussi toute boucle
-  `set_mode()` / `VIDEORESIZE`) ;
-- **viewport caméra** (`Level`) : la caméra est dimensionnée depuis la surface
-  réelle, plus depuis les constantes `Display` — sinon un changement de
-  résolution laisserait la caméra plus grande que la fenêtre et le culling
-  écarterait des sprites visibles ;
+- **vidéo** : ce qui suit **remplace** la livraison décrite plus haut dans ce
+  même document, dont le verdict « Clos » était erroné. La fenêtre est
+  redimensionnable, et `pygame.SCALED` a disparu — c'était l'API
+  expérimentale qui faisait le letterbox, et la cible de rendu le fait
+  désormais elle-même. Le letterbox est calculé dans
+  `src/core/display/presentation.py`, et le pointeur revient par l'inverse exact
+  de la même transformation. `VIDEORESIZE` n'est plus ignoré : il recalcule le
+  rectangle de présentation et s'arrête là, ce qui est possible parce que rien
+  de ce qui est dessiné n'en dépend ;
+- **taille de fenêtre** : elle ne vient plus d'une liste de résolutions
+  absolues. `window_size_choices(desktop)` propose des fractions de l'écran du
+  joueur, filtrées sur « ça tient ». Le mode d'écran et la taille ont une valeur
+  `auto` réévaluée à chaque lancement, et une taille choisie à la main est
+  refusée — avec un log — quand l'écran courant ne peut plus la montrer ;
+- **viewport caméra** : la caméra ne reçoit plus la taille de la surface. Elle
+  reçoit `Framing`, une constante en unités monde. C'est la correction de fond :
+  voir `notes/audit_dimensions_fenetre.md`.
+
 - **nettoyage** : `src/application/scenes/menu_panel.py` supprimé (code mort, plus
   aucun appelant de production) ; tous les écrans passent par `MenuView`.
 

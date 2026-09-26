@@ -115,21 +115,40 @@ DEBUG=1 uv run python main.py
 **In-game screens:** the main menu and the pause screen open **Options**, which
 is a navigation hub — every setting lives in the screen that owns it:
 
-- **Video settings** — resolution, fullscreen, VSync, UI scale. The **Resolution**
-  row opens a dedicated picker that draws in the same panel as the controls
-  screen — title, `ASPECT` / `STATE` columns, a focus strip and a hint line —
-  listing every supported size at once with the one in use marked `current`;
-  `←`/`→` still nudge the value inline.
+- **Video settings** — display mode, window size, render scale, smooth scaling,
+  VSync, frame limit, UI scale. Every row reports its value in its own column,
+  and `←`/`→` set it. The **Window size** row opens a dedicated picker that
+  draws in the same panel as the controls screen — title, a `STATE` column, a
+  focus strip and a hint line — listing at once the sizes this screen can
+  actually show, with the one in use marked `current` and the automatic choice
+  marked `auto`. It is disabled in borderless, where a window size is
+  meaningless.
 - **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
   inversion) and *Gameplay controls* (key/button rebinding).
 
 Choices are written to `~/.knightrock/settings.json` and apply without
 restarting. Each sub-menu has its own **Reset** that restores exactly what it
-owns. The window is **not** resizable: the resolution is picked from a fixed
-preset list, and that logical size is the stable gameplay viewport (camera
-culling and the level rendering budget are computed against it). In fullscreen
-the ratio is preserved and the leftover desktop area is filled with black bars
-(`pygame.SCALED`).
+owns.
+
+**The window adapts to the machine, and the game does not adapt to the window.**
+These are two separate problems and the menu keeps them apart:
+
+- the **display mode** and the **window size** default to *auto*: re-evaluated
+  on every launch, so docking a laptop or running the game on another machine
+  changes the answer. Borderless when the screen already has the shape of the
+  framing, a window otherwise. A hand-picked size is honoured, and refused with
+  a log line when the current screen can no longer show it;
+- the sizes on offer are **fractions of the player's own screen** (40% to 95%),
+  filtered by whether the result fits with room for a title bar. The old fixed
+  list of absolute resolutions offered 2560x1440 to a 1366x768 laptop.
+
+The window is resizable, and resizing it changes nothing about the game: the
+visible world is a fixed rectangle in world units (see below), and the finished
+frame is scaled to fit the window with the aspect preserved, the leftover
+filled with black bars. The **Render scale** and **Smooth scaling** rows are
+sharpness settings, and they are the ones to reach for when a large window makes
+a frame expensive — measured, smooth scaling plus a 2x draw is 105% of a 60Hz
+frame at 3840x2160.
 
 **Debug spawns:** `G` goblin · `P` slime · `T` dummy.
 
@@ -184,49 +203,61 @@ frame cost predictable:
   Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
   the whole overlay pass from p50 6.0 ms to 4.3 ms.
 
-## Gameplay camera
+## Framing: how much of the world is visible
 
-The camera follows the player and applies a **gameplay zoom** of `1.25`
-(`GameplayCamera.ZOOM` in `src/core/settings.py`), so it draws the world
-larger and shows ~15% less of it on each axis. The framing is deliberately
-tight: the player sees less of what is coming, which keeps tension and
-apprehension instead of giving a free map of the surroundings.
+The camera follows the player and shows a **fixed rectangle of the world**:
+1152x648 world units, in `src/core/display/framing.py`. That number is the
+whole framing policy. It is deliberately tight — the player sees 45% of the
+width and 34% of the height of the shipped level — so the level has to be read
+as it is entered rather than mapped from the menu, and tension comes from not
+being able to see what is coming.
 
-`Camera` keeps two distinct sizes:
+It used to be a **window** measurement. The camera was built from the window's
+pixel size and a zoom constant, which made the visible world a free variable of
+a video setting: the reveal ran from 34% of the level's height at the smallest
+preset to 60% at the largest, and on the 40x15 levels a high enough preset
+revealed a whole level, height included. A player could see more of a level by
+opening the video menu. `test_framing_contract.py` now asserts the framing is
+smaller than every `.tmx` in the level folder, and
+`test_sim_is_display_independent.py` runs one input log at five window sizes
+and three render scales and compares a world checksum.
 
-| Size | Meaning |
+How large the world is *drawn* is a separate question, answered by the render
+scale: the art is authored at one pixel per world unit and the finished frame is
+scaled to the window on its way out. So the camera has no zoom at all.
+
+| Object | What it is |
 |---|---|
-| `width` / `height` | the window, i.e. the canvas everything is painted on |
-| `viewport_width` / `viewport_height` | the visible world area (`size / zoom`) |
+| `Framing` | the visible rectangle of the world, in world units. Fixed. |
+| `Viewport` | the fixed-size surface everything is drawn into |
+| `Stage` | the OS window: mode, size, position, DPI, vsync |
+| `Presentation` | viewport onto window, and the pointer back |
 
-Consequences that fall out of that single source of truth:
+The invariant the four rest on: **the simulation reads `Framing` and nothing
+else.** Window size, DPI, display mode and desktop dimensions are not
+observable from it.
 
-- `Camera.apply()` translates **and** scales world coordinates, so sprites,
-  health bars, hitboxes, labels and the debug overlays all follow the zoom
-  without special-casing;
-- `Camera.apply_covering()` is what the renderer actually blits with. `apply()`
-  returns exact fractional bounds and `pygame.Rect` truncates them, which always
-  rounds a rectangle *in*: the tile at the far edge of a level maps to
-  `x 1427.5..1440.0` on a 1440-wide screen and came out as `Rect(1427, .., 12)`,
-  stopping at 1438. The last column and row of the window were then painted by
-  nothing and kept the background fill — a one-pixel line down the right edge and
-  along the bottom, visible only once the camera is pushed against its clamp,
-  which in practice means dashing into a corner of the map. `apply_covering()`
-  floors the near edges and ceils the far ones, so a rect covers its true extent:
-  it grows by at most a pixel, so neighbours overlap instead of leaving a gap.
-  Fuzzing every world size, zoom, camera offset and rect found 0 violations of
-  that containment invariant;
-- `Camera.is_visible()` culls against the zoomed world viewport, so a higher
-  zoom also draws fewer sprites (cheaper frames, and the basis for a
-  view-based level streaming budget);
-- the camera keeps the player centered, the camera shake still works, and the
-  world clamping uses the zoomed viewport rather than the window;
-- the zoom is **render-only**: sprite sizes, hitboxes, physics and the
+What follows from that:
+
+- `Camera.apply()` is a pure translation, `screen = world - offset`. Sprites,
+  health bars, hitboxes, labels and the debug overlays all read the one
+  transform, so none of them can drift from the others;
+- `Camera.apply_covering()` is what the renderer blits with. `apply()` returns
+  exact fractional bounds and `pygame.Rect` truncates them, which always rounds
+  a rectangle *in*: a tile at the far edge came out a pixel short, and the last
+  column and row of the frame were painted by nothing and kept the background
+  fill. It floors the near edges and ceils the far ones, so a rect covers its
+  true extent. Fuzzing every framing, world size, camera offset and rect finds
+  0 violations of that containment invariant;
+- `Camera.is_visible()` culls against the framing rect;
+- every frame is a complete repaint of the target, so a stale pixel is not
+  possible rather than merely unlikely. That is what the fixed target bought:
+  the incremental path, the dirty-rect budget and the overlay-rect bookkeeping
+  are gone rather than merely tuned;
+- a window resize reaches nothing that is drawn. `VIDEORESIZE` recomputes the
+  letterbox rectangle and stops;
+- the framing is **render-only**: sprite sizes, hitboxes, physics and the
   deterministic simulation are untouched, so goldens stay valid.
-
-Set `GameplayCamera.ZOOM = 1.0` to restore the previous fully de-zoomed
-framing. A future cinematic camera would drive its own zoom instead of
-reusing that constant.
 
 ## Physics engine (assists on by default)
 
@@ -371,7 +402,8 @@ src/
 ├── core/          Bootstrap (game.py), settings, paths, colors, fx
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
-│   ├── rendering/ Camera, renderer, dirty-rect presentation
+│   ├── rendering/ Camera (pure translation) and renderer
+│   ├── display/   Framing, Viewport, Stage, Presentation, setup detection
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
 │                   Asset library and animator (`core/asset_library.py`)
 │                   Audio bus (`core/audio.py`)
@@ -390,18 +422,18 @@ notes/             Refactoring plans, audit reports and open gaps
 
 **Reading the code, module by module**
 
-- `src/core/game.py` owns the display, input and the scene stack; the loop only
-  feeds fixed ticks to the active scene and presents its dirty rects. The loop
-  is paced **exactly once**: with vsync off the `Clock` holds `Display.FPS`, with
-  vsync on the present already blocks on the vertical blank, so the clock is
-  ticked only against a runaway ceiling derived from that rate — targeting 60 on
-  top of a 60Hz present waits twice for one refresh and the cadence alternates
-  between on time and one refresh late. The ceiling is a backstop, not a frame
-  rate control, and it is derived rather than hardcoded so raising
-  `Display.FPS` can never leave it underneath. A frame carrying HUD or HP-bar
-  rects never takes the partial present path: those are painted *after* the
-  renderer has chosen what to present, so a region that does not cover them
-  leaves them one frame stale.
+- `src/core/game.py` owns the display, input and the scene stack; the loop feeds
+  fixed ticks to the active scene, draws into the render target and presents
+  it once. The loop is paced **exactly once**: with vsync off the `Clock` holds
+  the frame limit, with vsync on the present already blocks on the vertical
+  blank, so the clock is ticked only against a runaway ceiling derived from that
+  rate — targeting 60 on top of a 60Hz present waits twice for one refresh and
+  the cadence alternates between on time and one refresh late. The ceiling is a
+  backstop, not a frame rate control, and it is derived rather than hardcoded so
+  raising the limit can never leave it underneath. A frame runs at most
+  `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped: the
+  accumulator's own clamp bounds a single frame, and only accumulated debt from
+  a sustained overload can exceed that.
 - `src/core/level/systems/gameplay_loop.py` defines the *order* in which the
   level systems run; each system stays independently testable.
 - `src/application/events.py` is a synchronous, strictly ordered event bus with
@@ -441,11 +473,10 @@ notes/             Refactoring plans, audit reports and open gaps
   no magic numbers in the systems. A constant **shared by two modules has
   exactly one home**, and it belongs to the module that acts on it: the HP bar
   geometry is defined once in `src/ui/world_ui.py`, which draws it, and
-  `src/core/rendering/renderer.py` imports it rather than redefining it for its
-  erase headroom. Two copies agree only until someone edits one. UI-only
-  constants (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and
-  renderer internals (`DIRTY_*`, `DASH_STRETCH_*`) stay next to their only
-  user.
+  `src/core/rendering/renderer.py` imports it rather than redefining it. Two
+  copies agree only until someone edits one. UI-only constants
+  (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and renderer
+  internals (`DASH_STRETCH_*`) stay next to their only user.
 - **No dead menu options.** User-facing hotkeys are mirrored by tests
   (`DEBUG KEYS` panel, bindings, attack sets).
 
