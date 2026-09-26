@@ -70,7 +70,11 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
         pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=0, value=0.1)
     )
 
-    assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=1.0)
+    # SDL reports a hat in screen coordinates: y=+1 is pushed *down*. This used
+    # to be asserted as UI_UP, which is the bug -- the axis below agrees, and
+    # a D-pad press that moved the menu the other way from the stick was
+    # invisible here because nothing compared the two.
+    assert hat == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
     # Stick tenu : les événements intermédiaires sont filtrés (throttle).
     assert flooded is None
@@ -86,7 +90,7 @@ def test_router_uses_inverted_y_and_ui_deadzone_for_xbox() -> None:
     router = EventRouter()
     inverted_router = EventRouter(InputBindings(menu=MenuBindings(invert_y=True)))
     deadzone = router.route(
-        pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.4)
+        pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.2)
     )
     up = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=-0.8))
     down = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.8))
@@ -95,6 +99,16 @@ def test_router_uses_inverted_y_and_ui_deadzone_for_xbox() -> None:
     )
 
     assert deadzone is None
+    # And a partial push does act: the trigger threshold is 0.4, not the 0.5 it
+    # used to be, which demanded half the stick's travel and read as lag. 0.2
+    # is still inside the deadzone, 0.45 is not. A fresh router, because on
+    # ``router`` that direction is already held and a same-direction value is
+    # throttled to nothing -- the anti-flood behaviour, not a threshold.
+    fresh = EventRouter()
+    assert (
+        fresh.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=2, axis=1, value=0.45))
+        is not None
+    )
     assert up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-0.8)
     assert down == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=0.8)
     assert inverted_up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=0.8)

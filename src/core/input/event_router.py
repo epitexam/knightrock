@@ -414,13 +414,30 @@ class EventRouter:
         return None
 
     def _hat_action(self, hat: int, value: tuple[int, int]) -> InputAction | None:
+        """The direction a hat position means.
+
+        SDL reports a hat in screen coordinates, so ``y = +1`` is pushed
+        **down** and ``y = -1`` is up. It had these two the wrong way round,
+        which the axis path did not: a stick push and a D-pad press in the same
+        physical direction moved the menu opposite ways.
+
+        Nothing tested it, because the hat was only ever exercised horizontally
+        and the one navigation test fired the hat and the stick together and
+        looked at where the selection ended up -- which agreed, since both were
+        wrong in the same direction.
+
+        ``invert_y`` is honoured here as the axis path honours it, so the
+        setting moves the D-pad too instead of only the stick.
+        """
         x, y = value
+        inverted = self._bindings.menu.invert_y
         for action, bound_hat in self._bindings.menu.gamepad_hats.items():
             if bound_hat != hat:
                 continue
-            if y > 0 and action is InputAction.UI_UP:
+            is_up = y > 0.0 if inverted else y < 0.0
+            if is_up and action is InputAction.UI_UP:
                 return action
-            if y < 0 and action is InputAction.UI_DOWN:
+            if not is_up and y != 0.0 and action is InputAction.UI_DOWN:
                 return action
             if x < 0 and action is InputAction.UI_LEFT:
                 return action

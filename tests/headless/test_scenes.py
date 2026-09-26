@@ -205,18 +205,71 @@ def test_options_opens_from_menu_and_pause(manager: SceneManager):
     assert isinstance(manager.current, OptionsScene)
 
 
-def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
-    """Lot 2 : le hat puis le stick déplacent la sélection, le bouton A valide."""
+def test_the_hat_and_the_stick_agree_on_which_way_is_up(manager: SceneManager):
+    """The D-pad and the stick must not disagree about up.
+
+    They did. SDL reports a hat in screen coordinates, so ``y = +1`` is pushed
+    down, and the router had it the wrong way round -- while the axis path was
+    right. So one physical push moved the menu up and the other moved it down.
+
+    Nothing caught it because the hat was only ever exercised horizontally, and
+    the old test fired the hat and the stick one after the other and only looked
+    where the selection ended up: both were wrong in the same direction, so the
+    end matched the expectation and the bug was invisible. Each control gets its
+    own assertion here, from a known starting row, because a shared endpoint
+    cannot tell a correct pair from a consistently inverted one.
+    """
+
+    def selection_after(event: pygame.event.Event) -> str:
+        menu = MenuScene(manager.game)
+        manager.switch(menu)
+        assert menu.model.current_item is not None
+        start = menu.model.current_item.action
+        manager.handle_event(event)
+        assert menu.model.current_item is not None
+        return f"{start}->{menu.model.current_item.action}"
+
+    up = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
+    stick_up = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=-0.8)
+    down = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
+    stick_down = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8)
+
+    assert selection_after(up) == selection_after(stick_up)
+    assert selection_after(down) == selection_after(stick_down)
+    assert selection_after(up) != selection_after(down), "up and down moved the same way"
+
+
+def test_the_dpad_needs_only_a_partial_push(manager: SceneManager):
+    """A stick does not have to be flat for the menu to move.
+
+    The trigger threshold was 0.5, so anything short of half the stick's travel
+    did nothing. That reads as lag rather than as a stiff stick: you push, the
+    menu stays, you push harder, and then it moves.
+    """
     menu = MenuScene(manager.game)
     manager.switch(menu)
+    before = menu.model.current_index
 
     manager.handle_event(
-        pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
+        pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.45)
+    )
+
+    assert menu.model.current_index != before
+
+
+def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
+    """Lot 2 : la croix puis le stick déplacent la sélection, le bouton A valide."""
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+    start = menu.model.current_index
+
+    # One D-pad press, one stick press: two rows down from where we were.
+    manager.handle_event(
+        pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
     )
     manager.handle_event(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8))
 
-    assert menu.model.current_item is not None
-    assert menu.model.current_item.action == "options"
+    assert menu.model.current_index == start + 2
 
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
@@ -561,8 +614,58 @@ def test_controls_capture_cancels_with_escape_before_leaving(manager: SceneManag
     assert manager.current is menu
 
 
-def test_controls_rebinds_a_pad_button_and_can_reassign_b(manager: SceneManager) -> None:
-    """Un bouton manette reste assignable, y compris B."""
+def test_the_cancel_button_leaves_a_capture_instead_of_binding(manager: SceneManager) -> None:
+    """A pad must be able to back out of a rebind.
+
+    It could not: every button was treated as a binding, so pressing anything
+    assigned it and the "press a key" prompt stayed up. No button got you out,
+    which reads as a frozen screen rather than a wrong one, and the only escape
+    was the keyboard.
+
+    The cancel button is exempt while it *is* the cancel button -- the same
+    trade ESC makes on the keyboard -- and becomes bindable again once cancel is
+    moved elsewhere, which the second half checks. Nothing is lost for good.
+    """
+    game = manager.game
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    manager.switch(controls)
+    for _ in range(3):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert controls.capturing
+
+    cancel = game.settings.bindings.menu.gamepad_buttons[InputAction.UI_BACK]
+    manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=cancel))
+
+    assert not controls.capturing, "the cancel button bound a key instead of leaving"
+    assert manager.current is controls, "cancelling must not also pop the screen"
+    assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] != cancel
+
+
+def test_escape_leaves_a_capture_on_either_column(manager: SceneManager) -> None:
+    """ESC used to work only while capturing a *key*.
+
+    Armed on a pad cell it fell through and did nothing, so the keyboard had the
+    same dead end the pad had, just from the other device.
+    """
+    game = manager.game
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    manager.switch(controls)
+    for _ in range(3):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    # Arm the *pad* cell, which is the column that used to have no way out.
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert controls.capturing, "the pad cell should be armed"
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+
+    assert not controls.capturing
+    assert manager.current is controls
+
+
+def test_controls_rebinds_a_pad_button(manager: SceneManager) -> None:
+    """Un bouton manette reste assignable."""
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
@@ -574,13 +677,6 @@ def test_controls_rebinds_a_pad_button_and_can_reassign_b(manager: SceneManager)
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=7))
 
     assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] == 7
-
-    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-    assert controls.capturing
-    manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
-
-    assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] == 1
-    assert manager.current is controls
 
 
 def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) -> None:

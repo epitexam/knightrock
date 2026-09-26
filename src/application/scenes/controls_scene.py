@@ -371,6 +371,16 @@ class ControlsScene(Scene):
         self._pending.clear()
         self._status = "Capture cancelled"
 
+    def _is_cancel_button(self, button: int) -> bool:
+        """Whether ``button`` is the pad's cancel, i.e. the way out of a capture.
+
+        Read from the bindings rather than hardcoded, because the player can
+        rebind it -- and a cancel that is itself rebindable is the one gesture
+        guaranteed to still mean "leave".
+        """
+        gamepad = self.game.settings.bindings.menu.gamepad_buttons
+        return button in (gamepad.get(InputAction.UI_BACK), gamepad.get(InputAction.UI_CANCEL))
+
     def _clear_capture(self) -> None:
         capture = self._capture
         if capture is None or capture[1] != KEYBOARD_COLUMN:
@@ -380,11 +390,17 @@ class ControlsScene(Scene):
 
     def _capture_key(self, key: int) -> None:
         capture = self._capture
-        if capture is None or capture[1] != KEYBOARD_COLUMN or key < 0:
+        if capture is None or key < 0:
             return
         if key == pygame.K_ESCAPE:
+            # Cancels from any column, not only the keyboard one. It used to be
+            # reachable only while capturing a key, so ESC did nothing when the
+            # armed cell was a pad button -- the same dead end, reached from the
+            # keyboard instead of the pad.
             self._ignore_routed = True
             self._cancel_capture()
+            return
+        if capture[1] != KEYBOARD_COLUMN:
             return
         spec = self.specs[capture[0]]
         if key == pygame.K_DELETE:
@@ -420,6 +436,26 @@ class ControlsScene(Scene):
     def _capture_button(self, button: int) -> None:
         capture = self._capture
         if capture is None or button < 0:
+            return
+        if self._is_cancel_button(button):
+            # The pad's way out, mirroring ESC on the keyboard.
+            #
+            # There was none at all: every button was a binding, so pressing
+            # anything just assigned it and the prompt stayed up. No button got
+            # you out, which is the worst kind of stuck -- the screen looks
+            # frozen rather than wrong, and the only escape was reaching for the
+            # keyboard.
+            #
+            # The cost is that the cancel button cannot itself be a binding,
+            # which is the same trade ESC already makes on the keyboard -- and
+            # it is only while it *is* the cancel button. Rebind cancel to
+            # another button and this one becomes free again, so nothing is lost
+            # permanently.
+            #
+            # ``_ignore_routed`` because the same physical press also routes as
+            # UI_BACK, which would pop the screen on top of cancelling.
+            self._ignore_routed = True
+            self._cancel_capture()
             return
         if capture[1] == KEYBOARD_COLUMN:
             # Un bouton physique est toujours un binding manette : on bascule

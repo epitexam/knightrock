@@ -306,8 +306,17 @@ class Input:
 
     AXIS_DEADZONE = 0.1
     DASH_AXIS_THRESHOLD = 0.5
-    UI_AXIS_TRIGGER_THRESHOLD = 0.5
-    UI_AXIS_RELEASE_THRESHOLD = 0.3
+    #: A stick has to travel this far before a menu moves. It was 0.5, which
+    #: asks for half the stick's full deflection: a partial push did nothing at
+    #: all, and since the menu only moved once the stick was nearly flat, the
+    #: first press read as lag rather than as a stick that had to be pushed
+    #: hard. 0.4 is a normal d-pad-emulation threshold, and it is reachable
+    #: without bottoming the stick out.
+    UI_AXIS_TRIGGER_THRESHOLD = 0.4
+    #: Below this the direction is considered let go. The 0.15 gap to the
+    #: trigger is the hysteresis that stops a stick resting near the threshold
+    #: from chattering the selection.
+    UI_AXIS_RELEASE_THRESHOLD = 0.25
     # Stick tenu : 0.25s avant la 1re répétition puis 1 pas / 80ms.
     # Au-delà (~0.4/0.1) la navigation paraît "collée" / en retard.
     UI_REPEAT_INITIAL_DELAY = 0.22
