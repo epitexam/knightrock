@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 class PauseScene(Scene):
     TITLE = "PAUSE"
 
+    #: The world stops; see ``Scene.halts_simulation`` for why saying so
+    #: is not the same as simply not updating.
+    halts_simulation = True
+
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)
         self.level_id = level_id

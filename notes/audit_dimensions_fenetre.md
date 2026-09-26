@@ -413,7 +413,73 @@ pas** avec l'échelle, et c'est celle-ci qui est testée.
 
 1369 tests, avec et sans `DEBUG=1`.
 
-## 12. Ce que la vraie session a cassé
+## 12. Le tremblement de la pause
+
+« Pourquoi quand j'appuie sur pause, le jeu tremble ? »
+
+La pause gèle bien la simulation : `SceneManager.update` n'avance que la scène
+du dessus, donc le niveau ne tick plus. Ce qui ne se gelait pas, c'est
+**l'image**.
+
+`SceneManager.draw` repeint toute la pile à chaque frame — par conception, pour
+qu'une surcouche translucide puisse couvrir une scène figée — et la scène de
+jeu figée ne produisait pas les mêmes pixels deux fois.
+
+La cause est l'interpolation. `begin_frame` mélange la position de départ du
+dernier tick et celle d'arrivée, et **seul un tick peut refermer l'écart**. Sans
+tick, l'écart reste ouvert, et `render_alpha` — la fraction du reste dans
+l'accumulateur — continuait d'errer, parce que l'accumulateur reçoit toujours
+du temps réel et se vide dans des ticks qui ne font rien. Chaque fraction
+errante était dessinée comme du mouvement.
+
+Mesuré, en pause, `camera._shift_y` par frame :
+
+    -1047,055  -1046,639  -1046,223  -1045,808  -1045,392
+
+et 1800 à 6500 points échantillonnés changeaient d'une frame à l'autre.
+
+Le même défaut existait sur `GameOverScene` et `VictoryScene`, qui font
+exactement la même chose que `PauseScene`. Il y était invisible parce que leur
+`draw` remplit la cible en opaque : le monde dessous est caché. Ce qui est
+cohérent avec le symptôme rapporté, qui ne parle que de la pause.
+
+**Le correctif** est une propriété, pas un cas particulier :
+`Scene.halts_simulation`. Une scène qui arrête le monde le déclare, et
+`render_alpha` renvoie alors 1 — la picture est exactement où est la
+simulation, ce qui est à la fois vrai et immobile. Une scène qui oublie de le
+déclarer retrouve le monde qui glisse, et rien d'autre dans le système ne le lui
+dirait.
+
+Après : **zéro octet modifié** d'une frame à l'autre, en pause comme en game
+over.
+
+### Ce que les tests m'ont appris à force
+
+Trois fois de suite, mes tests initiaux passaient avec le bug présent. Chacun
+méritait une correction, pas un assouplissement :
+
+- le test de pixels **échantillonnait un pixel sur trois**, alors que la dérive
+  est *sous le pixel* (0,4 unité monde, 0,8 px à l'échelle 2). Il regardait une
+  frame glisser sans la voir. Il compare maintenant les buffers bruts : exact,
+  et assez rapide pour l'être vraiment ;
+- le fixture **laisait la physique du joueur décider** si la caméra avait un
+  écart à interpoler. Il le crée maintenant explicitement, et il échoue si l'écart
+  n'existe pas — un test qui ne peut pas être vide ;
+- le test d'interpolation **dépendait du temps réel** sur trente frames, et
+  échouait pour la mauvaise raison quand le résidu d'accumulateur était nul
+  chaque frame. Il écrit l'accumulateur et vérifie la correspondance.
+
+Un quatrième cas, et celui-là vient de l'environnement plutôt que de moi : le
+test de pixels passait sans `DEBUG=1` et échouait **avec**. La cause est l'overlay de
+debug, qui affiche des temps de frame vivants en haut à droite et *doit* changer
+à chaque frame. Le test est donc ignoré sous `DEBUG=1`, et le dit. Sans cela la
+seule réponse honnête aurait été d'affaiblir l'assertion, ce qui aurait jeté
+l'exactitude qui fait son intérêt. La couverture sous debug reste assurée par
+les autres tests, qui n'y sont pas sensibles.
+
+1378 tests, avec et sans `DEBUG=1`.
+
+## 13. Ce que la vraie session a cassé
 
 Le premier passage sur la machine de développement (Wayland, deux écrans :
 2560×1440 @180 Hz en primaire, 1920×1080 @60 Hz à sa gauche) a invalidé une

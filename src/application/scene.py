@@ -27,6 +27,29 @@ class Scene(ABC):
     def enter(self) -> None:  # noqa: B027 - optional lifecycle hook
         """Called when the scene becomes active."""
 
+    @property
+    def halts_simulation(self) -> bool:
+        """Whether this scene stops the world while it is on top.
+
+        A scene that overrides ``update`` to do nothing does not merely freeze
+        the picture -- it breaks an assumption the renderer relies on. The
+        camera interpolates between the position the last tick started from and
+        the one it ended at, and only a tick can close that gap. With no ticks,
+        the gap stays open and every frame re-blends it with a *different*
+        fraction, so the world does not stand still: it slides.
+
+        That reads as the game trembling behind the pause menu, and it is
+        invisible to any test that checks the pause screen's own pixels, because
+        the moving part is the scene underneath it.
+
+        So a scene that stops the world says so here, and the loop stops
+        interpolating: the picture is then exactly where the simulation is, and
+        it stays there. A scene that forgets to declare this gets the sliding
+        world back, which is why this is one property rather than a special case
+        for the pause screen.
+        """
+        return False
+
     def exit(self) -> None:  # noqa: B027 - optional lifecycle hook
         """Called when the scene is replaced or popped."""
 

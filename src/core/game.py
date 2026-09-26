@@ -358,11 +358,21 @@ class Game:
         the last tick a fraction of a step is always left over. That fraction
         is how far ahead of the simulation the picture is: 0 means the
         picture matches the last completed tick exactly, 1 that a whole tick
-        is already owed. Handing it to the renderer blends each sprite from
+        is already owed.         Handing it to the renderer blends each sprite from
         its last drawn position towards the one the next tick will write,
         which is what removes the judder of a fixed-step sim on a
         variable-rate display.
+
+        While a scene is holding the world still, the answer is 1 and not a
+        fraction. The leftover in the accumulator keeps being fed real time and
+        drained by ticks that do nothing, so the fraction wanders -- and with
+        no tick running there is nothing to close the gap the camera is
+        interpolating across, so every wandering fraction is drawn as motion.
+        The game visibly trembles behind the pause menu. 1 says the picture is
+        exactly where the simulation is, which is both true and still.
         """
+        if self.scene_manager.halts_simulation:
+            return 1.0
         return self._accumulator / Simulation.TIMESTEP
 
     def flush_settings(self) -> None:

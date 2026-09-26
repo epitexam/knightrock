@@ -33,6 +33,18 @@ class SceneManager:
         """The active (top) scene, or None when the stack is empty."""
         return self._stack[-1] if self._stack else None
 
+    @property
+    def halts_simulation(self) -> bool:
+        """Whether anything on the stack is holding the world still.
+
+        Only the top scene is updated, so one halted scene anywhere above the
+        gameplay scene is enough to stop it ticking. The whole stack is drawn
+        every frame, though, which is why this matters: the frozen world is
+        still being repainted, and a repaint that is not identical to the last
+        one is what the player sees move.
+        """
+        return any(scene.halts_simulation for scene in self._stack)
+
     def switch(self, scene: Scene) -> None:
         """Replace the whole stack with ``scene``."""
         for scene_ in reversed(self._stack):
