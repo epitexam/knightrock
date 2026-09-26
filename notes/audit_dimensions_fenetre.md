@@ -108,6 +108,14 @@ sans avoir jamais vu un niveau — exactement l'échec que ce rework corrige.
 
 ## 5. Ce que la mesure a changé
 
+> **Ces chiffres mesurent un système qui n'existe plus.** La cible de rendu
+> valait `cadrage × entier` et la frame finie était ré-échantillonnée sur la
+> fenêtre ; les deux ont disparu (§14). Le tableau est conservé tel quel parce
+> que c'est lui qui a décidé du rework — mais la conclusion « la présentation
+> coûte selon la fenêtre, pas selon la cible », qui était vraie, ne l'est plus
+> du tout : la présentation est un `blit` 1:1, et le coût qui reste est celui du
+> dessin du monde.
+
 Deux chiffres ont fait bouger des décisions, et ils ne sont pas ceux qu'on
 attendait.
 
@@ -149,7 +157,7 @@ tableau : voir §9.
 | `get_current_refresh_rate()` avant la fenêtre | **lève** `No open window`. `get_desktop_refresh_rates()` non, et couvre tous les écrans |
 | `pygame.SCALED` est une base stable | pygame la documente comme **expérimentale**. Elle est sortie : la cible de rendu fait le letterbox |
 | un renderer SDL déporterait le scaling sur le GPU | `Renderer` n'a pas `create_texture` et `from_window(None)` échoue. **Pas d'évasion GPU** en 2.5.7 |
-| `smoothscale` à l'échelle 1:1 est gratuit | **2.19 ms**. `Presentation` court-circuite le cas 1:1 |
+| `smoothscale` à l'échelle 1:1 est gratuit | **2.19 ms**. `Presentation` court-circuite le cas 1:1 — et il n'y a plus de `smoothscale` à court-circuiter (§14) |
 | le vsync en mode fenêtre fonctionne | SDL ne l'honore que pour une surface `SCALED` ou `GL`, et nous n'en avons plus. `is_vsync()` est interrogé après coup et le menu affiche « off (unavailable) » |
 
 ## 7. Choix assumés, et ce qui reste ouvert
@@ -525,5 +533,255 @@ Autres observations de la même passe :
   contre le taux que la plateforme déclare ;
 - `get_desktop_sizes()` renvoie bien les deux écrans, `get_num_displays()` aussi.
   C'est donc bien les **origines** qui manquent, et rien d'autre.
+
+## 14. Ce que la revue a cassé, quatrième fois : la fenêtre ne pouvait pas être la cible
+
+Le symptôme rapporté, mot pour mot : *« le jeu est plus lent et flou (littéralement,
+l'écran est complètement flou) »*, et ensuite *« tout le menu video settings est
+buggé de fond en combre, aucun des settings ne persiste après le redémarrage »*.
+
+Les deux sont la même cause, et elle est dans une phrase que ce document asserts
+ depuis §3 : **la cible de rendu valait `cadrage × entier`.**
+
+### 14.1 Le flou et le coût, mesurés
+
+Une cible fixe oblige à ré-échantillonner la frame finie sur la fenêtre. Le
+nombre de pixels d'écran qu'occupe une unité monde vaut `fenêtre / cadrage`,
+**quels que soient les entiers** : le facteur s'annule. À 2176×1224 avec
+DEFAULT_FRAMING 1152×648, une unité monde fait donc 1.889 px — et aucune valeur
+du menu n'atteignait 1.0, parce qu'aucune fenêtre 16:9 n'est un multiple entier
+de 1152×648. La configuration relevée sur la machine (`render_scale: 1`) aggravait
+le choses : cible 1152×648 agrandie de 1.889× par `smoothscale`, à chaque frame.
+
+| | monde | présentation | total | couleurs du tileset |
+|---|---|---|---|---|
+| config relevée (1x, lissé) | 1.01 ms | **4.24 ms** | 5.25 ms | 13 → **128** |
+| 2x, lissé | 2.73 ms | 7.06 ms | 9.79 ms | 13 → 88 |
+| master (1:1 dans une fenêtre 1440×900) | 1.94 ms | 0 | 1.94 ms | 13 → 13 |
+
+Le nombre de couleurs est la mesure la plus honnête du flou : un `smoothscale`
+n'invente pas de nouvelles couleurs, il fabrique des couleurs intermédiaires
+entre les pixels qu'il mélange. 13 → 128, c'est « l'écran complètement flou ».
+Et 4.24 ms de `smoothscale` par frame, c'est la moitié du budget d'une frame 60 Hz
+dépensée à ré-échantillonner une image que le jeu venait de dessiner.
+
+Le correctif n'est pas un réglage : **la cible de rendu est la fenêtre.** Le
+rectangle de la fenêtre qui porte l'image, aux barres près, et la densité est
+lue *sur* ce rectangle. Le `blit` final est 1:1, donc il n'y a plus de ratio, plus
+de `smoothscale`, et plus rien qui puisse adoucir un pixel. Mesuré après
+(`tests/benchmarks/render_benchmark.py`) :
+
+| fenêtre | cible | densité | monde | présentation | total | % frame 60 Hz | whole-pixel |
+|---|---|---|---|---|---|---|---|
+| 1280×720 | 1280×720 | 1.111 | 1.91 ms | 0.50 ms | 2.42 ms | 14% | 1.83 ms |
+| 1920×1080 | 1920×1080 | 1.667 | 2.75 ms | 0.90 ms | 3.65 ms | 22% | 1.92 ms |
+| 2560×1440 | 2560×1440 | 2.222 | 6.02 ms | 2.52 ms | 8.54 ms | 51% | 7.21 ms |
+| 3840×2160 | 3840×2160 | 3.333 | 11.67 ms | 5.70 ms | 17.37 ms | 104% | 15.63 ms |
+
+Une passe, sous le driver dummy : le terme « monde » varie de ±30% d'une passe à
+l'autre (mélange alpha logiciel), le terme « présentation » ne varie pas — c'est
+une copie, et c'est celui-là qui a changé.
+
+À 1080p, la frame coûte **moins** qu'avant (5.31 → 3.65 ms) *et* elle est nette.
+Le seul terme qui grandit avec la fenêtre est le dessin du monde, et il grandit
+parce que la fenêtre est plus grande : afficher 1152×648 unités monde sur un
+écran 4K, c'est 8.3 Mpx de mélange alpha, et aucun réglage ne rend cela moins
+cher. La seule chose qui l'est, c'est une fenêtre plus petite ou **Whole-pixel
+art** (dernière colonne : 15.63 ms à 4K, et 1.92 ms à 1080p contre 3.65).
+
+### 14.2 Le menu, et ce qui ne persistait pas
+
+Le reproché sur le menu est le même bug, vu par le joueur. Une taille de fenêtre
+était un réglage, donc une affirmation sur l'écran du joueur — que le jeu ne peut
+pas vérifier. Trois conséquences, toutes reproductibles :
+
+- **`Stage._window_size` ignorait la taille stockée en borderless** (la fenêtre
+  est alors celle du bureau) et **rien ne réécrivait la différence**. Le menu
+  affichait `settings.width × settings.height`, donc 2176×1224 grisé, pendant que
+  le jeu tournait en 2560×1440. Le menu mentait, et un joueur qui règle sa
+  résolution voit le menu et l'écran se contredire ;
+- **`_resolve_display_settings` réécrivait `width`/`height` à chaque lancement**
+  dès que `size_mode` valait `auto`, et remettait `size_mode = auto` derrière.
+  Mesuré : 870×653 → 2176×1224 d'un lancement à l'autre. Une taille ne pouvait
+  donc pas être mémorisée en auto, et une taille manuelle qui ne tenait plus
+  était remplacée en silence ;
+- **`render_scale` était écrit une fois au lancement** (`with_video(render_scale=…)`
+  dans `initialize_display`) puis cru ensuite, parce que `_render_scale` honore
+  une valeur stockée. Une fois le fichier_rwrit, la résolution automatique de la
+  netteté n'était plus jamais réévaluée.
+
+Je n'ai pas pu reproduire une perte *totale* de réglages : le round-trip JSON est
+exact pour les sept champs, et le fichier du joueur contient bien des valeurs non
+défaut (fullscreen, 2176×1224, manual). Ce que le joueur vivait, c'est
+« je change, ça ne prend pas » sur la seule ligne dont la valeur était vraiment
+réécrite — et sur une ligne dont l'affichage mentait. Les deux sont supprimées
+avec la cause, pas contournées.
+
+Reste le risque de fond, et il est réel : **`load()` attrapait toutes les erreurs
+et retournait les défauts, sans un log.** Un schéma qui ne correspond plus, une
+écriture tronquée, un fichier édité à la main : le joueur revient à un jeu qui
+a oublié ses réglages, sans une ligne pour dire pourquoi, et le premier changement
+ensuite écrase le fichier qui contient encore ses *bindings*. C'est maintenant
+journalisé (niveau ERROR, chemin, raison), le fichier illisible est laissé intact,
+et `save()` garde ce qu'il remplace dans `settings.json.bak`.
+
+### 14.3 Ce qui a été supprimé, et la règle qui l'explique
+
+| supprimé | pourquoi |
+|---|---|
+| `width`, `height`, `size_mode` | une affirmation sur l'écran, plus le mécanisme qui la réécrivait |
+| `render_scale` | décrivait une cible fixe qui n'existe plus ; c'était le réglage qui se figeait |
+| `smoothing` | décrivait un ré-échantillonnage par frame, qui n'existe plus |
+| `ResolutionScene`, `window_size_choices`, `largest_window_size`, `fits_on_desktop`, `WINDOW_SIZE_FRACTIONS`, `SizeMode` | le sélecteur de résolution, et l'arithmétique dont il avait besoin |
+| `Viewport.render_scale_for`, `Framing.viewport_size`, `checked_render_scale` | la dérivation de la cible, et la politique entière qui la rendait entière |
+| `_cost_hint` | l'avertissement ne servait qu'à cause du resample — et il recommandait « Render scale 1x », le pire choix possible pour la netteté |
+
+**La règle** : un réglage est un choix que le joueur fait et que le jeu peut
+honorer, ou ce n'est rien. Un réglage qui décrit l'écran du joueur est une
+affirmation que le jeu ne peut pas vérifier — et elle est fausse plus souvent
+qu'elle n'est vraie. Ce document portait déjà cette idée (§1, §3) ; elle s'appliquait
+au *mode* d'écran et pas à la *taille*, et c'était l'incohérence.
+
+Il ne reste donc dans le fichier que des choix : `display` (avec `auto`),
+`pixel_perfect`, `vsync`, `frame_limit`, `ui.scale`, et les bindings. Le schéma
+passe en v3 ; un fichier v1 ou v2 se charge toujours, ses clés vidéo ignorées —
+un joueur qui a remappé ses touches ne doit pas retomber sur les défauts à cause
+d'une clé vidéo qui ne veut plus rien dire. `test_video_settings_persistence.py`
+conduit le **vrai** runtime ligne par ligne et vérifie les trois étapes qui
+manquaient : la valeur bouge, la charge utile écrite la porte, et un **second
+runtime** qui la relit. Les tests du menu existants utilisaient un
+`SimpleNamespace` dont `apply_settings` était une affectation — ils prouvaient
+« la ligne appelle apply_settings avec la bonne valeur » et rien de plus, ce qui
+explique trois générations de bugs de menu au vert.
+
+### 14.4 Le piège de l'arrondi, et pourquoi il est dans `Camera`
+
+Une densité de 1.889 veut dire qu'un sprite de 64 unités fait 121 px. `pygame.blit`
+**rééchantillonne silencieusement** une source qui ne remplit pas sa destination :
+une image de 121 px dans un rect de 120.9 px, et c'est le §9 de ce document qui
+recommence, un cran plus loin. D'où une règle unique,
+`Camera.scaled_size()`, dont l'image agrandie *et* son rect de blit sont tous deux
+tirés, et dont le test de propriété (`test_a_real_levels_sprites_are_never_resampled`)
+revient à **zéro pixel** d'écart sur les assets du niveau réel, à cinq densités et
+treize fenêtres.
+
+Le round de la taille est **vers le haut** (`ceil`), et c'est un choix prouvé
+plutôt qu'esthétique. La position est arrondie **vers le bas** ; l'écart entre
+deux positions arrondies est donc entre `floor(pas)` et `ceil(pas)`. Avec une
+taille de `round(pas)`, il arrive que le voisin commence à droite de la fin du
+précédent — mesuré à densité 0.5, pas = 69.25, taille = 69, un trou d'un pixel
+tous les quelques tuiles, soit une ligne de fond à travers le terrain. Avec
+`ceil(pas)`, le pire cas est un chevauchement d'un pixel, invisible, contre un
+trou qui ne l'est pas. Fuzzé sur 4 cadrages × 6 densités × 300 positions : 0 trou.
+
+### 14.5 Whole-pixel art, le seul réglage de netteté qui reste
+
+Il n'y a plus de « rendu net ou lissé » parce qu'il n'y a plus de
+ré-échantillonnage. Ce qui reste est un choix de knap : remplir la fenêtre, ou
+donner à chaque pixel d'art un bloc *k*×*k* exact. Le second coûte des barres,
+et n'existe pas sur une fenêtre plus petite que le cadrage — la ligne le dit
+plutôt que d'accepter un réglage qui ne fait rien.
+
+Une ligne **Window** en bas du menu vidéo a remplacé l'ancien sélecteur : elle
+rapporte ce que le jeu a déduit (`2304x1296 at 2.00x + bars`), c'est-à-dire
+exactement l'information qui manquait quand la ligne « taille » affichait un
+nombre que le jeu n'utilisait pas. Elle est non sélectionnable, et `MenuModel` ne
+la sélectionne même pas : une ligne morte, et non pas une ligne qui répond à un
+clic en changeant autre chose.
+
+### 14.6 Ce que la recette manuelle a attrapé, et pas les tests
+
+`tools/display_acceptance.py` applique désormais les états d'affichage *et* les
+transitions de taille de fenêtre, et il a trouvé un bug qu'aucun test ne voyait :
+`apply_settings` n'écrivait `presentation.pixel_perfect` que sur la branche qui
+**ne** reconstruit pas la fenêtre. Un changement de mode et un changement de
+netteté appliqués ensemble laissaient donc la présentation caler sur des pixels
+entiers pendant que le réglage disait le contraire — et une cible de la mauvaise
+taille est une cible parfaitement valide, donc rien ne signale l'erreur. Le
+correctif est de l'écrire avant tout, inconditionnellement, et le test qui le
+couvre marche les six combinaisons mode × netteté.
+
+C'est le troisième fois que cette recette attrape ce que la suite ne voit pas
+(§9, §10, et maintenant §14.6), et la raison est toujours la même : les
+combinaisons. Un test qui appelle une méthode ne teste pas l'ordre des méthodes.
+
+La recette de §8 vaut toujours, avec une ligne de plus : **redimensionner la
+fenêtre à la souris pendant une partie** — la cible, la densité et l'échelle
+d'interface doivent suivre, et la quantité de monde visible ne doit pas changer
+d'un pixel.
+
+
+## 15. Débogage invisible, et l'UI qui ne suivait pas l'échelle
+
+Trois défauts distincts, une seule cause commune : **deux espaces de pixels
+confundus.** Une grandeur écrite dans l'un, comparée à une grandeur écrite dans
+l'autre. Aucun des trois ne lève d'exception ; les trois produisent une frame
+qui a l'air correcte.
+
+**Le cull de debug comparait des rectangles *monde* à un rectangle *cible*.**
+`WorldUI` eliminait les sprites via une boîte passée par `camera.apply` — des
+pixels cibles — contre `sprite.rect`, qui est en unités monde. Les deux ne
+coïncident qu'à l'origine de la caméra, ce qui n'arrive jamais : **tous** les
+sprites étaient éliminés, donc `F1` basculait bien un booléen et ne dessinait
+rien. Un cull qui rejette tout ressemble exactement à un cull vide — pas
+d'erreur, pas de log, une frame identique à celle d'avant. Le correctif n'est
+pas une conversion de plus : c'est de ne plus convertir et de demander à
+`camera.is_visible`, qui est déjà le cull monde du renderer.
+
+**Le debogage ne suivait pas l'échelle.** Traits, espacements, rayons : des
+littéraux en pixels cibles, à l'époque où une unité monde valait un pixel
+cible — alors que les rectangles décorés venaient de `camera.apply`, qui
+multiplie. À une densité de 1.889, une hitbox de 1px arrive à 53% de son
+intention et disparaît dans la grille de tuiles. `WorldOverlayMetrics` dérive
+tout d'un seul nombre, avec un plancher à 1px : en dessous, un trait arrondi à
+zéro n'est pas un trait fin, c'est une absence.
+
+**Une clé morte ne dit rien.** F1–F11 sans `--debug` ne faisaient
+strictement rien. Rendre l'overlay inconditionnel serait la mauvaise réponse
+— un joueur qui a dit non aux panneaux veut ne pas avoir de panneaux — mais une
+clé qui ne fait rien est indiscernable d'un bug. Une notice transitoire nomme le
+drapeau, une fois, puis expire. Testé : deux F-keys ne donnent qu'une seule
+notice, et 600 frames plus tard elle a disparu.
+
+**Et les menus, eux, ne suivaient pas l'échelle non plus.** `GridView`
+prenait `min(34, 30*scale)` pour une hauteur de ligne pendant que son texte
+mesurait `22*scale` — 49px. La bande cliquable couvrait donc 44% du libellé
+qu'elle décorait : **cliquer la ligne qu'on lit activait la ligne du dessus.**
+C'est le pire défaut qu'un menu puisse avoir, parce qu'il ne *semble* pas cassé —
+il répond, à la mauvaise chose. La largeur était plafonnée à 900px, un nombre de
+bureau, sur une fenêtre de 2176px : un tiers du panneau était une gouttière
+dimensionnée pour les libellés, pas pour les valeurs.
+
+Le correctif est `src/ui/metrics.py` : une table, une entrée (l'échelle), et
+aucun littéral de mise en page dans une vue. Trois règles en découlent, et les
+tests les énoncent comme des *ratios* plutôt que comme des pixels, ce qui les
+rend incapables de dériver :
+
+1. **Une ligne n'est jamais plus courte que son texte.** La hauteur vient des
+   polices réelles, mesurées : une Consolas de 22px a une boîte de ligne plus
+   haute que 22, et sur une machine sans Consolas la police de repli en a une
+   autre. Une liste qui ne rentre pas abandonne la *taille du texte* (plancher
+   `MIN_TEXT_RATIO`) et jamais la hauteur de ligne.
+2. **Le panneau se dimensionne sur son contenu**, plus de plafond fixe, et
+   l'intérieur du cadre suit l'échelle du contenu — sinon la boîte continue de
+   déborder pendant que le texte rétrécit, parce qu'elle ne croit pas le texte.
+3. **Un titre est centré**, partout, la grille et le panneau d'options dans la
+   même règle.
+
+Ce qui ne rentre toujours pas déborde par le bas, et c'est un choix explicite :
+une étiquette illisible n'est pas une option, et une fenêtre plus petite que
+l'interface à l'échelle que le joueur a choisie est à lui de la résoudre. Le
+test le vérifie dans ce sens — un débordement n'est permis qu'une fois le texte
+au plancher, jamais « avec de la place en rab ».
+
+Coût mesuré : **0.81ms** par dessin de grille à 2176x1224 avec 8 lignes, dont
+0.038ms pour `_layout` et le reste en blits — sur un panneau de 1431x846, soit
+3.4 fois la surface de l'ancien panneau de 900px de large, parce qu'il ne tronque
+plus ses propres valeurs. La boucle de mesure ne boucle pas en régime établi :
+elle sort au premier tour dès que la hauteur convient, et les polices ne sont
+reconstruites que si l'échelle du texte a changé. Le cache de texte rendu est
+d'ailleurs keyed sur `id(font)` : reconstruire les polices à chaque frame — ce
+qu'un `draw` qui veut une police fraîche ferait volontiers — vide ce cache et
+re-rend trente chaînes par frame. D'où le `self._fonts = None` qui n'y est pas.
 
 Dernière mise à jour : 2026-09-26, branche `feat/display-cadrage-system`.

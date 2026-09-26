@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-1117%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-1511%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 1117 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 1511 tests, 90 % instruction / 87 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -115,40 +115,52 @@ DEBUG=1 uv run python main.py
 **In-game screens:** the main menu and the pause screen open **Options**, which
 is a navigation hub — every setting lives in the screen that owns it:
 
-- **Video settings** — display mode, window size, render scale, smooth scaling,
-  VSync, frame limit, UI scale. Every row reports its value in its own column,
-  and `←`/`→` set it. The **Window size** row opens a dedicated picker that
-  draws in the same panel as the controls screen — title, a `STATE` column, a
-  focus strip and a hint line — listing at once the sizes this screen can
-  actually show, with the one in use marked `current` and the automatic choice
-  marked `auto`. It is disabled in borderless, where a window size is
-  meaningless.
+- **Video settings** — display mode, whole-pixel art, VSync, frame limit, UI
+  scale, and a read-out of what the game derived from the window. Every row
+  reports its value in its own column, and `←`/`→` set it. There is no
+  **resolution** row, and that is the point: a list of window sizes is a claim
+  about the player's monitor that the game cannot check, and a remembered size
+  is a claim that goes stale — in borderless the window is the screen's own size
+  whatever the file says, so the row used to display a number the game was not
+  using. The window belongs to the window manager now; the game resizes the
+  picture when the player resizes the window.
 - **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
   inversion) and *Gameplay controls* (key/button rebinding).
 
 Choices are written to `~/.knightrock/settings.json` and apply without
 restarting. Each sub-menu has its own **Reset** that restores exactly what it
-owns.
+owns — the video one leaves your controls alone. A file that cannot be read is
+reported in the log with the reason instead of being silently replaced by the
+defaults, and the file being overwritten is kept as `settings.json.bak`.
 
-**The window adapts to the machine, and the game does not adapt to the window.**
-These are two separate problems and the menu keeps them apart:
+**The window is the only source of truth about the window.** There is no stored
+size, no `size_mode`, no render scale and no smoothing flag, and no video setting
+can go stale because none of them describes a screen:
 
-- the **display mode** and the **window size** default to *auto*: re-evaluated
-  on every launch, so docking a laptop or running the game on another machine
-  changes the answer. Borderless when the screen already has the shape of the
-  framing, a window otherwise. A hand-picked size is honoured, and refused with
-  a log line when the current screen can no longer show it;
-- the sizes on offer are **fractions of the player's own screen** (40% to 95%),
-  filtered by whether the result fits with room for a title bar. The old fixed
-  list of absolute resolutions offered 2560x1440 to a 1366x768 laptop.
+- the **display mode** defaults to *auto*: borderless when the screen already has
+  the shape of the framing, a window otherwise, re-evaluated on every launch. A
+  chosen mode is never re-resolved;
+- a **windowed** game opens as large as fits with room for its own title bar, and
+  that is all. Drag it to whatever you like;
+- the **render target is the window** — more precisely, the rectangle of the
+  window that carries the picture at the framing's aspect, the rest being bars.
+  The finished frame is blitted **1:1**, so the picture is exactly the picture at
+  any window size, and the measured cost of presenting it is a copy rather than a
+  resample: ~0.4 ms at 1280×720, ~2.4 ms at 2560×1440, against 3.95 ms and 7.46 ms
+  of `smoothscale` for the same windows;
+- the **pixel density** — how many pixels a world unit gets — is read back off
+  that rectangle, never chosen. It is a fraction on most displays (1.667 at
+  1920×1080), and the art is magnified once per window, at load;
+- **whole-pixel art** gives up filling the window to get every art pixel as an
+  exact *k*×*k* block: the picture becomes the largest whole multiple of the
+  framing that fits and the bars take the rest. It is a no-op on a window smaller
+  than the framing, and the row says so.
 
-The window is resizable, and resizing it changes nothing about the game: the
-visible world is a fixed rectangle in world units (see below), and the finished
-frame is scaled to fit the window with the aspect preserved, the leftover
-filled with black bars. The **Render scale** and **Smooth scaling** rows are
-sharpness settings, and they are the ones to reach for when a large window makes
-a frame expensive — measured, smooth scaling plus a 2x draw is 105% of a 60Hz
-frame at 3840x2160.
+Resizing the window rebuilds the render target, re-reads the density and re-lays
+out the interface — the same cascade as a display change, which is why it is one
+piece of code. What resizing never does is change **how much world you see**:
+that is the framing, in world units, and it is the one display quantity the
+simulation may read.
 
 **Debug spawns:** `G` goblin · `P` slime · `T` dummy.
 
@@ -175,8 +187,21 @@ and the `Shots` counter in the SCENE panel.
 
 ## Debug overlay (`DEBUG=1`)
 
-The overlay only draws what is on screen (viewport culling), which keeps the
-frame cost predictable:
+Every F-key is behind the flag. Without it they do nothing at all, and a key
+that does nothing is indistinguishable from a bug — so pressing one shows a
+transitory notice naming the flag once, and then stops. The flag itself is never
+implied: a player who asked for no panels should get no panels.
+
+Every dimension of the overlay is scaled by the same number as the world it
+annotates (`WorldOverlayMetrics`), because the overlay is a description of the
+world: an unscaled 1px hitbox outline arrives at 53% of its intent on a window
+whose density is 1.889, and a debug layer that is too thin to see is not a debug
+layer. Culling is `Camera.is_visible`, the one world-space cull in the
+renderer — the overlay used to compare world rectangles against a target-pixel
+rectangle, which rejects everything, so `F1` toggled a flag and drew nothing.
+
+The overlay only draws what is on screen, which keeps the frame cost
+predictable:
 
 - **Hitboxes** — blue = player, red = enemy, grey = neutral. Overlaid with the
   green hurtbox, the orange offensive box and the velocity arrow: **red**
@@ -203,6 +228,24 @@ frame cost predictable:
   Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
   the whole overlay pass from p50 6.0 ms to 4.3 ms.
 
+### Frame timings (`Frame timings`, on by default)
+
+Two lines in the top-left corner: `100.0 fps · 10.00 ms · limite 60`, then the
+four terms that make up the frame — `sim`, `monde`, `ui`, `pres`. The pacer is
+on the same line as the rate on purpose, because a capped game and a slow game
+report the same number and the label is the only thing that tells them apart.
+The numbers are medians over a 120-frame window, not the current frame: fifty-nine
+good frames and one stall is a smooth game, and the mean would send you looking
+for a problem that is not there.
+
+Measurement is unconditional; only the painting is a setting. Two clock reads
+per frame cost about a tenth of a microsecond, and a number that is only
+collected while it is on screen cannot be compared with the run where it was
+off — which is the comparison the readout exists for.
+
+First measurement on this machine, at `Display.FPS = 190`: **~16 ms per frame,
+of which ~4.9 ms is work.** The rest is the pacer, not the game.
+
 ## Framing: how much of the world is visible
 
 The camera follows the player and shows a **fixed rectangle of the world**:
@@ -220,18 +263,22 @@ revealed a whole level, height included. A player could see more of a level by
 opening the video menu. `test_framing_contract.py` now asserts the framing is
 smaller than every `.tmx` in the level folder, and
 `test_sim_is_display_independent.py` runs one input log at five window sizes
-and three render scales and compares a world checksum.
+and five pixel densities and compares a world checksum.
 
-How large the world is *drawn* is a separate question, answered by the render
-scale: the art is authored at one pixel per world unit and the finished frame is
-scaled to the window on its way out. So the camera has no zoom at all.
+How large the world is *drawn* is a separate question, and its answer is the
+**window**: the render target is the window's own letterbox rectangle, so a world
+unit gets `window / framing` pixels — 1.667 at 1920x1080, 0.694 in an 800x600
+window — and the art is magnified once, at load. The finished frame is then
+blitted 1:1, so the picture is never resampled and cannot be softened by a
+setting. The camera has no zoom; it has a density, and it reads it off the
+target so the two cannot disagree.
 
 | Object | What it is |
 |---|---|
 | `Framing` | the visible rectangle of the world, in world units. Fixed. |
-| `Viewport` | the fixed-size surface everything is drawn into |
-| `Stage` | the OS window: mode, size, position, DPI, vsync |
-| `Presentation` | viewport onto window, and the pointer back |
+| `Viewport` | the surface everything is drawn into: the window's letterbox rect |
+| `Stage` | the OS window: mode, position, DPI, vsync. No opinion about size. |
+| `Presentation` | window onto target, and the pointer back. Scales nothing. |
 
 The invariant the four rest on: **the simulation reads `Framing` and nothing
 else.** Window size, DPI, display mode and desktop dimensions are not
@@ -239,23 +286,25 @@ observable from it.
 
 What follows from that:
 
-- `Camera.apply()` is a pure translation, `screen = world - offset`. Sprites,
-  health bars, hitboxes, labels and the debug overlays all read the one
-  transform, so none of them can drift from the others;
-- `Camera.apply_covering()` is what the renderer blits with. `apply()` returns
-  exact fractional bounds and `pygame.Rect` truncates them, which always rounds
-  a rectangle *in*: a tile at the far edge came out a pixel short, and the last
-  column and row of the frame were painted by nothing and kept the background
-  fill. It floors the near edges and ceils the far ones, so a rect covers its
-  true extent. Fuzzing every framing, world size, camera offset and rect finds
-  0 violations of that containment invariant;
+- `Camera.apply()` maps a world rectangle to exact target coordinates —
+  `screen = (world - offset) * density`. Sprites, health bars, hitboxes, labels
+  and the debug overlays all read the one transform, so none of them can drift
+  from the others;
+- `Camera.scaled_size()` is the **single rounding rule** in the drawing path: an
+  image is magnified to that size and blitted into a rectangle of that size.
+  `Camera.apply_snapped()` is the matching position, rounded *down*, and the size
+  rounds *up* — which is what makes a run of tiles overlap by at most a pixel
+  instead of drifting apart by one every few tiles and opening a line of
+  background through the terrain. `pygame.blit` silently resamples a source that
+  does not fit its destination, so "off by a rounding" is a real defect here and
+  not a cosmetic one; fuzzing every framing, density, offset and rect finds no
+  gap and no resample;
 - `Camera.is_visible()` culls against the framing rect;
 - every frame is a complete repaint of the target, so a stale pixel is not
-  possible rather than merely unlikely. That is what the fixed target bought:
-  the incremental path, the dirty-rect budget and the overlay-rect bookkeeping
-  are gone rather than merely tuned;
-- a window resize reaches nothing that is drawn. `VIDEORESIZE` recomputes the
-  letterbox rectangle and stops;
+  possible rather than merely unlikely;
+- a window resize rebuilds the target, re-reads the density and re-lays out the
+  interface — one cascade, shared with a display change. It never changes how
+  much world is visible;
 - the framing is **render-only**: sprite sizes, hitboxes, physics and the
   deterministic simulation are untouched, so goldens stay valid.
 
@@ -328,13 +377,13 @@ Run the suite:
 uv run pytest
 ```
 
-Coverage — CI enforces an 80 % instruction threshold (currently **89 %**):
+Coverage — CI enforces an 80 % instruction threshold (currently **90 %**):
 
 ```bash
 uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
-Branch coverage is measured separately (currently **86 %**) and is *not*
+Branch coverage is measured separately (currently **87 %**) and is *not*
 compared against the instruction percentage:
 
 ```bash
@@ -370,9 +419,9 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 1117 tests passing · 89 % instruction coverage ·
-> 86 % branch coverage · Ruff clean · mypy clean (144 files across
-> `src main.py tools`, the CI command; `mypy src` alone is 142). Tests run headless
+> **Current baseline:** 1511 tests passing · 90 % instruction coverage ·
+> 87 % branch coverage · Ruff clean · mypy clean (155 files across
+> `src main.py tools`, the CI command; `mypy src` alone is 152). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
@@ -402,8 +451,8 @@ src/
 ├── core/          Bootstrap (game.py), settings, paths, colors, fx
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
-│   ├── rendering/ Camera (pure translation) and renderer
-│   ├── display/   Framing, Viewport, Stage, Presentation, setup detection
+│   ├── rendering/ Camera (fixed framing + a density read off the target) and renderer
+│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
 │                   Asset library and animator (`core/asset_library.py`)
 │                   Audio bus (`core/audio.py`)
@@ -477,6 +526,18 @@ notes/             Refactoring plans, audit reports and open gaps
   copies agree only until someone edits one. UI-only constants
   (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and renderer
   internals (`DASH_STRETCH_*`) stay next to their only user.
+- **One table for the interface.** `src/ui/metrics.py` holds every layout
+  dimension of the menus as a `DESIGN_*` constant, and `Metrics` is the only
+  thing that multiplies one by a scale. A view may not contain a layout
+  literal: paddings, gaps, row heights and the panel border all come from a
+  token. The reason is not tidiness — at a window density of 1.889 the grid used
+  to pair a 49px font with 34px rows, so a clickable band covered 44% of the
+  label above it and clicking the row you read activated the row above.
+- **A row is never shorter than its text**, at any scale, in any window. A list
+  that does not fit gives up *font size* (down to `MIN_TEXT_RATIO`) instead,
+  because smaller text is still readable while an overlapping row is not
+  clickable at all. `GridView` measures the real fonts rather than trusting the
+  design constants, since a fallback face has different metrics again.
 - **No dead menu options.** User-facing hotkeys are mirrored by tests
   (`DEBUG KEYS` panel, bindings, attack sets).
 
