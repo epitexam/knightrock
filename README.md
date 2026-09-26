@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-1092%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-1117%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -43,7 +43,7 @@
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 1092 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI, over `src`, `tests`, `main.py` and `tools/`. |
+| **Quality gates** | 1117 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -175,7 +175,11 @@ frame cost predictable:
   in-situ vector points: the first is filled and the following ones hollow.
   Melee, projectile AABB and moving-hazard geometry use swept collision;
   static hazards and contact damage retain discrete collision. The full list
-  is recalled on-screen by the `DEBUG KEYS` panel.
+  is recalled on-screen by the `DEBUG KEYS` panel. `F4` statics is **off by
+  default**: a level carries ~970 terrain tiles whose outline tells you
+  nothing, and they were the largest single item in the frame at 2.8 ms.
+  Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
+  the whole overlay pass from p50 6.0 ms to 4.3 ms.
 
 ## Gameplay camera
 
@@ -197,6 +201,18 @@ Consequences that fall out of that single source of truth:
 - `Camera.apply()` translates **and** scales world coordinates, so sprites,
   health bars, hitboxes, labels and the debug overlays all follow the zoom
   without special-casing;
+- `Camera.apply_covering()` is what the renderer actually blits with. `apply()`
+  returns exact fractional bounds and `pygame.Rect` truncates them, which always
+  rounds a rectangle *in*: the tile at the far edge of a level maps to
+  `x 1427.5..1440.0` on a 1440-wide screen and came out as `Rect(1427, .., 12)`,
+  stopping at 1438. The last column and row of the window were then painted by
+  nothing and kept the background fill — a one-pixel line down the right edge and
+  along the bottom, visible only once the camera is pushed against its clamp,
+  which in practice means dashing into a corner of the map. `apply_covering()`
+  floors the near edges and ceils the far ones, so a rect covers its true extent:
+  it grows by at most a pixel, so neighbours overlap instead of leaving a gap.
+  Fuzzing every world size, zoom, camera offset and rect found 0 violations of
+  that containment invariant;
 - `Camera.is_visible()` culls against the zoomed world viewport, so a higher
   zoom also draws fewer sprites (cheaper frames, and the basis for a
   view-based level streaming budget);
@@ -302,7 +318,17 @@ uv run mypy src main.py tools                         # types
 
 `src` carries no mypy per-module override any more, and
 `disallow_incomplete_defs` is on globally, so a partially annotated signature
-is a CI failure rather than something mypy quietly accepts. The same gates run
+is a CI failure rather than something mypy quietly accepts.
+
+`tests/` is **deliberately not type-checked**, which is why the mypy command
+above omits it: running `uv run mypy tests` on its own reports 773 errors in 78
+files. That is not a broken gate — the suite pins behaviour, not annotations,
+and test doubles are intentionally loose. Do not add `tests` to the mypy
+command in `.github/workflows/build.yml` without treating that debt first.
+Ruff *does* cover `tests/`, so it is linted and format-checked like everything
+else.
+
+The same gates run
 locally through `pre-commit`:
 
 ```bash
@@ -310,8 +336,9 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 1092 tests passing · 89 % instruction coverage ·
-> 86 % branch coverage · Ruff clean · mypy clean on 142 files. Tests run headless
+> **Current baseline:** 1117 tests passing · 89 % instruction coverage ·
+> 86 % branch coverage · Ruff clean · mypy clean (144 files across
+> `src main.py tools`, the CI command; `mypy src` alone is 142). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
@@ -360,7 +387,17 @@ notes/             Refactoring plans, audit reports and open gaps
 **Reading the code, module by module**
 
 - `src/core/game.py` owns the display, input and the scene stack; the loop only
-  feeds fixed ticks to the active scene and presents its dirty rects.
+  feeds fixed ticks to the active scene and presents its dirty rects. The loop
+  is paced **exactly once**: with vsync off the `Clock` holds `Display.FPS`, with
+  vsync on the present already blocks on the vertical blank, so the clock is
+  ticked only against a runaway ceiling derived from that rate — targeting 60 on
+  top of a 60Hz present waits twice for one refresh and the cadence alternates
+  between on time and one refresh late. The ceiling is a backstop, not a frame
+  rate control, and it is derived rather than hardcoded so raising
+  `Display.FPS` can never leave it underneath. A frame carrying HUD or HP-bar
+  rects never takes the partial present path: those are painted *after* the
+  renderer has chosen what to present, so a region that does not cover them
+  leaves them one frame stale.
 - `src/core/level/systems/gameplay_loop.py` defines the *order* in which the
   level systems run; each system stays independently testable.
 - `src/application/events.py` is a synchronous, strictly ordered event bus:
@@ -371,16 +408,25 @@ notes/             Refactoring plans, audit reports and open gaps
 
 ## Conventions
 
-- **Typed code.** `mypy src` is blocking (`disallow_untyped_defs = true`) with
-  narrow overrides for the few modules still being migrated; `src.combat`,
-  `src.entities` and `src.states` have been strict-clean since RF-8.
+- **Typed code.** `mypy src main.py tools` is blocking
+  (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) with
+  **no per-module override left** in
+  `pyproject.toml`, so a partially annotated signature is a CI failure rather
+  than something mypy quietly accepts. `tests/` is excluded, on purpose.
 - **Formatted & measured.** `ruff format` for style, `ruff --select C901` for
   cyclomatic complexity (threshold 10, every exception justified).
 - **Deterministic simulation.** Fixed timestep (`Simulation.TICK_RATE = 60`);
   rendering follows `Display.FPS`. Nothing may introduce non-determinism into
   the tick.
 - **Centralized tuning.** Gameplay constants live in `src/core/settings.py` —
-  no magic numbers in the systems.
+  no magic numbers in the systems. A constant **shared by two modules has
+  exactly one home**, and it belongs to the module that acts on it: the HP bar
+  geometry is defined once in `src/ui/world_ui.py`, which draws it, and
+  `src/core/rendering/renderer.py` imports it rather than redefining it for its
+  erase headroom. Two copies agree only until someone edits one. UI-only
+  constants (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and
+  renderer internals (`DIRTY_*`, `DASH_STRETCH_*`) stay next to their only
+  user.
 - **No dead menu options.** User-facing hotkeys are mirrored by tests
   (`DEBUG KEYS` panel, bindings, attack sets).
 
@@ -391,3 +437,8 @@ notes/             Refactoring plans, audit reports and open gaps
   the delivery matrix and acceptance checklist (written in French).
 - `notes/ecarts_ouverts.md` — open gaps and the measured reference baseline
   (written in French).
+- `notes/hitbox_amelioration.md` — hitbox and advanced-combat work, with
+  `notes/plan_hitbox_amelioration_partiels.md` for the partial-compliance
+  follow-up (written in French).
+- `notes/plan_limit_frames_video.md` — planned frame-limit setting for the
+  video menu, with the measurements that bound it (written in French).
