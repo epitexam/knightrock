@@ -11,14 +11,22 @@ Run it from the repo root::
     uv run python tools/display_acceptance.py            # menu, 12 seconds
     uv run python tools/display_acceptance.py --hold 30  # longer
     uv run python tools/display_acceptance.py --debug    # with the F-keys live
+    uv run python tools/display_acceptance.py --real-settings
 
 Close the window early to stop it; the report prints either way.
+
+**It does not touch your settings.** The walkthrough applies real display
+changes, and the game writes its settings on the way out, so by default the run
+gets a throwaway settings file in a temporary directory. The first version of
+this script did write the real one -- which is how a machine ended up with
+``borderless 1280x720`` it had never chosen. ``--real-settings`` opts back in.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -91,13 +99,26 @@ def main() -> None:
         action="store_true",
         help="print the walkthrough and exit, instead of staying open",
     )
+    parser.add_argument(
+        "--real-settings",
+        action="store_true",
+        help="read and write the real settings file instead of a throwaway one",
+    )
     arguments = parser.parse_args()
     if arguments.debug:
         import os
 
         os.environ["DEBUG"] = "1"
 
-    game = Game()
+    if arguments.real_settings:
+        settings_path = None
+        print("using the REAL settings file; the walkthrough will be saved to it")
+    else:
+        scratch = tempfile.TemporaryDirectory(prefix="knightrock-acceptance-")
+        settings_path = Path(scratch.name) / "settings.json"
+        print(f"using a throwaway settings file ({settings_path}); your own is untouched")
+
+    game = Game(bindings_path=settings_path)
     # The real path, not ``initialize_display`` on its own: the automatic
     # resolution of the window size happens in ``_initialize``, and skipping it
     # would report a configuration the player never gets.

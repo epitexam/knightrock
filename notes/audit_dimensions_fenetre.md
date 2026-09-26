@@ -232,9 +232,10 @@ confiance. Un test vérifie son absence.
 
 Autres observations de la même passe :
 
-- l'écran primaire est un **180 Hz**, et `FRAME_LIMITS` s'arrête à 144 puis 240.
-  Le taux réel est affiché dans le menu, mais 180 n'est pas dans l'échelle :
-  à corriger si la liste doit couvrir l'écran du joueur ;
+- l'écran primaire est un **180 Hz**, et `FRAME_LIMITS` s'arrêtait à 144. La
+  liste ne couvrait donc pas le seul taux que le joueur regarde. **Corrigé** :
+  180 a été ajouté, et `test_frame_limit_ladder_covers_the_screen` le vérifie
+  contre le taux que la plateforme déclare ;
 - `get_desktop_sizes()` renvoie bien les deux écrans, `get_num_displays()` aussi.
   C'est donc bien les **origines** qui manquent, et rien d'autre.
 

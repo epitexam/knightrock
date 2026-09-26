@@ -39,9 +39,16 @@ MAX_WINDOW_WIDTH = 7680
 MAX_WINDOW_HEIGHT = 4320
 
 #: Frame limits offered. 20, 30 and 60 divide the 60Hz tick rate, so each is a
-#: whole number of simulation ticks per presented frame; 144 covers a 144Hz
-#: display without the player having to guess, and None means uncapped.
-FRAME_LIMITS: tuple[int | None, ...] = (None, 20, 30, 60, 120, 144, 240)
+#: whole number of simulation ticks per presented frame; above that the render
+#: blend takes over, which is why the higher values do not divide anything.
+#: None means uncapped.
+#:
+#: 180 is in the list because a 180Hz panel exists and did not: the first real
+#: session this ran on was one, and the ladder topped out at 144, so the one
+#: rate the player was actually looking at was the one they could not select.
+#: The video menu also shows the screen's own reported rate, so the ladder and
+#: the hardware do not have to agree -- but when they can, they should.
+FRAME_LIMITS: tuple[int | None, ...] = (None, 20, 30, 60, 120, 144, 180, 240)
 DEFAULT_FRAME_LIMIT: int | None = 60
 MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500

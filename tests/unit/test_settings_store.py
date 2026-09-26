@@ -5,6 +5,7 @@ import pytest
 
 from src.application.settings_store import (
     DEFAULT_FRAME_LIMIT,
+    FRAME_LIMITS,
     SETTINGS_FORMAT_VERSION,
     SettingsStore,
     UserSettings,
@@ -153,3 +154,24 @@ def test_settings_store_invalid_or_missing_values_use_defaults(tmp_path: Path) -
 
     path.write_text("not-json", encoding="utf-8")
     assert store.load() == UserSettings()
+
+
+def test_the_frame_limit_ladder_covers_the_screen_the_player_has() -> None:
+    """The first real session this ran on was a 180Hz panel, and the ladder
+    stopped at 144 -- so the one rate the player was looking at was the one they
+    could not select."""
+    from src.core.display.detection import desktop_refresh_rates
+
+    rates = [rate for rate in desktop_refresh_rates() if rate > 0]
+    for rate in rates:
+        assert rate in FRAME_LIMITS, (
+            f"a {rate}Hz display is attached and {rate} is not offered; the video menu "
+            "shows the real rate, so a player would see a number they cannot pick"
+        )
+
+
+def test_the_ladder_keeps_the_tick_aligned_values_first() -> None:
+    """Below 60 the values must divide the tick rate, or a frame runs a
+    fractional number of simulation steps."""
+    assert FRAME_LIMITS[1:4] == (20, 30, 60)
+    assert None in FRAME_LIMITS, "uncapped has to be reachable"
