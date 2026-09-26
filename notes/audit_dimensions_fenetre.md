@@ -235,7 +235,46 @@ peut être entièrement correcte et dessiner une frame cassée. Il vérifie
 maintenant qu'un sprite agrandi et son rect de blit font la même taille, à
 chaque échelle.
 
-## 10. Ce que la vraie session a cassé
+## 10. Ce que la revue a cassé, deuxième fois : le menu vidéo
+
+« Le menu vidéo est inutilisable, je peux cliquer sur pas grand chose. »
+
+Le menu était **entièrement** câblé au clavier, et à la souris six de ses neuf
+lignes ne faisaient rien. Le symptôme est discret parce que la ligne
+**s'illuminait quand même** : le clic était reçu, il déplaçait le focus, et il
+fallait ensuite appuyer sur une flèche pour que la valeur bouge. Une ligne qui
+répond en sursautant est plus Trompeuse qu'une ligne qui reste grise.
+
+Deux bugs distincts, dont un ne se voyait pas :
+
+- **`handle_routed` ne traitait que `size`, `reset` et `back` au clic.** Les six
+  autres renvoyaient leur action, et personne ne la consommait. L'ancien code
+  gérait `fullscreen`, `vsync` et `scale` au clic ; la réécriture v2 l'a perdu.
+- **un clic sur une ligne booléenne déjà active ne faisait rien non plus.**
+  `←`/`→` *positionnent* la valeur — c'est le bon modèle pour balayer une liste,
+  et les deux touches ne se ressemblent pas. Mais un clic n'a pas de direction :
+ routé sur `UI_RIGHT`, il *positionnait* `on`. Sur une ligne affichant déjà « on »,
+  il ne se passait rien. Une ligne qui répond une fois sur deux est une ligne
+  morte.
+
+Le correctif est une seule méthode `_cycle(name, action, click=)`, appelée par
+les deux chemins. Les deux listes de lignes sont la cause : elles nommaient les
+mêmes lignes, et il n'y avait rien qui les oblige à rester d'accord. Un clic
+avance d'une valeur ; sur un booléen, il bascule.
+
+**Ce que les tests disaient.** Les tests existants passaient tous : ils
+appelaient `model.activate(index)` et vérifiaient l'action *retournée*. Ce qui
+manquait est l'étape d'après — la consommation de cette action par la scène, qui
+est précisément là où le bug se logeait. Le nouveau test clique sur le rectangle
+**que la vue a réellement dessiné**, passe par `handle_routed`, et vérifie que
+les settings ont bougé. Un `test_every_row_does_something` complète vérifie
+qu'aucune ligne n'est hors des deux listes.
+
+Vérifié de bout en bout : les neuf lignes répondent à un clic converti depuis
+une position fenêtre, via le chemin réel `Game._to_target_coordinates` →
+`SceneManager.handle_event`. Le sélecteur de résolution, lui, était sain (5/5).
+
+## 11. Ce que la vraie session a cassé
 
 Le premier passage sur la machine de développement (Wayland, deux écrans :
 2560×1440 @180 Hz en primaire, 1920×1080 @60 Hz à sa gauche) a invalidé une

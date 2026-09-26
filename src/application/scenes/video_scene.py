@@ -171,6 +171,17 @@ class VideoScene(Scene):
         )
         if action == "size":
             self._open_size_picker()
+        elif action in self.CYCLING_ROWS:
+            # A click on a value row steps it forward, the same as →.
+            #
+            # It used to do nothing, which is the same as a dead row: the focus
+            # moved, so the click *looked* like it had landed, and the value
+            # only changed if you then pressed a direction or Enter. Six of the
+            # nine rows were dead to the mouse that way, and the only ones that
+            # worked were the three handled by name below -- which is a bug that
+            # reads as "this menu is awkward" rather than as a bug, because a
+            # row that highlights on click looks alive.
+            self._cycle(action, InputAction.UI_RIGHT, click=True)
         elif action == "reset":
             self._reset()
         elif action == "back":
@@ -178,11 +189,17 @@ class VideoScene(Scene):
             return MenuAction.BACK
         return action
 
+    #: Rows whose value a press -- or a click -- steps. Every other row on this
+    #: screen is an action of its own (``size``, ``reset``, ``back``), named in
+    #: :meth:`handle_routed`. A row in neither set is a row that does nothing,
+    #: and the list is the check that there is no such row.
+    CYCLING_ROWS = ("display", "render_scale", "smoothing", "vsync", "frame_limit", "scale")
+
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
         """←/→ adjust the focused row's value; Enter opens the real picker.
 
-        Every value row cycles on all three, so a gamepad never lands on a row
-        it cannot act on.
+        Every value row acts on all three, so a gamepad never lands on a row it
+        cannot use.
         """
         current = self.model.current_item
         if current is None:
@@ -201,15 +218,25 @@ class VideoScene(Scene):
             else:
                 self._cycle_size(routed.action)
             return True
+        return self._cycle(current.action, routed.action)
+
+    def _cycle(self, name: str, action: InputAction, *, click: bool = False) -> bool:
+        """Step one row's value: forwards on a click and on →, back on ←.
+
+        One implementation for both paths, deliberately. The two used to be
+        separate lists naming the same rows, which is exactly how a click ended
+        up wired to three of them and a key to six. A row the pointer cannot
+        reach is a row the pointer cannot use.
+        """
         cyclers = {
-            "display": lambda: self._cycle_enum(routed.action, DISPLAY_VALUES, "display"),
-            "smoothing": lambda: self._cycle_bool(routed.action, "smoothing"),
-            "vsync": lambda: self._cycle_bool(routed.action, "vsync"),
-            "frame_limit": lambda: self._cycle_frame_limit(routed.action),
-            "render_scale": lambda: self._cycle_enum(routed.action, RENDER_SCALES, "render_scale"),
-            "scale": lambda: self._cycle_scale(routed.action),
+            "display": lambda: self._cycle_enum(action, DISPLAY_VALUES, "display"),
+            "render_scale": lambda: self._cycle_enum(action, RENDER_SCALES, "render_scale"),
+            "smoothing": lambda: self._cycle_bool(action, "smoothing", click=click),
+            "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
+            "frame_limit": lambda: self._cycle_frame_limit(action),
+            "scale": lambda: self._cycle_scale(action),
         }
-        cycler = cyclers.get(current.action)
+        cycler = cyclers.get(name)
         if cycler is None:
             return False
         cycler()
@@ -221,11 +248,17 @@ class VideoScene(Scene):
         step = -1 if action is InputAction.UI_LEFT else 1
         self._apply(self.game.settings.with_video(**{name: values[(index + step) % len(values)]}))
 
-    def _cycle_bool(self, action: InputAction, name: str) -> None:
+    def _cycle_bool(self, action: InputAction, name: str, *, click: bool = False) -> None:
         # A left/right press sets the value rather than toggling it: toggling
-        # makes ← and → behave identically, which reads as one of them being
-        # broken.
-        self._apply(self.game.settings.with_video(**{name: action is InputAction.UI_RIGHT}))
+        # makes ← and → behave identically, which reads as one of them broken.
+        #
+        # A click is not that. It is one discrete gesture with no direction to
+        # read a value out of, so on a row that already reads "on" it has to
+        # flip. Setting it instead made the row answer half the time, which is
+        # the same as a row that reads as dead -- and the two together are what
+        # made the screen look broken rather than merely terse.
+        value = not getattr(self.game.settings, name) if click else action is InputAction.UI_RIGHT
+        self._apply(self.game.settings.with_video(**{name: value}))
 
     def _cycle_frame_limit(self, action: InputAction) -> None:
         current = self.game.settings.frame_limit
