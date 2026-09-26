@@ -6,14 +6,19 @@ import os
 
 
 class Display:
-    """Display and rendering settings."""
+    """Fallback window size, and the default frame rate.
+
+    ``WIDTH``/``HEIGHT`` are only the *starting* size: the real one is decided
+    per machine at launch by ``src.core.display.detection``, and then by the
+    video menu. What the game draws into has nothing to do with either -- see
+    ``src.core.display.framing``.
+
+    ``FPS`` is the default frame limit, not a property of the display. The
+    player can change it, and with vsync on the present overrides it.
+    """
 
     WIDTH = 1440
     HEIGHT = 900
-    SIZE = (WIDTH, HEIGHT)
-    # Simulation runs at 60 Hz (Simulation.TICK_RATE); rendering at 120 FPS
-    # keeps motion smooth without redrawing the same state 2 frames out of 3
-    # as the previous 180 FPS setting did (audit F1.4/F6.1).
     FPS = 60
     TITLE = "Knightrock"
 
@@ -281,7 +286,18 @@ class Simulation:
     # rewind depth a future netcode transport will cap re-simulation at.
     MAX_PREDICTION_FRAMES = 8
     ROLLBACK_FRAMES = 4
-    MAX_FRAME_TIME = 0.1  # Maximum frame time to prevent spiral of death
+    #: Longest frame the accumulator will believe in. Past this the extra time
+    #: is dropped, so a hitch cannot be compounded by replaying it.
+    #:
+    #: Note what that costs: dropping time is not the same as dropping ticks. A
+    #: frame that really took 300ms bills 100ms, and the game runs in slow
+    #: motion for that frame rather than skipping ahead. ``MAX_TICKS_PER_FRAME``
+    #: is the other half of the guard; see the loop.
+    MAX_FRAME_TIME = 0.1
+    #: Ticks one presented frame may run. Six is a 100Hz frame against a 60Hz
+    #: tick rate, which is twice what a player can see; past that the frame is
+    #: already lost and catching up only delays the next one -- the spiral.
+    MAX_TICKS_PER_FRAME = 6
     MAX_SUBSTEPS_PER_AXIS = 8  # Guard: dash spikes must not spiral (F3.4)
 
 

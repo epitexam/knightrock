@@ -435,12 +435,38 @@ class Game:
             self.scene_manager.poll_held_repeats()
             self.flush_settings()
 
-            while self._accumulator >= Simulation.TIMESTEP:
-                self.scene_manager.update(Simulation.TIMESTEP)
-                self._accumulator -= Simulation.TIMESTEP
-
+            self._run_ticks()
             self.scene_manager.draw(self._draw_target())
             self._present()
+
+    def _run_ticks(self) -> None:
+        """Drain the accumulator, but never more than a frame's worth of ticks.
+
+        The accumulator already refuses to believe a frame longer than
+        ``MAX_FRAME_TIME``, which stops one hitch from being replayed forever.
+        It does not stop a *sustained* overload from queueing ticks faster than
+        they can be run: with 20 owed and 6 affordable, the debt grows and every
+        frame after the hitch spends its whole budget trying to catch up, so the
+        game never recovers.
+
+        Dropping the surplus is the decision every engine makes here, and the
+        fixed timestep is what makes it cheap: the ticks that get dropped were
+        never going to be seen. Catching up on a machine that cannot render
+        fast enough to show them only makes the next frame later.
+        """
+        affordable = min(
+            int(self._accumulator / Simulation.TIMESTEP), Simulation.MAX_TICKS_PER_FRAME
+        )
+        if affordable >= Simulation.MAX_TICKS_PER_FRAME:
+            # The surplus is time the player has already lost; carrying it
+            # forward is what turns one hitch into a stall.
+            self._accumulator = 0.0
+        for _ in range(affordable):
+            self.scene_manager.update(Simulation.TIMESTEP)
+            self._accumulator -= Simulation.TIMESTEP
+        # The subtraction above leaves a residue around -1e-17, and a negative
+        # accumulator makes ``render_alpha`` negative for one frame.
+        self._accumulator = max(0.0, self._accumulator)
 
     def _present(self) -> None:
         """Put the finished frame on the screen. The only screen read in the loop."""
