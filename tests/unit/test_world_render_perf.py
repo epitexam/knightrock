@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
@@ -29,7 +30,7 @@ def _world_render_display() -> None:
 
 def make_renderer(zoom: float = 1.0) -> tuple[Renderer, SpriteGroups]:
     surface = pygame.Surface((320, 240))
-    camera = Camera(320, 240, zoom=zoom)
+    camera = Camera(Framing(320.0 / zoom, 240.0 / zoom))
     camera.set_world_size(640, 480)
     return Renderer(surface, camera), SpriteGroups()
 
@@ -185,7 +186,7 @@ def test_the_camera_reuses_its_frame_transform() -> None:
     ``is_visible`` rebuilt the viewport ``FRect`` and ``apply`` rebuilt a
     ``Vector2`` plus two trig calls, ~1000 times each per frame.
     """
-    camera = Camera(320, 240, zoom=1.25)
+    camera = Camera(Framing(320.0 / 1.25, 240.0 / 1.25))
     camera.set_world_size(5000, 5000)
     camera.offset.update(100.0, 100.0)
     camera.begin_frame()
@@ -199,7 +200,7 @@ def test_the_camera_reuses_its_frame_transform() -> None:
 
 
 def test_moving_the_camera_invalidates_the_frame_transform() -> None:
-    camera = Camera(320, 240, zoom=1.0)
+    camera = Camera(Framing(float(320), float(240)))
     camera.set_world_size(5000, 5000)
     player = pygame.FRect(0, 0, 32, 32)
     camera.begin_frame()
@@ -211,26 +212,35 @@ def test_moving_the_camera_invalidates_the_frame_transform() -> None:
     assert before != after
 
 
-def test_a_zoom_change_invalidates_the_frame_transform() -> None:
-    camera = Camera(320, 240, zoom=1.0)
+def test_nothing_the_player_configures_invalidates_the_frame_transform() -> None:
+    """The transform is a function of the world and the framing, full stop.
+
+    It used to be a function of the window as well, which meant a video setting
+    could move every sprite on screen mid-frame's worth of time. The two setters
+    that could do it are gone, and this asserts the door stays shut.
+    """
+    camera = Camera(Framing(float(320), float(240)))
     camera.set_world_size(5000, 5000)
     camera.begin_frame()
     before = camera.apply(pygame.FRect(100, 100, 32, 32))
 
-    camera.set_zoom(2.0)
-    after = camera.apply(pygame.FRect(100, 100, 32, 32))
+    camera.set_world_size(9000, 9000)
+    camera.begin_frame()
 
-    assert before != after
+    assert camera.apply(pygame.FRect(100, 100, 32, 32)) == before
+    assert not hasattr(camera, "set_zoom")
+    assert not hasattr(camera, "set_viewport_size")
 
 
-def test_a_viewport_change_invalidates_the_cull_rect() -> None:
-    """A wider viewport must see sprites the old one culled away."""
-    camera = Camera(320, 240, zoom=1.0)
+def test_the_cull_rect_follows_the_framing_and_only_the_framing() -> None:
+    camera = Camera(Framing(float(320), float(240)))
     camera.set_world_size(5000, 5000)
     far_sprite = pygame.FRect(400, 100, 32, 32)
     camera.begin_frame()
     assert camera.is_visible(far_sprite) is False
 
-    camera.set_viewport_size(800, 480)
+    wider = Camera(Framing(800.0, 480.0))
+    wider.set_world_size(5000, 5000)
+    wider.begin_frame()
 
-    assert camera.is_visible(far_sprite) is True
+    assert wider.is_visible(far_sprite) is True

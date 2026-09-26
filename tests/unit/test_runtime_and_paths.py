@@ -8,6 +8,8 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.viewport import DEFAULT_RENDER_SCALE
 from src.core.game import Game
 from src.core.level.level_manager import LevelManager
 from src.core.paths import PROJECT_ROOT, resource_path
@@ -206,50 +208,26 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
 
     game.apply_settings(replace(game.settings, width=800, height=600, vsync=True))
 
-    assert game.display_surface is not None
-    assert game.display_surface.get_size() == (800, 600)
+    assert game.surface is not None
+    assert game.surface.get_size() == (800, 600)
     assert game.settings.vsync is True
 
 
-def test_video_resize_event_never_changes_the_logical_resolution(
+def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Un VIDEORESIZE ne peut pas modifier le viewport logique.
+    """The two modes, by what they ask the driver for.
 
-    La fenêtre n'est plus redimensionnable : la résolution ne change que via
-    le menu vidéo. SDL peut annoncer un VIDEORESIZE lors d'un ``set_mode()``
-    interne ou d'un basculement plein écran (il peut notamment rapporter la
-    taille du desktop) : l'ignorer garantit un viewport stable et interdit
-    toute boucle ``set_mode()`` / ``VIDEORESIZE``.
+    Windowed is resizable: the window used to be fixed because the camera was
+    built from its size, so a drag would have changed what the player could
+    see. It no longer does, so the drag is harmless. Borderless asks for
+    FULLSCREEN *at the desktop's own size* rather than a mode change, which is
+    what keeps it safe on a hybrid-GPU laptop.
+
+    ``pygame.SCALED`` is deliberately absent. It was doing the letterboxing,
+    which the render target now does itself, and pygame's documentation calls
+    it an experimental API.
     """
-    game = Game(
-        save_path=tmp_path / "savegame.json",
-        bindings_path=tmp_path / "settings.json",
-    )
-    game._initialize()
-    reconfigure = Mock(side_effect=game._configure_display)
-    monkeypatch.setattr(game, "_configure_display", reconfigure)
-    for event_size in ((1024, 768), (800, 600), (1920, 1080)):
-        monkeypatch.setattr(
-            pygame.event,
-            "get",
-            lambda size=event_size: [
-                pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size)
-            ],
-        )
-
-        game._handle_events()
-
-    assert (game.settings.width, game.settings.height) == (1440, 900)
-    assert game.display_surface is not None
-    assert game.display_surface.get_size() == (1440, 900)
-    reconfigure.assert_not_called()
-
-
-def test_window_is_not_resizable_and_fullscreen_keeps_the_logical_ratio(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Fenêtre fixe en mode fenêtre, ``SCALED`` (letterbox) en plein écran."""
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
@@ -261,22 +239,27 @@ def test_window_is_not_resizable_and_fullscreen_keeps_the_logical_ratio(
     game.apply_settings(replace(game.settings, width=1280, height=720, fullscreen=False))
 
     windowed_flags = set_mode.call_args.args[1]
-    assert not windowed_flags & pygame.RESIZABLE
+    assert windowed_flags & pygame.RESIZABLE
     assert not windowed_flags & pygame.FULLSCREEN
+    assert not windowed_flags & pygame.SCALED
     assert set_mode.call_args.args[0] == (1280, 720)
 
     game.apply_settings(replace(game.settings, fullscreen=True))
 
     fullscreen_flags = set_mode.call_args.args[1]
     assert fullscreen_flags & pygame.FULLSCREEN
-    assert fullscreen_flags & pygame.SCALED
     assert not fullscreen_flags & pygame.RESIZABLE
+    assert not fullscreen_flags & pygame.SCALED
 
 
-def test_changing_the_video_resolution_propagates_the_new_viewport(
-    tmp_path: Path,
-) -> None:
-    """Le menu vidéo reste le seul moyen de changer de résolution."""
+def test_changing_the_window_never_reaches_the_render_target(tmp_path: Path) -> None:
+    """A new resolution rebuilds the window and nothing else.
+
+    This is the payoff of the fixed render target: the resolution used to be
+    the size everything was drawn into, so changing it re-laid out every view
+    and re-decoded the art. Now the target is a constant and the only thing
+    that changes is the rectangle the finished frame is scaled into.
+    """
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
@@ -285,11 +268,52 @@ def test_changing_the_video_resolution_propagates_the_new_viewport(
     propagate = Mock()
 
     game.apply_settings(replace(game.settings, width=1920, height=1080))
-    game.scene_manager.set_display_surface = propagate  # type: ignore[method-assign]
+    assert propagate.call_count == 0
+    game.scene_manager.set_surface = propagate  # type: ignore[method-assign]
 
     game.apply_settings(replace(game.settings, width=1280, height=720))
 
     assert (game.settings.width, game.settings.height) == (1280, 720)
-    assert game.display_surface is not None
-    assert game.display_surface.get_size() == (1280, 720)
-    propagate.assert_called_once_with(game.display_surface)
+    assert game.surface is not None
+    assert game.surface.get_size() == (1280, 720)
+    assert game.viewport is not None
+    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(DEFAULT_RENDER_SCALE)
+    propagate.assert_not_called(), "a window change must not reach the views"
+
+
+def test_a_video_resize_only_recomputes_the_presentation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``VIDEORESIZE`` used to be dropped to protect the logical resolution.
+
+    Nothing has to be protected any more: the visible world is the framing, and
+    the render target's size has nothing to do with the window. So the event is
+    handled rather than ignored, and what it does is recompute the letterbox.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    assert game.viewport is not None
+    target_size = game.viewport.size
+    recompute = Mock()
+    assert game.presentation is not None
+    game.presentation.recompute = recompute  # type: ignore[method-assign]
+    reconfigure = Mock(side_effect=game.initialize_display)
+    monkeypatch.setattr(game, "initialize_display", reconfigure)
+    for size in ((1024, 768), (800, 600), (1920, 1080)):
+        monkeypatch.setattr(
+            pygame.event,
+            "get",
+            lambda size=size: [
+                pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size)
+            ],
+        )
+
+        game._handle_events()
+
+    assert recompute.call_count == 3
+    reconfigure.assert_not_called()
+    assert game.viewport.size == target_size
+    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(DEFAULT_RENDER_SCALE)

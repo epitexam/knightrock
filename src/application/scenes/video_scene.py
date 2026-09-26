@@ -198,18 +198,15 @@ class VideoScene(Scene):
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is not None:
-            if self._current_signature() != self._signature:
-                self._signature = self._current_signature()
-                focused = self.model.current_item.action if self.model.current_item else None
-                self._rebuild(focused)
-            self.view.draw(
-                surface,
-                self.TITLE,
-                self.model,
-                top=150,
-                highlighted=self._flash_row,
-            )
-        return None
+    def draw(self, surface: pygame.Surface) -> None:
+        if self._current_signature() != self._signature:
+            self._signature = self._current_signature()
+            focused = self.model.current_item.action if self.model.current_item else None
+            self._rebuild(focused)
+        self.view.draw(
+            surface,
+            self.TITLE,
+            self.model,
+            top=150,
+            highlighted=self._flash_row,
+        )

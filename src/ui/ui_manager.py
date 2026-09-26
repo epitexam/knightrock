@@ -25,8 +25,8 @@ PANEL_LEGEND = "legend"
 class UIManager:
     """Facade pattern for the user interface."""
 
-    def __init__(self, display_surface: pygame.Surface) -> None:
-        self.renderer = PanelRenderer(display_surface)
+    def __init__(self, surface: pygame.Surface) -> None:
+        self.renderer = PanelRenderer(surface)
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
         self.hud = HUD(self.renderer)
@@ -81,9 +81,9 @@ class UIManager:
             return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
         return self.draw_legend_panel(10, 10, layout, compact=True)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self.renderer.set_display_surface(display_surface)
-        self.world_ui.display_surface = display_surface
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.renderer.set_surface(surface)
+        self.world_ui.surface = surface
 
     def set_ui_scale(self, scale: float) -> None:
         self.hud.set_scale(scale)
@@ -131,7 +131,7 @@ class UIManager:
         deaths_n = deaths.deaths if deaths is not None else 0
         level_str = str(level_id) if level_id is not None else "-"
 
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         lines = [
             f"Scene   {scene_name}",
             f"Level   {level_str}   deaths {deaths_n}",
@@ -349,7 +349,7 @@ class UIManager:
             f"Hit Stop   {hit_stop:.3f}",
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         compact = surface.get_width() < 1100 or surface.get_height() < 800
         if compact:
             lines = [
@@ -375,7 +375,7 @@ class UIManager:
         elif layout is not None:
             panel_x, panel_y = 10, 10
         else:
-            panel_x = self.renderer.display_surface.get_width() - panel_w - 12
+            panel_x = self.renderer.surface.get_width() - panel_w - 12
             panel_y = 12
 
         line_colors = {

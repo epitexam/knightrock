@@ -57,10 +57,6 @@ class LevelSelectScene(Scene):
         # A locked level reports None: the model refuses it, so nothing happened.
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill(Colors.dark_grey)
         self.view.draw(surface, self.TITLE, self.model, top=180)
-        return None

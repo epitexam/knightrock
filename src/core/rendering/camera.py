@@ -2,33 +2,35 @@ import math
 
 import pygame
 
-from src.core.settings import CameraShake, GameplayCamera
+from src.core.display.framing import DEFAULT_FRAMING, Framing
+from src.core.settings import CameraShake
 
 
 class Camera:
-    """Scrollable world camera with a fixed gameplay zoom.
+    """Scrollable world camera: a pure translation.
 
-    The camera keeps two distinct notions:
+    The camera used to scale as well as translate, and the scale was the
+    window's business -- it was built from the window's pixel size and a zoom
+    constant, so the slice of world a player saw was a free variable of a video
+    setting. ``Framing`` fixed that slice, which left nothing for a zoom to do:
+    how large the world is drawn is now the render target's business, decided
+    once at load, and the camera only says where in the world the frame is
+    looking.
 
-    - the *display* size (the window), which is the canvas everything is
-      painted on;
-    - the *world viewport* size, which is the visible slice of the world
-      once the zoom is taken into account.
+    So the transform is ``screen = world - offset`` and nothing else. That is
+    not a simplification for its own sake: it means the magnification cannot
+    change between the moment the gameplay decides what is visible and the
+    moment the picture is drawn, so the two cannot disagree.
 
-    ``apply()`` maps a world rectangle to screen coordinates by translating
-    it and then scaling it by ``zoom``; ``is_visible()`` culls against the
-    zoomed world viewport. Every consumer of the camera (sprites, health
-    bars, debug overlays, afterimages) therefore follows the zoom without any
-    extra work, and a higher zoom shows *less* of the world.
-
-    ``zoom = 1`` keeps the previous de-zoomed behaviour.
+    ``apply()`` maps a world rectangle to render-target coordinates by
+    translating it; ``is_visible()`` culls against the framing rect. Every
+    consumer (sprites, health bars, debug overlays, afterimages) goes through
+    those two, so none of them can drift from the others.
     """
 
-    def __init__(self, width: int, height: int, zoom: float = GameplayCamera.ZOOM):
+    def __init__(self, framing: Framing = DEFAULT_FRAMING):
         self.offset = pygame.math.Vector2(0, 0)
-        self.width = width
-        self.height = height
-        self.zoom = self._valid_zoom(zoom)
+        self.framing = framing
         self.world_width = 0.0
         self.world_height = 0.0
         self.trauma = 0.0
@@ -63,7 +65,7 @@ class Camera:
         aligned for free, since the overlay maps through this same transform.
 
         Any code that mutates the camera between frames must call this, or go
-        through ``follow``/``set_viewport_size``/``set_zoom`` which do.
+        through ``follow`` which does.
         """
         self._shake = self.shake_offset()
         alpha = min(max(alpha, 0.0), 1.0)
@@ -77,36 +79,18 @@ class Camera:
         if self._viewport is None:
             self.begin_frame()
 
-    @staticmethod
-    def _valid_zoom(zoom: float) -> float:
-        if zoom <= 0.0:
-            raise ValueError("Camera zoom must be strictly positive")
-        return zoom
-
     @property
     def viewport_width(self) -> float:
-        """Visible world width, i.e. the display width divided by the zoom."""
-        return self.width / self.zoom
+        """Visible world width: the framing, which does not depend on the window."""
+        return self.framing.width
 
     @property
     def viewport_height(self) -> float:
-        """Visible world height, i.e. the display height divided by the zoom."""
-        return self.height / self.zoom
-
-    def set_zoom(self, zoom: float) -> None:
-        """Change the framing and re-clamp so the viewport stays in world."""
-        self.zoom = self._valid_zoom(zoom)
-        self._clamp_to_world()
-        self._viewport = None
-
-    def set_viewport_size(self, width: int, height: int) -> None:
-        """Update the display size (a resolution or a window change)."""
-        self.width = width
-        self.height = height
-        self._clamp_to_world()
-        self._viewport = None
+        """Visible world height: the framing, which does not depend on the window."""
+        return self.framing.height
 
     def set_world_size(self, world_width: float, world_height: float) -> None:
+        """Tell the camera how big the level is, so it can clamp against it."""
         self.world_width = world_width
         self.world_height = world_height
 
@@ -153,40 +137,25 @@ class Camera:
             self.offset.y = -(view_h - self.world_height) / 2.0
 
     def apply(self, rect: pygame.FRect) -> pygame.FRect:
-        """Map a world rectangle to screen coordinates (translate + zoom)."""
+        """Map a world rectangle to render-target coordinates (translation only)."""
         self._ensure_frame()
-        zoom = self.zoom
-        return pygame.FRect(
-            (rect.x + self._shift) * zoom,
-            (rect.y + self._shift_y) * zoom,
-            rect.width * zoom,
-            rect.height * zoom,
-        )
+        return pygame.FRect(rect.x + self._shift, rect.y + self._shift_y, rect.width, rect.height)
 
     def apply_covering(self, rect: pygame.FRect) -> pygame.Rect:
         """Screen rectangle for a world rect, rounded *outward* to cover it.
 
         ``apply`` returns exact fractional bounds, and ``pygame.Rect`` built
         from those truncates them. Truncation always rounds a rectangle *in*:
-        the world tile at the far edge of a level maps to x 1427.5..1440.0 on
-        a 1440-wide screen, and comes out as ``Rect(1427, .., 12)``, which
-        stops at 1438. The last column of the window is then never painted by
-        anything and keeps whatever the background fill left there -- a
-        one-pixel line of sky down the right edge of the screen, and another
-        along the bottom. It only shows once the camera is pushed against the
-        clamp, which in practice means when the player dashes into a corner of
-        the map.
+        a tile at the right edge of the world comes out one pixel short of the
+        edge it was meant to reach, and the last column of the frame is then
+        never painted by anything and keeps whatever the background fill left
+        there. It only shows once the camera is pushed against the clamp, which
+        in practice means when the player dashes into a corner of the map.
 
-        Rounding the near edges down and the far edges up keeps the true
-        extent: the rect grows by at most a pixel, so neighbours may overlap
-        by a pixel instead of leaving a gap between them, and no pixel the
-        caller meant to cover is dropped.
-
-        The far edges are taken from ``apply``'s own result rather than
-        recomputed from the world rect. ``(x + w) * z`` and ``x * z + w * z``
-        disagree in the last bit, and ``ceil`` of a value one bit below the
-        true one lands a whole pixel short, which is the very bug this
-        replaces.
+        Rounding the near edges down and the far edges up keeps the true extent:
+        the rect grows by at most a pixel, so neighbours may overlap by a pixel
+        instead of leaving a gap between them, and no pixel the caller meant to
+        cover is dropped.
         """
         self._ensure_frame()
         exact = self.apply(rect)
@@ -197,13 +166,13 @@ class Camera:
         return pygame.Rect(left, top, right - left, bottom - top)
 
     def is_visible(self, rect: pygame.FRect) -> bool:
-        """Check if a world rectangle intersects the zoomed camera viewport.
+        """Check if a world rectangle intersects the framing rect.
 
         Args:
             rect: The world-space rectangle to check.
 
         Returns:
-            True if the rectangle intersects the camera viewport, False otherwise.
+            True if the rectangle intersects the framing, False otherwise.
         """
         self._ensure_frame()
         assert self._viewport is not None

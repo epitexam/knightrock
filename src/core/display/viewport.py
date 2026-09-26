@@ -11,11 +11,17 @@ RENDER_SCALES = (1, 2, 3)
 
 #: The scale the game starts with.
 #:
-#: Measured on the playable level: the world draw costs 1.31ms at 1440x900, and
-#: a 2x viewport (2304x1296) puts it around 2.5ms, which is affordable against
-#: a 16.7ms frame and keeps the sprites crisp on a large display. Scale 1 is
-#: the performance option. Chosen here, confirmed by
-#: ``tests/benchmarks/render_benchmark.py``.
+#: Measured by ``tests/benchmarks/render_benchmark.py`` on the registered
+#: level: the world draw costs 2.19ms at 1x, 4.22ms at 2x and 7.77ms at 3x, so
+#: the scale is not free -- the target is that many times the pixels. It is the
+#: default anyway because it is the one that keeps sprites crisp, and because
+#: the cost that actually decides whether a frame fits is the presentation,
+#: which this does not change.
+#:
+#: The measured crossover, for the video menu's hint: smooth scaling plus a 2x
+#: draw is 60% of a 60Hz frame at 1920x1080, 70% at 2560x1440, 82% at 3440x1440
+#: and 105% at 3840x2160 -- over budget. Past 1440p, Smoothing off or Render
+#: scale 1x brings 4K back to 56%.
 DEFAULT_RENDER_SCALE = 2
 
 

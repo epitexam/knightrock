@@ -102,8 +102,8 @@ class GridView:
     def cell_at(self, position: tuple[int, int]) -> CellHit | None:
         return next((cell for cell in self._cells if cell.rect.collidepoint(position)), None)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self._surface_size = display_surface.get_size()
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self._surface_size = surface.get_size()
         self._cells = []
         self._row_rects = []
 

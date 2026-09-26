@@ -71,6 +71,8 @@ def game_runtime(tmp_path):
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
-    game.display_surface = pygame.display.get_surface()
+    # The real construction path, so the fixture cannot drift from the loop:
+    # window, render target and presentation, all three.
+    game.initialize_display()
     game.clock = pygame.time.Clock()
     return game

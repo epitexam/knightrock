@@ -18,6 +18,12 @@ from src.application.settings_store import (
 from src.core import fx
 from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
+from src.core.display import detection
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.mode import DisplayMode
+from src.core.display.presentation import Presentation
+from src.core.display.stage import Stage, WindowSpec
+from src.core.display.viewport import DEFAULT_RENDER_SCALE, Viewport
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -40,6 +46,17 @@ logger = logging.getLogger(__name__)
 #: the only thing it ever catches is a present that does not block at all.
 DISPLAY_SAFETY_CEILING_FPS = Display.FPS * 4
 
+#: SDL environment set before ``pygame.init()``.
+#:
+#: High-DPI has to be requested here: SDL reads it when the video subsystem
+#: comes up. pygame-ce 2.5.7 has no ``HIDPI`` flag, so this variable is the
+#: whole mechanism. With a scaled desktop and no hint, SDL matches the pixel
+#: size to the window size and the compositor resamples the result.
+SDL_HINTS = {
+    "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS": "1",
+    "SDL_VIDEO_HIDPI": "1",
+}
+
 
 class Game:
     """Application runtime: display, input, and the scene stack.
@@ -53,8 +70,11 @@ class Game:
     """
 
     def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
-        os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
-        self.display_surface: pygame.Surface | None = None
+        for name, value in SDL_HINTS.items():
+            os.environ[name] = value
+        self.stage: Stage | None = None
+        self.viewport: Viewport | None = None
+        self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
         self.settings = self.settings_store.load()
@@ -119,7 +139,7 @@ class Game:
         # must still reach the menu (audit UI, lot 5).
         self.audio.initialize()
 
-        self.display_surface = self._configure_display()
+        self.initialize_display()
         pygame.display.set_caption(Display.TITLE)
 
         self.clock = pygame.time.Clock()
@@ -131,14 +151,93 @@ class Game:
         self.clock.tick(0)
         self.scene_manager.switch(MenuScene(self))
 
-    def apply_settings(self, settings: UserSettings) -> None:
-        """Apply new settings, recreating the window only when it must change.
+    @property
+    def surface(self) -> pygame.Surface | None:
+        """The window's surface. For window-level work only.
 
-        ``set_mode`` tears the window down and invalidates every surface
-        ``AssetLibrary`` has converted, so calling it for a pure UI scale change
-        caused a visible flicker and a full re-conversion of the art on every
-        step of the scale slider. VSync is part of the signature because it is
-        a ``set_mode`` argument and would otherwise only apply on restart.
+        Nothing is *drawn* here any more: the game draws into
+        ``self.viewport.surface``. Reaching for this to draw is how the window
+        and the visible world got tangled in the first place.
+        """
+        return None if self.stage is None else self.stage.surface
+
+    def _draw_target(self) -> pygame.Surface:
+        """The surface every scene draws into."""
+        assert self.viewport is not None, "the display is not initialized"
+        return self.viewport.surface
+
+    def _window_spec(self) -> WindowSpec:
+        """The window the settings currently ask for.
+
+        A temporary bridge: the settings still speak in "fullscreen", and
+        borderless is what that now means. The video menu grows a real mode
+        choice, and this becomes a straight ``DisplayMode`` read.
+        """
+        return WindowSpec(
+            width=self.settings.width,
+            height=self.settings.height,
+            mode=DisplayMode.BORDERLESS if self.settings.fullscreen else DisplayMode.WINDOW,
+            vsync=self.settings.vsync,
+        )
+
+    def initialize_display(self) -> None:
+        """Build the window, the render target and the presentation, once.
+
+        Public because the headless fixtures need the same three objects the
+        loop does, built the same way, rather than half of them.
+        """
+        desktop = detection.desktop_size()
+        self.stage = Stage(self._window_spec(), desktop)
+        self.viewport = Viewport(DEFAULT_FRAMING, DEFAULT_RENDER_SCALE)
+        self.presentation = Presentation(self.stage, self.viewport)
+
+    def _rebuild_display(self) -> None:
+        """Create or recreate the window, the render target and the presentation.
+
+        Three different things change here and it is worth keeping them apart,
+        because they invalidate different caches:
+
+        - the **window** only when a window setting changed. Nothing drawn is
+          affected: the render target is the same size either way.
+        - the **render target** only when the render scale changed, since its
+          size is the framing times that scale and nothing else.
+        - the **presentation** on either, since it is the mapping between them.
+        """
+        desktop = detection.desktop_size()
+        spec = self._window_spec()
+        assert self.stage is not None
+        self.stage.rebuild(spec, desktop)
+        # set_mode leaves every surface converted for the *previous* display
+        # format stale. AssetLibrary has no display to compare against, so it
+        # must be invalidated explicitly or the next frame blits through a
+        # software alpha path, then pays a full re-decode and re-conversion.
+        self._invalidate_assets()
+
+        assert self.viewport is not None
+        assert self.presentation is not None
+        self.presentation.recompute()
+
+    def rebuild_render_target(self) -> None:
+        """Replace the render target, after the render scale changed.
+
+        The only path that has to tell the scene stack about a new surface.
+        Every other display change lands in ``_rebuild_display`` and touches
+        nothing that is drawn.
+        """
+        assert self.viewport is not None
+        self.viewport = Viewport(DEFAULT_FRAMING, DEFAULT_RENDER_SCALE)
+        if self.presentation is not None:
+            self.presentation.viewport = self.viewport
+            self.presentation.recompute()
+        self.scene_manager.set_surface(self.viewport.surface)
+
+    def apply_settings(self, settings: UserSettings) -> None:
+        """Apply new settings, recreating only what the change actually touches.
+
+        A setting that changes the window rebuilds the window and nothing else:
+        the render target keeps its size, so no view recomputes its layout and
+        no art is re-decoded. A UI scale change touches neither. Only the render
+        scale replaces the surface everything is drawn into.
         """
         previous = self.settings
         self.settings = settings
@@ -146,17 +245,11 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
-        if self.display_surface is not None:
-            if self._mode_signature(previous) != self._mode_signature(settings):
-                self.display_surface = self._configure_display()
-                # set_mode leaves every surface converted for the *previous*
-                # display format stale. AssetLibrary has no display to compare
-                # against, so it must be invalidated explicitly or the next
-                # frame blits through a software alpha path, then pays a full
-                # re-decode and re-conversion of the art.
-                self._invalidate_assets()
-                self.scene_manager.set_display_surface(self.display_surface)
-            self.scene_manager.set_ui_scale(settings.ui_scale)
+        if self.stage is None:
+            return
+        if self._window_signature(previous) != self._window_signature(settings):
+            self._rebuild_display()
+        self.scene_manager.set_ui_scale(settings.ui_scale)
 
     @staticmethod
     def _invalidate_assets() -> None:
@@ -170,7 +263,7 @@ class Game:
         fx.clear_frame_cache()
 
     @staticmethod
-    def _mode_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:
+    def _window_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:
         """The settings that require a new ``pygame.display.set_mode`` call."""
         return (settings.width, settings.height, settings.fullscreen, settings.vsync)
 
@@ -221,27 +314,6 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
-
-    def _configure_display(self) -> pygame.Surface:
-        """Create the window at the logical resolution chosen in the menu.
-
-        The window is deliberately **not** resizable: the selected resolution
-        is the stable gameplay viewport the camera culling and the level
-        streaming budget are computed against. A user drag would change that
-        viewport mid-run, so the only way to change it is the Video menu.
-
-        In fullscreen ``pygame.SCALED`` keeps the logical aspect ratio and
-        letterboxes (black bars) the leftover desktop area instead of
-        stretching the image or distorting the menus.
-        """
-        flags = 0
-        if self.settings.fullscreen:
-            flags |= pygame.FULLSCREEN | pygame.SCALED
-        return pygame.display.set_mode(
-            (self.settings.width, self.settings.height),
-            flags,
-            vsync=1 if self.settings.vsync else 0,
-        )
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -304,11 +376,13 @@ class Game:
                 self.scene_manager.update(Simulation.TIMESTEP)
                 self._accumulator -= Simulation.TIMESTEP
 
-            dirty_rects = self.scene_manager.draw()
-            if dirty_rects is None:
-                pygame.display.update()
-            else:
-                pygame.display.update(dirty_rects)
+            self.scene_manager.draw(self._draw_target())
+            self._present()
+
+    def _present(self) -> None:
+        """Put the finished frame on the screen. The only screen read in the loop."""
+        assert self.presentation is not None, "the display is not initialized"
+        self.presentation.present()
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
@@ -322,11 +396,13 @@ class Game:
             self.input_provider.note_event(event)
 
             if event.type == pygame.VIDEORESIZE:
-                # La fenêtre n'est pas redimensionnable : la résolution est
-                # pilotée uniquement par le menu vidéo. SDL peut encore
-                # annoncer un VIDEORESIZE lors d'un set_mode() interne ou d'un
-                # basculement plein écran ; on l'ignore pour que le viewport
-                # logique reste stable et qu'aucune boucle ne naisse.
+                # La fenêtre est redimensionnable, et un redimensionnement ne
+                # change plus rien de ce qui est dessiné : la cible de rendu a
+                # une taille fixe. Il n'y a donc qu'une chose à recalculer, le
+                # rectangle de présentation. SDL annonce aussi cet évènement
+                # lors d'un set_mode() interne, ce qui est idempotent.
+                if self.presentation is not None:
+                    self.presentation.recompute()
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
@@ -346,23 +422,61 @@ class Game:
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 
-            # Mouse positions are dispatched as-is: with ``pygame.SCALED``
-            # Pygame already reports ``event.pos`` in the logical surface space
-            # (0..width), which is the space every hit rect is computed in.
-            # Mapping them again here would scale the pointer twice and send
-            # every click off-target in fullscreen.
-            self.scene_manager.handle_event(event)
+            self.scene_manager.handle_event(self._to_target_coordinates(event))
+
+    #: Pointer events whose position the interface hit-tests against.
+    _POINTER_EVENTS = frozenset(
+        {
+            pygame.MOUSEMOTION,
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
+        }
+    )
+    #: The subset that *acts*. A press on a letterbox bar is a press on nothing.
+    _POINTER_PRESSES = frozenset({pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP})
+
+    def _to_target_coordinates(self, event: pygame.event.Event) -> pygame.event.Event | None:
+        """Rewrite a pointer event's position into render-target coordinates.
+
+        Every hit rect in the interface is expressed in the render target's
+        space, and the pointer arrives in the window's, so the position has to
+        come back through the inverse of the presentation. Doing it here, once,
+        is what keeps every scene from having to know a window exists.
+
+        A press that lands in a letterbox bar is dropped rather than clamped.
+        Clamping would fire whatever row happens to be nearest the edge of the
+        image, which is worse than doing nothing: the player clicked black and
+        the game answered. Motion is clamped instead of dropped, so the cursor
+        keeps a sensible position while it crosses a bar.
+        """
+        if self.presentation is None or event.type not in self._POINTER_EVENTS:
+            return event
+        position = getattr(event, "pos", None)
+        if position is None:
+            return event
+
+        if not self.presentation.pointer_in_viewport(position):
+            if event.type in self._POINTER_PRESSES:
+                return None
+            rect = self.presentation.rect
+            position = (
+                min(max(position[0], rect.left), rect.right - 1),
+                min(max(position[1], rect.top), rect.bottom - 1),
+            )
+        event.pos = tuple(round(value) for value in self.presentation.pointer_to_viewport(position))
+        return event
 
     def _handle_fatal_error(self, error: Exception) -> None:
         logger.error(f"FATAL ERROR: {error}")
-        if self.display_surface is None:
+        surface = self.surface
+        if surface is None:
             return
 
         try:
-            self.display_surface.fill((0, 0, 0))
+            surface.fill((0, 0, 0))
             font = pygame.font.SysFont("Arial", 30)
             text = font.render(f"FATAL ERROR: {error}", True, (255, 0, 0))
-            self.display_surface.blit(text, (10, 10))
+            surface.blit(text, (10, 10))
             pygame.display.update()
         except pygame.error:
             print("Unable to render the fatal error screen", file=sys.stderr)

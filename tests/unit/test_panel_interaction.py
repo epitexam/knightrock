@@ -7,6 +7,7 @@ import pygame
 import pytest
 
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.ui import ui_manager as ui_ids
@@ -252,7 +253,7 @@ def test_dragged_panel_is_clamped_inside_the_display() -> None:
 def test_dropped_position_is_normalized_after_surface_reduction() -> None:
     renderer = PanelRenderer(pygame.Surface((1024, 768)))
     renderer.interaction.positions["panel"] = (900, 700)
-    renderer.display_surface = pygame.Surface((640, 480))
+    renderer.surface = pygame.Surface((640, 480))
     layout = PanelLayout(640, 480)
 
     renderer.draw_panel(0, 0, ["line"], panel_id="panel", layout=layout)
@@ -288,7 +289,7 @@ def test_gameplay_scene_routes_panel_clicks_and_resets_on_f5(
     """End to end: the scene gives the mouse to the panels, F5 wipes the state."""
     monkeypatch.setenv("DEBUG", "1")
     surface = pygame.Surface((1024, 768))
-    renderer = Renderer(surface, Camera(1024, 768))
+    renderer = Renderer(surface, Camera(Framing(float(1024), float(768))))
     scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace(renderer=renderer))
     ui = renderer.ui_manager
 
@@ -311,7 +312,7 @@ def test_gameplay_scene_ignores_panels_while_the_layer_is_off(
     """An invisible panel must not grab the cursor."""
     monkeypatch.setenv("DEBUG", "1")
     surface = pygame.Surface((1024, 768))
-    renderer = Renderer(surface, Camera(1024, 768))
+    renderer = Renderer(surface, Camera(Framing(float(1024), float(768))))
     scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace(renderer=renderer))
     ui = renderer.ui_manager
 
@@ -330,7 +331,7 @@ def test_gameplay_scene_ignores_panels_while_the_layer_is_off(
 def test_panel_mouse_routing_is_skipped_without_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEBUG", raising=False)
     surface = pygame.Surface((1024, 768))
-    renderer = Renderer(surface, Camera(1024, 768))
+    renderer = Renderer(surface, Camera(Framing(float(1024), float(768))))
     scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace(renderer=renderer))
     ui = renderer.ui_manager
 

@@ -8,6 +8,7 @@ import pygame
 import pytest
 
 from src.core.colors import Colors
+from src.core.display.framing import Framing
 from src.ui.hud import (
     HUD,
     HUD_BAR_GAP,
@@ -244,24 +245,20 @@ def test_gameplay_scene_draws_the_hud_even_with_debug_off(
 
     monkeypatch.delenv("DEBUG", raising=False)
     surface = _surface(1024, 768)
-    renderer = Renderer(surface, Camera(1024, 768))
-    dirty = [pygame.Rect(0, 0, 40, 40)]  # what a non-debug world frame reports
+    renderer = Renderer(surface, Camera(Framing(float(1024), float(768))))
     level = SimpleNamespace(
         renderer=renderer,
         player=_player(health=20.0),
-        draw=lambda *args, **kwargs: list(dirty),
+        draw=lambda *args, **kwargs: None,
     )
     scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
 
-    rects = scene.draw()
+    scene.draw(pygame.display.get_surface())
 
-    assert rects is not None
-    assert dirty[0] in rects, "the world's own dirty rect is kept"
+    # Nothing to declare any more: the next frame erases the whole target, so
+    # the only thing that matters is that the gauges reached the pixels.
     hud_layout = renderer.ui_manager.hud.layout(level.player)
     assert hud_layout is not None
-    assert any(rect.contains(hud_layout.health_bar) for rect in rects), (
-        "the HUD must join the presented rects"
-    )
     assert surface.get_at(hud_layout.health_fill.center)[:3] == TEXT_CRIT
 
 
@@ -274,8 +271,8 @@ def test_gameplay_scene_hud_survives_a_level_without_a_player(
     from src.core.rendering.renderer import Renderer
 
     monkeypatch.delenv("DEBUG", raising=False)
-    renderer = Renderer(_surface(), Camera(1024, 768))
+    renderer = Renderer(_surface(), Camera(Framing(float(1024), float(768))))
     level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
     scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
 
-    assert scene.draw() is None
+    assert scene.draw(pygame.display.get_surface()) is None

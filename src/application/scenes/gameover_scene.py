@@ -51,10 +51,6 @@ class GameOverScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill((16, 8, 10))
         self.view.draw(surface, self.TITLE, self.model, top=240, title_color=TEXT_CRIT)
-        return None

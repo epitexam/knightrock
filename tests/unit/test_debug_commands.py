@@ -8,6 +8,7 @@ import pytest
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.core.colors import Colors
+from src.core.display.framing import Framing
 from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.level.systems.spawn_system import (
     DEBUG_ATTACKS,
@@ -41,7 +42,7 @@ def world_ui():
 def camera():
     from src.core.rendering.camera import Camera as _Camera
 
-    return _Camera(1024, 768)
+    return _Camera(Framing(float(1024), float(768)))
 
 
 def _player() -> object:
@@ -196,7 +197,7 @@ def test_debug_juggle_key_is_bound() -> None:
 def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
     from src.ui.world_ui import WorldUI
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     attack_box = pygame.FRect(100, 100, 30, 20)
     combat = SimpleNamespace(
         attack_boxes=(attack_box,),
@@ -299,7 +300,7 @@ def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
     from src.ui.world_ui import CLASH_MARKER_LIFETIME, WorldUI
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.note_clash((120.0, 110.0))
     assert world_ui._clash_ttl == CLASH_MARKER_LIFETIME

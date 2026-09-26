@@ -60,10 +60,7 @@ class PauseScene(Scene):
             self.game.scene_manager.push(OptionsScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         size = surface.get_size()
         if self._overlay is None or self._overlay_size != size:
             self._overlay = pygame.Surface(size, pygame.SRCALPHA)
@@ -71,4 +68,3 @@ class PauseScene(Scene):
             self._overlay.fill(self._overlay_color)
         surface.blit(self._overlay, (0, 0))
         self.view.draw(surface, self.TITLE, self.model, top=220, title_color=TEXT_WARN)
-        return None

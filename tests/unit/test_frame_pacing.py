@@ -56,7 +56,7 @@ def fake_clock() -> _FakeClock:
 @pytest.fixture()
 def runtime(tmp_path) -> Game:
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
-    runtime.display_surface = pygame.display.get_surface()
+    runtime.initialize_display()
     return runtime
 
 

@@ -56,10 +56,6 @@ class VictoryScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill((12, 20, 14))
         self.view.draw(surface, self.TITLE, self.model, top=190, title_color=TEXT_OK)
-        return None

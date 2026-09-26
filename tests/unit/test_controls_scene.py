@@ -449,33 +449,12 @@ def test_resolution_picker_lists_every_preset_and_marks_the_current_one() -> Non
 
     # The marker is a column of values, not a suffix glued to one label, so the
     # sizes line up and only the row in use carries a readable state.
-    states = [row.cells[1].text for row in scene.rows[:-1] if row.cells[1] is not None]
+    states = [row.cells[0].text for row in scene.rows[:-1] if row.cells[0] is not None]
     assert states == [
         ResolutionScene.CURRENT_MARK
         if (width, height) == (game.settings.width, game.settings.height)
         else ResolutionScene.EMPTY_MARK
         for width, height in RESOLUTIONS
-    ]
-
-
-def test_resolution_picker_names_every_aspect_it_offers() -> None:
-    """The ASPECT column is the shape the player will actually get.
-
-    ``1366 x 768`` is the preset that is not exactly 16:9, so it is reported as
-    approximate: the exact ``683:384`` would be true and useless.
-    """
-    game = _game()
-    scene = ResolutionScene(game)
-
-    aspects = [row.cells[0].text for row in scene.rows[:-1] if row.cells[0] is not None]
-    assert aspects == [
-        "16:9",
-        "16:9",
-        "~16:9",
-        "16:10",
-        "16:9",
-        "16:9",
-        "16:9",
     ]
 
 
@@ -598,7 +577,7 @@ def test_resolution_picker_selection_survives_a_redraw() -> None:
     seen: list[int] = []
     for _ in range(3):
         scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-        scene.draw()  # the frame that runs right after the input
+        scene.draw(pygame.display.get_surface())  # the frame that runs right after the input
         seen.append(scene.model.current_index)
 
     assert seen == [start + 1, start + 2, start + 3]
@@ -619,12 +598,12 @@ def test_resolution_picker_refreshes_the_marker_when_the_size_changes() -> None:
     assert moved_to is not None
 
     game.settings = dataclass_replace(game.settings, width=1920, height=1080)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     marked = [
         row.label
         for row in scene.rows
-        if row.cells[1] is not None and row.cells[1].text == ResolutionScene.CURRENT_MARK
+        if row.cells[0] is not None and row.cells[0].text == ResolutionScene.CURRENT_MARK
     ]
     assert marked == ["1920 x 1080"]
     assert scene.model.current_item is not None
@@ -643,9 +622,9 @@ def test_resolution_picker_wears_the_mapping_screen_panel() -> None:
     pygame.display.set_mode((1440, 900))
     scene = ResolutionScene(game)
     assert isinstance(scene.view, GridView)
-    assert scene.COLUMN_HEADERS == ("ASPECT", "STATE")
+    assert scene.COLUMN_HEADERS == ("STATE",)
 
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     assert len(scene.view.row_rects) == len(scene.model.items)
     # The STATE column is registered as a hit, on the focused row and
@@ -673,7 +652,7 @@ def test_resolution_picker_pointer_focuses_then_applies_a_row() -> None:
     game = _game()
     pygame.display.set_mode((1440, 900))
     scene = ResolutionScene(game)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     target = next(
         size for size in RESOLUTIONS if size != (game.settings.width, game.settings.height)

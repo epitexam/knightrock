@@ -52,8 +52,8 @@ class MenuView:
         self._scale = scale
         self.reset_cache()
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        size = display_surface.get_size()
+    def set_surface(self, surface: pygame.Surface) -> None:
+        size = surface.get_size()
         if size == self._surface_size:
             return
         self._surface_size = size

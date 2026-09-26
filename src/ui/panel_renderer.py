@@ -341,8 +341,8 @@ class PanelLayout:
 class PanelRenderer:
     """Render debug panels and cache fonts."""
 
-    def __init__(self, display_surface: pygame.Surface, *, text_cache_capacity: int = 256) -> None:
-        self.display_surface = display_surface
+    def __init__(self, surface: pygame.Surface, *, text_cache_capacity: int = 256) -> None:
+        self.surface = surface
         if text_cache_capacity < 0:
             raise ValueError("text_cache_capacity must be non-negative")
         self.text_cache_capacity = text_cache_capacity
@@ -366,12 +366,10 @@ class PanelRenderer:
         #: Panel ids closed this frame set (draw_panel leaves them out).
         self.interaction = PanelInteraction()
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self.display_surface = display_surface
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.surface = surface
         self.clear_text_cache()
-        self.interaction.clamp_positions(
-            (display_surface.get_width(), display_surface.get_height())
-        )
+        self.interaction.clamp_positions((surface.get_width(), surface.get_height()))
 
     @property
     def text_cache_stats(self) -> dict[str, int]:
@@ -446,7 +444,7 @@ class PanelRenderer:
 
     def _clamp_panel(self, x: int, y: int, w: int, h: int) -> tuple[int, int]:
         """Keep a manually placed panel fully inside the display (margin aside)."""
-        screen = self.display_surface.get_rect()
+        screen = self.surface.get_rect()
         return (
             max(PANEL_MARGIN, min(x, max(PANEL_MARGIN, screen.width - PANEL_MARGIN - w))),
             max(PANEL_MARGIN, min(y, max(PANEL_MARGIN, screen.height - PANEL_MARGIN - h))),
@@ -558,14 +556,14 @@ class PanelRenderer:
         title_surf = self.render_text(title, title_font, TEXT_TITLE) if title else None
 
         bg = self._panel_surface(panel_w, panel_h, color)
-        self.display_surface.blit(bg, (x, y))
+        self.surface.blit(bg, (x, y))
 
         content_y = y + padding
         if title_surf:
-            self.display_surface.blit(title_surf, (x + padding, content_y))
+            self.surface.blit(title_surf, (x + padding, content_y))
             content_y += title_surf.get_height() + title_gap
             pygame.draw.line(
-                self.display_surface,
+                self.surface,
                 PANEL_BORDER,
                 (x + padding, content_y),
                 (x + panel_w - padding, content_y),
@@ -574,7 +572,7 @@ class PanelRenderer:
             content_y += title_gap + 1
 
         for i, surf in enumerate(rendered_lines):
-            self.display_surface.blit(surf, (x + padding, content_y + i * line_height))
+            self.surface.blit(surf, (x + padding, content_y + i * line_height))
 
         if panel_id is not None:
             self.draw_close_button(x, y, panel_w, panel_id)
@@ -596,18 +594,18 @@ class PanelRenderer:
         hovered = bool(hover_rect and hover_rect.collidepoint(pygame.mouse.get_pos()))
 
         if hovered:
-            pygame.draw.rect(self.display_surface, PANEL_BORDER, rect)
-        pygame.draw.rect(self.display_surface, PANEL_BORDER, rect, width=1)
+            pygame.draw.rect(self.surface, PANEL_BORDER, rect)
+        pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=1)
         color = TEXT_CRIT if hovered else TEXT_MUTED
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             color,
             (rect.left + 3, rect.top + 3),
             (rect.right - 4, rect.bottom - 4),
             2,
         )
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             color,
             (rect.right - 4, rect.top + 3),
             (rect.left + 3, rect.bottom - 4),

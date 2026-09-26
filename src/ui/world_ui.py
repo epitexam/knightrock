@@ -312,7 +312,7 @@ class WorldUI:
 
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
-        self.display_surface = renderer.display_surface
+        self.surface = renderer.surface
         # ``statics`` starts off: a level carries ~970 terrain tiles whose
         # outline tells you nothing, and drawing them cost 2.8ms a frame in
         # ``_debug_reference`` alone. F4 brings the layer back.
@@ -356,7 +356,7 @@ class WorldUI:
         if not any(self.layers[name] for name in ("boxes", "labels", "velocities", "statics")):
             return
         viewport = self._viewport(camera)
-        screen_width = self.display_surface.get_width()
+        screen_width = self.surface.get_width()
 
         # Labels are collected first and drawn after the loop so they can
         # dodge each other instead of stacking on shared screen space.
@@ -387,7 +387,7 @@ class WorldUI:
 
         if requests:
             requests.sort(key=lambda request: request[0])
-            self._draw_labels(requests, screen_width, self.display_surface.get_height())
+            self._draw_labels(requests, screen_width, self.surface.get_height())
 
         self._draw_clash_marker(camera, delta_time)
 
@@ -601,17 +601,17 @@ class WorldUI:
         center = (round(anchor.centerx), round(anchor.centery))
         progress = 1.0 - self._clash_ttl / CLASH_MARKER_LIFETIME
         radius = round(CLASH_MARKER_RADIUS * (0.5 + progress))
-        pygame.draw.circle(self.display_surface, Colors.gold, center, radius, width=2)
+        pygame.draw.circle(self.surface, Colors.gold, center, radius, width=2)
         arm = 5
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             Colors.white,
             (center[0] - arm, center[1] - arm),
             (center[0] + arm, center[1] + arm),
             width=1,
         )
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             Colors.white,
             (center[0] - arm, center[1] + arm),
             (center[0] + arm, center[1] - arm),
@@ -620,8 +620,8 @@ class WorldUI:
 
     def _clamp_annotation(self, rect: pygame.Rect) -> pygame.Rect:
         """Shift an annotation rect back inside the display (never clipped)."""
-        if rect.right > self.display_surface.get_width():
-            rect.right = self.display_surface.get_width()
+        if rect.right > self.surface.get_width():
+            rect.right = self.surface.get_width()
         if rect.left < 0:
             rect.left = 0
         if rect.top < 0:
@@ -669,10 +669,8 @@ class WorldUI:
         panel = pygame.Surface(chip.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
-        self.display_surface.blit(panel, chip.topleft)
-        self.display_surface.blit(
-            label, (chip.x + ANNOTATION_CHIP_PAD, chip.y + ANNOTATION_CHIP_PAD)
-        )
+        self.surface.blit(panel, chip.topleft)
+        self.surface.blit(label, (chip.x + ANNOTATION_CHIP_PAD, chip.y + ANNOTATION_CHIP_PAD))
         return chip
 
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
@@ -686,7 +684,7 @@ class WorldUI:
             if reference is not None:
                 # Hazards, moving platforms, exits: rect-only sprites.
                 pygame.draw.rect(
-                    self.display_surface,
+                    self.surface,
                     Colors.debug_static,
                     camera.apply(reference),
                     width=1,
@@ -704,7 +702,7 @@ class WorldUI:
         if header_rect is not None:
             annotations.append(header_rect)
         pygame.draw.rect(
-            self.display_surface,
+            self.surface,
             self._hitbox_color(sprite),
             camera.apply(collider),
             width=1,
@@ -728,16 +726,16 @@ class WorldUI:
                     pygame.SRCALPHA,
                 )
                 fill.fill((*color, ZONE_FILL_ALPHA))
-                self.display_surface.blit(fill, (screen_zone.x, screen_zone.y))
+                self.surface.blit(fill, (screen_zone.x, screen_zone.y))
                 pygame.draw.rect(
-                    self.display_surface,
+                    self.surface,
                     color,
                     screen_zone,
                     width=ZONE_BOOST_OUTLINE_WIDTH,
                 )
             else:
                 pygame.draw.rect(
-                    self.display_surface,
+                    self.surface,
                     color,
                     screen_zone,
                     width=ZONE_OUTLINE_WIDTH,
@@ -758,14 +756,14 @@ class WorldUI:
         # Phase 5 markers: OTG guard (cyan) and juggle gravity (purple).
         if float(getattr(sprite, "otg_timer", 0.0) or 0.0) > 0:
             pygame.draw.rect(
-                self.display_surface,
+                self.surface,
                 Colors.debug_otg,
                 camera.apply(collider),
                 width=3,
             )
         if float(getattr(sprite, "gravity_scale", 1.0) or 1.0) != 1.0:
             pygame.draw.rect(
-                self.display_surface,
+                self.surface,
                 Colors.debug_juggle,
                 camera.apply(collider),
                 width=2,
@@ -814,10 +812,10 @@ class WorldUI:
         while cursor < inner.x + inner.width:
             end = min(cursor + ZONE_SEAL_DASH, inner.x + inner.width)
             pygame.draw.line(
-                self.display_surface, color, (cursor, inner.y), (end, inner.y), ZONE_SEAL_WIDTH
+                self.surface, color, (cursor, inner.y), (end, inner.y), ZONE_SEAL_WIDTH
             )
             pygame.draw.line(
-                self.display_surface,
+                self.surface,
                 color,
                 (cursor, inner.y + inner.height),
                 (end, inner.y + inner.height),
@@ -828,10 +826,10 @@ class WorldUI:
         while cursor < inner.y + inner.height:
             end = min(cursor + ZONE_SEAL_DASH, inner.y + inner.height)
             pygame.draw.line(
-                self.display_surface, color, (inner.x, cursor), (inner.x, end), ZONE_SEAL_WIDTH
+                self.surface, color, (inner.x, cursor), (inner.x, end), ZONE_SEAL_WIDTH
             )
             pygame.draw.line(
-                self.display_surface,
+                self.surface,
                 color,
                 (inner.x + inner.width, cursor),
                 (inner.x + inner.width, end),
@@ -930,7 +928,7 @@ class WorldUI:
             )
         ).center
         if shape.kind is ShapeKind.CIRCLE:
-            pygame.draw.circle(self.display_surface, color, center, int(shape.size[0] / 2.0), width)
+            pygame.draw.circle(self.surface, color, center, int(shape.size[0] / 2.0), width)
             return
         if shape.kind is ShapeKind.CAPSULE:
             radians = math.radians(shape.angle)
@@ -942,10 +940,10 @@ class WorldUI:
             start = (round(center[0] - offset[0]), round(center[1] - offset[1]))
             end = (round(center[0] + offset[0]), round(center[1] + offset[1]))
             diameter = max(1, int(shape.size[1]))
-            pygame.draw.line(self.display_surface, color, start, end, diameter)
+            pygame.draw.line(self.surface, color, start, end, diameter)
             radius = diameter / 2.0
-            pygame.draw.circle(self.display_surface, color, start, max(1, int(radius)), width)
-            pygame.draw.circle(self.display_surface, color, end, max(1, int(radius)), width)
+            pygame.draw.circle(self.surface, color, start, max(1, int(radius)), width)
+            pygame.draw.circle(self.surface, color, end, max(1, int(radius)), width)
             return
         if shape.kind is ShapeKind.OBB:
             radians = math.radians(shape.angle)
@@ -966,10 +964,10 @@ class WorldUI:
                         int(round(center[1] + local_x * sine + local_y * cosine)),
                     )
                 )
-            pygame.draw.polygon(self.display_surface, color, points, width)
+            pygame.draw.polygon(self.surface, color, points, width)
             return
         pygame.draw.rect(
-            self.display_surface,
+            self.surface,
             color,
             camera.apply(
                 pygame.FRect(
@@ -990,14 +988,14 @@ class WorldUI:
         center = camera.apply(pygame.FRect(point[0], point[1], 0.0, 0.0)).center
         radius = 5
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             Colors.debug_anchor,
             (round(center[0] - radius), round(center[1])),
             (round(center[0] + radius), round(center[1])),
             1,
         )
         pygame.draw.line(
-            self.display_surface,
+            self.surface,
             Colors.debug_anchor,
             (round(center[0]), round(center[1] - radius)),
             (round(center[0]), round(center[1] + radius)),
@@ -1036,7 +1034,7 @@ class WorldUI:
         if advanced and shape is not None:
             self._draw_shape(shape, outline, camera)
         else:
-            pygame.draw.rect(self.display_surface, outline, camera.apply(attack_box), width=2)
+            pygame.draw.rect(self.surface, outline, camera.apply(attack_box), width=2)
         if anchor is not None:
             self._draw_anchor(anchor, camera)
 
@@ -1090,7 +1088,7 @@ class WorldUI:
     def _draw_dashed_rect(self, screen: pygame.FRect, color: Color) -> None:
         x, y, width, height = screen.x, screen.y, screen.width, screen.height
         for start, end in self._dashed_edges(x, y, width, height):
-            pygame.draw.line(self.display_surface, color, start, end, SWEEP_GHOST_WIDTH)
+            pygame.draw.line(self.surface, color, start, end, SWEEP_GHOST_WIDTH)
 
     @staticmethod
     def _dashed_edges(
@@ -1120,14 +1118,14 @@ class WorldUI:
         delta = Vector2(end) - Vector2(start)
         if delta.length_squared() < 1.0:
             return
-        pygame.draw.line(self.display_surface, Colors.debug_attack_box, start, end)
+        pygame.draw.line(self.surface, Colors.debug_attack_box, start, end)
         direction = delta.normalize()
         normal = Vector2(-direction.y, direction.x)
         tip = Vector2(end)
         left = tip - direction * SWEEP_ARROW_HEAD + normal * SWEEP_ARROW_HEAD
         right = tip - direction * SWEEP_ARROW_HEAD - normal * SWEEP_ARROW_HEAD
         pygame.draw.polygon(
-            self.display_surface, Colors.debug_attack_box, [tuple(tip), tuple(left), tuple(right)]
+            self.surface, Colors.debug_attack_box, [tuple(tip), tuple(left), tuple(right)]
         )
 
     @staticmethod
@@ -1189,21 +1187,19 @@ class WorldUI:
             head_length,
             min(head_length * VELOCITY_HEAD_WIDTH_RATIO, drawn_length * VELOCITY_HEAD_WIDTH_CAP),
         )
-        pygame.draw.polygon(
-            self.display_surface, VELOCITY_OUTLINE, points, width=VELOCITY_OUTLINE_WIDTH
-        )
-        pygame.draw.polygon(self.display_surface, color, points)
-        pygame.gfxdraw.aapolygon(self.display_surface, points, color)
+        pygame.draw.polygon(self.surface, VELOCITY_OUTLINE, points, width=VELOCITY_OUTLINE_WIDTH)
+        pygame.draw.polygon(self.surface, color, points)
+        pygame.gfxdraw.aapolygon(self.surface, points, color)
 
         pivot = (round(start.x), round(start.y))
         pygame.draw.circle(
-            self.display_surface,
+            self.surface,
             VELOCITY_OUTLINE,
             pivot,
             VELOCITY_TAIL_RADIUS + VELOCITY_OUTLINE_WIDTH // 2,
         )
-        pygame.draw.circle(self.display_surface, color, pivot, VELOCITY_TAIL_RADIUS)
-        pygame.gfxdraw.aacircle(self.display_surface, *pivot, VELOCITY_TAIL_RADIUS, color)
+        pygame.draw.circle(self.surface, color, pivot, VELOCITY_TAIL_RADIUS)
+        pygame.gfxdraw.aacircle(self.surface, *pivot, VELOCITY_TAIL_RADIUS, color)
 
     @staticmethod
     def _is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
@@ -1350,14 +1346,14 @@ class WorldUI:
             position[1] + BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH,
         )
         pygame.draw.circle(
-            self.display_surface,
+            self.surface,
             BOX_DOT_RIM,
             center,
             BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH,
         )
-        pygame.draw.circle(self.display_surface, color, center, BOX_DOT_RADIUS)
+        pygame.draw.circle(self.surface, color, center, BOX_DOT_RADIUS)
         if not filled:
-            pygame.draw.circle(self.display_surface, Colors.off_white, center, BOX_DOT_CORE_RADIUS)
+            pygame.draw.circle(self.surface, Colors.off_white, center, BOX_DOT_CORE_RADIUS)
         side = (BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH) * 2 + 1
         return pygame.Rect(center[0] - side // 2, center[1] - side // 2, side, side)
 
@@ -1423,10 +1419,10 @@ class WorldUI:
         panel = pygame.Surface(chip.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
-        self.display_surface.blit(panel, chip.topleft)
+        self.surface.blit(panel, chip.topleft)
         cursor = chip.x + (chip_w - text_w) // 2
         for glyph in glyphs:
-            self.display_surface.blit(glyph, (cursor, chip.y + ANNOTATION_CHIP_PAD))
+            self.surface.blit(glyph, (cursor, chip.y + ANNOTATION_CHIP_PAD))
             cursor += glyph.get_width()
         tl_x = chip.x + max(0, (chip_w - tl_rect_w) // 2)
         tl_y = chip.y + ANNOTATION_CHIP_PAD + title_h + ATTACK_HEADER_TEXT_GAP
@@ -1434,7 +1430,7 @@ class WorldUI:
         if attack_boxes:
             first = camera.apply(attack_boxes[0])
             pygame.draw.line(
-                self.display_surface,
+                self.surface,
                 PANEL_BORDER,
                 (chip.centerx, chip.bottom + ATTACK_HEADER_RULE_GAP),
                 (int(first.centerx), int(first.top)),
@@ -1479,14 +1475,14 @@ class WorldUI:
         cursor = x
         for width, color in widths:
             pygame.draw.rect(
-                self.display_surface,
+                self.surface,
                 color,
                 pygame.Rect(cursor, y, width, TIMELINE_BAR_HEIGHT),
             )
             cursor += width
         filled = self._timeline_progress(state, sub_state, phase)
         pygame.draw.rect(
-            self.display_surface,
+            self.surface,
             Colors.off_white,
             pygame.Rect(x, y, min(filled, cursor - x), TIMELINE_BAR_HEIGHT),
             width=1,
@@ -1667,8 +1663,8 @@ class WorldUI:
         """
         if not self._has_health_bar(sprite):
             return None
-        screen_width = self.display_surface.get_width()
-        screen_height = self.display_surface.get_height()
+        screen_width = self.surface.get_width()
+        screen_height = self.surface.get_height()
         bar_width = max(30, min(float(screen_rect.width) * 0.8, 60))
         bar_x = screen_rect.centerx - bar_width / 2
         bar_x = min(max(bar_x, 0), max(0, screen_width - bar_width))
@@ -1879,7 +1875,7 @@ class WorldUI:
         panel = pygame.Surface(background_rect.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, (18, 20, 24, 210), panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
-        self.display_surface.blit(panel, background_rect.topleft)
+        self.surface.blit(panel, background_rect.topleft)
         # Top accent edge in the entity's faction color: a 2 px rule just
         # inside the top border, spanning the card width. It marks the
         # faction at a glance without cutting through the card and its
@@ -1890,12 +1886,12 @@ class WorldUI:
             background_rect.width - 2,
             2,
         )
-        self.display_surface.fill(accent, accent_edge)
+        self.surface.fill(accent, accent_edge)
         # Header row (bold).
         cursor_x = label_rect.left
         cursor_y = label_rect.top
         for surface in header:
-            self.display_surface.blit(surface, (cursor_x, cursor_y))
+            self.surface.blit(surface, (cursor_x, cursor_y))
             cursor_x += surface.get_width()
         cursor_y += row_height + LABEL_DIVIDER_TOP
         # Divider rule, inset by the card padding.
@@ -1903,7 +1899,7 @@ class WorldUI:
         rule_right = min(background_rect.right - LABEL_PAD_X, screen_width)
         if rule_right > rule_left:
             pygame.draw.line(
-                self.display_surface,
+                self.surface,
                 PANEL_BORDER,
                 (rule_left, cursor_y),
                 (rule_right, cursor_y),
@@ -1913,7 +1909,7 @@ class WorldUI:
         for line in rows:
             cursor_x = label_rect.left
             for surface in line:
-                self.display_surface.blit(surface, (cursor_x, cursor_y))
+                self.surface.blit(surface, (cursor_x, cursor_y))
                 cursor_x += surface.get_width()
             cursor_y += row_height + LABEL_LINE_GAP
 
@@ -1956,7 +1952,7 @@ class WorldUI:
             if background_rect is None:
                 continue
             drawn.append(background_rect)
-            pygame.draw.rect(self.display_surface, (35, 37, 40), background_rect)
+            pygame.draw.rect(self.surface, (35, 37, 40), background_rect)
             health_ratio = max(0.0, min(1.0, health / max_health))
             health_width = background_rect.width * health_ratio
             color = (
@@ -1964,9 +1960,9 @@ class WorldUI:
             )
             if health_width > 0:
                 pygame.draw.rect(
-                    self.display_surface,
+                    self.surface,
                     color,
                     (background_rect.x, background_rect.y, health_width, background_rect.height),
                 )
-            pygame.draw.rect(self.display_surface, PANEL_BORDER, background_rect, width=1)
+            pygame.draw.rect(self.surface, PANEL_BORDER, background_rect, width=1)
         return drawn

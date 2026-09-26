@@ -151,10 +151,7 @@ class ResolutionScene(Scene):
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         # Refreshed only when the applied size actually changes (window
         # recreation can happen under this screen), so the "current" marker
         # follows the settings without touching the cursor the player moved.
@@ -175,4 +172,3 @@ class ResolutionScene(Scene):
             top=80,
             footers=(self.FOOTER,),
         )
-        return None

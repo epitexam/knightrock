@@ -42,7 +42,7 @@ def _menu_display() -> None:
 def game(tmp_path):
     """A runtime bound to a temporary settings file, without the main loop."""
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
-    runtime.display_surface = pygame.display.get_surface()
+    runtime.initialize_display()
     runtime.clock = pygame.time.Clock()
     return runtime
 
@@ -140,7 +140,7 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
     """
     scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -148,8 +148,8 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
         original(selected_action),
     )[-1]
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert rebuilt == []
 
@@ -157,7 +157,7 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
 def test_video_scene_rebuilds_once_when_a_setting_changes(manager) -> None:
     scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -166,7 +166,7 @@ def test_video_scene_rebuilds_once_when_a_setting_changes(manager) -> None:
     )[-1]
 
     manager.game.settings = replace(manager.game.settings, vsync=not manager.game.settings.vsync)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     assert len(rebuilt) == 1
 
@@ -181,7 +181,7 @@ def test_resolution_picker_does_not_rebuild_when_settings_are_stable(manager) ->
     """
     scene = ResolutionScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -190,8 +190,8 @@ def test_resolution_picker_does_not_rebuild_when_settings_are_stable(manager) ->
     )[-1]
     rows = scene.rows
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert rebuilt == []
     assert scene.rows is rows
@@ -200,7 +200,7 @@ def test_resolution_picker_does_not_rebuild_when_settings_are_stable(manager) ->
 def test_resolution_picker_rebuilds_once_when_the_size_changes(manager) -> None:
     scene = ResolutionScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -209,7 +209,7 @@ def test_resolution_picker_rebuilds_once_when_the_size_changes(manager) -> None:
     )[-1]
 
     manager.game.settings = replace(manager.game.settings, width=1920, height=1080)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     assert len(rebuilt) == 1
 
@@ -301,14 +301,14 @@ def test_pause_overlay_is_not_refilled_per_frame(manager) -> None:
     """
     scene = PauseScene(manager.game, level_id=0)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     overlay = _CountingSurface(scene._overlay.get_size(), pygame.SRCALPHA)
     overlay.fill(scene._overlay_color)
     scene._overlay = overlay
     overlay.fills = 0
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert overlay.fills == 0
 

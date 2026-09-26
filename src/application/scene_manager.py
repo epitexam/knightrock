@@ -55,9 +55,13 @@ class SceneManager:
         if not self._stack:
             self.game.running = False
 
-    def handle_event(self, event: pygame.event.Event) -> None:
-        """Forward an event to the active scene."""
-        if self.current is not None:
+    def handle_event(self, event: pygame.event.Event | None) -> None:
+        """Forward an event to the active scene.
+
+        ``None`` is a dropped event -- a pointer press that landed in a
+        letterbox bar, which is a press on nothing.
+        """
+        if event is not None and self.current is not None:
             self.input_dispatcher.dispatch(self.current, event)
 
     def poll_held_repeats(self) -> None:
@@ -65,15 +69,15 @@ class SceneManager:
         if self.current is not None:
             self.input_dispatcher.poll_held_repeats(self.current)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
+    def set_surface(self, surface: pygame.Surface) -> None:
         for scene in self._stack:
-            setter = getattr(scene, "set_display_surface", None)
+            setter = getattr(scene, "set_surface", None)
             if callable(setter):
-                setter(display_surface)
+                setter(surface)
             view = getattr(scene, "view", None)
-            view_setter = getattr(view, "set_display_surface", None)
+            view_setter = getattr(view, "set_surface", None)
             if callable(view_setter):
-                view_setter(display_surface)
+                view_setter(surface)
             view_scale = getattr(view, "set_scale", None)
             if callable(view_scale):
                 view_scale(self.game.settings.ui_scale)
@@ -93,21 +97,19 @@ class SceneManager:
         if self.current is not None:
             self.current.update(delta_time)
 
-    def draw(self) -> list[pygame.Rect] | None:
-        """Draw the stack; dirty rects of the top scene, or None.
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the whole stack into the render target.
 
-        A stack of several scenes (pause overlay) redraws everything:
-        the overlay must repaint pixels the frozen scene below owns.
+        Every scene in the stack is drawn whenever there is more than one: a
+        pause overlay sits on top of a frozen gameplay scene and has to repaint
+        the pixels that scene owns. With no stack there is nothing to draw and
+        the target keeps whatever the previous frame left, which is correct --
+        the loop presents it unchanged.
         """
         if not self._stack:
-            return None
-        if len(self._stack) > 1:
-            for scene in self._stack:
-                scene.draw()
-            return None
-        top = self.current
-        assert top is not None
-        return top.draw()
+            return
+        for scene in self._stack:
+            scene.draw(surface)
 
     def _push(self, scene: Scene) -> None:
         self._stack.append(scene)

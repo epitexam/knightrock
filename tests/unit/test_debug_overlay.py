@@ -9,6 +9,7 @@ from pygame.math import Vector2
 
 from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
@@ -46,7 +47,7 @@ def world_ui() -> WorldUI:
 @pytest.fixture()
 def camera() -> Camera:
     # zoom=1.0: these tests assert world-space geometry, not the zoom.
-    return Camera(1024, 768, zoom=1.0)
+    return Camera(Framing(float(1024), float(768)))
 
 
 def _named(name: str, **attrs) -> SimpleNamespace:
@@ -155,7 +156,7 @@ def test_hitbox_color_follows_faction(world_ui: WorldUI) -> None:
 def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
     world_ui: WorldUI, camera: Camera
 ) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui._draw_shape(
         ShapePose(ShapeKind.CIRCLE, (40.0, 40.0), (120.0, 120.0)),
@@ -203,7 +204,7 @@ def test_bare_sprite_has_no_label(world_ui: WorldUI) -> None:
 
 
 def test_offscreen_sprites_draw_nothing(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     far = _entity(
         hitbox=pygame.FRect(5000, 5000, 40, 48),
@@ -216,7 +217,7 @@ def test_offscreen_sprites_draw_nothing(world_ui: WorldUI, camera: Camera) -> No
 
 
 def test_overlay_paints_faction_hitbox(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([pygame.sprite.Sprite(), _entity()], camera)
     assert surface.get_at((100, 100))[:3] == Colors.red
@@ -224,21 +225,21 @@ def test_overlay_paints_faction_hitbox(world_ui: WorldUI, camera: Camera) -> Non
 
 
 def test_overlay_marks_otg_guard(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([_entity(otg_timer=0.4)], camera)
     assert surface.get_at((100, 100))[:3] == Colors.debug_otg
 
 
 def test_overlay_marks_juggle_gravity(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([_entity(gravity_scale=0.5)], camera)
     assert surface.get_at((100, 100))[:3] == Colors.debug_juggle
 
 
 def test_stationary_sprites_draw_no_velocity_vector(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([_entity()], camera)
     # 0.15 s preview of a null velocity would land on the center: stays black.
@@ -246,7 +247,7 @@ def test_stationary_sprites_draw_no_velocity_vector(world_ui: WorldUI, camera: C
 
 
 def test_locomotion_vector_is_yellow(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
@@ -268,7 +269,7 @@ def test_velocity_vector_is_a_filled_arrowhead_not_a_hairline(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """A 2 px line + tip dot covered ~190 px; the filled head adds ~200 more."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill(Colors.sky_blue)
     world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
     covered = sum(
@@ -287,7 +288,7 @@ def test_velocity_arrow_keeps_a_dark_rim_over_a_bright_background(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """The rim separates the fill from the sky: the silhouette stays readable."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill(Colors.sky_blue)
     world_ui.draw_debug_overlays([_entity(velocity=Vector2(600, 0))], camera)
     rim = sum(
@@ -303,7 +304,7 @@ def test_slow_vector_is_stretched_to_the_minimum_arrow_length(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """65 px/s previews 9.75 px: the arrow floors to VELOCITY_MIN_LENGTH."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill(Colors.sky_blue)
     world_ui.draw_debug_overlays([_entity(velocity=Vector2(65, 0))], camera)
     tip_x = 120 + int(VELOCITY_MIN_LENGTH)
@@ -313,7 +314,7 @@ def test_slow_vector_is_stretched_to_the_minimum_arrow_length(
 
 def test_velocity_arrow_pivot_marks_the_entity_center(world_ui: WorldUI, camera: Camera) -> None:
     """The vector visibly departs the entity: pivot dot, fill only ahead."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill(Colors.sky_blue)
     world_ui.draw_debug_overlays([_entity(velocity=Vector2(-600, 0))], camera)
     assert surface.get_at((120, 124))[:3] == Colors.debug_velocity  # pivot dot
@@ -322,7 +323,7 @@ def test_velocity_arrow_pivot_marks_the_entity_center(world_ui: WorldUI, camera:
 
 
 def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(
@@ -337,7 +338,7 @@ def test_state_name_alone_no_longer_colors_the_vector_red(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """The overlay reads the typed cause, never a state-machine name."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.state_machine = SimpleNamespace(current_state_name="knockback")
@@ -346,7 +347,7 @@ def test_state_name_alone_no_longer_colors_the_vector_red(
 
 
 def test_guarded_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(
@@ -358,7 +359,7 @@ def test_guarded_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Ca
 
 
 def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PARRIED, magnitude=0.0, direction=1.0)
@@ -371,7 +372,7 @@ def test_expired_reaction_status_keeps_the_locomotion_color(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """Stale cause *and* the state machine left knockback: locomotion again."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
@@ -389,7 +390,7 @@ def test_knockback_state_keeps_the_vector_red_after_the_freshness_window(
     ~1.15 s while ``reaction_age`` runs out after 0.4 s — the vector is still
     the knockback, so it stays red (this was the "sometimes yellow" report).
     """
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(
@@ -405,7 +406,7 @@ def test_resolved_knockback_falls_back_to_the_locomotion_color(
     world_ui: WorldUI, camera: Camera
 ) -> None:
     """Once the state machine leaves knockback, a stale cause is locomotion."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(
@@ -419,7 +420,7 @@ def test_resolved_knockback_falls_back_to_the_locomotion_color(
 
 def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
     """The kind gate still rules: a stagger carries no impulse, state or not."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
@@ -431,7 +432,7 @@ def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Cam
 
 def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Camera) -> None:
     """Stagger carries no impulse: the vector keeps its locomotion color."""
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
@@ -586,7 +587,7 @@ def test_label_card_renders_header_divider_and_accent_edge(
     content_top = int(anchor.top - LABEL_ANCHOR_GAP - above_lift - card_h)
     body_y = content_top + row_h + LABEL_DIVIDER_TOP + 1 + LABEL_DIVIDER_BOTTOM
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
     world_ui.draw_health_bars([entity], camera)
@@ -621,7 +622,7 @@ def test_health_bar_never_hides_inside_the_label_card(world_ui: WorldUI, camera:
         assert bar is not None
         assert bar.bottom + LABEL_ANCHOR_GAP == int(anchor.top)
 
-        surface = world_ui.display_surface
+        surface = world_ui.surface
         surface.fill((0, 0, 0))
         world_ui.draw_debug_overlays([entity], camera)
         world_ui.draw_health_bars([entity], camera)
@@ -681,7 +682,7 @@ def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera)
     assert world_ui._health_bar_rect(player, anchor) is None
     assert world_ui._label_clearances(player, anchor) == (0, 0)
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_health_bars([player], camera)
     # No bar painted anywhere in the column above the entity.
@@ -752,7 +753,7 @@ def test_toggle_flips_layer_and_rejects_unknown(world_ui: WorldUI) -> None:
 
 
 def test_disabled_labels_layer_draws_boxes_only(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.toggle("labels")
     world_ui.draw_debug_overlays([_entity()], camera)
@@ -922,7 +923,7 @@ def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: C
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
     surface.fill((0, 0, 0))
-    assert scene.draw() is None
+    assert scene.draw(pygame.display.get_surface()) is None
     assert any(
         surface.get_at((x, y))[:3] == Colors.red for x in range(400, 624) for y in range(10, 34)
     )
@@ -932,7 +933,7 @@ def test_debug_panels_can_be_hidden() -> None:
     from src.core.rendering.camera import Camera as _Camera
     from src.core.rendering.renderer import Renderer
 
-    camera = _Camera(1024, 768)
+    camera = _Camera(Framing(float(1024), float(768)))
     renderer = Renderer(pygame.display.get_surface(), camera)
     surface = pygame.display.get_surface()
     assert surface is not None
@@ -967,7 +968,7 @@ def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera
     bar = world_ui._health_bar_rect(entity, anchor)
     assert bar is not None
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
 
@@ -995,7 +996,7 @@ def test_zone_shapes_carry_meaning_without_world_text(world_ui: WorldUI, camera:
     entity.hurtbox_mult = (1.2, 1.0)
     entity.hurtbox_tags = ((), ())
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
 

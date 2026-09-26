@@ -128,14 +128,10 @@ class MenuScene(Scene):
         self.view.set_scale(scale)
         self.confirm_view.set_scale(scale)
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill(Colors.dark_grey)
         panel = self.view.draw(surface, self.TITLE, self.model, top=180)
         if self._confirming:
             self.confirm_view.draw(
                 surface, self.CONFIRM_TITLE, self.confirm_model, top=panel.bottom + 24
             )
-        return None

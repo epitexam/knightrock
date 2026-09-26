@@ -53,5 +53,11 @@ class Scene(ABC):
         """Advance the scene by one fixed tick."""
 
     @abstractmethod
-    def draw(self) -> list[pygame.Rect] | None:
-        """Render the scene; return dirty rects or None for full refresh."""
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the scene into ``surface``, the fixed-size render target.
+
+        The surface is handed in rather than fetched from
+        ``pygame.display.get_surface()``: the window is not what anything is
+        drawn into any more, and a scene that reached for it would be drawing
+        into a surface whose size depends on the player's video settings.
+        """

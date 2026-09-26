@@ -76,11 +76,12 @@ class GameplayScene(Scene):
             self._load_level()
 
     def _load_level(self) -> None:
-        if self.game.display_surface is None:
-            raise RuntimeError("The game display is not initialized")
+        # The level draws into the render target, never into the window: the
+        # target has a fixed size whatever the player's video settings say.
+        target = self.game._draw_target()
         level_data = self.game.level_manager.get(self.level_id)
         self.level = Level(
-            self.game.display_surface,
+            target,
             level_data,
             self.game.input_manager,
             level_id=self.level_id,
@@ -136,11 +137,15 @@ class GameplayScene(Scene):
         # a mute it had to ask for.
         return None
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self.game.display_surface = display_surface
+    def set_surface(self, surface: pygame.Surface) -> None:
+        """Adopt a new render target, after the render scale changed.
+
+        The window never comes through here: a resize leaves the target
+        untouched, which is the whole reason the target exists.
+        """
         if self.level is not None:
-            self.level.display_surface = display_surface
-            self.level.renderer.set_display_surface(display_surface)
+            self.level.surface = surface
+            self.level.renderer.set_surface(surface)
 
     def set_ui_scale(self, scale: float) -> None:
         if self.level is not None:
@@ -208,7 +213,7 @@ class GameplayScene(Scene):
             return False
         return bool(ui_manager.handle_panel_event(event))
 
-    def draw(self) -> list[pygame.Rect] | None:
+    def draw(self, surface: pygame.Surface) -> None:
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
         clock = self.game.clock
@@ -219,32 +224,24 @@ class GameplayScene(Scene):
         # runtime gets no interpolation, which is the correct fallback.
         render_alpha = getattr(self.game, "render_alpha", None)
         alpha = render_alpha() if callable(render_alpha) else 0.0
-        rects = self.level.draw(
+        self.level.draw(
             fps,
             game=self.game,
             frame_time=frame_time,
             alpha=alpha,
         )
         # Always-on player gauges (UI-7): drawn last so the HUD stays on top of
-        # the world and of the debug panels, and never hidden by F5. Its rects
-        # join the dirty set, since a non-debug frame presents those only.
-        ui_manager = self.level.renderer.ui_manager
-        hud_rects = ui_manager.draw_hud(getattr(self.level, "player", None))
-        if rects is not None:
-            rects.extend(hud_rects)
-        # The HUD sits below the world, outside the area the renderer erases.
-        # Declaring it here makes the next frame refresh the gauges' area, so a
-        # shrinking bar or an expiring combo cannot leave stale pixels. The
-        # world HP bars were declared by Level.draw; keep both.
-        self.level.renderer.add_overlay_rects(hud_rects)
+        # the world and of the debug panels, and never hidden by F5. Nothing is
+        # declared about them any more: the next frame erases the whole target,
+        # so a shrinking bar or an expiring combo cannot leave a stripe behind.
+        self.level.renderer.ui_manager.draw_hud(getattr(self.level, "player", None))
         if self.frozen:
             self._draw_frozen_tag()
-        return rects
 
     def _draw_frozen_tag(self) -> None:
         """Paint a red FROZEN marker, top-center, while the sim is held."""
         assert self.level is not None  # draw() already guarantees a level
         ui_manager = self.level.renderer.ui_manager
-        surface = ui_manager.renderer.display_surface
+        surface = ui_manager.renderer.surface
         tag = ui_manager.renderer.render_text("FROZEN", ui_manager.renderer.title_font, Colors.red)
         surface.blit(tag, (surface.get_width() // 2 - tag.get_width() // 2, 10))

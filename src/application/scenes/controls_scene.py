@@ -678,10 +678,7 @@ class ControlsScene(Scene):
     def _index_text(value: object) -> str:
         return "/".join(str(code) for code in ControlsScene._codes(value))
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         self.view.set_scale(self.game.settings.ui_scale)
         title = "MENU CONTROLS" if self.section == self.MENU_SECTION else "GAMEPLAY CONTROLS"
         footers: tuple[str, ...] = ("↑↓ row · ←→ column · Enter capture · Esc/B back",)
@@ -697,7 +694,6 @@ class ControlsScene(Scene):
             top=80,
             footers=footers,
         )
-        return None
 
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)

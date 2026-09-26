@@ -71,11 +71,11 @@ def test_level_supports_draw_pass(build_level) -> None:
     """Full-screen rendering must not crash (dummy SDL)."""
     level = build_level()
     player = level.player
-    pygame.draw.rect(level.display_surface, (0, 0, 0), player.hitbox)
+    pygame.draw.rect(level.surface, (0, 0, 0), player.hitbox)
 
     level.draw(fps=60.0)
 
-    assert level.display_surface is pygame.display.get_surface()
+    assert level.surface is pygame.display.get_surface()
 
 
 def test_programmatic_level_data_has_no_colliders(build_level) -> None:

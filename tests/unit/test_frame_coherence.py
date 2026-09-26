@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
@@ -70,7 +71,7 @@ class Body(pygame.sprite.Sprite):
 def make() -> tuple[Renderer, SpriteGroups, Body]:
     surface = pygame.display.get_surface()
     assert surface is not None
-    camera = Camera(WIDTH, HEIGHT, zoom=1.0)
+    camera = Camera(Framing(float(WIDTH), float(HEIGHT)))
     camera.set_world_size(5000, 5000)
     renderer = Renderer(surface, camera)
     renderer.background_color = BACKGROUND
@@ -137,11 +138,11 @@ def test_every_sprite_moves_by_the_same_amount() -> None:
     """
     renderer, groups, body = make()
     renderer.draw(groups, alpha=1.0)
-    before = {id(row): rect for row, rect, _ in renderer._barrows}
+    before = {id(surface): rect for surface, rect in renderer._collect_visible_blits(groups)}
     camera_before = renderer.camera.offset.copy()
 
     scroll(renderer, groups, 0.5)
-    after = {id(row): rect for row, rect, _ in renderer._barrows}
+    after = {id(surface): rect for surface, rect in renderer._collect_visible_blits(groups)}
 
     shared = set(before) & set(after)
     assert len(shared) > 5, "the fixture must share a camera across many sprites"
@@ -160,7 +161,7 @@ def test_the_bar_and_the_overlay_read_the_same_transform() -> None:
     body.rect.x += 40.0
     renderer.draw(groups, alpha=0.5)
 
-    blitted = next(rect for _, rect, _ in renderer._barrows if rect.width == 16)
+    blitted = next(rect for _, rect in renderer._collect_visible_blits(groups) if rect.width == 16)
     annotated = pygame.Rect(renderer.camera.apply(body.rect))
 
     assert blitted.topleft == annotated.topleft
@@ -172,45 +173,46 @@ def test_a_full_tick_draws_the_current_position() -> None:
     body.rect.x += 40.0
 
     renderer.draw(groups, alpha=1.0)
-    blitted = next(rect for _, rect, _ in renderer._barrows if rect.width == 16)
+    blitted = next(rect for _, rect in renderer._collect_visible_blits(groups) if rect.width == 16)
 
     assert blitted.topleft == pygame.Rect(renderer.camera.apply(body.rect)).topleft
 
 
-def test_a_frame_carrying_the_hud_never_presents_partially() -> None:
-    """The HUD is painted after the render decides what to present.
+def test_no_frame_reports_rects_any_more() -> None:
+    """There is no partial presentation left to opt out of.
 
-    Its rects can therefore only join the set on the *next* frame, so a
-    partial present would show the gauges one frame stale: a band along the
-    bottom of the window alternating between the old and the new fill. The
-    HUD is on screen throughout gameplay, so a frame carrying overlay rects
-    is not allowed to take the partial path at all.
+    The HUD used to be painted after the render decided what to present, so its
+    rects could only enter the set on the *next* frame and a partial present
+    showed the gauges one frame stale. The HUD is on screen throughout
+    gameplay, so the escape hatch was "never present partially when an overlay
+    is on screen" -- which in practice meant never, since the HUD is always
+    there. Removing the partial path removes the problem rather than guarding
+    against it.
+    """
+    renderer, groups, _body = make()
+    renderer.draw(groups, alpha=0.5)
+
+    assert renderer.draw(groups, alpha=0.5) is None
+    assert not hasattr(renderer, "add_overlay_rects")
+
+
+def test_every_frame_repaints_the_whole_target() -> None:
+    """A full erase each frame is what makes a stale pixel impossible.
+
+    The incremental path had to keep the erase region, the declared overlay
+    rects and the previous frame's rects in exact agreement; when they slipped,
+    something survived. A single full erase has nothing to keep in step.
     """
     renderer, groups, body = make()
-    renderer.add_overlay_rects([pygame.Rect(0, HEIGHT - 40, WIDTH, 40)])
+    renderer.draw(groups, alpha=1.0)
+    old_x, old_y = int(body.rect.x), int(body.rect.y)
+    body.rect.x += 40.0
 
-    rects = renderer.draw(groups)
+    renderer.draw(groups, alpha=1.0)
 
-    assert rects is None, "a frame with overlay rects must repaint everything"
-
-
-def test_a_frame_without_overlays_still_uses_the_partial_path() -> None:
-    """The guard is about overlays, not a blanket full refresh.
-
-    A sparse scene whose previous frame was equally sparse still takes the
-    partial path, so the refresh stays available to whatever does not paint
-    on top of the world pass.
-    """
-    renderer, _groups, _body = make()
-    groups = SpriteGroups()
-    groups.all_sprites.add(Tile(0.0, 0.0))
-    groups.all_sprites.add(Body(40.0))
-
-    first = renderer.draw(groups)
-    second = renderer.draw(groups)
-
-    assert first is not None
-    assert second is not None
+    # Where the body used to be, the tile underneath is back: nothing survived.
+    assert renderer.surface.get_at((old_x + 4, old_y + 4))[:3] == (80, 120, 80)
+    assert renderer.surface.get_at((old_x + 44, old_y + 4))[:3] == (255, 0, 0)
 
 
 def test_a_dash_ghost_stays_anchored_to_the_world_while_the_camera_moves() -> None:

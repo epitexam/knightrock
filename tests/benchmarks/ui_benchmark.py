@@ -41,6 +41,7 @@ from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.victory_scene import VictoryScene
 from src.application.scenes.video_scene import VideoScene
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 
@@ -109,7 +110,7 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
     pygame.init()
     pygame.display.set_mode(size)
     surface = pygame.Surface(size)
-    renderer = Renderer(surface, Camera(*size))
+    renderer = Renderer(surface, Camera(Framing(float(size[0]), float(size[1]))))
     panel_samples: list[float] = []
     player = _player()
     game = _game()
@@ -167,17 +168,17 @@ def _menu_samples(size: tuple[int, int], iterations: int) -> dict[str, float]:
     from src.core.game import Game
 
     game = Game()
-    game.display_surface = pygame.display.get_surface()
+    game.initialize_display()
     game.clock = pygame.time.Clock()
     results: dict[str, float] = {}
     for name, scene in _menu_scenes(game).items():
         game.scene_manager.switch(scene)
         for _ in range(20):
-            game.scene_manager.draw()
+            game.scene_manager.draw(pygame.display.get_surface())
         samples: list[float] = []
         for _ in range(iterations):
             started = perf_counter()
-            game.scene_manager.draw()
+            game.scene_manager.draw(pygame.display.get_surface())
             samples.append((perf_counter() - started) * 1000.0)
         results[f"menu/{name}/p50"] = _percentile(samples, 0.50)
         results[f"menu/{name}/p95"] = _percentile(samples, 0.95)

@@ -65,10 +65,6 @@ class OptionsScene(Scene):
             return MenuAction.BACK
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         self.view.set_scale(self.game.settings.ui_scale)
         self.view.draw(surface, self.TITLE, self.model, top=220)
-        return None

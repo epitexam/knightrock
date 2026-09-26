@@ -7,6 +7,7 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelLayout
 from src.ui.styles import TEXT_MUTED
@@ -28,7 +29,7 @@ def ui() -> UIManager:
 
 @pytest.fixture()
 def camera() -> Camera:
-    return Camera(1024, 768)
+    return Camera(Framing(float(1024), float(768)))
 
 
 def _entity(x: float = 100.0, health: float = 75.0) -> SimpleNamespace:
@@ -100,7 +101,7 @@ def test_labels_keep_clear_of_the_health_bars(
     entity = _entity()
     placed = _capture_labels(ui, monkeypatch)
 
-    surface = ui.world_ui.display_surface
+    surface = ui.world_ui.surface
     surface.fill((0, 0, 0))
     ui.world_ui.draw_debug_overlays([entity], camera)
     ui.draw_health_bars([entity], camera)
@@ -127,8 +128,8 @@ def test_labels_dodge_bars_from_the_previous_frame(
         (255, 255, 255),
         camera.apply(entity.hitbox),
         [*ui.world_ui._previous_bar_obstacles],
-        camera.width,
-        camera.height,
+        ui.renderer.surface.get_width(),
+        ui.renderer.surface.get_height(),
         above_lift=above_lift,
     )
     assert placed is not None
@@ -143,7 +144,7 @@ def test_edge_labels_shift_inside_the_screen(
     entity.hitbox.right = 1010.0
     placed = _capture_labels(ui, monkeypatch)
 
-    surface = ui.world_ui.display_surface
+    surface = ui.world_ui.surface
     surface.fill((0, 0, 0))
     ui.world_ui.draw_debug_overlays([entity], camera)
 
@@ -179,7 +180,7 @@ def test_draw_combat_panel_flows_through_the_layout(
     monkeypatch.setenv("DEBUG", "1")
     surface = pygame.Surface((640, 480))
     surface.fill((0, 0, 0))
-    ui.renderer.display_surface = surface
+    ui.renderer.surface = surface
     ui.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     layout = PanelLayout(640, 480)
@@ -240,7 +241,7 @@ def test_full_debug_panel_stack_never_overlaps(
     from src.core.rendering.renderer import Renderer
 
     surface = pygame.Surface((1440, 900))
-    renderer = Renderer(surface, _Camera(1440, 900))
+    renderer = Renderer(surface, _Camera(Framing(float(1440), float(900))))
     renderer.ui_manager.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     placed: list[pygame.Rect] = []
@@ -288,7 +289,7 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
     from src.core.rendering.renderer import Renderer
 
     surface = pygame.Surface((640, 480))
-    renderer = Renderer(surface, _Camera(640, 480))
+    renderer = Renderer(surface, _Camera(Framing(float(640), float(480))))
     level = SimpleNamespace(
         deaths=0,
         groups=SimpleNamespace(

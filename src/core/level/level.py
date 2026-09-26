@@ -7,6 +7,7 @@ from typing import Any
 import pygame
 
 from src.application.events import EventBus, LevelStarted
+from src.core.display.framing import DEFAULT_FRAMING
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
 from src.core.level.systems.camera_system import CameraSystem
@@ -53,7 +54,7 @@ class Level:
 
     def __init__(
         self,
-        display_surface: pygame.Surface,
+        surface: pygame.Surface,
         level_data: LevelData,
         input_manager: InputManager,
         level_id: int = 0,
@@ -65,7 +66,7 @@ class Level:
         Initialize the level from parsed TMX data and build the world.
 
         Args:
-            display_surface: The Pygame surface to draw on.
+            surface: The Pygame surface to draw on.
             level_data: Parsed level data containing tile layers and objects.
             input_manager: The input manager used by the player.
             level_id: Numeric id of the level (event payloads, Phase 2 #5).
@@ -80,18 +81,17 @@ class Level:
                 paths are taken from the JSON assets instead of the
                 built-in Python values.
         """
-        self.display_surface = display_surface
+        self.surface = surface
         self.input_manager = input_manager
         self.level_data = level_data
 
         self.groups = SpriteGroups()
 
-        # Le viewport de la caméra est celui de la surface réelle, pas les
-        # constantes Display : avec une fenêtre non redimensionnable, la
-        # résolution est celle choisie dans le menu vidéo. Le culling se fait
-        # sur cette zone, donc une caméra à 1440x900 dans une fenêtre 1280x720
-        # laisserait invisibles des sprites et fausserait le budget de rendu.
-        self.camera = Camera(display_surface.get_width(), display_surface.get_height())
+        # La caméra ne connaît plus la fenêtre : elle reçoit le cadrage, qui est
+        # une constante en unités monde. C'est ce qui fait qu'une résolution ne
+        # peut plus élargir ce que le joueur voit — le viewport est le même sur
+        # un portable 1366x768 et sur un écran 4K.
+        self.camera = Camera(DEFAULT_FRAMING)
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
@@ -106,7 +106,7 @@ class Level:
         self.rollback_enabled = rollback_enabled
         self.rollback = RollbackSystem()
 
-        self.renderer = Renderer(self.display_surface, self.camera, level_data.config)
+        self.renderer = Renderer(self.surface, self.camera, level_data.config)
         # Spatial hash for O(1) collision lookups (PERF-01/02): created before
         # the spawner so runtime-spawned enemies join the grid too.
         self.spatial_hash = SpatialHash(cell_size=128)
@@ -314,13 +314,9 @@ class Level:
         game: Any = None,
         frame_time: float = 0.0,
         alpha: float = 0.0,
-    ) -> list[pygame.Rect] | None:
+    ) -> None:
         """
-        Render the level and all overlays.
-
-        Returns the dirty screen rects to present, or ``None`` when the
-        whole display must be refreshed (debug mode draws panels over the
-        full screen).
+        Render the level and all overlays into the render target.
 
         Args:
             fps: Current frames per second, used for debug display.
@@ -329,23 +325,11 @@ class Level:
             alpha: Position within the pending simulation tick, in [0, 1].
         """
         debug_enabled = Debug.is_enabled()
-        dirty: list[pygame.Rect] | None = self.renderer.draw(
-            self.groups, debug_enabled, dt=frame_time / 1000.0, alpha=alpha
-        )
-        bar_rects = self.renderer.draw_health_bars(self.groups.entity_sprites)
-        # The world fill erases the union of the sprite rects, and the bars are
-        # painted outside it. Declaring them makes the *next* frame refresh and
-        # present the area they occupy, so a bar that moves cannot leave a
-        # stripe of stale pixels behind it.
-        self.renderer.add_overlay_rects(bar_rects)
-        if dirty is not None:
-            # HP bars are painted after ``Renderer.draw`` computed its dirty
-            # set, and a bar is not necessarily inside its sprite's rect: it
-            # flips below the entity near the top of the screen, and its 30px
-            # minimum width is wider than a narrow sprite. Without merging its
-            # rects the bar survives on screen only while something else
-            # happens to repaint that area.
-            dirty = [*dirty, *bar_rects]
+        self.renderer.draw(self.groups, debug_enabled, dt=frame_time / 1000.0, alpha=alpha)
+        # Painted after the world pass, over it. Nothing has to be declared or
+        # merged: the next frame erases the whole target, so a bar that moves or
+        # vanishes cannot leave anything behind.
+        self.renderer.draw_health_bars(self.groups.entity_sprites)
         for event in self.gameplay_loop.combat_system.guard_events:
             if event.kind == "clash":
                 self.renderer.ui_manager.world_ui.note_clash(
@@ -357,7 +341,7 @@ class Level:
         )
 
         if not debug_enabled:
-            return dirty
+            return
 
         # Bars painted over the debug overlays: stamp the clash ring again so
         # a clash never hides behind an HP bar (this stamp spends no TTL).
@@ -374,4 +358,3 @@ class Level:
             game=game,
             frame_time=frame_time,
         )
-        return None

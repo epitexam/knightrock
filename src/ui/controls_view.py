@@ -84,8 +84,8 @@ class ControlsView:
     def cell_at(self, position: tuple[int, int]) -> CellHit | None:
         return self._grid.cell_at(position)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self._grid.set_display_surface(display_surface)
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self._grid.set_surface(surface)
 
     def set_scale(self, scale: float) -> None:
         self._grid.set_scale(scale)

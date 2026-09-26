@@ -31,7 +31,7 @@ class RecordingScene(Scene):
         super().__init__(game)
         self.name = name
         self.events: list[str] = []
-        self.dirty_called = False
+        self.drawn = False
 
     def enter(self) -> None:
         self.events.append(f"enter:{self.name}")
@@ -42,9 +42,8 @@ class RecordingScene(Scene):
     def update(self, delta_time: float) -> None:
         self.events.append(f"update:{self.name}")
 
-    def draw(self) -> list[pygame.Rect]:
-        self.dirty_called = True
-        return []
+    def draw(self, surface: pygame.Surface) -> None:
+        self.drawn = True
 
 
 @pytest.fixture()
@@ -86,8 +85,8 @@ def test_draw_draws_all_scenes_when_stacked(manager: SceneManager):
     manager.switch(gameplay)
     manager.push(pause)
 
-    assert manager.draw() is None  # overlay: full refresh
-    assert gameplay.dirty_called and pause.dirty_called
+    manager.draw(pygame.display.get_surface())
+    assert gameplay.drawn and pause.drawn
 
 
 def test_popping_the_last_scene_stops_the_game(manager: SceneManager):
@@ -150,7 +149,7 @@ def test_menu_quit_confirmation_cancels_on_back(manager: SceneManager):
 def test_menu_quit_confirmation_is_armed_by_the_quit_row(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
-    menu.draw()
+    menu.draw(pygame.display.get_surface())
     target = menu.view.item_rects[-1].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
@@ -173,7 +172,7 @@ def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
 def test_menu_navigation_supports_pointer(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
-    menu.draw()
+    menu.draw(pygame.display.get_surface())
     target = menu.view.item_rects[3].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
@@ -300,22 +299,26 @@ def _make_level(game_runtime) -> Level:
     )
 
 
-def test_level_camera_viewport_matches_the_chosen_resolution(manager: SceneManager):
-    """Le viewport caméra est la résolution choisie, pas les constantes Display.
+def test_the_camera_viewport_ignores_the_video_resolution(manager: SceneManager):
+    """The bug this rework exists for, stated as a test.
 
-    La fenêtre n'étant pas redimensionnable, la résolution du menu vidéo est
-    le viewport stable du jeu. Si la caméra gardait 1440x900 dans une fenêtre
-    1280x720, des sprites visibles seraient écartés par le culling.
+    The camera used to be built from the window's pixel size, so the slice of
+    world the player saw was decided by a video setting: at a large enough
+    resolution a whole level fitted on screen. The viewport is now the framing,
+    and nothing the player can configure moves it.
     """
+    from src.core.display.framing import DEFAULT_FRAMING
+
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
-    for width, height in ((1280, 720), (1920, 1080)):
-        surface = pygame.Surface((width, height))
-        gameplay.set_display_surface(surface)
+    expected = (DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
+    for width, height in ((1280, 720), (1920, 1080), (2560, 1440)):
+        gameplay.set_surface(pygame.Surface((width, height)))
 
         assert gameplay.level is not None
-        assert (gameplay.level.camera.width, gameplay.level.camera.height) == (width, height)
+        camera = gameplay.level.camera
+        assert (camera.viewport_width, camera.viewport_height) == expected
 
 
 def test_gameplay_escape_pushes_pause(manager: SceneManager):
@@ -566,4 +569,4 @@ def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) 
 
     for scene in scenes:
         manager.switch(scene)
-        assert manager.draw() is None
+        assert manager.draw(pygame.display.get_surface()) is None

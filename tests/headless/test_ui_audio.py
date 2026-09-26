@@ -129,7 +129,7 @@ def test_the_pointer_publishes_once_per_row_it_lands_on(manager: SceneManager, f
     """
     manager.switch(OptionsScene(manager.game))
     options = manager.current
-    options.draw()
+    options.draw(pygame.display.get_surface())
     first, second = options.view.item_rects[0], options.view.item_rects[1]
 
     for offset in range(6):
@@ -146,7 +146,7 @@ def test_the_pointer_publishes_once_per_row_it_lands_on(manager: SceneManager, f
 def test_leaving_the_rows_and_coming_back_publishes_again(manager: SceneManager, feedback) -> None:
     manager.switch(OptionsScene(manager.game))
     options = manager.current
-    options.draw()
+    options.draw(pygame.display.get_surface())
     centre = options.view.item_rects[0].center
 
     move(manager, centre)
@@ -283,7 +283,7 @@ def test_the_controls_pointer_publishes_when_the_focus_moves(
     """This screen drives the model itself, so it reports the move itself."""
     manager.switch(ControlsScene(manager.game, ControlsScene.MENU_SECTION))
     controls = manager.current
-    controls.draw()
+    controls.draw(pygame.display.get_surface())
     rows = controls.view.row_rects
 
     move(manager, rows[0].center)

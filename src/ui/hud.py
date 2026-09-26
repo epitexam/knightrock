@@ -132,7 +132,7 @@ class HUD:
         if not player:
             return None
 
-        screen_w, screen_h = self.renderer.display_surface.get_size()
+        screen_w, screen_h = self.renderer.surface.get_size()
         bar_w = int(bar_width_for(screen_w) * self._scale)
         health_ratio = _ratio(getattr(player, "health", 0.0), getattr(player, "max_health", 0.0))
         posture_ratio = _ratio(
@@ -260,7 +260,7 @@ class HUD:
         if layout.combo_pos is None or layout.combo_bar is None or layout.combo_fill is None:
             return painted
 
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         combo_text = self.renderer.render_text(
             layout.combo_text, self.renderer.label_font, HUD_COMBO_COLOR
         )
@@ -279,7 +279,7 @@ class HUD:
         Returns the bar united with its label, so the dirty rect covers the
         text too (it is painted outside the bar, in the margin gutter).
         """
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         label_surf = self.renderer.render_text(label, self.renderer.label_font, TEXT_MUTED)
         label_pos = (
             bar.x - self._px(HUD_LABEL_GAP) - label_surf.get_width(),
@@ -294,7 +294,7 @@ class HUD:
 
     def _draw_pips(self, pips: tuple[tuple[pygame.Rect, bool], ...]) -> list[pygame.Rect]:
         """Dash slots: filled pips for the charges left, empty tracks otherwise."""
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         for rect, filled in pips:
             pygame.draw.rect(surface, HUD_DASH_COLOR if filled else HUD_TRACK, rect)
             pygame.draw.rect(surface, PANEL_BORDER, rect, width=1)
