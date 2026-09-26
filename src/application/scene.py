@@ -16,8 +16,9 @@ class Scene(ABC):
 
     A scene owns its lifecycle (``enter``/``exit``), receives Pygame events,
     advances the simulation at a fixed step via ``update`` and produces its
-    rendering via ``draw``.  Following the entity pattern, ``draw`` returns
-    the dirty rects to present, or ``None`` for a full-screen refresh.
+    rendering via ``draw``, which paints into the render target it is handed.
+    Nothing is reported back: every frame is a complete repaint, so there is no
+    partial presentation for a scene to take part in.
     """
 
     def __init__(self, game: Game) -> None:

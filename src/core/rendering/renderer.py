@@ -348,8 +348,8 @@ class Renderer:
         """Where a ghost anchored to ``world_rect`` lands on screen this frame.
 
         The stretched surface was already sized at spawn, so only the centre
-        has to be mapped: reusing the camera transform keeps the zoom and the
-        shake identical to every other sprite, and costs no rescale per frame.
+        has to be mapped: reusing the camera transform keeps the shake identical
+        to every other sprite, and costs no rescale per frame.
         """
         return self.camera.apply_covering(world_rect).center
 

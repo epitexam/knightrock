@@ -138,9 +138,7 @@ from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
-definition = attack(
-    phase(startup=1, active=8, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0))
-)
+definition = attack(phase(startup=1, active=8, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0)))
 attacker = entity_at(60.0, faction="A", definition=definition)
 target = entity_at(20.0, faction="B")
 attacker.combat.start_attack("test")
@@ -153,7 +151,7 @@ assert system.metrics.contacts == 0  # trou : la passe discret rate le coup
 
 cur = attacker.combat.attack_box  # FRect(70, 10, 20, 20)
 prev = pygame.FRect(cur.x - 40.0, cur.y, cur.width, cur.height)  # 30..50
-assert prev.colliderect(target.hurtbox)        # la position precedente touchait
+assert prev.colliderect(target.hurtbox)  # la position precedente touchait
 assert cur.union(prev).colliderect(target.hurtbox)  # le sweep P1 toucherait
 ```
 
@@ -823,18 +821,20 @@ Chaque palier : suite complète verte (base 719 au 2026-09-20, **1117 au 2026-09
 ```python
 @dataclass(frozen=True)
 class HurtZone:
-    name: str                # head | torso | legs
+    name: str  # head | torso | legs
     inflate: tuple[float, float]
     damage_mult: float = 1.0
     invuln_tags: tuple[str, ...] = ()
 
+
 @dataclass(frozen=True)
 class HitboxSpecV2:
-    shape: str               # aabb | circle | capsule (P5)
+    shape: str  # aabb | circle | capsule (P5)
     size: tuple[float, float]
     offset: tuple[float, float]
     keyframes: tuple[HitboxKeyframe, ...] = ()  # P2 : par boite
-    follow: str = "torso"    # point d ancrage
+    follow: str = "torso"  # point d ancrage
+
 
 @dataclass(frozen=True)
 class GrabSpec:
@@ -844,20 +844,21 @@ class GrabSpec:
     whiff_frames: int
     tech_window: float
 
+
 @dataclass(frozen=True)
 class HitPropertiesV2:
     damage: float
     knockback: KnockbackConfig
     damage_type: DamageType
-    unblockable: bool = False           # P3 temps 1 [livre]
-    priority: int = 0                   # P3 temps 1 [livre]
-    clash: str = "trade"                # P3 temps 1 : ENUM REEL ("trade","clash")
-                                        # beat/lose = RESULTATS de priority,
-                                        # pas des valeurs de champ
-    hit_level: str = "med"              # light | med | heavy
-                                        # n accepte que "med" (light/heavy non)
-    height: str = "mid"                 # high | mid | low | overhead
-    block_mask: str = "any"             # any | stand | crouch
+    unblockable: bool = False  # P3 temps 1 [livre]
+    priority: int = 0  # P3 temps 1 [livre]
+    clash: str = "trade"  # P3 temps 1 : ENUM REEL ("trade","clash")
+    # beat/lose = RESULTATS de priority,
+    # pas des valeurs de champ
+    hit_level: str = "med"  # light | med | heavy
+    # n accepte que "med" (light/heavy non)
+    height: str = "mid"  # high | mid | low | overhead
+    block_mask: str = "any"  # any | stand | crouch
     # champs existants conserves : stagger, super_armor_break,
     # is_finisher, juggle_gravity_mult, otg_allowed
     # grab : hors chantier, rapport dedie (pre-requis = P2 pushbox + unblockable)

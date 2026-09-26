@@ -312,7 +312,6 @@ class WorldUI:
 
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
-        self.surface = renderer.surface
         # ``statics`` starts off: a level carries ~970 terrain tiles whose
         # outline tells you nothing, and drawing them cost 2.8ms a frame in
         # ``_debug_reference`` alone. F4 brings the layer back.
@@ -431,6 +430,18 @@ class WorldUI:
         if isinstance(anchors, tuple):
             rectangles.extend(pygame.FRect(anchor[0], anchor[1], 0.0, 0.0) for anchor in anchors)
         return rectangles[0].unionall(rectangles[1:]) if len(rectangles) > 1 else rectangles[0]
+
+    @property
+    def surface(self) -> pygame.Surface:
+        """The surface this overlay draws into.
+
+        Derived rather than copied at construction. It used to be assigned once,
+        and every path that replaced the render target had to remember to
+        reassign it -- one that forgot would have the overlay drawing into an
+        orphaned surface while the rest of the frame went to the new one, with
+        no symptom until the two sizes differ.
+        """
+        return self.renderer.surface
 
     def _viewport(self, camera: Camera) -> pygame.Rect:
         """The cull rect, in render-target coordinates.
@@ -1938,10 +1949,11 @@ class WorldUI:
         belongs to instead of trailing half a tick behind it, which showed up
         as a horizontal stripe of stale bar-coloured pixels.
 
-        The caller also needs these rects to present the frame, since a bar is
-        not always inside its sprite's dirty rect: it flips below the entity
-        near the top of the screen, and its 30px minimum width is wider than a
-        narrow sprite, so it can spill on every side.
+        The rects are returned because a bar is not always inside its sprite's
+        own rect -- it flips below the entity near the top of the screen, and its
+        minimum width is wider than a narrow sprite -- so anything reasoning
+        about what the bars covered needs them. The presentation does not: the
+        whole target is repainted every frame.
         """
         drawn: list[pygame.Rect] = []
         for entity in entities:

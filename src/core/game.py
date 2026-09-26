@@ -65,8 +65,8 @@ class Game:
 
     The loop itself no longer owns gameplay state (audit F8.1, Phase 2
     #4): :class:`SceneManager` holds Menu/Play/Pause/GameOver scenes and
-    the loop simply feeds it fixed ticks, events, and presents the dirty
-    rects returned by the active scene.  Gameplay systems notify the app
+    the loop simply feeds it fixed ticks, draws the stack into the render
+    target and presents it once.  Gameplay systems notify the app
     layer (UI, save, audio) through the synchronous :class:`EventBus`
     (Phase 2 #5) — subscribers must never mutate the simulation.
     """

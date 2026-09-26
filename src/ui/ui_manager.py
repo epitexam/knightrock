@@ -82,8 +82,9 @@ class UIManager:
         return self.draw_legend_panel(10, 10, layout, compact=True)
 
     def set_surface(self, surface: pygame.Surface) -> None:
+        # ``world_ui`` reads its surface from the panel renderer, so there is
+        # nothing to reassign here.
         self.renderer.set_surface(surface)
-        self.world_ui.surface = surface
 
     def set_ui_scale(self, scale: float) -> None:
         self.hud.set_scale(scale)
@@ -432,14 +433,11 @@ class UIManager:
         """Draw the HP bars; return the rects they occupy.
 
         The caller merges them into the frame's presentation set, otherwise a
-        bar drawn outside its sprite's dirty rect never reaches the screen.
+        bar drawn outside its sprite's rect is erased with everything else on
+        the next frame, so there is nothing left to declare.
         """
         return self.world_ui.draw_health_bars(entities, camera, screen_rects)
 
-    def draw_hud(self, player: Any) -> list[pygame.Rect]:
-        """Always-on player gauges: health, guard posture, dash, combo (UI-7).
-
-        Returns the dirty rects the gauges occupy, for the caller to merge
-        into the frame's presentation set.
-        """
-        return self.hud.draw(player)
+    def draw_hud(self, player: Any) -> None:
+        """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
+        self.hud.draw(player)
