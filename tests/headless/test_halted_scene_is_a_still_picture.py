@@ -54,6 +54,23 @@ def _snapshot(target: pygame.Surface) -> bytes:
     return pygame.image.tobytes(target, "RGBA")
 
 
+def _advance(game: Game) -> None:
+    """One frame with the event queue emptied first.
+
+    The queue is drained because a paused frame is supposed to depend on the
+    simulation and nothing else, and a device event that arrives late -- the
+    dummy driver enumerates hardware after a few dozen frames -- has no business
+    changing the picture. Draining is the honest way to say so: the test is
+    about the world standing still, not about what the event queue was doing.
+    """
+    pygame.event.clear()
+    game.step()
+
+
+def _stack_names(game: Game) -> list[str]:
+    return [type(scene).__name__ for scene in game.scene_manager._stack]
+
+
 @pytest.fixture()
 def playing(tmp_path: pathlib.Path):
     """A game in a level whose camera was moving on the frame the world stopped.
@@ -110,14 +127,24 @@ def test_a_halted_scene_repaints_identical_pixels(playing: Game) -> None:
     """
     playing.scene_manager.push(PauseScene(playing, 0))
     for _ in range(3):
-        playing.step()
+        _advance(playing)
 
     target = playing.viewport.surface if playing.viewport is not None else None
     assert target is not None
+    stack = _stack_names(playing)
     previous = _snapshot(target)
 
     for frame in range(4):
-        playing.step()
+        _advance(playing)
+        # The stack is checked before the pixels, on purpose. This test drove a
+        # menu, and a menu can be navigated: when something in the headless
+        # environment pushed the pause screen into Options, the failure surfaced
+        # as a byte count -- "7143 differing bytes" -- which says nothing about
+        # what went wrong. Asserting the stack first names it.
+        assert _stack_names(playing) == stack, (
+            f"the scene stack changed to {_stack_names(playing)}; the frame below "
+            "is a different screen, not a moved world"
+        )
         changed = _changed_bytes(target, previous)
         assert changed == 0, f"frame {frame} repainted {changed} differing bytes"
         previous = _snapshot(target)
@@ -136,15 +163,17 @@ def test_the_camera_stops_drifting_when_the_world_stops(playing: Game, halted: t
     """
     playing.scene_manager.push(halted(playing, 0))
     for _ in range(3):
-        playing.step()
+        _advance(playing)
 
+    stack = _stack_names(playing)
     level = playing.scene_manager._stack[0].level
     assert level is not None
     before = (level.camera._shift, level.camera._shift_y)
 
     for _ in range(5):
-        playing.step()
+        _advance(playing)
 
+    assert _stack_names(playing) == stack, "a different screen was pushed mid-test"
     assert (level.camera._shift, level.camera._shift_y) == before
 
 
