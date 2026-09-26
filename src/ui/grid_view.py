@@ -18,6 +18,11 @@ from dataclasses import dataclass
 
 import pygame
 
+from src.ui.metrics import (
+    MIN_ROW_RATIO,
+    MIN_TEXT_RATIO,
+    Metrics,
+)
 from src.ui.styles import (
     PANEL_BG,
     PANEL_BORDER,
@@ -78,12 +83,18 @@ class GridView:
     TEXT_CACHE_LIMIT = 512
 
     def __init__(self, scale: float = 1.0) -> None:
-        self._scale = self._valid_scale(scale)
+        self._metrics = Metrics.for_scale(scale)
+        self._scale = self._metrics.scale
+        self._text_scale = self._scale
         self._fonts: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font] | None = None
         self._font_key: float | None = None
         self._surface_size: tuple[int, int] = (0, 0)
         self._cells: list[CellHit] = []
         self._row_rects: list[pygame.Rect] = []
+        #: The panel the last draw painted. Published for the same reason
+        #: ``row_rects`` is: a screen that wants to place something against the
+        #: panel would otherwise have to re-derive the layout it just asked for.
+        self._last_panel_rect: pygame.Rect | None = None
         self._panel_cache: pygame.Surface | None = None
         self._panel_size: tuple[int, int] = (0, 0)
         self._strip_cache: pygame.Surface | None = None
@@ -108,7 +119,8 @@ class GridView:
         self._row_rects = []
 
     def set_scale(self, scale: float) -> None:
-        self._scale = self._valid_scale(scale)
+        self._metrics = Metrics.for_scale(scale)
+        self._scale = self._metrics.scale
 
     def draw(
         self,
@@ -128,20 +140,21 @@ class GridView:
         assert self._fonts is not None
         title_font, item_font, small_font = self._fonts
         panel_rect, x, y, columns, cell_width, label_width, row_height = layout
-        padding, gap = 18, 18
+        metrics = self._metrics
+        padding, gap = metrics.padding, metrics.gap
 
         panel = self._panel_for(panel_rect.size)
         surface.blit(panel, panel_rect)
-        surface.blit(
-            self._render_cached(title_font, title, TEXT_TITLE, panel_rect.width),
-            (x, panel_rect.y + padding),
-        )
+        # The title is centred because every other title in the game is, and a
+        # left-aligned one above a centred subtitle reads as a mistake.
+        painted = self._render_cached(title_font, title, TEXT_TITLE, panel_rect.width)
+        surface.blit(painted, (_centred_x(panel_rect, painted.get_width()), panel_rect.y + padding))
         if subtitle:
             surface.blit(
                 self._render_cached(small_font, subtitle, TEXT_MUTED, panel_rect.width),
-                (x, y),
+                (_centred_x(panel_rect, small_font.size(subtitle)[0]), y),
             )
-            y += small_font.get_height() + 8
+            y += small_font.get_height() + gap
 
         for cell_x, header in zip(columns, column_headers, strict=True):
             surface.blit(
@@ -151,14 +164,19 @@ class GridView:
         self._cells = []
         self._row_rects = []
         focus_rect: pygame.Rect | None = None
+        # The text sits in the middle of its band, so a row that grew a taller
+        # font grew around it instead of pushing it towards the row above.
+        text_inset = max(0, (row_height - item_font.get_linesize()) // 2)
+        inner_pad = max(1, metrics.px(4))
         for index, row in enumerate(rows):
-            row_y = y + 26 + index * row_height
+            row_y = y + index * row_height
             row_rect = pygame.Rect(x, row_y, panel_rect.width - padding * 2, row_height)
             self._row_rects.append(row_rect)
             if index == selected_row:
                 surface.blit(self._strip_for(row_rect.size), row_rect)
             surface.blit(
-                self._render_cached(item_font, row.label, TEXT_OK, label_width - gap), (x, row_y)
+                self._render_cached(item_font, row.label, TEXT_OK, label_width - gap),
+                (x, row_y + text_inset),
             )
             for column, cell in enumerate(row.cells):
                 if cell is None:
@@ -166,10 +184,16 @@ class GridView:
                 cell_x = columns[column]
                 color = TEXT_CRIT if cell.warn else TEXT_MUTED if cell.muted else TEXT_OK
                 surface.blit(
-                    self._render_cached(item_font, cell.text, color, cell_width - 8),
-                    (cell_x, row_y),
+                    self._render_cached(item_font, cell.text, color, cell_width - inner_pad),
+                    (cell_x, row_y + text_inset),
                 )
-                hit = pygame.Rect(cell_x - 4, row_y - 2, cell_width, row_height)
+                # The hit box is the drawn row band, not a box around the glyphs:
+                # it used to start 2px above its own row, which overlapped the
+                # row above it, so a click near a boundary acted on whichever of
+                # the two rectangles was tested first.
+                hit = pygame.Rect(
+                    cell_x - inner_pad, row_y, cell_width, row_height
+                )
                 if index == selected_row and column == selected_column:
                     focus_rect = hit
                 # Every drawn cell is registered: hovering a row that cannot be
@@ -180,13 +204,13 @@ class GridView:
         if focus_rect is not None:
             pygame.draw.rect(surface, TEXT_WARN, focus_rect, 1)
 
-        footer_y = panel_rect.bottom - gap - 20 * len(footers)
-        for footer in footers:
+        footer_y = panel_rect.bottom - padding - small_font.get_linesize()
+        for footer in reversed(footers):
             surface.blit(
                 self._render_cached(small_font, footer, TEXT_WARN, panel_rect.width),
-                (x, footer_y),
+                (_centred_x(panel_rect, small_font.size(footer)[0]), footer_y),
             )
-            footer_y += 20
+            footer_y -= small_font.get_linesize() + gap // 2
         return panel_rect
 
     def _layout(
@@ -200,54 +224,201 @@ class GridView:
     ) -> tuple[pygame.Rect, int, int, tuple[int, ...], int, int, int]:
         """Panel, label gutter and the cell column x positions.
 
-        The row height is the smallest of a comfortable line, the scale and what
-        the screen can actually hold: the resolution picker has one more entry
-        than the controls grid and must still fit above the footers.
+        The order matters and it is the whole of the responsiveness: the *text*
+        decides how much room it needs, so it is measured first, at a scale it
+        has been given the chance to give up. Only then is the panel sized around
+        it -- driven by the content, not by a 900px desktop cap that ignored both
+        the window and the text inside it.
+
+        The row height is then the height of the text plus its padding. The old
+        version took ``min(34, ...)`` of that and got 34 while the text was 49:
+        a clickable band 44% the size of the label it labelled, so clicking the
+        row you read selected the row above. A row may be tight; it may not be
+        shorter than its own glyphs.
         """
+        metrics = self._metrics
+        margin = metrics.margin
+        budget = surface.get_height() - top - margin
+        self._settle_text_scale(surface, len(rows), top, footers, budget, subtitle, column_headers)
         self._ensure_fonts()
         assert self._fonts is not None
-        _, _, small_font = self._fonts
-        scale = self._scale
-        margin, padding, gap = 12, 18, 18
+        title_font, item_font, small_font = self._fonts
+        # Inside the frame everything is sized by the *content* scale, so a list
+        # that gave up font size also gave up padding. Leaving the inner metrics
+        # at the player's scale is what made the panel overflow while the text
+        # inside it was still shrinking -- the box did not believe the text.
+        content = Metrics(self._text_scale)
+        padding, gap = content.padding, content.gap
+
         columns_count = max(1, len(column_headers))
-        width = min(surface.get_width() - margin * 2, 900)
-        head = 102 + (small_font.get_height() if subtitle else 0)
-        available = max(80, surface.get_height() - top - 8)
-        row_height = max(
-            14,
-            min(
-                34,
-                int(30 * scale),
-                (available - head - gap - 20 * len(footers)) // max(1, len(rows)),
-            ),
+        label_width, cell_width, width = self._column_widths(
+            rows, column_headers, item_font, small_font, margin, padding, gap, surface
         )
-        height = head + row_height * len(rows) + gap + 20 * len(footers)
+
+        row_height = self._row_height(item_font, gap)
+        height = self._height_of(
+            title_font, item_font, small_font, content, row_height, len(rows), len(footers),
+            bool(subtitle), bool(column_headers),
+        )
+        width = max(width, label_width + cell_width * columns_count + gap * columns_count)
+        width = min(width, surface.get_width() - margin * 2)
         panel = pygame.Rect(
             (surface.get_width() - width) // 2,
-            min(top, max(8, surface.get_height() - height - 8)),
+            min(top, max(margin, surface.get_height() - height - margin)),
             width,
             height,
         )
         x = panel.x + padding
-        y = panel.y + padding + self._fonts[0].get_height()
-        label_width = int(width * 0.34)
-        cell_width = (
-            width - padding * 2 - label_width - gap * (columns_count - 1)
-        ) // columns_count
+        y = panel.y + padding + title_font.get_height() + content.title_gap
         columns = tuple(
             x + label_width + index * (cell_width + gap) for index in range(columns_count)
         )
+        self._last_panel_rect = panel
         return panel, x, y, columns, cell_width, label_width, row_height
 
+    def _settle_text_scale(
+        self,
+        surface: pygame.Surface,
+        row_count: int,
+        top: int,
+        footers: Sequence[str],
+        budget: int,
+        subtitle: str,
+        column_headers: tuple[str, ...],
+    ) -> None:
+        """The largest text scale whose panel fits in ``budget``, found by measuring.
+
+        Not computed from the design constants, because they are wrong about the
+        font: a 22px Consolas has a line box taller than 22, and on a machine
+        without Consolas the fallback has a different one again. So the height is
+        *measured* with the real fonts and the scale corrected by the ratio, at
+        most three times -- after the first, the answer is within a pixel or two,
+        because font height is very nearly linear in size.
+
+        The floor is :data:`MIN_TEXT_RATIO`: a scale the window cannot afford at
+        any legible size keeps the legible size and overflows, which is the trade
+        this makes on purpose. A label nobody can read is not an option, and a
+        window smaller than the interface at the player's own chosen scale is
+        theirs to resolve.
+        """
+        metrics = self._metrics
+        floor = metrics.scale * MIN_TEXT_RATIO
+        text_scale = self._text_scale if self._text_scale <= metrics.scale else metrics.scale
+        for _ in range(3):
+            self._text_scale = text_scale
+            self._ensure_fonts()
+            assert self._fonts is not None
+            title_font, item_font, small_font = self._fonts
+            content = Metrics(text_scale)
+            height = self._height_of(
+                title_font, item_font, small_font, content,
+                self._row_height(item_font, content.gap), row_count, len(footers),
+                bool(subtitle), bool(column_headers),
+            )
+            if height <= budget or text_scale <= floor:
+                break
+            text_scale = max(floor, text_scale * budget / max(1, height))
+        self._text_scale = text_scale
+        self._ensure_fonts()
+
+    def _row_height(self, item_font: pygame.font.Font, gap: int) -> int:
+        """A band that fits its text with air, and never less than its text.
+
+        ``MIN_ROW_RATIO`` is the floor on the band and the font is the floor on
+        the band: the second one wins whenever they disagree, because a band
+        shorter than its own glyphs is a band that hits the wrong row.
+        """
+        content = Metrics(self._text_scale)
+        return max(
+            round(content.row * MIN_ROW_RATIO),
+            item_font.get_linesize() + max(1, gap // 2),
+        )
+
+    @staticmethod
+    def _height_of(
+        title_font: pygame.font.Font,
+        item_font: pygame.font.Font,
+        small_font: pygame.font.Font,
+        content: Metrics,
+        row_height: int,
+        row_count: int,
+        footer_count: int,
+        has_subtitle: bool,
+        has_headers: bool,
+    ) -> int:
+        """The panel height for these fonts, measured rather than assumed."""
+        head = content.padding + title_font.get_height() + content.title_gap
+        if has_subtitle:
+            head += small_font.get_height() + content.gap
+        if has_headers:
+            head += small_font.get_height() + content.gap
+        return (
+            head
+            + row_height * row_count
+            + content.gap * (1 + footer_count)
+            + small_font.get_linesize() * footer_count
+        )
+
+    def _column_widths(
+        self,
+        rows: Sequence[GridRow],
+        column_headers: tuple[str, ...],
+        item_font: pygame.font.Font,
+        small_font: pygame.font.Font,
+        margin: int,
+        padding: int,
+        gap: int,
+        surface: pygame.Surface,
+    ) -> tuple[int, int, int]:
+        """The gutter, the widest cell, and the panel width that holds them.
+
+        Measured, not assumed: a fixed 34% gutter leaves a short label a hole the
+        size of a long one, and the panel stops being as wide as its own content.
+        """
+        columns_count = max(1, len(column_headers))
+        label_width = max(
+            (item_font.size(row.label)[0] for row in rows), default=0
+        )
+        for header in column_headers:
+            label_width = max(label_width, small_font.size(header)[0])
+        cell_width = 0
+        for row in rows:
+            for cell in row.cells:
+                if cell is not None:
+                    cell_width = max(cell_width, item_font.size(cell.text)[0])
+        for header in column_headers:
+            cell_width = max(cell_width, small_font.size(header)[0])
+        cell_width += small_font.size(" ")[0] * 2
+        # A gutter wider than half the panel leaves cells no room, so cap it at
+        # a third and give the rest to the values, which are the wider text.
+        label_width = min(label_width, self._max_panel_width(surface, margin) // 3)
+        width = (
+            padding * 2 + label_width + cell_width * columns_count + gap * (columns_count - 1)
+        )
+        return label_width, cell_width, width
+
+    def _max_panel_width(self, surface: pygame.Surface, margin: int) -> int:
+        return max(self._metrics.px(200), surface.get_width() - margin * 2)
+
     def _ensure_fonts(self) -> None:
-        if self._fonts is not None and self._font_key == self._scale:
+        """The three faces at the scale the list can afford, rebuilt only on change.
+
+        The rendered-text cache is keyed on ``id(font)``, so rebuilding these
+        every frame -- which a layout pass that wants a fresh font will happily
+        do -- would miss the whole cache and re-render thirty strings a frame.
+        The key also means a stale entry is worse than a missing one, so the
+        cache is emptied at the only moment the fonts change: a resize.
+        """
+        if self._fonts is not None and self._font_key == self._text_scale:
             return
         self._fonts = (
-            pygame.font.SysFont("Consolas", max(1, int(42 * self._scale)), bold=True),
-            pygame.font.SysFont("Consolas", max(1, int(22 * self._scale))),
-            pygame.font.SysFont("Consolas", max(1, int(18 * self._scale))),
+            pygame.font.SysFont("Consolas", self._metrics.title_text_at(self._text_scale), bold=True),
+            pygame.font.SysFont("Consolas", self._metrics.item_text_at(self._text_scale)),
+            pygame.font.SysFont("Consolas", self._metrics.small_text_at(self._text_scale)),
         )
-        self._font_key = self._scale
+        if self._font_key is not None:
+            self._text_cache.clear()
+        self._font_key = self._text_scale
 
     def _panel_for(self, size: tuple[int, int]) -> pygame.Surface:
         """Return the filled panel background, rebuilt only when resized.
@@ -314,8 +485,7 @@ class GridView:
             return font.render("", True, color)
         return font.render(f"{text[: low - 1]}…", True, color)
 
-    @staticmethod
-    def _valid_scale(scale: float) -> float:
-        if scale not in (0.8, 1.0, 1.2):
-            raise ValueError("UI scale must be 0.8, 1.0 or 1.2")
-        return scale
+
+def _centred_x(panel: pygame.Rect, width: int) -> int:
+    """The x that centres ``width`` pixels inside ``panel``."""
+    return panel.x + max(0, (panel.width - width) // 2)

@@ -3,6 +3,8 @@ from collections.abc import Sequence
 import pygame
 
 from src.ui.menu_model import MenuModel
+from src.ui.metrics import DESIGN_VALUE_GAP, Metrics
+from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale, font_size
 from src.ui.styles import (
     GOLD,
     PANEL_BG,
@@ -16,9 +18,10 @@ from src.ui.styles import (
 
 class MenuView:
     def __init__(self, scale: float = 1.0) -> None:
-        self._scale = self._valid_scale(scale)
+        self._metrics = Metrics.for_scale(scale)
+        self._scale = self._metrics.scale
         self._item_rects: list[pygame.Rect] = []
-        self._fonts: dict[float, tuple[pygame.font.Font, ...]] = {}
+        self._fonts: dict[tuple[int, int, int], tuple[pygame.font.Font, ...]] = {}
         self._panel_cache: pygame.Surface | None = None
         self._panel_cache_size: tuple[int, int] = (0, 0)
         self._surface_size: tuple[int, int] = (0, 0)
@@ -50,6 +53,7 @@ class MenuView:
         if scale == self._scale:
             return
         self._scale = scale
+        self._metrics = Metrics.for_scale(scale)
         self.reset_cache()
 
     def set_surface(self, surface: pygame.Surface) -> None:
@@ -59,8 +63,10 @@ class MenuView:
         self._surface_size = size
         self.reset_cache()
 
-    #: Gap between the label column and the value column.
-    VALUE_GAP = 24
+    #: Gap between the label column and the value column. Kept as a class
+    #: attribute because scenes and tests read it; the value now comes from the
+    #: shared metrics so it grows with the window like every other gap.
+    VALUE_GAP = DESIGN_VALUE_GAP
 
     def draw(
         self,
@@ -115,13 +121,17 @@ class MenuView:
             for index, value in enumerate(values)
         ]
         footer_surfaces = [self._render_cached(footer_font, text, TEXT_WARN) for text in footers]
-        padding = max(8, int(28 * scale))
-        title_gap = max(4, int(16 * scale))
-        available_height = max(120, surface.get_height() - top - 16)
-        item_height = min(
-            max(20, int(40 * scale)),
-            max(
-                20,
+        metrics = self._metrics
+        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
+        available_height = max(
+            metrics.px(120), surface.get_height() - top - metrics.margin
+        )
+        # A row is never shorter than the text inside it. Compressing the text is
+        # the alternative, and the panel simply grows taller otherwise.
+        item_height = max(
+            item_font.get_linesize(),
+            min(
+                metrics.panel_row,
                 (available_height - padding * 2 - title_surface.get_height() - title_gap)
                 // max(1, len(labels)),
             ),
@@ -133,9 +143,13 @@ class MenuView:
         value_width = max(
             (rendered.get_width() for rendered in value_surfaces if rendered), default=0
         )
-        footer_height = 20 * len(footer_surfaces)
-        content_width = label_width + (self.VALUE_GAP + value_width if value_width else 0)
-        panel_width = min(content_width + padding * 2, max(240, surface.get_width() - 24))
+        footer_step = footer_font.get_linesize() + metrics.gap // 2
+        footer_height = footer_step * len(footer_surfaces)
+        content_width = label_width + (metrics.value_gap + value_width if value_width else 0)
+        panel_width = min(
+            content_width + padding * 2,
+            max(metrics.panel_min_width, surface.get_width() - metrics.margin * 2),
+        )
         panel_height = (
             padding * 2
             + title_surface.get_height()
@@ -144,12 +158,17 @@ class MenuView:
             + footer_height
         )
         panel_x = (surface.get_width() - panel_width) // 2
-        panel_y = min(top, max(8, surface.get_height() - panel_height - 8))
+        panel_y = min(top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin))
         panel = self._panel_for(panel_width, panel_height)
         panel.fill((*PANEL_BG[:3], 230))
-        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), max(1, int(2 * scale)))
+        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), metrics.border)
         surface.blit(panel, (panel_x, panel_y))
-        surface.blit(title_surface, (panel_x + padding, panel_y + padding))
+        # Centred, like the grid's title and the HUD's: a left-aligned title
+        # above a right-aligned value column reads as two unrelated screens.
+        surface.blit(
+            title_surface,
+            (panel_x + (panel_width - title_surface.get_width()) // 2, panel_y + padding),
+        )
         item_top = panel_y + padding + title_surface.get_height() + title_gap
         self._item_rects = []
         for index, label_surface in enumerate(label_surfaces):
@@ -178,8 +197,11 @@ class MenuView:
             self._item_rects.append(rect)
         footer_y = panel_y + panel_height - padding - footer_height
         for footer_surface in footer_surfaces:
-            surface.blit(footer_surface, (panel_x + padding, footer_y))
-            footer_y += 20
+            surface.blit(
+                footer_surface,
+                (panel_x + (panel_width - footer_surface.get_width()) // 2, footer_y),
+            )
+            footer_y += footer_step
         return pygame.Rect(panel_x, panel_y, panel_width, panel_height)
 
     def _value_color(
@@ -234,14 +256,23 @@ class MenuView:
         in the same cache entry: a call site that builds its own is a per-frame
         font lookup, which is what this cache exists to prevent.
         """
-        cached = self._fonts.get(scale)
+        # Keyed on the pixel sizes, not on the scale: a drag of the window
+        # produces a new scale every frame, and a dict keyed on those grows by
+        # three font objects per frame of the drag and never gives them back.
+        # The sizes are quantised, so a drag that does not move a font size by a
+        # whole pixel reuses the fonts it already has.
+        key = (font_size(48, scale), font_size(32, scale), font_size(18, scale))
+        cached = self._fonts.get(key)
         if cached is None:
             cached = (
-                pygame.font.SysFont("Consolas", max(1, int(48 * scale)), bold=True),
-                pygame.font.SysFont("Consolas", max(1, int(32 * scale))),
-                pygame.font.SysFont("Consolas", max(1, int(18 * scale))),
+                pygame.font.SysFont("Consolas", key[0], bold=True),
+                pygame.font.SysFont("Consolas", key[1]),
+                pygame.font.SysFont("Consolas", key[2]),
             )
-            self._fonts[scale] = cached
+            if len(self._fonts) >= FONT_CACHE_ENTRIES:
+                # A drag through a hundred densities is not a thing to keep.
+                self._fonts.clear()
+            self._fonts[key] = cached
         return cached
 
     def _panel_for(self, width: int, height: int) -> pygame.Surface:
@@ -253,9 +284,7 @@ class MenuView:
 
     @staticmethod
     def _valid_scale(scale: float) -> float:
-        if scale not in (0.8, 1.0, 1.2):
-            raise ValueError("UI scale must be 0.8, 1.0 or 1.2")
-        return scale
+        return checked_ui_scale(scale)
 
     def reset_cache(self) -> None:
         """Vide les fonts/surfaces cachées (changement de display)."""

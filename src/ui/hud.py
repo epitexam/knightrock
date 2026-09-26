@@ -24,8 +24,9 @@ import pygame
 
 from src.core.colors import Color, Colors
 from src.core.settings import Combat
+from src.ui.metrics import Metrics
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 
 #: HUD geometry (px). The bar is a fixed width: the target is a constant size,
 #: so a bar that grew with the display would be the same bar drawn at three
@@ -119,14 +120,22 @@ class HUD:
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
         self._scale = 1.0
+        self._metrics = Metrics.for_scale(1.0)
+        #: Bottom edge of the frame readout's plate this frame, so a notice can
+        #: sit under it instead of on top of it.
+        self._last_plate_bottom: int | None = None
 
     def set_scale(self, scale: float) -> None:
-        if scale not in (0.8, 1.0, 1.2):
-            raise ValueError("UI scale must be 0.8, 1.0 or 1.2")
-        self._scale = scale
+        self._metrics = Metrics.for_scale(scale)
+        self._scale = self._metrics.scale
 
     def _px(self, value: int) -> int:
-        return max(1, int(value * self._scale))
+        """A design size in target pixels, never below one.
+
+        Delegates to the shared metrics so the floor rule -- nothing rounds to
+        zero and disappears -- is the same one the panels obey.
+        """
+        return self._metrics.px(value)
 
     def layout(self, player: Any) -> HudLayout | None:
         """Compute the frame's rects and colors without drawing anything."""
@@ -279,6 +288,67 @@ class HUD:
         if layout.combo_fill.width > 0:
             pygame.draw.rect(surface, HUD_COMBO_COLOR, layout.combo_fill)
         surface.blit(combo_text, layout.combo_pos)
+
+    def draw_notice(self, lines: tuple[str, ...]) -> None:
+        """Paint a transient message under the frame readout.
+
+        A dead key that says nothing is indistinguishable from a broken one, and
+        "F1 does nothing" cost an afternoon here: the key worked, the overlay was
+        simply culled to nothing. So a key that cannot act says so, once, in the
+        place the player is already looking for numbers.
+        """
+        if not lines:
+            return
+        surface = self.renderer.surface
+        font = self.renderer.label_font
+        margin = self._px(HUD_MARGIN)
+        rendered = [self.renderer.render_text(line, font, TEXT_WARN) for line in lines]
+        width = max(drawn.get_width() for drawn in rendered) + margin * 2
+        y = margin
+        counter = self._last_plate_bottom
+        if counter is not None:
+            y = counter + max(1, self._px(2))
+        height = sum(drawn.get_height() for drawn in rendered) + margin * 2
+        plate = pygame.Rect(margin, y, width, height)
+        backdrop = pygame.Surface(plate.size, pygame.SRCALPHA)
+        backdrop.fill((*PANEL_BG[:3], 200))
+        surface.blit(backdrop, plate.topleft)
+        cursor_y = plate.top + margin
+        for drawn in rendered:
+            surface.blit(drawn, (plate.left + margin, cursor_y))
+            cursor_y += drawn.get_height()
+
+    def draw_frame_counter(self, lines: tuple[str, ...]) -> None:
+        """Paint the frame readout, top-left, over everything.
+
+        Top-left on purpose: the bottom corners belong to the gauges and the
+        right edge to the debug panels, and a readout that moves depending on
+        what else is on screen is one you have to look for.
+
+        Painted over a plate rather than straight onto the world, because a
+        number has to stay readable over a bright tile as well as over a dark
+        one. The plate is the panel colour, so it reads as part of the
+        interface rather than as another debug overlay.
+        """
+        if not lines:
+            return
+        surface = self.renderer.surface
+        font = self.renderer.label_font
+        margin = self._px(HUD_MARGIN)
+        gap = max(1, self._px(2))
+        rendered = [self.renderer.render_text(line, font, TEXT_OK) for line in lines]
+        plate_w = max(surface_.get_width() for surface_ in rendered) + margin * 2
+        plate_h = sum(surface_.get_height() for surface_ in rendered) + gap * (len(rendered) - 1)
+        plate_h += margin * 2
+        plate = pygame.Rect(margin, margin, plate_w, plate_h)
+        backdrop = pygame.Surface(plate.size, pygame.SRCALPHA)
+        backdrop.fill((*PANEL_BG[:3], 200))
+        surface.blit(backdrop, plate.topleft)
+        cursor_y = plate.top + margin
+        for drawn in rendered:
+            surface.blit(drawn, (plate.left + margin, cursor_y))
+            cursor_y += drawn.get_height() + gap
+        self._last_plate_bottom = plate.bottom
 
     def _label_rect(self, bar: pygame.Rect, label_size: tuple[int, int]) -> pygame.Rect:
         """Where a bar's label goes: right-aligned, one gap to the left of it."""
