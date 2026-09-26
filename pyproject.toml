@@ -15,6 +15,31 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+# The suite used to collect warnings and act on none of them, which is how nine
+# deprecation warnings arrived in a new test file and nobody noticed: the run
+# ended in a green line with a number next to it that read like a detail. Every
+# deprecation is now an error, so the next one stops the build.
+#
+# Two are accepted, listed last because in pytest the last matching filter
+# wins, so they carve their exceptions out of the errors above rather than
+# being overridden by them.
+filterwarnings = [
+  "error::DeprecationWarning",
+  "error::PendingDeprecationWarning",
+  "error::ResourceWarning",
+  # Accepted, not fixed: see src/core/display/stage.py::_recenter. Centring on
+  # the primary display needs SDL's WINDOWPOS_CENTERED, which only the Window
+  # class accepts, and reaching that class for a set_mode window is what is
+  # deprecated. The call is guarded, so a future pygame costs us exact centring
+  # and nothing else. Removing the warning means either centring the client area
+  # ourselves -- about fifteen pixels high, because of the title bar -- or
+  # moving the whole game to the Window API, which changes vsync, HiDPI and
+  # resizing and can only be judged on a real desktop.
+  "ignore:Please use Window.get_surface and Window.flip:DeprecationWarning",
+  # SDL's own message, because the dummy video driver has no accelerated
+  # renderer. It does not appear under x11. Not ours to fix.
+  "ignore:no fast renderer available:Warning",
+]
 
 [tool.ruff]
 target-version = "py314"

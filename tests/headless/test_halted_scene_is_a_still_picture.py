@@ -46,12 +46,12 @@ def _changed_bytes(target: pygame.Surface, previous: bytes) -> int:
     bytes is also C-speed, so this can afford to be exact.
     """
     return sum(
-        1 for a, b in zip(pygame.image.tostring(target, "RGBA"), previous, strict=True) if a != b
+        1 for a, b in zip(pygame.image.tobytes(target, "RGBA"), previous, strict=True) if a != b
     )
 
 
 def _snapshot(target: pygame.Surface) -> bytes:
-    return pygame.image.tostring(target, "RGBA")
+    return pygame.image.tobytes(target, "RGBA")
 
 
 @pytest.fixture()
