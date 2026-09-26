@@ -427,17 +427,27 @@ class Game:
     def _run_loop(self) -> None:
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
-
         while self.running:
-            self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
+            self.step()
 
-            self._handle_events()
-            self.scene_manager.poll_held_repeats()
-            self.flush_settings()
+    def step(self) -> None:
+        """One frame: events, fixed ticks, one draw, one present.
 
-            self._run_ticks()
-            self.scene_manager.draw(self._draw_target())
-            self._present()
+        Split out of the loop so a single frame can be driven from outside --
+        the manual acceptance run does, to hold a display state on screen while
+        it is looked at.
+        """
+        if self.clock is None:
+            raise RuntimeError("The game runtime is not initialized")
+        self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
+
+        self._handle_events()
+        self.scene_manager.poll_held_repeats()
+        self.flush_settings()
+
+        self._run_ticks()
+        self.scene_manager.draw(self._draw_target())
+        self._present()
 
     def _run_ticks(self) -> None:
         """Drain the accumulator, but never more than a frame's worth of ticks.
