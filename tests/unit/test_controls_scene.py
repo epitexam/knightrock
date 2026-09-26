@@ -373,6 +373,45 @@ def test_hovering_a_non_rebindable_cell_does_not_open_a_capture() -> None:
     assert game.settings.bindings.menu.invert_y is True
 
 
+def test_keyboard_capture_prompt_replaces_only_the_armed_cell() -> None:
+    """Arming a capture must not paint the whole column with the prompt.
+
+    Regression: both cell formatters matched the capture against
+    ``model.current_index`` — the same value for every row — instead of the row
+    being built, so arming one cell turned the entire keyboard column into
+    “Press a key…”.
+    """
+    game = _game()
+    controls = ControlsScene(game, ControlsScene.MENU_SECTION)
+    _move_to(controls, "rebind_1")  # Move down
+    controls.handle_routed(_confirm())
+
+    keyboard = [row.keyboard.text for row in controls.rows if row.keyboard is not None]
+    assert keyboard.count("Press a key…") == 1
+    assert keyboard[1] == "Press a key…", "the prompt sits on the armed row only"
+    assert keyboard[0] == "UP", "its neighbours keep their binding text"
+    assert keyboard[2] == "LEFT"
+
+    gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
+    assert "Press button / axis / d-pad…" not in gamepad, "the other column is untouched"
+
+
+def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
+    """The gamepad column carried the same whole-column prompt bug."""
+    game = _game()
+    controls = ControlsScene(game, ControlsScene.MENU_SECTION)
+    controls.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    controls.handle_routed(_confirm())
+
+    gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
+    assert gamepad.count("Press button / axis / d-pad…") == 1
+    assert gamepad[0] == "Press button / axis / d-pad…"
+    assert gamepad[1] == "axis 1 / hat 0"
+
+    keyboard = [row.keyboard.text for row in controls.rows if row.keyboard is not None]
+    assert "Press a key…" not in keyboard
+
+
 def test_video_opens_a_resolution_picker_instead_of_only_cycling() -> None:
     """Enter on the Resolution row opens the list; ←/→ keep the quick nudge."""
     pushed: list[object] = []

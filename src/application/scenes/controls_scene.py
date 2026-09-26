@@ -102,7 +102,6 @@ class ControlsScene(Scene):
         self._rows_cache: list[BindingRow] | None = None
         self._rows_bindings: object = None
         self._rows_capture: tuple[int, int] | None = None
-        self._rows_index = -1
 
     @property
     def capturing(self) -> bool:
@@ -118,26 +117,34 @@ class ControlsScene(Scene):
 
         Building the row graph ran two cell formatters per row per frame,
         including a ``pygame.key.name`` lookup for every bound key. The result
-        is a pure function of the bindings, the pending capture and the
-        selected row, so it is rebuilt only when one of those changes.
+        is a pure function of the bindings and the armed capture, so it is
+        rebuilt only when one of those changes.
+
+        The selection is deliberately **not** an input: which row is focused is
+        drawn by the view from ``selected_row``, and the capture prompt follows
+        the armed row, which ``_build_rows`` passes to each cell. Keying the
+        cache on ``model.current_index`` is what let the prompt leak onto every
+        row of the column.
         """
         bindings = self.game.settings.bindings
         if (
             self._rows_cache is None
             or self._rows_bindings is not bindings
             or self._rows_capture != self._capture
-            or self._rows_index != self.model.current_index
         ):
             self._rows_cache = self._build_rows()
             self._rows_bindings = bindings
             self._rows_capture = self._capture
-            self._rows_index = self.model.current_index
         return self._rows_cache
 
     def _build_rows(self) -> list[BindingRow]:
         result = [
-            BindingRow(spec.label, self._keyboard_cell(spec), self._gamepad_cell(spec))
-            for spec in self.specs
+            BindingRow(
+                spec.label,
+                self._keyboard_cell(index, spec),
+                self._gamepad_cell(index, spec),
+            )
+            for index, spec in enumerate(self.specs)
         ]
         if self.section == self.MENU_SECTION:
             # The stick Y inversion is a control setting, not a video one, so
@@ -171,8 +178,14 @@ class ControlsScene(Scene):
             RowKind.BACK,
         )
 
-    def _keyboard_cell(self, spec: RebindSpec) -> BindingCell:
-        if self._capture == (self.model.current_index, KEYBOARD_COLUMN):
+    def _keyboard_cell(self, row: int, spec: RebindSpec) -> BindingCell:
+        """The keyboard cell of ``spec``, or the prompt on the *armed* row.
+
+        ``row`` is the row being built, never ``model.current_index``: the two
+        are equal while a capture is armed, so comparing the selection here was
+        true for every row and painted the whole column with the prompt.
+        """
+        if self._capture == (row, KEYBOARD_COLUMN):
             return BindingCell("Press a key…", True)
         value: object
         if spec.action is None:
@@ -188,8 +201,9 @@ class ControlsScene(Scene):
                 key_text = f"{key_text} / mouse {mouse_button}"
         return BindingCell(key_text, muted=value is None)
 
-    def _gamepad_cell(self, spec: RebindSpec) -> BindingCell:
-        if self._capture == (self.model.current_index, GAMEPAD_COLUMN):
+    def _gamepad_cell(self, row: int, spec: RebindSpec) -> BindingCell:
+        """The gamepad cell of ``spec``; same per-row rule as the keyboard one."""
+        if self._capture == (row, GAMEPAD_COLUMN):
             return BindingCell("Press button / axis / d-pad…", True)
         if spec.action is None:
             return BindingCell("not available", muted=True)
