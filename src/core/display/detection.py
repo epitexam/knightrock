@@ -38,7 +38,13 @@ def desktop_sizes() -> tuple[tuple[int, int], ...]:
     virtual desktop -- are not exposed by pygame, which is why the window is
     positioned against the primary screen rather than a chosen one.
     """
-    return tuple((int(w), int(h)) for w, h in pygame.display.get_desktop_sizes())
+    try:
+        return tuple((int(w), int(h)) for w, h in pygame.display.get_desktop_sizes())
+    except pygame.error:
+        # No video system: headless test runs, or a driver that cannot answer.
+        # An empty answer is the honest one, and every caller treats it as
+        # "we do not know", which is a state the code has to survive anyway.
+        return ()
 
 
 def desktop_size(index: int = 0) -> tuple[int, int]:
@@ -63,7 +69,10 @@ def desktop_refresh_rates(index: int = 0) -> tuple[int, ...]:
     exists, and it only ever reports the *current* display. This one works
     before the window is created and covers every display.
     """
-    rates = pygame.display.get_desktop_refresh_rates()
+    try:
+        rates = pygame.display.get_desktop_refresh_rates()
+    except pygame.error:
+        return ()
     return tuple(sorted((int(rate) for rate in rates), reverse=True))
 
 
@@ -104,6 +113,7 @@ def largest_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
 
 
 def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode:
+    """Resolve ``DisplayMode.AUTO`` for this machine. Never returns AUTO."""
     """Pick the display mode for a machine we have never seen before.
 
     Borderless when the desktop is already the shape of the framing, because
@@ -117,31 +127,6 @@ def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode
     if abs(desktop[0] / desktop[1] - framing.aspect) / framing.aspect < ASPECT_TOLERANCE:
         return DisplayMode.BORDERLESS
     return DisplayMode.WINDOW
-
-
-def auto_settings(framing: Framing, desktop: tuple[int, int]) -> dict[str, object]:
-    """A complete, sane video configuration for an unknown machine.
-
-    Called on the first launch, and again whenever the persisted choice cannot
-    be honoured -- a settings file carried over from a bigger screen, a dock
-    undocked between two runs. Returning a whole configuration rather than a
-    patch keeps the two call sites from disagreeing about which defaults apply.
-    """
-    mode = auto_display_mode(framing, desktop)
-    size = (
-        (desktop[0], desktop[1]) if mode is DisplayMode.BORDERLESS else largest_window_size(desktop)
-    )
-    return {
-        "display": mode.value,
-        "width": size[0],
-        "height": size[1],
-        "size_mode": "auto",
-        "framing": "keep",
-        "render_scale": 2,
-        "smoothing": True,
-        "vsync": False,
-        "frame_limit": 60,
-    }
 
 
 def centered_on_primary(size: tuple[int, int], primary: tuple[int, int]) -> tuple[int, int]:

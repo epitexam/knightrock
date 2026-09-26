@@ -9,8 +9,19 @@ from src.core.input.input_actions import InputAction
 
 @dataclass(frozen=True)
 class MenuItem:
+    """One row: what it is called, what it currently reads, and whether it acts.
+
+    ``value`` is the row's *state*, in its own column rather than glued to the
+    label. A settings screen is a table, and a column of values is what makes it
+    readable: with the state appended to the label, "Borderless" and
+    "Window size 1600 x 900 (auto)" are different widths of text and the eye
+    has to find the change. The same reasoning the resolution picker's ``STATE``
+    column gave.
+    """
+
     action: str
     label: str
+    value: str = ""
     enabled: bool = True
 
 

@@ -12,6 +12,7 @@ from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import (
+    MAX_FRAME_LIMIT,
     SettingsStore,
     UserSettings,
 )
@@ -22,6 +23,7 @@ from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
 from src.core.display.presentation import Presentation
+from src.core.display.size_mode import SizeMode
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import DEFAULT_RENDER_SCALE, Viewport
 from src.core.input.event_router import EventRouter
@@ -44,7 +46,7 @@ logger = logging.getLogger(__name__)
 #: for, with vsync on and nothing on screen to say so. The multiplier is
 #: generous on purpose, clearing any real refresh rate by a wide margin, so
 #: the only thing it ever catches is a present that does not block at all.
-DISPLAY_SAFETY_CEILING_FPS = Display.FPS * 4
+DISPLAY_SAFETY_CEILING_FPS = max(Display.FPS * 4, MAX_FRAME_LIMIT)
 
 #: SDL environment set before ``pygame.init()``.
 #:
@@ -139,6 +141,7 @@ class Game:
         # must still reach the menu (audit UI, lot 5).
         self.audio.initialize()
 
+        self._resolve_display_settings()
         self.initialize_display()
         pygame.display.set_caption(Display.TITLE)
 
@@ -167,18 +170,56 @@ class Game:
         return self.viewport.surface
 
     def _window_spec(self) -> WindowSpec:
-        """The window the settings currently ask for.
-
-        A temporary bridge: the settings still speak in "fullscreen", and
-        borderless is what that now means. The video menu grows a real mode
-        choice, and this becomes a straight ``DisplayMode`` read.
-        """
+        """The window the settings currently ask for."""
         return WindowSpec(
             width=self.settings.width,
             height=self.settings.height,
-            mode=DisplayMode.BORDERLESS if self.settings.fullscreen else DisplayMode.WINDOW,
+            mode=self.settings.display,
             vsync=self.settings.vsync,
         )
+
+    def _resolve_display_settings(self) -> None:
+        """Re-decide the window size against the machine we actually landed on.
+
+        Two cases, and both of them are "a settings file travelled":
+
+        - **auto** is re-evaluated, every launch. Docking a laptop or running
+          the game on another machine changes the answer, and that is the
+          entire point of the mode.
+        - **manual** is honoured *if it still fits*. A player who chose
+          2560x1440 gets it on a screen that can show it; on a 1366x768 laptop
+          it becomes the auto choice, because opening a window larger than the
+          screen is not honouring anything.
+
+        Runs after ``pygame.init()`` and before the window exists, since that
+        is when the desktop becomes queryable.
+        """
+        desktop = detection.desktop_size()
+        if desktop[0] <= 0 or desktop[1] <= 0:
+            return
+        size = (self.settings.width, self.settings.height)
+        if self.settings.size_mode is SizeMode.MANUAL and detection.fits_on_desktop(size, desktop):
+            return
+        if self.settings.display is DisplayMode.AUTO:
+            self.settings = self.settings.with_video(
+                display=detection.auto_display_mode(DEFAULT_FRAMING, desktop)
+            )
+        resolved = self.settings.with_video(
+            width=detection.largest_window_size(desktop)[0],
+            height=detection.largest_window_size(desktop)[1],
+            size_mode=SizeMode.AUTO,
+        )
+        if self.settings.size_mode is SizeMode.MANUAL:
+            # It was a hand-picked size that no longer fits: say so, rather
+            # than silently substituting one and leaving the menu lying.
+            logger.info(
+                "Window %dx%d does not fit the %dx%d desktop; using the automatic size",
+                size[0],
+                size[1],
+                desktop[0],
+                desktop[1],
+            )
+        self.settings = resolved
 
     def initialize_display(self) -> None:
         """Build the window, the render target and the presentation, once.
@@ -217,15 +258,18 @@ class Game:
         assert self.presentation is not None
         self.presentation.recompute()
 
-    def rebuild_render_target(self) -> None:
+    def _rebuild_render_target(self, scale: int) -> None:
         """Replace the render target, after the render scale changed.
 
         The only path that has to tell the scene stack about a new surface.
         Every other display change lands in ``_rebuild_display`` and touches
         nothing that is drawn.
+
+        The scale is validated by the settings store, and again by
+        ``Framing.viewport_size``, so a value that somehow got through cannot
+        produce a zero-sized target.
         """
-        assert self.viewport is not None
-        self.viewport = Viewport(DEFAULT_FRAMING, DEFAULT_RENDER_SCALE)
+        self.viewport = Viewport(DEFAULT_FRAMING, scale)
         if self.presentation is not None:
             self.presentation.viewport = self.viewport
             self.presentation.recompute()
@@ -249,6 +293,10 @@ class Game:
             return
         if self._window_signature(previous) != self._window_signature(settings):
             self._rebuild_display()
+        if previous.render_scale != settings.render_scale:
+            self._rebuild_render_target(settings.render_scale)
+        elif self.presentation is not None:
+            self.presentation.smoothing = settings.smoothing
         self.scene_manager.set_ui_scale(settings.ui_scale)
 
     @staticmethod
@@ -263,9 +311,14 @@ class Game:
         fx.clear_frame_cache()
 
     @staticmethod
-    def _window_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:
-        """The settings that require a new ``pygame.display.set_mode`` call."""
-        return (settings.width, settings.height, settings.fullscreen, settings.vsync)
+    def _window_signature(settings: UserSettings) -> tuple[object, ...]:
+        """The settings that require a new ``pygame.display.set_mode`` call.
+
+        Render scale, smoothing, frame limit and UI scale are deliberately not
+        here: none of them touches the window, and the render target only
+        changes with the scale, which has its own path.
+        """
+        return (settings.width, settings.height, settings.display, settings.vsync)
 
     def _persist_settings(self) -> None:
         """Queue the settings for a write, coalesced to one per frame.
@@ -358,8 +411,18 @@ class Game:
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
         if not self.settings.vsync:
-            return self.clock.tick(Display.FPS) / 1000.0
-        return self.clock.tick(DISPLAY_SAFETY_CEILING_FPS) / 1000.0
+            return self.clock.tick(self._frame_target()) / 1000.0
+        return self.clock.tick(max(DISPLAY_SAFETY_CEILING_FPS, self._frame_target())) / 1000.0
+
+    def _frame_target(self) -> int:
+        """The rate the clock paces to when vsync is not doing it.
+
+        ``0`` is pygame's "no limit", which is what an uncapped setting means.
+        Named *target* rather than FPS on purpose: with vsync on, the present
+        decides the rate and this number is ignored, so calling it FPS would
+        promise something the game does not deliver.
+        """
+        return 0 if self.settings.frame_limit is None else self.settings.frame_limit
 
     def _run_loop(self) -> None:
         if self.clock is None:

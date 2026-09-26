@@ -9,6 +9,8 @@ import pygame
 import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.mode import DisplayMode
+from src.core.display.size_mode import SizeMode
 from src.core.display.viewport import DEFAULT_RENDER_SCALE
 from src.core.game import Game
 from src.core.level.level_manager import LevelManager
@@ -206,7 +208,18 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
     )
     game._initialize()
 
-    game.apply_settings(replace(game.settings, width=800, height=600, vsync=True))
+    # Borderless takes the desktop's size and ignores the stored one, so the
+    # mode is pinned to make the size the thing under test.
+    game.apply_settings(
+        replace(
+            game.settings,
+            display=DisplayMode.WINDOW,
+            width=800,
+            height=600,
+            size_mode=SizeMode.MANUAL,
+            vsync=True,
+        )
+    )
 
     assert game.surface is not None
     assert game.surface.get_size() == (800, 600)
@@ -236,7 +249,15 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     set_mode = Mock(wraps=pygame.display.set_mode)
     monkeypatch.setattr(pygame.display, "set_mode", set_mode)
 
-    game.apply_settings(replace(game.settings, width=1280, height=720, fullscreen=False))
+    game.apply_settings(
+        replace(
+            game.settings,
+            display=DisplayMode.WINDOW,
+            width=1280,
+            height=720,
+            size_mode=SizeMode.MANUAL,
+        )
+    )
 
     windowed_flags = set_mode.call_args.args[1]
     assert windowed_flags & pygame.RESIZABLE
@@ -244,7 +265,7 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     assert not windowed_flags & pygame.SCALED
     assert set_mode.call_args.args[0] == (1280, 720)
 
-    game.apply_settings(replace(game.settings, fullscreen=True))
+    game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
 
     fullscreen_flags = set_mode.call_args.args[1]
     assert fullscreen_flags & pygame.FULLSCREEN
@@ -267,7 +288,14 @@ def test_changing_the_window_never_reaches_the_render_target(tmp_path: Path) -> 
     game._initialize()
     propagate = Mock()
 
-    game.apply_settings(replace(game.settings, width=1920, height=1080))
+    windowed = replace(
+        game.settings,
+        display=DisplayMode.WINDOW,
+        size_mode=SizeMode.MANUAL,
+        width=1920,
+        height=1080,
+    )
+    game.apply_settings(windowed)
     assert propagate.call_count == 0
     game.scene_manager.set_surface = propagate  # type: ignore[method-assign]
 

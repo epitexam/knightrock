@@ -26,14 +26,13 @@ from src.core.settings import Combat
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 
-#: HUD geometry (px). The bar width is proportional to the display, within
-#: these bounds, so the same HUD reads the same at 1280x720 and 1920x1080.
+#: HUD geometry (px). The bar is a fixed width: the target is a constant size,
+#: so a bar that grew with the display would be the same bar drawn at three
+#: different sizes depending on the player's video settings.
 HUD_MARGIN = 20
 HUD_BAR_HEIGHT = 14
 HUD_BAR_GAP = 8
-HUD_BAR_WIDTH_RATIO = 0.22
-HUD_BAR_WIDTH_MIN = 140
-HUD_BAR_WIDTH_MAX = 360
+HUD_BAR_WIDTH = 220
 HUD_LABEL_GAP = 8
 HUD_PIP_SIZE = 14
 HUD_PIP_GAP = 5
@@ -69,11 +68,13 @@ def posture_color(ratio: float, lockout_timer: float = 0.0) -> Color:
     return TEXT_OK
 
 
-def bar_width_for(display_width: int) -> int:
-    """HUD bar width for a display: proportional, bounded and always fitting."""
-    scaled = int(display_width * HUD_BAR_WIDTH_RATIO)
-    width = max(HUD_BAR_WIDTH_MIN, min(HUD_BAR_WIDTH_MAX, scaled))
-    return max(1, min(width, display_width - 2 * HUD_MARGIN))
+def bar_width_for(target_width: int) -> int:
+    """HUD bar width, shrunk only if the target is too narrow to hold it.
+
+    The clamp stays because the render scale and the UI scale can both grow the
+    HUD, and a bar that runs off the edge is worse than a narrow one.
+    """
+    return max(1, min(HUD_BAR_WIDTH, target_width - 2 * HUD_MARGIN))
 
 
 def _ratio(value: float, maximum: float) -> float:

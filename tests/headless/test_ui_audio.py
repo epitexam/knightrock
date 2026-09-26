@@ -18,6 +18,8 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
+from src.core.display.mode import DisplayMode
+from src.core.display.size_mode import SizeMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
@@ -82,15 +84,20 @@ def test_opening_a_screen_and_coming_back_are_two_distinct_effects(
 
 
 def test_a_value_change_in_place_is_a_confirmation(manager: SceneManager, feedback) -> None:
-    """← on the focused row adjusts the setting without leaving the screen."""
+    """→ on a value row adjusts the setting without leaving the screen."""
+    manager.game.settings = manager.game.settings.with_video(
+        display=DisplayMode.WINDOW, size_mode=SizeMode.MANUAL
+    )
     manager.switch(VideoScene(manager.game))
     before = (manager.game.settings.width, manager.game.settings.height)
 
-    press(manager, pygame.K_RIGHT)  # the resolution row is focused on entry
+    press(manager, pygame.K_DOWN)  # onto the window size row
+    press(manager, pygame.K_RIGHT)
 
     assert (manager.game.settings.width, manager.game.settings.height) != before
     assert isinstance(manager.current, VideoScene)
-    assert feedback.cues == [UiEffect.CONFIRMED]
+    # The move onto the row is a navigation; the change is the confirmation.
+    assert feedback.cues == [UiEffect.NAVIGATED, UiEffect.CONFIRMED]
 
 
 def test_a_single_press_of_a_held_direction_publishes_once(manager: SceneManager, feedback) -> None:

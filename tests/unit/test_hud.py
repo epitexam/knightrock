@@ -13,8 +13,7 @@ from src.ui.hud import (
     HUD,
     HUD_BAR_GAP,
     HUD_BAR_HEIGHT,
-    HUD_BAR_WIDTH_MAX,
-    HUD_BAR_WIDTH_MIN,
+    HUD_BAR_WIDTH,
     HUD_MARGIN,
     HUD_PIP_SIZE,
     HUD_TRACK,
@@ -173,14 +172,17 @@ def test_layout_never_leaves_the_display(width: int) -> None:
     assert max(rect.right for rect, _ in layout.dash_pips) <= width
 
 
-def test_bar_width_scales_with_the_display_but_stays_bounded() -> None:
-    assert bar_width_for(500) == HUD_BAR_WIDTH_MIN
-    assert bar_width_for(1280) > HUD_BAR_WIDTH_MIN
-    assert bar_width_for(1920) == HUD_BAR_WIDTH_MAX
-    assert bar_width_for(3840) == HUD_BAR_WIDTH_MAX
-    # A display too narrow for the minimum: the bar shrinks instead of clipping.
-    assert bar_width_for(160) < HUD_BAR_WIDTH_MIN
-    assert bar_width_for(160) <= 160 - 2 * HUD_MARGIN
+@pytest.mark.parametrize("width", [500, 1152, 1280, 1920, 2560, 3840])
+def test_the_bar_is_the_same_width_on_every_target(width: int) -> None:
+    """It used to be 22% of the display, so the HUD was a different size
+    depending on a video setting. The target is a constant, so the bar is too."""
+    assert bar_width_for(width) == HUD_BAR_WIDTH
+
+
+def test_the_bar_shrinks_rather_than_clipping_on_a_narrow_target() -> None:
+    narrow = 2 * HUD_MARGIN + 10
+    assert bar_width_for(narrow) < HUD_BAR_WIDTH
+    assert bar_width_for(narrow) <= narrow - 2 * HUD_MARGIN
 
 
 def test_draw_paints_the_gauges_and_returns_their_rects() -> None:

@@ -3,12 +3,12 @@ from types import SimpleNamespace
 import pygame
 
 from src.application.scenes.controls_scene import ControlsScene
-from src.application.scenes.resolution_scene import RESOLUTIONS, ResolutionScene
+from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.video_scene import VideoScene
-from src.application.settings_store import UserSettings
+from src.application.settings_store import FRAME_LIMITS, UserSettings
+from src.core.display.mode import DisplayMode
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.grid_view import GridView
 
 
 def _game() -> SimpleNamespace:
@@ -220,38 +220,97 @@ def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
         pygame.draw.rect = original_rect
 
 
-def test_video_menu_cycles_presets_and_resets_video() -> None:
+def test_video_menu_cycles_every_value_row_and_resets() -> None:
+    """Every row acts on left/right/confirm, so a gamepad never lands on a
+    row it cannot use."""
     game = _game()
     scene = VideoScene(game)
-    initial = (game.settings.width, game.settings.height)
-    assert initial in RESOLUTIONS
 
-    # Arrows nudge the value inline; Enter opens the dedicated picker instead.
+    def row(name: str):
+        return next(i for i, item in enumerate(scene.model.items) if item.action == name)
+
+    def focus(name: str) -> None:
+        # Walk to the top, then down. A press can skip a row -- the model steps
+        # over disabled ones, which is the whole point of them -- so this counts
+        # positions rather than assuming one press per row.
+        for _ in range(len(scene.model.items)):
+            scene.handle_routed(RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD))
+            if scene.model.current_index == 0:
+                break
+        for _ in range(len(scene.model.items)):
+            if scene.model.current_index >= row(name):
+                break
+            scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
+        assert scene.model.current_index == row(name)
+
+    focus("display")
+    assert game.settings.display is not None
+    first_mode = game.settings.display
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
-    initial_index = RESOLUTIONS.index(initial)
-    expected = RESOLUTIONS[(initial_index + 1) % len(RESOLUTIONS)]
-    assert (game.settings.width, game.settings.height) == expected
+    assert game.settings.display is not first_mode
+
+    focus("render_scale")
+    before = game.settings.render_scale
     scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
-    assert (game.settings.width, game.settings.height) == initial
+    assert game.settings.render_scale != before
 
-    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
-    scene.handle_routed(_confirm())
-    assert game.settings.fullscreen is True
+    # A press sets the value rather than toggling it: left is off, right is on,
+    # so the two directions cannot behave identically.
+    focus("smoothing")
+    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
+    assert game.settings.smoothing is False
+    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    assert game.settings.smoothing is True
 
-    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
-    scene.handle_routed(_confirm())
+    focus("vsync")
+    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
     assert game.settings.vsync is True
+
+    focus("frame_limit")
+    limits = set()
+    for _ in range(len(FRAME_LIMITS)):
+        limits.add(game.settings.frame_limit)
+        scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    assert limits == set(FRAME_LIMITS), "every frame limit must be reachable"
+
+    focus("scale")
+    before = game.settings.ui_scale
+    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    assert game.settings.ui_scale != before
 
     _move_to_video(scene, "reset")
     scene.handle_routed(_confirm())
     defaults = UserSettings()
-    assert (game.settings.width, game.settings.height) == (
-        defaults.width,
-        defaults.height,
-    )
-    assert game.settings.fullscreen is defaults.fullscreen
-    assert game.settings.vsync is defaults.vsync
+    assert game.settings.display is defaults.display
+    assert game.settings.render_scale == defaults.render_scale
+    assert game.settings.frame_limit == defaults.frame_limit
     assert game.settings.ui_scale == defaults.ui_scale
+
+
+def test_the_window_size_row_is_disabled_in_borderless() -> None:
+    """A window size means nothing in borderless, so the row says so."""
+    game = _game()
+    game.settings = game.settings.with_video(display=DisplayMode.BORDERLESS)
+    scene = VideoScene(game)
+    item = next(item for item in scene.model.items if item.action == "size")
+
+    assert not item.enabled
+
+    game.settings = game.settings.with_video(display=DisplayMode.WINDOW)
+    scene = VideoScene(game)
+    item = next(item for item in scene.model.items if item.action == "size")
+    assert item.enabled
+
+
+def test_every_video_row_reports_its_value_in_its_own_column() -> None:
+    """A settings screen is a table; the state belongs in a column."""
+    scene = VideoScene(_game())
+
+    for item in scene.model.items:
+        if item.action in ("reset", "back"):
+            assert item.value == ""
+        else:
+            assert item.value, f"{item.action} reports no value"
 
 
 def _move_to_video(scene: VideoScene, action: str) -> None:
@@ -413,14 +472,14 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
     assert "Press a key…" not in keyboard
 
 
-def test_video_opens_a_resolution_picker_instead_of_only_cycling() -> None:
-    """Enter on the Resolution row opens the list; ←/→ keep the quick nudge."""
+def test_video_opens_the_size_picker_and_arrows_still_nudge_inline() -> None:
+    """Enter on the size row opens the list; arrows keep the quick nudge."""
     pushed: list[object] = []
     game = _game()
     game.scene_manager.push = pushed.append
     scene = VideoScene(game)
 
-    _move_to_video(scene, "resolution")
+    _move_to_video(scene, "size")
     scene.handle_routed(_confirm())
 
     assert len(pushed) == 1
@@ -430,81 +489,14 @@ def test_video_opens_a_resolution_picker_instead_of_only_cycling() -> None:
         UserSettings().height,
     ), "opening the list must not change the size yet"
 
+    game.settings = game.settings.with_video(display=DisplayMode.WINDOW)
     scene = VideoScene(game)
-    _move_to_video(scene, "resolution")
+    _move_to_video(scene, "size")
     pushed.clear()
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
 
     assert pushed == [], "arrows still nudge inline, no screen pushed"
     assert game.settings.width != UserSettings().width
-
-
-def test_resolution_picker_lists_every_preset_and_marks_the_current_one() -> None:
-    game = _game()
-    scene = ResolutionScene(game)
-    labels = [item.label for item in scene.model.items]
-
-    assert labels == [f"{width} x {height}" for width, height in RESOLUTIONS] + ["Back"]
-    assert scene.model.items[-1].action == "back"
-
-    # The marker is a column of values, not a suffix glued to one label, so the
-    # sizes line up and only the row in use carries a readable state.
-    states = [row.cells[0].text for row in scene.rows[:-1] if row.cells[0] is not None]
-    assert states == [
-        ResolutionScene.CURRENT_MARK
-        if (width, height) == (game.settings.width, game.settings.height)
-        else ResolutionScene.EMPTY_MARK
-        for width, height in RESOLUTIONS
-    ]
-
-
-def test_resolution_picker_preselects_the_active_resolution() -> None:
-    game = _game()
-    scene = ResolutionScene(game)
-
-    current = (game.settings.width, game.settings.height)
-    index = list(RESOLUTIONS).index(current)
-
-    assert scene.model.current_index == index
-
-
-def test_resolution_picker_applies_the_picked_size_and_returns() -> None:
-    pops: list[str] = []
-    applied: list[tuple[int, int]] = []
-    game = _game()
-    game.scene_manager.pop = lambda: pops.append("pop")
-    scene = ResolutionScene(game)
-    target = next(
-        size for size in RESOLUTIONS if size != (game.settings.width, game.settings.height)
-    )
-
-    def apply_settings(settings: UserSettings) -> None:
-        game.settings = settings
-        applied.append((settings.width, settings.height))
-
-    game.apply_settings = apply_settings
-    scene.model.set_items(scene.model.items, RESOLUTIONS.index(target))
-    scene.handle_routed(_confirm())
-
-    assert applied == [target]
-    assert (game.settings.width, game.settings.height) == target
-    assert pops == ["pop"], "picking a size falls back to the Video menu"
-
-
-def test_resolution_picker_back_and_escape_return_without_applying() -> None:
-    pops: list[str] = []
-    game = _game()
-    game.scene_manager.pop = lambda: pops.append("pop")
-    before = (game.settings.width, game.settings.height)
-    scene = ResolutionScene(game)
-    scene.model.set_items(scene.model.items, len(RESOLUTIONS))
-    scene.handle_routed(_confirm())
-
-    scene = ResolutionScene(game)
-    scene.handle_routed(RoutedInput(InputAction.UI_BACK, InputDevice.KEYBOARD))
-
-    assert pops == ["pop", "pop"]
-    assert (game.settings.width, game.settings.height) == before
 
 
 def test_one_stick_press_moves_exactly_one_row() -> None:
@@ -558,110 +550,3 @@ def test_repeated_presses_walk_one_row_at_a_time() -> None:
         )
 
     assert controls.model.current_index == 3
-
-
-def test_resolution_picker_selection_survives_a_redraw() -> None:
-    """Regression: the cursor used to snap back to the current size every frame.
-
-    ``draw`` rebuilt the list to refresh the ``(current)`` marker, and
-    ``set_items`` re-selects the current resolution, so walking down the list
-    was impossible: the next frame undid the move. The list must only be
-    rebuilt when the applied size actually changes.
-    """
-    pygame.font.init()
-    game = _game()
-    pygame.display.set_mode((1440, 900))
-    scene = ResolutionScene(game)
-    start = scene.model.current_index
-
-    seen: list[int] = []
-    for _ in range(3):
-        scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-        scene.draw(pygame.display.get_surface())  # the frame that runs right after the input
-        seen.append(scene.model.current_index)
-
-    assert seen == [start + 1, start + 2, start + 3]
-    assert scene.model.current_index == start + 3
-    assert scene.model.current_item is not None
-    assert scene.model.current_item.action.startswith("res:")
-
-
-def test_resolution_picker_refreshes_the_marker_when_the_size_changes() -> None:
-    """The ``current`` state still follows an externally applied size."""
-    from dataclasses import replace as dataclass_replace
-
-    game = _game()
-    pygame.display.set_mode((1440, 900))
-    scene = ResolutionScene(game)
-    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-    moved_to = scene.model.current_item.action
-    assert moved_to is not None
-
-    game.settings = dataclass_replace(game.settings, width=1920, height=1080)
-    scene.draw(pygame.display.get_surface())
-
-    marked = [
-        row.label
-        for row in scene.rows
-        if row.cells[0] is not None and row.cells[0].text == ResolutionScene.CURRENT_MARK
-    ]
-    assert marked == ["1920 x 1080"]
-    assert scene.model.current_item is not None
-    assert scene.model.current_item.action == moved_to, "the cursor must not jump on refresh"
-
-
-def test_resolution_picker_wears_the_mapping_screen_panel() -> None:
-    """The picker is drawn by the shared grid panel, with its columns and hints.
-
-    Regression of the design request: the screen used to be a content-sized
-    menu list with the marker glued to a label, and now shares the controls
-    screen's frame — headers, a focus strip on the selected row and a footer.
-    """
-    pygame.font.init()
-    game = _game()
-    pygame.display.set_mode((1440, 900))
-    scene = ResolutionScene(game)
-    assert isinstance(scene.view, GridView)
-    assert scene.COLUMN_HEADERS == ("STATE",)
-
-    scene.draw(pygame.display.get_surface())
-
-    assert len(scene.view.row_rects) == len(scene.model.items)
-    # The STATE column is registered as a hit, on the focused row and
-    # activatable (a click picks the size), exactly like a binding cell — and
-    # the focus ring frames it, so the cell a click would change is the one
-    # framed.
-    selected = scene.view.row_rects[scene.model.current_index]
-    hit = next(
-        (
-            candidate
-            for x in range(selected.left, selected.right)
-            if (candidate := scene.view.cell_at((x, selected.centery))) is not None
-            and candidate.column == scene.STATE_COLUMN
-        ),
-        None,
-    )
-    assert hit is not None, "the STATE column must be hit-testable"
-    assert hit.row == scene.model.current_index
-    assert hit.activatable is True
-
-
-def test_resolution_picker_pointer_focuses_then_applies_a_row() -> None:
-    """Rows are hit-testable through ``row_rects``, like the bindings grid."""
-    pygame.font.init()
-    game = _game()
-    pygame.display.set_mode((1440, 900))
-    scene = ResolutionScene(game)
-    scene.draw(pygame.display.get_surface())
-
-    target = next(
-        size for size in RESOLUTIONS if size != (game.settings.width, game.settings.height)
-    )
-    row = scene.view.row_rects[RESOLUTIONS.index(target)]
-    scene.handle_routed(
-        RoutedInput(InputAction.UI_POINTER_MOVE, InputDevice.MOUSE, position=row.center)
-    )
-
-    assert scene.model.current_index == RESOLUTIONS.index(target)
-    assert scene.model.current_item is not None
-    assert scene.model.current_item.action == f"res:{target[0]}x{target[1]}"

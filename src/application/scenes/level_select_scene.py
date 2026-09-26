@@ -26,7 +26,7 @@ class LevelSelectScene(Scene):
             MenuItem(
                 f"level:{level_id}",
                 f"Level {level_id}",
-                level_id in unlocked,
+                enabled=level_id in unlocked,
             )
             for level_id in sorted(game.level_manager.level_paths)
         )

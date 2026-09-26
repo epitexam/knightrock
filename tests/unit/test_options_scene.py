@@ -96,9 +96,12 @@ def test_options_back_via_gamepad_and_mouse() -> None:
 
 def test_video_menu_owns_every_display_setting() -> None:
     assert _actions(VideoScene(_game())) == [
-        "resolution",
-        "fullscreen",
+        "display",
+        "size",
+        "render_scale",
+        "smoothing",
         "vsync",
+        "frame_limit",
         "scale",
         "reset",
         "back",

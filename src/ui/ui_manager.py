@@ -5,7 +5,7 @@ import pygame
 
 from src.core.rendering.camera import Camera
 from src.ui.hud import HUD
-from src.ui.panel_renderer import PanelLayout, PanelRenderer
+from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
 from src.ui.player_ui import PlayerUI
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.world_ui import COMBAT_PANEL_TITLE, WorldUI
@@ -349,9 +349,7 @@ class UIManager:
             f"Hit Stop   {hit_stop:.3f}",
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
-        surface = self.renderer.surface
-        compact = surface.get_width() < 1100 or surface.get_height() < 800
-        if compact:
+        if compact_panels():
             lines = [
                 lines[0],
                 lines[1],
@@ -359,7 +357,7 @@ class UIManager:
                 f"F10 view  {self.compact_panel_focus().upper()}",
             ]
 
-        if compact:
+        if compact_panels():
             primary_ui_ms = world_ms + panels_ms
             secondary_ui_ms = panel_p95
         else:
@@ -387,7 +385,7 @@ class UIManager:
             if primary_ui_ms <= 8.0
             else TEXT_CRIT,
         }
-        if not compact:
+        if not compact_panels():
             line_colors[3] = (
                 TEXT_OK
                 if secondary_ui_ms <= 4.0

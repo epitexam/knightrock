@@ -7,11 +7,23 @@ were, and a policy that can only be tested on a real screen is a policy that
 does not get tested.
 """
 
+import os
+
+import pygame
 import pytest
 
-from src.core.display import detection
-from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.mode import DisplayMode
+#: The desktop queries below need a video system. Initialising it here rather
+#: than relying on another test module having done it first is the point: an
+#: assertion that passes only because of the order pytest happened to collect
+#: in is a test that will stop passing for no reason.
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+pygame.init()
+pygame.display.set_mode((320, 240))
+
+from src.core.display import detection  # noqa: E402
+from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
+from src.core.display.mode import DisplayMode  # noqa: E402
 
 #: Desktops worth caring about: 16:9, 16:10, 21:9, 32:9, a laptop, a netbook.
 DESKTOPS = [
@@ -67,27 +79,23 @@ def test_a_dead_desktop_does_not_ask_for_a_zero_sized_borderless_window() -> Non
 
 
 @pytest.mark.parametrize("desktop", DESKTOPS)
-def test_auto_settings_are_complete_and_consistent(desktop) -> None:
-    """One function owns the defaults, so the two call sites cannot disagree."""
-    settings = detection.auto_settings(DEFAULT_FRAMING, desktop)
-    assert set(settings) == {
-        "display",
-        "width",
-        "height",
-        "size_mode",
-        "framing",
-        "render_scale",
-        "smoothing",
-        "vsync",
-        "frame_limit",
-    }
-    assert settings["size_mode"] == "auto"
-    assert settings["framing"] == "keep"
-    assert settings["display"] in {mode.value for mode in DisplayMode}
-    if settings["display"] == DisplayMode.BORDERLESS.value:
-        assert (settings["width"], settings["height"]) == desktop
-    else:
-        assert detection.fits_on_desktop((settings["width"], settings["height"]), desktop)  # type: ignore[arg-type]
+def test_the_automatic_display_mode_is_always_concrete(desktop) -> None:
+    """AUTO defers to the machine; the result must not defer to anything."""
+    assert detection.auto_display_mode(DEFAULT_FRAMING, desktop).is_concrete
+
+
+def test_a_borderless_window_is_the_desktop_own_size() -> None:
+    """Borderless means the desktop's size, whatever the settings say."""
+    from src.core.display.stage import Stage, WindowSpec
+
+    stage = Stage.__new__(Stage)
+    assert Stage._window_size(
+        WindowSpec(width=800, height=600, mode=DisplayMode.BORDERLESS), (1920, 1080)
+    ) == (1920, 1080)
+    assert Stage._window_size(
+        WindowSpec(width=800, height=600, mode=DisplayMode.WINDOW), (1920, 1080)
+    ) == (800, 600)
+    assert stage is not None
 
 
 def test_centring_on_the_primary_screen() -> None:

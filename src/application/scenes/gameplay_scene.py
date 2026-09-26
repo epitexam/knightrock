@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pygame
@@ -13,6 +14,9 @@ from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
 from src.ui.menu_model import MenuAction
+from src.ui.panel_renderer import compact_panels, set_compact_panels
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -40,6 +44,7 @@ _STEP_KEY = pygame.K_F7
 _REPLAY_KEY = pygame.K_F8
 _EXPORT_KEY = pygame.K_F9
 _PANEL_FOCUS_KEY = pygame.K_F10
+_PANEL_LAYOUT_KEY = pygame.K_F11
 
 #: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
 #: anything else reaches the level untouched.
@@ -164,6 +169,10 @@ class GameplayScene(Scene):
             return True
         if key == _PANEL_FOCUS_KEY:
             self.level.renderer.ui_manager.cycle_compact_panel()
+            return True
+        if key == _PANEL_LAYOUT_KEY:
+            set_compact_panels(not compact_panels())
+            logger.info("Debug panels: %s layout", "compact" if compact_panels() else "full")
             return True
         return False
 

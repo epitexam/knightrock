@@ -338,6 +338,26 @@ class PanelLayout:
         return x, self.margin
 
 
+#: The debug panels come in a full and a compact layout. Which one is used used
+#: to be decided by comparing the surface against 1100x800, which meant the
+#: player's *render scale* -- a sharpness setting -- silently rearranged the
+#: panels. The design size is 1152x648 and the tall panels do not fit it, so the
+#: layout is now the developer's choice, toggled with F11, and the full stack
+#: stays reachable instead of rotting behind an unreachable branch.
+_compact_panels = True
+
+
+def compact_panels() -> bool:
+    """Whether the panels use the compact layout."""
+    return _compact_panels
+
+
+def set_compact_panels(compact: bool) -> None:
+    """Choose the panel layout. A developer setting, not a size heuristic."""
+    global _compact_panels
+    _compact_panels = compact
+
+
 class PanelRenderer:
     """Render debug panels and cache fonts."""
 

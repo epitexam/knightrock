@@ -9,7 +9,7 @@ def test_menu_model_moves_with_wrap_and_skips_disabled_items() -> None:
     model = MenuModel(
         [
             MenuItem("one", "One"),
-            MenuItem("locked", "Locked", False),
+            MenuItem("locked", "Locked", enabled=False),
             MenuItem("two", "Two"),
         ],
         wrap=True,
@@ -40,7 +40,7 @@ def test_menu_model_handles_hover_activation_and_empty_state() -> None:
     assert empty.current_item is None
     assert empty.move(1) is None
 
-    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", False)])
+    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", enabled=False)])
     rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
 
     assert model.hover((1, 1), rects) == "hover"
@@ -69,7 +69,7 @@ def test_menu_model_reports_a_hover_only_when_the_pointer_moves() -> None:
 
 def test_hovering_a_locked_item_reports_nothing() -> None:
     """A disabled row is not a place the focus can land, so it is not a move."""
-    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", False)])
+    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", enabled=False)])
     rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
 
     assert model.hover((5, 5), rects) == "hover"

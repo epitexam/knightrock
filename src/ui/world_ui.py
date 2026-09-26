@@ -432,20 +432,29 @@ class WorldUI:
             rectangles.extend(pygame.FRect(anchor[0], anchor[1], 0.0, 0.0) for anchor in anchors)
         return rectangles[0].unionall(rectangles[1:]) if len(rectangles) > 1 else rectangles[0]
 
-    @staticmethod
-    def _viewport(camera: Camera) -> pygame.Rect:
-        offset = getattr(camera, "offset", pygame.math.Vector2(0, 0))
-        width = float(getattr(camera, "width", 0) or 0)
-        height = float(getattr(camera, "height", 0) or 0)
-        if width <= 0 or height <= 0:
-            surface = pygame.display.get_surface()
-            width, height = (surface.get_width(), surface.get_height()) if surface else (0, 0)
-        return pygame.Rect(
-            offset.x - CULL_MARGIN_PX,
-            offset.y - CULL_MARGIN_PX,
-            width + 2 * CULL_MARGIN_PX,
-            height + 2 * CULL_MARGIN_PX,
+    def _viewport(self, camera: Camera) -> pygame.Rect:
+        """The cull rect, in render-target coordinates.
+
+        Derived from the camera's own transform and the surface it is drawing
+        into, both of which are constants during a frame. It used to fall back
+        to ``pygame.display.get_surface()``, which made the debug overlay's idea
+        of the screen the *window* rather than the target: on a resized window
+        the two disagree, and the overlay then culled against the wrong edge.
+        """
+        scale = self._target_scale(camera)
+        margin = int(CULL_MARGIN_PX * scale)
+        camera._ensure_frame()
+        visible = camera.apply_covering(
+            pygame.FRect(0.0, 0.0, camera.viewport_width, camera.viewport_height)
         )
+        return visible.inflate(margin * 2, margin * 2)
+
+    def _target_scale(self, camera: Camera) -> float:
+        """Target pixels per world unit, from the two sizes we are given."""
+        world_width = camera.viewport_width
+        if world_width <= 0:
+            return 1.0
+        return self.surface.get_width() / world_width
 
     @staticmethod
     def _display_name(sprite: pygame.sprite.Sprite) -> str:

@@ -10,7 +10,7 @@ from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
-from src.ui.panel_renderer import PanelLayout
+from src.ui.panel_renderer import PanelLayout, compact_panels
 from src.ui.ui_manager import UIManager
 
 DASH_STRETCH_X = 1.6
@@ -435,8 +435,7 @@ class Renderer:
             layout=layout,
             debug_stats=self.debug_metrics_snapshot(),
         )
-        compact = surface.get_width() < 1100 or surface.get_height() < 800
-        if compact:
+        if compact_panels():
             self.ui_manager.draw_compact_panel(player, layout, game)
         else:
             self.ui_manager.draw_combat_panel(layout)

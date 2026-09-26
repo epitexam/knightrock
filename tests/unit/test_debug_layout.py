@@ -239,6 +239,7 @@ def test_full_debug_panel_stack_never_overlaps(
     """End to end: every debug panel lands on its own rect, none stacks."""
     from src.core.rendering.camera import Camera as _Camera
     from src.core.rendering.renderer import Renderer
+    from src.ui.panel_renderer import set_compact_panels
 
     surface = pygame.Surface((1440, 900))
     renderer = Renderer(surface, _Camera(Framing(float(1440), float(900))))
@@ -261,19 +262,25 @@ def test_full_debug_panel_stack_never_overlaps(
     monkeypatch.setattr(PanelLayout, "place", spy_place)
     monkeypatch.setattr(PanelLayout, "place_top_right", spy_pin)
 
-    renderer.draw_debug_panels(
-        player=_full_player(),
-        fps=60.0,
-        sprite_count=1,
-        combat_count=1,
-        entity_count=1,
-        collision_count=1,
-        hit_stop=0.0,
-        spawn_cooldown=0.0,
-        game=None,
-        frame_time=16.0,
-        cache_size=0,
-    )
+    # The layout is a developer choice (F11), not a size heuristic, so the test
+    # asks for the one it means to check.
+    set_compact_panels(False)
+    try:
+        renderer.draw_debug_panels(
+            player=_full_player(),
+            fps=60.0,
+            sprite_count=1,
+            combat_count=1,
+            entity_count=1,
+            collision_count=1,
+            hit_stop=0.0,
+            spawn_cooldown=0.0,
+            game=None,
+            frame_time=16.0,
+            cache_size=0,
+        )
+    finally:
+        set_compact_panels(True)
 
     # PERFORMANCE (pinned), COMBAT, PLAYER STATE, STATS, KEYS, LEGEND.
     assert len(placed) == 6
