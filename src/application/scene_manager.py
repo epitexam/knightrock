@@ -9,7 +9,7 @@ frozen world).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
@@ -92,7 +92,7 @@ class SceneManager:
                 view_setter(surface)
             view_scale = getattr(view, "set_scale", None)
             if callable(view_scale):
-                view_scale(self.game.settings.ui_scale)
+                view_scale(self.game.ui_scale)
 
     def set_ui_scale(self, scale: float) -> None:
         for scene in self._stack:
@@ -126,4 +126,4 @@ class SceneManager:
     def _push(self, scene: Scene) -> None:
         self._stack.append(scene)
         scene.enter()
-        self.set_ui_scale(self.game.settings.ui_scale)
+        self.set_ui_scale(self.game.ui_scale)

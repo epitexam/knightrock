@@ -56,27 +56,32 @@ class _RebuiltSprite(_Sprite):
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
 
 
-def make_renderer(scale: int = 1) -> tuple[Renderer, SpriteGroups]:
+def make_renderer(density: float = 1.0) -> tuple[Renderer, SpriteGroups]:
     """A renderer on a target built the way the game builds one.
 
     The framing is the game's, not a test's own: a test that picks a framing
     and a surface separately can produce a pair the game would refuse, and then
-    it tests a configuration that cannot occur.
+    it tests a configuration that cannot occur. The default is a density of
+    exactly 1 so that "is the image reused" has an unambiguous answer; the tests
+    that care about magnification ask for more.
     """
-    surface = Viewport(DEFAULT_FRAMING, scale).surface
+    surface = Viewport(
+        DEFAULT_FRAMING,
+        (round(DEFAULT_FRAMING.width * density), round(DEFAULT_FRAMING.height * density)),
+    ).surface
     camera = Camera.for_target(surface)
     camera.set_world_size(640, 480)
     return Renderer(surface, camera), SpriteGroups()
 
 
-def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
-    """The scale cache must stay bounded while FX particles churn.
+def test_fx_sprites_do_not_grow_the_magnification_cache() -> None:
+    """The cache must stay bounded while FX particles churn.
 
     FX rebuild their image every tick, so caching them by ``id(image)``
     retained one surface per particle per tick for the whole session, with no
     eviction: a minute of combat was measured retaining tens of megabytes.
     """
-    renderer, groups = make_renderer(2)
+    renderer, groups = make_renderer(2.0)
     groups.all_sprites.add(_Sprite())
     for _ in range(200):
         particle = _RebuiltSprite()
@@ -90,7 +95,7 @@ def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
 
 def test_static_sprites_are_still_cached_across_frames() -> None:
     """The fix must not disable caching for the planes that benefit from it."""
-    renderer, groups = make_renderer(2)
+    renderer, groups = make_renderer(2.0)
     groups.all_sprites.add(_Sprite())
 
     renderer._collect_visible_blits(groups)
@@ -99,16 +104,19 @@ def test_static_sprites_are_still_cached_across_frames() -> None:
     assert len(renderer._scaled_cache) == 1
 
 
-def test_fx_sprites_are_still_scaled_to_the_render_scale() -> None:
-    """Not caching FX must not skip the render scale."""
-    renderer, groups = make_renderer(2)
+@pytest.mark.parametrize("density", [1.0, 1.25, 1.8889, 2.0])
+def test_fx_sprites_are_still_magnified_to_the_density(density: float) -> None:
+    """Not caching FX must not skip the magnification either."""
+    renderer, groups = make_renderer(density)
     groups.fx_sprites.add(_RebuiltSprite())
 
     blits = renderer._collect_visible_blits(groups)
+    expected = renderer.camera.scaled_size((40, 40))
 
-    assert [surface.get_size() for surface, _ in blits] == [(80, 80)]
-    # And the rect agrees, or pygame silently resamples the source to fit it.
-    assert [rect.size for _, rect in blits] == [(80, 80)]
+    assert [surface.get_size() for surface, _ in blits] == [expected]
+    # And the rect agrees exactly, or pygame silently resamples the source to
+    # fit it. At a fractional density this is the case that used to be wrong.
+    assert [rect.size for _, rect in blits] == [expected]
 
 
 def test_health_bars_report_the_rects_they_paint() -> None:
@@ -118,7 +126,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
     minimum width is wider than a narrow sprite, so it is not always inside
     the sprite's own rect.
     """
-    renderer, groups = make_renderer(1)
+    renderer, groups = make_renderer(1.0)
     entity = _Sprite((100.0, 100.0), size=16)
     entity.max_health = 100
     entity.health = 40
@@ -130,7 +138,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
 
 
 def test_health_bars_report_nothing_without_health() -> None:
-    renderer, _ = make_renderer(1)
+    renderer, _ = make_renderer(1.0)
     entity = _Sprite()
     entity.max_health = 0
     entity.health = 0
@@ -138,15 +146,19 @@ def test_health_bars_report_nothing_without_health() -> None:
     assert renderer.draw_health_bars([entity]) == []
 
 
-def test_a_resolution_change_drops_the_converted_art(game_runtime) -> None:
+def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     """``set_mode`` invalidates converted surfaces, so both caches must go.
 
     ``AssetLibrary`` has no display to compare against and cannot notice on
     its own, which left stale surfaces being blitted through a software alpha
     path and a full re-decode of the art on the next frame that touched a new
     animation.
+
+    There is no resolution to change any more, so the display *mode* is what
+    rebuilds the window, and this is the path that has to carry it.
     """
     from src.core.asset_library import shared_library
+    from src.core.display.mode import DisplayMode
 
     game = game_runtime
     game.initialize_display()
@@ -156,7 +168,7 @@ def test_a_resolution_change_drops_the_converted_art(game_runtime) -> None:
     fx._frames_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
     fx._frames_miss = True
 
-    game.apply_settings(replace(game.settings, width=800, height=600))
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert library._cache == {}
     assert library._frame_cache == {}

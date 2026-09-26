@@ -97,7 +97,7 @@ def playing(tmp_path: pathlib.Path):
     # Exactly the state the last tick before a pause leaves behind.
     level.camera.offset.x += 10.0
     level.camera.offset.y += 10.0
-    assert game.viewport is not None
+    assert game.presentation is not None
     return game
 
 
@@ -129,7 +129,7 @@ def test_a_halted_scene_repaints_identical_pixels(playing: Game) -> None:
     for _ in range(3):
         _advance(playing)
 
-    target = playing.viewport.surface if playing.viewport is not None else None
+    target = playing.presentation.surface if playing.presentation is not None else None
     assert target is not None
     stack = _stack_names(playing)
     previous = _snapshot(target)

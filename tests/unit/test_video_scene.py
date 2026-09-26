@@ -8,6 +8,10 @@ that stays grey, because it answers back.
 These tests click, the way a pointer does -- at the rectangle the view actually
 drew -- rather than calling the cyclers directly, so a row that is unreachable
 by mouse cannot pass by having a working key binding.
+
+The screen has one row fewer than it had, and the one that went is the reason
+this file is short: there is no resolution any more. What replaced it is a
+read-out of the window, which no pointer and no key can change.
 """
 
 from types import SimpleNamespace
@@ -17,26 +21,43 @@ import pytest
 
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
-from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
-from src.core.display.viewport import Viewport
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 
 #: Rows that do something of their own rather than cycling a value.
-ACTION_ROWS = frozenset({"size", "reset", "back"})
+ACTION_ROWS = frozenset({"reset", "back"})
+
+#: The one row that is a read-out: it reports what the game derived from the
+#: window and is reachable by nothing. It has to be named here, because the
+#: check below is "no row is outside both lists" and a row nobody can act on is
+#: exactly the shape of the bug that started this file.
+REPORT_ROWS = frozenset({"info"})
 
 #: Rows whose value is a yes/no. Everything else in ``CYCLING_ROWS`` is a list.
-BOOLEAN_ROWS = frozenset({"smoothing", "vsync"})
+#: It has to be the complement of the list rows: a boolean is *flipped* by a
+#: click and *set* by a key, on purpose, so a boolean that leaked into the list
+#: comparison would look like a drift between two paths that agree by design.
+BOOLEAN_ROWS = frozenset({"pixel_perfect", "vsync"})
+LIST_ROWS = frozenset(VideoScene.CYCLING_ROWS) - BOOLEAN_ROWS
+
+#: A window with room for a whole multiple of the framing, so every row that can
+#: be enabled is. The read-out row needs one to report at all.
+WINDOW = (2304, 1296)
 
 
 def _game(display: DisplayMode = DisplayMode.WINDOW) -> SimpleNamespace:
     game = SimpleNamespace(
         settings=UserSettings().with_video(display=display),
         scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
-        # No window yet, which the screen handles: the cost hint is about a
-        # window that is too large, and there is not one to be large.
-        stage=None,
+        stage=SimpleNamespace(size=WINDOW),
+        presentation=SimpleNamespace(
+            stage=pygame.Surface(WINDOW),
+            pixel_perfect=False,
+            window_size=WINDOW,
+            density=2.0,
+        ),
+        ui_scale=1.0,
     )
 
     def apply_settings(settings: UserSettings) -> None:
@@ -58,7 +79,7 @@ def _drawn(display: DisplayMode = DisplayMode.WINDOW) -> VideoScene:
     """A scene whose view has laid out, so its row rectangles exist."""
     pygame.init()
     scene = VideoScene(_game(display))
-    scene.draw(Viewport(DEFAULT_FRAMING, 1).surface)
+    scene.draw(pygame.Surface((1152, 648)))
     return scene
 
 
@@ -109,9 +130,7 @@ def test_a_click_on_a_boolean_row_toggles_it(action: str) -> None:
     assert scene.game.settings == _drawn().game.settings
 
 
-@pytest.mark.parametrize(
-    "action", tuple(a for a in VideoScene.CYCLING_ROWS if a not in BOOLEAN_ROWS)
-)
+@pytest.mark.parametrize("action", sorted(LIST_ROWS))
 def test_a_click_steps_a_list_row_like_the_right_key(action: str) -> None:
     """The two paths are one implementation, so they cannot drift again."""
     by_click = _drawn()
@@ -132,29 +151,47 @@ def test_every_row_does_something() -> None:
     invisible until someone tries it.
     """
     scene = _drawn()
-    reachable = set(VideoScene.CYCLING_ROWS) | ACTION_ROWS
+    reachable = set(VideoScene.CYCLING_ROWS) | ACTION_ROWS | REPORT_ROWS
 
     assert {item.action for item in scene.model.items} <= reachable
+    # And the three sets are disjoint, so a row cannot be quietly claimed by
+    # two of them and left to whichever runs first.
+    assert not set(VideoScene.CYCLING_ROWS) & ACTION_ROWS
+    assert not REPORT_ROWS & (set(VideoScene.CYCLING_ROWS) | ACTION_ROWS)
+    for item in scene.model.items:
+        if item.action in REPORT_ROWS:
+            assert not item.enabled, "a read-out row must not be actionable"
 
 
-def test_the_size_row_opens_the_picker() -> None:
+def test_no_row_opens_another_screen() -> None:
+    """The resolution picker is gone and nothing replaced it.
+
+    It was the last place in the game that could claim a size for the player's
+    monitor. A click anywhere on this screen now either changes a value or does
+    nothing, which is a much easier thing to hold to account.
+    """
     pushed: list[object] = []
     scene = _drawn()
     scene.game.scene_manager.push = pushed.append
 
-    _click(scene, _row(scene, "size"))
+    for index, item in enumerate(scene.model.items):
+        if not item.enabled:
+            continue
+        _click(scene, index)
 
-    assert len(pushed) == 1
+    assert pushed == []
 
 
 def test_the_reset_row_resets() -> None:
     scene = _drawn()
-    scene.game.settings = scene.game.settings.with_video(smoothing=False)
+    scene.game.settings = scene.game.settings.with_video(pixel_perfect=True, vsync=True)
     before = scene.game.settings
 
     _click(scene, _row(scene, "reset"))
 
     assert scene.game.settings != before
+    assert scene.game.settings.pixel_perfect is False
+    assert scene.game.settings.vsync is False
 
 
 def test_the_back_row_leaves() -> None:
@@ -167,8 +204,20 @@ def test_the_back_row_leaves() -> None:
     assert calls == ["pop"]
 
 
-def test_the_size_row_is_unavailable_without_a_window() -> None:
-    """Borderless owns the size, so the row says so instead of pretending."""
-    scene = _drawn(DisplayMode.BORDERLESS)
+def test_whole_pixel_art_is_unavailable_on_a_window_too_small_for_one() -> None:
+    """The row that can be unavailable, and it says which it is.
 
-    assert not scene.model.items[_row(scene, "size")].enabled
+    Whole-pixel art snaps the picture to a whole multiple of the framing, and a
+    window narrower than the framing has none to snap to. The row is then off and
+    labelled, rather than reading "off" on a window where it would do nothing --
+    a row that claims a setting it cannot honour.
+    """
+    game = _game()
+    game.presentation.window_size = (800, 600)
+    game.stage = SimpleNamespace(size=(800, 600))
+    scene = VideoScene(game)
+    scene.draw(pygame.Surface((1152, 648)))
+
+    item = scene.model.items[_row(scene, "pixel_perfect")]
+    assert not item.enabled
+    assert "too small" in item.value

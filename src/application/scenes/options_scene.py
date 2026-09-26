@@ -38,7 +38,7 @@ class OptionsScene(Scene):
                 MenuItem("back", "Back"),
             )
         )
-        self.view = MenuView(game.settings.ui_scale)
+        self.view = MenuView(game.ui_scale)
 
     def update(self, delta_time: float) -> None:
         return None
@@ -66,5 +66,5 @@ class OptionsScene(Scene):
         return action
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.view.set_scale(self.game.settings.ui_scale)
+        self.view.set_scale(self.game.ui_scale)
         self.view.draw(surface, self.TITLE, self.model, top=220)

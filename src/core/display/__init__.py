@@ -1,4 +1,4 @@
-"""The display subsystem: framing, viewport, window and presentation.
+"""The display subsystem: framing, letterbox, window and presentation.
 
 Four objects with four jobs, kept apart on purpose:
 
@@ -6,11 +6,12 @@ Four objects with four jobs, kept apart on purpose:
     How much of the world is visible. Fixed, in world units. The only display
     quantity the simulation may read.
 ``Viewport``
-    The fixed-size surface everything is drawn into.
+    The surface everything is drawn into, at the window's own size.
 ``Stage``
-    The OS window. Mode, size, position, DPI, vsync.
+    The OS window. Mode, position, DPI, vsync. It has no opinion about size.
 ``Presentation``
-    Viewport onto window, and the pointer back. The only place that scales.
+    Window and target, and the pointer back. The only place that reconciles
+    them, and it does not scale: the picture is blitted 1:1.
 """
 
 from .detection import (
@@ -18,21 +19,17 @@ from .detection import (
     desktop_refresh_rates,
     desktop_size,
     desktop_sizes,
-    fits_on_desktop,
-    largest_window_size,
-    window_size_choices,
+    initial_window_size,
 )
-from .framing import DEFAULT_FRAMING, Framing, checked_render_scale
+from .framing import DEFAULT_FRAMING, Framing
+from .letterbox import density_for, fits_whole_pixel, letterbox
 from .mode import DisplayMode
 from .presentation import Presentation
 from .stage import Stage, WindowSpec
-from .viewport import DEFAULT_RENDER_SCALE, RENDER_SCALES, Viewport
+from .viewport import Viewport
 
 __all__ = [
     "DEFAULT_FRAMING",
-    "checked_render_scale",
-    "DEFAULT_RENDER_SCALE",
-    "RENDER_SCALES",
     "DisplayMode",
     "Framing",
     "Presentation",
@@ -43,7 +40,8 @@ __all__ = [
     "desktop_refresh_rates",
     "desktop_size",
     "desktop_sizes",
-    "fits_on_desktop",
-    "largest_window_size",
-    "window_size_choices",
+    "density_for",
+    "fits_whole_pixel",
+    "initial_window_size",
+    "letterbox",
 ]

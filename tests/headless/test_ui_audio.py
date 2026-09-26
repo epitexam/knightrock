@@ -19,7 +19,6 @@ from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.mode import DisplayMode
-from src.core.display.size_mode import SizeMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
@@ -85,19 +84,29 @@ def test_opening_a_screen_and_coming_back_are_two_distinct_effects(
 
 def test_a_value_change_in_place_is_a_confirmation(manager: SceneManager, feedback) -> None:
     """→ on a value row adjusts the setting without leaving the screen."""
-    manager.game.settings = manager.game.settings.with_video(
-        display=DisplayMode.WINDOW, size_mode=SizeMode.MANUAL
-    )
+    manager.game.settings = manager.game.settings.with_video(display=DisplayMode.WINDOW)
     manager.switch(VideoScene(manager.game))
-    before = (manager.game.settings.width, manager.game.settings.height)
+    before = manager.game.settings.vsync
 
-    press(manager, pygame.K_DOWN)  # onto the window size row
+    # Walk onto the vsync row by name rather than by counting presses: a row can
+    # be disabled (whole-pixel art on a window too small for one), and the model
+    # skips what it cannot select.
+    scene = manager.current
+    assert isinstance(scene, VideoScene)
+    for _ in range(len(scene.model.items)):
+        current = scene.model.current_item
+        assert current is not None
+        if current.action == "vsync":
+            break
+        press(manager, pygame.K_DOWN)
+    moves = len(feedback.cues)
+
     press(manager, pygame.K_RIGHT)
 
-    assert (manager.game.settings.width, manager.game.settings.height) != before
+    assert manager.game.settings.vsync != before
     assert isinstance(manager.current, VideoScene)
-    # The move onto the row is a navigation; the change is the confirmation.
-    assert feedback.cues == [UiEffect.NAVIGATED, UiEffect.CONFIRMED]
+    # The moves onto the row are navigation; the change is the confirmation.
+    assert feedback.cues == [UiEffect.NAVIGATED] * moves + [UiEffect.CONFIRMED]
 
 
 def test_a_single_press_of_a_held_direction_publishes_once(manager: SceneManager, feedback) -> None:

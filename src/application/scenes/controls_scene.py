@@ -87,7 +87,7 @@ class ControlsScene(Scene):
         self.model = MenuModel(
             items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
-        self.view = ControlsView(game.settings.ui_scale)
+        self.view = ControlsView(game.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
         self._capture: tuple[int, int] | None = None
         # The pointer's own cell, apart from the selection, for the same reason
@@ -715,7 +715,7 @@ class ControlsScene(Scene):
         return "/".join(str(code) for code in ControlsScene._codes(value))
 
     def draw(self, surface: pygame.Surface) -> None:
-        self.view.set_scale(self.game.settings.ui_scale)
+        self.view.set_scale(self.game.ui_scale)
         title = "MENU CONTROLS" if self.section == self.MENU_SECTION else "GAMEPLAY CONTROLS"
         footers: tuple[str, ...] = ("↑↓ row · ←→ column · Enter capture · Esc/B back",)
         if self._status:

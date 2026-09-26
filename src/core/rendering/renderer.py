@@ -65,7 +65,7 @@ class Renderer:
     ) -> None:
         self.surface = surface
         self.camera = camera
-        self.ui_manager = UIManager(surface)
+        self.ui_manager = UIManager(surface, camera.density)
         self.background_color = self._resolve_background_color(config)
         self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
         self._ghost_timer: float = 0.0
@@ -99,12 +99,14 @@ class Renderer:
         # while the images move to the new one, which is the mismatch that draws
         # a world at the wrong size with no error anywhere.
         self.camera.set_target(surface)
-        self.ui_manager.set_surface(surface)
+        # The camera has just re-read the density, so the interface's two scales
+        # are derived from it here rather than each keeping its own copy.
+        self.ui_manager.set_surface(surface, self.camera.density)
         self._scaled_cache.clear()
         self._flash_cache.clear()
 
     @property
-    def _render_scale(self) -> int:
+    def _density(self) -> float:
         """Target pixels per world unit, as the camera computed it.
 
         Not derived here as well. Two derivations of the same number is one too
@@ -112,22 +114,21 @@ class Renderer:
         rectangles, so a disagreement would scale the images and not the rects
         and the frame would show a world half the size it claims to.
         """
-        return self.camera.scale
+        return self.camera.density
 
     def _scaled_image(self, image: pygame.Surface) -> pygame.Surface:
-        """Scale ``image`` to the render scale, caching the result.
+        """Magnify ``image`` to the density, caching the result.
 
-        Returns the image untouched at scale 1 so a 1x build never pays for
-        scaling.
+        Returns the image untouched at a density of exactly 1 so a target that
+        needs no magnification never pays for one.
         """
-        scale = self._render_scale
-        if scale == 1:
+        if self._density == 1.0:
             return image
         key = id(image)
         cached = self._scaled_cache.get(key)
         if cached is not None:
             return cached[1]
-        scaled = self._rescale(image, scale)
+        scaled = self._rescale(image)
         self._scaled_cache[key] = (image, scaled)
         return scaled
 
@@ -155,31 +156,28 @@ class Renderer:
         return silhouette
 
     def _scaled_image_once(self, image: pygame.Surface) -> pygame.Surface:
-        """Scale a transient surface to the render scale, without caching it.
+        """Magnify a transient surface to the density, without caching it.
 
         Afterimages and damage flashes build a brand new surface every frame,
         so caching them by ``id()`` would grow the cache forever. They are
         short-lived by nature, so scaling them directly is both correct and
         cheap enough.
         """
-        scale = self._render_scale
-        if scale == 1:
+        if self._density == 1.0:
             return image
-        return self._rescale(image, scale)
+        return self._rescale(image)
 
-    @staticmethod
-    def _rescale(image: pygame.Surface, scale: int) -> pygame.Surface:
-        """Scale a surface by an integer factor, nearest neighbour.
+    def _rescale(self, image: pygame.Surface) -> pygame.Surface:
+        """Magnify a surface to the density, nearest neighbour.
 
-        Nearest because the factor is an integer: the art is authored at one
-        pixel per world unit and this reproduces every source pixel exactly, so
-        an upscaled sprite is a clean block of whole pixels rather than a
-        smoothed approximation of one. Smoothing belongs to the present step,
-        which is the only place a non-integer factor ever appears.
+        Nearest, and the size asked of the camera rather than computed here:
+        the art is authored at one pixel per world unit, so a magnified sprite
+        stays a block of whole source pixels instead of a smoothed
+        approximation of one, and the destination rectangle the sprite is blitted
+        into is built from the very same number -- which is what keeps
+        ``pygame.blit`` from resampling it behind our back.
         """
-        return pygame.transform.scale(
-            image, (max(1, image.get_width() * scale), max(1, image.get_height() * scale))
-        )
+        return pygame.transform.scale(image, self.camera.scaled_size(image.get_size()))
 
     def _record_debug_sample(self, name: str, elapsed_ms: float) -> None:
         self._debug_samples[name].append(elapsed_ms)
@@ -223,6 +221,7 @@ class Renderer:
         shrank left a stripe behind whenever that bookkeeping slipped. A full
         repaint has no such window.
         """
+        started = perf_counter()
         self.camera.begin_frame(alpha)
         self._dashing_player = self._find_dashing_player(groups)
         self.surface.fill(self.background_color)
@@ -278,7 +277,7 @@ class Renderer:
                 blits.append(
                     (
                         self._scaled_image_once(sprite.image),
-                        self.camera.apply_covering(sprite.rect),
+                        self.camera.apply_snapped(sprite.rect),
                     )
                 )
         return blits
@@ -287,7 +286,7 @@ class Renderer:
         rect = sprite.rect
         if rect is None:
             return pygame.Rect(0, 0, 0, 0)
-        return self.camera.apply_covering(pygame.FRect(rect))
+        return self.camera.apply_snapped(pygame.FRect(rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """White damage-flash overlays for recently hit entities.
@@ -305,7 +304,7 @@ class Renderer:
             overlay = self._white_silhouette(sprite.image)
             overlay = overlay.copy()
             overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
-            screen_rect = self.camera.apply_covering(sprite.rect)
+            screen_rect = self.camera.apply_snapped(sprite.rect)
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
@@ -354,7 +353,7 @@ class Renderer:
         has to be mapped: reusing the camera transform keeps the shake identical
         to every other sprite, and costs no rescale per frame.
         """
-        return self.camera.apply_covering(world_rect).center
+        return self.camera.apply_snapped(world_rect).center
 
     def _spawn_afterimage(self, groups: SpriteGroups) -> None:
         """Snapshot dashing players into fading ghosts.
@@ -376,7 +375,7 @@ class Renderer:
             # stretch is applied once here, at spawn; only the centre is mapped
             # per frame afterwards, so the trail costs no rescale per tick.
             ghost = self._scaled_image_once(ghost)
-            ghost = dash_frame(ghost, self.camera.apply_covering(sprite.rect), apply_tint=False)[0]
+            ghost = dash_frame(ghost, self.camera.apply_snapped(sprite.rect), apply_tint=False)[0]
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
@@ -421,7 +420,11 @@ class Renderer:
             self._record_debug_sample("panels_ms", 0.0)
             return
         surface = self.ui_manager.renderer.surface
-        layout = PanelLayout(surface.get_width(), surface.get_height())
+        layout = PanelLayout(
+            surface.get_width(),
+            surface.get_height(),
+            scale=self.ui_manager.renderer.screen_scale,
+        )
         # PERFORMANCE is pinned first so the column flow can reserve it and
         # wrap around it; COMBAT counters then lead the flow, so the tall
         # PLAYER STATE / STATS panels can never overdraw them.

@@ -41,18 +41,27 @@ from src.core.game import Game
 
 #: The display states worth watching, in the order the acceptance run shows
 #: them. The window geometry is checked after each one.
+#:
+#: There is no size to walk any more. The window is the source of truth, so the
+#: only states left are the ones the player chooses: how to occupy the screen, and
+#: whether to trade filling the window for whole-pixel art. The manual
+#: ``pygame.display.set_mode`` below is what stands in for a player dragging the
+#: window edge, which the acceptance run cannot ask them to do on cue.
 WALKTHROUGH = [
-    ("borderless, whatever the machine picked", DisplayMode.BORDERLESS, None),
-    ("window, auto size", DisplayMode.WINDOW, None),
-    ("window, manual size", DisplayMode.WINDOW, (1280, 720)),
-    ("borderless again", DisplayMode.BORDERLESS, None),
+    ("borderless, whatever the machine picked", DisplayMode.BORDERLESS, False),
+    ("window, as large as fits", DisplayMode.WINDOW, False),
+    ("window, whole-pixel art", DisplayMode.WINDOW, True),
+    ("borderless again", DisplayMode.BORDERLESS, False),
 ]
+
+#: Sizes a player would drag to, applied by hand to stand in for a drag.
+DRAG_SIZES = [(1920, 1080), (1280, 720), (800, 600), (2560, 1440)]
 
 
 def _report(game: Game) -> None:
     settings = game.settings
-    stage, viewport, presentation = game.stage, game.viewport, game.presentation
-    assert stage is not None and viewport is not None and presentation is not None
+    stage, presentation = game.stage, game.presentation
+    assert stage is not None and presentation is not None
     desktop = detection.desktop_size()
     print("\n" + "=" * 72)
     print("WHAT THE GAME DECIDED ABOUT THIS MACHINE")
@@ -60,34 +69,44 @@ def _report(game: Game) -> None:
     print(f"  desktop reported      {desktop[0]} x {desktop[1]}")
     print(f"  refresh rates         {detection.desktop_refresh_rates() or 'unknown'}")
     print(f"  display mode          {settings.display.value}")
-    print(
-        f"  window size           {settings.width} x {settings.height} ({settings.size_mode.value})"
-    )
     print(f"  window granted        {stage.size[0]} x {stage.size[1]}")
     print(f"  window position       {pygame.display.get_window_position()}")
-    print(
-        f"  render target         {viewport.size[0]} x {viewport.size[1]} (scale {viewport.scale})"
-    )
+    print(f"  render target         {presentation.surface.get_size()}")
     print(f"  framing (world units) {DEFAULT_FRAMING.size[0]:.0f} x {DEFAULT_FRAMING.height:.0f}")
+    print(
+        f"  pixel density         {presentation.density:.3f}   whole-pixel {settings.pixel_perfect}"
+    )
     print(f"  presented rect        {tuple(presentation.rect)}")
-    print(f"  presentation scale    {presentation.fit:.3f}   smoothing {settings.smoothing}")
     bars = presentation.bars
     print(f"  letterbox bars        {len(bars)}  {[tuple(b) for b in bars] or 'none'}")
+    print(f"  interface scale       {game.ui_scale:.3f}  (preference {settings.ui_scale})")
     print(f"  vsync requested       {settings.vsync}   driver reports {pygame.display.is_vsync()}")
     print(f"  frame limit           {settings.frame_limit or 'uncapped'}")
     print()
     print("  CHECK BY HAND:")
     print("   - the window is centred on the primary screen")
     print("   - the image keeps its shape, with black bars and no stretch")
+    print("   - the picture is sharp: no soft edges, no doubled pixels")
     print("   - the menus are readable and the gauges sit where they should")
     print("   - dragging the window edge does NOT change how much world you see")
 
 
-def _apply(game: Game, mode: DisplayMode, size: tuple[int, int] | None) -> None:
-    changes: dict[str, object] = {"display": mode}
-    if size is not None:
-        changes.update(width=size[0], height=size[1])
-    game.apply_settings(game.settings.with_video(**changes))
+def _apply(game: Game, mode: DisplayMode, pixel_perfect: bool) -> None:
+    game.apply_settings(game.settings.with_video(display=mode, pixel_perfect=pixel_perfect))
+
+
+def _drag_to(game: Game, size: tuple[int, int]) -> None:
+    """Stand in for a player dragging the window edge.
+
+    A real drag arrives as a ``VIDEORESIZE`` event and goes through
+    ``Game._retarget``; this reproduces the same cascade by hand, because the
+    acceptance run cannot ask anyone to drag on cue.
+    """
+    assert game.stage is not None and game.presentation is not None
+    game.stage.surface = pygame.display.set_mode(size, pygame.RESIZABLE)
+    game.presentation.retarget(game.stage.surface)
+    game._retarget()
+    pygame.event.post(pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size))
 
 
 def main() -> None:
@@ -127,11 +146,17 @@ def main() -> None:
 
     import time
 
-    for index, (title, mode, size) in enumerate(WALKTHROUGH):
+    for index, (title, mode, pixel_perfect) in enumerate(WALKTHROUGH):
         if index:
             print(f"\n--- {title} : {arguments.hold:.0f}s, watch the window ---")
             time.sleep(arguments.hold)
-        _apply(game, mode, size)
+        _apply(game, mode, pixel_perfect)
+        _report(game)
+
+    for size in DRAG_SIZES:
+        print(f"\n--- dragging the window to {size[0]} x {size[1]} ---")
+        time.sleep(arguments.hold)
+        _drag_to(game, size)
         _report(game)
 
     if arguments.once:

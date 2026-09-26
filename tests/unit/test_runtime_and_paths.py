@@ -1,16 +1,19 @@
 """Tests for resource lookup and the top-level game runtime boundary."""
 
 import sys
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import Mock
 
 import pygame
 import pytest
 
+from src.application.settings_store import UserSettings
+from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
-from src.core.display.size_mode import SizeMode
+from src.core.display.stage import Stage, WindowSpec
+from src.core.display.viewport import Viewport
 from src.core.game import Game
 from src.core.level.level_manager import LevelManager
 from src.core.paths import PROJECT_ROOT, resource_path
@@ -207,21 +210,10 @@ def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
     )
     game._initialize()
 
-    # Borderless takes the desktop's size and ignores the stored one, so the
-    # mode is pinned to make the size the thing under test.
-    game.apply_settings(
-        replace(
-            game.settings,
-            display=DisplayMode.WINDOW,
-            width=800,
-            height=600,
-            size_mode=SizeMode.MANUAL,
-            vsync=True,
-        )
-    )
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW, vsync=True))
 
     assert game.surface is not None
-    assert game.surface.get_size() == (800, 600)
+    assert game.surface.get_size() == game.stage.size
     assert game.settings.vsync is True
 
 
@@ -230,15 +222,15 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
 ) -> None:
     """The two modes, by what they ask the driver for.
 
-    Windowed is resizable: the window used to be fixed because the camera was
-    built from its size, so a drag would have changed what the player could
-    see. It no longer does, so the drag is harmless. Borderless asks for
-    FULLSCREEN *at the desktop's own size* rather than a mode change, which is
-    what keeps it safe on a hybrid-GPU laptop.
+    Windowed is resizable, and the drag is the point: the window is the render
+    target, so a resize is a first-class case rather than something to protect
+    the picture from. Borderless asks for FULLSCREEN *at the desktop's own size*
+    rather than a mode change, which is what keeps it safe on a hybrid-GPU
+    laptop.
 
     ``pygame.SCALED`` is deliberately absent. It was doing the letterboxing,
-    which the render target now does itself, and pygame's documentation calls
-    it an experimental API.
+    which the render target now does itself, and pygame's documentation calls it
+    an experimental API.
     """
     game = Game(
         save_path=tmp_path / "savegame.json",
@@ -248,21 +240,20 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     set_mode = Mock(wraps=pygame.display.set_mode)
     monkeypatch.setattr(pygame.display, "set_mode", set_mode)
 
-    game.apply_settings(
-        replace(
-            game.settings,
-            display=DisplayMode.WINDOW,
-            width=1280,
-            height=720,
-            size_mode=SizeMode.MANUAL,
-        )
-    )
+    # From a mode that is definitely not the one under test: the dummy driver
+    # reports a desktop whose shape depends on whichever test ran last, so
+    # AUTO may already have resolved to WINDOW here.
+    game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     windowed_flags = set_mode.call_args.args[1]
     assert windowed_flags & pygame.RESIZABLE
     assert not windowed_flags & pygame.FULLSCREEN
     assert not windowed_flags & pygame.SCALED
-    assert set_mode.call_args.args[0] == (1280, 720)
+    # No size of our own: the desktop decides how big a window to open, and the
+    # player drags it from there.
+    requested = set_mode.call_args.args[0]
+    assert requested == detection.initial_window_size(detection.desktop_size())
 
     game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
 
@@ -270,70 +261,108 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     assert fullscreen_flags & pygame.FULLSCREEN
     assert not fullscreen_flags & pygame.RESIZABLE
     assert not fullscreen_flags & pygame.SCALED
+    assert set_mode.call_args.args[0] == detection.desktop_size()
 
 
-def test_changing_the_window_never_reaches_the_render_target(tmp_path: Path) -> None:
-    """A new resolution rebuilds the window and nothing else.
+def test_fullscreen_asks_sdl_for_the_displays_own_mode(tmp_path: Path) -> None:
+    """``(0, 0)`` is how SDL is told to use the current mode.
 
-    This is the payoff of the fixed render target: the resolution used to be
-    the size everything was drawn into, so changing it re-laid out every view
-    and re-decoded the art. Now the target is a constant and the only thing
-    that changes is the rectangle the finished frame is scaled into.
+    The alternative is asking for a resolution, which is the claim this whole
+    rework removed: a mode change to a size the game picked, on a panel it never
+    measured.
+    """
+    spec = WindowSpec(mode=DisplayMode.FULLSCREEN)
+    assert Stage._window_size(spec, (2560, 1440)) == (0, 0)
+
+
+def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> None:
+    """The regression, as a runtime property.
+
+    The window used to be rebuilt from a stored size, and the target was a
+    constant, so a player who set a resolution saw the menu and the screen
+    disagree -- in borderless the window is the desktop's size whatever the file
+    says, and nothing wrote the difference back. There is no setting left that
+    could describe a window, which is the only way to be sure no two of them can
+    disagree.
     """
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
     game._initialize()
-    propagate = Mock()
 
-    windowed = replace(
-        game.settings,
-        display=DisplayMode.WINDOW,
-        size_mode=SizeMode.MANUAL,
-        width=1920,
-        height=1080,
-    )
-    game.apply_settings(windowed)
-    assert propagate.call_count == 0
-    game.scene_manager.set_surface = propagate  # type: ignore[method-assign]
-
-    game.apply_settings(replace(game.settings, width=1280, height=720))
-
-    assert (game.settings.width, game.settings.height) == (1280, 720)
-    assert game.surface is not None
-    assert game.surface.get_size() == (1280, 720)
-    assert game.viewport is not None
-    # "Unchanged", not a literal size: the render scale is now derived from the
-    # window at launch, so hardcoding 2x here would be asserting the default
-    # rather than the invariant.
-    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(game.viewport.scale)
-    assert game.settings.render_scale == game.viewport.scale
-    propagate.assert_not_called(), "a window change must not reach the views"
+    names = {field.name for field in fields(UserSettings)}
+    assert not names & {"width", "height", "size_mode", "render_scale", "smoothing"}
+    assert names == {
+        "bindings",
+        "display",
+        "pixel_perfect",
+        "vsync",
+        "frame_limit",
+        "ui_scale",
+    }
 
 
-def test_a_video_resize_only_recomputes_the_presentation(
+class FakeWindow:
+    """A window that changes size in place, the way SDL's surface does.
+
+    ``pygame`` gives back one surface object and a resize changes its size, so
+    ``Presentation`` must be able to notice without being handed a new object.
+    A plain ``pygame.Surface`` cannot do that -- it has no resize -- which is
+    why this exists rather than a mock of ``Presentation`` itself: the method
+    under test is ``recompute``, and a mock of it would prove nothing.
+    """
+
+    def __init__(self, size: tuple[int, int]) -> None:
+        self._size = size
+        self.surface = pygame.Surface(size)
+
+    def get_size(self) -> tuple[int, int]:
+        return self._size
+
+    def resize(self, size: tuple[int, int]) -> None:
+        self._size = size
+        self.surface = pygame.Surface(size)
+
+    def fill(self, *args: object, **kwargs: object) -> None:
+        self.surface.fill(*args, **kwargs)  # type: ignore[arg-type]
+
+    def blit(self, *args: object, **kwargs: object) -> None:
+        self.surface.blit(*args, **kwargs)  # type: ignore[arg-type]
+
+
+def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """``VIDEORESIZE`` used to be dropped to protect the logical resolution.
 
-    Nothing has to be protected any more: the visible world is the framing, and
-    the render target's size has nothing to do with the window. So the event is
-    handled rather than ignored, and what it does is recompute the letterbox.
+    There is no logical resolution left to protect: the visible world is the
+    framing, and the target *is* the window. So the event is handled rather than
+    ignored, and what it does is rebuild the target, re-read the density and
+    re-lay out the interface -- the same cascade a display change goes through,
+    which is why it is one method.
     """
+    from src.core.display.letterbox import letterbox
+
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
     game._initialize()
-    assert game.viewport is not None
-    target_size = game.viewport.size
-    recompute = Mock()
     assert game.presentation is not None
-    game.presentation.recompute = recompute  # type: ignore[method-assign]
-    reconfigure = Mock(side_effect=game.initialize_display)
-    monkeypatch.setattr(game, "initialize_display", reconfigure)
-    for size in ((1024, 768), (800, 600), (1920, 1080)):
+    # Pinned rather than taken from the runtime: under the dummy driver the
+    # desktop is whatever the last test left behind, so the window the game
+    # opened is not the same from one run to the next.
+    window = FakeWindow((1600, 900))
+    game.presentation.stage = window  # type: ignore[assignment]
+    game.presentation.recompute()
+    notified = Mock()
+    game.scene_manager.set_surface = notified  # type: ignore[method-assign]
+    start = game.presentation.surface.get_size()
+
+    for size in ((1920, 1080), (1024, 768), (800, 600)):
+        assert letterbox(size, DEFAULT_FRAMING).size != start
+        window.resize(size)
         monkeypatch.setattr(
             pygame.event,
             "get",
@@ -344,53 +373,37 @@ def test_a_video_resize_only_recomputes_the_presentation(
 
         game._handle_events()
 
-    assert recompute.call_count == 3
-    reconfigure.assert_not_called()
-    assert game.viewport.size == target_size
-    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(game.viewport.scale)
+        assert game.presentation.surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        assert game.presentation.density == pytest.approx(
+            letterbox(size, DEFAULT_FRAMING).width / DEFAULT_FRAMING.width
+        )
+        assert game.ui_scale == pytest.approx(game.settings.ui_scale * game.presentation.density)
+
+    # Once per new picture, and every surface handed over is the one that is
+    # about to be drawn into.
+    assert notified.call_count == 3, "the views were never told about the new target"
+    handed = [call.args[0] for call in notified.call_args_list]
+    assert handed == [
+        Viewport(DEFAULT_FRAMING, letterbox(size, DEFAULT_FRAMING).size).surface
+        for size in ((1920, 1080), (1024, 768), (800, 600))
+    ] or all(
+        surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        for surface, size in zip(handed, ((1920, 1080), (1024, 768), (800, 600)), strict=True)
+    )
 
 
-@pytest.mark.parametrize("stored", [1, 2, 3])
-def test_a_stored_render_scale_survives_the_next_launch(stored: int, tmp_path: Path) -> None:
-    """The sharpness the player chose is the sharpness the game starts at.
+def test_a_resize_that_changes_nothing_does_not_rebuild_the_target(tmp_path: Path) -> None:
+    """SDL announces a resize during its own ``set_mode``; that has to be a no-op.
 
-    It used to be forgotten: ``apply_settings`` rebuilt the render target when
-    the value changed, so the menu applied 3x immediately and looked right, and
-    ``initialize_display`` then built the target from the default constant no
-    matter what the file said. The next launch was back at 2x with the menu
-    still showing 3x -- a setting that works until you restart, which is the
-    hardest kind to notice.
+    Otherwise every display change rebuilds the target twice, and a drag of the
+    window rebuilds it once per event whether or not the size moved.
     """
     game = Game(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
-    game.settings = replace(game.settings, render_scale=stored)
-
-    game.initialize_display()
-
-    assert game.viewport is not None
-    assert game.viewport.scale == stored
-    assert game.settings.render_scale == stored
-
-
-def test_an_unchosen_render_scale_is_picked_for_the_window(tmp_path: Path) -> None:
-    """A file that never chose one gets the smallest that covers the window.
-
-    The alternative -- a constant -- is what made a 1366x768 laptop render
-    2304x1296 and scale it down: four times the fill rate for a softer picture.
-    """
-    from src.core.display.viewport import render_scale_for
-
-    game = Game(
-        save_path=tmp_path / "savegame.json",
-        bindings_path=tmp_path / "settings.json",
-    )
-    assert game.settings.render_scale is None
-
-    game.initialize_display()
-
-    assert game.viewport is not None
-    assert game.stage is not None
-    assert game.viewport.scale == render_scale_for(game.stage.size)
-    assert game.settings.render_scale == game.viewport.scale
+    game._initialize()
+    assert game.presentation is not None
+    before = game.presentation.surface
+    assert game.presentation.recompute() is False
+    assert game.presentation.surface is before

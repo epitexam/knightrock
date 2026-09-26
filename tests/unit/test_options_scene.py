@@ -6,6 +6,8 @@ setting has a single source of truth and a single place to change it.
 
 from types import SimpleNamespace
 
+import pygame
+
 from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
@@ -18,6 +20,15 @@ def _game() -> SimpleNamespace:
     game = SimpleNamespace(
         settings=UserSettings(),
         scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
+        # The views are laid out at the preference times the density, and the
+        # video screen reports the window it is in; a stand-in provides both.
+        ui_scale=1.0,
+        presentation=SimpleNamespace(
+            stage=pygame.Surface((1152, 648)),
+            pixel_perfect=False,
+            window_size=(1152, 648),
+            density=1.0,
+        ),
     )
 
     def apply_settings(settings: UserSettings) -> None:
@@ -95,14 +106,21 @@ def test_options_back_via_gamepad_and_mouse() -> None:
 
 
 def test_video_menu_owns_every_display_setting() -> None:
+    """Seven rows, and none of them is a number about the player's screen.
+
+    The four that are gone were the ones that could not be honoured: a
+    resolution list is a claim about a monitor the game cannot measure, a render
+    scale and a smoothing flag described a fixed target that no longer exists,
+    and both of the latter were the settings that went stale -- the sharpness was
+    written back once at launch and then believed forever.
+    """
     assert _actions(VideoScene(_game())) == [
         "display",
-        "size",
-        "render_scale",
-        "smoothing",
+        "pixel_perfect",
         "vsync",
         "frame_limit",
         "scale",
         "reset",
         "back",
+        "info",
     ]

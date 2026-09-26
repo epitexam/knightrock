@@ -19,12 +19,14 @@ logger = logging.getLogger(__name__)
 class WindowSpec:
     """What the player asked for, before the desktop has its say.
 
-    A plain value rather than ``UserSettings``, so this module stays free of
-    the application layer and can be driven straight from a test.
+    A plain value rather than ``UserSettings``, so this module stays free of the
+    application layer and can be driven straight from a test.
+
+    There is no size here, and that is the point: the game does not get an
+    opinion about how big the window should be. Each mode asks the platform for
+    whatever it is, and the render target follows the window it is given.
     """
 
-    width: int
-    height: int
     mode: DisplayMode = DisplayMode.BORDERLESS
     vsync: bool = False
 
@@ -38,10 +40,10 @@ class Stage:
       read back off the surface rather than trusted from the request, because
       with high-DPI windows the two differ and every layout downstream would be
       quietly wrong.
-    * **The window is re-centred after every rebuild.** Changing resolution or
-      switching in and out of fullscreen moves the window, and left alone it
-      stays wherever the window manager dropped it -- which is how a window
-      ends up one monitor away from the one the game is on.
+    * **The window is re-centred after every rebuild.** Changing the display
+      mode moves the window, and left alone it stays wherever the window manager
+      dropped it -- which is how a window ends up one monitor away from the one
+      the game is on.
     """
 
     def __init__(
@@ -91,15 +93,21 @@ class Stage:
 
     @staticmethod
     def _window_size(spec: WindowSpec, desktop: tuple[int, int]) -> tuple[int, int]:
-        """The size to ask for, which is not always the size the player chose.
+        """The size to ask for, which each mode answers for itself.
 
-        Borderless means *the desktop's* size, whatever is in the settings. That
-        is the point of the mode: a window that already matches the screen
-        cannot be the wrong shape.
+        - **Window**: the biggest one that still leaves room for a title bar.
+          A starting point, not a remembered size -- the player drags it to
+          whatever they like and the render target follows.
+        - **Borderless**: the desktop's own size, whatever it is. A window that
+          already matches the screen cannot be the wrong shape.
+        - **Fullscreen**: ``(0, 0)``, which is how SDL is told to use the
+          display's current mode rather than a resolution we made up.
         """
+        if spec.mode is DisplayMode.FULLSCREEN:
+            return (0, 0)
         if spec.mode is DisplayMode.BORDERLESS and desktop[0] > 0 and desktop[1] > 0:
             return desktop
-        return (max(1, spec.width), max(1, spec.height))
+        return detection.initial_window_size(desktop)
 
     @staticmethod
     def _flags(spec: WindowSpec) -> int:

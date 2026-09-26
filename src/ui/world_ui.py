@@ -48,6 +48,7 @@ UX rules (debug readability pass):
 
 import math
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -307,8 +308,128 @@ BOX_DOT_INSET = 4
 BOX_DOT_RIM: Color = (14, 16, 20)
 
 
+@dataclass(frozen=True)
+class WorldOverlayMetrics:
+    """Every overlay dimension, in target pixels, for one pixel density.
+
+    One table for fourteen numbers, and the reason is a bug: they used to be
+    module constants handed straight to pygame while the *rectangles* they
+    decorate came from ``camera.apply``, which scales. The two were in different
+    units, so at a density of 1.889 every width, padding and gap was 53% of its
+    intent and the hitbox outlines were invisible. Writing them down once, in
+    world units, and multiplying here is the only way they cannot drift apart
+    again -- and it costs fourteen multiplications per frame.
+    """
+
+    scale: float
+
+    @property
+    def zone_outline(self) -> int:
+        return _scaled(ZONE_OUTLINE_WIDTH, self.scale)
+
+    @property
+    def zone_boost_outline(self) -> int:
+        return _scaled(ZONE_BOOST_OUTLINE_WIDTH, self.scale)
+
+    @property
+    def seal_dash(self) -> int:
+        return _scaled(ZONE_SEAL_DASH, self.scale)
+
+    @property
+    def seal_gap(self) -> int:
+        return _scaled(ZONE_SEAL_GAP, self.scale)
+
+    @property
+    def seal_width(self) -> int:
+        return _scaled(ZONE_SEAL_WIDTH, self.scale)
+
+    @property
+    def tier_gap(self) -> int:
+        return _scaled(ANNOTATION_TIER_GAP, self.scale)
+
+    @property
+    def chip_pad(self) -> int:
+        return _scaled(ANNOTATION_CHIP_PAD, self.scale)
+
+    @property
+    def clash_radius(self) -> int:
+        return _scaled(CLASH_MARKER_RADIUS, self.scale)
+
+    @property
+    def timeline_bar_height(self) -> int:
+        return _scaled(TIMELINE_BAR_HEIGHT, self.scale)
+
+    @property
+    def timeline_px_per_frame(self) -> int:
+        return _scaled(TIMELINE_PX_PER_FRAME, self.scale)
+
+    @property
+    def timeline_max_width(self) -> int:
+        return _scaled(TIMELINE_MAX_WIDTH, self.scale)
+
+    @property
+    def header_text_gap(self) -> int:
+        return _scaled(ATTACK_HEADER_TEXT_GAP, self.scale)
+
+    @property
+    def header_rule_gap(self) -> int:
+        return _scaled(ATTACK_HEADER_RULE_GAP, self.scale)
+
+    @property
+    def label_pad_x(self) -> int:
+        return _scaled(LABEL_PAD_X, self.scale)
+
+    @property
+    def label_pad_y(self) -> int:
+        return _scaled(LABEL_PAD_Y, self.scale)
+
+    @property
+    def label_line_gap(self) -> int:
+        return _scaled(LABEL_LINE_GAP, self.scale)
+
+    @property
+    def label_divider_top(self) -> int:
+        return _scaled(LABEL_DIVIDER_TOP, self.scale)
+
+    @property
+    def label_divider_bottom(self) -> int:
+        return _scaled(LABEL_DIVIDER_BOTTOM, self.scale)
+
+    @property
+    def label_nudge(self) -> int:
+        return _scaled(LABEL_NUDGE_PX, self.scale)
+
+    @property
+    def label_bar_clearance(self) -> int:
+        return _scaled(LABEL_BAR_CLEARANCE, self.scale)
+
+    @property
+    def label_anchor_gap(self) -> int:
+        return _scaled(LABEL_ANCHOR_GAP, self.scale)
+
+
+def _scaled(world_px: float, scale: float) -> int:
+    """A world dimension in whole target pixels, never below one.
+
+    The floor is not a nicety: at a density below one -- a window smaller than
+    the framing -- a plain round gives 0, and a *zero* outline or padding is a
+    dimension that has stopped existing.
+    """
+    return max(1, round(world_px * scale))
+
+
 class WorldUI:
-    """Render health bars and optional world-space diagnostics."""
+    """Render health bars and optional world-space diagnostics.
+
+    Every dimension here is written in **world units** and multiplied by the
+    target's pixel density at paint time, through :meth:`px` and :meth:`stroke`.
+    That distinction is the whole reason this layer is legible: the rectangles
+    come from ``camera.apply``, which scales, while the *widths*, *paddings* and
+    *gaps* used to be handed to pygame raw -- so on a window where the world is
+    drawn 1.9x larger, a 1px hitbox outline landed at 53% of its weight and the
+    overlay read as "F1 does nothing". A tool that cannot be seen is a tool
+    that is broken.
+    """
 
     def __init__(self, renderer: PanelRenderer) -> None:
         self.renderer = renderer
@@ -334,6 +455,30 @@ class WorldUI:
         #: Every annotation rect drawn this frame, flattened: placement
         #: obstacles for ``_draw_labels`` (any card may overlap any band).
         self._annotation_obstacles: list[pygame.Rect] = []
+        self._metrics_scale: float = -1.0
+        self._metrics = WorldOverlayMetrics(1.0)
+
+    @property
+    def metrics(self) -> WorldOverlayMetrics:
+        """The overlay dimensions for the current density, rebuilt when it moves.
+
+        Cached on the scale, so a static window costs one identity comparison per
+        frame and a resize costs one table.
+        """
+        scale = self.renderer.world_scale
+        if scale != self._metrics_scale:
+            self._metrics_scale = scale
+            self._metrics = WorldOverlayMetrics(scale)
+        return self._metrics
+
+    def stroke(self, world_px: int = 1) -> int:
+        """An outline of ``world_px`` art pixels, in whole target pixels.
+
+        Floored at 1, so a density below one thins the overlay rather than
+        deleting it: *not drawing the outline* is the one outcome a debug tool
+        must never produce.
+        """
+        return _scaled(world_px, self.renderer.world_scale)
 
     def toggle(self, layer: str) -> bool:
         """Flip an overlay layer, returning its new state."""
@@ -354,7 +499,6 @@ class WorldUI:
         self._annotation_obstacles = []
         if not any(self.layers[name] for name in ("boxes", "labels", "velocities", "statics")):
             return
-        viewport = self._viewport(camera)
         screen_width = self.surface.get_width()
 
         # Labels are collected first and drawn after the loop so they can
@@ -374,7 +518,7 @@ class WorldUI:
             if is_static and not self.layers["statics"]:
                 continue
             reference = self._debug_reference(sprite)
-            if reference is None or not viewport.colliderect(reference):
+            if reference is None or not camera.is_visible(reference):
                 continue  # culled: off-screen, not worth a single pixel
             if self.layers["boxes"]:
                 self._draw_boxes(sprite, camera)
@@ -442,27 +586,6 @@ class WorldUI:
         no symptom until the two sizes differ.
         """
         return self.renderer.surface
-
-    def _viewport(self, camera: Camera) -> pygame.Rect:
-        """The cull rect, in render-target coordinates.
-
-        Derived from the camera's own transform and the surface it is drawing
-        into, both of which are constants during a frame. It used to fall back
-        to ``pygame.display.get_surface()``, which made the debug overlay's idea
-        of the screen the *window* rather than the target: on a resized window
-        the two disagree, and the overlay then culled against the wrong edge.
-        """
-        scale = self._target_scale(camera)
-        margin = int(CULL_MARGIN_PX * scale)
-        camera._ensure_frame()
-        visible = camera.apply_covering(
-            pygame.FRect(0.0, 0.0, camera.viewport_width, camera.viewport_height)
-        )
-        return visible.inflate(margin * 2, margin * 2)
-
-    def _target_scale(self, camera: Camera) -> int:
-        """Target pixels per world unit, as the camera computed it."""
-        return camera.scale
 
     @staticmethod
     def _display_name(sprite: pygame.sprite.Sprite) -> str:
@@ -617,7 +740,7 @@ class WorldUI:
         anchor = camera.apply(pygame.FRect(point[0] - 1, point[1] - 1, 2, 2))
         center = (round(anchor.centerx), round(anchor.centery))
         progress = 1.0 - self._clash_ttl / CLASH_MARKER_LIFETIME
-        radius = round(CLASH_MARKER_RADIUS * (0.5 + progress))
+        radius = round(self.metrics.clash_radius * (0.5 + progress))
         pygame.draw.circle(self.surface, Colors.gold, center, radius, width=2)
         arm = 5
         pygame.draw.line(
@@ -658,7 +781,7 @@ class WorldUI:
             hit = next((obstacle for obstacle in obstacles if rect.colliderect(obstacle)), None)
             if hit is None:
                 break
-            rect.bottom = hit.top - ANNOTATION_TIER_GAP
+            rect.bottom = hit.top - self.metrics.tier_gap
             if rect.top < 0:
                 rect.top = 0
                 break
@@ -678,7 +801,7 @@ class WorldUI:
         of floating as bare white writing.
         """
         rect = pygame.Rect(position[0], position[1], label.get_width(), label.get_height())
-        chip = rect.inflate(ANNOTATION_CHIP_PAD * 2, ANNOTATION_CHIP_PAD * 2)
+        chip = rect.inflate(self.metrics.chip_pad * 2, self.metrics.chip_pad * 2)
         if obstacles:
             chip = self._dodge_annotation(chip, obstacles)
         else:
@@ -687,7 +810,7 @@ class WorldUI:
         pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
         self.surface.blit(panel, chip.topleft)
-        self.surface.blit(label, (chip.x + ANNOTATION_CHIP_PAD, chip.y + ANNOTATION_CHIP_PAD))
+        self.surface.blit(label, (chip.x + self.metrics.chip_pad, chip.y + self.metrics.chip_pad))
         return chip
 
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
@@ -704,7 +827,7 @@ class WorldUI:
                     self.surface,
                     Colors.debug_static,
                     camera.apply(reference),
-                    width=1,
+                    width=self.stroke(),
                 )
             return
         screen = camera.apply(collider)
@@ -722,7 +845,7 @@ class WorldUI:
             self.surface,
             self._hitbox_color(sprite),
             camera.apply(collider),
-            width=1,
+            width=self.stroke(),
         )
         # P2 multi-zone: shape tells the story, no text. Empty zones keep the
         # legacy thin outline; boosted zones (mult != 1.0) add a translucent
@@ -748,14 +871,14 @@ class WorldUI:
                     self.surface,
                     color,
                     screen_zone,
-                    width=ZONE_BOOST_OUTLINE_WIDTH,
+                    width=self.metrics.zone_boost_outline,
                 )
             else:
                 pygame.draw.rect(
                     self.surface,
                     color,
                     screen_zone,
-                    width=ZONE_OUTLINE_WIDTH,
+                    width=self.metrics.zone_outline,
                 )
             if zone_tags:
                 self._draw_zone_seal(screen_zone, color)
@@ -820,37 +943,37 @@ class WorldUI:
     def _draw_zone_seal(self, screen: pygame.FRect, color: Color) -> None:
         """Dashed inset seal for guarded/armored zones (tags present)."""
         x, y, w, h = screen.x, screen.y, screen.width, screen.height
-        inset = ZONE_BOOST_OUTLINE_WIDTH + 1
+        inset = self.metrics.zone_boost_outline + 1
         inner = pygame.FRect(x + inset, y + inset, max(0.0, w - inset * 2), max(0.0, h - inset * 2))
         if inner.width <= 0 or inner.height <= 0:
             return
-        step = ZONE_SEAL_DASH + ZONE_SEAL_GAP
+        step = self.metrics.seal_dash + self.metrics.seal_gap
         cursor = inner.x
         while cursor < inner.x + inner.width:
-            end = min(cursor + ZONE_SEAL_DASH, inner.x + inner.width)
+            end = min(cursor + self.metrics.seal_dash, inner.x + inner.width)
             pygame.draw.line(
-                self.surface, color, (cursor, inner.y), (end, inner.y), ZONE_SEAL_WIDTH
+                self.surface, color, (cursor, inner.y), (end, inner.y), self.metrics.seal_width
             )
             pygame.draw.line(
                 self.surface,
                 color,
                 (cursor, inner.y + inner.height),
                 (end, inner.y + inner.height),
-                ZONE_SEAL_WIDTH,
+                self.metrics.seal_width,
             )
             cursor += step
         cursor = inner.y
         while cursor < inner.y + inner.height:
-            end = min(cursor + ZONE_SEAL_DASH, inner.y + inner.height)
+            end = min(cursor + self.metrics.seal_dash, inner.y + inner.height)
             pygame.draw.line(
-                self.surface, color, (inner.x, cursor), (inner.x, end), ZONE_SEAL_WIDTH
+                self.surface, color, (inner.x, cursor), (inner.x, end), self.metrics.seal_width
             )
             pygame.draw.line(
                 self.surface,
                 color,
                 (inner.x + inner.width, cursor),
                 (inner.x + inner.width, end),
-                ZONE_SEAL_WIDTH,
+                self.metrics.seal_width,
             )
             cursor += step
 
@@ -1145,17 +1268,16 @@ class WorldUI:
             self.surface, Colors.debug_attack_box, [tuple(tip), tuple(left), tuple(right)]
         )
 
-    @staticmethod
-    def _timeline_progress(state: object, sub_state: object, phase: PhaseDefinition) -> int:
+    def _timeline_progress(self, state: object, sub_state: object, phase: PhaseDefinition) -> int:
         frame = int(getattr(state, "frame_counter", 0) or 0)
         startup = int(getattr(phase, "startup_frames", 0) or 0)
         active = int(getattr(phase, "active_frames", 0) or 0)
         recovery = int(getattr(phase, "recovery_frames", 0) or 0)
         if sub_state == "startup":
-            return min(frame, startup) * TIMELINE_PX_PER_FRAME
+            return min(frame, startup) * self.metrics.timeline_px_per_frame
         if sub_state == "active":
-            return (startup + min(frame, active)) * TIMELINE_PX_PER_FRAME
-        return (startup + active + min(frame, recovery)) * TIMELINE_PX_PER_FRAME
+            return (startup + min(frame, active)) * self.metrics.timeline_px_per_frame
+        return (startup + active + min(frame, recovery)) * self.metrics.timeline_px_per_frame
 
     def _draw_velocity(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         velocity = getattr(sprite, "velocity", None)
@@ -1413,24 +1535,24 @@ class WorldUI:
         text_w = sum(glyph.get_width() for glyph in glyphs)
         title_h = max(glyph.get_height() for glyph in glyphs)
         tl_widths, tl_rect_w = self._attack_timeline_widths(phase, state, phase_name)
-        chip_text_w = text_w + ANNOTATION_CHIP_PAD * 2
-        chip_tl_w = tl_rect_w + ANNOTATION_CHIP_PAD * 2
+        chip_text_w = text_w + self.metrics.chip_pad * 2
+        chip_tl_w = tl_rect_w + self.metrics.chip_pad * 2
         chip_w = max(chip_text_w, chip_tl_w)
         chip_h = (
-            ANNOTATION_CHIP_PAD
+            self.metrics.chip_pad
             + title_h
-            + ATTACK_HEADER_TEXT_GAP
-            + TIMELINE_BAR_HEIGHT
-            + ANNOTATION_CHIP_PAD
+            + self.metrics.header_text_gap
+            + self.metrics.timeline_bar_height
+            + self.metrics.chip_pad
         )
         screen = camera.apply(collider)
         bar = self._health_bar_rect(sprite, screen)
         if bar is not None and bar.bottom <= screen.top:
-            anchor_y = bar.top - ANNOTATION_TIER_GAP
+            anchor_y = bar.top - self.metrics.tier_gap
         elif bar is not None:
-            anchor_y = bar.bottom + ANNOTATION_TIER_GAP + chip_h
+            anchor_y = bar.bottom + self.metrics.tier_gap + chip_h
         else:
-            anchor_y = int(screen.top) - ANNOTATION_TIER_GAP
+            anchor_y = int(screen.top) - self.metrics.tier_gap
         chip = pygame.Rect(int(screen.x), int(anchor_y - chip_h), chip_w, chip_h)
         chip = self._dodge_annotation(chip, obstacles)
         panel = pygame.Surface(chip.size, pygame.SRCALPHA)
@@ -1439,17 +1561,17 @@ class WorldUI:
         self.surface.blit(panel, chip.topleft)
         cursor = chip.x + (chip_w - text_w) // 2
         for glyph in glyphs:
-            self.surface.blit(glyph, (cursor, chip.y + ANNOTATION_CHIP_PAD))
+            self.surface.blit(glyph, (cursor, chip.y + self.metrics.chip_pad))
             cursor += glyph.get_width()
         tl_x = chip.x + max(0, (chip_w - tl_rect_w) // 2)
-        tl_y = chip.y + ANNOTATION_CHIP_PAD + title_h + ATTACK_HEADER_TEXT_GAP
+        tl_y = chip.y + self.metrics.chip_pad + title_h + self.metrics.header_text_gap
         self._paint_attack_timeline(tl_x, tl_y, phase, tl_widths, state, phase_name)
         if attack_boxes:
             first = camera.apply(attack_boxes[0])
             pygame.draw.line(
                 self.surface,
                 PANEL_BORDER,
-                (chip.centerx, chip.bottom + ATTACK_HEADER_RULE_GAP),
+                (chip.centerx, chip.bottom + self.metrics.header_rule_gap),
                 (int(first.centerx), int(first.top)),
                 1,
             )
@@ -1466,13 +1588,15 @@ class WorldUI:
         active = int(getattr(phase, "active_frames", 0) or 0)
         recovery = int(getattr(phase, "recovery_frames", 0) or 0)
         raw = [
-            max(1, startup * TIMELINE_PX_PER_FRAME),
-            max(1, active * TIMELINE_PX_PER_FRAME),
-            max(1, recovery * TIMELINE_PX_PER_FRAME),
+            max(1, startup * self.metrics.timeline_px_per_frame),
+            max(1, active * self.metrics.timeline_px_per_frame),
+            max(1, recovery * self.metrics.timeline_px_per_frame),
         ]
         total = sum(raw)
-        if total > TIMELINE_MAX_WIDTH:
-            scaled = [max(1, round(width * TIMELINE_MAX_WIDTH / total)) for width in raw]
+        if total > self.metrics.timeline_max_width:
+            scaled = [
+                max(1, round(width * self.metrics.timeline_max_width / total)) for width in raw
+            ]
             widths = scaled
         else:
             widths = raw
@@ -1494,15 +1618,15 @@ class WorldUI:
             pygame.draw.rect(
                 self.surface,
                 color,
-                pygame.Rect(cursor, y, width, TIMELINE_BAR_HEIGHT),
+                pygame.Rect(cursor, y, width, self.metrics.timeline_bar_height),
             )
             cursor += width
         filled = self._timeline_progress(state, sub_state, phase)
         pygame.draw.rect(
             self.surface,
             Colors.off_white,
-            pygame.Rect(x, y, min(filled, cursor - x), TIMELINE_BAR_HEIGHT),
-            width=1,
+            pygame.Rect(x, y, min(filled, cursor - x), self.metrics.timeline_bar_height),
+            width=self.stroke(),
         )
 
     def _attack_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
@@ -1709,10 +1833,10 @@ class WorldUI:
         bar_drop = 0
         bar = self._health_bar_rect(sprite, anchor)
         if bar is not None:
-            # The padded card sticks out LABEL_PAD_Y below its content box,
+            # The padded card sticks out self.metrics.label_pad_y below its content box,
             # so the lift reserves bar + gap + padding: backgrounds touch
             # neither the bar nor each other.
-            clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
+            clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + self.metrics.label_pad_y
             if bar.bottom <= anchor.top:
                 bar_lift = clearance
             else:
@@ -1728,9 +1852,9 @@ class WorldUI:
                 0,
                 int(
                     float(anchor.top)
-                    - LABEL_ANCHOR_GAP
-                    + LABEL_PAD_Y
-                    + ANNOTATION_TIER_GAP
+                    - self.metrics.label_anchor_gap
+                    + self.metrics.label_pad_y
+                    + self.metrics.tier_gap
                     - min(above_tops)
                 ),
             )
@@ -1740,10 +1864,10 @@ class WorldUI:
                 0,
                 int(
                     max(below_bottoms)
-                    + ANNOTATION_TIER_GAP
-                    + LABEL_PAD_Y
+                    + self.metrics.tier_gap
+                    + self.metrics.label_pad_y
                     - float(anchor.bottom)
-                    - LABEL_ANCHOR_GAP
+                    - self.metrics.label_anchor_gap
                 ),
             )
         return (max(bar_lift, ann_lift), max(bar_drop, ann_drop))
@@ -1765,7 +1889,11 @@ class WorldUI:
         for _priority, _segments, _color, anchor, _lifts, _drop, sprite in requests:
             bar = self._health_bar_rect(sprite, anchor)
             if bar is not None:
-                bar_obstacles.append(bar.inflate(LABEL_BAR_CLEARANCE * 2, LABEL_BAR_CLEARANCE * 2))
+                bar_obstacles.append(
+                    bar.inflate(
+                        self.metrics.label_bar_clearance * 2, self.metrics.label_bar_clearance * 2
+                    )
+                )
         placed: list[pygame.Rect] = [
             *bar_obstacles,
             *self._previous_bar_obstacles,
@@ -1821,18 +1949,20 @@ class WorldUI:
         width = max(
             [sum(s.get_width() for s in header)] + [sum(s.get_width() for s in r) for r in rows]
         )
-        divider_block = LABEL_DIVIDER_TOP + 1 + LABEL_DIVIDER_BOTTOM
+        divider_block = self.metrics.label_divider_top + 1 + self.metrics.label_divider_bottom
         height = (
-            row_height * (len(rows) + 1) + LABEL_LINE_GAP * len(rows) + divider_block
+            row_height * (len(rows) + 1) + self.metrics.label_line_gap * len(rows) + divider_block
             if rows
             else row_height
         )
         base = pygame.Rect(0, 0, width, height)
-        base.midbottom = (anchor.centerx, anchor.top - LABEL_ANCHOR_GAP - above_lift)
+        base.midbottom = (anchor.centerx, anchor.top - self.metrics.label_anchor_gap - above_lift)
         for label_rect in self._candidate_slots(
             base, anchor, screen_width, screen_height, below_drop=below_drop
         ):
-            background_rect = label_rect.inflate(LABEL_PAD_X * 2, LABEL_PAD_Y * 2)
+            background_rect = label_rect.inflate(
+                self.metrics.label_pad_x * 2, self.metrics.label_pad_y * 2
+            )
             if all(not background_rect.colliderect(other) for other in placed):
                 self._blit_label(
                     header, rows, row_height, color, label_rect, background_rect, screen_width
@@ -1840,8 +1970,8 @@ class WorldUI:
                 return background_rect
         return None
 
-    @staticmethod
     def _candidate_slots(
+        self,
         base: pygame.Rect,
         anchor: pygame.Rect | pygame.FRect,
         screen_width: int,
@@ -1855,26 +1985,31 @@ class WorldUI:
         text, so shrinking a slot would just push the text out of its panel.
         """
         below = base.copy()
-        below.midtop = (anchor.centerx, anchor.bottom + LABEL_ANCHOR_GAP + below_drop)
+        below.midtop = (anchor.centerx, anchor.bottom + self.metrics.label_anchor_gap + below_drop)
         slots = [base]
         slots.extend(
-            base.move(0, -LABEL_NUDGE_PX * step) for step in range(1, LABEL_MAX_NUDGES + 1)
+            base.move(0, -self.metrics.label_nudge * step)
+            for step in range(1, LABEL_MAX_NUDGES + 1)
         )
         slots.append(below)
         slots.extend(
-            below.move(0, LABEL_NUDGE_PX * step) for step in range(1, LABEL_MAX_NUDGES + 1)
+            below.move(0, self.metrics.label_nudge * step)
+            for step in range(1, LABEL_MAX_NUDGES + 1)
         )
         kept: list[pygame.Rect] = []
         for slot in slots:
-            # The padded card sticks out LABEL_PAD_Y px on every side: keep slots
+            # The padded card sticks out LABEL_PAD_Y on every side: keep slots
             # whose *card* fits the display, shifted back inside when needed.
-            if slot.height + LABEL_PAD_Y * 2 > screen_height:
+            if slot.height + self.metrics.label_pad_y * 2 > screen_height:
                 continue  # taller than the display: no fully visible position
-            if slot.top - LABEL_PAD_Y < 0:
-                slot.top = LABEL_PAD_Y
-            elif slot.bottom + LABEL_PAD_Y > screen_height:
-                slot.bottom = screen_height - LABEL_PAD_Y
-            slot.left = max(LABEL_PAD_X, min(slot.left, screen_width - slot.width - LABEL_PAD_X))
+            if slot.top - self.metrics.label_pad_y < 0:
+                slot.top = self.metrics.label_pad_y
+            elif slot.bottom + self.metrics.label_pad_y > screen_height:
+                slot.bottom = screen_height - self.metrics.label_pad_y
+            slot.left = max(
+                self.metrics.label_pad_x,
+                min(slot.left, screen_width - slot.width - self.metrics.label_pad_x),
+            )
             kept.append(slot)
         return kept
 
@@ -1910,10 +2045,10 @@ class WorldUI:
         for surface in header:
             self.surface.blit(surface, (cursor_x, cursor_y))
             cursor_x += surface.get_width()
-        cursor_y += row_height + LABEL_DIVIDER_TOP
+        cursor_y += row_height + self.metrics.label_divider_top
         # Divider rule, inset by the card padding.
-        rule_left = max(background_rect.left + LABEL_PAD_X, 0)
-        rule_right = min(background_rect.right - LABEL_PAD_X, screen_width)
+        rule_left = max(background_rect.left + self.metrics.label_pad_x, 0)
+        rule_right = min(background_rect.right - self.metrics.label_pad_x, screen_width)
         if rule_right > rule_left:
             pygame.draw.line(
                 self.surface,
@@ -1922,13 +2057,13 @@ class WorldUI:
                 (rule_right, cursor_y),
                 1,
             )
-        cursor_y += 1 + LABEL_DIVIDER_BOTTOM
+        cursor_y += 1 + self.metrics.label_divider_bottom
         for line in rows:
             cursor_x = label_rect.left
             for surface in line:
                 self.surface.blit(surface, (cursor_x, cursor_y))
                 cursor_x += surface.get_width()
-            cursor_y += row_height + LABEL_LINE_GAP
+            cursor_y += row_height + self.metrics.label_line_gap
 
     def draw_health_bars(
         self,

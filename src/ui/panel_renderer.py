@@ -4,6 +4,7 @@ from collections import OrderedDict
 import pygame
 
 from src.core.settings import Debug
+from src.ui.scale import font_size, screen_scale, world_scale
 from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_TITLE
 
 #: Close button geometry (px): box side, inset from the panel corner, and the
@@ -16,20 +17,27 @@ PANEL_CLOSE_GAP = 6
 #: column flow and by the clamping of a manually dropped panel.
 PANEL_MARGIN = 10
 
+#: Design-size padding inside a panel and the gap under its title. They are
+#: scaled by the panel renderer's screen scale, because a panel whose text is
+#: drawn twice as large and whose padding is not has its first line sitting on
+#: its own border.
+PANEL_PADDING = 12
+PANEL_TITLE_GAP = 8
+PANEL_GUTTER = 8
 
-def close_box_rect(right: int, top: int) -> pygame.Rect:
+
+def close_box_rect(right: int, top: int, scale: float = 1.0) -> pygame.Rect:
     """Hit box of a panel's ``×``, inset from that panel's top-right corner.
 
     Shared by the interaction (hit tests, ``×`` geometry) and the renderer
     (drawing) so the clickable area is pixel-identical to the glyph seen on
-    screen.
+    screen -- which is also why the size scales: a 14px box on a window whose
+    panels are drawn twice as large is a target half the size it looks, and a
+    ``×`` nobody can hit is a panel nobody can close.
     """
-    return pygame.Rect(
-        right - PANEL_CLOSE_BOX - PANEL_CLOSE_INSET,
-        top + PANEL_CLOSE_INSET,
-        PANEL_CLOSE_BOX,
-        PANEL_CLOSE_BOX,
-    )
+    box = max(6, round(PANEL_CLOSE_BOX * scale))
+    inset = max(1, round(PANEL_CLOSE_INSET * scale))
+    return pygame.Rect(right - box - inset, top + inset, box, box)
 
 
 class PanelInteraction:
@@ -42,7 +50,11 @@ class PanelInteraction:
     around it — the layout stays responsive by construction.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, scale: float = 1.0) -> None:
+        #: The screen scale the panels are drawn at, so a hit box is the size
+        #: of the button it belongs to. Set by
+        #: :meth:`PanelRenderer.set_surface`, never configured twice.
+        self.scale = scale
         self.closed: set[str] = set()
         #: Manual (dropped) top-left positions, applied instead of the flow slot.
         self.positions: dict[str, tuple[int, int]] = {}
@@ -136,8 +148,13 @@ class PanelInteraction:
         else:
             self.closed.discard(panel_id)
 
-    def clamp_positions(self, size: tuple[int, int], *, margin: int = PANEL_MARGIN) -> None:
+    def clamp_positions(self, size: tuple[int, int], *, margin: int | None = None) -> None:
         width, height = size
+        # ``None`` means "the margin this scale calls for", not "no margin":
+        # a panel dropped 10px from the edge on a 4K window is dropped in the
+        # middle of nowhere.
+        if margin is None:
+            margin = max(4, round(PANEL_MARGIN * self.scale))
         max_x = max(margin, width - margin)
         max_y = max(margin, height - margin)
         self.positions = {
@@ -160,7 +177,7 @@ class PanelInteraction:
         rect = self.panels.get(panel_id)
         if rect is None:
             return None
-        return close_box_rect(rect.right, rect.top)
+        return close_box_rect(rect.right, rect.top, self.scale)
 
     def is_closed(self, panel_id: str) -> bool:
         """Whether ``panel_id`` was closed (until the next :meth:`reset`)."""
@@ -225,15 +242,26 @@ class PanelLayout:
     """
 
     def __init__(
-        self, width: int, height: int, *, margin: int = PANEL_MARGIN, gutter: int = 8
+        self,
+        width: int,
+        height: int,
+        *,
+        margin: int | None = None,
+        gutter: int | None = None,
+        scale: float = 1.0,
     ) -> None:
         self.width = max(1, int(width))
         self.height = max(1, int(height))
-        self.margin = margin
-        self.gutter = gutter
-        self._column_x = margin
-        self._cursor_y = margin
-        self._column_right = margin
+        #: Panel dimensions for one display scale. ``None`` means "the margin
+        #: this scale calls for", so a caller that only knows the surface size
+        #: still gets a layout in the panel's own units rather than in pixels
+        #: from the era when a world unit was one of them.
+        self.scale = scale
+        self.margin = max(4, round(PANEL_MARGIN * scale)) if margin is None else margin
+        self.gutter = max(2, round(PANEL_GUTTER * scale)) if gutter is None else gutter
+        self._column_x = self.margin
+        self._cursor_y = self.margin
+        self._column_right = self.margin
         self._placed: list[pygame.Rect] = []
         self._pinned: list[pygame.Rect] = []
 
@@ -359,23 +387,38 @@ def set_compact_panels(compact: bool) -> None:
 
 
 class PanelRenderer:
-    """Render debug panels and cache fonts."""
+    """Render debug panels and cache fonts.
 
-    def __init__(self, surface: pygame.Surface, *, text_cache_capacity: int = 256) -> None:
+    Two scales, and the difference matters. The **world** scale -- the target's
+    pixel density -- governs what annotates the world: the label cards pinned
+    above a sprite, the panel widths a hitbox outline has to sit inside. The
+    **screen** scale governs the panels themselves, and is capped
+    (:func:`src.ui.scale.screen_scale`) because a panel is furniture: at 4K,
+    scaling it by the density would spend a quarter of the display saying the
+    same thing three times larger.
+
+    Both are read from the render target, never configured, so a window resize
+    or a whole-pixel change re-derives them with everything else. The numbers in
+    :class:`src.core.settings.Debug` are *design* pixels -- the ones that were
+    right when a world unit was one target pixel -- and they are scaled from
+    here.
+    """
+
+    def __init__(
+        self,
+        surface: pygame.Surface,
+        *,
+        density: float = 1.0,
+        text_cache_capacity: int = 256,
+    ) -> None:
         self.surface = surface
         if text_cache_capacity < 0:
             raise ValueError("text_cache_capacity must be non-negative")
         self.text_cache_capacity = text_cache_capacity
 
-        self.debug_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE)
-        self.title_font = pygame.font.SysFont("Consolas", Debug.FONT_SIZE, bold=True)
-        self.label_font = pygame.font.SysFont("Consolas", Debug.LABEL_FONT_SIZE)
-        # World-space entity cards: compact fonts so the floating labels
-        # stay readable without covering the sprites they describe.
-        self.world_title_font = pygame.font.SysFont(
-            "Consolas", Debug.WORLD_TITLE_FONT_SIZE, bold=True
-        )
-        self.world_label_font = pygame.font.SysFont("Consolas", Debug.WORLD_LABEL_FONT_SIZE)
+        self._world_scale = world_scale(density)
+        self._screen_scale = screen_scale(density)
+        self._build_fonts()
 
         self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
         self._text_cache_hits = 0
@@ -384,10 +427,66 @@ class PanelRenderer:
             tuple[int, int, tuple[int, int, int, int]], pygame.Surface
         ] = OrderedDict()
         #: Panel ids closed this frame set (draw_panel leaves them out).
-        self.interaction = PanelInteraction()
+        self.interaction = PanelInteraction(self._screen_scale)
 
-    def set_surface(self, surface: pygame.Surface) -> None:
+    def _px(self, value: float) -> int:
+        """A panel dimension written for the design size, in whole target pixels."""
+        return max(1, round(value * self._screen_scale))
+
+    def _border(self) -> int:
+        """The panel outline, at least one pixel however small the window."""
+        return self._px(1)
+
+    @property
+    def screen_scale(self) -> float:
+        """Scale of the panels and their hit boxes: the display's, capped."""
+        return self._screen_scale
+
+    @property
+    def world_scale(self) -> float:
+        """Scale of the overlays that annotate the world: strokes and label cards."""
+        return self._world_scale
+
+    def _build_fonts(self) -> None:
+        """(Re)build the five fonts the debug layer paints with.
+
+        Two families, so the two scales have to be applied to the right ones: the
+        world cards scale with the world, the panels with the screen.
+        """
+        self.debug_font = pygame.font.SysFont(
+            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale)
+        )
+        self.title_font = pygame.font.SysFont(
+            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale), bold=True
+        )
+        self.label_font = pygame.font.SysFont(
+            "Consolas", font_size(Debug.LABEL_FONT_SIZE, self._screen_scale)
+        )
+        # World-space entity cards: compact fonts so the floating labels
+        # stay readable without covering the sprites they describe.
+        self.world_title_font = pygame.font.SysFont(
+            "Consolas", font_size(Debug.WORLD_TITLE_FONT_SIZE, self._world_scale), bold=True
+        )
+        self.world_label_font = pygame.font.SysFont(
+            "Consolas", font_size(Debug.WORLD_LABEL_FONT_SIZE, self._world_scale)
+        )
+
+    def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
+        """Adopt a new render target, and re-derive the scales from it.
+
+        ``density`` is the target's pixel density, read off the camera by the
+        renderer. A window change and a whole-pixel change both land here, and
+        both change the answer, so neither can be applied anywhere else without
+        a second copy of this arithmetic to drift from it.
+        """
         self.surface = surface
+        world = world_scale(density)
+        screen = screen_scale(density)
+        if (world, screen) != (self._world_scale, self._screen_scale):
+            self._world_scale = world
+            self._screen_scale = screen
+            self._build_fonts()
+            self.interaction.scale = screen
         self.clear_text_cache()
         self.interaction.clamp_positions((surface.get_width(), surface.get_height()))
 
@@ -427,8 +526,8 @@ class PanelRenderer:
         title: str | None = None,
         title_font: pygame.font.Font | None = None,
         line_height: int | None = None,
-        padding: int = 12,
-        title_gap: int = 8,
+        padding: int | None = None,
+        title_gap: int | None = None,
         reserve_close: bool = False,
     ) -> tuple[int, int]:
         """Measure a panel without drawing it (layout pass before ``draw``).
@@ -441,6 +540,8 @@ class PanelRenderer:
         """
         title_font = title_font or self.title_font
         line_height = line_height if line_height is not None else self.debug_font.get_linesize()
+        padding = self._px(PANEL_PADDING) if padding is None else padding
+        title_gap = self._px(PANEL_TITLE_GAP) if title_gap is None else title_gap
 
         max_w = 0
         for line in lines:
@@ -457,7 +558,12 @@ class PanelRenderer:
         if reserve_close:
             header_w = title_w or max_w  # untitled: also clear of the first line
             panel_w = max(
-                panel_w, header_w + PANEL_CLOSE_GAP + PANEL_CLOSE_BOX + PANEL_CLOSE_INSET + padding
+                panel_w,
+                header_w
+                + self._px(PANEL_CLOSE_GAP)
+                + max(6, round(PANEL_CLOSE_BOX * self._screen_scale))
+                + self._px(PANEL_CLOSE_INSET)
+                + padding,
             )
         panel_h = title_block_h + len(lines) * line_height + padding * 2
         return panel_w, panel_h
@@ -465,9 +571,10 @@ class PanelRenderer:
     def _clamp_panel(self, x: int, y: int, w: int, h: int) -> tuple[int, int]:
         """Keep a manually placed panel fully inside the display (margin aside)."""
         screen = self.surface.get_rect()
+        margin = self._px(PANEL_MARGIN)
         return (
-            max(PANEL_MARGIN, min(x, max(PANEL_MARGIN, screen.width - PANEL_MARGIN - w))),
-            max(PANEL_MARGIN, min(y, max(PANEL_MARGIN, screen.height - PANEL_MARGIN - h))),
+            max(margin, min(x, max(margin, screen.width - margin - w))),
+            max(margin, min(y, max(margin, screen.height - margin - h))),
         )
 
     def _place_panel(
@@ -508,7 +615,7 @@ class PanelRenderer:
             return cached
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
         pygame.draw.rect(surface, color, surface.get_rect())
-        pygame.draw.rect(surface, PANEL_BORDER, surface.get_rect(), width=1)
+        pygame.draw.rect(surface, PANEL_BORDER, surface.get_rect(), width=self._border())
         self._background_cache[key] = surface
         if len(self._background_cache) > 16:
             self._background_cache.popitem(last=False)
@@ -525,8 +632,8 @@ class PanelRenderer:
         line_colors: dict[int, tuple[int, int, int]] | None = None,
         title_font: pygame.font.Font | None = None,
         line_height: int | None = None,
-        padding: int = 12,
-        title_gap: int = 8,
+        padding: int | None = None,
+        title_gap: int | None = None,
         layout: PanelLayout | None = None,
         panel_id: str | None = None,
     ) -> int:
@@ -547,6 +654,10 @@ class PanelRenderer:
         inside the display — and the column flow packs the remaining panels
         around it, so responsiveness survives a drop.
         """
+        if padding is None:
+            padding = self._px(PANEL_PADDING)
+        if title_gap is None:
+            title_gap = self._px(PANEL_TITLE_GAP)
         if panel_id is not None and self.interaction.is_closed(panel_id):
             return 0
 
@@ -609,13 +720,13 @@ class PanelRenderer:
         the previous frame — the one the player can actually see, and the
         very same rect a click is tested against.
         """
-        rect = close_box_rect(x + panel_w, y)
+        rect = close_box_rect(x + panel_w, y, self._screen_scale)
         hover_rect = self.interaction.close_rect(panel_id) if panel_id is not None else None
         hovered = bool(hover_rect and hover_rect.collidepoint(pygame.mouse.get_pos()))
 
         if hovered:
             pygame.draw.rect(self.surface, PANEL_BORDER, rect)
-        pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=1)
+        pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=self._border())
         color = TEXT_CRIT if hovered else TEXT_MUTED
         pygame.draw.line(
             self.surface,

@@ -23,9 +23,7 @@ from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
 from src.core.display.presentation import Presentation
-from src.core.display.size_mode import SizeMode
 from src.core.display.stage import Stage, WindowSpec
-from src.core.display.viewport import Viewport, render_scale_for
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -75,7 +73,6 @@ class Game:
         for name, value in SDL_HINTS.items():
             os.environ[name] = value
         self.stage: Stage | None = None
-        self.viewport: Viewport | None = None
         self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
@@ -159,149 +156,112 @@ class Game:
         """The window's surface. For window-level work only.
 
         Nothing is *drawn* here any more: the game draws into
-        ``self.viewport.surface``. Reaching for this to draw is how the window
-        and the visible world got tangled in the first place.
+        ``self.presentation.surface``. Reaching for this to draw is how the
+        window and the visible world got tangled in the first place.
         """
         return None if self.stage is None else self.stage.surface
 
+    @property
+    def ui_scale(self) -> float:
+        """The scale the interface is laid out at.
+
+        The player's own preference multiplied by the target's pixel density,
+        and the multiplication is the whole point: the layout is written once,
+        in the units of a 1152x648 picture, and drawn at whatever density the
+        window turned out to have. The alternative -- laying the interface out
+        in target pixels -- makes every font size and every padding a thing that
+        has to be right for every window, which is the mistake a fixed render
+        target was supposed to prevent.
+        """
+        if self.presentation is None:
+            return self.settings.ui_scale
+        return self.settings.ui_scale * self.presentation.density
+
     def _draw_target(self) -> pygame.Surface:
         """The surface every scene draws into."""
-        assert self.viewport is not None, "the display is not initialized"
-        return self.viewport.surface
+        assert self.presentation is not None, "the display is not initialized"
+        return self.presentation.surface
 
     def _window_spec(self) -> WindowSpec:
         """The window the settings currently ask for."""
-        return WindowSpec(
-            width=self.settings.width,
-            height=self.settings.height,
-            mode=self.settings.display,
-            vsync=self.settings.vsync,
-        )
+        return WindowSpec(mode=self.settings.display, vsync=self.settings.vsync)
 
     def _resolve_display_settings(self) -> None:
-        """Re-decide the window size against the machine we actually landed on.
+        """Turn ``AUTO`` into a mode the window can be built from.
 
-        Two cases, and both of them are "a settings file travelled":
-
-        - **auto** is re-evaluated, every launch. Docking a laptop or running
-          the game on another machine changes the answer, and that is the
-          entire point of the mode.
-        - **manual** is honoured *if it still fits*. A player who chose
-          2560x1440 gets it on a screen that can show it; on a 1366x768 laptop
-          it becomes the auto choice, because opening a window larger than the
-          screen is not honouring anything.
-
-        Runs after ``pygame.init()`` and before the window exists, since that
-        is when the desktop becomes queryable.
+        The only resolution left at launch, and it is a *mode*, not a size: how
+        to occupy a screen whose dimensions the game does not know. It is
+        re-evaluated every launch, which is what ``AUTO`` is for, and it is not
+        written back -- the file keeps saying "auto" so the next launch on
+        another machine answers again.
         """
-        desktop = detection.desktop_size()
-        if desktop[0] <= 0 or desktop[1] <= 0:
+        if self.settings.display is not DisplayMode.AUTO:
             return
-        size = (self.settings.width, self.settings.height)
-        if self.settings.size_mode is SizeMode.MANUAL and detection.fits_on_desktop(size, desktop):
-            return
-        if self.settings.display is DisplayMode.AUTO:
-            self.settings = self.settings.with_video(
-                display=detection.auto_display_mode(DEFAULT_FRAMING, desktop)
-            )
-        resolved = self.settings.with_video(
-            width=detection.largest_window_size(desktop)[0],
-            height=detection.largest_window_size(desktop)[1],
-            size_mode=SizeMode.AUTO,
+        self.settings = self.settings.with_video(
+            display=detection.auto_display_mode(DEFAULT_FRAMING, detection.desktop_size())
         )
-        if self.settings.size_mode is SizeMode.MANUAL:
-            # It was a hand-picked size that no longer fits: say so, rather
-            # than silently substituting one and leaving the menu lying.
-            logger.info(
-                "Window %dx%d does not fit the %dx%d desktop; using the automatic size",
-                size[0],
-                size[1],
-                desktop[0],
-                desktop[1],
-            )
-        self.settings = resolved
 
     def initialize_display(self) -> None:
-        """Build the window, the render target and the presentation, once.
+        """Build the window and the presentation, once.
 
-        Public because the headless fixtures need the same three objects the
-        loop does, built the same way, rather than half of them.
+        Public because the headless fixtures need the same construction the loop
+        does, rather than half of it.
         """
         desktop = detection.desktop_size()
         self.stage = Stage(self._window_spec(), desktop)
-        # The window exists now, so the sharpness can be chosen for it. This
-        # used to build the target from the constant instead, which meant a
-        # stored "Render scale 3x" was applied the moment you changed it in the
-        # menu and forgotten on the next launch -- and the menu went on
-        # displaying 3x while the game drew at 2x.
-        scale = self._render_scale()
-        self.settings = self.settings.with_video(render_scale=scale)
-        self.viewport = Viewport(DEFAULT_FRAMING, scale)
-        self.presentation = Presentation(self.stage, self.viewport)
+        # The window exists, so the picture can be drawn at its size: the target
+        # is the window's letterbox rectangle and the density is read back off
+        # it. Nothing here is chosen, and nothing here is stored.
+        self.presentation = Presentation(
+            self.stage.surface, DEFAULT_FRAMING, pixel_perfect=self.settings.pixel_perfect
+        )
 
-    def _render_scale(self) -> int:
-        """The render scale to use: the stored choice, or one that fits.
+    def _retarget(self) -> None:
+        """Re-point everything at the render target after it changed size.
 
-        Only a settings file that never chose gets a scale from the window. A
-        file that did keeps it, even if the machine changed -- the player picked
-        it, and second-guessing them on a different display is worse than a
-        slightly soft picture.
+        The single cascade for "the window is a different size now", and it is
+        reached from the two things that can cause one: a display setting
+        changing, and the player dragging the window. Both produce the same
+        three consequences -- a new surface to draw into, a new density for the
+        camera, a new interface scale -- and doing them in one place is what
+        keeps a resize from leaving one of the three behind.
         """
-        chosen = self.settings.render_scale
-        if chosen is not None:
-            return chosen
-        return render_scale_for(self.stage.size if self.stage is not None else (0, 0))
-
-    def _rebuild_display(self) -> None:
-        """Create or recreate the window, the render target and the presentation.
-
-        Three different things change here and it is worth keeping them apart,
-        because they invalidate different caches:
-
-        - the **window** only when a window setting changed. Nothing drawn is
-          affected: the render target is the same size either way.
-        - the **render target** only when the render scale changed, since its
-          size is the framing times that scale and nothing else.
-        - the **presentation** on either, since it is the mapping between them.
-        """
-        desktop = detection.desktop_size()
-        spec = self._window_spec()
-        assert self.stage is not None
-        self.stage.rebuild(spec, desktop)
+        assert self.presentation is not None
+        if not self.presentation.recompute():
+            return
         # set_mode leaves every surface converted for the *previous* display
         # format stale. AssetLibrary has no display to compare against, so it
         # must be invalidated explicitly or the next frame blits through a
         # software alpha path, then pays a full re-decode and re-conversion.
         self._invalidate_assets()
+        self.scene_manager.set_surface(self.presentation.surface)
+        self.scene_manager.set_ui_scale(self.ui_scale)
 
-        assert self.viewport is not None
-        assert self.presentation is not None
-        self.presentation.recompute()
+    def _rebuild_display(self) -> None:
+        """Recreate the window, then refit the picture to it.
 
-    def _rebuild_render_target(self, scale: int) -> None:
-        """Replace the render target, after the render scale changed.
-
-        The only path that has to tell the scene stack about a new surface.
-        Every other display change lands in ``_rebuild_display`` and touches
-        nothing that is drawn.
-
-        The scale is validated by the settings store, and again by
-        ``Framing.viewport_size``, so a value that somehow got through cannot
-        produce a zero-sized target.
+        The window is the only thing a display setting can replace, and the
+        picture follows it: the target is the window's letterbox rectangle, so
+        there is no separate "render target" setting left to keep in step.
         """
-        self.viewport = Viewport(DEFAULT_FRAMING, scale)
-        if self.presentation is not None:
-            self.presentation.viewport = self.viewport
-            self.presentation.recompute()
-        self.scene_manager.set_surface(self.viewport.surface)
+        desktop = detection.desktop_size()
+        assert self.stage is not None
+        assert self.presentation is not None
+        self.stage.rebuild(self._window_spec(), desktop)
+        self.presentation.retarget(self.stage.surface)
+        self._invalidate_assets()
+        self.scene_manager.set_surface(self.presentation.surface)
+        self.scene_manager.set_ui_scale(self.ui_scale)
 
     def apply_settings(self, settings: UserSettings) -> None:
-        """Apply new settings, recreating only what the change actually touches.
+        """Apply new settings, doing only what the change actually touches.
 
-        A setting that changes the window rebuilds the window and nothing else:
-        the render target keeps its size, so no view recomputes its layout and
-        no art is re-decoded. A UI scale change touches neither. Only the render
-        scale replaces the surface everything is drawn into.
+        A display mode or a vsync flag changes the window, and therefore the
+        picture, because the picture *is* the window's size. ``pixel_perfect``
+        changes the letterbox, and therefore the target, without the window
+        moving at all. A frame limit touches neither. The interface scale goes
+        last, and always as the player's preference times the density -- which
+        is why it is not a number read straight out of the settings.
         """
         previous = self.settings
         self.settings = settings
@@ -309,15 +269,20 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
-        if self.stage is None:
+        if self.stage is None or self.presentation is None:
             return
+        # Before anything else, and unconditionally: the letterbox belongs to
+        # the presentation, and a rebuild reads it. Setting it only on the branch
+        # that does not touch the window is how the two drift apart -- a display
+        # change and a sharpness change applied together left the presentation
+        # snapping to whole pixels with the setting saying otherwise, which the
+        # acceptance run caught and nothing else did.
+        self.presentation.pixel_perfect = settings.pixel_perfect
         if self._window_signature(previous) != self._window_signature(settings):
             self._rebuild_display()
-        if settings.render_scale is not None and previous.render_scale != settings.render_scale:
-            self._rebuild_render_target(settings.render_scale)
-        elif self.presentation is not None:
-            self.presentation.smoothing = settings.smoothing
-        self.scene_manager.set_ui_scale(settings.ui_scale)
+        elif previous.pixel_perfect != settings.pixel_perfect:
+            self._retarget()
+        self.scene_manager.set_ui_scale(self.ui_scale)
 
     @staticmethod
     def _invalidate_assets() -> None:
@@ -334,20 +299,20 @@ class Game:
     def _window_signature(settings: UserSettings) -> tuple[object, ...]:
         """The settings that require a new ``pygame.display.set_mode`` call.
 
-        Render scale, smoothing, frame limit and UI scale are deliberately not
-        here: none of them touches the window, and the render target only
-        changes with the scale, which has its own path.
+        A mode and a vsync flag, and nothing else. Pixel-perfect art changes the
+        target without the window moving, the frame limit touches neither, and
+        the interface scale is a multiplier on a density the window already
+        decided.
         """
-        return (settings.width, settings.height, settings.display, settings.vsync)
+        return (settings.display, settings.vsync)
 
     def _persist_settings(self) -> None:
         """Queue the settings for a write, coalesced to one per frame.
 
-        ``SettingsStore.save`` re-reads, rewrites and atomically replaces the
-        JSON file, which blocked the frame on every keypress in the Video menu
-        and on every captured key during rebinding. Marking the state dirty and
-        flushing it from the loop keeps a burst of changes (holding a key on
-        the resolution row) down to a single write.
+        The write is a small file replaced atomically, and it used to block the
+        frame on every keypress in the Video menu and on every captured key
+        during rebinding. Marking the state dirty and flushing it from the loop
+        keeps a burst of changes down to a single write.
         """
         self._settings_dirty = True
 
@@ -525,13 +490,13 @@ class Game:
             self.input_provider.note_event(event)
 
             if event.type == pygame.VIDEORESIZE:
-                # La fenêtre est redimensionnable, et un redimensionnement ne
-                # change plus rien de ce qui est dessiné : la cible de rendu a
-                # une taille fixe. Il n'y a donc qu'une chose à recalculer, le
-                # rectangle de présentation. SDL annonce aussi cet évènement
-                # lors d'un set_mode() interne, ce qui est idempotent.
-                if self.presentation is not None:
-                    self.presentation.recompute()
+                # The window is resizable and the picture is the window's size,
+                # so a drag rebuilds the render target, re-reads the density and
+                # re-lays out the interface -- the same cascade as a display
+                # setting change, which is why it is one method. SDL also
+                # announces this during an internal set_mode(), and recomputing
+                # an unchanged size is a no-op.
+                self._retarget()
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
@@ -592,7 +557,7 @@ class Game:
                 min(max(position[0], rect.left), rect.right - 1),
                 min(max(position[1], rect.top), rect.bottom - 1),
             )
-        event.pos = tuple(round(value) for value in self.presentation.pointer_to_viewport(position))
+        event.pos = self.presentation.pointer_to_viewport(position)
         return event
 
     def _handle_fatal_error(self, error: Exception) -> None:

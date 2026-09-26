@@ -61,12 +61,31 @@ def runtime(tmp_path) -> Game:
 
 
 def test_vsync_off_uses_the_clock_as_the_pacer(runtime: Game, fake_clock) -> None:
-    runtime.settings = replace(runtime.settings, vsync=False)
+    """The clock is asked to hold the **configured** rate, not a constant.
+
+    It used to be asserted against ``Display.FPS``, which passed only because
+    both numbers happened to be 60. The two are different quantities since the
+    frame limit became a setting: ``Display.FPS`` is the panel the game is
+    written against, and the default the player starts from is
+    ``DEFAULT_FRAME_LIMIT``. Raising one does not raise the other, and a test
+    that cannot tell them apart stops checking either.
+    """
+    runtime.settings = replace(runtime.settings, vsync=False, frame_limit=30)
     runtime.clock = fake_clock  # type: ignore[assignment]
 
     runtime._frame_delta()
 
-    assert fake_clock.slept == [Display.FPS], "without vsync the clock holds the rate"
+    assert fake_clock.slept == [30], "without vsync the clock holds the configured rate"
+
+
+def test_uncapped_asks_the_clock_for_no_limit_at_all(runtime: Game, fake_clock) -> None:
+    """``0`` is pygame's "no limit", which is a different request from 500."""
+    runtime.settings = replace(runtime.settings, vsync=False, frame_limit=None)
+    runtime.clock = fake_clock  # type: ignore[assignment]
+
+    runtime._frame_delta()
+
+    assert fake_clock.slept == [0]
 
 
 def test_vsync_on_still_ticks_the_clock(runtime: Game, fake_clock) -> None:

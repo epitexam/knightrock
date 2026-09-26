@@ -6,19 +6,24 @@ import os
 
 
 class Display:
-    """Fallback window size, and the default frame rate.
+    """The window's title, and the refresh rate this build targets.
 
-    ``WIDTH``/``HEIGHT`` are only the *starting* size: the real one is decided
-    per machine at launch by ``src.core.display.detection``, and then by the
-    video menu. What the game draws into has nothing to do with either -- see
-    ``src.core.display.framing``.
+    The starting window size used to live here too, as ``WIDTH``/``HEIGHT``. It
+    does not any more: it is derived from the desktop at launch
+    (:func:`src.core.display.detection.initial_window_size`), and the window
+    manager owns the geometry from then on -- there is no size left for the game
+    to hold an opinion about. What the game draws into is a separate question
+    again, answered by ``src.core.display.framing``.
 
-    ``FPS`` is the default frame limit, not a property of the display. The
-    player can change it, and with vsync on the present overrides it.
+    ``FPS`` is the refresh rate this build is written against, and nothing more.
+    It is **not** the default frame limit: that is
+    ``src.application.settings_store.DEFAULT_FRAME_LIMIT``, because the player
+    changes it in the video menu and the two stopped being the same number when
+    the frame limit became a setting. ``FPS`` is read in exactly one place, as
+    the base of the runaway ceiling ``game.DISPLAY_SAFETY_CEILING_FPS``, so
+    raising it cannot silently change what the game presents.
     """
 
-    WIDTH = 1440
-    HEIGHT = 900
     FPS = 60
     TITLE = "Knightrock"
 

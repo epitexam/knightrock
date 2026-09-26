@@ -19,28 +19,6 @@ how large the world is *drawn*, never how much of it is *shown*.
 from dataclasses import dataclass
 
 
-def checked_render_scale(scale: float) -> int:
-    """The render scale as whole target pixels per world unit, or refused.
-
-    One implementation for everything that has to agree on the number: the
-    viewport that builds the surface, and the camera that scales the rectangles
-    onto it. They used to differ -- the viewport refused a bad scale and the
-    camera clamped it to 1 -- and a silent clamp is the worst of the two,
-    because ``Camera(framing, 1.9)`` answering ``1`` is precisely the
-    images-and-rectangles disagreeing that a render target is supposed to make
-    impossible.
-
-    A fractional factor is refused rather than rounded for the same reason
-    :meth:`Framing.viewport_size` gives: the art is authored at one pixel per
-    world unit, so only a whole factor reproduces every pixel.
-    """
-    if scale != int(scale):
-        raise ValueError(f"The render scale must be a whole number, got {scale!r}")
-    if scale < 1:
-        raise ValueError("The render scale must be at least 1")
-    return int(scale)
-
-
 @dataclass(frozen=True)
 class Framing:
     """The visible slice of the world, in world units.
@@ -79,16 +57,6 @@ class Framing:
         """
         return self.width < world_size[0] and self.height < world_size[1]
 
-    def viewport_size(self, scale: int) -> tuple[int, int]:
-        """The pixel size of the render target for an integer ``scale``.
-
-        The scale is an integer because the art is authored at one pixel per
-        world unit and is rescaled once when it is loaded. An integer factor
-        reproduces every pixel exactly; a fractional one does not.
-        """
-        factor = checked_render_scale(scale)
-        return (round(self.width * factor), round(self.height * factor))
-
 
 #: The gameplay framing.
 #:
@@ -97,4 +65,9 @@ class Framing:
 #: narrower *and* shorter than every ``.tmx`` in the folder, so no level can
 #: ever be taken in at once. It is also 16:9, matching most displays, which
 #: keeps the letterbox bars small.
+#:
+#: It is expressed in world units and nothing else. How many pixels a world unit
+#: occupies is the *window's* business, read off the render target
+#: (:func:`src.core.display.letterbox.density_for`), which is why this file
+#: needs no window and no pygame.
 DEFAULT_FRAMING = Framing(1152.0, 648.0)

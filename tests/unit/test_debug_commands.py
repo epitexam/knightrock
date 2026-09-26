@@ -242,14 +242,48 @@ def test_swept_ghost_exposes_previous_origin(world_ui, camera) -> None:
     assert swept[0].width == 50.0
 
 
-def test_attack_timeline_marks_phase_progress(world_ui) -> None:
-    from src.ui.world_ui import WorldUI
+@pytest.mark.parametrize(
+    ("density", "per_frame"),
+    [
+        (1.0, 3),
+        (1.8889, 6),
+        # Below one the timeline keeps its design size rather than thinning to
+        # nothing: an overlay that vanishes is worse than one that is too big.
+        (0.5, 3),
+    ],
+)
+def test_attack_timeline_marks_phase_progress(world_ui, density: float, per_frame: int) -> None:
+    """Phase progress, in pixels that belong to the target.
 
+    The three pixels per frame are a *world* dimension like every other here,
+    so they follow the density -- the same reason a hitbox outline does, and the
+    same bug when it did not.
+    """
+    world_ui.renderer.set_surface(world_ui.renderer.surface, density)
     state = SimpleNamespace(attack_name="jab", frame_counter=2)
     phase = SimpleNamespace(startup_frames=4, active_frames=4, recovery_frames=4)
-    assert WorldUI._timeline_progress(state, "startup", phase) == 2 * 3
-    assert WorldUI._timeline_progress(state, "active", phase) == (4 + 2) * 3
-    assert WorldUI._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * 3
+    assert world_ui.metrics.timeline_px_per_frame == per_frame
+    assert world_ui._timeline_progress(state, "startup", phase) == 2 * per_frame
+    assert world_ui._timeline_progress(state, "active", phase) == (4 + 2) * per_frame
+    assert world_ui._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * per_frame
+
+
+@pytest.mark.parametrize("density", [1.0, 1.25, 1.8889, 2.0, 3.3333])
+def test_the_overlay_is_never_thinner_than_one_art_pixel(world_ui, density: float) -> None:
+    """The regression that made F1 look like a dead key.
+
+    A hitbox outline is one art pixel wide by design. Handed to pygame unscaled
+    on a window where the world is drawn 1.9x larger, it arrived at 53% of its
+    weight and vanished into the tile grid -- and the labels, the zone seals and
+    the timeline with it, because every dimension in the layer had the same
+    units mistake. Below a density of one it must not *shrink* either.
+    """
+    world_ui.renderer.set_surface(world_ui.renderer.surface, density)
+    assert world_ui.stroke() == max(1, round(density))
+    assert world_ui.metrics.zone_outline == max(1, round(density))
+    assert world_ui.metrics.zone_boost_outline == max(1, round(2 * density))
+    assert world_ui.metrics.timeline_bar_height >= 1
+    assert world_ui.metrics.tier_gap >= 1
 
 
 def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:

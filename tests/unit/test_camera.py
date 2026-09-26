@@ -1,12 +1,18 @@
-"""The camera is a pure translation over a fixed framing.
+"""The camera: a fixed framing, and a density read off the render target.
 
 The zoom tests this file replaces asserted that a higher zoom shows less of the
 world. That was true and it was not enough: the zoom was derived from the
 *window*, so the visible world was still a free variable of a video setting, and
 a player could widen their field of view by opening the video menu. What is
 asserted now is the stronger property -- the visible world does not depend on
-anything the player can configure -- plus the covering arithmetic, which is
-unchanged and still worth fuzzing.
+anything the player can configure -- plus the snapping arithmetic, which is new
+and worth fuzzing for the same reason the old covering arithmetic was.
+
+The density is a **fraction** on most displays, which is the change that matters
+here. A 64-unit sprite is 121 pixels at 1.889, and a 121-pixel image blitted
+into a 120.9-pixel rectangle is resampled by ``pygame.blit`` without saying so.
+``scaled_size`` is the single rounding rule that makes the two agree, and most
+of what follows is a check that nothing else rounds on its own.
 """
 
 import os
@@ -214,11 +220,11 @@ def test_a_screen_rect_covers_the_pixels_it_was_meant_to_cover() -> None:
     camera._previous_offset = pygame.Vector2(camera.offset)
     camera.begin_frame(1.0)
 
-    right_edge = camera.apply_covering(pygame.FRect(2496.0, 1856.0, 64.0, 64.0))
-    bottom_edge = camera.apply_covering(pygame.FRect(0.0, 1856.0, 64.0, 64.0))
+    right_edge = camera.apply_snapped(pygame.FRect(2496.0, 1856.0, 64.0, 64.0))
+    bottom_edge = camera.apply_snapped(pygame.FRect(0.0, 1856.0, 64.0, 64.0))
 
-    assert right_edge.right == round(camera.viewport_width)
-    assert bottom_edge.bottom == round(camera.viewport_height)
+    assert right_edge.right == round(camera.viewport_width * camera.density)
+    assert bottom_edge.bottom == round(camera.viewport_height * camera.density)
 
 
 def test_a_screen_rect_left_of_the_view_rounds_down_not_toward_zero() -> None:
@@ -231,12 +237,13 @@ def test_a_screen_rect_left_of_the_view_rounds_down_not_toward_zero() -> None:
     camera = Camera()
     camera.begin_frame(1.0)
 
-    rect = camera.apply_covering(pygame.FRect(-40.0, -40.0, 64.0, 64.0))
+    rect = camera.apply_snapped(pygame.FRect(-40.0, -40.0, 64.0, 64.0))
 
     assert rect.left == -40
     assert rect.top == -40
 
 
+@pytest.mark.parametrize("density", [0.5, 1.0, 1.25, 1.8889, 2.0, 3.3333])
 @pytest.mark.parametrize(
     "framing",
     [
@@ -246,20 +253,22 @@ def test_a_screen_rect_left_of_the_view_rounds_down_not_toward_zero() -> None:
         Framing(500.0, 1400.0),
     ],
 )
-def test_a_covering_rect_always_contains_the_exact_extent(framing: Framing) -> None:
-    """The invariant holds for any world size, framing, offset and rect.
+def test_a_snapped_rect_always_reaches_the_exact_extent(density: float, framing: Framing) -> None:
+    """The invariant holds for any world size, framing, density, offset and rect.
 
-    The far edges come from ``apply``'s own result rather than being recomputed
-    from the world rect: the two disagree in the last bit, and ``ceil`` of a
-    value one bit below the true one lands a whole pixel short, which is the
-    bug this replaces. Fuzzing every combination is what caught it.
+    The size is ``scaled_size`` rather than the exact extent rounded outward, so
+    the right and bottom edges can land a pixel *inside* the exact rectangle --
+    that is the price of never resampling, and it is only safe because the
+    neighbour in that direction starts no later than the truncated edge. The
+    property worth fuzzing is therefore the one that makes it safe: **no gap**,
+    in either axis, anywhere.
     """
     rng = random.Random(20260925)
-    camera = Camera(framing)
+    camera = Camera(framing, density)
     camera.set_world_size(8000, 600)
     view_w, view_h = camera.viewport_width, camera.viewport_height
 
-    for _ in range(400):
+    for _ in range(200):
         camera.offset.x = rng.uniform(-50.0, 8000.0 - view_w + 50.0)
         camera.offset.y = rng.uniform(-50.0, 600.0 - view_h + 50.0)
         camera._previous_offset = pygame.Vector2(camera.offset)
@@ -271,12 +280,18 @@ def test_a_covering_rect_always_contains_the_exact_extent(framing: Framing) -> N
             rng.uniform(0.5, 200.0),
         )
         exact = camera.apply(world)
-        got = camera.apply_covering(world)
+        got = camera.apply_snapped(world)
 
+        # The size is the one rule, exactly.
+        assert got.size == camera.scaled_size((world.width, world.height))
+        # The near edges never come inside the sprite.
         assert got.left <= exact.left
         assert got.top <= exact.top
-        assert got.right >= exact.right
-        assert got.bottom >= exact.bottom
+        # And a neighbour of the same size, one step along, always touches.
+        neighbour = camera.apply_snapped(
+            pygame.FRect(world.x + world.width, world.y, world.width, world.height)
+        )
+        assert neighbour.left <= got.right
 
 
 class _FlashingEntity(pygame.sprite.Sprite):
@@ -288,23 +303,39 @@ class _FlashingEntity(pygame.sprite.Sprite):
         self.flash_timer = 0.05
 
 
-def _renderer(scale: int) -> Renderer:
-    """A renderer on a target built the way the game builds one."""
-    surface = Viewport(DEFAULT_FRAMING, scale).surface
+#: Densities worth exercising: below one (a window smaller than the framing),
+#: exactly one, the awkward fractions a real display produces, and the whole
+#: numbers the art was authored for.
+DENSITIES = (0.5, 1.0, 1.25, 2176 / 1152, 2.0, 3.0)
+
+
+def _renderer(density: float) -> Renderer:
+    """A renderer on a target built the way the game builds one: from a density."""
+    size = (
+        round(DEFAULT_FRAMING.width * density),
+        round(DEFAULT_FRAMING.height * density),
+    )
+    surface = Viewport(DEFAULT_FRAMING, size).surface
     return Renderer(surface, Camera.for_target(surface))
 
 
-def test_the_camera_reads_its_scale_off_the_target() -> None:
-    """And not the other way round: a scale passed next to a target of another
+def test_the_camera_reads_its_density_off_the_target() -> None:
+    """And not the other way round: a density passed next to a target of another
     size would scale the images and not the rectangles, and the world would be
     drawn at half the density the framing claims."""
-    for scale in (1, 2, 3):
-        surface = Viewport(DEFAULT_FRAMING, scale).surface
-        assert Camera.for_target(surface).scale == scale
-        assert Renderer(surface, Camera.for_target(surface))._render_scale == scale
+    for density in DENSITIES:
+        size = (
+            round(DEFAULT_FRAMING.width * density),
+            round(DEFAULT_FRAMING.height * density),
+        )
+        surface = Viewport(DEFAULT_FRAMING, size).surface
+        assert Camera.for_target(surface).density == pytest.approx(density, abs=1e-3)
+        assert Renderer(surface, Camera.for_target(surface))._density == pytest.approx(
+            density, abs=1e-3
+        )
 
 
-@pytest.mark.parametrize("size", [(1400, 900), (640, 480), (0, 0), (2305, 1296)])
+@pytest.mark.parametrize("size", [(1400, 900), (640, 480), (0, 0), (3, 3), (1152, 700)])
 def test_a_target_that_does_not_match_the_framing_is_refused(size) -> None:
     """Rounding a mismatched ratio would draw a world at a density nobody asked
     for, and the framing would stop describing what is on screen."""
@@ -312,43 +343,71 @@ def test_a_target_that_does_not_match_the_framing_is_refused(size) -> None:
         Camera.for_target(pygame.Surface(size))
 
 
-def test_a_two_to_one_target_scales_the_image_and_the_rect_together() -> None:
+def test_a_target_a_pixel_off_the_aspect_is_accepted_and_stays_sub_pixel() -> None:
+    """Where the tolerance stops, stated as the number it is.
+
+    A letterbox rounds both axes to whole pixels, so its two densities never
+    agree exactly -- 2304x1296 is 2.0 wide and 2.0 high, but a width that came
+    out one pixel over is 2.0009 against 2.0. Refusing that would refuse
+    perfectly good targets; accepting more than a pixel of it would draw the
+    frame stretched on one axis. The claim is that the residual is invisible:
+    across the whole 648-unit height it is under a pixel.
+    """
+    surface = pygame.Surface((2305, 1296))
+    camera = Camera.for_target(surface)
+
+    assert camera.density == pytest.approx(2305 / 1152)
+    vertical_miss = abs(DEFAULT_FRAMING.height * camera.density - 1296)
+    assert vertical_miss < 1.0
+
+
+@pytest.mark.parametrize("density", DENSITIES)
+def test_the_image_and_the_rect_are_scaled_together(density: float) -> None:
     """The bug this file was extended for: image scaled, rect not, and pygame
-    silently resizes the source to fit the destination."""
-    renderer = _renderer(2)
+    silently resizes the source to fit the destination.
+
+    Now that the density is a fraction, this is not a corner case: at 1.889 a
+    10-unit sprite is 19 pixels and its rect has to be 19 pixels too, or every
+    sprite on screen is resampled by ``pygame.blit`` without a word.
+    """
+    renderer = _renderer(density)
     image = pygame.Surface((10, 20))
     rect = pygame.FRect(0.0, 0.0, 10.0, 20.0)
     renderer.camera.offset.update(0, 0)
     renderer.camera.begin_frame(1.0)
 
     scaled = renderer._scaled_image(image)
-    covering = renderer.camera.apply_covering(rect)
+    snapped = renderer.camera.apply_snapped(rect)
 
-    assert renderer._render_scale == 2
-    assert scaled.get_size() == (20, 40)
-    assert covering.size == scaled.get_size(), (
+    assert renderer._density == pytest.approx(density, abs=1e-3)
+    assert scaled.get_size() == renderer.camera.scaled_size((10, 20))
+    assert snapped.size == scaled.get_size(), (
         "a blit whose source and destination differ is silently resampled, which "
         "is how the world ends up drawn at the wrong size"
     )
 
 
-def test_the_framing_covers_the_whole_target_at_every_scale() -> None:
+@pytest.mark.parametrize("density", DENSITIES)
+def test_the_framing_covers_the_whole_target_at_every_density(density: float) -> None:
     """The other half: the visible world has to *be* the target, not a corner."""
-    for scale in (1, 2, 3):
-        surface = Viewport(DEFAULT_FRAMING, scale).surface
-        camera = Camera.for_target(surface)
-        camera.offset.update(0, 0)
-        camera.begin_frame(1.0)
+    renderer = _renderer(density)
+    camera = renderer.camera
+    camera.offset.update(0, 0)
+    camera.begin_frame(1.0)
 
-        covered = camera.apply_covering(
-            pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
-        )
+    covered = camera.apply_snapped(
+        pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
+    )
 
-        assert covered.size == surface.get_size()
+    # Within a pixel: the framing is a world-space rectangle and the target is a
+    # whole number of pixels, so the two can only agree to the pixel.
+    assert abs(covered.width - renderer.surface.get_width()) <= 1
+    assert abs(covered.height - renderer.surface.get_height()) <= 1
+    assert covered.topleft == (0, 0)
 
 
 def test_a_one_to_one_target_pays_nothing_for_scaling() -> None:
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     image = pygame.Surface((10, 20))
 
     assert renderer._scaled_image(image) is image
@@ -356,9 +415,9 @@ def test_a_one_to_one_target_pays_nothing_for_scaling() -> None:
 
 
 def test_the_scaled_cache_is_keyed_by_the_image_alone() -> None:
-    """The key used to carry the zoom. The scale is fixed for a target, so an
-    image can only ever have one scaled form."""
-    renderer = _renderer(2)
+    """The key used to carry the zoom. The density is fixed for a target, so an
+    image can only ever have one magnified form."""
+    renderer = _renderer(2.0)
     image = pygame.Surface((8, 8))
 
     first = renderer._scaled_image(image)
@@ -367,38 +426,39 @@ def test_the_scaled_cache_is_keyed_by_the_image_alone() -> None:
 
 
 def test_adopting_a_new_target_drops_the_scale_cache() -> None:
-    renderer = _renderer(2)
+    """A window resize changes the density, so every magnified surface is stale."""
+    renderer = _renderer(2.0)
     renderer._scaled_image(pygame.Surface((8, 8)))
     assert renderer._scaled_cache
 
-    new_target = Viewport(DEFAULT_FRAMING, 1).surface
+    new_target = Viewport(DEFAULT_FRAMING, (1152, 648)).surface
     renderer.set_surface(new_target)
 
     assert not renderer._scaled_cache
-    assert renderer._render_scale == 1
-    assert renderer.camera.scale == 1
+    assert renderer._density == 1.0
+    assert renderer.camera.density == 1.0
 
 
 def test_a_new_target_does_not_disturb_what_the_camera_shows() -> None:
-    """The scale moves with the target; the *framing* must not.
+    """The density moves with the target; the *framing* must not.
 
     The old code resized the camera with the window, which is the original bug:
     the visible world was a function of a video setting. A new target changes
     how large the world is drawn and nothing about how much of it is shown."""
-    renderer = _renderer(2)
+    renderer = _renderer(2.0)
     before = (renderer.camera.viewport_width, renderer.camera.viewport_height)
 
-    renderer.set_surface(Viewport(DEFAULT_FRAMING, 1).surface)
+    renderer.set_surface(Viewport(DEFAULT_FRAMING, (1152, 648)).surface)
 
     assert (renderer.camera.viewport_width, renderer.camera.viewport_height) == before
-    assert renderer.camera.scale == 1, "the scale does follow the target"
+    assert renderer.camera.density == 1.0, "the density does follow the target"
 
 
 def test_draw_returns_nothing_and_paints_the_whole_target() -> None:
     """No partial presentation any more, so there is no rect set to return."""
     groups = SpriteGroups()
     groups.all_sprites.add(StaticSprite((0, 0)))
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     renderer.background_color = (7, 9, 11)
 
     assert renderer.draw(groups) is None
@@ -412,7 +472,7 @@ def test_the_background_is_erased_every_frame() -> None:
     whole target now, so the one-frame-late overlay bookkeeping is gone."""
     groups = SpriteGroups()
     groups.all_sprites.add(StaticSprite((0, 0), size=(64, 64)))
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     renderer.background_color = (3, 5, 7)
     renderer.draw(groups)
 
@@ -426,7 +486,7 @@ def test_a_flashing_entity_is_collected_without_touching_the_scale_cache() -> No
     groups = SpriteGroups()
     entity = _FlashingEntity()
     groups.entity_sprites.add(entity)
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)
 
     assert renderer._collect_flashes(groups)

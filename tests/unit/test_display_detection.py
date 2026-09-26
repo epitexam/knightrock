@@ -38,32 +38,51 @@ DESKTOPS = [
 
 
 @pytest.mark.parametrize("desktop", DESKTOPS)
-def test_every_offered_size_fits_on_the_desktop_that_offers_it(desktop) -> None:
-    """The bug this replaces: 2560x1440 was offered to a 1366x768 laptop."""
-    choices = detection.window_size_choices(desktop)
-    assert choices, f"a {desktop[0]}x{desktop[1]} desktop must offer at least one size"
-    for size in choices:
-        assert detection.fits_on_desktop(size, desktop), f"{size} does not fit {desktop}"
+def test_the_opening_window_fits_and_leaves_room_when_it_can(desktop) -> None:
+    """The bug this replaces: 2560x1440 was offered to a 1366x768 laptop.
+
+    There is no longer a list of sizes to check -- the catalogue was seven claims
+    about the player's monitor, and the game could check none of them. What is
+    left is one starting size, derived from the desktop, and per axis it has to
+    fit the screen and leave the title bar's room whenever there is room to
+    leave it.
+    """
+    size = detection.initial_window_size(desktop)
+
+    for axis in (0, 1):
+        span = desktop[axis]
+        margin = detection.DESKTOP_MARGIN[axis]
+        default = detection.FALLBACK_WINDOW[axis]
+        assert 1 <= size[axis] <= span, f"axis {axis} does not fit the desktop"
+        if span - margin >= default:
+            assert size[axis] == span - margin, f"axis {axis} ignored the margin"
+        else:
+            # Too tight for both: the window takes the whole span, because a
+            # window that does not fit is worse than one with no title bar.
+            assert size[axis] == span
 
 
 @pytest.mark.parametrize("desktop", DESKTOPS)
-def test_the_choices_are_ordered_and_unique(desktop) -> None:
-    choices = detection.window_size_choices(desktop)
-    assert list(choices) == sorted(choices)
-    assert len(choices) == len(set(choices))
+def test_a_bigger_desktop_opens_a_bigger_window(desktop) -> None:
+    size = detection.initial_window_size(desktop)
+    for wider, taller in ((desktop[0] + 320, desktop[1]), (desktop[0], desktop[1] + 200)):
+        grown = detection.initial_window_size((wider, taller))
+        assert grown[0] >= size[0] and grown[1] >= size[1]
 
 
-@pytest.mark.parametrize("desktop", DESKTOPS)
-def test_the_biggest_choice_stays_under_the_desktop(desktop) -> None:
-    biggest = detection.largest_window_size(desktop)
-    assert biggest[0] <= desktop[0] and biggest[1] <= desktop[1]
+def test_an_unknown_desktop_opens_the_documented_default() -> None:
+    """Headless runs, and drivers that cannot answer, still get a window."""
+    assert detection.initial_window_size((0, 0)) == detection.FALLBACK_WINDOW
 
 
-def test_a_desktop_too_small_for_any_fraction_still_yields_a_size() -> None:
-    """Refusing to open a window is not a recovery."""
+def test_a_desktop_too_small_for_the_default_still_yields_a_size() -> None:
+    """Refusing to open a window is not a recovery.
+
+    The size has to stay inside the screen even then, or the player gets a
+    window they cannot move, which is the outcome the margin exists to prevent.
+    """
     tiny = (100, 80)
-    assert detection.window_size_choices(tiny) == ()
-    size = detection.largest_window_size(tiny)
+    size = detection.initial_window_size(tiny)
     assert size[0] > 0 and size[1] > 0
     assert size[0] <= tiny[0] and size[1] <= tiny[1]
 
@@ -84,18 +103,34 @@ def test_the_automatic_display_mode_is_always_concrete(desktop) -> None:
     assert detection.auto_display_mode(DEFAULT_FRAMING, desktop).is_concrete
 
 
-def test_a_borderless_window_is_the_desktop_own_size() -> None:
-    """Borderless means the desktop's size, whatever the settings say."""
+@pytest.mark.parametrize("mode", list(DisplayMode))
+def test_no_mode_asks_for_a_size_the_game_invented(mode: DisplayMode) -> None:
+    """Each mode asks the platform for a size; none of them names one.
+
+    The window used to be built from a size in the settings file, and in
+    borderless it was built from the desktop while the file kept saying
+    something else -- so the menu displayed a number the game was not using.
+    There is no size left anywhere in the request, which is the only way to be
+    sure no two components can disagree about one.
+    """
     from src.core.display.stage import Stage, WindowSpec
 
-    stage = Stage.__new__(Stage)
-    assert Stage._window_size(
-        WindowSpec(width=800, height=600, mode=DisplayMode.BORDERLESS), (1920, 1080)
-    ) == (1920, 1080)
-    assert Stage._window_size(
-        WindowSpec(width=800, height=600, mode=DisplayMode.WINDOW), (1920, 1080)
-    ) == (800, 600)
-    assert stage is not None
+    requested = Stage._window_size(WindowSpec(mode=mode), (1920, 1080))
+    assert requested in {(0, 0), (1920, 1080), detection.initial_window_size((1920, 1080))}
+    assert all(value >= 0 for value in requested)
+
+
+def test_the_module_no_longer_offers_resolutions() -> None:
+    """A regression guard on the deletion itself.
+
+    ``window_size_choices`` was a catalogue of resolutions for a screen the game
+    cannot measure, and it is what the resolution picker was built on. A caller
+    reaching for it again would be reintroducing the claim.
+    """
+    assert not hasattr(detection, "window_size_choices")
+    assert not hasattr(detection, "largest_window_size")
+    assert not hasattr(detection, "fits_on_desktop")
+    assert not hasattr(detection, "WINDOW_SIZE_FRACTIONS")
 
 
 def test_the_module_does_not_pretend_to_place_a_window() -> None:

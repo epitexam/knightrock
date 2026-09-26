@@ -1,86 +1,51 @@
-"""The fixed-size surface the whole game draws into."""
+"""The surface every draw call in the game targets.
+
+Its size is the window's letterbox rectangle, so it changes when the window
+does and for no other reason. That single fact is what makes the rest of the
+interface work: the world, the HUD, the menus and the debug panels are all laid
+out against it, and the density of pixels is read back off it rather than
+configured, so a surface and the transform that draws onto it cannot disagree
+about how big a world unit is.
+
+Nothing here decides what the picture should look like on a given display. The
+window manager resizes the window, the letterbox follows
+(:mod:`src.core.display.letterbox`), and this surface follows the letterbox.
+"""
 
 import pygame
 
 from .framing import DEFAULT_FRAMING, Framing
-
-#: Render scales offered to the player. Integers only: the art is authored at
-#: one pixel per world unit and is scaled once when loaded, and an integer
-#: factor reproduces every source pixel exactly.
-RENDER_SCALES = (1, 2, 3)
-
-#: The scale the game starts with.
-#:
-#: Measured by ``tests/benchmarks/render_benchmark.py`` on the registered
-#: level: the world draw costs 2.19ms at 1x, 4.22ms at 2x and 7.77ms at 3x, so
-#: the scale is not free -- the target is that many times the pixels. It is the
-#: default anyway because it is the one that keeps sprites crisp, and because
-#: the cost that actually decides whether a frame fits is the presentation,
-#: which this does not change.
-#:
-#: The measured crossover, for the video menu's hint: smooth scaling plus a 2x
-#: draw is 60% of a 60Hz frame at 1920x1080, 70% at 2560x1440, 82% at 3440x1440
-#: and 105% at 3840x2160 -- over budget. Past 1440p, Smoothing off or Render
-#: scale 1x brings 4K back to 56%.
-DEFAULT_RENDER_SCALE = 2
-
-
-def render_scale_for(size: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> int:
-    """The smallest offered scale whose target covers a window of ``size``.
-
-    A render target smaller than the window it is shown in is scaled *up* on
-    the way out, which costs the fill rate of the larger surface and returns a
-    blurrier image than a smaller target would have drawn. So the default
-    follows the machine, the way the window size already does through
-    ``SizeMode.AUTO``: 1x on a 1366x768 laptop, 2x at 1440p, 3x in borderless
-    on a 4K panel -- capped at the top of ``RENDER_SCALES``, which is where 4K
-    starts being scaled up again.
-
-    The argument is the *window*, not the desktop, so a windowed game on a 4K
-    screen still gets 2x for a 2560x1440 window. Pass ``(0, 0)`` when the
-    desktop is unknown, which headless runs are, and this answers
-    ``DEFAULT_RENDER_SCALE`` -- today's behaviour, unchanged.
-
-    This is a default, not a rule: ``Render scale`` in the video menu overrides
-    it, and a stored setting keeps its value even when the desktop it was
-    chosen on is gone.
-    """
-    if size[0] <= 0 or size[1] <= 0:
-        return DEFAULT_RENDER_SCALE
-    for scale in RENDER_SCALES:
-        target = framing.viewport_size(scale)
-        if target[0] >= size[0] and target[1] >= size[1]:
-            return scale
-    return RENDER_SCALES[-1]
+from .letterbox import density_for
 
 
 class Viewport:
     """The pixel surface every draw call in the game targets.
 
-    Its size is ``framing * scale`` and it never changes. That single fact is
-    what makes the rest of the interface work: menus, HUD, debug panels and
-    world overlays are all laid out against a constant size, so they are laid
-    out the same way whatever the window ends up being. The window only
-    decides how the finished frame is scaled on its way to the screen, which is
-    ``Presentation``'s job and nobody else's.
-
-    Note what the fixity does *not* buy: the layout is constant, but the size
-    the player ends up looking at still follows the window, since the whole
-    surface is scaled on the way out. Interface scale is the manual lever.
+    ``size`` is in pixels and is expected to be a letterbox rectangle for
+    ``framing``; it is not checked here because the only producer is
+    :class:`~src.core.display.presentation.Presentation`, which is the one
+    component allowed to reconcile a window with a target. What *is* checked is
+    the consequence -- :attr:`density` -- since a target that does not match the
+    framing at one density is a wiring mistake, and a refusal is cheaper than a
+    frame drawn at a density nobody asked for.
     """
 
     def __init__(
         self,
         framing: Framing = DEFAULT_FRAMING,
-        scale: int = DEFAULT_RENDER_SCALE,
+        size: tuple[int, int] = (2, 2),
         *,
         convert: bool = False,
     ) -> None:
         self.framing = framing
-        self.scale = scale
-        self.size = framing.viewport_size(scale)
+        self.size = (max(1, int(size[0])), max(1, int(size[1])))
+        #: Target pixels per world unit, read off ``size`` rather than chosen.
+        self.density = density_for(self.size, framing)
         self.surface = pygame.Surface(self.size)
-        if convert:
+        # Converting is what makes the 1:1 blit onto the window a memcpy
+        # instead of a per-pixel format conversion. It needs a display to exist
+        # at all, so a headless caller asking for it is not an error.
+        if convert and pygame.display.get_surface() is not None:
             self.surface = self.surface.convert()
 
     @property
@@ -93,4 +58,4 @@ class Viewport:
         self.surface.fill(color)
 
     def __repr__(self) -> str:
-        return f"Viewport({self.size[0]}x{self.size[1]}, scale={self.scale})"
+        return f"Viewport({self.size[0]}x{self.size[1]}, density={self.density:.3f})"

@@ -68,10 +68,15 @@ def test_a_framing_needs_a_positive_size() -> None:
         Framing(1152.0, -1.0)
 
 
-def test_the_viewport_is_the_framing_times_an_integer_scale() -> None:
-    framing = DEFAULT_FRAMING
-    assert framing.viewport_size(1) == (1152, 648)
-    assert framing.viewport_size(2) == (2304, 1296)
-    assert framing.viewport_size(3) == (3456, 1944)
-    with pytest.raises(ValueError):
-        framing.viewport_size(0)
+def test_the_framing_names_no_pixels() -> None:
+    """The framing is in world units, and nothing else.
+
+    It used to be able to name a render target -- ``viewport_size(2)`` -- which
+    is how a world-unit answer and a pixel answer ended up in the same class, and
+    how a window could decide how much world was visible. The pixel size of the
+    picture belongs to the window now
+    (:func:`src.core.display.letterbox.letterbox`), and the framing must not be
+    able to answer it.
+    """
+    assert not hasattr(DEFAULT_FRAMING, "viewport_size")
+    assert not hasattr(DEFAULT_FRAMING, "pixel_size")

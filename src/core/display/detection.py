@@ -6,6 +6,14 @@ cannot be exercised headlessly; the decisions built on top of them can, and
 those are the ones that used to be wrong. ``pygame.display.get_desktop_sizes``
 answers under the dummy video driver, but a policy that has to be re-tested on
 a real screen is a policy nobody re-tests.
+
+Note what is *not* here any more: a catalogue of window sizes. The game used to
+offer five resolutions per machine and store the one it picked, which made a
+video setting into a claim about the player's monitor, and the claim was wrong
+as often as it was right -- in borderless the window is the desktop's size
+whatever the file says. The window is now the only source of truth and the
+picture is derived from it, so there is nothing left to offer and nothing left
+to store.
 """
 
 import pygame
@@ -13,18 +21,13 @@ import pygame
 from .framing import Framing
 from .mode import DisplayMode
 
-#: Room left around the desktop for the title bar and the taskbar, so a
-#: "full screen" window is still a window the player can move.
+#: Room left around the desktop for the title bar and the taskbar, so the
+#: window the game opens at is still a window the player can move.
 DESKTOP_MARGIN = (80, 96)
 
-#: The window sizes offered, as fractions of the player's own desktop.
-#:
-#: Relative rather than absolute, and that is the whole difference from a fixed
-#: catalogue of resolutions. A list of absolute sizes is a claim about the
-#: player's monitor that the game has no way to check, so it ends up offering
-#: 2560x1440 to a 1366x768 laptop. A list of fractions is meaningful on every
-#: screen, and the "does it fit" filter below removes the entries that do not.
-WINDOW_SIZE_FRACTIONS = (0.40, 0.55, 0.70, 0.85, 0.95)
+#: The smallest window worth opening, used when the desktop is unknown -- a
+#: headless run, or a driver that cannot answer.
+FALLBACK_WINDOW = (1440, 900)
 
 #: How far the desktop's aspect may sit from the framing's before the letterbox
 #: stops being invisible and starts being two black stripes.
@@ -87,47 +90,37 @@ def desktop_refresh_rates() -> tuple[int, ...]:
     return tuple(sorted((int(rate) for rate in rates), reverse=True))
 
 
-def fits_on_desktop(size: tuple[int, int], desktop: tuple[int, int]) -> bool:
-    """Whether a window of ``size`` can be shown on ``desktop`` and moved.
+def initial_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
+    """The size to open a windowed game at, from the desktop alone.
 
-    The margin is what stops a "whole desktop" entry from producing a window
-    whose title bar is off the bottom of the screen.
+    Not a setting, and not remembered: a starting size, decided from the machine
+    at launch and gone at exit. The catalogue of resolutions this replaces was
+    seven claims about the player's monitor that the game had no way to check,
+    and it still ended up disagreeing with the window it had opened -- in
+    borderless the size on screen is the desktop's whatever the file says, and
+    nothing wrote the difference back, so the menu displayed a number the game
+    was not using.
+
+    So the game no longer has an opinion about how big the window should be. It
+    opens as large as it can without hiding its own title bar, the player drags
+    it to whatever they like, and the picture follows: the render target is the
+    window, so every size is a first-class one.
     """
-    margin_w, margin_h = DESKTOP_MARGIN
-    return size[0] <= max(0, desktop[0] - margin_w) and size[1] <= max(0, desktop[1] - margin_h)
-
-
-def window_size_choices(desktop: tuple[int, int]) -> tuple[tuple[int, int], ...]:
-    """The window sizes to offer for this desktop, smallest first.
-
-    Entries that cannot fit are dropped rather than disabled: a size the
-    player's screen cannot show is not a choice, and listing it only produces a
-    row that fails when it is applied.
-    """
-    sizes = {
-        (round(desktop[0] * fraction), round(desktop[1] * fraction))
-        for fraction in WINDOW_SIZE_FRACTIONS
-    }
-    return tuple(sorted(size for size in sizes if fits_on_desktop(size, desktop)))
-
-
-def largest_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
-    """The biggest window that fits, falling back to a usable minimum.
-
-    A desktop too small for even the smallest fraction still has to produce a
-    size, because refusing to open a window is not a recovery.
-    """
-    choices = window_size_choices(desktop)
-    if choices:
-        return choices[-1]
-    return (max(1, desktop[0] // 2), max(1, desktop[1] // 2))
+    if desktop[0] <= 0 or desktop[1] <= 0:
+        return FALLBACK_WINDOW
+    # The bigger of "as large as possible" and "the default", then capped at the
+    # desktop itself: on a 1366x768 laptop the margin is larger than the
+    # default, and a window wider than the screen is not a starting size.
+    return tuple(  # type: ignore[return-value]
+        max(1, min(desktop[axis], max(FALLBACK_WINDOW[axis], desktop[axis] - DESKTOP_MARGIN[axis])))
+        for axis in (0, 1)
+    )
 
 
 def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode:
-    """Resolve ``DisplayMode.AUTO`` for this machine. Never returns AUTO."""
-    """Pick the display mode for a machine we have never seen before.
+    """Resolve ``DisplayMode.AUTO`` for this machine. Never returns AUTO.
 
-    Borderless when the desktop is already the shape of the framing, because
+    Borderless when the desktop already has the shape of the framing, because
     then the letterbox collapses to nothing and the game fills the screen with
     nothing to configure. Otherwise a window, sized generously: on a screen
     whose shape does not match, the player should be able to *see* the bars and

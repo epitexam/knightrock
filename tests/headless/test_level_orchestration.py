@@ -5,6 +5,7 @@ TMX asset required — and advanced tick by tick.
 """
 
 import pygame
+import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.sprites import Sprite
@@ -85,7 +86,12 @@ def test_level_draws_into_its_render_target_and_not_the_window(build_level) -> N
     window = pygame.display.get_surface()
     assert window is not None
     assert level.surface is not window
-    assert level.surface.get_size() == DEFAULT_FRAMING.viewport_size(level.camera.scale)
+    # The target is the window's letterbox rectangle, so the density is whatever
+    # the window implies -- and it agrees with the camera, which is the only
+    # thing that matters.
+    assert level.surface.get_size()[0] == pytest.approx(
+        level.camera.density * DEFAULT_FRAMING.width, abs=1.0
+    )
 
 
 def test_programmatic_level_data_has_no_colliders(build_level) -> None:

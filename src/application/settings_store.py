@@ -1,14 +1,33 @@
-"""The video settings, their file format, and how a v1 file is read.
+"""The video settings, their file format, and how an old file is read.
 
-Schema v2 replaced "fullscreen: bool" with a real display mode, and turned the
-window size into something the machine gets a say in. Both changes exist for
-the same reason: a setting that describes the player's screen is a claim the
-game cannot check, and the v1 catalogue of absolute resolutions made that claim
-seven times over -- offering 2560x1440 to a 1366x768 laptop.
+What a setting is allowed to be
+-------------------------------
+A choice the player can make and the game can honour, or nothing. That rule is
+what this file is down to, and it is why there is no window size here any more.
+
+The size used to be here, with a ``size_mode`` to say whether it was the
+player's or the machine's, and a ``render_scale`` on top to say how sharply to
+draw a fixed target. All three were claims about the player's screen, and the
+game could check none of them: it could not tell whether a remembered size still
+fit, and in borderless the window is the desktop's size whatever the file says,
+so the menu displayed a number the game was not using. A player who set a
+resolution watched the menu disagree with the screen and the number change on
+the next launch.
+
+The window is now the only source of truth (:mod:`src.core.display.letterbox`),
+and the picture is derived from it, so the settings that survive are the ones
+that were never about the screen: a display mode, whole-pixel art, vsync, a
+frame limit, an interface scale, and the bindings.
+
+Schema v3 dropped the window keys. A v2 or v1 file still loads: unknown keys
+are ignored rather than rejected, because the bindings are the expensive half
+to rebuild and must not be lost over a video key that no longer means anything.
 """
 
 import json
+import logging
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -16,27 +35,23 @@ from pathlib import Path
 from typing import Any
 
 from src.core.display.mode import DisplayMode
-from src.core.display.size_mode import SizeMode
-from src.core.display.viewport import RENDER_SCALES
 from src.core.input.bindings_repository import (
     bindings_from_dict,
     bindings_to_dict,
 )
 from src.core.input.input_bindings import InputBindings
-from src.core.settings import Display
 
-#: v1 had a boolean; v2 has a mode. Both are read.
-SETTINGS_FORMAT_VERSION = 2
-LEGACY_FORMAT_VERSION = 1
+logger = logging.getLogger(__name__)
 
-# Bornes vidéo acceptées : elles valident ``settings.json`` pour rejeter un
-# fichier corrompu ou hors limites. La fenêtre est redimensionnable, donc ces
-# bornes ne servent plus qu'à écarter un fichier absurde, et la taille est
-# recalculée au lancement quand le mode est « auto ».
-MIN_WINDOW_WIDTH = 320
-MIN_WINDOW_HEIGHT = 240
-MAX_WINDOW_WIDTH = 7680
-MAX_WINDOW_HEIGHT = 4320
+#: v1 had a boolean, v2 a window and a render scale, v3 only choices. All are read.
+SETTINGS_FORMAT_VERSION = 3
+LEGACY_FORMAT_VERSIONS = (1, 2)
+
+#: Interface scale, as the player chooses it. The scale the views are handed is
+#: this multiplied by the target's pixel density, so it is a preference about
+#: legibility and not a claim about the screen.
+UI_SCALES: tuple[float, ...] = (0.8, 1.0, 1.2)
+
 
 #: Frame limits offered. 20, 30 and 60 divide the 60Hz tick rate, so each is a
 #: whole number of simulation ticks per presented frame; above that the render
@@ -63,19 +78,29 @@ MAX_FRAME_LIMIT = 500
 
 @dataclass(frozen=True)
 class UserSettings:
+    """Everything the player is allowed to have an opinion about.
+
+    Notice what is not here: a window size, a "size mode", a render scale or a
+    smoothing flag. Every one of them was a claim about the player's screen
+    that the game could not check, and the two that mattered most were also
+    wrong in practice -- the window is either the desktop's size (borderless) or
+    whatever the player dragged it to, while the file and the menu carried a
+    third number that nobody wrote back. The picture is derived from the window
+    instead, so there is nothing to store and nothing to get wrong.
+
+    What is left is a list of choices, and each one is really a choice:
+
+    - **display**: how to occupy the screen. ``AUTO`` is re-evaluated every
+      launch, which is the honest answer for "I have never seen this machine".
+    - **pixel_perfect**: give up filling the window to get whole-pixel art.
+    - **vsync**, **frame_limit**: how often to present.
+    - **ui_scale**: the interface's own size, independent of the density.
+    - **bindings**: what the buttons do.
+    """
+
     bindings: InputBindings = field(default_factory=InputBindings)
     display: DisplayMode = DisplayMode.AUTO
-    width: int = Display.WIDTH
-    height: int = Display.HEIGHT
-    size_mode: SizeMode = SizeMode.AUTO
-    #: ``None`` means "not chosen yet", and is only ever true before the window
-    #: exists: :func:`src.core.display.viewport.render_scale_for` cannot pick a
-    #: sensible sharpness without knowing what the window will be, so the value
-    #: is resolved once at launch and written back like any other. It is not an
-    #: auto mode the player can see or change -- the video menu only ever offers
-    #: 1x, 2x and 3x.
-    render_scale: int | None = None
-    smoothing: bool = True
+    pixel_perfect: bool = False
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
@@ -86,11 +111,7 @@ class UserSettings:
             "bindings": bindings_to_dict(self.bindings),
             "video": {
                 "display": self.display.value,
-                "width": self.width,
-                "height": self.height,
-                "size_mode": self.size_mode.value,
-                "render_scale": self.render_scale,
-                "smoothing": self.smoothing,
+                "pixel_perfect": self.pixel_perfect,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
             },
@@ -99,15 +120,15 @@ class UserSettings:
 
     @classmethod
     def from_dict(cls, data: object) -> UserSettings:
-        """Read a v2 file, or a v1 one through the migration below."""
+        """Read a v3 file, or an older one through the migration below."""
         if not isinstance(data, dict):
             raise ValueError("settings must be an object")
         version = data.get("version")
-        if version == LEGACY_FORMAT_VERSION:
-            return cls._from_v1(data)
+        if version in LEGACY_FORMAT_VERSIONS:
+            return cls._from_v1(data) if version == 1 else cls._from_v2(data)
         if version != SETTINGS_FORMAT_VERSION:
             raise ValueError("unsupported settings schema")
-        return cls._from_v2(data)
+        return cls._from_v3(data)
 
     @classmethod
     def _bindings(cls, data: dict[str, Any]) -> InputBindings:
@@ -119,7 +140,8 @@ class UserSettings:
         return bindings_from_dict(bindings_data)
 
     @classmethod
-    def _from_v2(cls, data: dict[str, Any]) -> UserSettings:
+    def _from_v3(cls, data: dict[str, Any]) -> UserSettings:
+        """Read a v3 file: choices, and nothing about the screen."""
         bindings = cls._bindings(data)
         video = data.get("video", {})
         ui = data.get("ui", {})
@@ -127,19 +149,9 @@ class UserSettings:
             raise ValueError("settings sections must be objects")
 
         scale = ui.get("scale", 1.0)
-        if scale not in (0.8, 1.0, 1.2):
-            raise ValueError("ui.scale must be 0.8, 1.0 or 1.2")
+        if scale not in UI_SCALES:
+            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
 
-        # Absent, or explicitly null, means the same thing: let the launch pick
-        # one from the window it is about to make. Anything present has to be a
-        # real choice, because the menu can only cycle real values.
-        render_scale = video.get("render_scale")
-        if render_scale is not None:
-            render_scale = _bounded_int(
-                render_scale, "video.render_scale", min(RENDER_SCALES), max(RENDER_SCALES)
-            )
-            if render_scale not in RENDER_SCALES:
-                raise ValueError(f"video.render_scale must be one of {RENDER_SCALES}")
 
         frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
         if frame_limit is not None:
@@ -149,22 +161,48 @@ class UserSettings:
 
         return cls(
             bindings=bindings,
-            display=_enum(DisplayMode, video.get("display", DisplayMode.BORDERLESS), "display"),
-            width=_bounded_int(
-                video.get("width", Display.WIDTH),
-                "video.width",
-                MIN_WINDOW_WIDTH,
-                MAX_WINDOW_WIDTH,
-            ),
-            height=_bounded_int(
-                video.get("height", Display.HEIGHT),
-                "video.height",
-                MIN_WINDOW_HEIGHT,
-                MAX_WINDOW_HEIGHT,
-            ),
-            size_mode=_enum(SizeMode, video.get("size_mode", SizeMode.AUTO), "size_mode"),
-            render_scale=render_scale,
-            smoothing=_bounded_bool(video.get("smoothing", True), "video.smoothing"),
+            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
+            pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
+            vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
+            frame_limit=frame_limit,
+            ui_scale=scale,
+        )
+
+    @classmethod
+    def _from_v2(cls, data: dict[str, Any]) -> UserSettings:
+        """Read a v2 file.
+
+        Everything but the bindings and the choices is dropped on the floor:
+        ``width``, ``height``, ``size_mode``, ``render_scale`` and
+        ``smoothing`` are all window claims, and the window is now the only
+        source of truth. They are ignored rather than rejected, so a v2 player
+        keeps their controls -- the expensive half to rebuild -- instead of
+        landing on the defaults because of a video key that no longer means
+        anything.
+        """
+        bindings = cls._bindings(data)
+        video = data.get("video", {})
+        ui = data.get("ui", {})
+        if not isinstance(video, dict) or not isinstance(ui, dict):
+            raise ValueError("settings sections must be objects")
+
+        scale = ui.get("scale", 1.0)
+        if scale not in UI_SCALES:
+            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+
+
+        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
+        if frame_limit is not None:
+            frame_limit = _bounded_int(
+                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
+            )
+
+        return cls(
+            bindings=bindings,
+            # v2 defaulted a missing mode to borderless, having just invented
+            # the mode; v3 defaults it to auto, which is the honest answer for a
+            # file that never expressed a preference.
+            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
             ui_scale=scale,
@@ -174,18 +212,16 @@ class UserSettings:
     def _from_v1(cls, data: dict[str, Any]) -> UserSettings:
         """Read a v1 file.
 
-        Two mappings, both deliberate rather than mechanical:
+        One mapping, and it is a mode rather than a size: ``fullscreen: true``
+        becomes **borderless**, not exclusive fullscreen. A v1 player who asked
+        for fullscreen asked not to have a window, and borderless is the way to
+        give them that without asking the driver for a mode change -- which is
+        what makes v1 fullscreen the thing that blacks out a hybrid-GPU laptop.
 
-        ``fullscreen: true`` becomes **borderless**, not exclusive fullscreen.
-        A v1 player who asked for fullscreen asked not to have a window, and
-        borderless is the way to give them that without asking the driver for a
-        mode change -- which is what makes v1 fullscreen the thing that blacks
-        out a hybrid-GPU laptop.
-
-        The size becomes ``MANUAL``, because a v1 size is a number the player
-        picked off a fixed list, and honouring that intent exactly is the
-        honest reading. The runtime still refuses to open a window that does not
-        fit the current screen, and says so in the menu.
+        The size v1 stored is dropped rather than honoured. It came off a fixed
+        catalogue, so it was a guess about the player's monitor, and honouring
+        it would mean being the only component left that believes in a window
+        size.
         """
         bindings = cls._bindings(data)
         video = data.get("video", {})
@@ -194,24 +230,11 @@ class UserSettings:
             raise ValueError("settings sections must be objects")
         fullscreen = _bounded_bool(video.get("fullscreen", False), "video.fullscreen")
         scale = ui.get("scale", 1.0)
-        if scale not in (0.8, 1.0, 1.2):
-            raise ValueError("ui.scale must be 0.8, 1.0 or 1.2")
+        if scale not in UI_SCALES:
+            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
         return cls(
             bindings=bindings,
             display=DisplayMode.BORDERLESS if fullscreen else DisplayMode.WINDOW,
-            width=_bounded_int(
-                video.get("width", Display.WIDTH),
-                "video.width",
-                MIN_WINDOW_WIDTH,
-                MAX_WINDOW_WIDTH,
-            ),
-            height=_bounded_int(
-                video.get("height", Display.HEIGHT),
-                "video.height",
-                MIN_WINDOW_HEIGHT,
-                MAX_WINDOW_HEIGHT,
-            ),
-            size_mode=SizeMode.MANUAL,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             ui_scale=scale,
         )
@@ -247,30 +270,65 @@ def _bounded_bool(value: object, field_name: str) -> bool:
 
 
 class SettingsStore:
+    """Reads and writes one file, and says so when it cannot.
+
+    The failure mode this class used to have is worth stating, because it is the
+    worst kind of bug: :meth:`load` caught every error and returned the
+    defaults, silently. A schema that stopped matching, a truncated write, a
+    file someone edited by hand -- and the player came back to a game that had
+    forgotten every setting, with nothing in the log to say why, and the first
+    change they made then overwrote the file that still held their bindings.
+
+    So a read that fails is an error in the log, with the path and the reason,
+    and the file is kept: :meth:`save` copies what it is about to replace to
+    ``settings.json.bak`` first, which is the difference between "my controls
+    are gone" and "my controls are one file away".
+    """
+
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or default_settings_path()
 
     def load(self) -> UserSettings:
+        """The stored settings, or the defaults with the reason on the record."""
         try:
             data: Any = json.loads(self.path.read_text(encoding="utf-8"))
             return UserSettings.from_dict(data)
-        except OSError, ValueError, TypeError, KeyError, json.JSONDecodeError:
+        except FileNotFoundError:
+            # A first launch. Not a problem, and not worth a line.
+            return UserSettings()
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            logger.error(
+                "Unable to read the settings at %s (%s: %s); starting from the defaults. "
+                "The file is left untouched -- move it aside to see it, or delete it to "
+                "stop seeing this.",
+                self.path,
+                type(error).__name__,
+                error,
+            )
             return UserSettings()
 
     def save(self, settings: UserSettings) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            existing: object = json.loads(self.path.read_text(encoding="utf-8"))
-        except OSError, ValueError, TypeError, json.JSONDecodeError:
-            existing = {}
-        payload = dict(existing) if isinstance(existing, dict) else {}
-        payload.update(settings.to_dict())
+        self._keep_backup()
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", dir=self.path.parent, delete=False
         ) as temporary:
-            json.dump(payload, temporary, indent=2)
+            json.dump(settings.to_dict(), temporary, indent=2)
             temporary_path = Path(temporary.name)
         temporary_path.replace(self.path)
+
+    def _keep_backup(self) -> None:
+        """Copy the file about to be replaced next to it, best effort.
+
+        Best effort on purpose: a backup that can fail the write is a worse
+        outcome than no backup, and the case it exists for -- a valid file being
+        replaced by a valid file -- is not the case that needed saving anyway.
+        """
+        try:
+            if self.path.is_file():
+                shutil.copy2(self.path, self.path.with_suffix(".json.bak"))
+        except OSError as error:
+            logger.warning("Could not keep a backup of %s: %s", self.path, error)
 
 
 def default_settings_path() -> Path:

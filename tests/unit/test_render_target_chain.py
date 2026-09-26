@@ -6,8 +6,7 @@ the game hands a surface to a level, the level hands it to a renderer, the
 renderer to a UI manager, the manager to a panel renderer and a HUD, and each of
 them either stores it or derives it. One link that remembers the old one, and
 the frame is painted in two places at once -- which shows up as nothing at all
-until the two sizes differ, i.e. exactly when the player changes the render
-scale.
+until the two sizes differ, i.e. exactly when the player drags the window.
 """
 
 import os
@@ -24,11 +23,23 @@ from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
 from src.core.display.viewport import Viewport  # noqa: E402
 from src.core.rendering.camera import Camera  # noqa: E402
 from src.core.rendering.renderer import Renderer  # noqa: E402
+from src.ui.scale import PANEL_MAX_SCALE  # noqa: E402
+
+#: Densities worth walking the chain through: whole numbers, the awkward
+#: fractions a real display produces, and one below one.
+DENSITIES = (1.0, 1.25, 2176 / 1152, 2.0, 0.5)
 
 
-def _renderer(scale: int) -> Renderer:
-    target = Viewport(DEFAULT_FRAMING, scale).surface
+def _renderer(density: float) -> Renderer:
+    target = Viewport(DEFAULT_FRAMING, _target_size(density)).surface
     return Renderer(target, Camera.for_target(target))
+
+
+def _target_size(density: float) -> tuple[int, int]:
+    return (
+        round(DEFAULT_FRAMING.width * density),
+        round(DEFAULT_FRAMING.height * density),
+    )
 
 
 def _chain(renderer: Renderer) -> list[pygame.Surface]:
@@ -41,23 +52,28 @@ def _chain(renderer: Renderer) -> list[pygame.Surface]:
     ]
 
 
-@pytest.mark.parametrize("scale", [1, 2, 3])
-def test_the_whole_chain_starts_on_the_render_target(scale: int) -> None:
-    target = Viewport(DEFAULT_FRAMING, scale).surface
+@pytest.mark.parametrize("density", DENSITIES)
+def test_the_whole_chain_starts_on_the_render_target(density: float) -> None:
+    target = Viewport(DEFAULT_FRAMING, _target_size(density)).surface
     renderer = Renderer(target, Camera(DEFAULT_FRAMING))
 
     assert all(surface is target for surface in _chain(renderer))
 
 
-@pytest.mark.parametrize("from_scale,to_scale", [(1, 2), (2, 3), (2, 1), (3, 1)])
-def test_the_whole_chain_follows_a_render_scale_change(from_scale, to_scale) -> None:
-    """The only path that replaces the target, so it is the one that can break."""
-    renderer = _renderer(from_scale)
+@pytest.mark.parametrize("before,after", [(1.0, 2.0), (2.0, 1.25), (2.0, 0.5), (1.25, 1.8889)])
+def test_the_whole_chain_follows_a_window_change(before: float, after: float) -> None:
+    """The only path that replaces the target, so it is the one that can break.
 
-    renderer.set_surface(Viewport(DEFAULT_FRAMING, to_scale).surface)
+    A window drag used to be the thing that could not happen, because the target
+    was a constant and the picture was scaled onto the window afterwards. Now it
+    is the everyday case, and it is the same code path as a display change.
+    """
+    renderer = _renderer(before)
+
+    renderer.set_surface(Viewport(DEFAULT_FRAMING, _target_size(after)).surface)
 
     assert all(surface is renderer.surface for surface in _chain(renderer))
-    assert renderer.surface.get_size() == DEFAULT_FRAMING.viewport_size(to_scale)
+    assert renderer.surface.get_size() == _target_size(after)
 
 
 def test_nothing_draws_into_the_window() -> None:
@@ -66,7 +82,7 @@ def test_nothing_draws_into_the_window() -> None:
     The old arrangement made it the one surface everything drew into, which is
     the whole reason a video setting could reach the picture.
     """
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     window = pygame.display.get_surface()
 
     assert window is not None
@@ -77,44 +93,56 @@ def test_nothing_draws_into_the_window() -> None:
 
 def test_the_camera_does_not_know_the_target_size() -> None:
     """The invariant the whole chain exists to protect, at the end of it."""
-    camera = _renderer(1).camera
+    camera = _renderer(1.0).camera
     before = (camera.viewport_width, camera.viewport_height)
 
-    _renderer(1).set_surface(Viewport(DEFAULT_FRAMING, 3).surface)
+    _renderer(1.0).set_surface(Viewport(DEFAULT_FRAMING, _target_size(3.0)).surface)
 
     assert (camera.viewport_width, camera.viewport_height) == before
     assert before == DEFAULT_FRAMING.size
 
 
-def test_the_render_scale_is_derived_not_stored() -> None:
+def test_the_pixel_density_is_derived_not_stored() -> None:
     """It comes from the camera, which reads it off the target.
 
     A second derivation in the renderer would be one too many: the camera uses
     the number for the rectangles, so a disagreement scales the images and not
     the rects, and the frame shows a world at the wrong size with no error.
     """
-    for scale in (1, 2, 3):
-        renderer = _renderer(scale)
-        assert renderer._render_scale == scale
-        assert renderer._render_scale == renderer.camera.scale
+    for density in DENSITIES:
+        renderer = _renderer(density)
+        assert renderer._density == pytest.approx(density, abs=1e-3)
+        assert renderer._density == renderer.camera.density
 
-        # A surface of a different scale moves it, because the camera hears
+        # A surface of a different density moves it, because the camera hears
         # about the new target.
-        renderer.set_surface(Viewport(DEFAULT_FRAMING, 1).surface)
-        assert renderer._render_scale == 1
-        assert renderer.camera.scale == 1
+        renderer.set_surface(Viewport(DEFAULT_FRAMING, _target_size(1.0)).surface)
+        assert renderer._density == 1.0
+        assert renderer.camera.density == 1.0
 
 
-def test_the_debug_overlay_and_the_renderer_agree_on_the_scale() -> None:
-    """Both read the camera's, so they cannot drift apart."""
-    for scale in (1, 2, 3):
-        renderer = _renderer(scale)
-        overlay = renderer.ui_manager.world_ui
-        assert overlay._target_scale(renderer.camera) == renderer._render_scale
+def test_the_debug_overlay_and_the_renderer_agree_on_the_density() -> None:
+    """Both read the same density, and both get it at construction.
+
+    The overlay used to be handed the density only when the target changed, and
+    a renderer built on a scaled target started with a 24px panel font on a 4K
+    screen: one frame of, and then forever of, text half the size it should be.
+    The constructor is the only place that can be right, so the test drives it.
+    """
+    for density in DENSITIES:
+        renderer = _renderer(density)
+        panel_renderer = renderer.ui_manager.renderer
+        # The world scale never drops below one: below it, a world overlay
+        # thins towards nothing instead of following the world.
+        assert panel_renderer.world_scale == pytest.approx(max(1.0, density))
+        # The screen scale is capped, so a 4K window gets readable panels
+        # rather than panels that eat the display.
+        assert panel_renderer.screen_scale == pytest.approx(min(max(1.0, density), PANEL_MAX_SCALE))
+        assert panel_renderer.debug_font.get_height() > 0
 
 
-@pytest.mark.parametrize("scale", [1, 2, 3])
-def test_the_frame_is_geometry_coherent_at_every_scale(scale: int) -> None:
+@pytest.mark.parametrize("density", DENSITIES)
+def test_the_frame_is_geometry_coherent_at_every_density(density: float) -> None:
     """Surface identity was not enough, and that is how the scale bug survived.
 
     A chain of surfaces can all be the right object and still draw a broken
@@ -126,7 +154,7 @@ def test_the_frame_is_geometry_coherent_at_every_scale(scale: int) -> None:
     """
     from src.core.sprite_groups import SpriteGroups
 
-    renderer = _renderer(scale)
+    renderer = _renderer(density)
     groups = SpriteGroups()
     sprite = pygame.sprite.Sprite()
     sprite.image = pygame.Surface((64, 64), pygame.SRCALPHA)
@@ -136,8 +164,8 @@ def test_the_frame_is_geometry_coherent_at_every_scale(scale: int) -> None:
 
     image, rect = renderer._collect_visible_blits(groups)[0]
 
-    assert renderer.camera.scale == scale
-    assert image.get_size() == (64 * scale, 64 * scale)
+    assert renderer.camera.density == pytest.approx(density, abs=1e-3)
+    assert image.get_size() == renderer.camera.scaled_size((64, 64))
     assert rect.size == image.get_size(), (
         "a blit whose source and destination differ is silently resampled"
     )
@@ -147,7 +175,7 @@ def test_a_frame_reaches_the_target_and_nothing_else() -> None:
     """One draw, and it lands on the target -- the whole point of the refactor."""
     from src.core.sprite_groups import SpriteGroups
 
-    renderer = _renderer(1)
+    renderer = _renderer(1.0)
     target = renderer.surface
     target.fill((0, 0, 0))
     groups = SpriteGroups()

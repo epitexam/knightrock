@@ -3,10 +3,8 @@ from types import SimpleNamespace
 import pygame
 
 from src.application.scenes.controls_scene import ControlsScene
-from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
-from src.core.display.mode import DisplayMode
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 
@@ -15,12 +13,28 @@ def _game() -> SimpleNamespace:
     game = SimpleNamespace(
         settings=UserSettings(),
         scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
+        # The video screen reports the window it is in, so a stand-in has to
+        # have one. A 16:9 window with room for a whole multiple of the framing,
+        # which is the case where every row is usable.
+        presentation=SimpleNamespace(
+            stage=pygame.Surface((2304, 1296)),
+            pixel_perfect=False,
+            window_size=(2304, 1296),
+            density=2.0,
+        ),
+        stage=None,
+        # The views are laid out at the preference times the density; a stand-in
+        # has to hand them something, and 1.0 keeps the assertions readable.
+        ui_scale=1.0,
     )
     game.input_router = EventRouter(game.settings.bindings)
-    game.apply_bindings = lambda bindings: setattr(
-        game, "settings", game.settings.with_bindings(bindings)
-    )
-    game.apply_settings = lambda settings: setattr(game, "settings", settings)
+
+    def _apply(settings):
+        game.settings = settings
+        game.ui_scale = settings.ui_scale
+
+    game.apply_bindings = lambda bindings: _apply(game.settings.with_bindings(bindings))
+    game.apply_settings = _apply
     return game
 
 
@@ -249,18 +263,13 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
     assert game.settings.display is not first_mode
 
-    focus("render_scale")
-    before = game.settings.render_scale
-    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
-    assert game.settings.render_scale != before
-
     # A press sets the value rather than toggling it: left is off, right is on,
     # so the two directions cannot behave identically.
-    focus("smoothing")
+    focus("pixel_perfect")
     scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
-    assert game.settings.smoothing is False
+    assert game.settings.pixel_perfect is False
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
-    assert game.settings.smoothing is True
+    assert game.settings.pixel_perfect is True
 
     focus("vsync")
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
@@ -282,23 +291,32 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
     scene.handle_routed(_confirm())
     defaults = UserSettings()
     assert game.settings.display is defaults.display
-    assert game.settings.render_scale == defaults.render_scale
+    assert game.settings.pixel_perfect == defaults.pixel_perfect
     assert game.settings.frame_limit == defaults.frame_limit
     assert game.settings.ui_scale == defaults.ui_scale
 
 
-def test_the_window_size_row_is_disabled_in_borderless() -> None:
-    """A window size means nothing in borderless, so the row says so."""
+def test_the_whole_pixel_row_says_so_on_a_window_too_small_for_one() -> None:
+    """The one row that can be unavailable, and it has to say which it is.
+
+    Whole-pixel art needs a whole multiple of the framing to snap to, and a
+    window narrower than the framing has none. The row is then disabled and
+    labelled, rather than silently accepting a setting that does nothing --
+    which is what a row reading "off" on a window it cannot honour would be.
+    """
     game = _game()
-    game.settings = game.settings.with_video(display=DisplayMode.BORDERLESS)
+    game.presentation.window_size = (800, 600)
+    game.presentation.stage = pygame.Surface((800, 600))
     scene = VideoScene(game)
-    item = next(item for item in scene.model.items if item.action == "size")
+    item = next(item for item in scene.model.items if item.action == "pixel_perfect")
 
     assert not item.enabled
+    assert "too small" in item.value
 
-    game.settings = game.settings.with_video(display=DisplayMode.WINDOW)
+    game.presentation.window_size = (2304, 1296)
+    game.presentation.stage = pygame.Surface((2304, 1296))
     scene = VideoScene(game)
-    item = next(item for item in scene.model.items if item.action == "size")
+    item = next(item for item in scene.model.items if item.action == "pixel_perfect")
     assert item.enabled
 
 
@@ -472,31 +490,43 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
     assert "Press a key…" not in keyboard
 
 
-def test_video_opens_the_size_picker_and_arrows_still_nudge_inline() -> None:
-    """Enter on the size row opens the list; arrows keep the quick nudge."""
+def test_the_window_row_only_reports_and_nothing_is_ever_pushed() -> None:
+    """The read-out line is inert, and there is no resolution screen to open.
+
+    The size used to be a setting with a picker behind it, and the picker was
+    the only place in the game that could claim what the player's screen was.
+    Now the window belongs to the window manager, so the last row is a report of
+    what the game derived from it: a row the model will not even select, because
+    it is disabled, and one that can therefore not be activated by any route.
+    """
     pushed: list[object] = []
     game = _game()
     game.scene_manager.push = pushed.append
     scene = VideoScene(game)
+    before = game.settings
 
-    _move_to_video(scene, "size")
-    scene.handle_routed(_confirm())
+    report = next(item for item in scene.model.items if item.action == "info")
+    assert not report.enabled
+    assert "2304x1296" in report.value
+    assert "2.00x" in report.value
 
-    assert len(pushed) == 1
-    assert isinstance(pushed[0], ResolutionScene)
-    assert (game.settings.width, game.settings.height) == (
-        UserSettings().width,
-        UserSettings().height,
-    ), "opening the list must not change the size yet"
+    # The model refuses to put the selection on a disabled row, so the press
+    # that would have opened a picker cannot be aimed at it in the first place.
+    scene.model.set_items(scene.model.items, scene.model.items.index(report))
+    assert scene.model.current_item is not report
+    assert scene.model.current_item.enabled  # type: ignore[union-attr]
 
-    game.settings = game.settings.with_video(display=DisplayMode.WINDOW)
-    scene = VideoScene(game)
-    _move_to_video(scene, "size")
-    pushed.clear()
-    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    # And nothing on any row it *can* reach opens a screen either.
+    for index, item in enumerate(scene.model.items):
+        if not item.enabled:
+            continue
+        scene.model.set_items(scene.model.items, index)
+        for action in (InputAction.UI_CONFIRM, InputAction.UI_RIGHT, InputAction.UI_LEFT):
+            scene.handle_routed(RoutedInput(action, InputDevice.GAMEPAD))
+        if item.action in ("reset",):
+            game.settings = before
 
-    assert pushed == [], "arrows still nudge inline, no screen pushed"
-    assert game.settings.width != UserSettings().width
+    assert pushed == [], "the video screen must never push a screen"
 
 
 def test_one_stick_press_moves_exactly_one_row() -> None:

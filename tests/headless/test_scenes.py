@@ -353,43 +353,51 @@ def _make_level(game_runtime) -> Level:
     )
 
 
-def test_the_camera_viewport_ignores_the_video_resolution(manager: SceneManager):
+def test_the_camera_viewport_ignores_the_window(manager: SceneManager):
     """The bug this rework exists for, stated as a test.
 
     The camera used to be built from the window's pixel size, so the slice of
     world the player saw was decided by a video setting: at a large enough
     resolution a whole level fitted on screen. The viewport is now the framing,
-    and the only thing that moves it is the render scale -- a sharpness choice
-    that multiplies the framing by a whole number, so it changes how large the
-    world is drawn and never how much of it is shown.
+    and the only thing that moves it is the window -- which changes how large the
+    world is *drawn*, at whatever density the window implies, and never how much
+    of it is shown.
     """
     from src.core.display.framing import DEFAULT_FRAMING
+    from src.core.display.letterbox import letterbox
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
-    for scale in (1, 2, 3):
-        surface = Viewport(DEFAULT_FRAMING, scale).surface
+    for window in ((640, 360), (1280, 720), (1920, 1080), (2560, 1440), (1000, 1000)):
+        size = letterbox(window, DEFAULT_FRAMING).size
+        surface = Viewport(DEFAULT_FRAMING, size).surface
         gameplay.set_surface(surface)
 
         assert gameplay.level is not None
         camera = gameplay.level.camera
         assert (camera.viewport_width, camera.viewport_height) == DEFAULT_FRAMING.size
-        assert camera.scale == scale
-        # And the framing still covers the target exactly, at every scale.
+        assert camera.density == pytest.approx(size[0] / DEFAULT_FRAMING.width)
+        # And the framing still covers the target, to within the pixel that
+        # rounding a letterbox and rounding a sprite size cannot both avoid.
+        # The rule rounds a sprite's size *up* so neighbours overlap rather than
+        # gap, which can overshoot the target by one row -- clipped away.
         camera.begin_frame(1.0)
-        covered = camera.apply_covering(
+        covered = camera.apply_snapped(
             pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
         )
-        assert covered.size == surface.get_size()
+        assert abs(covered.width - surface.get_width()) <= 1
+        assert abs(covered.height - surface.get_height()) <= 1
 
 
-def test_the_window_never_reaches_the_camera(manager: SceneManager) -> None:
-    """A window resize changes the presentation and nothing else.
+def test_a_surface_that_is_not_the_framing_is_refused(manager: SceneManager) -> None:
+    """The window is not a target, and a target is not an arbitrary surface.
 
-    Applying window sizes through ``set_surface`` is refused outright, because a
-    surface that is not a render target cannot be drawn into -- the game builds
-    one from the framing and a scale, and the window is presented from it.
+    A target whose two axes imply different densities is not the framing drawn at
+    some density, so it is refused rather than half-honoured -- and the camera
+    is left exactly as it was, rather than moved to a density nobody asked for.
+    The window itself is not refused because it *is* one: ``set_surface`` is
+    handed the window's letterbox rectangle, which is the whole design.
     """
     from src.core.display.framing import DEFAULT_FRAMING
 
@@ -399,7 +407,7 @@ def test_the_window_never_reaches_the_camera(manager: SceneManager) -> None:
     before = (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height)
 
     with pytest.raises(ValueError):
-        gameplay.set_surface(pygame.Surface((1280, 720)))
+        gameplay.set_surface(pygame.Surface((1280, 700)))
 
     assert (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height) == (before)
     assert before == DEFAULT_FRAMING.size

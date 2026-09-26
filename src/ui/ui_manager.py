@@ -25,8 +25,14 @@ PANEL_LEGEND = "legend"
 class UIManager:
     """Facade pattern for the user interface."""
 
-    def __init__(self, surface: pygame.Surface) -> None:
-        self.renderer = PanelRenderer(surface)
+    def __init__(self, surface: pygame.Surface, density: float = 1.0) -> None:
+        #: ``density`` is the render target's pixel density, read off the camera
+        #: by the renderer. It is a constructor argument rather than something
+        #: set later because the first frame is drawn with it: a panel built at
+        #: the design size and scaled on the next window change is a frame of
+        #: unreadable text, and the first frame is the one the developer is
+        #: looking at.
+        self.renderer = PanelRenderer(surface, density=density)
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
         self.hud = HUD(self.renderer)
@@ -81,10 +87,14 @@ class UIManager:
             return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
         return self.draw_legend_panel(10, 10, layout, compact=True)
 
-    def set_surface(self, surface: pygame.Surface) -> None:
-        # ``world_ui`` reads its surface from the panel renderer, so there is
-        # nothing to reassign here.
-        self.renderer.set_surface(surface)
+    def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
+        """Adopt a new render target, at the density it implies.
+
+        ``world_ui`` reads its surface from the panel renderer, so there is
+        nothing to reassign here; the density is what the *sizes* need, and it
+        is read off the camera by the renderer rather than measured twice.
+        """
+        self.renderer.set_surface(surface, density)
 
     def set_ui_scale(self, scale: float) -> None:
         self.hud.set_scale(scale)
