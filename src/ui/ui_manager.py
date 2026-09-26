@@ -332,7 +332,6 @@ class UIManager:
         cache_size: int | None = None,
         layout: PanelLayout | None = None,
         debug_stats: dict[str, float] | None = None,
-        counter: Any = None,
     ) -> None:
         if self.renderer.interaction.is_closed(PANEL_PERFORMANCE):
             return
@@ -346,14 +345,9 @@ class UIManager:
         world_ms = float(timing.get("world_ui_ms", 0.0))
         panels_ms = float(timing.get("panels_ms", 0.0))
         panel_p95 = float(timing.get("panels_p95_ms", 0.0))
-        # The four terms of a frame, from the loop: the panel used to show only
-        # the two that cost nothing, which is how a 60% pacing wait could sit
-        # there looking like a fast frame.
-        frame_terms = counter.lines() if counter is not None else ()
         lines = [
             f"FPS        {fps:5.1f}",
             f"Frame      {frame_time:5.1f} ms",
-            *frame_terms[1:],
             f"Overlays   {world_ms:5.2f} ms",
             f"Panels     {panels_ms:5.2f} ms",
             f"Panel p95  {panel_p95:5.2f} ms",
@@ -367,13 +361,10 @@ class UIManager:
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
         if compact_panels():
-            # The compact panel keeps the four terms: they are the whole reason
-            # to look at it, and the rest is detail.
             lines = [
                 lines[0],
                 lines[1],
                 f"F10 view  {self.compact_panel_focus().upper()}",
-                *frame_terms[1:2],
             ]
 
         if compact_panels():

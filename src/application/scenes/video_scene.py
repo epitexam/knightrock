@@ -87,9 +87,6 @@ class VideoScene(Scene):
             MenuItem("vsync", "VSync", self._vsync_label()),
             MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
             MenuItem("scale", "UI scale", f"{settings.ui_scale:.1f}x"),
-            MenuItem(
-                "frame_counter", "Frame timings", self._on_off(settings.frame_counter)
-            ),
             MenuItem("reset", "Reset video settings"),
             MenuItem("back", "Back"),
             MenuItem("info", "Window", self._window_label(), enabled=False),
@@ -228,7 +225,6 @@ class VideoScene(Scene):
         "vsync",
         "frame_limit",
         "scale",
-        "frame_counter",
     )
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
@@ -271,9 +267,6 @@ class VideoScene(Scene):
             "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
             "frame_limit": lambda: self._cycle_frame_limit(action),
             "scale": lambda: self._cycle_scale(action),
-            "frame_counter": lambda: self._cycle_bool(
-                action, "frame_counter", click=click
-            ),
         }
         cycler = cyclers.get(name)
         if cycler is None:
@@ -332,7 +325,6 @@ class VideoScene(Scene):
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
                 ui_scale=defaults.ui_scale,
-                frame_counter=defaults.frame_counter,
             )
         )
 

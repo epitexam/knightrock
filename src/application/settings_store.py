@@ -104,12 +104,6 @@ class UserSettings:
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
-    #: Paint the frame timings in the corner, without the debug overlay. The
-    #: measurement is unconditional; this only decides whether it is shown, so a
-    #: run can be compared with the readout on and off. On by default because
-    #: the first question about a frame rate is "where does it go", and a
-    #: player who does not want it switches it off in one click.
-    frame_counter: bool = True
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -122,7 +116,6 @@ class UserSettings:
                 "frame_limit": self.frame_limit,
             },
             "ui": {"scale": self.ui_scale},
-            "frame_counter": self.frame_counter,
         }
 
     @classmethod
@@ -159,10 +152,6 @@ class UserSettings:
         if scale not in UI_SCALES:
             raise ValueError(f"ui.scale must be one of {UI_SCALES}")
 
-        frame_counter = video.get("frame_counter", True)
-        if not isinstance(frame_counter, bool):
-            raise ValueError("video.frame_counter must be boolean")
-
         frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
         if frame_limit is not None:
             frame_limit = _bounded_int(
@@ -176,7 +165,6 @@ class UserSettings:
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
             ui_scale=scale,
-            frame_counter=frame_counter,
         )
 
     @classmethod
@@ -220,7 +208,6 @@ class UserSettings:
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
             ui_scale=scale,
-            frame_counter=True,
         )
 
     @classmethod
@@ -252,9 +239,6 @@ class UserSettings:
             display=DisplayMode.BORDERLESS if fullscreen else DisplayMode.WINDOW,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             ui_scale=scale,
-            # v1 predates the readout; the default is what a v1 player's file
-            # gets on its next save, and a missing key means the same thing.
-            frame_counter=True,
         )
 
     def with_bindings(self, bindings: InputBindings) -> UserSettings:

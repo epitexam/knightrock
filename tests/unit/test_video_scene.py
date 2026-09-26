@@ -38,7 +38,7 @@ REPORT_ROWS = frozenset({"info"})
 #: It has to be the complement of the list rows: a boolean is *flipped* by a
 #: click and *set* by a key, on purpose, so a boolean that leaked into the list
 #: comparison would look like a drift between two paths that agree by design.
-BOOLEAN_ROWS = frozenset({"pixel_perfect", "vsync", "frame_counter"})
+BOOLEAN_ROWS = frozenset({"pixel_perfect", "vsync"})
 LIST_ROWS = frozenset(VideoScene.CYCLING_ROWS) - BOOLEAN_ROWS
 
 #: A window with room for a whole multiple of the framing, so every row that can

@@ -121,9 +121,6 @@ class HUD:
         self.renderer = renderer
         self._scale = 1.0
         self._metrics = Metrics.for_scale(1.0)
-        #: Bottom edge of the frame readout's plate this frame, so a notice can
-        #: sit under it instead of on top of it.
-        self._last_plate_bottom: int | None = None
 
     def set_scale(self, scale: float) -> None:
         self._metrics = Metrics.for_scale(scale)
@@ -290,12 +287,12 @@ class HUD:
         surface.blit(combo_text, layout.combo_pos)
 
     def draw_notice(self, lines: tuple[str, ...]) -> None:
-        """Paint a transient message under the frame readout.
+        """Paint a transient message, top-left, over everything.
 
         A dead key that says nothing is indistinguishable from a broken one, and
         "F1 does nothing" cost an afternoon here: the key worked, the overlay was
         simply culled to nothing. So a key that cannot act says so, once, in the
-        place the player is already looking for numbers.
+        corner the player is already looking at.
         """
         if not lines:
             return
@@ -304,12 +301,8 @@ class HUD:
         margin = self._px(HUD_MARGIN)
         rendered = [self.renderer.render_text(line, font, TEXT_WARN) for line in lines]
         width = max(drawn.get_width() for drawn in rendered) + margin * 2
-        y = margin
-        counter = self._last_plate_bottom
-        if counter is not None:
-            y = counter + max(1, self._px(2))
         height = sum(drawn.get_height() for drawn in rendered) + margin * 2
-        plate = pygame.Rect(margin, y, width, height)
+        plate = pygame.Rect(margin, margin, width, height)
         backdrop = pygame.Surface(plate.size, pygame.SRCALPHA)
         backdrop.fill((*PANEL_BG[:3], 200))
         surface.blit(backdrop, plate.topleft)
@@ -317,38 +310,6 @@ class HUD:
         for drawn in rendered:
             surface.blit(drawn, (plate.left + margin, cursor_y))
             cursor_y += drawn.get_height()
-
-    def draw_frame_counter(self, lines: tuple[str, ...]) -> None:
-        """Paint the frame readout, top-left, over everything.
-
-        Top-left on purpose: the bottom corners belong to the gauges and the
-        right edge to the debug panels, and a readout that moves depending on
-        what else is on screen is one you have to look for.
-
-        Painted over a plate rather than straight onto the world, because a
-        number has to stay readable over a bright tile as well as over a dark
-        one. The plate is the panel colour, so it reads as part of the
-        interface rather than as another debug overlay.
-        """
-        if not lines:
-            return
-        surface = self.renderer.surface
-        font = self.renderer.label_font
-        margin = self._px(HUD_MARGIN)
-        gap = max(1, self._px(2))
-        rendered = [self.renderer.render_text(line, font, TEXT_OK) for line in lines]
-        plate_w = max(surface_.get_width() for surface_ in rendered) + margin * 2
-        plate_h = sum(surface_.get_height() for surface_ in rendered) + gap * (len(rendered) - 1)
-        plate_h += margin * 2
-        plate = pygame.Rect(margin, margin, plate_w, plate_h)
-        backdrop = pygame.Surface(plate.size, pygame.SRCALPHA)
-        backdrop.fill((*PANEL_BG[:3], 200))
-        surface.blit(backdrop, plate.topleft)
-        cursor_y = plate.top + margin
-        for drawn in rendered:
-            surface.blit(drawn, (plate.left + margin, cursor_y))
-            cursor_y += drawn.get_height() + gap
-        self._last_plate_bottom = plate.bottom
 
     def _label_rect(self, bar: pygame.Rect, label_size: tuple[int, int]) -> pygame.Rect:
         """Where a bar's label goes: right-aligned, one gap to the left of it."""

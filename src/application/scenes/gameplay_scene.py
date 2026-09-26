@@ -155,25 +155,6 @@ class GameplayScene(Scene):
             self.level.surface = surface
             self.level.renderer.set_surface(surface)
 
-    def draw_frame_counter(self) -> None:
-        """Paint the frame timings, if the setting asks for them.
-
-        Drawn by the gameplay scene rather than by the HUD on its own, because
-        the HUD draws itself from a player and the readout has to be there
-        whether or not there is one -- a level that has not spawned yet, a
-        death screen, a menu stacked over the world.
-        """
-        # Duck-typed, like ``render_alpha`` above: a lightweight runtime driving
-        # this scene in a test has no settings and no counter, and draws nothing
-        # rather than raising. Both absences are honest answers.
-        settings = getattr(self.game, "settings", None)
-        counter = getattr(self.game, "frame_counter", None)
-        if self.level is None or counter is None:
-            return
-        if settings is not None and not settings.frame_counter:
-            return
-        self.level.renderer.ui_manager.hud.draw_frame_counter(counter.lines())
-
     def set_ui_scale(self, scale: float) -> None:
         if self.level is not None:
             self.level.renderer.ui_manager.set_ui_scale(scale)
@@ -302,9 +283,6 @@ class GameplayScene(Scene):
         # declared about them any more: the next frame erases the whole target,
         # so a shrinking bar or an expiring combo cannot leave a stripe behind.
         self.level.renderer.ui_manager.draw_hud(getattr(self.level, "player", None))
-        # Last of all: the readout is a tool, and a tool that another overlay
-        # can cover is a tool that is sometimes wrong.
-        self.draw_frame_counter()
         notice = getattr(self.game, "notice_lines", ())  # absent: nothing to say
         if notice:
             self.level.renderer.ui_manager.hud.draw_notice(notice)

@@ -106,7 +106,7 @@ def test_options_back_via_gamepad_and_mouse() -> None:
 
 
 def test_video_menu_owns_every_display_setting() -> None:
-    """Seven rows, and none of them is a number about the player's screen.
+    """Eight rows, and none of them is a number about the player's screen.
 
     The four that are gone were the ones that could not be honoured: a
     resolution list is a claim about a monitor the game cannot measure, a render
@@ -120,7 +120,6 @@ def test_video_menu_owns_every_display_setting() -> None:
         "vsync",
         "frame_limit",
         "scale",
-        "frame_counter",
         "reset",
         "back",
         "info",

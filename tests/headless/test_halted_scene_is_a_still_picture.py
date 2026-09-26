@@ -97,11 +97,6 @@ def playing(tmp_path: pathlib.Path):
     # Exactly the state the last tick before a pause leaves behind.
     level.camera.offset.x += 10.0
     level.camera.offset.y += 10.0
-    # The frame readout is a live number and is *meant* to differ every frame,
-    # so the still-picture test turns it off rather than weakening its
-    # assertion. The world is what has to hold still; the counter is what has to
-    # keep counting.
-    game.settings = game.settings.with_video(frame_counter=False)
     assert game.presentation is not None
     return game
 

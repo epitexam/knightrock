@@ -300,7 +300,6 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         "vsync",
         "frame_limit",
         "ui_scale",
-        "frame_counter",
     }
 
 

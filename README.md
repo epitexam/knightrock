@@ -228,23 +228,18 @@ predictable:
   Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
   the whole overlay pass from p50 6.0 ms to 4.3 ms.
 
-### Frame timings (`Frame timings`, on by default)
+### Frame timings
 
-Two lines in the top-left corner: `100.0 fps · 10.00 ms · limite 60`, then the
-four terms that make up the frame — `sim`, `monde`, `ui`, `pres`. The pacer is
-on the same line as the rate on purpose, because a capped game and a slow game
-report the same number and the label is the only thing that tells them apart.
-The numbers are medians over a 120-frame window, not the current frame: fifty-nine
-good frames and one stall is a smooth game, and the mean would send you looking
-for a problem that is not there.
+There is no always-on frame readout. It used to be two lines in the top-left
+corner — `100.0 fps · 10.00 ms · limite 60`, then the four terms that make up
+the frame — painted whether or not the debug overlay was on, and the whole
+measurement ran on every frame of every session to feed it. It was a tool for
+one question, and it answered that question badly enough to be noise the rest
+of the time.
 
-Measurement is unconditional; only the painting is a setting. Two clock reads
-per frame cost about a tenth of a microsecond, and a number that is only
-collected while it is on screen cannot be compared with the run where it was
-off — which is the comparison the readout exists for.
-
-First measurement on this machine, at `Display.FPS = 190`: **~16 ms per frame,
-of which ~4.9 ms is work.** The rest is the pacer, not the game.
+The `PERFORMANCE` panel under `DEBUG=1` carries what is still worth reading:
+frame rate, frame time, the overlay and panel cost, sprite counts and the text
+cache. Frame timing in general is `uv run pytest tests/benchmarks/ui_benchmark.py`.
 
 ## Framing: how much of the world is visible
 
