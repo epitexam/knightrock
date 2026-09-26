@@ -137,11 +137,14 @@ question de code : c'est la taille de ces niveaux.
 Chacun de ceux-ci a coûté une erreur, et chacun a été vérifié contre
 pygame-ce 2.5.7 plutôt que lu dans une doc :
 
+Le passage en revue sur une **vraie session** a invalidé une ligne de ce
+tableau : voir §9.
+
 | supposition | réalité |
 |---|---|
 | `pygame.HIDPI` active le high-DPI | **n'existe pas**. C'est `SDL_VIDEO_HIDPI=1`, avant `pygame.init()` |
 | `pygame.Window` remplace `set_mode` | **ni `.vsync` ni `.fullscreen`** en 2.5.7 |
-| `WINDOWPOS_CENTERED` recentre la fenêtre | **refusé** (« position must be two numbers »). Et centrer sans borner donne `(-352, -102)` sur un écran trop petit |
+| `WINDOWPOS_CENTERED` recentre la fenêtre | **refusé** par `pygame.display.set_window_position` (« position must be two numbers »), mais **accepté** par `pygame.Window.position`, qui est le seul moyen correct — voir §9 |
 | un index d'écran hors bornes est ignoré | **lève** `displayIndex must be in the range 0 - 0` |
 | `get_current_refresh_rate()` avant la fenêtre | **lève** `No open window`. `get_desktop_refresh_rates()` non, et couvre tous les écrans |
 | `pygame.SCALED` est une base stable | pygame la documente comme **expérimentale**. Elle est sortie : la cible de rendu fait le letterbox |
@@ -175,7 +178,7 @@ l'écran du joueur et ne le devine pas.
 (le joueur l'a refusée), et le nombre d'écrans proposals dans le menu (aucun
 besoin avec l'index fixe à 0).
 
-## 8. Recette manuelle encore due
+## 8. Recette manuelle — en cours
 
 Rien de ce qui suit n'est vérifiable sous le driver dummy. À faire sur une
 session réelle avant de considérer cette migration comme récettée :
@@ -188,5 +191,51 @@ session réelle avant de considérer cette migration comme récettée :
 4. redimensionner la fenêtre à la souris : **le cadrage ne doit pas changer** ;
 5. brancher un second écran en cours de session puis relancer ;
 6. sur Wayland : le placement de la fenêtre et le comportement du plein écran.
+
+## 9. Ce que la vraie session a cassé
+
+Le premier passage sur la machine de développement (Wayland, deux écrans :
+2560×1440 @180 Hz en primaire, 1920×1080 @60 Hz à sa gauche) a invalidé une
+décision prise plus tôt dans ce document.
+
+`detection.centered_on_primary` calculait la position de la fenêtre en supposant
+que **l'écran primaire est à l'origine du bureau virtuel**. C'est la convention
+Windows et macOS. Elle est fausse ici : le primaire est à l'origine
+**(1920, 0)** — c'est l'écran de droite.
+
+Conséquence mesurée : une fenêtre de 2176 px de large était placée à x=192,
+c'est-à-dire **sur l'autre moniteur**. Ce n'était pas « pas recentré », c'était
+« recentré sur le mauvais écran » — un résultat pire que l'absence de
+comportement, et impossible à voir sans deux écrans.
+
+La cause de l'erreur est structurelle et déjà notée dans le tableau ci-dessus :
+**pygame n'expose pas les bornes des écrans**, seulement leurs tailles. Une
+position sur le bureau virtuel est donc incalculable à partir des seules
+informations disponibles. Il ne fallait pas le calculer.
+
+Correctif : laisser SDL placer la fenêtre.
+`pygame.Window.position = pygame.WINDOWPOS_CENTERED` résout la constante contre
+l'écran où se trouve réellement la fenêtre, ce que SDL sait et nous non.
+Vérifié sur la machine : x=2112 (1920 + 192), y=108 — sur le primaire.
+
+`pygame.display.set_window_position` refuse cette constante (« position must be
+two numbers »), d'où le passage par le handle `Window`. C'est la seule ligne de
+la migration qui touche une API dépréciée : pygame avertit à juste titre que les
+deux APIs `@pygame-ce` se sépareront. L'avertissement est laissé visible et le
+mode d'échec est le `except` : si l'appel cessait de fonctionner, la fenêtre
+resterait là où le gestionnaire de fenêtres l'a mise.
+
+`centered_on_primary` est **supprimé** plutôt que corrigé. Une fonction dont la
+prémisse est fausse et dont la correction exigerait une information que la
+plateforme ne fournit pas est un piège : le prochain appelant lui ferait
+confiance. Un test vérifie son absence.
+
+Autres observations de la même passe :
+
+- l'écran primaire est un **180 Hz**, et `FRAME_LIMITS` s'arrête à 144 puis 240.
+  Le taux réel est affiché dans le menu, mais 180 n'est pas dans l'échelle :
+  à corriger si la liste doit couvrir l'écran du joueur ;
+- `get_desktop_sizes()` renvoie bien les deux écrans, `get_num_displays()` aussi.
+  C'est donc bien les **origines** qui manquent, et rien d'autre.
 
 Dernière mise à jour : 2026-09-26, branche `feat/display-cadrage-system`.

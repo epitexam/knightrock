@@ -15,7 +15,6 @@ Four objects with four jobs, kept apart on purpose:
 
 from .detection import (
     auto_display_mode,
-    centered_on_primary,
     desktop_refresh_rates,
     desktop_size,
     desktop_sizes,
@@ -40,7 +39,6 @@ __all__ = [
     "Viewport",
     "WindowSpec",
     "auto_display_mode",
-    "centered_on_primary",
     "desktop_refresh_rates",
     "desktop_size",
     "desktop_sizes",

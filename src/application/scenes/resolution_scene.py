@@ -24,7 +24,6 @@ import pygame
 
 from src.application.scene import Scene
 from src.core.display.detection import (
-    centered_on_primary,
     desktop_size,
     fits_on_desktop,
     largest_window_size,
@@ -220,12 +219,3 @@ class ResolutionScene(Scene):
             return "Screen size unknown"
         count = len(self._sizes())
         return f"Screen {desktop[0]} x {desktop[1]} - {count} window sizes fit"
-
-
-def preview_centered(size: tuple[int, int], desktop: tuple[int, int]) -> tuple[int, int]:
-    """Where a window of ``size`` would open on ``desktop``.
-
-    Exposed so the menu's claim that a size "fits" is checkable: the size has
-    to fit *and* still be reachable once centred.
-    """
-    return centered_on_primary(size, desktop)

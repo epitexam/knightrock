@@ -137,17 +137,14 @@ def test_the_render_target_size_does_not_depend_on_the_window() -> None:
     assert sizes == {DEFAULT_FRAMING.viewport_size(2)}
 
 
-def test_a_desktop_smaller_than_the_framing_still_opens_a_window() -> None:
+def test_a_desktop_smaller_than_the_framing_still_gets_a_target() -> None:
     """The "launch on any setup" case, headless.
 
-    A window narrower than the framing used to be impossible to centre: the
-    arithmetic goes negative and the title bar lands under the task bar. It is
-    bounded now, and the framing does not care.
+    A window narrower than the framing used to be impossible to place: the
+    arithmetic went negative and the title bar landed under the task bar. The
+    placement now belongs to SDL, so the question is only whether the target is
+    produced whatever the desktop claims.
     """
-    from src.core.display.detection import centered_on_primary
-
-    x, y = centered_on_primary((2000, 1200), (1024, 600))
-
-    assert (x, y) == (0, 0)
-    assert pygame.display.get_surface() is not None
     assert desktop_size()[0] > 0
+    assert Viewport(DEFAULT_FRAMING, 1).size == (1152, 648)
+    assert Viewport(DEFAULT_FRAMING, 1).size[0] < 2000

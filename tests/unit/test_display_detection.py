@@ -98,15 +98,18 @@ def test_a_borderless_window_is_the_desktop_own_size() -> None:
     assert stage is not None
 
 
-def test_centring_on_the_primary_screen() -> None:
-    assert detection.centered_on_primary((800, 600), (1024, 768)) == (112, 84)
-    assert detection.centered_on_primary((300, 200), (1920, 1080)) == (810, 440)
+def test_the_module_does_not_pretend_to_place_a_window() -> None:
+    """It used to, and the arithmetic was wrong on a real machine.
 
-
-def test_centring_a_window_bigger_than_the_screen_is_bounded_at_zero() -> None:
-    """Unbounded, this opens a window whose title bar is under the taskbar."""
-    assert detection.centered_on_primary((1728, 972), (1024, 768)) == (0, 0)
-    assert detection.centered_on_primary((4000, 3000), (1920, 1080)) == (0, 0)
+    Centring needed the primary display's *origin*, and pygame does not expose
+    display bounds. The assumption that the primary sits at the origin of the
+    virtual desktop is the Windows and macOS convention; on a Linux desktop whose
+    primary is not the leftmost monitor it is false, and measured on such a
+    machine the computed x put the window on the other screen. SDL resolves
+    ``WINDOWPOS_CENTERED`` per display and knows where they are, so the guess is
+    gone rather than corrected.
+    """
+    assert not hasattr(detection, "centered_on_primary")
 
 
 def test_the_queries_answer_under_a_headless_driver() -> None:

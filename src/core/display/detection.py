@@ -127,26 +127,3 @@ def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode
     if abs(desktop[0] / desktop[1] - framing.aspect) / framing.aspect < ASPECT_TOLERANCE:
         return DisplayMode.BORDERLESS
     return DisplayMode.WINDOW
-
-
-def centered_on_primary(size: tuple[int, int], primary: tuple[int, int]) -> tuple[int, int]:
-    """Top-left corner that centres ``size`` on the primary display.
-
-    Bounded at zero, which is not cosmetic. Centring a window larger than the
-    screen yields a negative origin -- 1728x972 on a 1024x768 desktop gives
-    (-352, -102) -- and the window then opens with its title bar under the task
-    bar, unreachable. At zero the window starts at the screen's corner and the
-    player can always drag it back.
-
-    ``pygame`` refuses the ``WINDOWPOS_CENTERED`` constant here ("position must
-    be two numbers"), so the arithmetic has to be done rather than delegated.
-
-    Assumes the primary display sits at the origin of the virtual desktop,
-    which is the convention on Windows and macOS and the default on X11. A
-    layout that breaks it yields a slightly off position, not an unreachable
-    one.
-    """
-    return (
-        max(0, (primary[0] - size[0]) // 2),
-        max(0, (primary[1] - size[1]) // 2),
-    )
