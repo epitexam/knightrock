@@ -3,6 +3,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from time import perf_counter
 
 import pygame
 from pygame.joystick import JoystickType
@@ -31,6 +32,7 @@ from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
 from src.data.provider import GameplayData, load_gameplay_data
+from src.ui.frame_counter import FrameCounter
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +108,15 @@ class Game:
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
         self._settings_dirty = False
+        #: Rolling frame timings. Collected every frame, drawn when the setting
+        #: says so -- see :mod:`src.ui.frame_counter` for why those are two
+        #: different decisions.
+        self.frame_counter = FrameCounter()
+        #: A transient message for the player, with the seconds left on it.
+        #: Empty when there is nothing to say. The only user-visible feedback
+        #: the loop owns, which is why there is exactly one.
+        self._notice: tuple[str, ...] = ()
+        self._notice_ttl = 0.0
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -431,18 +442,50 @@ class Game:
         Split out of the loop so a single frame can be driven from outside --
         the manual acceptance run does, to hold a display state on screen while
         it is looked at.
+
+        Every term is timed, always, whether or not anything is watching: two
+        clock reads per frame is about a tenth of a microsecond, and a number
+        that is only collected while it is on screen cannot be compared with the
+        run where it was off. What the setting decides is whether the numbers
+        are *drawn*.
         """
         if self.clock is None:
-            raise RuntimeError("The game runtime is not initialized")
+            raise RuntimeError("the game runtime is not initialized")
+        frame_started = perf_counter()
         self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
 
         self._handle_events()
         self.scene_manager.poll_held_repeats()
         self.flush_settings()
 
+        tick_started = perf_counter()
         self._run_ticks()
+        tick_ms = _elapsed_ms(tick_started)
+
+        draw_started = perf_counter()
         self.scene_manager.draw(self._draw_target())
+        draw_ms = _elapsed_ms(draw_started)
+
+        present_started = perf_counter()
         self._present()
+        present_ms = _elapsed_ms(present_started)
+
+        world_ms = self._world_ms()
+        self.frame_counter.sample(
+            frame_ms=_elapsed_ms(frame_started),
+            tick_ms=tick_ms,
+            # The world pass and the interface are one call into the scene
+            # stack; the split is the renderer's, which publishes its own.
+            world_ms=world_ms,
+            ui_ms=max(0.0, draw_ms - world_ms),
+            present_ms=present_ms,
+        )
+        self.frame_counter.pacer = self._pacer_label()
+        if self._notice_ttl > 0.0:
+            self._notice_ttl = max(0.0, self._notice_ttl - _elapsed_ms(frame_started) / 1000.0)
+            if self._notice_ttl == 0.0:
+                self._notice = ()
+
 
     def _run_ticks(self) -> None:
         """Drain the accumulator, but never more than a frame's worth of ticks.
@@ -472,6 +515,47 @@ class Game:
         # The subtraction above leaves a residue around -1e-17, and a negative
         # accumulator makes ``render_alpha`` negative for one frame.
         self._accumulator = max(0.0, self._accumulator)
+
+    def _world_ms(self) -> float:
+        """The world pass's own duration, read off the renderer that measured it.
+
+        Zero when nothing has drawn yet, and zero when the scene on top is a
+        menu with no renderer behind it -- both are honest answers, and both
+        make the interface's share of the frame read as the whole frame, which
+        is the truth: that is what the interface cost.
+        """
+        renderer = self.scene_manager.renderer()
+        return 0.0 if renderer is None else renderer.last_world_ms
+
+    def notice(self, *lines: str, seconds: float = 4.0) -> None:
+        """Say something on screen for a few seconds, replacing what was there.
+
+        For the keys that cannot act. A key that does nothing and says nothing
+        is indistinguishable from a key that is broken, and that ambiguity is
+        exactly what made the debug overlay's death look like a wiring problem
+        instead of a culling one.
+        """
+        self._notice = tuple(lines)
+        self._notice_ttl = max(0.0, seconds)
+
+    @property
+    def notice_lines(self) -> tuple[str, ...]:
+        """The live notice, ticked down by the frame loop."""
+        return self._notice
+
+    def _pacer_label(self) -> str:
+        """What is holding the frame rate, in one word.
+
+        The readout needs it, because a frame rate on its own cannot tell a slow
+        game from a paced one: 100 fps looks like a problem and is the answer
+        when the limit is 100. Naming the pacer is the difference between a
+        number the player has to interpret and one that says itself.
+        """
+        if self.settings.vsync:
+            return "vsync"
+        if self.settings.frame_limit is None:
+            return "libre"
+        return f"limite {self.settings.frame_limit}"
 
     def _present(self) -> None:
         """Put the finished frame on the screen. The only screen read in the loop."""
@@ -574,3 +658,8 @@ class Game:
             pygame.display.update()
         except pygame.error:
             print("Unable to render the fatal error screen", file=sys.stderr)
+
+
+def _elapsed_ms(started: float) -> float:
+    """Milliseconds since ``started``, from a :func:`time.perf_counter` reading."""
+    return (perf_counter() - started) * 1000.0

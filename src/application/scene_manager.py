@@ -33,6 +33,21 @@ class SceneManager:
         """The active (top) scene, or None when the stack is empty."""
         return self._stack[-1] if self._stack else None
 
+    def renderer(self) -> Any:
+        """The topmost renderer on the stack, if there is one.
+
+        For the frame counter: the world pass and the interface are one call
+        into the stack, so pricing them apart means asking the renderer that
+        measured its own half. ``None`` in a menu, which is an honest answer --
+        the interface then is the whole frame.
+        """
+        for scene in reversed(self._stack):
+            level = getattr(scene, "level", None)
+            renderer = getattr(level, "renderer", None)
+            if renderer is not None:
+                return renderer
+        return None
+
     @property
     def halts_simulation(self) -> bool:
         """Whether anything on the stack is holding the world still.

@@ -85,6 +85,9 @@ class Renderer:
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
         }
+        #: The world pass's own duration, in ms, published every frame for the
+        #: frame counter. Not a sample: the counter keeps its own window.
+        self.last_world_ms = 0.0
 
     def set_surface(self, surface: pygame.Surface) -> None:
         """Adopt a new render target, after the render scale changed.
@@ -230,10 +233,14 @@ class Renderer:
             self.surface.blit(surface, screen_rect)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
+        #: Published for the frame counter, which needs the world pass and the
+        #: interface priced separately -- they are one call here, and the split
+        #: is the only one that costs nothing to keep.
+        self.last_world_ms = (perf_counter() - started) * 1000.0
         if debug_enabled:
-            started = perf_counter()
+            overlays = perf_counter()
             self.ui_manager.draw_debug_overlays(groups.all_sprites, self.camera, dt)
-            self._record_debug_sample("world_ui_ms", (perf_counter() - started) * 1000.0)
+            self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
         """The one sprite that can be a dashing player, or None.
