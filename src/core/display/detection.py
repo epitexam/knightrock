@@ -1,0 +1,167 @@
+"""What the game can find out about the setup it is running on.
+
+Everything here that takes a ``desktop`` argument is a pure function of it, on
+purpose. The desktop queries need a display, so they are the only part that
+cannot be exercised headlessly; the decisions built on top of them can, and
+those are the ones that used to be wrong. ``pygame.display.get_desktop_sizes``
+answers under the dummy video driver, but a policy that has to be re-tested on
+a real screen is a policy nobody re-tests.
+"""
+
+import pygame
+
+from .framing import Framing
+from .mode import DisplayMode
+
+#: Room left around the desktop for the title bar and the taskbar, so a
+#: "full screen" window is still a window the player can move.
+DESKTOP_MARGIN = (80, 96)
+
+#: The window sizes offered, as fractions of the player's own desktop.
+#:
+#: Relative rather than absolute, and that is the whole difference from a fixed
+#: catalogue of resolutions. A list of absolute sizes is a claim about the
+#: player's monitor that the game has no way to check, so it ends up offering
+#: 2560x1440 to a 1366x768 laptop. A list of fractions is meaningful on every
+#: screen, and the "does it fit" filter below removes the entries that do not.
+WINDOW_SIZE_FRACTIONS = (0.40, 0.55, 0.70, 0.85, 0.95)
+
+#: How far the desktop's aspect may sit from the framing's before the letterbox
+#: stops being invisible and starts being two black stripes.
+ASPECT_TOLERANCE = 0.05
+
+
+def desktop_sizes() -> tuple[tuple[int, int], ...]:
+    """Every attached display, as ``(width, height)``.
+
+    Only sizes: SDL's display bounds -- the origin of each screen on the
+    virtual desktop -- are not exposed by pygame, which is why the window is
+    positioned against the primary screen rather than a chosen one.
+    """
+    return tuple((int(w), int(h)) for w, h in pygame.display.get_desktop_sizes())
+
+
+def desktop_size(index: int = 0) -> tuple[int, int]:
+    """One display's size, clamped to a real index.
+
+    A ``settings.json`` written on a three-monitor desk and then opened on a
+    laptop has no index 2 to go to, and pygame answers an out-of-range one with
+    ``error: displayIndex must be in the range 0 - 0`` -- a crash on the very
+    first frame, on the machine least able to cope with it.
+    """
+    sizes = desktop_sizes()
+    if not sizes:
+        return (0, 0)
+    return sizes[index if 0 <= index < len(sizes) else 0]
+
+
+def desktop_refresh_rates(index: int = 0) -> tuple[int, ...]:
+    """The refresh rates a display reports, in Hz, best first.
+
+    ``pygame.display.get_current_refresh_rate`` looks like the obvious call and
+    is not usable here: it raises ``error: No open window`` before the display
+    exists, and it only ever reports the *current* display. This one works
+    before the window is created and covers every display.
+    """
+    rates = pygame.display.get_desktop_refresh_rates()
+    return tuple(sorted((int(rate) for rate in rates), reverse=True))
+
+
+def fits_on_desktop(size: tuple[int, int], desktop: tuple[int, int]) -> bool:
+    """Whether a window of ``size`` can be shown on ``desktop`` and moved.
+
+    The margin is what stops a "whole desktop" entry from producing a window
+    whose title bar is off the bottom of the screen.
+    """
+    margin_w, margin_h = DESKTOP_MARGIN
+    return size[0] <= max(0, desktop[0] - margin_w) and size[1] <= max(0, desktop[1] - margin_h)
+
+
+def window_size_choices(desktop: tuple[int, int]) -> tuple[tuple[int, int], ...]:
+    """The window sizes to offer for this desktop, smallest first.
+
+    Entries that cannot fit are dropped rather than disabled: a size the
+    player's screen cannot show is not a choice, and listing it only produces a
+    row that fails when it is applied.
+    """
+    sizes = {
+        (round(desktop[0] * fraction), round(desktop[1] * fraction))
+        for fraction in WINDOW_SIZE_FRACTIONS
+    }
+    return tuple(sorted(size for size in sizes if fits_on_desktop(size, desktop)))
+
+
+def largest_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
+    """The biggest window that fits, falling back to a usable minimum.
+
+    A desktop too small for even the smallest fraction still has to produce a
+    size, because refusing to open a window is not a recovery.
+    """
+    choices = window_size_choices(desktop)
+    if choices:
+        return choices[-1]
+    return (max(1, desktop[0] // 2), max(1, desktop[1] // 2))
+
+
+def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode:
+    """Pick the display mode for a machine we have never seen before.
+
+    Borderless when the desktop is already the shape of the framing, because
+    then the letterbox collapses to nothing and the game fills the screen with
+    nothing to configure. Otherwise a window, sized generously: on a screen
+    whose shape does not match, the player should be able to *see* the bars and
+    the desktop around them, which reads as deliberate rather than broken.
+    """
+    if desktop[0] <= 0 or desktop[1] <= 0:
+        return DisplayMode.WINDOW
+    if abs(desktop[0] / desktop[1] - framing.aspect) / framing.aspect < ASPECT_TOLERANCE:
+        return DisplayMode.BORDERLESS
+    return DisplayMode.WINDOW
+
+
+def auto_settings(framing: Framing, desktop: tuple[int, int]) -> dict[str, object]:
+    """A complete, sane video configuration for an unknown machine.
+
+    Called on the first launch, and again whenever the persisted choice cannot
+    be honoured -- a settings file carried over from a bigger screen, a dock
+    undocked between two runs. Returning a whole configuration rather than a
+    patch keeps the two call sites from disagreeing about which defaults apply.
+    """
+    mode = auto_display_mode(framing, desktop)
+    size = (
+        (desktop[0], desktop[1]) if mode is DisplayMode.BORDERLESS else largest_window_size(desktop)
+    )
+    return {
+        "display": mode.value,
+        "width": size[0],
+        "height": size[1],
+        "size_mode": "auto",
+        "framing": "keep",
+        "render_scale": 2,
+        "smoothing": True,
+        "vsync": False,
+        "frame_limit": 60,
+    }
+
+
+def centered_on_primary(size: tuple[int, int], primary: tuple[int, int]) -> tuple[int, int]:
+    """Top-left corner that centres ``size`` on the primary display.
+
+    Bounded at zero, which is not cosmetic. Centring a window larger than the
+    screen yields a negative origin -- 1728x972 on a 1024x768 desktop gives
+    (-352, -102) -- and the window then opens with its title bar under the task
+    bar, unreachable. At zero the window starts at the screen's corner and the
+    player can always drag it back.
+
+    ``pygame`` refuses the ``WINDOWPOS_CENTERED`` constant here ("position must
+    be two numbers"), so the arithmetic has to be done rather than delegated.
+
+    Assumes the primary display sits at the origin of the virtual desktop,
+    which is the convention on Windows and macOS and the default on X11. A
+    layout that breaks it yields a slightly off position, not an unreachable
+    one.
+    """
+    return (
+        max(0, (primary[0] - size[0]) // 2),
+        max(0, (primary[1] - size[1]) // 2),
+    )

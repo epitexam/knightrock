@@ -15,7 +15,6 @@ drift apart.
 from __future__ import annotations
 
 from dataclasses import replace
-from math import gcd
 from typing import TYPE_CHECKING
 
 import pygame

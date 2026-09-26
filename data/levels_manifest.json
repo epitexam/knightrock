@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "note": "Level sizes, recorded so tests/unit/test_framing_contract.py can enforce the framing against every level in CI: assets/ is git-ignored, so a test that read the .tmx files directly would silently never run there. tests/unit/test_levels_manifest.py re-derives this from the real files and fails on any drift whenever they are available.",
+  "levels": [
+    {
+      "file": "assets/data/levels/0.tmx",
+      "tiles": [
+        60,
+        20
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        3840,
+        1280
+      ]
+    },
+    {
+      "file": "assets/data/levels/1.tmx",
+      "tiles": [
+        40,
+        30
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2560,
+        1920
+      ]
+    },
+    {
+      "file": "assets/data/levels/2.tmx",
+      "tiles": [
+        24,
+        30
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        1536,
+        1920
+      ]
+    },
+    {
+      "file": "assets/data/levels/3.tmx",
+      "tiles": [
+        40,
+        15
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2560,
+        960
+      ]
+    },
+    {
+      "file": "assets/data/levels/4.tmx",
+      "tiles": [
+        24,
+        30
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        1536,
+        1920
+      ]
+    },
+    {
+      "file": "assets/data/levels/5.tmx",
+      "tiles": [
+        40,
+        15
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2560,
+        960
+      ]
+    },
+    {
+      "file": "assets/data/levels/6.tmx",
+      "tiles": [
+        40,
+        15
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2560,
+        960
+      ]
+    },
+    {
+      "file": "assets/data/levels/omni.tmx",
+      "tiles": [
+        40,
+        15
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2560,
+        960
+      ]
+    },
+    {
+      "file": "assets/data/overworld/overworld.tmx",
+      "tiles": [
+        42,
+        30
+      ],
+      "tile_size": [
+        64,
+        64
+      ],
+      "world": [
+        2688,
+        1920
+      ]
+    }
+  ]
+}
