@@ -22,7 +22,7 @@ class LevelSelectScene(Scene):
     def __init__(self, game: Game) -> None:
         super().__init__(game)
         unlocked = set(game.save_game.unlocked_levels)
-        items = tuple(
+        levels = tuple(
             MenuItem(
                 f"level:{level_id}",
                 f"Level {level_id}",
@@ -30,8 +30,12 @@ class LevelSelectScene(Scene):
             )
             for level_id in sorted(game.level_manager.level_paths)
         )
-        self.model = MenuModel(items)
-        self.view = MenuView()
+        # A row, not just a key: the keyboard shortcut existed and the pointer
+        # had nothing to click. Every other menu here offers both, and a screen
+        # reachable only with a keyboard is a screen a controller or a mouse
+        # cannot leave.
+        self.model = MenuModel((*levels, MenuItem("back", "Back")))
+        self.view = MenuView(game.ui_scale)
 
     def update(self, delta_time: float) -> None:
         return None
@@ -54,9 +58,13 @@ class LevelSelectScene(Scene):
         if action is not None and action.startswith("level:"):
             level_id = int(action.partition(":")[2])
             self.game.scene_manager.switch(GameplayScene(self.game, level_id))
+        elif action == "back":
+            self.game.scene_manager.pop()
+            return MenuAction.BACK
         # A locked level reports None: the model refuses it, so nothing happened.
         return action
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(Colors.dark_grey)
+        self.view.set_scale(self.game.ui_scale)
         self.view.draw(surface, self.TITLE, self.model, top=180)

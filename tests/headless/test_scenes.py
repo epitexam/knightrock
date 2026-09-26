@@ -705,3 +705,80 @@ def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) 
     for scene in scenes:
         manager.switch(scene)
         assert manager.draw(pygame.display.get_surface()) is None
+
+
+def _level_select(manager: SceneManager) -> LevelSelectScene:
+    """The level select, reached the way the menu reaches it."""
+    manager.switch(MenuScene(manager.game))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert isinstance(manager.current, LevelSelectScene)
+    return manager.current
+
+
+def test_the_level_select_offers_a_back_row(manager: SceneManager):
+    """A row, not only a key.
+
+    ESC, the gamepad B button and the right mouse button all left this screen,
+    and a pointer had nothing to click. Every other menu offers the row *and*
+    the keys, and a screen that can only be left with a keyboard is a screen a
+    controller or a mouse cannot leave.
+    """
+    scene = _level_select(manager)
+
+    assert [item.action for item in scene.model.items][-1] == "back"
+    assert scene.model.items[-1].label == "Back"
+    assert scene.model.items[-1].enabled
+
+
+def test_the_back_row_leaves_the_level_select_with_the_keyboard(manager: SceneManager):
+    scene = _level_select(manager)
+
+    for _ in scene.model.items:
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, MenuScene)
+
+
+def test_the_back_row_leaves_the_level_select_with_the_pointer(manager: SceneManager):
+    """The click lands on the rectangle the view drew, not on an assumed row.
+
+    The point of a row is that it is somewhere you can see, so the test uses the
+    rectangle the panel published -- the same one a player's cursor is over.
+    """
+    from src.core.input.event_router import InputDevice, RoutedInput
+
+    scene = _level_select(manager)
+    scene.draw(pygame.display.get_surface())
+    rect = scene.view.item_rects[-1]
+
+    action = scene.handle_routed(
+        RoutedInput(
+            InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=rect.center
+        )
+    )
+
+    assert action is not None and action.value == "back"
+    assert isinstance(manager.current, MenuScene)
+
+
+def test_a_locked_level_still_leaves_the_back_row_reachable(manager: SceneManager):
+    """The row is not swallowed by a disabled neighbour.
+
+    A disabled level is skipped by the selection, which is right, and the row
+    after the list has to survive that: otherwise the only way out is a key the
+    screen does not advertise.
+    """
+    scene = _level_select(manager)
+    locked = [
+        index
+        for index, item in enumerate(scene.model.items)
+        if not item.enabled
+    ]
+
+    for _ in range(len(scene.model.items) + len(locked)):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, MenuScene)

@@ -91,6 +91,11 @@ class GridView:
         self._surface_size: tuple[int, int] = (0, 0)
         self._cells: list[CellHit] = []
         self._row_rects: list[pygame.Rect] = []
+        #: Where the column titles were painted, left to right. Published for the
+        #: same reason as ``row_rects``: a screen that wants to align something
+        #: with a column, or a test that wants to know two bands do not overlap,
+        #: should not have to re-derive the layout.
+        self._header_rects: list[pygame.Rect] = []
         #: The panel the last draw painted. Published for the same reason
         #: ``row_rects`` is: a screen that wants to place something against the
         #: panel would otherwise have to re-derive the layout it just asked for.
@@ -109,6 +114,16 @@ class GridView:
         how a screen maps a pointer position back to its own item list.
         """
         return self._row_rects
+
+    @property
+    def column_header_rects(self) -> list[pygame.Rect]:
+        """Where the column titles were painted, left to right.
+
+        Their bottom edge is the first row's top edge, and that is the whole
+        point: the band is reserved in the layout and has to be *consumed* by
+        the drawing, or the rows land on the titles.
+        """
+        return self._header_rects
 
     def cell_at(self, position: tuple[int, int]) -> CellHit | None:
         return next((cell for cell in self._cells if cell.rect.collidepoint(position)), None)
@@ -139,7 +154,16 @@ class GridView:
         self._ensure_fonts()
         assert self._fonts is not None
         title_font, item_font, small_font = self._fonts
-        panel_rect, x, y, columns, cell_width, label_width, row_height = layout
+        (
+            panel_rect,
+            x,
+            y,
+            columns,
+            cell_width,
+            label_width,
+            row_height,
+            header_height,
+        ) = layout
         metrics = self._metrics
         padding, gap = metrics.padding, metrics.gap
 
@@ -156,10 +180,22 @@ class GridView:
             )
             y += small_font.get_height() + gap
 
-        for cell_x, header in zip(columns, column_headers, strict=True):
-            surface.blit(
-                self._render_cached(small_font, header, TEXT_MUTED, cell_width), (cell_x, y)
+        # Indexed rather than zipped with ``strict``: the layout keeps one column
+        # when there are no titles, so a strict zip raised ValueError on a grid
+        # that has rows and no headings -- a combination the layout explicitly
+        # supports and no caller happened to use yet.
+        self._header_rects = []
+        for index, header in enumerate(column_headers):
+            cell_x = columns[index]
+            painted_header = self._render_cached(small_font, header, TEXT_MUTED, cell_width)
+            surface.blit(painted_header, (cell_x, y))
+            self._header_rects.append(
+                pygame.Rect(cell_x, y, painted_header.get_width(), header_height)
             )
+        # Down past the column titles before the first row. Without this the rows
+        # started on the headers, which is what "the titles are stuck to the
+        # column" looked like: two texts painted at the same y.
+        y += header_height + gap if header_height else 0
 
         self._cells = []
         self._row_rects = []
@@ -221,8 +257,8 @@ class GridView:
         column_headers: tuple[str, ...],
         top: int,
         footers: tuple[str, ...],
-    ) -> tuple[pygame.Rect, int, int, tuple[int, ...], int, int, int]:
-        """Panel, label gutter and the cell column x positions.
+    ) -> tuple[pygame.Rect, int, int, tuple[int, ...], int, int, int, int]:
+        """Panel, label gutter, cell columns, and the header band's top and height.
 
         The order matters and it is the whole of the responsiveness: the *text*
         decides how much room it needs, so it is measured first, at a scale it
@@ -274,7 +310,8 @@ class GridView:
             x + label_width + index * (cell_width + gap) for index in range(columns_count)
         )
         self._last_panel_rect = panel
-        return panel, x, y, columns, cell_width, label_width, row_height
+        header_height = small_font.get_height() if column_headers else 0
+        return panel, x, y, columns, cell_width, label_width, row_height, header_height
 
     def _settle_text_scale(
         self,

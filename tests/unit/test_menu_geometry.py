@@ -350,3 +350,83 @@ def test_two_scales_are_the_same_picture_twice_as_big() -> None:
         assert getattr(two, name) == pytest.approx(getattr(one, name) * 2, abs=1)
     assert two.item_text == pytest.approx(one.item_text * 2, abs=1)
     assert two.title_text == pytest.approx(one.title_text * 2, abs=1)
+
+
+# --------------------------------------------------------------------------
+# 5. The column titles are a band of their own.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("size", WINDOWS)
+@pytest.mark.parametrize("scale", SCALES)
+def test_the_column_titles_are_not_painted_under_the_first_row(size, scale) -> None:
+    """The titles sit above the rows, with air, at every size.
+
+    They did not. The layout reserved the height of the title band and the
+    drawing never moved past it, so the first row was blitted at the same y as
+    the column titles: two texts on top of each other, which reads as "the title
+    is glued to the column" rather than as the bug it is. A layout that reserves
+    space it does not consume is invisible in every screenshot and obvious in
+    two numbers.
+    """
+    view = _grid_drawn(size, scale, _rows(8))
+
+    headers, rows = view.column_header_rects, view.row_rects
+    assert headers, "the fixture drew no column titles"
+    assert rows
+    for header in headers:
+        assert header.bottom <= rows[0].top, (
+            f"a title occupies {header} and the first row starts at {rows[0].top}"
+        )
+        assert header.top > view._last_panel_rect.top
+
+
+@pytest.mark.parametrize("size", WINDOWS)
+def test_the_title_band_and_the_rows_stay_inside_the_panel(size) -> None:
+    """Both bands are inside the panel, so neither is drawn on the border.
+
+    The panel is content-sized, so a title that overflowed it would be a title
+    hanging outside the frame -- the other way the same missing space shows up.
+    """
+    view = _grid_drawn(size, 1.5, _rows(8))
+    panel = view._last_panel_rect
+
+    assert panel is not None
+    for rect in [*view.column_header_rects, *view.row_rects]:
+        assert panel.contains(rect), f"{rect} is outside {panel}"
+
+
+def test_the_title_band_is_reserved_in_the_panel_height() -> None:
+    """Same rows, same window, one band taller when the titles are there.
+
+    The complement of the overlap test: if the titles were painted on the rows
+    *and* the panel had already reserved the space, the panel would be showing an
+    empty strip. So the reservation and the consumption are asserted from both
+    sides -- the numbers add up, and nothing is drawn twice in the same place.
+    """
+    surface = pygame.Surface((1920, 1080))
+    from src.ui.grid_view import GridView
+
+    view = GridView(1.0)
+    view.set_surface(surface)
+    view.draw(
+        surface, "VIDEO", "Keyboard and mouse", ("Action", "Binding", "Legacy"), _rows(4),
+        selected_row=0, selected_column=0, top=40,
+    )
+    # Measured on the layout rather than by drawing a titleless grid: a row's
+    # cells and the column titles are required to correspond, so a grid with rows
+    # and no headings is not a thing that can be drawn.
+    _, _, _, _, _, _, _, _ = view._layout(
+        surface, "Keyboard and mouse", _rows(4), ("Action", "Binding", "Legacy"), 40, ()
+    )
+    titled = view._last_panel_rect.height
+    _, _, _, _, _, _, _, _ = view._layout(
+        surface, "Keyboard and mouse", _rows(4), (), 40, ()
+    )
+    untitled = view._last_panel_rect.height
+
+    band = titled - untitled
+    assert band > 0, "the column titles cost no height, so they overlap the rows"
+    assert band >= view._fonts[2].get_height(), (
+        "the reserved band is smaller than the text it has to hold"
+    )
