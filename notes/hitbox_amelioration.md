@@ -2,9 +2,9 @@
 
 - **Date :** 2026-09-20 (ameliore 2026-09-20 preuves ; 2026-09-22 gap audit ; **2026-09-23 re-audit doc** ; **2026-09-24 conformite partielle**)
 - **Perimetre :** `src/combat/`, `src/physics/`, `src/entities/entity.py` + `hurtbox_zones.py`, `src/core/level/systems/combat_system.py` + `contact_system.py`, `src/core/level/systems/projectile_system.py`, `src/core/level/systems/hazard_damage.py`, `data/gameplay/attacks.json`, `data/gameplay/enemies.json` (zones goblin P2), `src/ui/world_ui.py` (debug)
-- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **1092** (voir §10)
+- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **1117** (voir §10)
 - **Statut grab (rappel) :** aucun systeme de grab/throw/command-grab n existe. Seul faux positif : `generator.throw()` dans un test.
-- **Base de tests :** **1092 tests verts** (`pytest -q` le 2026-09-25), `ruff check .` propre, `mypy src` propre (142 fichiers) — detail §10.
+- **Base de tests :** **1117 tests verts** (`pytest -q` le 2026-09-26), `ruff check .` propre, `mypy src` propre (142 fichiers) — detail §10. Aucun commit du lot hitbox depuis : la hausse vient des chantiers de rendu du 2026-09-25.
 - **Lecture du diagnostic :** §3 decrit l etat **pre-P0** ; chaque item clos porte une balise `**[clos Pn]**` (etat actuel = code + §10). Ne pas re-traiter un item balise clos sans nouveau repro.
 
 ## Sommaire
@@ -812,7 +812,7 @@ P5 est livré : formes cercle, capsule et OBB, rotation, easing, anchors, keyfra
 P0 (gel + parite + bench) -> P1 (sweep ACTIVE) -> P2 (push/hurt/hit) -> P3t1 (priorite/clash/unblockable) -> P3t2 (hauteur + block_mask) -> P4 (unification/debug) -> P5 (formes avancées)
 ```
 
-Chaque palier : suite complète verte (base 719 au 2026-09-20, **1092 au 2026-09-25** — voir §10) + nouveaux tests, `ruff check`, `mypy src`, goldens et bench 2.2 reproductible ; mise à jour de ce rapport (section recettage datée).
+Chaque palier : suite complète verte (base 719 au 2026-09-20, **1117 au 2026-09-26** — voir §10) + nouveaux tests, `ruff check`, `mypy src`, goldens et bench 2.2 reproductible ; mise à jour de ce rapport (section recettage datée).
 
 ---
 
@@ -936,7 +936,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 ### 7.3 Criteres globaux
 
-- **1092 tests verts** de référence (`pytest -q` le 2026-09-25 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 142 fichiers, sans override mypy.
+- **1117 tests verts** de référence (`pytest -q` le 2026-09-26 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 142 fichiers, sans override mypy.
 - Aucune regression visuelle sur les 5 attaques vitrines (`twin_fangs`, `sweeping_arc`, `sky_launcher`, `otg_slam`, `special_attack`).
 - Determinisme : deux runs meme seed = memes `CombatMetrics` et memes positions.
 - Rollback : `save/load` + capture frontiere re-derive `prev` (aucun champ snapshot) et ne rate aucun contact au tick suivant.
@@ -985,7 +985,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 | Palier | Date | pytest | ruff | mypy | Repro 2.1 rejoué | Bench 2.2 (1v1/4v4/8v8) | Note |
 |---|---|---|---|---|---|---|---|
-| **Recette courante** | **2026-09-25** | **1092 passed** | **ruff check . propre** | **mypy src propre (142 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Sweep projectile AABB, sweep hazard mobile, murs et cibles balayées ; tests UI hermétiques |
+| **Recette courante** | **2026-09-26** | **1117 passed** | **ruff check . propre** | **mypy src propre (142 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Sweep projectile AABB, sweep hazard mobile, murs et cibles balayées ; tests UI hermétiques, sauf `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects` sous `DEBUG=1` (écart O10 de `notes/ecarts_ouverts.md`, hors lot hitbox) |
 
 Les lignes P0–Re-audit ci-dessous sont conservées comme historique de chantier et ne décrivent pas l’état courant.
 | Ref (pre-P0) | 2026-09-20 | 719 passed | propre hors `main.py`* | propre (120 fichiers) | trou confirme | 0.003 / 0.029 / 0.075 ms | rapport takeover-ready, sans scripts |

@@ -1,6 +1,7 @@
 # Audit Contrôles — Socle clavier / manette / souris (prérequis de `audit_ui.md`)
 
-> Audit réécrit le 2026-09-24 contre `master` au commit `afe044f`.
+> Audit réécrit le 2026-09-24 contre `master` au commit `afe044f`, base de
+> validation rafraîchie le 2026-09-26 contre `40ca5a9`.
 > L’historique des versions précédentes reste conservé dans Git.
 > Ce document décrit l’état vérifié et les décisions futures ; il ne présente pas les lots comme livrés.
 
@@ -29,10 +30,11 @@ Ces écarts sont à traiter avant les lots de navigation de `notes/audit_ui.md`.
 
 ## 2. Base vérifiée et limites
 
-- **HEAD :** `afe044f` (`master`, également `origin/master`).
+- **HEAD :** `afe044f` pour le constat ; `40ca5a9` pour la base de validation (`master`).
 - **Périmètre :** `src/core/input/`, `src/core/game.py`, `src/entities/player_input.py`, `src/core/settings.py`, scènes de menu et tests input/runtime.
-- **Validation de référence :** 52 tests ciblés passés ; `ruff check src tests`, `mypy src` (142 fichiers) et `git diff --check` passés.
+- **Validation de référence :** **82 tests ciblés passés** (la commande du §11 ; 52 lors de la réécriture) ; `ruff check src tests`, `mypy src` (142 fichiers) et `git diff --check` passés.
 - **Limite :** les périphériques physiques et la lecture réelle d’un contrôleur ne sont pas simulés par cette validation.
+- **Fixe depuis le 2026-09-24 :** aucun fichier de `src/core/input/` n’a été modifié. Le seul fichier de ce périmètre touché est `src/core/game.py`, sur la cadence de la boucle (`_frame_delta`, plafond dérivé de `Display.FPS`) — sans rapport avec les entrées. Aucun constat de la matrice §3 n’a donc évolué.
 
 ## 3. Matrice d’état
 
@@ -526,7 +528,15 @@ Références utiles :
 - Arbitrage avec `notes/audit_ui.md` §3/§5 : l’écran Contrôles reste de
   responsabilité UI ; le routeur, les bindings et les seuils restent couverts ici.
 - Correction des patterns : 2026-09-24, après fact-check de l’audit réécrit.
-- Validation de référence : 52 tests ciblés passés ; Ruff, mypy (142 fichiers) et `git diff --check` passés.
+- Validation de référence : 82 tests ciblés passés ; Ruff, mypy (142 fichiers) et `git diff --check` passés.
 - Les constats et décisions utiles de l’ancienne version sont conservés ; les patterns implicites sont maintenant nommés et les non-objectifs sont explicités.
 - Aucun code de contrôle n’a été modifié lors de cette correction documentaire.
 - L’implémentation des lots reste volontairement bloquée jusqu’à validation de ce document.
+- Rafraîchissement du 2026-09-26 contre `40ca5a9` : **base de validation seulement**
+  (HEAD, 52 → 82 tests ciblés, mypy 142 fichiers). Aucun fichier de
+  `src/core/input/` n’a bougé depuis le 2026-09-24 ; le seul fichier de ce périmètre
+  touché est `src/core/game.py`, sur la cadence de la boucle. La matrice §3, les
+  constats C-1 à C-7 et la réception §10 sont donc inchangés — ils décrivent
+  l’état *avant* implémentation, ce que le bandeau du document annonce
+  explicitement. La remise à jour des livraisons de ces lots ne peut se faire
+  qu’après validation de ce document, pas dans le cadre de cette mise à jour.

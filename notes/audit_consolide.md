@@ -1,21 +1,26 @@
 # Audit consolidé - Tâches restantes Knightrock
 
-> **État au 2026-09-19 (rev `e0fa07d`, branche `master`) :** vérifié un par un
-> contre le code. **1092 tests verts** (`1092 passed`), `ruff check` clean,
-> `mypy src` clean (120 fichiers).
+> **État au 2026-09-26 (rev `40ca5a9`, branche `master`) :** vérifié un par un
+> contre le code. **1117 tests verts** (`1117 passed`), `ruff check` clean,
+> `mypy src` clean (142 fichiers ; 144 pour la commande CI
+> `mypy src main.py tools`). Mesures de référence inchangées : 89 % instructions,
+> 86 % branches.
 >
 > **Historique :** remplace `notes/audit.md` (86% : Phases 1-3 + 5 faites),
 > `notes/audit_phase5.md` (100% mécanique) et `notes/refactoring_handoff.md`
 > (~91% technique, RF-4/5/6 à 100%). Seul ce fichier subsiste dans `notes/`.
 > Tout ce qui était terminé est résumé en section 1 et **n'est plus à faire**.
-> Tout ce qui reste est en section 2 (R-1 à R-9).
+> Tout ce qui reste est en section 2 (R-1 à R-10).
+>
+> **État précédent :** 2026-09-19 (rev `e0fa07d`), 1092 tests, `mypy src` clean
+> (120 fichiers).
 
 ---
 
 ## Sommaire
 
 - [1. Ce qui est terminé](#1-ce-qui-est-terminé-rappel-ne-pas-rouvrir)
-- [2. Tâches restantes](#2-tâches-restantes) : R-1 à R-9
+- [2. Tâches restantes](#2-tâches-restantes) : R-1 à R-10
 - [3. Récapitulatif](#3-récapitulatif)
 - [4. Règles](#4-règles-toujours-valables)
 - [5. Commandes de validation](#5-commandes-de-validation)
@@ -32,6 +37,21 @@
 | Phase 3 | 100 % | `EntityGrid`, `ObjectPool`, composants `Movement` / `Reaction`, `Level` façade (320 lignes), `RollbackSystem` local, JSON data-driven (`data/gameplay/*.json` + `src/data/*.py`). |
 | Phase 5 | 100 % mécanique | Multi-hitbox, hitbox animée per-frame, projectiles poolés, juggle / hit-stun avancé - testés, typés, câblés. |
 | RF-4 / RF-5 / RF-6 | 100 % | `ruff check --select C901` propre ; `resolve_collisions`, `HitResolver.resolve`, `_collect_candidates`, `SpawnSystem.process`, `_handle_attack_input` décomposés (`test_rf6_branches.py`). |
+| RF-8 (R-7) | 100 % | plus aucun `[[tool.mypy.overrides]]`, `disallow_incomplete_defs` global, dette de tests non couverte par mypy documentée dans le README. |
+
+### 1.1 Chantiers des 2026-09-25 / 26 (rendu, caméra, cadence)
+
+Ajoutés après l'audit d'origine : ils ne figuraient dans aucune phase, et sont
+livrés. Détail et preuves dans `notes/audit_ui.md` §5 (UI-14) ; ces règles sont
+désormais du contrat et ne sont pas à rouvrir.
+
+| Chantier | Livré | Preuve |
+|---|---|---|
+| Une seule transform par frame | le blend d'interpolation est porté par `Camera.begin_frame`, plus par chaque sprite | `test_frame_coherence.py` |
+| Arrondi écran sortant | `Camera.apply_covering()` (floor/ceil, arêtes lointaines prises depuis `apply`) | `test_camera_zoom.py` |
+| Aucun pixel périmé | barres HP ancrées sur les rects blittés, HUD et barres déclarés en overlay rects, jamais de present partiel sur une frame qui en porte | `test_no_stale_pixels.py`, `test_frame_coherence.py` |
+| Cadence de boucle | un seul pacer ; plafond anti-emballement dérivé de `Display.FPS` ; compteur FPS restauré sous vsync | `test_frame_pacing.py`, `game.py:250` |
+| Coût du debug | `F4` statics off par défaut, gate avant construction de la référence | `world_ui.py:319` |
 
 ---
 
@@ -46,6 +66,33 @@
 | À faire | Passer `FPS` à 60 ou 120 ; activer `SDL_VSYNC` / vsync au `set_mode` si applicable ; mesurer le FPS réel avant/après. |
 | Réception | Constante alignée sur le commentaire, aucun test cassé. |
 | Effort / Priorité | Moins de 1 h / Basse. |
+
+**Complément livré le 2026-09-25** (la constante était à 60, la cadence ne l'était pas) :
+
+- la boucle est cadencée **exactement une fois**. Sous vsync, `clock.tick(Display.FPS)`
+  dormait *et* le present bloquait jusqu'au blanc vertical : les deux attentes ne
+  s'additionnent pas, la cadence alternait entre à l'heure et un refresh de retard
+  (`Game._frame_delta`, `src/core/game.py:250`) ;
+- le plafond anti-emballement est **dérivé** (`DISPLAY_SAFETY_CEILING_FPS =
+  Display.FPS * 4`, `game.py:40`). Un 125 codé en dur passait sous une cible de
+  240 et coupait la cadence demandée sans rien afficher ;
+- le compteur FPS est revenu sur le chemin vsync : `Clock` ne met son chronomètre à
+  jour que si on le tique, et un `pygame.time.wait` manuel tombe hors de la fenêtre
+  qu'il mesure ;
+- cadence mesurée : vsync off 62,1 sur 62,1 ; vsync on 125,0 sur 124,1.
+  Tests : `tests/unit/test_frame_pacing.py` (9), qui assertent l'invariant
+  (le plafond dépasse la cadence configurée, son plancher reste sous sa moitié) et
+  non plus une constante.
+
+**Reliquat :** le *réglage* de limite de frames n'existe pas encore. Il ne doit pas
+s'appeler « FPS » : sous vsync, `Display.FPS` ne contrôle rien. Plan :
+`notes/plan_limit_frames_video.md`.
+
+**Drift résiduel à trancher :** `src/core/settings.py:14-16` commente encore
+« rendering at 120 FPS » alors que `FPS = 60` (ligne 17) — le commentaire est
+revenu en arrière lors d'une expérience revertie. Signalé ici, **non corrigé** :
+cette mise à jour est documentaire et ne touche pas au code. La constante, elle,
+est juste.
 
 ---
 ### R-2 - Phase 4 cinématique et narrative : 0/4 (faire ou déclarer hors-scope)
@@ -147,6 +194,20 @@
 | Effort / Priorite | 1 a 3 j si active / A decider au besoin feature. |
 
 ---
+
+### R-10 - `DEBUG=1` : la suite n'est pas verte (Ouvert 2026-09-26)
+
+| Champ | Contenu |
+|---|---|
+| Fichiers | `tests/unit/test_frame_presentation.py:180-212`, `src/core/rendering/renderer.py:252-259`, `src/core/level/level.py:359-375` |
+| Constat | `DEBUG=1 uv run pytest -q` donne **1 failed, 1116 passed**. `test_level_draw_presents_the_health_bar_rects` exige que `Level.draw` renvoie un ensemble de rects partiels, or le chemin debug fait toujours un refresh complet : `Renderer.draw` renvoie `None` des que `debug_enabled` est vrai, et `Level.draw` aussi. Comportement **anterieur** a la session du 2026-09-25 (le test est ne avec `40833b0`, la branche debug renvoie `None` depuis avant) : ce n'est pas une regression, c'est un contrat de test faux. |
+| Aggravant | Le meme test echoue **isole**, avec ou sans `DEBUG` : il depend d'un test precedent du module qui applique une resolution et agrandit l'ecran a 800x600. Sans cela la fenetre fait 320x240, la camera cull l'ennemi de test en (200, 200) et la passe de barres ne peint rien. Le test depend donc de l'ordre d'execution. |
+| A faire | Decider : soit assumer que la presentation partielle n'a de sens qu'hors debug et faire sauter l'assertion `rects is not None` sous `DEBUG`, soit faire construire le niveau a la taille d'ecran voulue par le test au lieu d'heriter de l'etat global. Le test doit aussi passer isole. |
+| Tests | `tests/unit/test_frame_pacing.py`, `test_frame_coherence.py`, `test_no_stale_pixels.py` (nouveaux) pour la non-regression des contrats presentation. |
+| Reception | `env -u DEBUG` **et** `DEBUG=1` verts, ou ecart assume et ecrit dans `notes/ecarts_ouverts.md` (O10). |
+| Effort / Priorite | 0,5 j / Moyenne (bloquant pour un audit qui annonce une suite verte sur les deux modes). |
+
+---
 ## 3. Recapitulatif
 
 | ID | Tache | Effort | Priorite |
@@ -160,9 +221,11 @@
 | R-7 | RF-8 : overrides mypy 6 modules | Continu | Moyenne-basse |
 | R-8 | Docstring pool, contenu `attacks.json`, equilibrage 3 constantes | 0,5 j | Basse |
 | R-9 | Projectiles data-driven, gravite, snapshot (au besoin) | 1 a 3 j | A decider |
+| R-10 | `DEBUG=1` : 1 test rouge (present partiel inexistant en debug) + test dependant de l'ordre | 0,5 j | Moyenne |
 
 Ordre suggere : R-3, puis R-4 / R-5 / R-6 (un lot a la fois, diff revu),
 puis R-1 / R-8 (quick wins), puis R-7 (fond), puis arbitrage R-2 / R-9.
+R-10 est isole : il ne touche aucun autre lot et se traite en une session.
 
 ---
 
@@ -186,17 +249,23 @@ git diff --check
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run mypy src
+uv run mypy src main.py tools
 uv run pytest tests
 uv run pytest tests --cov=src --cov-report=term-missing
 uv run pytest tests --cov=src --cov-branch --cov-report=term-missing
 uv run ruff check src --select C901
+env -u DEBUG uv run pytest -q     # 1117 passed
+DEBUG=1 uv run pytest -q          # 1 failed : R-10 / ecart O10
 ```
 
 ---
 
 ## 6. Reception globale
 
-- [ ] R-1 : FPS aligne sur le commentaire, mesure consignee.
+- [x] R-1 : FPS aligne sur le commentaire, mesure consignee. Cadence livrable le
+      2026-09-25 (un seul pacer, plafond derive, compteur restaure sous vsync).
+      Reste le commentaire `settings.py:14-16` qui annonce 120 FPS pour une
+      constante a 60 : drift signale, non corrige.
 - [ ] R-2 : Phase 4 livree OU decision hors-scope ecrite ici.
 - [ ] R-3 : zero `getattr` / `hasattr` dans `hit_resolver.py`, doubles migres.
 - [ ] R-4 : constructeur obligatoire OU cloture justifiee, ordre preserve.
@@ -205,4 +274,8 @@ uv run ruff check src --select C901
 - [x] R-7 : overrides supprimes (aucun `[[tool.mypy.overrides]]` restant) et `disallow_incomplete_defs` passe en global, 2026-09-25.
 - [ ] R-8 : docstring pool a jour, equilibrage consigne ou reporte.
 - [ ] R-9 : decision ecrite (faire maintenant ou au besoin feature).
-- [x] Suite verte (`1092 passed` au 2026-09-25), ruff, format et mypy bloquants, aucun test desactive pour masquer une regression.
+- [ ] R-10 : `DEBUG=1` rouge sur 1 test, a corriger ou a assumer par ecrit.
+- [x] Suite verte sans `DEBUG` (`1117 passed` au 2026-09-26), ruff, format et
+      mypy bloquants, aucun test desactive pour masquer une regression. **Avec
+      `DEBUG=1` la suite est rouge sur 1 test** : voir R-10 et l'ecart O10 de
+      `notes/ecarts_ouverts.md`.

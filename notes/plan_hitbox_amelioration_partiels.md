@@ -14,13 +14,13 @@ Contraintes :
 
 État observé :
 
-- `pytest -q` : **1092 tests passés** dans l’ordre actuel ;
+- `pytest -q` : **1117 tests passés** dans l’ordre actuel ;
 - `mypy src` : **142 fichiers analysés, aucune erreur** ;
 - `ruff check .` : propre ;
 - sweep AABB actif pour melee, projectiles et hazards mobiles ; hazards statiques et contact damage restent discrets ;
-- le test UI est désormais hermétique avec et sans `DEBUG=1` ;
+- le test UI est désormais hermétique avec et sans `DEBUG=1` — sauf `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`, qui échoue sous `DEBUG=1` (écart O10 de `notes/ecarts_ouverts.md`, sans rapport avec ce plan) ;
 - le benchmark est directement lançable et produit des contacts réels 1/16/64 ;
-- le rapport principal et `notes/ecarts_ouverts.md` sont synchronisés avec P5/O1–O9.
+- le rapport principal et `notes/ecarts_ouverts.md` sont synchronisés avec P5/O1–O10 ;
 
 ## 1. Objectifs de sortie
 
