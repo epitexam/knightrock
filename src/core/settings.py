@@ -317,6 +317,27 @@ class Input:
     ATTACK_BUFFER_WINDOW = 0.2
 
 
+class Audio:
+    """Mixer and interface sound levels (audit UI, lot 5).
+
+    The mixer channel count is deliberately absent. ``pygame.init()`` opens the
+    mixer with SDL's two channels, and it only honours a different count when
+    ``pygame.mixer.pre_init`` runs *before* it — a later ``init(channels=...)``
+    is a documented no-op, so raising it would mean an ordering constraint
+    between the bootstrap and the audio module to protect a case that does not
+    exist: the per-scene music will stream through ``pygame.mixer.music``,
+    which owns its own SDL_music stream and never competes for a channel. Two
+    channels is then only an upper bound on overlapping *sound effects*, and a
+    navigation tick cutting its own predecessor is what a menu tick should do.
+    """
+
+    #: The interface sounds sit under the future music and gameplay effects: a
+    #: navigation blip that competes with a track is one the player stops
+    #: noticing. The per-category volumes are the seam the settings screen will
+    #: drive; nothing persists them yet.
+    DEFAULT_VOLUME = 0.6
+
+
 class Collision:
     """Collision probes and contact tolerances (F3.1)."""
 

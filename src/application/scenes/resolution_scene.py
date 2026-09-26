@@ -19,7 +19,7 @@ import pygame
 from src.application.scene import Scene
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 from src.ui.styles import TEXT_OK
 
@@ -84,20 +84,22 @@ class ResolutionScene(Scene):
     def update(self, delta_time: float) -> None:
         return None
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if routed_input.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
             if routed_input.variant != "device_removed":
                 self.game.scene_manager.pop()
-            return
+                return MenuAction.BACK
+            return None
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )
         if action == "back":
             self.game.scene_manager.pop()
-            return
+            return MenuAction.BACK
         if action is not None and action.startswith("res:"):
             width, height = (int(part) for part in action.removeprefix("res:").split("x"))
             self._select(width, height)
+        return action
 
     def _select(self, width: int, height: int) -> None:
         """Apply the size, then fall back to the Video menu.

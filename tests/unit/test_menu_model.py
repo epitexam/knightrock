@@ -49,6 +49,51 @@ def test_menu_model_handles_hover_activation_and_empty_state() -> None:
     assert model.activate() == "one"
 
 
+def test_menu_model_reports_a_hover_only_when_the_pointer_moves() -> None:
+    """One report per row the pointer lands on, however it got there.
+
+    A pointer is routed on every mouse sample, so reporting the motion would
+    say nothing a screen could act on — and would machine-gun anything listening.
+    This is the counterpart of ``move`` returning None when it is blocked.
+    """
+    model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
+    rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
+
+    assert model.hover((5, 5), rects) == "hover"  # lands on the first row
+    assert model.hover((7, 5), rects) is None  # still on it
+    assert model.hover((5, 15), rects) == "hover"  # the second row
+    assert model.hover((5, 5), rects) == "hover"  # back to the first
+    assert model.hover((500, 500), rects) is None  # off the rows
+    assert model.hover((5, 5), rects) == "hover"  # and back again
+
+
+def test_hovering_a_locked_item_reports_nothing() -> None:
+    """A disabled row is not a place the focus can land, so it is not a move."""
+    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", False)])
+    rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
+
+    assert model.hover((5, 5), rects) == "hover"
+    assert model.hover((5, 15), rects) is None
+    assert model.hovered_index == -1
+
+
+def test_the_pointer_reports_even_over_the_row_the_keyboard_already_selected() -> None:
+    """The pointer's position is its own state, apart from the selection.
+
+    Merging the two made the pointer silent exactly when it contradicted the
+    keyboard: the highlight sits on row 2, the pointer arrives on row 0, and
+    row 0 was already the hovered one as far as the selection is concerned —
+    so the visible jump came with no report at all.
+    """
+    model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
+    rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
+
+    assert model.move(1) == "move_down"  # the keyboard moves the selection
+    assert model.hover((5, 5), rects) == "hover"
+
+    assert model.current_index == 0
+
+
 def test_menu_model_routes_pointer_down_and_confirm() -> None:
     model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
     rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]

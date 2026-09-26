@@ -42,6 +42,7 @@
 | **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms and spatial hashing. |
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
+| **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
 | **Quality gates** | 1117 tests, 89 % instruction / 86 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
@@ -371,6 +372,7 @@ src/
 │   ├── rendering/ Camera, renderer, dirty-rect presentation
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
 │                   Asset library and animator (`core/asset_library.py`)
+│                   Audio bus (`core/audio.py`)
 ├── combat/        Frame data, hit resolver, knockback, charge and combo
 │                  tracking (CombatSystem lives in core/level/systems/)
 ├── entities/      Entity base, player + controllers, projectiles, vitals
@@ -400,8 +402,23 @@ notes/             Refactoring plans, audit reports and open gaps
   leaves them one frame stale.
 - `src/core/level/systems/gameplay_loop.py` defines the *order* in which the
   level systems run; each system stays independently testable.
-- `src/application/events.py` is a synchronous, strictly ordered event bus:
-  subscribers (UI, save, audio, logs) must never mutate the simulation.
+- `src/application/events.py` is a synchronous, strictly ordered event bus with
+  two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`,
+  `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no
+  reference to the application) and interface feedback (`UiFeedback`, emitted by
+  the input dispatcher from what a screen reports). Subscribers (UI, save, audio,
+  logs) must never mutate the simulation.
+- `src/core/audio.py` is the only module that touches `pygame.mixer`, and it is a
+  **consumer**: it never asks who did something and imports neither the input
+  router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole
+  policy — one effect, one cue — and `attach(bus)` subscribes to the facts it
+  answers, so a single line in the application layer knows the audio system
+  exists. It loads each sound once, caches it, applies the volume of the cue's
+  category and never raises: no sound card, no asset and an undecodable file all
+  end with a warning and a silent cue, which is also the CI path since `assets/`
+  is git-ignored. Silence is structural rather than a setting: a screen reports
+  `None` when it did nothing, so the gameplay keys the player holds and a key
+  swallowed by a rebinding capture are never announced.
 - Combat is frame-data driven: startup / active / recovery phases feed
   `HitboxManager` and `HitResolver` through the two-pass deterministic
   `CombatSystem`.

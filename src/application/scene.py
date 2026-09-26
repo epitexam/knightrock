@@ -32,8 +32,21 @@ class Scene(ABC):
     def handle_event(self, event: pygame.event.Event) -> None:  # noqa: B027
         """Process a single Pygame event."""
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:  # noqa: B027
-        """Process a routed input action."""
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:  # noqa: B027
+        """Process a routed input action; report what was performed.
+
+        The report is the scene's own truth about itself, and it is the only
+        thing the interface layer needs: ``None`` means *this screen did not
+        act*, and that is what makes the silence structural rather than a
+        setting. The gameplay scene answers ``None`` to the arrows it shares
+        with the menus, and the controls screen answers ``None`` to a press
+        swallowed by a rebinding capture — neither has to know that anything is
+        listening.
+
+        A screen returns ``MenuAction.BACK`` when it dismissed itself, a
+        ``MenuAction`` movement value when the focus moved, and the
+        ``MenuItem`` action otherwise.
+        """
 
     @abstractmethod
     def update(self, delta_time: float) -> None:

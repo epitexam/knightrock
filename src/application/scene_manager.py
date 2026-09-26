@@ -26,7 +26,7 @@ class SceneManager:
     def __init__(self, game: Game) -> None:
         self.game = game
         self._stack: list[Scene] = []
-        self.input_dispatcher = InputDispatcher(game.input_router)
+        self.input_dispatcher = InputDispatcher(game.input_router, game.events)
 
     @property
     def current(self) -> Scene | None:

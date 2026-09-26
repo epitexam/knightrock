@@ -25,7 +25,7 @@ from src.ui.controls_view import (
     ControlsView,
     RowKind,
 )
-from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -90,6 +90,11 @@ class ControlsScene(Scene):
         self.view = ControlsView(game.settings.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
         self._capture: tuple[int, int] | None = None
+        # The pointer's own cell, apart from the selection, for the same reason
+        # ``MenuModel`` keeps its own: the selection also moves with the
+        # keyboard, and comparing the two would make the pointer silent exactly
+        # when it contradicts it.
+        self._pointer_cell: tuple[int, int] | None = None
         self._pending: list[int] = []
         self._status: str | None = None
         self._ignore_routed = False
@@ -215,12 +220,12 @@ class ControlsScene(Scene):
     def update(self, delta_time: float) -> None:
         return None
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if self._ignore_routed:
             self._ignore_routed = False
-            return
+            return None
         if self._capture is not None:
-            return
+            return None
         # This screen moves the cursor through ``MenuModel.move`` directly
         # instead of ``MenuModel.handle_routed``, so it has to honour the same
         # release contract: the router emits one extra event carrying the held
@@ -228,28 +233,38 @@ class ControlsScene(Scene):
         # single press skip two rows — the controls screens felt unresponsive
         # with a pad.
         if MenuModel.is_release(routed_input.variant):
-            return
-        self._navigate(routed_input)
+            return None
+        return self._navigate(routed_input)
 
-    def _navigate(self, routed_input: RoutedInput) -> None:
+    def _navigate(self, routed_input: RoutedInput) -> str | None:
         action = routed_input.action
         if action is InputAction.UI_BACK or (
             action is InputAction.UI_CANCEL and routed_input.variant != "device_removed"
         ):
             self.game.scene_manager.pop()
-            return
+            return MenuAction.BACK
         if action in (InputAction.UI_UP, InputAction.UI_DOWN):
-            self.model.move(-1 if action is InputAction.UI_UP else 1)
-        elif action is InputAction.UI_LEFT:
-            self.selected_column = KEYBOARD_COLUMN
-        elif action is InputAction.UI_RIGHT:
-            self.selected_column = GAMEPAD_COLUMN
-        elif action is InputAction.UI_POINTER_MOVE and routed_input.position:
-            self._pointer(routed_input.position, False)
-        elif action is InputAction.UI_POINTER_DOWN and routed_input.position:
-            self._pointer(routed_input.position, True)
-        elif action is InputAction.UI_CONFIRM:
-            self._activate()
+            # ``move`` reports None when the selection is blocked at an edge, so
+            # a key held against the last row is not a navigation.
+            return self.model.move(-1 if action is InputAction.UI_UP else 1)
+        if action is InputAction.UI_LEFT:
+            return self._select_column(KEYBOARD_COLUMN)
+        if action is InputAction.UI_RIGHT:
+            return self._select_column(GAMEPAD_COLUMN)
+        if action is InputAction.UI_POINTER_MOVE and routed_input.position:
+            return self._pointer(routed_input.position, False)
+        if action is InputAction.UI_POINTER_DOWN and routed_input.position:
+            return self._pointer(routed_input.position, True)
+        if action is InputAction.UI_CONFIRM:
+            return self._activate()
+        return None
+
+    def _select_column(self, column: int) -> str | None:
+        """Move between the keyboard and gamepad cells of the focused row."""
+        if self.selected_column == column:
+            return None
+        self.selected_column = column
+        return MenuAction.HOVER
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self._capture is None:
@@ -265,44 +280,60 @@ class ControlsScene(Scene):
         elif event.type == pygame.JOYHATMOTION:
             self._capture_hat(getattr(event, "hat", -1), getattr(event, "value", (0, 0)))
 
-    def _pointer(self, position: tuple[int, int], activate: bool) -> None:
+    def _pointer(self, position: tuple[int, int], activate: bool) -> str | None:
         """Hover moves the focus; a click acts exactly like Enter on that row.
 
         The whole row is a target, not just the two binding cells: the label
         gutter and the row padding carry no cell of their own, and leaving
         them dead made the pointer focus look like it skipped rows.
+
+        A hover reports the focus only when the pointer actually lands on
+        another (row, cell) pair. This screen drives the model itself instead of
+        going through ``MenuModel.hover``, because its focus is a cell and not a
+        row, so the counterpart of "the pointer is sampled 100 times a second"
+        is spelled out here: one report per cell the pointer arrives on.
         """
         hit = self.view.cell_at(position)
         if hit is not None:
-            self.model.set_items(self.model.items, hit.row)
-            self.selected_column = hit.column
-            if activate:
-                # A non-rebindable row (invert Y, Reset, Back) focuses like any
-                # other, but a click activates it instead of opening a capture
-                # it could never fill.
-                if hit.rebindable:
-                    self._start_capture(hit.row, hit.column)
-                else:
-                    self._activate()
-            return
+            moved = self._focus(hit.row, hit.column)
+            if not activate:
+                return moved
+            # A non-rebindable row (invert Y, Reset, Back) focuses like any
+            # other, but a click activates it instead of opening a capture
+            # it could never fill.
+            if hit.rebindable:
+                return self._start_capture(hit.row, hit.column)
+            return self._activate()
         for index, rect in enumerate(self.view.row_rects):
             if not rect.collidepoint(position):
                 continue
-            self.model.set_items(self.model.items, index)
+            moved = self._focus(index, self.selected_column)
             if activate:
-                self._activate()
-            return
+                return self._activate()
+            return moved
+        self._pointer_cell = None
+        return None
 
-    def _activate(self) -> None:
+    def _focus(self, row: int, column: int) -> str | None:
+        """Move the focus to a cell, reporting it only if the pointer moved."""
+        moved = self._pointer_cell != (row, column)
+        self._pointer_cell = (row, column)
+        self.model.set_items(self.model.items, row)
+        self.selected_column = column
+        return MenuAction.HOVER if moved else None
+
+    def _activate(self) -> str | None:
         action = self.model.current_item.action if self.model.current_item else None
         if action == "invert_y":
             self._toggle_invert_y()
-        elif action == "reset":
+            return MenuAction.ACTIVATE
+        if action == "reset":
             self._reset()
-        elif action == "back":
+            return MenuAction.ACTIVATE
+        if action == "back":
             self.game.scene_manager.pop()
-        else:
-            self._start_capture(self.model.current_index, self.selected_column)
+            return MenuAction.BACK
+        return self._start_capture(self.model.current_index, self.selected_column)
 
     def _toggle_invert_y(self) -> None:
         menu = replace(
@@ -312,11 +343,14 @@ class ControlsScene(Scene):
         self._apply_bindings(replace(self.game.settings.bindings, menu=menu))
         self._status = "Stick Y inverted" if menu.invert_y else "Stick Y normal"
 
-    def _start_capture(self, row: int, column: int) -> None:
-        if 0 <= row < len(self.specs):
-            self._capture = (row, column)
-            self._pending.clear()
-            self._status = "Esc / right click cancels; Delete unbinds keyboard"
+    def _start_capture(self, row: int, column: int) -> str | None:
+        """Arm a capture; opening one is a confirmation, not a navigation."""
+        if not 0 <= row < len(self.specs):
+            return None
+        self._capture = (row, column)
+        self._pending.clear()
+        self._status = "Esc / right click cancels; Delete unbinds keyboard"
+        return MenuAction.ACTIVATE
 
     def _cancel_capture(self) -> None:
         self._capture = None

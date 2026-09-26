@@ -1,7 +1,8 @@
 # Audit UI — Interface, navigation et paramétrage
 
 > Audit réécrit le 2026-09-24 contre `master` au commit `afe044f`, mis à jour le
-> 2026-09-26 contre `40ca5a9` (lot 6, cohérence de frame et cadence).
+> 2026-09-26 contre `40ca5a9` (lot 6, cohérence de frame et cadence), puis le
+> 2026-09-26 contre `1084370` + lot 5 (sons d'interface, §5 UI-10).
 > L’historique des versions précédentes reste conservé dans Git.
 
 ## 1. Verdict exécutif
@@ -28,20 +29,33 @@ frame (le blend est porté par la caméra), `Camera.apply_covering()` pour tout 
 le renderer blitte, les barres HP ancrées sur les rects réellement blittés, les
 rectangles overlay déclarés au renderer, et une boucle cadencée une seule fois. La
 section 3 et le lot 6 de la section 8 portent les preuves. Restent ouverts : l’audio
-(lot 5), le tutoriel gameplay (UI-8), le réglage de limite de frames (lot 7,
-planifié dans `notes/plan_limit_frames_video.md`) et l’écart O10 consigné dans
-`notes/ecarts_ouverts.md` (la suite n’est pas verte avec `DEBUG=1`).
+(lot 5, livré depuis, voir l’état suivant), le tutoriel gameplay (UI-8), le réglage
+de limite de frames (lot 7, planifié dans `notes/plan_limit_frames_video.md`) et
+l’écart O10 consigné dans `notes/ecarts_ouverts.md` (la suite n’est pas verte avec
+`DEBUG=1`).
+
+**État au 2026-09-26 (lot 5, branche `feat/audio-ui-system`) :** le lot 5 est livré
+pour les **sons d’interface et de menus** — `AudioBus` (`src/core/audio.py`) seul
+possesseur de `pygame.mixer`, sons de navigation / validation / retour branchés sur
+les interactions de menu existantes, dégradation propre quand le mixer ou les
+fichiers manquent. Restent ouverts : la **musique par scène**, les **sons de
+gameplay**, le **réglage de volume** (ni menu ni persistance — l’API par catégorie
+est en place), le tutoriel gameplay (UI-8), la limite de frames (lot 7) et l’écart
+O10.
 
 ## 2. Base vérifiée
 
-- **HEAD :** `40ca5a9` (`master`)
-- **Historique UI :** `4f8b025` → `1f5e3fa` → `afe044f` (état du 2026-09-24) → `40ca5a9`
-- **Périmètre :** `src/application/`, `src/ui/`, `src/core/game.py`, `src/core/input/`, `src/core/settings.py`, `src/core/rendering/`, tests associés.
-- **Validation de référence (2026-09-26) :** suite complète à **1117 tests** verts
-  (`env -u DEBUG uv run pytest -q`) ; 89 % instructions / 86 % branches, Ruff et
-  format propres, `mypy src` (142 fichiers) et `mypy src main.py tools` (144
-  fichiers, la commande CI) propres.
-- **Réserve connue :** `DEBUG=1 uv run pytest -q` est **rouge sur 1 test**,
+- **HEAD :** `40ca5a9` (`master`), + lot 5 sur `feat/audio-ui-system`
+- **Historique UI :** `4f8b025` → `1f5e3fa` → `afe044f` (état du 2026-09-24) → `40ca5a9` → lot 5
+- **Périmètre :** `src/application/`, `src/ui/`, `src/core/game.py`, `src/core/input/`, `src/core/settings.py`, `src/core/rendering/`, `src/core/audio.py`, tests associés.
+- **Validation de référence (2026-09-26, lot 5) :** suite complète à **1158 tests** verts
+  (`env -u DEBUG uv run pytest -q`) ; Ruff (check + format) et mypy propres
+  (`mypy src main.py tools`, 145 fichiers). Les 33 tests du lot 5 sont
+  `tests/unit/test_audio.py` (14), `tests/headless/test_ui_audio.py` (22),
+  plus 3 dans `test_menu_model.py` et 2 dans `test_event_router.py`.
+  Référence précédente avant lot 5 : 1117 tests, 89 % instructions / 86 % branches,
+  mypy 142 (`src`) et 144 (CI).
+- **Réserve connue (inchangée) :** `DEBUG=1 uv run pytest -q` est **rouge sur 1 test**,
   `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`. Le
   chemin debug fait toujours un refresh complet, donc `Level.draw` renvoie `None`
   et rien n’est présenté partiellement. Le même test échoue aussi **isolé**, avec ou
@@ -62,7 +76,7 @@ Les références de lignes de l’ancienne version ne sont pas reproduites telle
 | Scène Options | Hub de navigation (Video settings, Controls) | **Clos** | `options_scene.py`, `test_options_scene.py` |
 | Rebinding/persistance | Écran Contrôles + `settings.json` versionné | **Clos** | `settings_store.py`, `controls_scene.py`, `test_controls_scene.py` |
 | Réglages vidéo | Résolutions prédéfinies (écran de sélection), plein écran `SCALED` (letterbox), vsync | **Clos** | `game.py` (`_configure_display`), `video_scene.py`, `resolution_scene.py` |
-| Audio | Absent (asset de navigation fourni) | Ouvert | lot 5 optionnel : aucun mixer / `Sound` |
+| Audio | **Partiel** — sons d'interface livrés (navigation, validation, retour) ; musique, sons gameplay et volume ouverts | Ouvert | `core/audio.py`, `InputDispatcher._apply`, `test_audio.py`, `test_ui_audio.py` |
 | HUD joueur | Vie, posture, dash et combo | **Clos** | `src/ui/hud.py`, `GameplayScene.draw` |
 | Panneau COMBAT hors debug | Gaté | **Clos** | `WorldUI.draw_metrics_panel`, tests debug |
 | Aide aux contrôles joueur | Écran Contrôles listant les bindings | Partiel | `controls_scene.py` ; pas de tutoriel gameplay |
@@ -122,7 +136,7 @@ Deux règles ont été ajoutées le 2026-09-25 et sont à considérer comme du c
 | UI-6 Vidéo | **Clos** | `game.py` : fenêtre **non redimensionnable** (viewport logique stable), `FULLSCREEN|SCALED` avec letterbox, vsync, `VIDEORESIZE` ignoré ; cadence livrée (voir UI-14) |
 | UI-8 Aide aux contrôles | Partiel | l’écran Contrôles liste les bindings ; pas de tutoriel gameplay |
 | UI-9 Parcours de progression | **Clos** | `level_select_scene.py`, `victory_scene.py`, tests headless |
-| UI-10 Audio | Ouvert | lot 5 optionnel : aucun mixer / `Sound` (asset de navigation fourni) |
+| UI-10 Audio | **Partiel** | sons d'interface livrés (navigation, validation, retour) ; §5 UI-10. Musique, sons gameplay et volume ouverts |
 | UI-13 Accessibilité UI | **Clos** | `ui.scale` persisté, `MenuView` recalculé à chaque dessin |
 | UI-14 Cohérence de frame et cadence | **Clos** | `Camera.begin_frame` / `apply_covering`, `add_overlay_rects`, `Game._frame_delta`, `test_frame_coherence.py`, `test_frame_pacing.py`, `test_no_stale_pixels.py` |
 | UI-15 Limite de frames (menu vidéo) | Ouvert, planifié | lot 7, `notes/plan_limit_frames_video.md` ; `UserSettings` n’a pas encore `fps_limit` |
@@ -207,9 +221,127 @@ Le panneau actuel est une aide debug (`1-6`, V/B, G/P/T, F1–F10), pas un écra
 
 `SaveGame.unlocked_levels` existe, mais aucun menu ne permet de choisir un niveau. La fin du dernier niveau retourne directement au menu.
 
-### UI-10 — Audio
+### UI-10 — Audio — **Partiel (2026-09-26, sons d'interface)**
 
-Aucun système audio n’existe : pas de mixer, pas de sons, pas de volumes persistés.
+Livraison : les sons d'interface et de menus, sur les sons réellement présents dans
+`assets/sounds/ui/`. Musique, sons de gameplay et réglage de volume restent ouverts.
+
+**Répartition des responsabilités** (une seule fois chacune) :
+
+| Élément | Responsabilité |
+|---|---|
+| `src/core/audio.py` | Seul module autorisé à toucher `pygame.mixer` : chargement, cache, volume, lecture. **Consommateur** : il ne demande jamais *qui* a fait quoi |
+| `cue_for(effect)` | Toute la politique : un effet d'interface → un cue. 3 branches, fonction pure |
+| `AudioBus.attach(bus)` | L'abonnement : le bus audio s'abonne lui-même, donc **une seule ligne** dans toute la couche application mentionne l'audio (`Game`) |
+| `Scene.handle_routed -> str \| None` | Le **rapport** : ce que l'écran a réellement fait, ou `None` |
+| `InputDispatcher` | Le **producteur** : route, appelle la scène, publie un `UiFeedback` |
+
+| Effet publié | Déclencheur | Cue | Fichier |
+|---|---|---|---|
+| `NAVIGATED` | `HOVER`, `MOVE_UP`, `MOVE_DOWN` | `NAVIGATE` | `assets/sounds/ui/hover.mp3` |
+| `CONFIRMED` | activation d'un item, changement de valeur, ouverture de capture | `CONFIRM` | `assets/sounds/ui/click.mp3` |
+| `DISMISSED` | `MenuAction.BACK` : l'écran s'est refermé | `BACK` | `assets/sounds/ui/click.mp3` |
+| *rien* | `variant="release"` | — | le relâchement du stick porte l'action tenue : un appui, un son |
+| *rien* | `variant="device_removed"` | — | manette débranchée : les écrans l'ignorent volontairement |
+| *rien* | pas de mouvement de la sélection | — | `MenuModel.move` renvoie `None` quand il est bloqué en bord de liste |
+| *rien* | `UI_POINTER_UP`, pointeur hors lignes | — | la validation est portée par `UI_POINTER_DOWN` |
+| — | `DENIED` **réservé** | — | `assets/sounds/ui/errors_and_warnings.mp3`, sans déclencheur (§ Evolution) |
+
+**Le chemin, en une phrase par étape.** L'écran *rapporte* (valeur de retour), le
+seam d'input *publie* le fait (`EventBus`), l'audio *décide* du son. Les deux
+mécanismes sont complémentaires et non concurrents : le rapport répond à « qu'as-tu
+fait ? » au seul appelant qui doit agir ensuite ; la notification porte le fait à
+ceux qui écoutent, sans que l'émetteur sache qui ils sont.
+
+**Pourquoi l'EventBus et pas un appel direct.** Trois éléments du code ont
+tranché :
+
+- le projet a déjà un précédent pour « une action d'UI produit un effet global »,
+  et c'est l'appel direct au propriétaire (`video_scene.py` → `game.apply_settings`,
+  `controls_scene.py` → `game.apply_bindings`, `menu_scene.py` → `game.running`) ;
+- l'`EventBus` a une portée précise — simulation → couche application : les 3
+  émissions viennent de la sim, les 3 abonnés de `game.py`, et sa docstring la
+  nomme « subscribers (UI, save, **audio**, logs) ». L'audio en est le 4ᵉ
+  consommateur *conçu* ;
+- et surtout, **la simulation n'a pas le choix** : un `Level` ne reçoit que
+  l'`EventBus` et ne doit pas recevoir `Game` (rollback, déterminisme). R-2.4 de
+  l'audit consolidé dit donc « déclenchés par `EventBus` » non par goût, mais
+  parce que c'est le seul canal disponible de l'intérieur du tick.
+
+Résultat : l'audio a **une seule entrée** (faits d'UI *et* jalons de simulation),
+et le jour où un deuxième consommateur d'UI existe (haptique, tutoriel), il
+s'abonne — sans qu'un seul producteur soit rouvert.
+
+**Le silence est structurel, pas un réglage.** Une scène renvoie `None` quand elle
+n'agit pas, et rien n'est publié :
+
+- `GameplayScene` ne traite que `UI_BACK` : les flèches, `Espace` et `Q` — qui sont
+  aussi les bindings joueur — renvoient `None`. Le premier jet de ce lot portait un
+  hook `Scene.plays_ui_input_audio()` et trois overrides pour obtenir ce silence ;
+  il a disparu ;
+- `ControlsScene` renvoie `None` pendant une capture et après `_ignore_routed`.
+  Remplir la cellule « Move up » avec `X` **rebind** `UI_UP` sur cette touche : le
+  même événement se route donc comme une navigation une ligne plus loin. L'écran a
+  consommé l'appui, donc il ne rapporte rien — ce qui est la règle qu'il s'était
+  déjà donnée sous le nom `_ignore_routed` ;
+- un item verrouillé (niveau non débloqué) : le modèle refuse, donc rien.
+
+Conséquence de conception : la décision de jouer un son est prise **après** l'action,
+d'après le rapport. L'ordre de `handle_event` par rapport à `handle_routed` n'a donc
+plus aucune incidence sur l'audio.
+
+**Le pointeur parle au changement de ligne, et la position du pointeur est distincte
+de la sélection.** `UI_POINTER_MOVE` est routé à chaque échantillon : jouer dessus en
+rafale était le risque, mais l'exclure purement (premier jet) laissait un joueur à la
+souris **sans aucun retour sonore** — le fichier s'appelle `hover.mp3`.
+`MenuModel.hover()` ne rapporte donc que la **ligne sur laquelle le pointeur
+arrive**, l'exact contraire de `move()` qui renvoie `None` quand il est bloqué.
+`ControlsScene`, qui conduit le modèle lui-même (son focus est une cellule, pas une
+ligne), applique la même règle via son propre état.
+
+La position du pointeur est tenue **à part de la sélection** dans les deux cas, et
+c'est un point non négociable : fusionner les deux rend le pointeur muet exactement
+quand il contredit le clavier. Si le surlignage est en ligne 3 et que le pointeur
+arrive en ligne 0, ligne 0 était déjà « la ligne survolée » pour la sélection — le
+saut visible n'aurait produit aucun rapport. Couvert par
+`test_menu_model.py::test_the_pointer_reports_even_over_the_row_the_keyboard_already_selected`.
+
+**Dégradation, pas exception.** `assets/` est git-ignoré : un checkout sans assets,
+une CI et une machine sans carte son atterrissent tous ici. Mixer refusant de
+démarrer, fichier absent, fichier indécodable, périphérique débranché en cours de
+partie → `logger.warning` et cue marqué indisponible (sans réessai), jeu muet.
+Vérifié : `SDL_AUDIODRIVER=bogus_driver` démarre le jeu sans crash, et les faits
+continuent d'être publiés.
+
+**Ce qui reste ouvert, et pourquoi rien n'a été inventé pour le remplir.**
+`assets/sounds/music/` est vide et il n'existe aucun son de gameplay dans le dépôt :
+câbler la musique ou les SFX gameplay n'aurait produit que du code sans rien à jouer.
+La suite est **additive** :
+
+- **musique par scène** : `Scene.enter()`/`exit()` existent déjà (appelés par
+  `switch`/`push`/`pop`) ; il manque `play_music` + fondu. SDL_music a son propre
+  flux et ne concurrence pas les canaux du mixer ;
+- **sons de gameplay** : les trois abonnements existent déjà (`LevelStarted`,
+  `PlayerDied`, `LevelCompleted`) et sont **muets faute d'assets** ; il n'y a plus
+  qu'à ajouter une entrée dans `SOUNDS` quand un fichier existera ;
+- **impacts/parry/break** : `CombatSystem` produit une liste de `GuardEvent` consommée
+  par `GameplayLoop._spawn_fx_for_event` — mais **dans** le tick ; il faudra un
+  événement déterministe, pas un appel ;
+- **volume** : `AudioCategory` + `set_volume`/`volume` sont en place, un curseur par
+  catégorie et une section persistée dans `settings.json` restent à faire
+  (sans bumper `SETTINGS_FORMAT_VERSION` : `from_dict` lit une section absente avec
+  sa valeur par défaut) ;
+- **`DENIED`** : le câbler à un niveau verrouillé exige que `MenuModel.activate`
+  distingue « refusé » de « aucune cible » ;
+- **deuxième consommateur d'UI** : il s'abonne, rien à reopening. Rien n'en existe
+  aujourd'hui (aucune haptique dans le code) et il n'en a pas été fabriqué.
+
+**Preuves :** `tests/unit/test_audio.py` (14 — politique, table, transport,
+volumes, abonnement), `tests/headless/test_ui_audio.py` (22 — un appui = un fait, et
+les silence structurels), `tests/unit/test_menu_model.py` (3 — contrat de survol),
+`tests/unit/test_event_router.py` (2 — publication et filtrage des variants).
+Contrôle d'étanchéité : `grep -rln "AudioBus\|SoundId" src/` ne renvoie que
+`src/core/audio.py` et `src/core/game.py`.
 
 ### UI-13 — Accessibilité UI
 
@@ -350,16 +482,64 @@ Créer :
 
 Brancher la sélection de niveau et la victoire sur la progression.
 
-### Lot 5 — Audio et polish optionnels — **Ouvert (optionnel)**
+### Lot 5 — Audio et polish optionnels — **Partiel (2026-09-26)**
 
-Créer `AudioBus`, hooks EventBus, fades et sons de navigation. Ce lot reste optionnel tant que l’audio n’est pas requis par le produit.
+**Livré** — les sons d'interface et de menus, sur les trois fichiers réellement
+présents. Détail, contrats et preuves en §5 UI-10.
 
-Asset déjà fourni pour la navigation :
-`assets/sounds/universfield-computer-mouse-click-02-383961.mp3` (le dossier réel
-est `assets/sounds/`, il n’y a pas de dossier `assets/audio/`). Cible du lot :
-`pygame.mixer`, un `AudioBus` abonné à l’EventBus, un son de déplacement et un son
-de validation dans les menus, plus une section volume persistée dans
-`settings.json` (à valider avec les bornes du store).
+- `src/core/audio.py` : `AudioBus` seul possesseur de `pygame.mixer`, table
+  `SOUNDS`, politique `cue_for(effect)` en 3 branches, abonnement par `attach` ;
+- `src/application/events.py` : `UiEffect` + `UiFeedback`, deux familles de
+  producteurs sur le bus (simulation et interface) ;
+- `Scene.handle_routed -> str | None` : les 10 écrans rapportent ce qu'ils ont
+  fait, et c'est **mypy** qui garantit qu'aucun n'oublie (une sous-classe annotée
+  `-> None` contre la base serait une erreur) ;
+- `InputDispatcher` : route, appelle la scène, publie le fait. 40 lignes, aucun
+  état de présentation, aucune vue lue, aucune notion de son ;
+- sons de navigation, de validation et de retour sur les interactions de menu
+  existantes, et **silence structurel** pour le gameplay et les captures ;
+- dégradation propre sans mixer et sans assets (chemin CI, `assets/` git-ignoré).
+
+**Le chemin parcouru, et pourquoi il est worthwhile de l'écrire.** Ce lot a été
+livré en trois versions, et les deux premières étaient fausses — ce que seule une
+revue par les couches a révélé :
+
+1. **Mapping input → son, dans le dispatcher.** Fonctionnait, mais la couche
+   input lisait la mise en page des vues (`scene.view.item_rects`) et cinq fichiers
+   de la couche application connaissaient l'audio. Un test a en outre échoué sur le
+   seul volume de sons d'un appui, parce que remplir une cellule de binding
+   *rebind* l'action routée sur cette touche.
+2. **Correction par la ligne.** `row_at` + un `int` de mémoire dans le dispatcher.
+   fonctionnait, mais c'était un pansement : `ui_sound_for` mappe un **input** vers
+   un cue alors que le son du pointeur est une fonction d'un **état** (« la ligne a-t-
+   elle changé ? »). Le mapping était structurellement incomplet, et l'atteinte
+   courait dans la mauvaise couche.
+3. **Version livrée : rapport → fait publié → abonné.** Un système correct parce
+   qu'un test a échoué n'est pas une architecture ; celle-ci l'est, et le
+   raccourci a disparu avec `_pointer_cue`, `row_at`, `ui_sound_for` et
+   `plays_ui_input_audio()`.
+
+**Correction d'asset.** La version précédente de cet audit citait
+`assets/sounds/universfield-computer-mouse-click-02-383961.mp3`. **Ce fichier
+n'existe pas** : le dossier réel est `assets/sounds/ui/`, qui contient
+`hover.mp3`, `click.mp3` et `errors_and_warnings.mp3`. Il n'y a pas de dossier
+`assets/audio/`.
+
+**Resté ouvert, volontairement.** `assets/sounds/music/` est vide et il n'existe
+aucun son de gameplay dans le dépôt : brancher la musique ou les SFX gameplay
+n'aurait produit que du code sans rien à jouer. Restent donc pour un lot 5 bis :
+
+- musique par scène (`Scene.enter()`/`exit()` existent déjà ; il manque
+  `play_music` et le fondu) ;
+- sons de gameplay **émis** sur l'`EventBus` — la simulation n'a aucune référence
+  vers `Game`, et c'est aussi ce qu'exige le rollback (un son dans le tick fixe
+  retentirait à chaque rewind) ; R-2.4 de l'audit consolidé ;
+- section volume persistée dans `settings.json` + écran Audio (l'API par catégorie
+  est déjà là, sans bumper de `SETTINGS_FORMAT_VERSION`) ;
+- le cue `DENIED`, réservé : il attend que `MenuModel.activate` distingue « refusé »
+  de « aucune cible » ;
+- un deuxième consommateur d'interface (haptique, tutoriel) : il s'abonne au bus,
+  et c'est tout — aucun producteur n'est rouvert.
 
 ### Lot 6 — Cohérence de frame et cadence — **Livré (2026-09-25)**
 
@@ -410,22 +590,24 @@ réglage « FPS », ne pas toucher `_mode_signature`, ne pas bumper
 - [x] Boucle cadencée une fois ; compteur FPS juste sur les deux chemins
       (vsync off 62,1 sur 62,1 mesuré ; vsync on 125,0 sur 124,1).
 - [x] Tests UI, Ruff, format, mypy et suite complète verts **sans `DEBUG`**
-      (1117 tests au 2026-09-26).
+      (1158 tests au 2026-09-26, lot 5 inclus).
 - [ ] `DEBUG=1 uv run pytest -q` : 1 test rouge
       (`test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`,
       écart O10 de `notes/ecarts_ouverts.md`).
-- [ ] Audio : mixer, sons de navigation, volumes (lot 5).
+- [x] Sons d'interface : navigation, validation, retour, un appui = un son, jeu
+      muet, capture muette, pointeur = un son par ligne.
+- [ ] Audio : musique par scène, sons de gameplay, volume persisté (lot 5 bis).
 - [ ] Limite de frames réglable (lot 7, planifié).
 
 ## 10. Commandes de vérification
 
 ```bash
-env -u DEBUG uv run pytest -q          # 1117 passed
+env -u DEBUG uv run pytest -q          # 1158 passed, 1 skipped
 DEBUG=1 uv run pytest -q               # 1 failed : écart O10 connu, non corrigé
 uv run ruff check src tests main.py tools
 uv run ruff format --check src tests main.py tools
-uv run mypy src                        # 142 fichiers
-uv run mypy src main.py tools          # 144 fichiers (commande CI)
+uv run mypy src                        # 143 fichiers
+uv run mypy src main.py tools          # 145 fichiers (commande CI)
 git diff --check
 ```
 
@@ -439,7 +621,7 @@ code des notes (`audit_controles.md`, `hitbox_amelioration.md`), état antérieu
 cette mise à jour et hors de la commande CI, qui ne couvre que `src`, `tests`,
 `main.py` et `tools/`.
 
-Recherche d’absence audio :
+Contrôle d'étanchéité de l'audio (l'inverse du grep d'absence initial) :
 
 ```bash
 grep -rnE 'pygame\\.mixer|Sound\\(|music\\.' src/
@@ -452,6 +634,7 @@ ls src/application/scenes/
 test -e src/ui/menu_model.py
 test -e src/ui/menu_view.py
 test -e src/application/settings_store.py
+test -e src/core/audio.py
 ```
 
 ## 11. Historique et validation
@@ -467,3 +650,20 @@ test -e src/application/settings_store.py
   §5 UI-6. Base §2 rafraîchie : 1117 tests, 89 % / 86 %, mypy 142 (`src`) et 144
   (CI), Ruff propre. La réception §9 ne peut plus afficher une suite verte « avec et
   sans `DEBUG` » : l’écart O10 est consigné et non corrigé.
+- Lot 5 : 2026-09-26, branche `feat/audio-ui-system` sur `1084370` — sons
+  d'interface livrés (§5 UI-10, §8 lot 5), chemin d'asset du lot 5 corrigé
+  (`universfield-…mp3` n'existe pas), §2, §3, §9, §10 et §11 rafraîchies :
+  1158 tests, mypy 143 (`src`) et 145 (CI), Ruff propre. Le grep d'absence audio
+  devient un contrôle d'étanchéité.
+  Le lot a été **réécrit deux fois** après une revue par les couches, et le §8
+  conserve le chemin : (1) mapping input → son dans le dispatcher, qui lisait la
+  mise en page des vues ; (2) correction par la ligne, `row_at` + mémoire dans le
+  dispatcher, un pansement sur un mapping input → cue structurellement incomplet ;
+  (3) version livrée, **rapport de la scène → `UiFeedback` publié sur l'EventBus
+  → abonné**. Un retour joueur (le son de survol souris inaudible) et deux tests
+  en échec ont révélé les deux premières. Trois défauts réels ont été corrigés au
+  passage : `MenuModel.hover` comparait après avoir remis son état à zéro (un son
+  par échantillon souris), la position du pointeur y était confondue avec la
+  sélection (souris muet quand il contredit le clavier), et `EventBus.subscribe`
+  n'était pas idempotent alors qu'`unsubscribe` ne retire qu'une occurrence
+  (abonné fantôme, double son).

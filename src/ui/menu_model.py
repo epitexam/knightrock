@@ -15,10 +15,19 @@ class MenuItem:
 
 
 class MenuAction(StrEnum):
+    """What the model did with an input, in the model's own vocabulary.
+
+    ``HOVER``/``MOVE_UP``/``MOVE_DOWN`` mean *the focus moved*; anything else is
+    a ``MenuItem.action``. ``BACK`` is the one value a model never returns: it
+    is what a **screen** reports when it dismissed itself, so that the
+    interface can tell a closure from a confirmation without a convention.
+    """
+
     MOVE_UP = "move_up"
     MOVE_DOWN = "move_down"
     HOVER = "hover"
     ACTIVATE = "activate"
+    BACK = "back"
 
 
 class MenuModel:
@@ -40,6 +49,13 @@ class MenuModel:
         self._items: tuple[MenuItem, ...] = ()
         self._current = -1
         self._hovered = -1
+        # Where the pointer was on the last sample, kept apart from the
+        # selection on purpose. The selection also moves with the keyboard, and
+        # merging the two would make the pointer silent exactly when it
+        # contradicts the keyboard: the highlight is on row 3, the pointer
+        # arrives on row 0, and row 0 was already "the hovered one" as far as
+        # the selection is concerned.
+        self._pointer_row: int | None = None
         self.set_items(items)
 
     @property
@@ -83,17 +99,35 @@ class MenuModel:
         return None
 
     def hover(self, position: tuple[int, int], rects: Sequence[pygame.Rect]) -> str | None:
+        """Focus the item under the pointer; report only when the focus moved.
+
+        A pointer is routed on every mouse sample, so returning ``HOVER`` for
+        all of them describes the *motion*, not the *interaction* — and the
+        motion is not something a screen, or anything listening to it, can act
+        on. Returning the move only when the pointer lands on a row it was not
+        on makes this the exact counterpart of :meth:`move`, which already
+        returns None when the selection is blocked.
+
+        Leaving the rows reports nothing and forgets the position, so coming
+        back onto one reports again.
+        """
         self._hovered = -1
+        row: int | None = None
         for index, rect in enumerate(rects):
             if (
                 index < len(self._items)
                 and self._items[index].enabled
                 and rect.collidepoint(position)
             ):
-                self._hovered = index
-                self._current = index
-                return MenuAction.HOVER
-        return None
+                row = index
+                break
+        moved = row is not None and row != self._pointer_row
+        self._pointer_row = row
+        if row is None:
+            return None
+        self._hovered = row
+        self._current = row
+        return MenuAction.HOVER if moved else None
 
     def activate(self, index: int | None = None) -> str | None:
         target = self._hovered if index is None and self._hovered >= 0 else index

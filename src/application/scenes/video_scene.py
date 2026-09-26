@@ -15,7 +15,7 @@ from src.application.scenes.resolution_scene import RESOLUTIONS
 from src.application.settings_store import UserSettings
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 
 if TYPE_CHECKING:
@@ -85,13 +85,16 @@ class VideoScene(Scene):
         self._flash_row = self.model.current_index if current is not None else -1
         self._flash_remaining = self.VALUE_FLASH_SECONDS if self._flash_row >= 0 else 0.0
 
-    def handle_routed(self, routed: RoutedInput) -> None:
+    def handle_routed(self, routed: RoutedInput) -> str | None:
         if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
             if routed.variant != "device_removed":
                 self.game.scene_manager.pop()
-            return
+                return MenuAction.BACK
+            return None
         if self._handle_row_value_navigation(routed):
-            return
+            # ←/→ on a value row, or Enter on the resolution row: the value
+            # changed in place, which is a confirmation and not a navigation.
+            return MenuAction.ACTIVATE
         action, _ = self.model.handle_routed(
             routed.action, routed.position, self.view.item_rects, routed.variant
         )
@@ -105,6 +108,8 @@ class VideoScene(Scene):
             self._reset()
         elif action == "back":
             self.game.scene_manager.pop()
+            return MenuAction.BACK
+        return action
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
         """←/→ adjust the focused row's value; Enter opens the real picker.

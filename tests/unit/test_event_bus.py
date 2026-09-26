@@ -46,9 +46,31 @@ def test_unsubscribe_removes_the_handler() -> None:
     assert received == []
 
 
+def test_subscribing_the_same_handler_twice_registers_it_once() -> None:
+    """``subscribe``/``unsubscribe`` must be a symmetric pair.
+
+    A second registration used to survive the unsubscribe that follows it (which
+    removes a single occurrence), so a subscribe/unsubscribe cycle left a ghost
+    subscriber that kept running its effect on every later emit.
+    """
+    bus = EventBus()
+    received: list[LevelStarted] = []
+    handler = received.append
+    bus.subscribe(LevelStarted, handler)
+    bus.subscribe(LevelStarted, handler)
+
+    bus.emit(LevelStarted(level_id=0))
+
+    assert received == [LevelStarted(level_id=0)]
+
+    bus.unsubscribe(LevelStarted, handler)
+    bus.emit(LevelStarted(level_id=1))
+
+    assert received == [LevelStarted(level_id=0)]
+
+
 def test_unsubscribe_unknown_handler_is_a_noop() -> None:
     bus = EventBus()
-
     bus.unsubscribe(PlayerDied, lambda _: None)  # does not raise
 
 

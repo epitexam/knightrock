@@ -2,11 +2,13 @@ from types import MappingProxyType
 
 import pygame
 
+from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.input_dispatcher import InputDispatcher
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings, MenuBindings
 from src.core.settings import Input as InputSettings
+from src.ui.menu_model import MenuAction
 
 
 def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
@@ -158,17 +160,78 @@ def test_dispatcher_forwards_raw_and_routed_inputs() -> None:
         def handle_event(self, _event: pygame.event.Event) -> None:
             self.raw += 1
 
-        def handle_routed(self, routed: RoutedInput) -> None:
+        def handle_routed(self, routed: RoutedInput) -> str | None:
             self.routed.append(routed)
+            return None
 
     scene = RecordingScene()
-    dispatcher = InputDispatcher(EventRouter())
+    dispatcher = InputDispatcher(EventRouter(), EventBus())
     event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
 
     dispatcher.dispatch(scene, event)  # type: ignore[arg-type]
 
     assert scene.raw == 1
     assert scene.routed == [RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)]
+
+
+def test_dispatcher_publishes_what_the_scene_reports() -> None:
+    """The report is the only thing that becomes a published fact.
+
+    A scene that acts nothing (returns None) publishes nothing, which is how
+    the gameplay keys and a rebinding capture stay silent without either
+    knowing that anything is listening.
+    """
+
+    class ReportingScene:
+        def __init__(self, report: str | None) -> None:
+            self.report = report
+
+        def handle_event(self, _event: pygame.event.Event) -> None:
+            return None
+
+        def handle_routed(self, _routed: RoutedInput) -> str | None:
+            return self.report
+
+    published: list[UiFeedback] = []
+    bus = EventBus()
+    bus.subscribe(UiFeedback, published.append)
+    dispatcher = InputDispatcher(EventRouter(), bus)
+    event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
+
+    dispatcher.dispatch(ReportingScene("options"), event)  # type: ignore[arg-type]
+    dispatcher.dispatch(ReportingScene(MenuAction.BACK), event)  # type: ignore[arg-type]
+    dispatcher.dispatch(ReportingScene(MenuAction.MOVE_DOWN), event)  # type: ignore[arg-type]
+    dispatcher.dispatch(ReportingScene(None), event)  # type: ignore[arg-type]
+
+    assert published == [
+        UiFeedback(UiEffect.CONFIRMED, action="options"),
+        UiFeedback(UiEffect.DISMISSED, action=MenuAction.BACK),
+        UiFeedback(UiEffect.NAVIGATED, action=MenuAction.MOVE_DOWN),
+    ]
+
+
+def test_dispatcher_does_not_publish_a_release_or_an_unplugged_pad() -> None:
+    """Those two routed inputs carry no deliberate action, so they say nothing."""
+
+    class ConfirmingScene:
+        def handle_event(self, _event: pygame.event.Event) -> None:
+            return None
+
+        def handle_routed(self, _routed: RoutedInput) -> str | None:
+            return "options"
+
+    published: list[UiFeedback] = []
+    bus = EventBus()
+    bus.subscribe(UiFeedback, published.append)
+    dispatcher = InputDispatcher(EventRouter(), bus)
+
+    for variant in ("release", "device_removed"):
+        dispatcher._apply(  # type: ignore[arg-type]
+            ConfirmingScene(),
+            RoutedInput(InputAction.UI_CONFIRM, InputDevice.GAMEPAD, variant=variant),
+        )
+
+    assert published == []
 
 
 def test_router_peeks_whether_a_key_or_button_would_route() -> None:

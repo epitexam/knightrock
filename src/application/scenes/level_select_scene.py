@@ -9,7 +9,7 @@ from src.application.scenes.gameplay_scene import GameplayScene
 from src.core.colors import Colors
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 
 if TYPE_CHECKING:
@@ -36,10 +36,10 @@ class LevelSelectScene(Scene):
     def update(self, delta_time: float) -> None:
         return None
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if routed_input.action is InputAction.UI_BACK:
             self.game.scene_manager.pop()
-            return
+            return MenuAction.BACK
         # Bouton B (manette) = retour, comme ESC / clic droit.
         # (device_removed garde son sens système : on l'ignore ici.)
         if (
@@ -47,13 +47,15 @@ class LevelSelectScene(Scene):
             and routed_input.variant != "device_removed"
         ):
             self.game.scene_manager.pop()
-            return
+            return MenuAction.BACK
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )
         if action is not None and action.startswith("level:"):
             level_id = int(action.partition(":")[2])
             self.game.scene_manager.switch(GameplayScene(self.game, level_id))
+        # A locked level reports None: the model refuses it, so nothing happened.
+        return action
 
     def draw(self) -> list[pygame.Rect] | None:
         surface = pygame.display.get_surface()

@@ -12,6 +12,7 @@ from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
+from src.ui.menu_model import MenuAction
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -122,11 +123,18 @@ class GameplayScene(Scene):
         if event.type == pygame.KEYDOWN and self.level is not None:
             self._handle_gameplay_key(event.key)
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if routed_input.action is InputAction.UI_BACK:
             from src.application.scenes.pause_scene import PauseScene
 
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+            return MenuAction.BACK
+        # Everything else the router sends here is None, and that is the whole
+        # point: the menu keys are the player keys (the arrows, Space, Escape
+        # and Q are bound on both sides), so this screen holds an arrow without
+        # being heard once per menu auto-repeat. The silence is its report, not
+        # a mute it had to ask for.
+        return None
 
     def set_display_surface(self, display_surface: pygame.Surface) -> None:
         self.game.display_surface = display_surface

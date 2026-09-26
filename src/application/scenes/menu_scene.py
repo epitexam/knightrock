@@ -9,7 +9,7 @@ from src.application.scenes.gameplay_scene import GameplayScene
 from src.core.colors import Colors
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 
 if TYPE_CHECKING:
@@ -76,16 +76,18 @@ class MenuScene(Scene):
     def update(self, delta_time: float) -> None:
         return None
 
-    def handle_routed(self, routed_input: RoutedInput) -> None:
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if self._confirming:
-            self._handle_confirm(routed_input)
-            return
+            return self._handle_confirm(routed_input)
         action, _ = self.model.handle_routed(
             routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
         )
         if action == "quit" or routed_input.action is InputAction.UI_BACK:
+            # Same outcome either way — arming the prompt — so both report the
+            # dismissal, and the row does not sound different from the key.
             self._arm_quit()
-        elif action in ("play", "continue"):
+            return MenuAction.BACK
+        if action in ("play", "continue"):
             save = self.game.save_game
             start_id = save.last_level_id if save.is_unlocked(save.last_level_id) else 0
             self.game.scene_manager.switch(GameplayScene(self.game, start_id))
@@ -99,15 +101,16 @@ class MenuScene(Scene):
             from src.application.scenes.options_scene import OptionsScene
 
             self.game.scene_manager.push(OptionsScene(self.game))
+        return action
 
-    def _handle_confirm(self, routed_input: RoutedInput) -> None:
+    def _handle_confirm(self, routed_input: RoutedInput) -> str | None:
         """Route input to the confirmation panel, which owns it while armed."""
         if (
             routed_input.action is InputAction.UI_BACK
             or routed_input.action is InputAction.UI_CANCEL
         ):
             self._disarm_quit()
-            return
+            return MenuAction.BACK
         action, _ = self.confirm_model.handle_routed(
             routed_input.action,
             routed_input.position,
@@ -118,6 +121,8 @@ class MenuScene(Scene):
             self.game.running = False
         elif action == "no":
             self._disarm_quit()
+            return MenuAction.BACK
+        return action
 
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)

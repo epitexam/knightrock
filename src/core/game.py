@@ -17,6 +17,7 @@ from src.application.settings_store import (
 )
 from src.core import fx
 from src.core.asset_library import shared_library
+from src.core.audio import AudioBus
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -65,12 +66,21 @@ class Game:
         # configs, player config and level registry. Falls back to the
         # historical in-code values when the JSON assets are absent.
         self.gameplay_data: GameplayData = load_gameplay_data()
+        # Owned here rather than fetched from a module-level singleton, so the
+        # scene stack, the input dispatcher and every later audio subscriber
+        # share one bus that a test can replace. Constructed before the mixer
+        # exists: it stays silent until ``_initialize`` starts it.
+        self.audio = AudioBus()
         self.level_manager = LevelManager(
             self.gameplay_data.levels if self.gameplay_data.levels else LEVEL_PATHS
         )
         self._save_path = save_path if save_path is not None else default_save_path()
         self.save_game = SaveGame.load(self._save_path)
         self.events = EventBus()
+        # The one line in the application layer that knows the audio system
+        # exists. It subscribes to the facts it answers, so the screens and the
+        # dispatcher never name it.
+        self.audio.attach(self.events)
         self._subscribe_notifications()
         self.scene_manager = SceneManager(self)
         self.running = True
@@ -105,6 +115,9 @@ class Game:
     def _initialize(self) -> None:
         pygame.init()
         pygame.joystick.init()
+        # After pygame.init(), and never fatal: a machine with no sound card
+        # must still reach the menu (audit UI, lot 5).
+        self.audio.initialize()
 
         self.display_surface = self._configure_display()
         pygame.display.set_caption(Display.TITLE)
