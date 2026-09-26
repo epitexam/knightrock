@@ -25,7 +25,7 @@ from src.core.display.mode import DisplayMode
 from src.core.display.presentation import Presentation
 from src.core.display.size_mode import SizeMode
 from src.core.display.stage import Stage, WindowSpec
-from src.core.display.viewport import DEFAULT_RENDER_SCALE, Viewport
+from src.core.display.viewport import Viewport, render_scale_for
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -229,8 +229,28 @@ class Game:
         """
         desktop = detection.desktop_size()
         self.stage = Stage(self._window_spec(), desktop)
-        self.viewport = Viewport(DEFAULT_FRAMING, DEFAULT_RENDER_SCALE)
+        # The window exists now, so the sharpness can be chosen for it. This
+        # used to build the target from the constant instead, which meant a
+        # stored "Render scale 3x" was applied the moment you changed it in the
+        # menu and forgotten on the next launch -- and the menu went on
+        # displaying 3x while the game drew at 2x.
+        scale = self._render_scale()
+        self.settings = self.settings.with_video(render_scale=scale)
+        self.viewport = Viewport(DEFAULT_FRAMING, scale)
         self.presentation = Presentation(self.stage, self.viewport)
+
+    def _render_scale(self) -> int:
+        """The render scale to use: the stored choice, or one that fits.
+
+        Only a settings file that never chose gets a scale from the window. A
+        file that did keeps it, even if the machine changed -- the player picked
+        it, and second-guessing them on a different display is worse than a
+        slightly soft picture.
+        """
+        chosen = self.settings.render_scale
+        if chosen is not None:
+            return chosen
+        return render_scale_for(self.stage.size if self.stage is not None else (0, 0))
 
     def _rebuild_display(self) -> None:
         """Create or recreate the window, the render target and the presentation.
@@ -293,7 +313,7 @@ class Game:
             return
         if self._window_signature(previous) != self._window_signature(settings):
             self._rebuild_display()
-        if previous.render_scale != settings.render_scale:
+        if settings.render_scale is not None and previous.render_scale != settings.render_scale:
             self._rebuild_render_target(settings.render_scale)
         elif self.presentation is not None:
             self.presentation.smoothing = settings.smoothing

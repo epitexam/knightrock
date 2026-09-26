@@ -22,7 +22,7 @@ from .detection import (
     largest_window_size,
     window_size_choices,
 )
-from .framing import DEFAULT_FRAMING, Framing
+from .framing import DEFAULT_FRAMING, Framing, checked_render_scale
 from .mode import DisplayMode
 from .presentation import Presentation
 from .stage import Stage, WindowSpec
@@ -30,6 +30,7 @@ from .viewport import DEFAULT_RENDER_SCALE, RENDER_SCALES, Viewport
 
 __all__ = [
     "DEFAULT_FRAMING",
+    "checked_render_scale",
     "DEFAULT_RENDER_SCALE",
     "RENDER_SCALES",
     "DisplayMode",

@@ -274,7 +274,146 @@ Vérifié de bout en bout : les neuf lignes répondent à un clic converti depui
 une position fenêtre, via le chemin réel `Game._to_target_coordinates` →
 `SceneManager.handle_event`. Le sélecteur de résolution, lui, était sain (5/5).
 
-## 11. Ce que la vraie session a cassé
+## 11. L'audit de la branche entière
+
+Demande : aucune régression sur les commits de la branche, aucun code inutile,
+et un nouveau système en phase avec le reste.
+
+**La méthode, d'abord, parce qu'elle est le résultat.** Les deux régressions
+précédentes ont été introduites par cette branche et sont passées au vert. Un
+contrôle par « les tests passent » aurait répondu « aucune régression » — la
+réponse était fausse deux fois. La suite testait des *points* ; les bugs
+étaient dans les *espaces* : une échelle de rendu qu'aucun fixture n'utilisait,
+et un chemin de code qu'aucune assertion ne suivait jusqu'aux réglages. D'où
+`tests/unit/test_display_properties.py` : des grilles, pas des cas.
+
+### Ce qui a été vérifié sain
+
+- La promesse centrale : la cible ne dépend que de l'échelle, sur 13 fenêtres.
+- Le letterbox préserve le ratio à moins d'un pixel d'arrondi près, sur 13
+  fenêtres — compris carrée, portrait et ultrawide.
+- Le mapping pointeur est écrit une seule fois et appelé une seule fois.
+- Les suppressions sont complètes : `FrameStats`, `frame_stats`, `scene.surface`,
+  `RenderTarget`, `on_resize`, toute l'API `dirty()`. Zéro trace.
+- `display` est une feuille (zéro import de projet) ; `core → application/ui`
+  est le style préexistant.
+- Le `except` sans parenthèses est la PEP 758, valide en `>=3.14`. Le français
+  dans les commentaires est la convention de la base (17 fichiers avant, 16
+  après). Deux fausses alertes vérifiées plutôt que signalées.
+
+### Code mort **ajouté** par la branche
+
+`Viewport.size_in_world_units` et `UserSettings.is_windowed` : supprimés, sans
+appelant. `MIN_SAFE_FRAME_LIMIT` : supprimé, et son explication déplacée sur
+`MIN_FRAME_LIMIT`, qui était la constante réellement appliquée — même nombre,
+deux noms, et le nom qui s'expliquait n'était pas celui qui comptait.
+
+`desktop_refresh_rates(index)` acceptait un index qu'il ignorait, et sa
+docstring affirmait « covers every display ». pygame 2.5 ne prend aucun
+argument : la promesse était inimplementable. Paramètre supprimé, docstring
+corrigée, et la limite dite — les taux sont ceux de l'écran principal, ce qui ne
+tient que parce que la fenêtre est posée sur l'écran 0.
+
+`UserSettings.frame_rate` : supprimé. Il renvoyait `Display.FPS` quand
+`frame_limit` est `None`, alors que la boucle, elle, renvoie 0 = sans limite.
+Du code mort, et faux : il promettait 60 fps à qui venait de demander
+l'inverse.
+
+`Framing.is_smaller_than` reste. Elle n'est appelée que par un test, mais elle
+*est* la définition du contrat de cadrage, et ce test la fait tourner sur
+chaque `.tmx` du dossier. La déplacer dans le test l'éloignerait de ce
+qu'elle garantit.
+
+### La garde qui avait disparu
+
+L'ancien `Camera` rejetait un zoom non positif, et un test le prouvait.
+`Camera.__init__` faisait `max(1, int(scale))` — un clamp silencieux, et
+`Camera(framing, 1.9)` répondait `1`. C'est exactement la divergence
+images/rectangles que cette branche avait déjà livrée. La production n'était pas
+atteignable (`for_target` seul), mais `Viewport` et `Camera` avaient deux
+politiques sur le même nombre.
+
+Les deux passent maintenant par `checked_render_scale`, et refusent la même
+chose. Le test de refus est revenu.
+
+### La troisième régression : le réglage ignoré au lancement
+
+`apply_settings` reconstruisait la cible quand `render_scale` changeait, mais
+`initialize_display` construisait la cible depuis la constante :
+
+    self.viewport = Viewport(DEFAULT_FRAMING, DEFAULT_RENDER_SCALE)
+
+Un « Render scale 3x » choisi au menu s'appliquait immédiatement — le menu
+affichait 3x et le jeu dessinait bien en 3x — et le **lancement suivant**
+revenait à 2x, le menu affichant toujours 3x. Un réglage qui marche jusqu'au
+redémarrage, la plus difficile à remarquer.
+
+Le réglage est maintenant honoré au lancement, et un test le prouve pour 1, 2
+et 3.
+
+### L'écart de cohérence
+
+`DEFAULT_RENDER_SCALE = 2` était une constante dure, alors que la taille de
+fenêtre avait reçu un mode `AUTO`. Sur un portable 1366×768, le jeu rendait
+2304×1296 puis réduisait : 4× le coût de remplissage pour une image plus
+floue. Le système s'était adapté à la machine pour la taille, et pas pour la
+netteté.
+
+`render_scale_for(size, framing)` choisit désormais la plus petite échelle
+offerte dont la cible couvre la fenêtre. La fenêtre, pas le bureau : un jeu
+fenêtré en 4K garde 2x pour une fenêtre 2560×1440.
+
+| Fenêtre | Avant | Après |
+|---|---|---|
+| 911×512 (portable 1366) | 2x | **1x** |
+| 1280×720 | 2x | 2x |
+| 1440×900 | 2x | 2x |
+| 2560×1440 (borderless) | 2x | **3x** |
+| 3840×2160 (borderless) | 2x | 3x (borné) |
+
+Un fichier de réglages qui **n'a jamais** choisi d'échelle la laisse au
+lancement, qui l'écrit ensuite comme les autres. Un fichier qui en a une la
+garde, même si la machine a changé : le joueur l'a choisie. Bureau inconnu
+(headless) → l'ancienne constante, donc le comportement d'aujourd'hui est
+intact hors machine réelle.
+
+C'est le compromis assumé : la valeur ne change que sur une configuration
+neuve, ou après un reset des réglages vidéo. Le menu affiche « auto » tant que
+la fenêtre n'existe pas, ce qui est rare et exact.
+
+### Le nom qui a produit le bug
+
+Trois « scale » dans un sous-système, dont deux ne sont pas la même chose :
+`Viewport.scale` et `Camera.scale` sont des entiers — la cible est ce nombre de
+fois le cadrage, dessiné pixel pour pixel. Celui de `Presentation` est une
+fraction et ne décrit que la frame finie en route vers l'écran. Il s'appelle
+maintenant `fit`, et la raison est écrite sur l'attribut : le bug de la caméra
+est venu précisément de l'homonymie.
+
+### Ce que les tests de propriété ont révélé en les écrivant
+
+Trois de mes propres assertions étaient fausses, et il valait la peine de les
+corriger plutôt que d'assouplir le code :
+
+- l'identité de l'image source ne vaut **qu'à l'échelle 1** ; je l'avais
+  paramétrée sur toutes, ce qui n'aurait pu passer qu'à 1 ;
+- à 1366×768 le letterbox fait 1365×768 — l'arrondi au pixel, pas un
+  étirement. Ma tolérance de 1e-6 sur le ratio était irréaliste ; la borne
+  est maintenant exprimée en pixels, ce qui veut dire quelque chose ;
+- une fenêtre au ratio du cadrage n'a **aucune barre**, donc « le bord gauche
+  est une barre » est faux pour une 16:9 sur une 16:9. Le test compare
+  désormais `pointer_in_viewport` à `rect.collidepoint` sur une grille, sans
+  supposer quel axe porte les barres.
+
+Et une vraie mesure : un seul asset du niveau enregistré est à un pixel de son
+propre rect, **à toutes les échelles, 1x comprise**. Ce n'est donc pas
+l'échelle — c'est l'arrondi d'une hauteur de monde fractionnaire. La propriété
+qui distingue l'arrondi de la régression est donc que le désaccord **ne grandit
+pas** avec l'échelle, et c'est celle-ci qui est testée.
+
+1369 tests, avec et sans `DEBUG=1`.
+
+## 12. Ce que la vraie session a cassé
 
 Le premier passage sur la machine de développement (Wayland, deux écrans :
 2560×1440 @180 Hz en primaire, 1920×1080 @60 Hz à sa gauche) a invalidé une

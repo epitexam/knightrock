@@ -30,7 +30,15 @@ class Presentation:
         self.stage = stage
         self.viewport = viewport
         self.smoothing = smoothing
-        self.scale = 1.0
+        #: Target pixels per window pixel. Named ``fit`` and not ``scale`` on
+        #: purpose: the display subsystem has three scales and they are not the
+        #: same kind of thing. ``Viewport.scale`` and ``Camera.scale`` are whole
+        #: numbers -- the render target is that many times the framing, drawn
+        #: pixel for pixel. This one is a fraction, and it only ever describes
+        #: the finished frame on its way to the screen. Calling it ``scale``
+        #: made three numbers in one subsystem look interchangeable, and the
+        #: camera bug this branch shipped came from exactly that assumption.
+        self.fit = 1.0
         self.rect = pygame.Rect(0, 0, stage.size[0], stage.size[1])
         self._destination = pygame.Surface(self.viewport.size)
         self.recompute()
@@ -40,7 +48,7 @@ class Presentation:
         window = self.stage.size
         viewport = self.viewport.size
         if window[0] <= 0 or window[1] <= 0:
-            self.scale = 1.0
+            self.fit = 1.0
             self.rect = pygame.Rect(0, 0, max(1, window[0]), max(1, window[1]))
             self._destination = pygame.Surface((1, 1))
             return
@@ -49,14 +57,14 @@ class Presentation:
             # No bars, nothing to scale. Worth its own branch: smoothscale
             # measures 2.19ms at 1:1, so scaling when there is no ratio to
             # apply is 2.19ms of nothing, every frame.
-            self.scale = 1.0
+            self.fit = 1.0
             self.rect = pygame.Rect((0, 0), window)
             self._destination = pygame.Surface(viewport)
             return
 
-        self.scale = min(window[0] / viewport[0], window[1] / viewport[1])
-        width = max(1, round(viewport[0] * self.scale))
-        height = max(1, round(viewport[1] * self.scale))
+        self.fit = min(window[0] / viewport[0], window[1] / viewport[1])
+        width = max(1, round(viewport[0] * self.fit))
+        height = max(1, round(viewport[1] * self.fit))
         self.rect = pygame.Rect(
             (window[0] - width) // 2,
             (window[1] - height) // 2,
@@ -88,7 +96,7 @@ class Presentation:
         window = self.stage.surface
         for bar in self.bars:
             window.fill((0, 0, 0), bar)
-        if self.scale == 1.0:
+        if self.fit == 1.0:
             window.blit(self.viewport.surface, self.rect)
         else:
             self._rescale()
@@ -113,8 +121,8 @@ class Presentation:
         should test ``pointer_in_viewport`` first.
         """
         return (
-            (position[0] - self.rect.x) / self.scale,
-            (position[1] - self.rect.y) / self.scale,
+            (position[0] - self.rect.x) / self.fit,
+            (position[1] - self.rect.y) / self.fit,
         )
 
     def pointer_in_viewport(self, position: tuple[int, int]) -> bool:

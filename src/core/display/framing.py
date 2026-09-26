@@ -19,6 +19,28 @@ how large the world is *drawn*, never how much of it is *shown*.
 from dataclasses import dataclass
 
 
+def checked_render_scale(scale: float) -> int:
+    """The render scale as whole target pixels per world unit, or refused.
+
+    One implementation for everything that has to agree on the number: the
+    viewport that builds the surface, and the camera that scales the rectangles
+    onto it. They used to differ -- the viewport refused a bad scale and the
+    camera clamped it to 1 -- and a silent clamp is the worst of the two,
+    because ``Camera(framing, 1.9)`` answering ``1`` is precisely the
+    images-and-rectangles disagreeing that a render target is supposed to make
+    impossible.
+
+    A fractional factor is refused rather than rounded for the same reason
+    :meth:`Framing.viewport_size` gives: the art is authored at one pixel per
+    world unit, so only a whole factor reproduces every pixel.
+    """
+    if scale != int(scale):
+        raise ValueError(f"The render scale must be a whole number, got {scale!r}")
+    if scale < 1:
+        raise ValueError("The render scale must be at least 1")
+    return int(scale)
+
+
 @dataclass(frozen=True)
 class Framing:
     """The visible slice of the world, in world units.
@@ -64,9 +86,8 @@ class Framing:
         world unit and is rescaled once when it is loaded. An integer factor
         reproduces every pixel exactly; a fractional one does not.
         """
-        if scale < 1:
-            raise ValueError("The render scale must be at least 1")
-        return (round(self.width * scale), round(self.height * scale))
+        factor = checked_render_scale(scale)
+        return (round(self.width * factor), round(self.height * factor))
 
 
 #: The gameplay framing.

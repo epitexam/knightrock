@@ -12,7 +12,6 @@ from src.application.settings_store import (
 )
 from src.core.display.mode import DisplayMode
 from src.core.display.size_mode import SizeMode
-from src.core.display.viewport import DEFAULT_RENDER_SCALE
 
 
 def _write_v1(tmp_path: Path, *, width: int, height: int, fullscreen: bool) -> Path:
@@ -88,7 +87,10 @@ def test_a_v1_file_is_read_and_gains_the_new_fields(tmp_path: Path) -> None:
     assert loaded.display is DisplayMode.BORDERLESS
     assert (loaded.width, loaded.height) == (1600, 900)
     assert loaded.size_mode is SizeMode.MANUAL
-    assert loaded.render_scale == DEFAULT_RENDER_SCALE
+    # A v1 file predates the render target, so it never chose a sharpness.
+    # Leaving it unset lets the launch pick one from the window instead of
+    # baking in a value the player never asked for.
+    assert loaded.render_scale is None
     assert loaded.smoothing is True
     assert loaded.frame_limit == DEFAULT_FRAME_LIMIT
     assert loaded.vsync is True

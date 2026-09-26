@@ -17,7 +17,7 @@ from typing import Any
 
 from src.core.display.mode import DisplayMode
 from src.core.display.size_mode import SizeMode
-from src.core.display.viewport import DEFAULT_RENDER_SCALE, RENDER_SCALES
+from src.core.display.viewport import RENDER_SCALES
 from src.core.input.bindings_repository import (
     bindings_from_dict,
     bindings_to_dict,
@@ -50,14 +50,15 @@ MAX_WINDOW_HEIGHT = 4320
 #: the hardware do not have to agree -- but when they can, they should.
 FRAME_LIMITS: tuple[int | None, ...] = (None, 20, 30, 60, 120, 144, 180, 240)
 DEFAULT_FRAME_LIMIT: int | None = 60
+
+#: The floor, and the reason for it: this is where the fixed-step accumulator
+#: starts losing time. ``Simulation.MAX_FRAME_TIME`` truncates a frame at 100ms,
+#: so anything under 10fps runs the game in slow motion rather than dropping
+#: ticks, and 20 leaves a factor of two. It used to be a second constant,
+#: ``MIN_SAFE_FRAME_LIMIT``, that nothing referenced -- the same number under a
+#: name that explained itself, next to the one that was actually enforced.
 MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500
-
-#: The frame limit below which the fixed-step accumulator starts losing time:
-#: ``Simulation.MAX_FRAME_TIME`` truncates a frame at 100ms, so anything under
-#: 10fps runs the game in slow motion rather than dropping ticks. 20 leaves a
-#: factor of two.
-MIN_SAFE_FRAME_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -67,7 +68,13 @@ class UserSettings:
     width: int = Display.WIDTH
     height: int = Display.HEIGHT
     size_mode: SizeMode = SizeMode.AUTO
-    render_scale: int = DEFAULT_RENDER_SCALE
+    #: ``None`` means "not chosen yet", and is only ever true before the window
+    #: exists: :func:`src.core.display.viewport.render_scale_for` cannot pick a
+    #: sensible sharpness without knowing what the window will be, so the value
+    #: is resolved once at launch and written back like any other. It is not an
+    #: auto mode the player can see or change -- the video menu only ever offers
+    #: 1x, 2x and 3x.
+    render_scale: int | None = None
     smoothing: bool = True
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
@@ -123,14 +130,16 @@ class UserSettings:
         if scale not in (0.8, 1.0, 1.2):
             raise ValueError("ui.scale must be 0.8, 1.0 or 1.2")
 
-        render_scale = _bounded_int(
-            video.get("render_scale", DEFAULT_RENDER_SCALE),
-            "video.render_scale",
-            min(RENDER_SCALES),
-            max(RENDER_SCALES),
-        )
-        if render_scale not in RENDER_SCALES:
-            raise ValueError(f"video.render_scale must be one of {RENDER_SCALES}")
+        # Absent, or explicitly null, means the same thing: let the launch pick
+        # one from the window it is about to make. Anything present has to be a
+        # real choice, because the menu can only cycle real values.
+        render_scale = video.get("render_scale")
+        if render_scale is not None:
+            render_scale = _bounded_int(
+                render_scale, "video.render_scale", min(RENDER_SCALES), max(RENDER_SCALES)
+            )
+            if render_scale not in RENDER_SCALES:
+                raise ValueError(f"video.render_scale must be one of {RENDER_SCALES}")
 
         frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
         if frame_limit is not None:
@@ -213,17 +222,6 @@ class UserSettings:
     def with_video(self, **changes: object) -> UserSettings:
         """A copy with some video fields replaced, for the menu's cycling."""
         return replace(self, **changes)  # type: ignore[arg-type]
-
-    @property
-    def frame_rate(self) -> int:
-        """The target the loop paces to, given vsync may override it."""
-        if self.frame_limit is None:
-            return Display.FPS
-        return self.frame_limit
-
-    @property
-    def is_windowed(self) -> bool:
-        return self.display is DisplayMode.WINDOW
 
 
 def _enum[E: StrEnum](enum_type: type[E], value: object, name: str) -> E:

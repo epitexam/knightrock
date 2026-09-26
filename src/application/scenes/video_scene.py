@@ -22,7 +22,7 @@ from src.application.settings_store import FRAME_LIMITS, UserSettings
 from src.core.display.detection import desktop_refresh_rates, desktop_size
 from src.core.display.mode import DisplayMode
 from src.core.display.size_mode import SizeMode
-from src.core.display.viewport import DEFAULT_RENDER_SCALE, RENDER_SCALES
+from src.core.display.viewport import RENDER_SCALES
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
@@ -83,7 +83,7 @@ class VideoScene(Scene):
                 self._size_label(),
                 settings.display is not DisplayMode.BORDERLESS,
             ),
-            MenuItem("render_scale", "Render scale", f"{settings.render_scale}x"),
+            MenuItem("render_scale", "Render scale", _render_scale_label(settings.render_scale)),
             MenuItem("smoothing", "Smooth scaling", self._on_off(settings.smoothing)),
             MenuItem("vsync", "VSync", self._vsync_label()),
             MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
@@ -301,7 +301,7 @@ class VideoScene(Scene):
                 width=defaults.width,
                 height=defaults.height,
                 size_mode=defaults.size_mode,
-                render_scale=DEFAULT_RENDER_SCALE,
+                render_scale=defaults.render_scale,
                 smoothing=defaults.smoothing,
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
@@ -330,7 +330,8 @@ class VideoScene(Scene):
         window = self.game.stage.size if self.game.stage is not None else (0, 0)
         if window[0] < COST_WARNING_THRESHOLD_PX:
             return ""
-        if self.game.settings.render_scale <= 1 or not self.game.settings.smoothing:
+        scale = self.game.settings.render_scale
+        if scale is None or scale <= 1 or not self.game.settings.smoothing:
             return ""
         return "Large window: consider Render scale 1x or Smooth scaling off"
 
@@ -348,6 +349,16 @@ class VideoScene(Scene):
             highlighted=self._flash_row,
             footers=(self.FOOTER, self._cost_hint()),
         )
+
+
+def _render_scale_label(scale: int | None) -> str:
+    """The sharpness the target is drawn at, in the player's own terms.
+
+    ``None`` only survives until the window exists -- the launch resolves it and
+    writes it back -- so this is the honest answer for a screen the game has not
+    sized yet, rather than a number that would be about to change.
+    """
+    return f"{scale}x" if scale is not None else "auto"
 
 
 def detection_resolution(scene: VideoScene) -> str:

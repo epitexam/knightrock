@@ -11,7 +11,6 @@ import pytest
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
 from src.core.display.size_mode import SizeMode
-from src.core.display.viewport import DEFAULT_RENDER_SCALE
 from src.core.game import Game
 from src.core.level.level_manager import LevelManager
 from src.core.paths import PROJECT_ROOT, resource_path
@@ -305,7 +304,11 @@ def test_changing_the_window_never_reaches_the_render_target(tmp_path: Path) -> 
     assert game.surface is not None
     assert game.surface.get_size() == (1280, 720)
     assert game.viewport is not None
-    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(DEFAULT_RENDER_SCALE)
+    # "Unchanged", not a literal size: the render scale is now derived from the
+    # window at launch, so hardcoding 2x here would be asserting the default
+    # rather than the invariant.
+    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(game.viewport.scale)
+    assert game.settings.render_scale == game.viewport.scale
     propagate.assert_not_called(), "a window change must not reach the views"
 
 
@@ -344,4 +347,50 @@ def test_a_video_resize_only_recomputes_the_presentation(
     assert recompute.call_count == 3
     reconfigure.assert_not_called()
     assert game.viewport.size == target_size
-    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(DEFAULT_RENDER_SCALE)
+    assert game.viewport.size == DEFAULT_FRAMING.viewport_size(game.viewport.scale)
+
+
+@pytest.mark.parametrize("stored", [1, 2, 3])
+def test_a_stored_render_scale_survives_the_next_launch(stored: int, tmp_path: Path) -> None:
+    """The sharpness the player chose is the sharpness the game starts at.
+
+    It used to be forgotten: ``apply_settings`` rebuilt the render target when
+    the value changed, so the menu applied 3x immediately and looked right, and
+    ``initialize_display`` then built the target from the default constant no
+    matter what the file said. The next launch was back at 2x with the menu
+    still showing 3x -- a setting that works until you restart, which is the
+    hardest kind to notice.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game.settings = replace(game.settings, render_scale=stored)
+
+    game.initialize_display()
+
+    assert game.viewport is not None
+    assert game.viewport.scale == stored
+    assert game.settings.render_scale == stored
+
+
+def test_an_unchosen_render_scale_is_picked_for_the_window(tmp_path: Path) -> None:
+    """A file that never chose one gets the smallest that covers the window.
+
+    The alternative -- a constant -- is what made a 1366x768 laptop render
+    2304x1296 and scale it down: four times the fill rate for a softer picture.
+    """
+    from src.core.display.viewport import render_scale_for
+
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    assert game.settings.render_scale is None
+
+    game.initialize_display()
+
+    assert game.viewport is not None
+    assert game.stage is not None
+    assert game.viewport.scale == render_scale_for(game.stage.size)
+    assert game.settings.render_scale == game.viewport.scale

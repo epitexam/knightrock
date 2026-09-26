@@ -61,13 +61,24 @@ def desktop_size(index: int = 0) -> tuple[int, int]:
     return sizes[index if 0 <= index < len(sizes) else 0]
 
 
-def desktop_refresh_rates(index: int = 0) -> tuple[int, ...]:
+def desktop_refresh_rates() -> tuple[int, ...]:
     """The refresh rates a display reports, in Hz, best first.
 
     ``pygame.display.get_current_refresh_rate`` looks like the obvious call and
     is not usable here: it raises ``error: No open window`` before the display
     exists, and it only ever reports the *current* display. This one works
-    before the window is created and covers every display.
+    before the window is created.
+
+    The rates are the **primary** display's, and there is no way to ask for
+    another's: ``get_desktop_refresh_rates`` takes no arguments in pygame 2.5,
+    while ``get_desktop_sizes`` does. So this is a single display's answer
+    wearing a plural name, and a machine with a 180Hz primary and a 60Hz
+    secondary gets the primary's numbers either way.
+
+    That is acceptable here only because the window is placed on display 0
+    (:mod:`src.core.display.stage`); a game that let the window sit on another
+    screen would be reading the wrong panel's rate, and the honest fix would
+    have to be SDL, not pygame.
     """
     try:
         rates = pygame.display.get_desktop_refresh_rates()

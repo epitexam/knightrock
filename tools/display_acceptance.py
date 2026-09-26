@@ -70,7 +70,7 @@ def _report(game: Game) -> None:
     )
     print(f"  framing (world units) {DEFAULT_FRAMING.size[0]:.0f} x {DEFAULT_FRAMING.height:.0f}")
     print(f"  presented rect        {tuple(presentation.rect)}")
-    print(f"  presentation scale    {presentation.scale:.3f}   smoothing {settings.smoothing}")
+    print(f"  presentation scale    {presentation.fit:.3f}   smoothing {settings.smoothing}")
     bars = presentation.bars
     print(f"  letterbox bars        {len(bars)}  {[tuple(b) for b in bars] or 'none'}")
     print(f"  vsync requested       {settings.vsync}   driver reports {pygame.display.is_vsync()}")

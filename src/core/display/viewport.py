@@ -25,6 +25,35 @@ RENDER_SCALES = (1, 2, 3)
 DEFAULT_RENDER_SCALE = 2
 
 
+def render_scale_for(size: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> int:
+    """The smallest offered scale whose target covers a window of ``size``.
+
+    A render target smaller than the window it is shown in is scaled *up* on
+    the way out, which costs the fill rate of the larger surface and returns a
+    blurrier image than a smaller target would have drawn. So the default
+    follows the machine, the way the window size already does through
+    ``SizeMode.AUTO``: 1x on a 1366x768 laptop, 2x at 1440p, 3x in borderless
+    on a 4K panel -- capped at the top of ``RENDER_SCALES``, which is where 4K
+    starts being scaled up again.
+
+    The argument is the *window*, not the desktop, so a windowed game on a 4K
+    screen still gets 2x for a 2560x1440 window. Pass ``(0, 0)`` when the
+    desktop is unknown, which headless runs are, and this answers
+    ``DEFAULT_RENDER_SCALE`` -- today's behaviour, unchanged.
+
+    This is a default, not a rule: ``Render scale`` in the video menu overrides
+    it, and a stored setting keeps its value even when the desktop it was
+    chosen on is gone.
+    """
+    if size[0] <= 0 or size[1] <= 0:
+        return DEFAULT_RENDER_SCALE
+    for scale in RENDER_SCALES:
+        target = framing.viewport_size(scale)
+        if target[0] >= size[0] and target[1] >= size[1]:
+            return scale
+    return RENDER_SCALES[-1]
+
+
 class Viewport:
     """The pixel surface every draw call in the game targets.
 
@@ -58,11 +87,6 @@ class Viewport:
     def rect(self) -> pygame.Rect:
         """The viewport as a rect, for the drawing code that wants one."""
         return self.surface.get_rect()
-
-    @property
-    def size_in_world_units(self) -> tuple[float, float]:
-        """How much world the surface shows: the framing, by construction."""
-        return self.framing.size
 
     def fill(self, color: tuple[int, int, int]) -> None:
         """Erase the whole surface to ``color``."""

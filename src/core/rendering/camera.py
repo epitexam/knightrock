@@ -2,7 +2,7 @@ import math
 
 import pygame
 
-from src.core.display.framing import DEFAULT_FRAMING, Framing
+from src.core.display.framing import DEFAULT_FRAMING, Framing, checked_render_scale
 from src.core.settings import CameraShake
 
 
@@ -45,7 +45,7 @@ class Camera:
         #: Target pixels per world unit. The target is ``framing * scale``, so
         #: this is not a free parameter: it is read back off the target rather
         #: than configured, by :meth:`for_target`.
-        self.scale = max(1, int(scale))
+        self.scale = checked_render_scale(scale)
         self.world_width = 0.0
         self.world_height = 0.0
         self.trauma = 0.0

@@ -87,7 +87,7 @@ def test_a_point_at_the_presented_origin_is_the_viewport_origin() -> None:
 def test_a_window_the_size_of_the_viewport_scales_nothing() -> None:
     """smoothscale at 1:1 measures 2.19ms for a no-op, every frame."""
     presentation = _presentation((1152, 648))
-    assert presentation.scale == 1.0
+    assert presentation.fit == 1.0
     assert presentation.rect == pygame.Rect(0, 0, 1152, 648)
     assert presentation.bars == ()
 
@@ -143,4 +143,4 @@ def test_a_degenerate_window_does_not_divide_by_zero() -> None:
     presentation = _presentation((0, 0))
     assert presentation.rect.width >= 1 and presentation.rect.height >= 1
     presentation.recompute()
-    assert presentation.scale == 1.0
+    assert presentation.fit == 1.0
