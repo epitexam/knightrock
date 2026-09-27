@@ -1,18 +1,15 @@
 """``world_overlay_shared``: the sprite facts and the placement rule.
 
-The geometry of the whole overlay is pinned in ``test_world_overlay_golden``,
-against a scene that goes through the real draw path. These are the direct
-tests, for the two things a scene cannot reach:
+The golden pins the geometry against a real draw path. These are the two things
+a scene cannot reach.
 
-- sprites with a ``rect`` and no ``hitbox`` -- hazards, moving platforms, exits.
+- **A sprite with a `rect` and no `hitbox`** — hazards, platforms, exits.
   Nothing in the golden scene is one, and the whole suite passed with the
-  fallback deleted, which is how it stayed untested for this long.
-- ``dodge_annotation``, which the draw path never actually calls. The attack
-  header is always placed clear of the only obstacle it is handed, so
-  neutering the function leaves every test green. It is kept because it is the
-  documented rule of annotation placement; these tests are what make it a
-  contract rather than a hope.
-"""
+  fallback deleted, which is how it stayed untested.
+- **`dodge_annotation`**, which the draw path never calls: the attack header is
+  always placed clear of the only obstacle it is handed, so neutering the
+  function leaves the suite green. It stays because it is the documented rule
+  of annotation placement, and these tests are what make it a contract."""
 
 import os
 from types import SimpleNamespace

@@ -1,15 +1,13 @@
 """``world_overlay_panels``: the COMBAT readout and the clash ring.
 
-The other two drawing layers are covered by files that build a scene and read
-the surface. This one has no scene: it reports on a frame rather than drawing
-the world, and what it reports is decided by four independent conditions -- the
-counters, the live attack, the hit-stop and the clash. Each of those can be
-present or absent on its own, and the panel is the sum of them, so a condition
-whose test forgot to set it leaves a line that no test ever sees.
+The other layers are covered by files that build a scene and read the surface.
+This one has no scene: it reports on a frame rather than drawing the world, and
+what it reports is the sum of four independent conditions — the counters, the
+live attack, the hit-stop and the clash. Each can be present or absent on its
+own, so a test that forgets to set one leaves a line nobody has ever seen.
 
-The clash ring is the exception and is covered by pixel assertions, because
-its whole job is putting a mark on the world at a point.
-"""
+The clash ring is the exception, covered by pixel assertions: its whole job is
+putting a mark on the world at a point."""
 
 import os
 from types import SimpleNamespace

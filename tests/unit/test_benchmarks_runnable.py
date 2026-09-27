@@ -3,14 +3,11 @@
 `tests/benchmarks/*.py` hold no `test_` functions, so pytest collects nothing
 from them and CI never executes a line. That is fine for a script and bad for a
 file the README points at for frame timing: `ui_benchmark.py` sat broken for
-several commits because it still read `renderer.ui_manager`, which stopped
-existing when the core-to-ui dependency was inverted, and nothing noticed until
-someone went looking for a number.
+several commits, reading a `renderer.ui_manager` that no longer existed.
 
-These are smoke tests, not measurements. They assert the entry point runs and
-returns plausible keys; the timings they print are only meaningful from a real
-run, and nothing here should ever be tuned to make one faster.
-"""
+Smoke tests, not measurements. They assert the entry point runs and returns
+plausible keys; the timings are only meaningful from a real run, and nothing
+here should ever be tuned to make one faster."""
 
 import runpy
 import sys

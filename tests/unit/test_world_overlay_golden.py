@@ -1,22 +1,19 @@
 """The pre-split safety net for the world debug overlay.
 
-``world_ui.py`` is about to be cut into ``world_overlay_shared``, ``_geo``,
-``_cards`` and ``_panels``. This file exists so that cutting it up is a
-provable no-op instead of a hope: it pins the geometry the overlay currently
-produces, the one-way contract of the annotation sink, the surface the overlay
-draws into, and the inventory of what has to survive the cut.
+`world_ui.py` was about to be cut into layers. This froze what the overlay
+produces so the cut could be shown to be a no-op instead of asserted to be one:
+bar rects, annotation rects and the padded rect of every placed card, in a
+five-sprite scene chosen for the branch each sprite forces.
 
-The golden below is *geometry only* -- rectangles, never pixels. A checksum of
-the rendered surface would be a stronger test and a worse one: it fails on a
-font hinting change between two SDL builds, and once it fails for that reason
-everyone learns to regenerate it without reading it. Rectangles are what the
-placement code actually decides, so they are what is worth freezing.
+Geometry only, never pixels. A checksum of the surface would be a stronger
+test and a worse one -- it breaks on font hinting between two SDL builds, and
+once it has, everyone regenerates it without reading it. Rectangles are what the
+placement code decides.
 
-Observation point: the placed cards are read through a spy on ``_blit_label``.
-That method moves to the cards module during the split, so the spy is
-re-pointed once, when it does. The recorded rectangles must not move with it --
-that is the whole point, and the phase 3 diff is where you check it.
-"""
+Two seams have moved since it was written, both to follow the code rather than
+to keep the test stable: the sink is read through `annotation_rects`, and the
+manifest check looks inside the layer classes. The recorded rectangles have not
+moved with them, and that is the point."""
 
 import os
 from types import SimpleNamespace

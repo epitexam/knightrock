@@ -1,26 +1,15 @@
 """``world_overlay_geo``: the drawing paths the golden scene never reaches.
 
-``test_world_overlay_golden.py`` pins the geometry of one crowded frame, which
-is most of what this module decides and none of what it draws. The lines below
-were the ones it left uncovered, and they are not incidental:
+The golden pins the geometry of one crowded frame, which is most of what this
+module decides and none of what it draws. These are the paths it left uncovered,
+and none of them is incidental: rect-only sprites (hazards, platforms, exits)
+would stop being drawn at all; the swept ghost and the motion arrow are why
+`box_moved` exists; capsule and oriented-box poses had never been executed by
+any test; and the long-timeline branch is what keeps one long attack from
+drawing a header wider than the screen.
 
-- **Rect-only sprites.** Hazards, moving platforms and exits carry a ``rect``
-  and no ``hitbox``, and the whole branch that draws them was untested. A
-  regression there is invisible: the overlay simply stops showing the things
-  that hurt you.
-- **The swept-box ghost and the motion arrow.** The reason ``box_moved`` and
-  ``dashed_edges`` exist at all, exercised for the first time here.
-- **Capsule and oriented-box poses.** Only circles were drawn by any test, so
-  two of the three advanced shapes were drawn by code nobody had ever run.
-- **A timeline too long to fit.** The scaling branch that keeps a long attack
-  from drawing a header wider than the screen.
-
-Assertions are on the surface rather than on the sink wherever the module's job
-is to put pixels down, and on the sink wherever its job is to place a
-rectangle. The one thing none of these assert is a colour value: that belongs
-to the drawing code's own tests, and a fill alpha or a palette entry is not
-what these paths are for.
-"""
+Where this module puts pixels down, these assert on the surface; where its job
+is to place a rectangle, on the sink. None of them asserts a colour value."""
 
 import os
 from types import SimpleNamespace

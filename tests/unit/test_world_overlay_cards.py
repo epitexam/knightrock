@@ -1,17 +1,10 @@
 """``world_overlay_cards``: the card's content, and the rows nothing else carries.
 
-The golden pins *where* a card lands. This file pins *what is written on it*,
-and the lines it adds are the ones the golden cannot see because its scene is
-built from plain entities:
-
-- the detail rows of an attacking sprite, which are the only place a swing's
-  phase index and hit count are ever spelled out;
-- the status flags -- dizzy, ledge, and the per-zone invulnerability tags --
-  which are the reason a card can say something the world boxes cannot, since
-  the boxes carry no text at all;
-- the two placements that are supposed to *fail*: a card taller than the
-  display, and a sprite with no label to give.
-"""
+The golden pins *where* a card lands; this pins *what is written on it*, for the
+rows the golden's plain-entity scene never produces: an attack's phase and hit
+count, the status flags, and the per-zone guards. The flags matter most -- the
+world boxes carry no text at all, so a card is the only place "dizzy", "ledge"
+or "armor" is ever said."""
 
 import os
 from types import SimpleNamespace
