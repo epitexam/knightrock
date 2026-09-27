@@ -289,7 +289,7 @@ class GameplayScene(Scene):
         alpha = render_alpha() if callable(render_alpha) else 0.0
         self.level.draw(
             fps,
-            game=self.game,
+            scene_host=self.game,
             frame_time=frame_time,
             alpha=alpha,
         )

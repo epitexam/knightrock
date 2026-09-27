@@ -278,7 +278,7 @@ def test_full_debug_panel_stack_never_overlaps(
             collision_count=1,
             hit_stop=0.0,
             spawn_cooldown=0.0,
-            game=None,
+            scene_host=None,
             frame_time=16.0,
             cache_size=0,
         )
@@ -325,7 +325,7 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
         collision_count=0,
         hit_stop=0.0,
         spawn_cooldown=0.0,
-        game=game,
+        scene_host=game,
         frame_time=16.0,
     )
     renderer.overlay.renderer.interaction.begin_frame()

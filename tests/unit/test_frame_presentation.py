@@ -230,7 +230,7 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     enemy.is_dead = False
     level.groups.entity_sprites.add(enemy)
 
-    assert level.draw(60.0, game=None, frame_time=16.0) is None
+    assert level.draw(60.0, scene_host=None, frame_time=16.0) is None
 
     rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
     assert rects, "a damaged enemy must get a bar"

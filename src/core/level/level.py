@@ -11,6 +11,7 @@ import pygame
 from src.application.events import EventBus, LevelStarted
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
+from src.core.level.scene_host import SceneHost
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem
@@ -363,7 +364,7 @@ class Level:
     def draw(
         self,
         fps: float,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
         frame_time: float = 0.0,
         alpha: float = 0.0,
     ) -> None:
@@ -372,7 +373,8 @@ class Level:
 
         Args:
             fps: Current frames per second, used for debug display.
-            game: The Game instance (used by the debug SCENE panel).
+            scene_host: Whoever can say which scene is on top, for the
+                debug SCENE panel. None draws the level without it.
             frame_time: Last frame duration in ms (debug PERFORMANCE panel).
             alpha: Position within the pending simulation tick, in [0, 1].
         """
@@ -407,6 +409,6 @@ class Level:
             collision_count=len(self.groups.collision_sprites),
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
             spawn_cooldown=self.spawn_system.spawn_cooldown_max,
-            game=game,
+            scene_host=scene_host,
             frame_time=frame_time,
         )

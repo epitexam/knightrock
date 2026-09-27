@@ -3,6 +3,7 @@ from typing import Any
 
 import pygame
 
+from src.core.level.scene_host import SceneHost
 from src.core.rendering.camera import Camera
 from src.ui.hud import HUD
 from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
@@ -62,7 +63,7 @@ class UIManager:
         self,
         player: Any,
         layout: PanelLayout,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
     ) -> int:
         panel_id = self._compact_panel_focus
         if panel_id == PANEL_COMBAT:
@@ -82,7 +83,7 @@ class UIManager:
         if panel_id == PANEL_STATS:
             return self.draw_stats_panel(10, 10, player, layout, compact=True)
         if panel_id == PANEL_SCENE:
-            return self.draw_scene_panel(10, 10, game, layout, compact=True)
+            return self.draw_scene_panel(10, 10, scene_host, layout, compact=True)
         if panel_id == PANEL_KEYS:
             return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
         return self.draw_legend_panel(10, 10, layout, compact=True)
@@ -127,14 +128,20 @@ class UIManager:
         self,
         x: int,
         y: int,
-        game: Any,
+        scene_host: SceneHost | None,
         layout: PanelLayout | None = None,
         compact: bool = False,
     ) -> int:
-        """Show active scene, current level, deaths and live entity counts."""
+        """Show active scene, current level, deaths and live entity counts.
+
+        Takes a :class:`SceneHost` rather than the application: the panel needs
+        to know which scene is on top and nothing else, and `Any` said nothing
+        even about that. A `None` host draws the panel with "None" for the
+        scene, which is what a level rendered outside the scene stack is.
+        """
         if self.renderer.interaction.is_closed(PANEL_SCENE):
             return 0
-        current = game.scene_manager.current
+        current = None if scene_host is None else scene_host.scene_manager.current
         scene_name = type(current).__name__ if current else "None"
 
         level_id = getattr(current, "level_id", None)
@@ -468,7 +475,7 @@ class UIManager:
         self,
         *,
         player: Any = None,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
         debug_stats: dict[str, float] | None = None,
         **counters: Any,
     ) -> None:
@@ -492,13 +499,13 @@ class UIManager:
             **counters,
         )
         if compact_panels():
-            self.draw_compact_panel(player, layout, game)
+            self.draw_compact_panel(player, layout, scene_host)
             return
         self.draw_combat_panel(layout)
         self.draw_state_panel(10, 10, player, layout=layout)
         self.draw_stats_panel(10, 10, player, layout=layout)
-        if game is not None:
-            self.draw_scene_panel(10, 10, game, layout=layout)
+        if scene_host is not None:
+            self.draw_scene_panel(10, 10, scene_host, layout=layout)
         self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers)
         self.draw_legend_panel(10, 10, layout=layout)
 

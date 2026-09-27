@@ -129,7 +129,7 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
             collision_count=0,
             hit_stop=0.0,
             spawn_cooldown=0.0,
-            game=game,
+            scene_host=game,
             frame_time=16.0,
         )
         panel_samples.append((perf_counter() - started) * 1000.0)

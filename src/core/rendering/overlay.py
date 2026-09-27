@@ -64,7 +64,7 @@ class WorldOverlay(Protocol):
     ) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy."""
 
-    def draw_debug_panels(self, **counters: Any) -> None:
+    def draw_debug_panels(self, *, scene_host: Any = None, **counters: Any) -> None:
         """Draw the screen-side debug panels from a bag of counters.
 
         Keyword-only and untyped because the counters are the debug overlay's
