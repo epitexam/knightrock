@@ -162,7 +162,7 @@ class Stage:
             return
         try:
             pygame.Window.from_display_module().position = pygame.WINDOWPOS_CENTERED
-        except (pygame.error, AttributeError):
+        except pygame.error, AttributeError:
             # No usable Window class in this build. Leave the placement to the
             # window manager, which gets it right more often than a guess
             # from us would.

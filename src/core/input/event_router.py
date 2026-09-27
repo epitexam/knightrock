@@ -500,6 +500,6 @@ class EventRouter:
         if isinstance(value, (tuple, list)) and len(value) >= 2:
             try:
                 return int(value[0]), int(value[1])
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return 0, 0
         return 0, 0

@@ -7,6 +7,7 @@ that follows it, because the interesting case is the module that does not.
 
 import io
 import tokenize
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -26,92 +27,137 @@ def _python_files() -> list[Path]:
     return sorted(found)
 
 
-def _bare_commas_in_except_line(tokens: list[tokenize.TokenInfo]) -> bool:
-    """True when a logical line starting with `except` has a top-level comma.
+@dataclass(frozen=True)
+class ExceptHeader:
+    """The significant tokens of one `except` header, in source order."""
 
-    The comma that separates the exception types is only ambiguous when it
-    sits outside brackets, so tracking bracket depth is enough to tell
-    `except A, B:` from `except (A, B):`.
+    tokens: tuple[tokenize.TokenInfo, ...]
+
+    @property
+    def line(self) -> int:
+        return self.tokens[0].start[0]
+
+    @property
+    def text(self) -> str:
+        return self.tokens[0].line.strip()
+
+    @property
+    def catches_several(self) -> bool:
+        """True when the handler names more than one exception type."""
+        names = sum(token.type == tokenize.NAME for token in self.tokens)
+        operators = {
+            token.string
+            for token in self.tokens
+            if token.type == tokenize.OP and token.string != "*"
+        }
+        return names > 1 or ("," in operators)
+
+    @property
+    def binds_a_name(self) -> bool:
+        """True when the handler captures the exception (`except ... as e`)."""
+        return any(token.type == tokenize.NAME and token.string == "as" for token in self.tokens)
+
+    @property
+    def parenthesized(self) -> bool:
+        """True when the exception types are wrapped in brackets."""
+        return any(token.type == tokenize.OP and token.string == "(" for token in self.tokens)
+
+
+def _except_headers(source: str) -> list[ExceptHeader]:
+    """Extract every `except` header from a source string.
+
+    Tokenizing rather than parsing is required: on 3.14 `ast.parse` folds the
+    bare `except A, B:` form into a `Tuple`, so the AST cannot tell the two
+    spellings apart. The formatter, which does, rewrites one into the other.
     """
-    significant = [
-        token
-        for token in tokens
-        if token.type
-        not in (
-            tokenize.COMMENT,
-            tokenize.NL,
-            tokenize.NEWLINE,
-            # Zero-width markers: a DEDENT is emitted on the same logical
-            # line as the `except` that dedents to, and would hide it.
-            tokenize.INDENT,
-            tokenize.DEDENT,
-        )
-    ]
-    if not significant or significant[0].string not in ("except", "except*"):
-        return False
-    depth = 0
-    for token in significant[1:]:
-        if token.type == tokenize.OP:
-            if token.string in "([{":
-                depth += 1
-            elif token.string in ")]}":
-                depth -= 1
-            elif token.string == "," and depth == 0:
-                return True
-            elif token.string == ":" and depth == 0:
-                return False
-    return False
+    headers: list[ExceptHeader] = []
+    current: list[tokenize.TokenInfo] = []
+
+    def flush() -> None:
+        significant = [
+            token
+            for token in current
+            if token.type
+            not in (
+                tokenize.COMMENT,
+                tokenize.NL,
+                tokenize.NEWLINE,
+                # Zero-width markers: a DEDENT is emitted on the same logical
+                # line as the `except` that dedents to, and would hide it.
+                tokenize.INDENT,
+                tokenize.DEDENT,
+            )
+        ]
+        if significant and significant[0].string in ("except", "except*"):
+            headers.append(ExceptHeader(tuple(significant[1:])))
+        current.clear()
+
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.NEWLINE:
+            flush()
+            continue
+        current.append(token)
+    flush()
+    return headers
 
 
-def _unparenthesized_except_clauses() -> list[str]:
-    """Report `except A, B:` clauses, which only parse on Python 3.14+.
+def _misparenthesized_except_clauses() -> list[str]:
+    """Report multi-exception handlers whose parentheses are redundant.
 
-    PEP 758 allows the bare form and `ast.parse` quietly normalises it into a
-    `Tuple`, so the AST cannot tell the two spellings apart. Both ruff and
-    mypy target 3.14 as well, so neither of them will complain either.
-
-    The rest of the codebase writes `except (A, B):`. A lone bare clause is a
-    portability landmine that a backport, an automatic `pyupgrade`, or a
-    contributor on an earlier interpreter would turn into a SyntaxError.
+    PEP 758 (Python 3.14) makes the parentheses around the exception types
+    optional, but only when the handler does not bind a name: `except A, B as
+    e` is still a SyntaxError, so there the brackets are load-bearing. ruff
+    enforces exactly this rule in the formatter. Asserting it here too keeps
+    the two from drifting apart when someone runs the formatter on a subset of
+    the tree, and it gives the rule a name instead of leaving it implicit.
     """
     offenders: list[str] = []
     for path in _python_files():
         source = path.read_text(encoding="utf-8")
-        readline = io.StringIO(source).readline
-        current: list[tokenize.TokenInfo] = []
-        for token in tokenize.generate_tokens(readline):
-            if token.type in (tokenize.NEWLINE,):
-                if _bare_commas_in_except_line(current):
-                    offenders.append(
-                        f"{path.relative_to(REPO_ROOT)}:{token.start[0]}: {token.line.strip()}"
-                    )
-                current = []
+        for header in _except_headers(source):
+            if not header.catches_several or header.binds_a_name or not header.parenthesized:
                 continue
-            current.append(token)
+            offenders.append(f"{path.relative_to(REPO_ROOT)}:{header.line}: {header.text}")
     return offenders
 
 
-def test_every_multi_exception_clause_is_parenthesized() -> None:
-    """No `except A, B:` anywhere: the tuple form is the project convention."""
-    assert _unparenthesized_except_clauses() == []
+def test_redundant_except_parentheses_are_gone() -> None:
+    """`except A, B:` without an `as` clause is the house style."""
+    assert _misparenthesized_except_clauses() == []
 
 
-def test_the_unparenthesized_detector_actually_detects() -> None:
+def test_the_parens_detector_actually_detects() -> None:
     """Guard the guard: a detector that cannot fail proves nothing."""
-    for source, expected in (
-        ("try:\n    pass\nexcept KeyError, ValueError:\n    pass\n", True),
-        ("try:\n    pass\nexcept (KeyError, ValueError):\n    pass\n", False),
-        ("try:\n    pass\nexcept KeyError:\n    pass\n", False),
-        ("try:\n    pass\nexcept* KeyError, ValueError:\n    pass\n", True),
+    cases = {
+        "try:\n    pass\nexcept (KeyError, ValueError):\n    pass\n": True,
+        "try:\n    pass\nexcept KeyError, ValueError:\n    pass\n": False,
+        "try:\n    pass\nexcept KeyError:\n    pass\n": False,
+        "try:\n    pass\nexcept (KeyError, ValueError) as exc:\n    pass\n": False,
+        "try:\n    pass\nexcept* KeyError, ValueError:\n    pass\n": False,
+    }
+    for source, expected in cases.items():
+        assert bool(_misparenthesized_except_clauses_in(source)) is expected, source
+
+
+def _misparenthesized_except_clauses_in(source: str) -> list[str]:
+    """The single-source version of the check, for the self-test above."""
+    return [
+        header.text
+        for header in _except_headers(source)
+        if header.catches_several and not header.binds_a_name and header.parenthesized
+    ]
+
+
+def test_a_bare_multi_except_is_parsed_as_several_types() -> None:
+    """The token view sees `except A, B:` as two types, parentheses or not."""
+    for source in (
+        "try:\n    pass\nexcept KeyError, ValueError:\n    pass\n",
+        "try:\n    pass\nexcept (KeyError, ValueError):\n    pass\n",
     ):
-        lines: list[list[tokenize.TokenInfo]] = [[]]
-        for token in tokenize.generate_tokens(io.StringIO(source).readline):
-            if token.type == tokenize.NEWLINE:
-                lines.append([])
-                continue
-            lines[-1].append(token)
-        detected = any(_bare_commas_in_except_line(line) for line in lines)
-        assert detected is expected, source
+        headers = _except_headers(source)
+        assert len(headers) == 1, source
+        assert headers[0].catches_several, source
+        assert not headers[0].binds_a_name, source
 
 
 @pytest.mark.parametrize("root", SOURCE_ROOTS)

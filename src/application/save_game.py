@@ -60,7 +60,7 @@ class SaveGame:
                 unlocked_levels=unlocked,
                 last_level_id=int(data["last_level_id"]),
             )
-        except (KeyError, TypeError, ValueError):
+        except KeyError, TypeError, ValueError:
             logger.warning("Corrupted save file, starting from a fresh save")
             return cls()
 
@@ -75,7 +75,7 @@ class SaveGame:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             return cls.from_dict(data)
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return cls()
 
 
