@@ -14,6 +14,7 @@ from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
+from src.ui.world_overlay_cards import CardLayer
 from src.ui.world_overlay_geo import GeoLayer
 from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_ui import (
@@ -85,12 +86,12 @@ def _entity(**overrides) -> SimpleNamespace:
 
 
 def test_idle_entity_gets_header_and_hp_rows(world_ui: WorldUI) -> None:
-    segments = world_ui._label_segments(_entity())
+    segments = world_ui._cards.label_segments(_entity())
     assert segments is not None
     assert segments[0] == [("Goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert segments[1][0] == ("HP ", TEXT_MUTED)
     assert segments[1][1][0] == "75/100"
-    assert world_ui._label_lines(_entity()) == ["Goblin idle", "HP 75/100"]
+    assert world_ui._cards.label_lines(_entity()) == ["Goblin idle", "HP 75/100"]
 
 
 def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
@@ -99,8 +100,8 @@ def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
     entity.combat.state.attack_name = "claw_swipe"
     entity.combat.state.sub_state = SimpleNamespace(value="active")
     entity.combat.state.frame_counter = 3
-    segments = world_ui._label_segments(entity)
-    lines = world_ui._label_lines(entity)
+    segments = world_ui._cards.label_segments(entity)
+    lines = world_ui._cards.label_lines(entity)
     assert segments is not None and lines is not None
     assert segments[0] == [("Goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert segments[1][0] == ("HP ", TEXT_MUTED)
@@ -116,15 +117,15 @@ def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
 
 def test_segments_color_each_token_with_the_faction_accent(world_ui: WorldUI) -> None:
     """Header name takes the faction color; detail values keep their own."""
-    segments = world_ui._label_segments(_entity())
+    segments = world_ui._cards.label_segments(_entity())
     assert segments is not None
     assert segments[0] == [("Goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert segments[1] == [("HP ", TEXT_MUTED), ("75/100", TEXT_OK)]
 
 
 def test_hp_row_tints_by_remaining_ratio(world_ui: WorldUI) -> None:
-    warn = world_ui._label_segments(_entity(health=40.0, max_health=100.0))
-    crit = world_ui._label_segments(_entity(health=20.0, max_health=100.0))
+    warn = world_ui._cards.label_segments(_entity(health=40.0, max_health=100.0))
+    crit = world_ui._cards.label_segments(_entity(health=20.0, max_health=100.0))
     assert warn is not None and crit is not None
     assert warn[1] == [("HP ", TEXT_MUTED), ("40/100", TEXT_WARN)]
     assert crit[1] == [("HP ", TEXT_MUTED), ("20/100", TEXT_CRIT)]
@@ -133,7 +134,7 @@ def test_hp_row_tints_by_remaining_ratio(world_ui: WorldUI) -> None:
 def test_attack_row_splits_name_from_phase_stats(world_ui: WorldUI) -> None:
     entity = _entity()
     entity.combat.state.attack_name = "claw_swipe"
-    segments = world_ui._label_segments(entity)
+    segments = world_ui._cards.label_segments(entity)
     assert segments is not None
     assert segments[1][0] == ("HP ", TEXT_MUTED)
     assert segments[2] == [
@@ -145,7 +146,7 @@ def test_attack_row_splits_name_from_phase_stats(world_ui: WorldUI) -> None:
 
 def test_status_flags_are_pipe_separated(world_ui: WorldUI) -> None:
     entity = _entity(stagger_timer=0.2, otg_timer=0.4)
-    lines = world_ui._label_lines(entity)
+    lines = world_ui._cards.label_lines(entity)
     assert lines is not None
     assert lines[-1] == "STAG 0.20s | OTG 0.40s"
 
@@ -193,17 +194,17 @@ def test_projectile_label_shows_flight_data(world_ui: WorldUI) -> None:
         config=SimpleNamespace(pierce=True),
         targets_hit={"e1"},
     )
-    lines = world_ui._label_lines(shot)
+    lines = world_ui._cards.label_lines(shot)
     assert lines == ["Projectile player (700,-50) 1.9s pierce hits:1"]
 
 
 def test_static_sprite_has_no_label(world_ui: WorldUI) -> None:
     hazard = _named("SpanHazard", rect=pygame.Rect(10, 10, 64, 16))
-    assert world_ui._label_lines(hazard) is None
+    assert world_ui._cards.label_lines(hazard) is None
 
 
 def test_bare_sprite_has_no_label(world_ui: WorldUI) -> None:
-    assert world_ui._label_lines(SimpleNamespace()) is None
+    assert world_ui._cards.label_lines(SimpleNamespace()) is None
 
 
 def test_offscreen_sprites_draw_nothing(world_ui: WorldUI, camera: Camera) -> None:
@@ -450,8 +451,8 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
     entity.reaction_age = 0.2
-    segments = world_ui._label_segments(entity)
-    lines = world_ui._label_lines(entity)
+    segments = world_ui._cards.label_segments(entity)
+    lines = world_ui._cards.label_lines(entity)
     assert segments is not None and lines is not None
     assert segments[-1] == [("HIT launch 0.20s", Colors.red)]
     assert lines[-1] == "HIT launch 0.20s"
@@ -461,15 +462,15 @@ def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> No
     entity = _entity()
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
     entity.reaction_age = 0.0
-    segments = world_ui._label_segments(entity)
-    lines = world_ui._label_lines(entity)
+    segments = world_ui._cards.label_segments(entity)
+    lines = world_ui._cards.label_lines(entity)
     assert segments is not None and lines is not None
     assert segments[-1] == [("HIT push (old)", Colors.dark_red)]
     assert lines[-1] == "HIT push (old)"
 
 
 def test_entity_without_reaction_has_no_hit_flag(world_ui: WorldUI) -> None:
-    lines = world_ui._label_lines(_entity())
+    lines = world_ui._cards.label_lines(_entity())
     assert lines is not None
     assert all("HIT" not in line for line in lines)
 
@@ -487,10 +488,10 @@ def _place_crowd(
 ) -> list[pygame.Rect]:
     """Draw the crowd and return the padded rects of every label actually placed."""
     placed: list[pygame.Rect] = []
-    original = WorldUI._blit_label
+    original = CardLayer.blit_label
 
     def spy(
-        self: WorldUI,
+        self: CardLayer,
         header: list[pygame.Surface],
         rows: list[list[pygame.Surface]],
         row_height: int,
@@ -502,7 +503,7 @@ def _place_crowd(
         placed.append(pygame.Rect(background_rect))
         original(self, header, rows, row_height, accent, label_rect, background_rect, screen_width)
 
-    monkeypatch.setattr(WorldUI, "_blit_label", spy)
+    monkeypatch.setattr(CardLayer, "blit_label", spy)
     world_ui.draw_debug_overlays(sprites, camera)
     return placed
 
@@ -571,7 +572,7 @@ def test_label_card_renders_header_divider_and_accent_edge(
 ) -> None:
     """Visual pin: the card body fill reads (14,16,19) on a black surface."""
     entity = _entity()
-    segments = world_ui._label_segments(entity)
+    segments = world_ui._cards.label_segments(entity)
     assert segments is not None
     header_width = sum(world_ui.renderer.world_title_font.size(text)[0] for text, _ in segments[0])
     row_width = sum(world_ui.renderer.world_label_font.size(text)[0] for text, _ in segments[1])
@@ -584,7 +585,7 @@ def test_label_card_renders_header_divider_and_accent_edge(
     anchor = camera.apply(pygame.FRect(100, 100, 40, 48))
     # Stack order: entity -> health bar -> card. The card's content box sits
     # LABEL_ANCHOR_GAP plus the bar + gap above the anchor.
-    above_lift, _ = world_ui._label_clearances(entity, anchor)
+    above_lift, _ = world_ui._cards.label_clearances(entity, anchor)
     assert above_lift == HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
     content_left = int(anchor.centerx - card_w // 2)
     content_top = int(anchor.top - LABEL_ANCHOR_GAP - above_lift - card_h)
@@ -641,7 +642,7 @@ def test_health_bar_flips_below_entity_at_top_of_screen(world_ui: WorldUI, camer
     bar = world_ui._health_bar_rect(entity, anchor)
     assert bar is not None
     assert bar.top >= anchor.bottom  # flipped below
-    above_lift, below_drop = world_ui._label_clearances(entity, anchor)
+    above_lift, below_drop = world_ui._cards.label_clearances(entity, anchor)
     assert (above_lift, below_drop) == (0, HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y)
 
 
@@ -671,7 +672,7 @@ def test_dead_entity_draws_no_health_bar(world_ui: WorldUI, camera: Camera) -> N
     entity = _entity(is_dead=True)
     anchor = camera.apply(pygame.FRect(100, 100, 40, 48))
     assert world_ui._health_bar_rect(entity, anchor) is None
-    assert world_ui._label_clearances(entity, anchor) == (0, 0)
+    assert world_ui._cards.label_clearances(entity, anchor) == (0, 0)
 
 
 def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera) -> None:
@@ -683,7 +684,7 @@ def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera)
     player = _entity(faction="player", health=100.0, max_health=100.0)
     anchor = camera.apply(pygame.FRect(100, 100, 40, 48))
     assert world_ui._health_bar_rect(player, anchor) is None
-    assert world_ui._label_clearances(player, anchor) == (0, 0)
+    assert world_ui._cards.label_clearances(player, anchor) == (0, 0)
 
     surface = world_ui.surface
     surface.fill((0, 0, 0))
@@ -710,8 +711,8 @@ def test_world_cards_use_compact_fonts(world_ui: WorldUI) -> None:
 def test_enemy_header_shows_the_registry_type(world_ui: WorldUI) -> None:
     """Foes share one class: the header shows ``enemy_type``, not ``Enemy``."""
     entity = _entity(enemy_type="goblin")
-    segments = world_ui._label_segments(entity)
-    lines = world_ui._label_lines(entity)
+    segments = world_ui._cards.label_segments(entity)
+    lines = world_ui._cards.label_lines(entity)
     assert segments is not None and lines is not None
     assert segments[0] == [("goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert lines[0] == "goblin idle"
@@ -724,7 +725,7 @@ def test_enemy_without_type_falls_back_to_class_name(world_ui: WorldUI) -> None:
 def test_player_header_ignores_enemy_type(world_ui: WorldUI) -> None:
     """Only foes read ``enemy_type``: the player keeps its class name."""
     entity = _entity(faction="player", enemy_type="goblin")
-    segments = world_ui._label_segments(entity)
+    segments = world_ui._cards.label_segments(entity)
     assert segments is not None
     assert segments[0] == [("Goblin ", Colors.light_green), ("idle", Colors.off_white)]
 
@@ -743,7 +744,7 @@ def test_factory_enemy_label_shows_its_type(world_ui: WorldUI) -> None:
         player_reference=None,
     )
     assert enemy.enemy_type == "slime"
-    segments = world_ui._label_segments(enemy)
+    segments = world_ui._cards.label_segments(enemy)
     assert segments is not None
     assert segments[0][0] == ("slime ", Colors.light_red)
 
@@ -1004,7 +1005,7 @@ def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera
     assert header.bottom <= bar.top  # stacked above the bar, never over it
 
     # The card's default slot lifts past the annotation band, not just the bar.
-    above_lift, below_drop = world_ui._label_clearances(entity, anchor)
+    above_lift, below_drop = world_ui._cards.label_clearances(entity, anchor)
     bar_clearance = HEALTH_BAR_HEIGHT + HEALTH_BAR_LABEL_GAP + LABEL_PAD_Y
     assert above_lift > bar_clearance
     assert below_drop == 0
@@ -1031,7 +1032,7 @@ def test_zone_shapes_carry_meaning_without_world_text(world_ui: WorldUI, camera:
     boosted = camera.apply(pygame.FRect(100, 80, 40, 20))
     assert surface.get_at((int(boosted.centerx), int(boosted.centery)))[:3] != (0, 0, 0)
     # ...and the full roster lives on the card's ZONE row, in zone colors.
-    segments = world_ui._label_segments(entity)
+    segments = world_ui._cards.label_segments(entity)
     assert segments is not None
     zone_row = next(line for line in segments if line[0][0] == "ZONE ")
     assert zone_row[1][0].startswith("head x1.2")

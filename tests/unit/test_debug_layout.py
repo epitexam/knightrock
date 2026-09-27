@@ -51,7 +51,7 @@ def _entity(x: float = 100.0, health: float = 75.0) -> SimpleNamespace:
 def _capture_labels(ui: UIManager, monkeypatch: pytest.MonkeyPatch) -> list[pygame.Rect]:
     """Spy on _blit_label and collect the padded rects actually placed."""
     placed: list[pygame.Rect] = []
-    original = type(ui.world_ui)._blit_label
+    original = type(ui.world_ui._cards).blit_label
 
     def spy(
         self: object,
@@ -66,7 +66,7 @@ def _capture_labels(ui: UIManager, monkeypatch: pytest.MonkeyPatch) -> list[pyga
         placed.append(pygame.Rect(background_rect))
         original(self, header, rows, row_height, accent, label_rect, background_rect, screen_width)
 
-    monkeypatch.setattr(type(ui.world_ui), "_blit_label", spy)
+    monkeypatch.setattr(type(ui.world_ui._cards), "blit_label", spy)
     return placed
 
 
@@ -123,12 +123,12 @@ def test_labels_dodge_bars_from_the_previous_frame(
     ui.world_ui.draw_debug_overlays([entity], camera)  # registers the bar
     bar = ui.world_ui._health_bar_rect(entity, camera.apply(entity.hitbox))
     assert bar is not None
-    above_lift, _ = ui.world_ui._label_clearances(entity, camera.apply(entity.hitbox))
-    placed = ui.world_ui._place_label(
+    above_lift, _ = ui.world_ui._cards.label_clearances(entity, camera.apply(entity.hitbox))
+    placed = ui.world_ui._cards.place_label(
         [[("Goblin idle", (255, 255, 255))], [("HP 75/100", (255, 255, 255))]],
         (255, 255, 255),
         camera.apply(entity.hitbox),
-        [*ui.world_ui._previous_bar_obstacles],
+        [*ui.world_ui._cards.previous_bar_obstacles],
         ui.renderer.surface.get_width(),
         ui.renderer.surface.get_height(),
         above_lift=above_lift,
@@ -337,3 +337,41 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
     assert not panels["performance"].colliderect(panels["state"])
     assert renderer.overlay.compact_panel_focus() == "state"
     assert renderer.overlay.cycle_compact_panel() == "stats"
+
+
+def test_a_bar_that_moved_still_dodges_the_card_next_frame(
+    ui: UIManager, camera: Camera, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bar rects of the previous frame are obstacles for this one.
+
+    Bars paint *after* the cards but belong to the same tier stack, so a card
+    placed against where its bar is now has to keep clear of where the bar was.
+    Without that, an entity that walks under the top of the screen -- flipping
+    its bar from above to below -- leaves its card sitting on the bar's old
+    ground, which reads as a placement bug and is not one.
+
+    This is the only test that exercises the *write* of ``previous_bar_obstacles``:
+    the others read it, so dropping the write leaves them green.
+    """
+    placed = _capture_labels(ui, monkeypatch)
+    low = _entity()
+    ui.world_ui.draw_debug_overlays([low], camera)
+    old_bar = ui.world_ui._health_bar_rect(low, camera.apply(low.hitbox))
+    assert old_bar is not None
+    assert old_bar.bottom <= low.hitbox.y, "the bar starts above the entity"
+    first = list(placed)
+    assert first
+
+    # Same entity, now against the top edge: the bar has nowhere above and flips.
+    high = _entity()
+    high.hitbox.y = 4.0
+    placed.clear()
+    ui.world_ui.draw_debug_overlays([high], camera)
+    new_bar = ui.world_ui._health_bar_rect(high, camera.apply(high.hitbox))
+    assert new_bar is not None
+    assert new_bar.top > high.hitbox.y, "the bar flipped below the entity"
+    assert placed, "no card was placed on the second frame"
+
+    assert all(not old_bar.colliderect(pygame.Rect(rect)) for rect in placed), (
+        f"the card landed on where the bar used to be: {old_bar} vs {placed}"
+    )

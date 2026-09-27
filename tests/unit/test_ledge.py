@@ -14,7 +14,7 @@ from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import EnemyChaseState, EnemyPatrolState, EnemyState
 from src.states.ledge_state import LedgeState
-from src.ui.world_ui import WorldUI
+from src.ui.world_overlay_cards import CardLayer
 from tests.unit.helpers import make_entity
 
 
@@ -346,5 +346,5 @@ def test_debug_labels_flag_entities_at_a_ledge() -> None:
         is_at_ledge=lambda: False,
     )
 
-    assert any("LEDGE" in line for line in WorldUI._entity_lines(at_ledge, machine))
-    assert not any("LEDGE" in line for line in WorldUI._entity_lines(safe, machine))
+    assert any("LEDGE" in line for line in CardLayer.entity_lines(at_ledge, machine))
+    assert not any("LEDGE" in line for line in CardLayer.entity_lines(safe, machine))

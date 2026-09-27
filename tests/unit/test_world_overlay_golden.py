@@ -228,7 +228,7 @@ def _scene() -> list[SimpleNamespace]:
 def _spy_placed(world: WorldUI, monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, ...]]:
     """Collect the padded rects the label cards actually occupied, in draw order."""
     placed: list[tuple[int, ...]] = []
-    original = type(world)._blit_label
+    original = type(world._cards).blit_label
 
     def spy(
         self: object,
@@ -243,7 +243,7 @@ def _spy_placed(world: WorldUI, monkeypatch: pytest.MonkeyPatch) -> list[tuple[i
         placed.append(tuple(background_rect))
         original(self, header, rows, row_height, accent, label_rect, background_rect, screen_width)
 
-    monkeypatch.setattr(type(world), "_blit_label", spy)
+    monkeypatch.setattr(type(world._cards), "blit_label", spy)
     return placed
 
 
@@ -346,10 +346,14 @@ def test_the_sink_is_producers_only(world_ui: WorldUI, camera: Camera) -> None:
     assert registered == [rect for rects in GOLDEN_ANNOTATIONS.values() for rect in rects]
 
     goblin = next(entity for entity in scene if type(entity).__name__ == "Goblin")
-    request = world_ui._label_request(goblin, camera.apply(debug_reference(goblin)), False, camera)
+    request = world_ui._cards.label_request(
+        goblin, camera.apply(debug_reference(goblin)), False, camera
+    )
     assert request is not None
     before = len(world_ui.annotation_obstacles)
-    world_ui._place_label(request[1], request[2], request[3], [], *world_ui.surface.get_size())
+    world_ui._cards.place_label(
+        request[1], request[2], request[3], [], *world_ui.surface.get_size()
+    )
     assert len(world_ui.annotation_obstacles) == before, "the label pass wrote to the sink"
 
 
