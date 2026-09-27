@@ -1,5 +1,6 @@
 """Tests for resource lookup and the top-level game runtime boundary."""
 
+import logging
 import sys
 from dataclasses import fields, replace
 from pathlib import Path
@@ -442,3 +443,100 @@ def test_a_resize_that_changes_nothing_does_not_rebuild_the_target(tmp_path: Pat
     before = game.presentation.surface
     assert game.presentation.recompute() is False
     assert game.presentation.surface is before
+
+
+# -- the fatal error path -----------------------------------------------------
+#
+# This runs when something has already gone wrong, so every part of it has to
+# be safe: the log is the artifact worth keeping, the screen is a courtesy, and
+# neither may replace a reportable crash with an unreportable one.
+
+
+def test_a_fatal_error_is_logged_with_its_traceback(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The log, not the screen, is what a player sends you.
+
+    It used to be `logger.error(f"FATAL ERROR: {error}")` -- the message and
+    nothing else, so a crash whose exception had an empty message logged an
+    empty line, and the frame that raised it was recorded nowhere.
+    """
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    with caplog.at_level(logging.CRITICAL):
+        game._handle_fatal_error(RuntimeError("the level would not build"))
+
+    record = caplog.records[-1]
+    assert record.levelno == logging.CRITICAL
+    assert record.exc_info is not None, "the traceback is the point"
+    assert "the level would not build" in caplog.text
+
+
+def test_the_fatal_screen_goes_on_the_render_target_and_is_presented(
+    tmp_path: Path,
+) -> None:
+    """Not on the window, and not until something presents it.
+
+    Drawing straight to the window put the message at 1:1 whatever the
+    letterbox and density were, and the next present would have wiped it.
+    """
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    presented = Mock()
+    monkey = Mock(wraps=game.presentation)
+    game.presentation = monkey
+    monkey.present = presented
+
+    game._handle_fatal_error(RuntimeError("boom"))
+
+    presented.assert_called_once_with()
+    # Something was painted into the target, not only the window.
+    assert any(
+        game.presentation.surface.get_at((x, y))[:3] != (0, 0, 0)
+        for x in range(0, 200, 7)
+        for y in range(0, 120, 7)
+    )
+
+
+def test_a_crash_before_the_display_falls_back_to_the_window(
+    tmp_path: Path,
+) -> None:
+    """No presentation yet is the normal case for an initialization failure."""
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    game.presentation = None  # as if the crash happened before it was built
+    window = pygame.display.get_surface()
+
+    game._handle_fatal_error(RuntimeError("no display"))
+
+    assert window is not None
+    assert game.surface is window
+    assert any(
+        window.get_at((x, y))[:3] != (0, 0, 0) for x in range(0, 400, 5) for y in range(0, 40, 5)
+    ), "the message reached the window"
+
+
+def test_the_fatal_handler_never_raises(tmp_path: Path) -> None:
+    """A display that has gone away must not turn a crash into a hang."""
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    def exploding(*args, **kwargs):
+        raise pygame.error("the display driver has gone")
+
+    game.presentation = exploding
+
+    game._handle_fatal_error(RuntimeError("boom"))  # must not raise
+
+
+def test_a_crash_with_an_empty_message_still_says_something(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    with caplog.at_level(logging.CRITICAL):
+        game._handle_fatal_error(RuntimeError())
+
+    assert "RuntimeError" in caplog.text

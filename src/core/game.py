@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import traceback
 from pathlib import Path
 from time import perf_counter
@@ -610,19 +609,63 @@ class Game:
         return event
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        logger.error(f"FATAL ERROR: {error}")
-        surface = self.surface
-        if surface is None:
-            return
+        """Log the failure with its traceback, then try to show it.
 
+        Three things were wrong with this and each had a consequence.
+
+        It logged ``f"FATAL ERROR: {error}"`` at ``error`` level, which is the
+        exception's *message*: a crash with an empty message logged an empty
+        line, and the frame that raised it was not recorded anywhere. It is
+        ``logger.critical`` with the traceback now, and that log is the artifact
+        worth having -- the screen below is a courtesy.
+
+        It drew on ``self.surface``, the window, bypassing the render target
+        and the presentation. So the message appeared at 1:1 on the window
+        whatever the letterbox and the density were, and the next
+        ``present()`` -- had there been one -- would have overwritten it. It
+        paints the target and presents it like any other frame, and falls back
+        to the window only when there is no presentation yet, which is the
+        case where the crash happened before the display was up.
+
+        And it built its own ``SysFont("Arial")``, outside the chain that
+        scales and caches every other glyph in the game, so the one message
+        that matters most was the one drawn at the wrong size on a machine with
+        no Arial. The panel chain is used instead, and if even that fails --
+        a font cache that cannot allocate, a display that has gone away -- the
+        failure is logged and swallowed. Raising out of the handler would
+        replace a reportable crash with an unreportable one.
+        """
+        logger.critical("Fatal error; the game cannot continue", exc_info=error)
         try:
+            self._paint_fatal_error(error)
+        except Exception:  # noqa: BLE001 - this is the last line of defence
+            logger.exception("Could not paint the fatal error screen")
+
+    def _paint_fatal_error(self, error: Exception) -> None:
+        """Put the failure on screen, on whichever surface is still alive."""
+        # An exception with an empty str() would otherwise paint a blank panel.
+        message = f"{type(error).__name__}: {error}".strip(": ")
+        if self.presentation is not None:
+            target = self.presentation.surface
+            self._paint_error_panel(target, message)
+            self.presentation.present()
+            return
+        # Crashed before the display came up: the window is all there is.
+        surface = self.surface
+        if surface is not None:
             surface.fill((0, 0, 0))
-            font = pygame.font.SysFont("Arial", 30)
-            text = font.render(f"FATAL ERROR: {error}", True, (255, 0, 0))
+            text = pygame.font.Font(None, 24).render(message, True, (255, 0, 0))
             surface.blit(text, (10, 10))
             pygame.display.update()
-        except pygame.error:
-            print("Unable to render the fatal error screen", file=sys.stderr)
+
+    def _paint_error_panel(self, target: pygame.Surface, message: str) -> None:
+        """Paint the message with the game's own panel chain."""
+        target.fill((12, 8, 10))
+        if self.ui is None:
+            font = pygame.font.Font(None, 24)
+            target.blit(font.render(message, True, (255, 0, 0)), (10, 10))
+            return
+        self.ui.renderer.draw_panel(10, 10, [message], title="FATAL ERROR")
 
 
 def _elapsed_ms(started: float) -> float:
