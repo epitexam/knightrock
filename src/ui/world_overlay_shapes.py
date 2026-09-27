@@ -1,23 +1,15 @@
 """Drawing a collision pose, and the dashed outlines that are not one.
 
-Split out of ``world_overlay_geo.py``. Everything here turns a *shape* into
-pixels: the three advanced poses the physics side can produce, and the dashed
-rectangle used for a broad-phase bound and for a swing's ghost.
+A leaf, and the only module that knows what a pose is. The box pass asks it to
+draw a circle, capsule or turned box, and a dashed rectangle for a broad-phase
+bound or a swing's ghost. The reverse question — what shape does this sprite
+have — is answered in the combat state, and this module never looks at it.
 
-**A leaf, and the only module that knows what a pose is.** The box pass asks it
-"draw this circle, capsule or turned box" and "draw this dashed rectangle", and
-never asks it anything about a sprite, a phase or a frame. That is why it can be
-its own file: the reverse question -- what shape does this sprite have -- is
-answered somewhere else entirely, in the combat state, and this module never
-looks at it.
-
-**The rectangle fallback is deliberate.** A pose kind this module does not model
-is drawn as an axis-aligned box of the pose's own size. Drawing something
-approximately right beats drawing nothing: an overlay that silently skips a
-hitbox is the one failure mode a debug layer cannot have, and the approximation
-is visible as a box, which tells the reader the code did not know what it was
-looking at.
-"""
+The rectangle fallback is deliberate. A pose kind this module does not model is
+drawn as an axis-aligned box of the pose's own size: an overlay that silently
+skips a hitbox is the one failure mode a debug layer cannot have, and the
+approximation is visible as a box, which tells the reader the code did not know
+what it was looking at."""
 
 from __future__ import annotations
 
@@ -129,6 +121,7 @@ class ShapeLayer:
 def dashed_edges(
     x: float, y: float, width: float, height: float
 ) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
+    """A rectangle's border as separate segments, for a dashed outline. Solid would read as a second live hitbox, which is the confusion the ghost exists to avoid."""
     step = 2 * SWEEP_GHOST_WIDTH + 2
     edges: list[tuple[tuple[float, float], tuple[float, float]]] = []
     cursor = x

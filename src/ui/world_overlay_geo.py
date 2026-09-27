@@ -1,27 +1,19 @@
 """World-space geometry: what a sprite occupies, and the tiers drawn above it.
 
-Extracted from ``world_ui.py`` as the second step of the split. This is the
-producer half of the overlay's two passes: for each sprite it draws the
-hitbox, the hurtbox zone seals, the swept attack boxes, the attack header chip
-with its phase timeline, the anchor dots and the velocity arrow, and it
-registers the screen space each of those took.
+The producer half of the overlay's two passes. Per sprite it draws the hitbox,
+the hurtbox zone seals, the swept attack boxes, the attack header chip with its
+phase timeline and the anchor dots, and it registers the screen space each of
+those took.
 
-**A class, not functions, unlike the two modules before it.**
-``world_overlay_bars`` and ``world_overlay_shared`` answer questions and are
-handed what they need. This one draws, and drawing needs the surface, the
-metrics for the current density and the per-frame annotation sink, thirty-odd
-methods deep. Threading those through every signature would be thirty-odd
-signatures all saying the same three things.
+A class where `world_overlay_bars` and `world_overlay_shared` are functions:
+this one draws, and drawing needs the surface, the metrics and the sink
+thirty-odd methods deep. The surface and the metrics are read live rather than
+cached, since the table is rebuilt when the density moves and a cached copy here
+would be stale for exactly as long as nobody resized twice.
 
-**The surface and the metrics are read, never cached.** ``surface`` is
-``renderer.surface``, and the metrics table is rebuilt when the density moves.
-Holding either would mean a resize path that has to remember to push new values
-in here -- the bug ``WorldUI.surface`` was already fixed for once.
-
-``health_bar_rect`` comes from the bars module directly rather than through the
-facade: it is a fact about the world, and the facade is a seam for its own
-callers, not a relay between its layers.
-"""
+`health_bar_rect` is called from the bars module directly rather than through
+the facade: it is a fact about the world, and the facade is a seam for its own
+callers, not a relay between its layers."""
 
 from __future__ import annotations
 
@@ -338,10 +330,8 @@ class GeoLayer:
                 )
             return
         screen = camera.apply(collider)
-        # Tier stack for this entity: the health bar (painted after the
-        # overlays) plus every annotation already placed this frame. Each
-        # text annotation dodges the tiers below it, and is registered so
-        # the label cards reserve its band.
+        # The chip dodges its own entity's health bar, and is registered so
+        # the label cards reserve the band it takes.
         bar = health_bar_rect(self.surface, sprite, screen)
         tiers: list[pygame.Rect] = [bar] if bar is not None else []
         annotations: list[pygame.Rect] = []
@@ -354,11 +344,10 @@ class GeoLayer:
             camera.apply(collider),
             width=self.stroke(),
         )
-        # P2 multi-zone: shape tells the story, no text. Empty zones keep the
-        # legacy thin outline; boosted zones (mult != 1.0) add a translucent
-        # fill + a thicker outline; guarded zones (tags) draw a dashed seal.
-        # Names and mults live on the label card's zone row, never in the
-        # world — nothing to overlap, whatever the zone count.
+        # Zones say everything through shape, never text: a plain outline for
+        # a neutral zone, a fill and a thicker outline for a boosted one, a
+        # dashed seal for a guarded one. The names and multipliers are on the
+        # card's ZONE row, so the world has no glyphs to overlap.
         zones = self.hurtbox_zones(sprite, collider)
         mults = self.zone_mults(sprite, len(zones))
         tags = self.zone_tags(sprite, len(zones))

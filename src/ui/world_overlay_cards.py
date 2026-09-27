@@ -1,30 +1,18 @@
 """Label cards: what a sprite says, and where the card finds room for it.
 
-Extracted from ``world_ui.py`` as the third step of the split, and the
-consumer half of the overlay's two passes. The box pass has already drawn this
+The consumer half of the overlay's two passes. The box pass has drawn this
 frame's geometry and registered the rectangles it took; this module reads that
-back out of the ``AnnotationSink`` and places one card per sprite in the first
+back out of the `AnnotationSink` and places one card per sprite in the first
 slot that fits.
 
-**A class, like ``world_overlay_geo``, and for a different reason.** Geo holds
-no per-frame state at all. This one does: ``_previous_bar_obstacles``, the bar
-rects seen on the *previous* frame. Bars paint after the cards but belong to
-the same stack (entity -> bar -> card), so a card that moved because its bar
-moved has to keep clear of where that bar used to be, or a bar sliding down
-onto its own card looks like a placement bug. One attribute is enough state to
-justify an instance, and the alternative -- passing it in and out of every
-call -- would be worse.
+A class because it owns the one piece of per-frame state in the drawing layers:
+`previous_bar_obstacles`, the bar rects seen on the *previous* frame. Bars paint
+after the cards but belong to the same stack, so a card placed against where its
+bar is now has to keep clear of where the bar was — otherwise a bar sliding onto
+its own card reads as a placement bug.
 
-**The sink is read, never written.** Everything this module needs to know about
-the box pass comes from ``AnnotationSink``, and the one thing it must never do
-is register anything: a card claiming space the next sprite reads as already
-taken is exactly how a label ends up underneath a health bar.
-
-**The surface and the metrics are read, never cached**, for the same reason as
-in ``GeoLayer`` and with the same failure behind it: a resize that forgot to
-push new values in would paint into an orphaned target with no symptom until
-the two sizes disagreed.
-"""
+The sink is read, never written. A card claiming space the next sprite reads as
+taken is exactly how a label ends up underneath a health bar."""
 
 from __future__ import annotations
 
@@ -147,10 +135,9 @@ class CardLayer:
         pygame.draw.rect(panel, (18, 20, 24, 210), panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
         self.surface.blit(panel, background_rect.topleft)
-        # Top accent edge in the entity's faction color: a 2 px rule just
-        # inside the top border, spanning the card width. It marks the
-        # faction at a glance without cutting through the card and its
-        # divider the way a full-height side stripe did.
+        # A 2px rule just inside the top border, spanning the card width. It
+        # marks the faction at a glance without cutting through the card and
+        # its divider the way a full-height side stripe did.
         accent_edge = pygame.Rect(
             background_rect.left + 1,
             background_rect.top + 1,
@@ -158,14 +145,12 @@ class CardLayer:
             2,
         )
         self.surface.fill(accent, accent_edge)
-        # Header row (bold).
         cursor_x = label_rect.left
         cursor_y = label_rect.top
         for surface in header:
             self.surface.blit(surface, (cursor_x, cursor_y))
             cursor_x += surface.get_width()
         cursor_y += row_height + self.metrics.label_divider_top
-        # Divider rule, inset by the card padding.
         rule_left = max(background_rect.left + self.metrics.label_pad_x, 0)
         rule_right = min(background_rect.right - self.metrics.label_pad_x, screen_width)
         if rule_right > rule_left:

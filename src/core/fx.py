@@ -844,16 +844,19 @@ def _spawn_sparks(
 
 
 def spawn_guard_spark(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The spatter when a guard absorbs a hit: one-sided, so it reads as a block rather than a wound."""
     return _spawn_sparks(fx_group, entity, GUARD_SPARK_COLORS, GUARD_SPARK_COUNT, (260.0, 220.0))
 
 
 def spawn_parry_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The burst on a successful parry, thrown from the contact point outward."""
     return _spawn_sparks(
         fx_group, entity, PARRY_SPARK_COLORS, PARRY_SPARK_COUNT, (420.0, 340.0), upward=True
     )
 
 
 def spawn_break_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The burst when a guard breaks, heavier than a guard spark and in the break colour."""
     return _spawn_sparks(fx_group, entity, BREAK_SPARK_COLORS, BREAK_SPARK_COUNT, (380.0, 300.0))
 
 

@@ -1,24 +1,15 @@
 """Velocity previews: the vector a sprite is moving along, and why.
 
-Split out of ``world_overlay_geo.py``, and one of the files the original audit
-named. It is a leaf by a wide margin -- five functions that touch nothing but
-the surface, and that nothing in the box pass calls back into.
+A leaf by a wide margin — five functions touching nothing but the surface, and
+that nothing in the box pass calls back into.
 
-**The colour is the content.** This is the one part of the world overlay whose
-job is answering a question rather than drawing a shape: a vector tells you
-whether an entity is walking, being knocked back, or guarding against a parry,
-and the colour is how it says so. The two predicates here are what turn a
-position into an explanation, and both are cases the game actually produces --
-there is no "unknown" to fall back on, which is why they are not one function
-with a default.
+The colour is the content. This is the one part of the world overlay whose job
+is answering a question rather than drawing a shape: the vector says whether an
+entity is walking, being knocked back or guarding against a parry, and the two
+predicates here are what turn a position into an explanation.
 
-**A class for the painter, functions for the predicates.** ``draw_velocity``
-and ``draw_velocity_arrow`` share the surface, so they are a class with a
-surface; the predicates read a sprite and reach for nothing, so they are plain
-functions. That is the same split ``world_overlay_shared`` already draws, and it
-is why they are callable as ``is_parry_flash(sprite)`` rather than through the
-class.
-"""
+A class for the painter, plain functions for the predicates: the painters share
+the surface, the predicates reach for nothing."""
 
 from __future__ import annotations
 
@@ -161,6 +152,7 @@ def arrow_outline(
 
 
 def is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
+    """Whether the vector is a parry's flash (gold) rather than locomotion."""
     status = getattr(sprite, "reaction_status", None)
     if not isinstance(status, ReactionStatus):
         return False

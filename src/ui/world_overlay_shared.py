@@ -1,33 +1,23 @@
-"""The vocabulary the other overlay modules share: sprite facts, annotation placement, frame bookkeeping.
+"""The vocabulary the other overlay modules share.
 
-Extracted from ``world_ui.py`` as the first step of the split, and deliberately
-first because it is a leaf. ``world_overlay_geo``, ``_cards`` and ``_panels``
-all have to answer "what is this sprite" and "where may I put this rectangle"
-before they can do anything else, and all three have to agree on which
-annotations this frame has already claimed. Everything here is either a fact
-read off a sprite, a rectangle adjusted against the display, or the per-frame
-bookkeeping that lets the box pass and the card pass talk without importing
-each other.
+Three kinds of thing, all leaves: facts read off a sprite (faction, name,
+colours), rectangles adjusted against the display (clamp, dodge), and the
+per-frame `AnnotationSink` that lets the box pass and the card pass talk without
+importing each other.
 
-**Two unrelated things in one module, on purpose.** The sprite facts (faction,
-name, colours) and the annotation placement (clamp, dodge) have nothing to do
-with each other, and the reason they share a file is the *direction* of the
-dependencies rather than the subject matter: both are leaves, and both are
-needed by the same three callers. Folding them into ``_geo`` instead would
-have made the geometry module the thing everything imports, which is how a
-leaf stops being a leaf.
+The sprite facts and the placement rule have nothing to do with each other and
+share a file anyway, because the direction of the dependencies is what matters:
+both are leaves, and both are needed by the same three callers. Folding them
+into `_geo` would make the geometry module the thing everything imports.
 
-**Stateless, like ``world_overlay_bars``.** ``clamp_annotation`` and
-``dodge_annotation`` need the display width and the tier gap, so they take
-them as arguments instead of holding a surface. Same trade as the bars made,
-same reason: a module that owns a surface has a lifecycle to maintain at every
-resize, and the caller already has to pass the surface.
+Stateless, like the bars: `clamp_annotation` and `dodge_annotation` take the
+display width and the tier gap as arguments rather than holding a surface,
+because a module that owns a surface has a resize lifecycle to maintain and the
+caller already has the surface to pass.
 
-``dodge_annotation`` is currently unreachable -- the attack header is always
-placed clear of the only obstacle it is ever handed, its own entity's tiers.
-It is kept because it is the documented contract of the placement rule, not
-because a test needs it: neutering it leaves the entire suite green.
-"""
+`dodge_annotation` is currently unreachable — the attack header is always placed
+clear of the only obstacle it is ever handed. It stays because it is the
+documented contract of the placement rule: neutering it leaves the suite green."""
 
 from __future__ import annotations
 
@@ -90,6 +80,7 @@ def display_name(sprite: pygame.sprite.Sprite) -> str:
 
 
 def faction(sprite: pygame.sprite.Sprite) -> str | None:
+    """The sprite's faction, or None when it has none."""
     return getattr(sprite, "faction", None)
 
 

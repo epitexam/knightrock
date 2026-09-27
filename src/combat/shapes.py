@@ -1,3 +1,19 @@
+"""Collision shapes, and the tests that answer "do these two touch".
+
+Four pose kinds -- AABB, circle, capsule, OBB -- and one rule: a pose is a
+centre plus a size, never a pygame rect, so it can be rotated. The
+narrow-phase tests are the `*_aabb_intersects` family, one per kind, each
+rejecting a pose of the wrong kind rather than guessing. `shape_*_intersects`
+dispatches on the kinds involved, and every test is tolerant by `_EPSILON`, so
+shapes resting exactly against each other count as touching instead of
+flickering between states.
+
+Sweeping is the other half. A fast body can pass through a target between two
+frames, so `swept_*_intersects` walks the pair from start to end and tests the
+poses along the way. `broadphase_aabb` is the cheap bound to put in a spatial
+hash, and `ease` / `interpolate_angle` are what drive a pose from one keyframe
+to the next."""
+
 from __future__ import annotations
 
 import math
@@ -83,6 +99,7 @@ def _bounds(aabb: pygame.FRect) -> tuple[float, float, float, float]:
 
 
 def aabb_aabb_intersects(first: pygame.FRect, second: pygame.FRect) -> bool:
+    """Two boxes overlap, epsilon-tolerant."""
     first_left, first_top, first_right, first_bottom = _bounds(first)
     second_left, second_top, second_right, second_bottom = _bounds(second)
     return (
@@ -94,6 +111,7 @@ def aabb_aabb_intersects(first: pygame.FRect, second: pygame.FRect) -> bool:
 
 
 def circle_aabb_intersects(circle: ShapePose, aabb: pygame.FRect) -> bool:
+    """A circle against a box: closest point on the box to the centre."""
     if circle.kind is not ShapeKind.CIRCLE:
         raise ValueError("circle_aabb_intersects requires a circle pose")
     radius = circle.size[0] / 2.0
@@ -133,6 +151,7 @@ def _segment_intersects_aabb(
 
 
 def capsule_aabb_intersects(capsule: ShapePose, aabb: pygame.FRect) -> bool:
+    """A capsule against a box, by segment distance capped at the radius. The two circles at either end of the segment are not enough on their own -- a box straddling the middle of a long capsule touches it without being near either cap, which is what the segment distance is for."""
     if capsule.kind is not ShapeKind.CAPSULE:
         raise ValueError("capsule_aabb_intersects requires a capsule pose")
     length, diameter = capsule.size
@@ -188,6 +207,7 @@ def _sat_intersects(
 
 
 def obb_aabb_intersects(obb: ShapePose, aabb: pygame.FRect) -> bool:
+    """A turned box against a box, by the separating axis theorem. An AABB is a turned box with a zero angle, so both sides go through the same three-axis test rather than growing a special case."""
     if obb.kind is not ShapeKind.OBB:
         raise ValueError("obb_aabb_intersects requires an OBB pose")
     left, top, right, bottom = _bounds(aabb)
@@ -205,6 +225,7 @@ def obb_aabb_intersects(obb: ShapePose, aabb: pygame.FRect) -> bool:
 
 
 def obb_obb_intersects(first: ShapePose, second: ShapePose) -> bool:
+    """Two turned boxes, by the separating axis theorem."""
     if first.kind is not ShapeKind.OBB or second.kind is not ShapeKind.OBB:
         raise ValueError("obb_obb_intersects requires two OBB poses")
     return _sat_intersects(
@@ -218,6 +239,7 @@ def obb_obb_intersects(first: ShapePose, second: ShapePose) -> bool:
 
 
 def shape_aabb_intersects(shape: ShapePose, aabb: pygame.FRect) -> bool:
+    """Dispatch a pose against a box on the pose's kind."""
     if shape.kind is ShapeKind.AABB:
         shape_aabb = pygame.FRect(
             shape.position[0] - shape.size[0] / 2.0,
@@ -290,6 +312,7 @@ def _capsule_segment(capsule: ShapePose) -> tuple[tuple[float, float], tuple[flo
 
 
 def shape_shape_intersects(first: ShapePose, second: ShapePose) -> bool:
+    """Dispatch a pose against a pose on the kinds involved. AABB is the degenerate case it looks like: an axis-aligned box against anything else is the same test as that anything against a box."""
     if first.kind is ShapeKind.OBB and second.kind is ShapeKind.OBB:
         return obb_obb_intersects(first, second)
     if first.kind is ShapeKind.AABB:
@@ -354,6 +377,7 @@ def swept_shape_shape_intersects(
     *,
     iterations: int = _DEFAULT_SWEEP_ITERATIONS,
 ) -> bool:
+    """Do two poses touch at any point between two frames? The endpoints are tested first, because that is the common answer, then the pair is walked in `iterations` steps. Sampling is what it is: a step wide enough to tunnel past a thin target is the bug this exists to catch, which is why the count is a setting and not a constant."""
     if first_start.kind is not first_end.kind or second_start.kind is not second_end.kind:
         raise ValueError("Swept poses must use the same shape kind")
     if shape_shape_intersects(first_start, second_start) or shape_shape_intersects(
@@ -371,6 +395,7 @@ def swept_shape_shape_intersects(
 
 
 def broadphase_aabb(shape: ShapePose) -> pygame.FRect:
+    """The cheap axis-aligned bound of a pose, for a spatial hash. Loose is the point -- it has to be cheap enough to compute for every pose every frame, so it is generous rather than tight."""
     center_x, center_y = shape.position
     if shape.kind is ShapeKind.CIRCLE:
         radius = shape.size[0] / 2.0
@@ -407,6 +432,7 @@ def broadphase_aabb(shape: ShapePose) -> pygame.FRect:
 
 
 def ease(kind: EasingKind, progress: float) -> float:
+    """Ease a 0..1 progress through a curve, clamped at both ends. Raises on a non-finite progress rather than propagating it: an easing function that returns NaN puts the pose somewhere no collision test can reason about, and the failure surfaces a long way from its cause."""
     if not math.isfinite(progress):
         raise ValueError("Easing progress must be finite")
     clamped = min(1.0, max(0.0, progress))
@@ -429,6 +455,7 @@ def interpolate_angle(
     progress: float,
     easing: EasingKind = EasingKind.LINEAR,
 ) -> float:
+    """Interpolate an angle the short way round, then ease it. A naive lerp turns a 350 -> 10 degree turn into a 340 degree spin the other way; the wrapping is what stops an attack facing the wrong way."""
     if not math.isfinite(start) or not math.isfinite(end):
         raise ValueError("Angles must be finite")
     if progress <= 0.0:
@@ -462,6 +489,7 @@ def swept_intersects_aabb(
     *,
     iterations: int = _DEFAULT_SWEEP_ITERATIONS,
 ) -> bool:
+    """Does a moving pose touch a box at any point between two frames? The axis-aligned half of `swept_shape_shape_intersects`, and the one the contact system actually calls."""
     if iterations < 2:
         raise ValueError("A swept test requires at least two iterations")
     if start.kind is not end.kind:

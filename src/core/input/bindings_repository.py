@@ -165,6 +165,7 @@ def _parse_combo_map(data: object, allowed: set[InputAction]) -> ComboMap:
 
 
 def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
+    """Serialise back to the on-disk schema, the exact inverse of `bindings_from_dict`."""
     gameplay = bindings.gameplay
     menu = bindings.menu
     return {
@@ -304,5 +305,6 @@ class BindingsRepository:
 
 
 def default_bindings_path() -> Path:
+    """Where bindings live when nothing overrides it: beside the settings, not in the user config."""
     base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"

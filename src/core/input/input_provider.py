@@ -11,6 +11,7 @@ from src.core.settings import Input as InputSettings
 
 
 def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:
+    """Combine the three move sources into one axis. The keyboard axis is zero whenever the control screen has detached MOVE_X, so it can be passed unconditionally."""
     directions = {
         direction
         for direction in (

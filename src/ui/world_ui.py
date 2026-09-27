@@ -1,73 +1,26 @@
-"""World-space UI overlays for entities and combat debugging.
+"""The world overlay's facade: one frame of world-space drawing, in order.
 
-UX rules (debug readability pass):
-- Viewport culling: off-screen sprites draw nothing, not even labels.
-- Color by faction: blue hitbox = player, red = foe, grey = neutral. Hurtboxes
-  stay green, offensive boxes orange, projectiles draw their flight vector.
-- Label cards: each datum gets its own row (header, HP, attack, flags), each
-  token its own color — name by faction, HP by ratio, attack name in gold,
-  every flag in its semantic color. Rows never collapse into one running
-  sentence; static geometry (hazards, platforms, exits) gets an outline
-  only — no text.
-- Vertical stack (debug): entity, then its health bar, then one attack header
-  chip per attacker (gold name + phase:frame + badges, timeline bar tucked
-  underneath, leader line to the first attack box), then its label card —
-  each tier reserves room for the tiers painted below it, so no tier covers
-  another. Near the top of the screen the bar flips below the entity, the
-  header follows it, and the card takes the freed space above.
-- Attack box indices ride their own box (a haloed solid/hollow dot in the
-  box corner) instead of floating in the tier stack: one header chip per
-  attacker, no constellation of pills.
-- Hurtbox zones read by shape, never by text: empty zones keep the legacy
-  thin green outline; boosted zones (mult != 1.0) add a translucent fill + a
-  thicker outline in the zone color; guarded zones (tags) draw a dashed seal.
-  Names, mults and tags live on the label card's ``ZONE`` row, never in the
-  world — zero glyphs to overlap, whatever the zone count.
-- Velocity vectors are arrows, not hairlines: a tapered shaft, a filled
-  triangular head, a pivot dot on the entity and a dark rim so the silhouette
-  survives a bright sky. The head length is clamped, and a minimum drawn
-  length keeps slow vectors readable.
-- A velocity vector is painted red while the typed hit cause is fresh **or**
-  while the knockback state still carries the entity (a launch outlives the
-  freshness window), gold on a parry, yellow for locomotion.
-- Labels never stack: each label dodges upward (then below its entity) to a
-  free slot, and is dropped rather than overdrawn when no slot is left.
-- Health bars and attack annotations are placement obstacles too: the
-  placer keeps label cards clear of everything drawn between the entity
-  and its card, so neither a bar nor a timeline can end up painted over a
-  card drawn the same frame — and annotation text dodges the bar painted
-  after it. Every world-space annotation clamps back inside the display
-  instead of clipping at the screen edge.
-- The COMBAT counter panel joins the screen-space debug column flow — it
-  leads it, right under the pinned PERFORMANCE gauge — instead of blitting
-  at a fixed spot where side panels could overdraw it; it stays gated
-  behind ``Debug``.
-- Layers are toggleable at runtime (F1 boxes, F2 labels, F3 velocities,
-  F4 statics) via :meth:`WorldUI.toggle`, wired in ``GameplayScene``.
+Two passes over the same sprite list. The producer draws the geometry and
+registers the screen space it took (`world_overlay_geo`); the consumer then
+places one label card per sprite around it (`world_overlay_cards`). That order
+is the contract -- a card that knew about a tier before the box pass drew it
+would dodge nothing -- so it is expressed here and nowhere else.
 
-Where the numbers live
-----------------------
-Every dimension is in :mod:`src.ui.world_overlay_metrics`, in world units,
-and is multiplied by the pixel density exactly once, by
-``WorldOverlayMetrics``. They used to be module constants here, interleaved
-with the drawing, which is the worst of both: a constant that only matters to
-the label placer is invisible when you are looking at the box drawer, and the
-drawing is buried under four hundred lines of tables no reader of it needs.
+What stays on the facade is what has to: the layer toggles, the frame loop, the
+dimensions (`world_overlay_metrics`), the health bars (`world_overlay_bars`),
+and the screen panels (`world_overlay_panels`).
 
-What is still in this file
--------------------------
-The debug drawing, in five parts that are being moved out one at a time:
-label cards, debug boxes, velocity arrows, the screen-space panels, and --
-already gone -- the health bars and the dimensions.
+The bars went first, and on their own argument rather than their size.
+`Level.draw` calls them *before* it checks `DEBUG`, so they are painted on every
+frame of a real game while everything else here sits behind `F1`. A production
+path inside a debug module is the arrangement that decays quietly: it gets
+reviewed with the debug layer's eye, and its tests get counted against the debug
+layer's coverage.
 
-The health bars went first and on their own argument rather than their size:
-``Level.draw`` calls them *before* it checks ``DEBUG``, so they are painted
-on every frame of a real game while everything else here is behind ``F1``.
-A production path inside a debug module is the arrangement that decays
-quietly, because it gets reviewed with the debug layer's eye and its tests
-get counted against the debug layer's coverage. See
-:mod:`src.ui.world_overlay_bars`.
-"""
+Every dimension is in world units and multiplied by the pixel density exactly
+once, in `WorldOverlayMetrics`. They used to be module constants here,
+interleaved with the drawing, which is the worst of both: a constant that only
+matters to the label placer is invisible while you are reading the box drawer."""
 
 from collections.abc import Iterable
 from typing import TYPE_CHECKING

@@ -1,22 +1,13 @@
 """Screen-space panels: the COMBAT readout and the world-space clash ring.
 
-Extracted from ``world_ui.py`` as the last step of the split. Unlike the two
-drawing passes, none of this is per-sprite work: it is the overlay's
-screen-space furniture, and it is the only part that owns state between frames.
+The overlay's screen furniture, and the only layer that owns state between
+frames: the cached metrics lines, the whiff count, the tick counter, the
+assembled panel lines, and the clash point with its remaining lifetime.
 
-**A class, and this one earns it on state rather than on drawing.** Six
-attributes live here -- the cached metrics lines, the whiff count, the tick
-counter, the assembled panel lines, and the clash point with its remaining
-lifetime. Threading those through signatures would be worse than holding them.
-
-**A public attribute on the facade, not six delegating wrappers.** These six
-methods are the overlay's API for ``level.py`` and ``ui_manager.py``, so
-keeping them on ``WorldUI`` as one-line relays would have meant twelve lines of
-pure boilerplate existing only to avoid renaming thirty call sites -- and
-boilerplate is exactly what rots unnoticed. ``world_ui.panels.update_metrics``
-says which concern it is; ``world_ui.update_metrics`` says nothing once the
-concern has moved.
-"""
+Reached as `world_ui.panels`, not as six delegating wrappers on the facade.
+These are the overlay's API for `level.py` and `ui_manager.py`, and relaying
+them would have meant twelve lines of boilerplate whose only purpose is to avoid
+renaming thirty call sites. The qualified spelling says which concern it is."""
 
 from __future__ import annotations
 
