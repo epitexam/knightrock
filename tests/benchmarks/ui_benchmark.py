@@ -110,10 +110,16 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
     pygame.init()
     pygame.display.set_mode(size)
     surface = pygame.Surface(size)
+    # The renderer no longer builds the interface -- it is handed one, which is
+    # the whole point of the injected overlay. So the manager is held here to
+    # read the text cache off, instead of being reached back through the
+    # renderer as `renderer.ui_manager`, which stopped existing when the
+    # dependency was inverted.
+    ui = UIManager(surface)
     renderer = Renderer(
         surface,
         Camera(Framing(float(size[0]), float(size[1]))),
-        overlay=UIManager(surface),
+        overlay=ui,
     )
     panel_samples: list[float] = []
     player = _player()
@@ -138,7 +144,7 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
         "p95": _percentile(panel_samples, 0.95),
         "p99": _percentile(panel_samples, 0.99),
         "max": max(panel_samples),
-        "cache_entries": float(renderer.ui_manager.renderer.text_cache_stats["entries"]),
+        "cache_entries": float(ui.renderer.text_cache_stats["entries"]),
     }
     result.update(_menu_samples(size, iterations))
     return result

@@ -89,7 +89,7 @@ GOLDEN_PLACED = [
 MANIFEST = {
     "facade": (
         "draw_debug_overlays metrics stroke toggle surface draw_health_bars "
-        "_health_bar_rect _has_health_bar"
+        "_health_bar_rect annotation_rects annotation_obstacles"
     ),
     "shared": (
         "debug_reference display_name faction hitbox_color label_color "

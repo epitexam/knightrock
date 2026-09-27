@@ -82,9 +82,6 @@ from src.ui.world_overlay_bars import (
     draw_health_bars as _draw_health_bars,
 )
 from src.ui.world_overlay_bars import (
-    has_health_bar as _has_health_bar,
-)
-from src.ui.world_overlay_bars import (
     health_bar_rect as _health_bar_rect,
 )
 from src.ui.world_overlay_cards import CardLayer, LabelRequest
@@ -346,20 +343,18 @@ class WorldUI:
     # -- health bars ----------------------------------------------------------
     #
     # Delegated to `src/ui/world_overlay_bars.py`, which holds the real
-    # implementation. These four stay because the label code below needs them
-    # to dodge around a bar it never draws (`health_bar_rect` answers "where
-    # is the bar for this sprite"), and the renderer reaches the draw pass
-    # through the overlay port by this name.
+    # implementation. Both stay on the facade: the renderer reaches the draw
+    # pass through the overlay port under ``draw_health_bars``, and
+    # ``_health_bar_rect`` answers "where is the bar for this sprite" for the
+    # callers placing cards around one. The gate that decides *whether* a bar
+    # exists is not among them -- that is ``has_health_bar`` inside the bars
+    # module, used by ``draw_health_bars`` itself, and relaying it here would
+    # only have left a dead name on the facade once the cards moved out.
     #
     # The bars are the one part of this file that is **not** debug-only:
     # `Level.draw` calls them before it checks `DEBUG`, so they are painted on
-    # every frame of a real game. They are worth not sharing a module with
+    # every frame of a real game. They were worth not sharing a module with
     # 1800 lines of F1-layer drawing.
-
-    @staticmethod
-    def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether a world-space bar will be drawn for this sprite."""
-        return _has_health_bar(sprite)
 
     def _health_bar_rect(
         self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect
