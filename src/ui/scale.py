@@ -77,16 +77,6 @@ def screen_scale(density: float) -> float:
     return min(max(1.0, density), PANEL_MAX_SCALE)
 
 
-def stroke_width(density: float, base: int = 1) -> int:
-    """An outline of ``base`` art pixels, in whole target pixels.
-
-    Never zero: at a density below one -- a window smaller than the framing --
-    a rounded 0 would mean *not drawing the outline at all*, which is the one
-    outcome a debug tool must never produce.
-    """
-    return max(1, round(base * max(1.0, density)))
-
-
 #: How many quantised font sizes a view keeps. A window drag walks through
 #: hundreds of densities; each distinct pixel size is three ``SysFont`` calls, so
 #: the cache is emptied rather than grown when it gets unreasonable. The cost of

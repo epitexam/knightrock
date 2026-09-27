@@ -382,10 +382,6 @@ class Game:
             self.flush_settings()
             pygame.quit()
 
-    def quit(self) -> None:
-        """Stop the loop at the end of the current frame."""
-        self.running = False
-
     def _frame_delta(self) -> float:
         """Seconds elapsed since the previous frame, for the fixed-step accumulator.
 

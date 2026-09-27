@@ -787,32 +787,6 @@ class WorldUI:
                 break
         return self._clamp_annotation(rect)
 
-    def _annotation_chip(
-        self,
-        label: pygame.Surface,
-        position: tuple[int, int],
-        obstacles: list[pygame.Rect] | None = None,
-    ) -> pygame.Rect:
-        """Draw a dark pill behind a little world annotation; return its rect.
-
-        The pill is sized around the glyph strip, dodges/clamps like any
-        other annotation tier, then paints the card-style fill + border
-        with the glyphs on top: tiny text stays legible on any sky instead
-        of floating as bare white writing.
-        """
-        rect = pygame.Rect(position[0], position[1], label.get_width(), label.get_height())
-        chip = rect.inflate(self.metrics.chip_pad * 2, self.metrics.chip_pad * 2)
-        if obstacles:
-            chip = self._dodge_annotation(chip, obstacles)
-        else:
-            chip = self._clamp_annotation(chip)
-        panel = pygame.Surface(chip.size, pygame.SRCALPHA)
-        pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
-        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
-        self.surface.blit(panel, chip.topleft)
-        self.surface.blit(label, (chip.x + self.metrics.chip_pad, chip.y + self.metrics.chip_pad))
-        return chip
-
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
         combat = getattr(sprite, "combat", None)

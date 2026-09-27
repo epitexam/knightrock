@@ -109,3 +109,54 @@ def test_make_programmatic_level_data_is_idempotent() -> None:
 
     assert len(first.object_layers) == len(second.object_layers)
     assert first.object_layers["Entities"].objects[0].name == "player"
+
+
+# --- Collision grid wiring -------------------------------------------------
+
+
+def test_the_player_is_wired_to_the_levels_collision_grid(build_level) -> None:
+    """The level's grid must reach the player at *construction*, not after.
+
+    The regression this pins: the grid used to be assigned in a loop that ran
+    after the world was built, so any entity born later — a runtime spawn, a
+    factory, a future wave system — fell back to scanning every collider in the
+    level. Measured on the shipped map that is a silent x2.4 on the whole
+    simulation: no exception, no log, correct physics, worse frame time.
+    """
+    level = build_level()
+
+    assert level.player.spatial_hash is level.spatial_hash
+
+
+def test_every_entity_the_level_builds_is_wired(build_level) -> None:
+    """No entity may come out of the build without the grid."""
+    level = build_level()
+
+    unwired = [
+        entity
+        for entity in level.groups.entity_sprites
+        if getattr(entity, "spatial_hash", None) is not level.spatial_hash
+    ]
+
+    assert unwired == []
+
+
+def test_moving_platforms_are_wired_too(build_level) -> None:
+    """Platforms probe the terrain they would phase through, every tick."""
+    level = build_level()
+
+    for platform in level.groups.moving_platforms:
+        assert platform.spatial_hash is level.spatial_hash
+
+
+def test_the_grid_is_actually_populated(build_level) -> None:
+    """Wiring an *empty* grid would pass the checks above and buy nothing.
+
+    The grid has to hold the level's colliders, and the test above — a level
+    built from programmatic data — has none, so this one is about the
+    relationship rather than the count.
+    """
+    level = build_level()
+
+    # The grid indexes exactly the collision sprites it was handed.
+    assert len(level.spatial_hash._cells_by_sprite) == len(level.groups.collision_sprites)

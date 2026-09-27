@@ -19,6 +19,7 @@ from src.core.level.systems.spawn_system import (
 from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
+from src.physics.spatial_hash import SpatialHash
 from tests.unit.helpers import make_entity
 
 
@@ -192,6 +193,54 @@ def test_spawn_juggle_dummy_is_airborne_and_rising() -> None:
 
 def test_debug_juggle_key_is_bound() -> None:
     assert pygame.K_c == DEBUG_JUGGLE_KEY
+
+
+# --- Runtime spawns join the collision grid --------------------------------
+#
+# These pin the regression the level-level wiring fixed. A grid assigned after
+# the world is built never reaches an entity the spawner creates later, and the
+# symptom is not an error: the enemy works, hits what it should, and quietly
+# costs a scan of every collider in the level on every one of its sub-steps.
+
+
+def test_a_spawned_enemy_is_wired_to_the_grid() -> None:
+    groups = SpriteGroups()
+    grid = SpatialHash(cell_size=128)
+    system = SpawnSystem(groups, spatial_hash=grid)
+    player = _player()
+
+    system._spawn_enemy("goblin", player)
+
+    spawned = [enemy for enemy in groups.entity_sprites if enemy is not player]
+    assert spawned, "the spawner should have produced an enemy"
+    for enemy in spawned:
+        assert enemy.spatial_hash is grid
+
+
+def test_a_juggle_dummy_is_wired_to_the_grid() -> None:
+    groups = SpriteGroups()
+    grid = SpatialHash(cell_size=128)
+    system = SpawnSystem(groups, spatial_hash=grid)
+
+    dummy = system.spawn_juggle_dummy(_player())
+
+    assert dummy is not None
+    assert dummy.spatial_hash is grid
+
+
+def test_a_spawn_without_a_grid_still_works() -> None:
+    """``None`` stays legal: standalone use is correct, only slower.
+
+    The grid is an optimization, not a precondition, so a system built without
+    one must keep producing working entities rather than raising.
+    """
+    groups = SpriteGroups()
+    system = SpawnSystem(groups)
+
+    dummy = system.spawn_juggle_dummy(_player())
+
+    assert dummy is not None
+    assert dummy.spatial_hash is None
 
 
 def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:

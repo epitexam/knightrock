@@ -182,17 +182,3 @@ class Metrics:
 
     def small_text_at(self, text_scale: float) -> int:
         return font_size(DESIGN_SMALL_TEXT, text_scale)
-
-    def text_scale_that_fits(self, needed_design: float) -> float:
-        """The scale to draw text at so ``needed_design`` pixels fit in ``available``.
-
-        This is what "responsive" means for a list with a fixed number of rows:
-        the *text* gives way, because a row that is shorter than its own glyphs
-        is both unreadable and unclickable, while a smaller font is merely small.
-        The result is clamped so it can never grow past the requested scale nor
-        shrink below :data:`MIN_TEXT_RATIO` of it -- below that the interface
-        stops being an interface.
-        """
-        available = max(1, needed_design)
-        floor = self.scale * MIN_TEXT_RATIO
-        return min(self.scale, max(floor, available / max(1.0, DESIGN_ITEM_TEXT)))

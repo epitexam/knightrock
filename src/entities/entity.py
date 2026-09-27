@@ -743,17 +743,9 @@ class Entity(Sprite):
         """Called when the entity touches a wall while airborne."""
         pass
 
-    def apply_gravity(self, delta_time: float) -> None:
-        """Apply gravity with drag, respecting wall sliding."""
-        self._movement.apply_gravity(delta_time)
-
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal acceleration and control based on move_axis."""
         self._movement.apply_horizontal_movement(delta_time)
-
-    def check_contact(self) -> None:
-        """Update surface contact flags."""
-        self._movement.check_contact()
 
     def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""

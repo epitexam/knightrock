@@ -141,6 +141,77 @@ def test_platform_blocked_by_terrain_behaves_the_same_through_the_spatial_hash(
     assert trace == expected
 
 
+def test_a_platform_indexed_in_the_grid_does_not_block_itself() -> None:
+    """A pad in the collision grid must not be its own obstacle.
+
+    This is the shape a real level has: ``MovingPlatform`` joins
+    ``collision_sprites`` so entities collide with it, and the level indexes
+    that group. The grid then hands the pad back from its own query, the
+    candidate always overlaps it, and the pad reads as permanently blocked —
+    it does not move at all, whatever its waypoints say.
+
+    The bare scan has always excluded platforms (``not hasattr(s,
+    "waypoints")``), so this is the grid path disagreeing with it about the
+    one thing both are supposed to answer.
+    """
+    groups = SpriteGroups()
+    floor = Sprite((0.0, 32.0), surf=pygame.Surface((256, 32)))
+    groups.collision_sprites.add(floor)
+    platform = MovingPlatform(
+        (0.0, 0.0),
+        pygame.Surface((64, 32)),
+        waypoints=[(0.0, 0.0), (200.0, 0.0)],
+        speed=50.0,
+        groups=(groups.all_sprites, groups.collision_sprites),
+        collision_sprites=groups.collision_sprites,
+    )
+    grid = SpatialHash(cell_size=128)
+    grid.add_all(groups.collision_sprites)
+    platform.spatial_hash = grid
+
+    for _ in range(40):
+        update_moving_platform(platform, 0.5)
+
+    assert platform.rect.x > 0.0, "the pad stayed put: it blocked itself"
+
+
+def test_the_grid_and_the_bare_scan_agree_when_the_pad_is_indexed() -> None:
+    """Indexed and unindexed must reach the same place, tick for tick."""
+    groups = SpriteGroups()
+    floor = Sprite((0.0, 32.0), surf=pygame.Surface((256, 32)))
+    blocker = Sprite((120.0, 0.0), surf=pygame.Surface((64, 32)))
+    groups.collision_sprites.add(floor)
+    groups.collision_sprites.add(blocker)
+
+    def build() -> MovingPlatform:
+        return MovingPlatform(
+            (0.0, 0.0),
+            pygame.Surface((64, 32)),
+            waypoints=[(0.0, 0.0), (200.0, 0.0)],
+            speed=50.0,
+            groups=(groups.all_sprites, groups.collision_sprites),
+            collision_sprites=groups.collision_sprites,
+        )
+
+    indexed = build()
+    grid = SpatialHash(cell_size=128)
+    grid.add_all(groups.collision_sprites)
+    indexed.spatial_hash = grid
+
+    reference = build()
+    indexed_trace: list[float] = []
+    reference_trace: list[float] = []
+    for _ in range(40):
+        update_moving_platform(indexed, 0.5)
+        update_moving_platform(reference, 0.5)
+        indexed_trace.append(indexed.rect.x)
+        reference_trace.append(reference.rect.x)
+
+    # Both stop at the wall rather than phasing through it...
+    assert max(indexed_trace) <= 120.0
+    assert indexed_trace == reference_trace
+
+
 def test_platform_without_collision_reference_keeps_legacy_ghost_move() -> None:
     blocker = SimpleNamespace(hitbox=pygame.FRect(90.0, 0.0, 64.0, 32.0))
     platform = MovingPlatform(

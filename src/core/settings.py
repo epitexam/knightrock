@@ -24,7 +24,7 @@ class Display:
     raising it cannot silently change what the game presents.
     """
 
-    FPS = 60
+    FPS = 180
     TITLE = "Knightrock"
 
 
