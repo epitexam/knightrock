@@ -19,7 +19,7 @@ Holding either would mean a resize path that has to remember to push new values
 in here -- the bug ``WorldUI.surface`` was already fixed for once.
 
 ``health_bar_rect`` comes from the bars module directly rather than through the
-façade: it is a fact about the world, and the façade is a seam for its own
+facade: it is a fact about the world, and the facade is a seam for its own
 callers, not a relay between its layers.
 """
 

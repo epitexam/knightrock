@@ -32,7 +32,7 @@ def _lunge_definition() -> object:
 
 
 def test_lunge_frame1_sweeps_transition_tick() -> None:
-    """(b) Lunge frame 1 : seed startup -> ACTIVE post-lunge, meme tick.
+    """(b) Lunge frame 1: seed startup -> ACTIVE after the lunge, same tick.
 
     Geometrie (verifiee sur le repro 2.1 : box.x = attacker.x + 10) :
     attaquant en x=10 -> seed (20..40) chevauche la hurtbox cible (20..60) ;
@@ -137,7 +137,7 @@ def _run_sweep_tick(attacker, target) -> CombatSystem:
 
 
 def test_fine_target_miss_discrete_hit_via_sweep() -> None:
-    """(a) Repro 2.1 : saut 40 px, ACTIVE, cible fine.
+    """(a) Repro 2.1: 40px jump, ACTIVE, thin target.
 
     Miss en discret (boxes finales), hit via sweep — le test rejoue la
     capture frontiere comme `gameplay_loop.update`.
@@ -153,7 +153,7 @@ def test_fine_target_miss_discrete_hit_via_sweep() -> None:
     attacker.hitbox.x += 60.0  # saut + lunge du porteur (60 px < borne MAX)
     attacker.combat.sync_attack_box()  # cur box (70..90) : discret, rate (25..65)
 
-    # Discret : les boxes finales ne se recouvrent plus.
+    # Discret: the final boxes no longer overlap.
     assert attacker.combat.attack_box.colliderect(target.hurtbox) is False
     system = _run_sweep_tick(attacker, target)
     # Sweep : la box seed (10..30) recouvre la hurtbox cur (15..55).
@@ -309,14 +309,14 @@ def test_dodge_within_one_tick_stays_hittable() -> None:
     target.hitbox.x += 5.0  # esquive > SWEEP_MIN au-dela du bord
     target.sync_rects()  # cur hurtbox (75..115) : discret, rate
 
-    # Cote cible seul : l union (70..115) ne rejoint toujours pas la box
+    # Target side only: the union (70..115) still does not reach the
     # d attaque (10..30) — la generosite ne fabrique pas de touche magique.
     assert attacker.combat.attack_box.colliderect(target.hurtbox) is False
     assert target.swept_hurtbox().colliderect(attacker.combat.attack_box) is False
 
-    # Face a un lunge, la meme esquive laisse passer le coup 1 tick :
-    # box cur (42..62) rate la hurtbox esquivée (65..105), mais les unions
-    # se recouvrent (box swept 10..62 vs cible swept 60..105).
+    # Against a lunge, the same dodge lets the hit through by one tick: the
+    # current box (42..62) misses the dodged hurtbox (65..105), but the swept
+    # boxes still overlap (swept box 10..62 vs swept target 60..105).
     attacker2 = entity_at(0.0, faction="A", definition=_lunge_definition())
     target2 = entity_at(60.0, faction="B")
     target2.capture_sweep_origin()  # prev (60..100)
@@ -343,7 +343,7 @@ def test_teleport_beyond_max_yields_no_phantom_contact() -> None:
     assert swept.size == cur.size
     assert swept.topleft == cur.topleft
 
-    # Bout en bout : le smear d une cible teleportee ne cree aucun contact.
+    # End to end: a teleported target's smear creates no contact.
     attacker = entity_at(0.0, faction="A", definition=attack(phase(size=(20.0, 20.0))))
     target = entity_at(2000.0, faction="B")
     attacker.combat.capture_attack_origin()
@@ -368,10 +368,10 @@ def test_owner_push_between_syncs_sweeps_full_width() -> None:
     attacker.combat.update(1 / 60)
     attacker.combat.sync_attack_box()  # 1er sync : cur (0..20), rate la cible
     attacker.hitbox.x += 30.0  # push/separation entre les deux syncs
-    attacker.combat.sync_attack_box()  # 2e sync : cur (30..50)
+    attacker.combat.sync_attack_box()  # second sync: cur (30..50)
 
-    # prev (0..20) intact (aucune capture entre les deux syncs) : sweep
-    # pleine largeur, alors que cur seul reste sous la cible.
+    # prev (0..20) intact (nothing captured between the two syncs): a
+    # full-width sweep, while cur alone still falls short of the target.
     swept = attacker.combat.hitbox.swept_rects[0]
     assert swept.width == pytest.approx(50.0)
     system = _run_sweep_tick(attacker, target)

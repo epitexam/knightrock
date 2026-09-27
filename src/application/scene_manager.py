@@ -77,7 +77,7 @@ class SceneManager:
             self.input_dispatcher.dispatch(self.current, event)
 
     def poll_held_repeats(self) -> None:
-        """Forward les repeats joystick (stick tenu sans nouvel event)."""
+        """Forward joystick repeats (stick held with no new event)."""
         if self.current is not None:
             self.input_dispatcher.poll_held_repeats(self.current)
 

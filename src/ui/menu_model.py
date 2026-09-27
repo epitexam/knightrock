@@ -157,9 +157,9 @@ class MenuModel:
         variant: str | None = None,
     ) -> tuple[str | None, str | None]:
         if self.is_release(variant):
-            # Le relâchement du stick ne doit jamais déplacer le curseur :
-            # sans ce garde, chaque press (move +1) était suivi d'un
-            # second move au release -> double-pas / sensation de lag.
+            # Releasing the stick must never move the cursor: without this
+            # guard every press (move +1) was followed by a second move on
+            # release -- a double step, which reads as lag.
             return None, variant
         if action is InputAction.UI_UP:
             return self.move(-1), variant

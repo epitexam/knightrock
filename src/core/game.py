@@ -379,11 +379,11 @@ class Game:
             logger.exception("Unable to persist the settings")
 
     def apply_bindings(self, bindings: InputBindings) -> None:
-        """Met à jour les bindings sans recréer l'affichage (rebinding en jeu).
+        """Update the bindings without rebuilding the window (in-game rebinding).
 
-        ``apply_settings`` reconstruit la fenêtre (échelle UI, plein écran…) :
-        inacceptable à chaque capture de touche de l'écran Contrôles. Ici on ne
-        persiste que les bindings et on réarme routeur + provider.
+        ``apply_settings`` rebuilds the window (UI scale, fullscreen...), which
+        is unacceptable on every key capture in the controls screen. This
+        persists the bindings and re-arms the router and provider only.
         """
         self.settings = self.settings.with_bindings(bindings)
         self.input_bindings = self.settings.bindings

@@ -260,7 +260,7 @@ def test_the_dpad_needs_only_a_partial_push(manager: SceneManager):
 
 
 def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
-    """Lot 2 : la croix puis le stick déplacent la sélection, le bouton A valide."""
+    """Batch 2: the d-pad then the stick move the selection, A confirms."""
     menu = MenuScene(manager.game)
     manager.switch(menu)
     start = menu.model.current_index
@@ -534,7 +534,7 @@ def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
 
 
 def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: Path) -> None:
-    """UI-5 : Options → Contrôles capture une touche et écrit settings.json."""
+    """UI-5: Options -> Controls captures a key and writes settings.json."""
     game = manager.game
     options = OptionsScene(game)
     manager.switch(options)
@@ -575,9 +575,9 @@ def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: P
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x))
 
     assert game.settings.bindings.menu.keyboard[InputAction.UI_DOWN] == pygame.K_x
-    # L'appui qui termine la capture était routé (X = ui_down) : neutralisé.
+    # The press that ends the capture was routed (X = ui_down): neutralised.
     assert menu_controls.model.current_index == 1
-    # Les écritures sont groupées par frame : la boucle les vide, ce test drive
+    # Writes are batched per frame: the loop drains them, and this test drives
     # le SceneManager sans boucle, il demande donc le flush explicitement.
     game.flush_settings()
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
@@ -608,7 +608,7 @@ def test_options_controls_is_a_category_with_two_submenus(manager: SceneManager)
 
 
 def test_controls_capture_cancels_with_escape_before_leaving(manager: SceneManager) -> None:
-    """ESC annule la capture ; un second ESC quitte l'écran."""
+    """ESC cancels the capture; a second ESC leaves the screen."""
     game = manager.game
     menu = MenuScene(game)
     manager.switch(menu)
@@ -692,7 +692,7 @@ def test_controls_rebinds_a_pad_button(manager: SceneManager) -> None:
 
 
 def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) -> None:
-    """§9 : chaque écran plein-écran se dessine (remplace les tests menu_panel)."""
+    """Section 9: every fullscreen scene draws (replaces the menu_panel tests)."""
     game = manager.game
     scenes: list[Scene] = [
         MenuScene(game),

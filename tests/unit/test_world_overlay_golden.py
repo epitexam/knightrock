@@ -78,14 +78,14 @@ GOLDEN_PLACED = [
 ]
 
 # Every method ``WorldUI`` had before the split, and the one module each one is
-# headed for. ``__init__`` is the façade's and is left out of the body below.
+# headed for. ``__init__`` is the facade's and is left out of the body below.
 # The tests that read this check it is total and single-assigned, and that each
-# name is on the façade or in its own module -- never both, never neither. A
+# name is on the facade or in its own module -- never both, never neither. A
 # method cannot be dropped or double-claimed by a typo in here.
 #
 # ``_health_color`` was in this list and is not any more: it did nothing but
 # call ``world_overlay_bars.health_colour``, and a card that needs an HP tint
-# now calls that directly instead of paying a hop through the façade.
+# now calls that directly instead of paying a hop through the facade.
 MANIFEST = {
     "facade": (
         "draw_debug_overlays metrics stroke toggle surface draw_health_bars "
@@ -121,7 +121,7 @@ MANIFEST = {
 # The module each extracted group is headed for, and the class holding it.
 # ``world_overlay_bars`` and ``world_overlay_shared`` are plain function
 # modules; the layers that draw are classes. A group whose module does not
-# exist yet is still sitting on the façade, which is the one state allowed to
+# exist yet is still sitting on the facade, which is the one state allowed to
 # be transient.
 MODULES = {
     "shared": ("src.ui.world_overlay_shared", None),
@@ -411,16 +411,16 @@ def test_manifest_is_total_and_single_assigned() -> None:
     """
     names = [name for group in MANIFEST.values() for name in group.split()]
     assert len(names) == len(set(names)), "a method is claimed by two modules"
-    assert MANIFEST["facade"], "the façade cannot be empty"
+    assert MANIFEST["facade"], "the facade cannot be empty"
 
 
 def test_manifest_names_live_in_exactly_one_place() -> None:
-    """Each name is on the façade or in its own module -- never both, never neither.
+    """Each name is on the facade or in its own module -- never both, never neither.
 
     This is the check that makes the split provable rather than hopeful. A
     method still sitting on ``WorldUI`` after its group was extracted shows up
     as a duplicate; a method lost on the way shows up as a hole, because the
-    union across the façade and the extracted modules has to equal the manifest
+    union across the facade and the extracted modules has to equal the manifest
     exactly.
     """
     import importlib
@@ -436,15 +436,15 @@ def test_manifest_names_live_in_exactly_one_place() -> None:
     for group, (path, layer) in MODULES.items():
         wanted = set(MANIFEST[group].split())
         # Half of `WorldUI`'s methods are private and half are not, so "is this
-        # name still on the façade" is asked of both spellings.
+        # name still on the facade" is asked of both spellings.
         pending = {name for name in wanted if name in on_facade or f"_{name}" in on_facade}
         try:
             module = importlib.import_module(path)
         except ModuleNotFoundError:
-            # Not extracted yet, so every name must still be on the façade.
+            # Not extracted yet, so every name must still be on the facade.
             # Anything else means a method went missing between two phases.
             assert pending == wanted, (
-                f"{group} is neither extracted nor still on the façade: {sorted(wanted - pending)}"
+                f"{group} is neither extracted nor still on the facade: {sorted(wanted - pending)}"
             )
             accounted |= wanted
             continue
@@ -470,6 +470,6 @@ def test_manifest_names_live_in_exactly_one_place() -> None:
         accounted |= wanted
 
     facade = set(MANIFEST["facade"].split())
-    assert facade <= on_facade, f"the façade lost {sorted(facade - on_facade)}"
+    assert facade <= on_facade, f"the facade lost {sorted(facade - on_facade)}"
     accounted |= facade
     assert accounted == {name for group in MANIFEST.values() for name in group.split()}

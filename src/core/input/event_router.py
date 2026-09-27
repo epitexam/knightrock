@@ -25,18 +25,18 @@ class RoutedInput:
     variant: str | None = None
 
 
-# Priorité fixe des boutons de menu : l'écran Contrôles réécrit les maps, donc
-# l'ordre du dict du fichier n'est plus un contrat. UI_BACK passe avant
-# UI_CANCEL pour que le bouton B reste le retour même quand les deux actions le
-# partagent (défaut historique), UI_CONFIRM avant tout le reste.
+# Fixed menu-button priority. The controls screen rewrites the maps, so a
+# file's dict order is no longer a contract. UI_BACK comes before UI_CANCEL so
+# the B button stays "back" even where both actions share it (the historical
+# default), and UI_CONFIRM comes before everything.
 UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
     InputAction.UI_CONFIRM,
     InputAction.UI_BACK,
     InputAction.UI_CANCEL,
 )
 
-# Seules les directions de navigation.auto-répètent au clavier : répéter une
-# validation ou un retour ferait ouvrir puis refermer un menu en boucle.
+# Only the navigation directions auto-repeat on the keyboard: repeating a
+# confirm or a back would open a menu and immediately close it again.
 REPEATABLE_UI_ACTIONS: frozenset[InputAction] = frozenset(
     {
         InputAction.UI_UP,
@@ -174,7 +174,7 @@ class EventRouter:
         return None
 
     def _menu_button_action(self, button: int) -> InputAction | None:
-        """Action de menu émise par ``button`` (priorité fixe, pas d'ordre dict)."""
+        """The menu action ``button`` emits (fixed priority, not dict order)."""
         bindings = self._bindings.menu.gamepad_buttons
         for action in UI_BUTTON_PRIORITY:
             if bindings.get(action) == button:
@@ -215,8 +215,8 @@ class EventRouter:
     def would_route_key(self, key: int) -> bool:
         """Whether a ``KEYDOWN`` of ``key`` emits an action (peek, no state).
 
-        Utilisé par l'écran Contrôles : l'événement qui termine une capture ne
-        doit pas exécuter l'action qu'il route (valider, revenir…).
+        Used by the controls screen: the event that ends a capture must not
+        also perform the action it routes (confirm, back...).
         """
         if key == self._bindings.menu.new_game_key:
             return True
@@ -307,9 +307,9 @@ class EventRouter:
                 continue
             live = self._read_hat(instance_id, hat)
             if live is None:
-                # Pas de lecture live (test sans joystick, driver sans
-                # get_hat) : on expire le bras au lieu de repeter a l'infini
-                # sur la derniere valeur SDL connue.
+                # No live read (a test with no joystick, a driver with no
+                # get_hat): expire the arm rather than repeat forever on the
+                # last known SDL value.
                 self._active_hats.pop((instance_id, hat), None)
                 self._hat_next_repeat.pop((instance_id, hat), None)
                 continue

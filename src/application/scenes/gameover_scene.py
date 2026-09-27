@@ -42,7 +42,7 @@ class GameOverScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         if routed_input.action is InputAction.UI_BACK:
-            # ESC / bouton B / clic droit : retour direct au menu.
+            # ESC / B button / right click: straight back to the menu.
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         action, _ = self.model.handle_routed(

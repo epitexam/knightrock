@@ -450,8 +450,8 @@ class ControlsScene(Scene):
             self._cancel_capture()
             return
         if capture[1] == KEYBOARD_COLUMN:
-            # Un bouton physique est toujours un binding manette : on bascule
-            # dans la colonne gamepad sans exiger un aller-retour UI.
+            # A physical button is always a gamepad binding: switch columns
+            # without making the player route through the UI first.
             self._capture = (capture[0], GAMEPAD_COLUMN)
             self.selected_column = GAMEPAD_COLUMN
             capture = self._capture

@@ -125,21 +125,21 @@ class Combat:
     # Juggle scaling: consecutive air hits decay toward this floor.
     JUGGLE_DECAY_STEP = 0.1
     JUGGLE_DAMAGE_FLOOR = 0.5
-    # Phase 5 #4 (juggle / hit-stun avancé): stagger scales with damage,
+    # Phase 5 #4 (juggle / advanced hit-stun): stagger scales with damage,
     # juggle gravity lasts one float window, OTG guards knockdown wakeup.
     HITSTUN_DAMAGE_FACTOR = 0.004
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
     DIZZY_DAMAGE_MULT = 1.5
-    # P1 sweep CCD (D1) : borne BASSE en deplacement mesure, pas en vitesse.
-    # Distance euclidienne des centres par index de boite ; en dessous, le
-    # sweep est inutile (goldens stables) et `swept = cur`.
+    # P1 sweep CCD (D1): the LOW bound, on measured displacement rather than
+    # speed. Euclidean distance between box centres per box index; below this
+    # the sweep is pointless (goldens stay stable) and `swept = cur`.
     SWEEP_MIN_DISPLACEMENT_PX = 4.0
-    # P1 sweep CCD (D4) : borne HAUTE. Au-dela (respawn, teleport, carry
-    # anormal), `swept = cur` : pas de smear geant, pas de touche fantome.
-    # Invariant a dt sim fixe (TIMESTEP = 1/60) :
+    # P1 sweep CCD (D4): the HIGH bound. Past it (respawn, teleport, abnormal
+    # carry) `swept = cur`: no giant smear, no phantom touch.
+    # Invariant at fixed sim dt (TIMESTEP = 1/60):
     # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
-    # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
+    # * TIMESTEP * 1.5  (KB_MAX = the largest magnitude in attacks.json).
     SWEEP_MAX_DISPLACEMENT_PX = 64.0
     SHAPE_SWEEP_MAX_ITERATIONS = 16
     SHAPE_CONTACT_EPSILON_PX = 0.001
@@ -348,9 +348,9 @@ class Input:
     #: player can say "I meant that" -- push harder to scroll, ease back to stop
     #: (easing back is not a step back: the direction is still held).
     UI_AXIS_REPEAT_THRESHOLD = 0.7
-    # Stick tenu : 0.22s avant la 1re répétition puis 1 pas / 60ms. Au-delà
-    # (~0.4/0.1) la navigation paraît "collée" / en retard. Le premier pas, lui,
-    # est immédiat : c'est l'événement SDL qui le déclenche, pas ce délai.
+    # Held stick: 0.22s before the first repeat, then one step per 60ms. Beyond
+    # that (~0.4/0.1) navigation reads as stuck or lagging. The first step is
+    # immediate -- SDL triggers it, not this delay.
     UI_REPEAT_INITIAL_DELAY = 0.22
     UI_REPEAT_INTERVAL = 0.06
     ATTACK_BUFFER_WINDOW = 0.2

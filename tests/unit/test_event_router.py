@@ -25,7 +25,7 @@ def test_router_maps_keyboard_mouse_and_gamepad_buttons() -> None:
     assert gamepad == RoutedInput(InputAction.UI_CONFIRM, InputDevice.GAMEPAD)
     cancel = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
 
-    # Bouton B (manette) = retour : routé vers UI_BACK et UI_CANCEL.
+    # B button (gamepad) = back: routed to UI_BACK and UI_CANCEL.
     assert cancel == RoutedInput(InputAction.UI_BACK, InputDevice.GAMEPAD)
 
 
@@ -77,7 +77,7 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
     # place that says which way round it is.
     assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
-    # Stick tenu : les événements intermédiaires sont filtrés (throttle).
+    # Held stick: the intermediate events are filtered out (throttle).
     assert flooded is None
     assert repeated == [
         RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.9, variant="repeat")
@@ -375,16 +375,16 @@ def test_dispatcher_does_not_publish_a_release_or_an_unplugged_pad() -> None:
 
 
 def test_router_peeks_whether_a_key_or_button_would_route() -> None:
-    """``would_route_*`` : peek sans état pour l'écran Contrôles (UI-5)."""
+    """``would_route_*``: a stateless peek for the controls screen (UI-5)."""
     router = EventRouter()
 
     assert router.would_route_key(pygame.K_DOWN) is True
-    assert router.would_route_key(pygame.K_n) is True  # raccourci nouvelle partie
+    assert router.would_route_key(pygame.K_n) is True  # new-game shortcut
     assert router.would_route_key(pygame.K_x) is False
     assert router.would_route_button(1) is True
     assert router.would_route_button(9) is False
 
-    # Le peek suit les bindings courants, sans consommer d'événement.
+    # The peek follows the current bindings without consuming an event.
     router.set_bindings(
         InputBindings(
             menu=MenuBindings(

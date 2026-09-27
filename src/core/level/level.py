@@ -94,11 +94,11 @@ class Level:
 
         self.groups = SpriteGroups()
 
-        # La caméra ne connaît plus la fenêtre : elle reçoit le cadrage, qui est
-        # une constante en unités monde, et lit son échelle sur la cible de rendu
-        # qu'on lui passe. C'est ce qui fait qu'une résolution ne peut plus
-        # élargir ce que le joueur voit — le viewport est le même sur un portable
-        # 1366x768 et sur un écran 4K.
+        # The camera no longer knows about the window: it is given the framing,
+        # a constant in world units, and reads its scale off the render target
+        # it is handed. That is what stops a resolution from widening what the
+        # player sees -- the viewport is the same on a 1366x768 laptop and on a
+        # 4K screen.
         self.camera = Camera.for_target(surface)
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 

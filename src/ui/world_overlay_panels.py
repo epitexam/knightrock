@@ -9,7 +9,7 @@ attributes live here -- the cached metrics lines, the whiff count, the tick
 counter, the assembled panel lines, and the clash point with its remaining
 lifetime. Threading those through signatures would be worse than holding them.
 
-**A public attribute on the façade, not six delegating wrappers.** These six
+**A public attribute on the facade, not six delegating wrappers.** These six
 methods are the overlay's API for ``level.py`` and ``ui_manager.py``, so
 keeping them on ``WorldUI`` as one-line relays would have meant twelve lines of
 pure boilerplate existing only to avoid renaming thirty call sites -- and

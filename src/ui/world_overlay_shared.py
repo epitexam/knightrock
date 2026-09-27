@@ -175,7 +175,7 @@ class AnnotationSink:
     is exactly how a label ends up underneath a health bar with nothing to
     explain it.
 
-    Owned by the façade and cleared once per frame, so the layers never have to
+    Owned by the facade and cleared once per frame, so the layers never have to
     be told when a frame starts.
     """
 
