@@ -7,6 +7,7 @@ separation, and combat (every candidate list came back empty).
 """
 
 import pygame
+import pytest
 
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.separation_system import SeparationSystem
@@ -81,3 +82,54 @@ def test_separation_pushes_overlapping_entities_apart():
     assert a.hitbox.x < 10.0 and b.hitbox.x > 10.0
     # Horizontal separation zeroes the horizontal velocity.
     assert a.velocity.x == 0.0 and b.velocity.x == 0.0
+
+
+# -- the per-entity box cache -------------------------------------------------
+#
+# Same contract as the hazard cache, and the same reasons: the contact hit
+# properties are constants of the rule, and only the geometry and the gate's
+# speed change per tick.
+
+
+def test_contact_boxes_are_reused_across_ticks():
+    system = ContactDamageSystem()
+    entity = PairEntity(0, "player")
+
+    first = system.produce_boxes([entity])[0]
+    second = system.produce_boxes([entity])[0]
+
+    assert first is second
+
+
+def test_every_contact_box_shares_one_hit_properties():
+    """Damage and knockback are constants of the rule, not of the entity."""
+    system = ContactDamageSystem()
+    entities = [PairEntity(0, "player"), PairEntity(20, "enemy")]
+
+    boxes = system.produce_boxes(entities)
+
+    assert boxes[0].hit is boxes[1].hit
+    assert boxes[0].hit.damage == CombatSettings.CONTACT_DAMAGE_AMOUNT
+
+
+def test_a_reused_contact_gate_tracks_the_entity_speed():
+    """The gate carries the source speed; a cached one must not keep the first."""
+    system = ContactDamageSystem()
+    entity = PairEntity(0, "player", speed=500.0)
+    system.produce_boxes([entity])
+
+    entity.velocity.update(-900.0, 0.0)
+    box = system.produce_boxes([entity])[0]
+
+    assert box.accept.speed == pytest.approx(900.0)
+
+
+def test_the_contact_cache_releases_an_entity_that_left():
+    system = ContactDamageSystem()
+    kept, gone = PairEntity(0, "player"), PairEntity(20, "enemy")
+    system.produce_boxes([kept, gone])
+
+    remaining = system.produce_boxes([kept])
+
+    assert len(remaining) == 1
+    assert len(system._boxes) == 1

@@ -52,7 +52,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
+@dataclass
 class OffensiveBox:
     """One offensive contact emitted by a producer.
 
@@ -61,6 +61,16 @@ class OffensiveBox:
     populate it from their previous/current rectangles. ``record_contact`` is
     called with the *target* once a hit landed, so a producer can remember it
     (and release itself).
+
+    **Mutable, and split by lifetime.** The geometry is per-tick and is
+    rewritten in place by a producer that keeps the box across ticks (the
+    hazard and contact-damage systems, whose producers are static); ``hit`` and
+    the per-producer fields are per-producer and are written once. It used to
+    be frozen, which was never enforced by anything -- no caller hashes a box
+    or puts one in a set -- and only made the construction expensive, since a
+    frozen dataclass assigns each field through ``object.__setattr__``.
+    Producers that build a fresh box every tick (melee, projectiles) are
+    unaffected; they just do not get to skip the work.
     """
 
     box: pygame.FRect
