@@ -2,9 +2,9 @@
 
 - **Date :** 2026-09-20 (ameliore 2026-09-20 preuves ; 2026-09-22 gap audit ; **2026-09-23 re-audit doc** ; **2026-09-24 conformite partielle**)
 - **Perimetre :** `src/combat/`, `src/physics/`, `src/entities/entity.py` + `hurtbox_zones.py`, `src/core/level/systems/combat_system.py` + `contact_system.py`, `src/core/level/systems/projectile_system.py`, `src/core/level/systems/hazard_damage.py`, `data/gameplay/attacks.json`, `data/gameplay/enemies.json` (zones goblin P2), `src/ui/world_ui.py` (debug)
-- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **910** (voir §10)
+- **Methode :** lecture du code + greps + mesures executees (repro tunneling, bench detection sec 2.2, parite JSON/builtin) ; suite de reference evolvee 719 -> **1117** (voir §10)
 - **Statut grab (rappel) :** aucun systeme de grab/throw/command-grab n existe. Seul faux positif : `generator.throw()` dans un test.
-- **Base de tests :** **910 tests verts** (`pytest -q` le 2026-09-24), `ruff check .` propre, `mypy src` propre (128 fichiers) — detail §10.
+- **Base de tests :** **1117 tests verts** (`pytest -q` le 2026-09-26), `ruff check .` propre, `mypy src` propre (142 fichiers) — detail §10. Aucun commit du lot hitbox depuis : la hausse vient des chantiers de rendu du 2026-09-25.
 - **Lecture du diagnostic :** §3 decrit l etat **pre-P0** ; chaque item clos porte une balise `**[clos Pn]**` (etat actuel = code + §10). Ne pas re-traiter un item balise clos sans nouveau repro.
 
 ## Sommaire
@@ -138,9 +138,7 @@ from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
-definition = attack(
-    phase(startup=1, active=8, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0))
-)
+definition = attack(phase(startup=1, active=8, recovery=1, size=(20.0, 20.0), offset=(0.0, 0.0)))
 attacker = entity_at(60.0, faction="A", definition=definition)
 target = entity_at(20.0, faction="B")
 attacker.combat.start_attack("test")
@@ -153,7 +151,7 @@ assert system.metrics.contacts == 0  # trou : la passe discret rate le coup
 
 cur = attacker.combat.attack_box  # FRect(70, 10, 20, 20)
 prev = pygame.FRect(cur.x - 40.0, cur.y, cur.width, cur.height)  # 30..50
-assert prev.colliderect(target.hurtbox)        # la position precedente touchait
+assert prev.colliderect(target.hurtbox)  # la position precedente touchait
 assert cur.union(prev).colliderect(target.hurtbox)  # le sweep P1 toucherait
 ```
 
@@ -812,7 +810,7 @@ P5 est livré : formes cercle, capsule et OBB, rotation, easing, anchors, keyfra
 P0 (gel + parite + bench) -> P1 (sweep ACTIVE) -> P2 (push/hurt/hit) -> P3t1 (priorite/clash/unblockable) -> P3t2 (hauteur + block_mask) -> P4 (unification/debug) -> P5 (formes avancées)
 ```
 
-Chaque palier : suite complète verte (base 719 au 2026-09-20, **905 au 2026-09-24** — voir §10) + nouveaux tests, `ruff check`, `mypy src`, goldens et bench 2.2 reproductible ; mise à jour de ce rapport (section recettage datée).
+Chaque palier : suite complète verte (base 719 au 2026-09-20, **1117 au 2026-09-26** — voir §10) + nouveaux tests, `ruff check`, `mypy src`, goldens et bench 2.2 reproductible ; mise à jour de ce rapport (section recettage datée).
 
 ---
 
@@ -823,18 +821,20 @@ Chaque palier : suite complète verte (base 719 au 2026-09-20, **905 au 2026-09-
 ```python
 @dataclass(frozen=True)
 class HurtZone:
-    name: str                # head | torso | legs
+    name: str  # head | torso | legs
     inflate: tuple[float, float]
     damage_mult: float = 1.0
     invuln_tags: tuple[str, ...] = ()
 
+
 @dataclass(frozen=True)
 class HitboxSpecV2:
-    shape: str               # aabb | circle | capsule (P5)
+    shape: str  # aabb | circle | capsule (P5)
     size: tuple[float, float]
     offset: tuple[float, float]
     keyframes: tuple[HitboxKeyframe, ...] = ()  # P2 : par boite
-    follow: str = "torso"    # point d ancrage
+    follow: str = "torso"  # point d ancrage
+
 
 @dataclass(frozen=True)
 class GrabSpec:
@@ -844,20 +844,21 @@ class GrabSpec:
     whiff_frames: int
     tech_window: float
 
+
 @dataclass(frozen=True)
 class HitPropertiesV2:
     damage: float
     knockback: KnockbackConfig
     damage_type: DamageType
-    unblockable: bool = False           # P3 temps 1 [livre]
-    priority: int = 0                   # P3 temps 1 [livre]
-    clash: str = "trade"                # P3 temps 1 : ENUM REEL ("trade","clash")
-                                        # beat/lose = RESULTATS de priority,
-                                        # pas des valeurs de champ
-    hit_level: str = "med"              # light | med | heavy
-                                        # n accepte que "med" (light/heavy non)
-    height: str = "mid"                 # high | mid | low | overhead
-    block_mask: str = "any"             # any | stand | crouch
+    unblockable: bool = False  # P3 temps 1 [livre]
+    priority: int = 0  # P3 temps 1 [livre]
+    clash: str = "trade"  # P3 temps 1 : ENUM REEL ("trade","clash")
+    # beat/lose = RESULTATS de priority,
+    # pas des valeurs de champ
+    hit_level: str = "med"  # light | med | heavy
+    # n accepte que "med" (light/heavy non)
+    height: str = "mid"  # high | mid | low | overhead
+    block_mask: str = "any"  # any | stand | crouch
     # champs existants conserves : stagger, super_armor_break,
     # is_finisher, juggle_gravity_mult, otg_allowed
     # grab : hors chantier, rapport dedie (pre-requis = P2 pushbox + unblockable)
@@ -936,7 +937,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 ### 7.3 Criteres globaux
 
-- **910 tests verts** de référence (`pytest -q` le 2026-09-24 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 128 fichiers.
+- **1117 tests verts** de référence (`pytest -q` le 2026-09-26 ; base historique 719 le 2026-09-20), `ruff check .` propre, `mypy src` propre sur 142 fichiers, sans override mypy.
 - Aucune regression visuelle sur les 5 attaques vitrines (`twin_fangs`, `sweeping_arc`, `sky_launcher`, `otg_slam`, `special_attack`).
 - Determinisme : deux runs meme seed = memes `CombatMetrics` et memes positions.
 - Rollback : `save/load` + capture frontiere re-derive `prev` (aucun champ snapshot) et ne rate aucun contact au tick suivant.
@@ -985,7 +986,7 @@ uv run pytest tests/unit/test_hitbox_pipeline.py tests/unit/test_hitbox_sweep.py
 
 | Palier | Date | pytest | ruff | mypy | Repro 2.1 rejoué | Bench 2.2 (1v1/4v4/8v8) | Note |
 |---|---|---|---|---|---|---|---|
-| **Recette courante** | **2026-09-24** | **910 passed** | **ruff check . propre** | **mypy src propre (128 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Sweep projectile AABB, sweep hazard mobile, murs et cibles balayées ; tests UI hermétiques |
+| **Recette courante** | **2026-09-26** | **1117 passed** | **ruff check . propre** | **mypy src propre (142 fichiers)** | **couvert** | **contacts 1 / 16 / 64** | Sweep projectile AABB, sweep hazard mobile, murs et cibles balayées ; tests UI hermétiques, sauf `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects` sous `DEBUG=1` (écart O10 de `notes/ecarts_ouverts.md`, hors lot hitbox) |
 
 Les lignes P0–Re-audit ci-dessous sont conservées comme historique de chantier et ne décrivent pas l’état courant.
 | Ref (pre-P0) | 2026-09-20 | 719 passed | propre hors `main.py`* | propre (120 fichiers) | trou confirme | 0.003 / 0.029 / 0.075 ms | rapport takeover-ready, sans scripts |

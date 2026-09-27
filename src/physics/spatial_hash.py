@@ -38,6 +38,8 @@ from typing import Protocol
 
 import pygame
 
+from src.core.settings import World
+
 __all__ = [
     "QUERY_MARGIN_PX",
     "SpatialHash",
@@ -96,34 +98,54 @@ class SpatialHash:
         Mapping of cell coordinates to lists of sprites in that cell.
     """
 
-    def __init__(self, cell_size: int = 128):
+    def __init__(self, cell_size: int = World.HASH_CELL_SIZE):
         """Initialize the spatial hash with a cell size.
 
         Args:
-            cell_size: Size of each grid cell in pixels. 128px (2x tile size)
-                works well for 64px tiles.
+            cell_size: Size of each grid cell in world units. Defaults to
+                ``World.HASH_CELL_SIZE``, which the entity grid uses too --
+                they are queried with the same rectangles, so a cell that
+                one of them considers too far is a collision the other
+                cannot see.
         """
         self.cell_size = cell_size
         self.grid: dict[tuple[int, int], list[SpatialHashMember]] = defaultdict(list)
-        # Cells each registered sprite currently occupies (keyed by id()).
-        self._cells_by_sprite: dict[int, tuple[tuple[int, int], ...]] = {}
+        # ``id(sprite) -> (sprite, its cells)``. The sprite is kept in the
+        # value, not only in the buckets, and that is the whole reason the
+        # hazard is handled rather than documented: a key built from ``id()``
+        # alone can be *recycled*. CPython hands the address of a freed object
+        # to the next object allocated, so a sprite that died without being
+        # unregistered leaves a key that a brand new sprite can collide with
+        # -- and `add` is idempotent by that key, so the new sprite would be
+        # silently not inserted. It would then be invisible to every query and
+        # pass straight through its target. Holding the sprite makes the key
+        # checkable: `add` confirms the object is the one it registered, and a
+        # mismatch is a miss rather than somebody else's bucket.
+        self._cells_by_sprite: dict[int, tuple[SpatialHashMember, tuple[tuple[int, int], ...]]] = {}
 
     def add(self, sprite: SpatialHashMember) -> None:
         """Register a sprite in every cell its hitbox overlaps (idempotent).
 
-        Args:
-            sprite: A sprite with a hitbox or rect to add to the grid.
+        Idempotent for the *same sprite*, which is not the same thing as
+        idempotent for the same ``id()``. See ``_cells_by_sprite``: a recycled
+        id is treated as a different sprite and registered properly, where the
+        obvious implementation would have skipped it.
         """
         box = self._box_of(sprite)
         if box is None:
             return  # Skip sprites without hitbox or rect
         key = id(sprite)
-        if key in self._cells_by_sprite:
+        existing = self._cells_by_sprite.get(key)
+        if existing is not None and existing[0] is sprite:
             return
+        if existing is not None:
+            # The address was recycled onto this sprite. The entry belongs to
+            # an object that is gone, so drop it before registering.
+            self.remove(existing[0])
         cells = self._cells_for_box(box)
         for cell in cells:
             self.grid[cell].append(sprite)
-        self._cells_by_sprite[key] = cells
+        self._cells_by_sprite[key] = (sprite, cells)
 
     def add_all(self, sprites: Iterable[SpatialHashMember]) -> None:
         """Register multiple sprites.
@@ -140,9 +162,12 @@ class SpatialHash:
         Args:
             sprite: The sprite previously registered via ``add``.
         """
-        cells = self._cells_by_sprite.pop(id(sprite), None)
-        if cells is None:
+        entry = self._cells_by_sprite.pop(id(sprite), None)
+        if entry is None or entry[0] is not sprite:
+            # Either never registered, or the id now belongs to someone else.
+            # Removing "its" cells here would empty another sprite's buckets.
             return
+        cells = entry[1]
         for cell in cells:
             bucket = self.grid.get(cell)
             if bucket is None:
@@ -174,6 +199,16 @@ class SpatialHash:
         """Remove all sprites from the grid."""
         self.grid.clear()
         self._cells_by_sprite.clear()
+
+    @property
+    def occupied_cells(self) -> int:
+        """How many cells currently hold at least one sprite.
+
+        Exposed so a caller can tell whether bucketing bought anything. A
+        population spread over one cell is a population the grid cannot prune,
+        and knowing that is cheaper than finding out per query.
+        """
+        return len(self.grid)
 
     def get_nearby(self, hitbox: pygame.Rect | pygame.FRect) -> list[SpatialHashMember]:
         """Return the sprites overlapping the cells covered by ``hitbox``.

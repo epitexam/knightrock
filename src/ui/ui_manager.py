@@ -1,10 +1,12 @@
+from collections.abc import Iterable
 from typing import Any
 
 import pygame
 
+from src.core.level.scene_host import SceneHost
 from src.core.rendering.camera import Camera
 from src.ui.hud import HUD
-from src.ui.panel_renderer import PanelLayout, PanelRenderer
+from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
 from src.ui.player_ui import PlayerUI
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.world_ui import COMBAT_PANEL_TITLE, WorldUI
@@ -24,8 +26,14 @@ PANEL_LEGEND = "legend"
 class UIManager:
     """Facade pattern for the user interface."""
 
-    def __init__(self, display_surface: pygame.Surface) -> None:
-        self.renderer = PanelRenderer(display_surface)
+    def __init__(self, surface: pygame.Surface, density: float = 1.0) -> None:
+        #: ``density`` is the render target's pixel density, read off the camera
+        #: by the renderer. It is a constructor argument rather than something
+        #: set later because the first frame is drawn with it: a panel built at
+        #: the design size and scaled on the next window change is a frame of
+        #: unreadable text, and the first frame is the one the developer is
+        #: looking at.
+        self.renderer = PanelRenderer(surface, density=density)
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
         self.hud = HUD(self.renderer)
@@ -55,7 +63,7 @@ class UIManager:
         self,
         player: Any,
         layout: PanelLayout,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
     ) -> int:
         panel_id = self._compact_panel_focus
         if panel_id == PANEL_COMBAT:
@@ -75,14 +83,22 @@ class UIManager:
         if panel_id == PANEL_STATS:
             return self.draw_stats_panel(10, 10, player, layout, compact=True)
         if panel_id == PANEL_SCENE:
-            return self.draw_scene_panel(10, 10, game, layout, compact=True)
+            return self.draw_scene_panel(10, 10, scene_host, layout, compact=True)
         if panel_id == PANEL_KEYS:
             return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
         return self.draw_legend_panel(10, 10, layout, compact=True)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self.renderer.set_display_surface(display_surface)
-        self.world_ui.display_surface = display_surface
+    def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
+        """Adopt a new render target, at the density it implies.
+
+        ``world_ui`` reads its surface from the panel renderer, so there is
+        nothing to reassign here; the density is what the *sizes* need, and it
+        is read off the camera by the renderer rather than measured twice.
+        """
+        self.renderer.set_surface(surface, density)
+
+    def set_ui_scale(self, scale: float) -> None:
+        self.hud.set_scale(scale)
 
     def draw_state_panel(
         self,
@@ -112,14 +128,20 @@ class UIManager:
         self,
         x: int,
         y: int,
-        game: Any,
+        scene_host: SceneHost | None,
         layout: PanelLayout | None = None,
         compact: bool = False,
     ) -> int:
-        """Show active scene, current level, deaths and live entity counts."""
+        """Show active scene, current level, deaths and live entity counts.
+
+        Takes a :class:`SceneHost` rather than the application: the panel needs
+        to know which scene is on top and nothing else, and `Any` said nothing
+        even about that. A `None` host draws the panel with "None" for the
+        scene, which is what a level rendered outside the scene stack is.
+        """
         if self.renderer.interaction.is_closed(PANEL_SCENE):
             return 0
-        current = game.scene_manager.current
+        current = None if scene_host is None else scene_host.scene_manager.current
         scene_name = type(current).__name__ if current else "None"
 
         level_id = getattr(current, "level_id", None)
@@ -127,7 +149,7 @@ class UIManager:
         deaths_n = deaths.deaths if deaths is not None else 0
         level_str = str(level_id) if level_id is not None else "-"
 
-        surface = self.renderer.display_surface
+        surface = self.renderer.surface
         lines = [
             f"Scene   {scene_name}",
             f"Level   {level_str}   deaths {deaths_n}",
@@ -282,14 +304,14 @@ class UIManager:
     def draw_combat_panel(self, layout: PanelLayout | None = None) -> int:
         """Unified COMBAT counters inside the debug panel flow.
 
-        The lines are collected by :meth:`WorldUI.draw_metrics_panel` (a
+        The lines are collected by ``world_ui.panels.draw_metrics_panel`` (a
         no-op when ``DEBUG`` is off); drawing them through the column flow
         keeps them under the side panels instead of a fixed spot that other
         panels could stack on.
         """
         if self.renderer.interaction.is_closed(PANEL_COMBAT):
             return 0
-        content = self.world_ui.combat_panel()
+        content = self.world_ui.panels.combat_panel()
         if content is None:
             return 0
         title, lines = content
@@ -333,7 +355,7 @@ class UIManager:
         lines = [
             f"FPS        {fps:5.1f}",
             f"Frame      {frame_time:5.1f} ms",
-            f"World UI   {world_ms:5.2f} ms",
+            f"Overlays   {world_ms:5.2f} ms",
             f"Panels     {panels_ms:5.2f} ms",
             f"Panel p95  {panel_p95:5.2f} ms",
             f"Sprites    {sprite_count}",
@@ -345,17 +367,14 @@ class UIManager:
             f"Hit Stop   {hit_stop:.3f}",
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
-        surface = self.renderer.display_surface
-        compact = surface.get_width() < 1100 or surface.get_height() < 800
-        if compact:
+        if compact_panels():
             lines = [
                 lines[0],
                 lines[1],
-                f"UI total  {world_ms + panels_ms:5.2f} ms",
                 f"F10 view  {self.compact_panel_focus().upper()}",
             ]
 
-        if compact:
+        if compact_panels():
             primary_ui_ms = world_ms + panels_ms
             secondary_ui_ms = panel_p95
         else:
@@ -371,7 +390,7 @@ class UIManager:
         elif layout is not None:
             panel_x, panel_y = 10, 10
         else:
-            panel_x = self.renderer.display_surface.get_width() - panel_w - 12
+            panel_x = self.renderer.surface.get_width() - panel_w - 12
             panel_y = 12
 
         line_colors = {
@@ -383,7 +402,7 @@ class UIManager:
             if primary_ui_ms <= 8.0
             else TEXT_CRIT,
         }
-        if not compact:
+        if not compact_panels():
             line_colors[3] = (
                 TEXT_OK
                 if secondary_ui_ms <= 4.0
@@ -415,19 +434,93 @@ class UIManager:
 
     def draw_debug_overlays(
         self,
-        all_sprites: pygame.sprite.Group,
+        all_sprites: Iterable[pygame.sprite.Sprite],
         camera: Camera,
         delta_time: float | None = None,
     ) -> None:
+        """Overlay the world-space debug layer.
+
+        Takes any iterable rather than a group: the draw planes are separate
+        groups, and the overlay wants all of them.
+        """
         self.world_ui.draw_debug_overlays(all_sprites, camera, delta_time)
 
-    def draw_health_bars(self, entities: pygame.sprite.Group | list, camera: Camera) -> None:
-        self.world_ui.draw_health_bars(entities, camera)
+    def draw_health_bars(
+        self,
+        entities: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        screen_rects: dict[int, pygame.Rect] | None = None,
+    ) -> list[pygame.Rect]:
+        """Draw the HP bars; return the rects they occupy.
 
-    def draw_hud(self, player: Any) -> list[pygame.Rect]:
-        """Always-on player gauges: health, guard posture, dash, combo (UI-7).
-
-        Returns the dirty rects the gauges occupy, for the caller to merge
-        into the frame's presentation set.
+        The caller merges them into the frame's presentation set, otherwise a
+        bar drawn outside its sprite's rect is erased with everything else on
+        the next frame, so there is nothing left to declare.
         """
-        return self.hud.draw(player)
+        return self.world_ui.draw_health_bars(entities, camera, screen_rects)
+
+    def draw_hud(self, player: Any) -> None:
+        """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
+        self.hud.draw(player)
+
+    # -- the WorldOverlay port -------------------------------------------------
+    #
+    # `core/rendering/overlay.py` declares what the renderer needs; these are
+    # the implementations. The panel layout moved across with them because the
+    # renderer used to own it, and a port that stopped one call short would have
+    # left `PanelLayout` imported in `core` -- the very dependency the port
+    # exists to remove.
+
+    def draw_debug_panels(
+        self,
+        *,
+        player: Any = None,
+        scene_host: SceneHost | None = None,
+        debug_stats: dict[str, float] | None = None,
+        **counters: Any,
+    ) -> None:
+        """Draw the screen-side debug panels from the renderer's counters.
+
+        PERFORMANCE is pinned first so the column flow can reserve it and wrap
+        around it; COMBAT counters then lead the flow, so the tall PLAYER
+        STATE / STATS panels can never overdraw them.
+        """
+        self.renderer.interaction.begin_frame()
+        if not self.world_ui.layers.get("panels", True):
+            return
+        layout = PanelLayout(
+            self.renderer.surface.get_width(),
+            self.renderer.surface.get_height(),
+            scale=self.renderer.screen_scale,
+        )
+        self.draw_performance_panel(
+            layout=layout,
+            debug_stats=debug_stats or {},
+            **counters,
+        )
+        if compact_panels():
+            self.draw_compact_panel(player, layout, scene_host)
+            return
+        self.draw_combat_panel(layout)
+        self.draw_state_panel(10, 10, player, layout=layout)
+        self.draw_stats_panel(10, 10, player, layout=layout)
+        if scene_host is not None:
+            self.draw_scene_panel(10, 10, scene_host, layout=layout)
+        self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers)
+        self.draw_legend_panel(10, 10, layout=layout)
+
+    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+        """The always-on combat metrics readout."""
+        self.world_ui.panels.draw_metrics_panel(player=player, hit_stop=hit_stop)
+
+    def note_clash(self, clash: Any) -> None:
+        """Record a clash so the overlay can mark it where it happened."""
+        self.world_ui.panels.note_clash(clash)
+
+    def stamp_clash_marker(self, camera: Camera) -> None:
+        """Draw the clash marker again, over the debug panels."""
+        self.world_ui.panels.stamp_clash_marker(camera)
+
+    def update_metrics(self, metrics: Any) -> None:
+        """Feed the contact pipeline's per-tick counters to the overlay."""
+        self.world_ui.panels.update_metrics(metrics)

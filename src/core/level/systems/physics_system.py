@@ -3,6 +3,8 @@
 Extracted from ``Level.update`` (audit §4: ``core/level/systems/physics_system``).
 """
 
+from typing import Any
+
 from src.core.fx import (
     DASH_TRAIL_SPAWN_EVERY,
     DIZZY_VORTEX_SPAWN_EVERY,
@@ -100,7 +102,7 @@ class PhysicsSystem:
 
     def _process_entity_fx(
         self,
-        entity,
+        entity: Any,
         delta_time: float,
         dashing_ids: set[int],
         sweating_ids: set[int],

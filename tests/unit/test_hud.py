@@ -8,12 +8,12 @@ import pygame
 import pytest
 
 from src.core.colors import Colors
+from src.core.display.framing import Framing
 from src.ui.hud import (
     HUD,
     HUD_BAR_GAP,
     HUD_BAR_HEIGHT,
-    HUD_BAR_WIDTH_MAX,
-    HUD_BAR_WIDTH_MIN,
+    HUD_BAR_WIDTH,
     HUD_MARGIN,
     HUD_PIP_SIZE,
     HUD_TRACK,
@@ -24,6 +24,7 @@ from src.ui.hud import (
 )
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -69,20 +70,36 @@ def _count(surface: pygame.Surface, rect: pygame.Rect, color: tuple[int, int, in
 
 
 def test_no_player_lays_out_and_draws_nothing() -> None:
-    hud = _hud()
+    surface = _surface()
+    surface.fill(Colors.black)
+    hud = HUD(PanelRenderer(surface))
+
     assert hud.layout(None) is None
-    assert hud.draw(None) == []
+    assert hud.draw(None) is None
+    assert surface.get_at((10, 10))[:3] == Colors.black, "nothing was painted"
 
 
-def test_player_disappearing_hands_its_last_frame_back_once() -> None:
-    """A vanished gauges' area is refreshed once, then no longer reported."""
-    hud = _hud()
-    first = hud.draw(_player())
-    assert first, "the HUD painted its gauges"
+def test_a_vanished_gauge_is_erased_by_the_next_full_repaint() -> None:
+    """The old contract was "report your area so the frame can refresh it".
 
-    stale = hud.draw(None)
-    assert stale == first, "the gauges' last frame must be presented once more"
-    assert hud.draw(None) == []
+    Nothing refreshes a region any more -- every frame erases the whole target
+    -- so the assertion is now that the HUD keeps no state to be stale. A HUD
+    that remembered its last rects would be a place for a stale-pixel bug to
+    live, for no benefit.
+    """
+    surface = _surface()
+    surface.fill(Colors.black)
+    hud = HUD(PanelRenderer(surface))
+    hud.draw(_player())
+    assert not hasattr(hud, "_previous_dirty")
+
+    layout = hud.layout(_player())
+    assert layout is not None
+    assert surface.get_at(layout.health_fill.center)[:3] != Colors.black
+
+    hud.draw(None)
+    # Nothing in the HUD repaints it, and nothing has to: the caller erases.
+    assert surface.get_at(layout.health_fill.center)[:3] != Colors.black
 
 
 def test_health_and_posture_anchor_to_the_bottom_left_corner() -> None:
@@ -94,6 +111,17 @@ def test_health_and_posture_anchor_to_the_bottom_left_corner() -> None:
     # Both gauges share the label gutter, right of the left margin.
     assert layout.health_bar.x == layout.posture_bar.x
     assert layout.health_bar.x > HUD_MARGIN
+
+
+def test_hud_scale_changes_player_geometry() -> None:
+    normal = _hud().layout(_player())
+    scaled_hud = _hud()
+    scaled_hud.set_scale(1.2)
+    scaled = scaled_hud.layout(_player())
+
+    assert isinstance(normal, HudLayout)
+    assert isinstance(scaled, HudLayout)
+    assert scaled.health_bar.height > normal.health_bar.height
 
 
 def test_full_health_fills_the_whole_bar() -> None:
@@ -161,48 +189,79 @@ def test_layout_never_leaves_the_display(width: int) -> None:
     assert max(rect.right for rect, _ in layout.dash_pips) <= width
 
 
-def test_bar_width_scales_with_the_display_but_stays_bounded() -> None:
-    assert bar_width_for(500) == HUD_BAR_WIDTH_MIN
-    assert bar_width_for(1280) > HUD_BAR_WIDTH_MIN
-    assert bar_width_for(1920) == HUD_BAR_WIDTH_MAX
-    assert bar_width_for(3840) == HUD_BAR_WIDTH_MAX
-    # A display too narrow for the minimum: the bar shrinks instead of clipping.
-    assert bar_width_for(160) < HUD_BAR_WIDTH_MIN
-    assert bar_width_for(160) <= 160 - 2 * HUD_MARGIN
+@pytest.mark.parametrize("width", [500, 1152, 1280, 1920, 2560, 3840])
+def test_the_bar_is_the_same_width_on_every_target(width: int) -> None:
+    """It used to be 22% of the display, so the HUD was a different size
+    depending on a video setting. The target is a constant, so the bar is too."""
+    assert bar_width_for(width) == HUD_BAR_WIDTH
 
 
-def test_draw_paints_the_gauges_and_returns_their_rects() -> None:
+def test_the_bar_shrinks_rather_than_clipping_on_a_narrow_target() -> None:
+    narrow = 2 * HUD_MARGIN + 10
+    assert bar_width_for(narrow) < HUD_BAR_WIDTH
+    assert bar_width_for(narrow) <= narrow - 2 * HUD_MARGIN
+
+
+def test_draw_paints_the_gauges_where_the_layout_says() -> None:
     surface = _surface()
     surface.fill(Colors.black)
     hud = HUD(PanelRenderer(surface))
 
-    rects = hud.draw(_player(health=50.0))
+    assert hud.draw(_player(health=50.0)) is None
 
     layout = hud.layout(_player(health=50.0))
     assert layout is not None
-    # The dirty rects cover the labels too, so they contain the bare bars.
-    assert any(rect.contains(layout.health_bar) for rect in rects)
-    assert any(rect.left < layout.health_bar.left for rect in rects)
+    # The label is painted left of the bar, in the margin gutter, so checking the
+    # bar alone would miss a gauge drawn in the wrong place entirely.
     assert surface.get_at(layout.health_fill.center)[:3] == TEXT_WARN
     assert any(
         surface.get_at(rect.center)[:3] == Colors.sky_blue
         for rect, filled in layout.dash_pips
         if filled
     )
+    # Everything painted is inside what the layout declared -- including the
+    # labels, which sit left of the bars in the margin gutter and are the part
+    # most likely to be drawn a bar-width too far left.
+    declared = [
+        layout.health_bar,
+        layout.health_label,
+        layout.posture_bar,
+        layout.posture_label,
+        *(rect for rect, _ in layout.dash_pips),
+    ]
+    if layout.combo_bar is not None:
+        declared.append(layout.combo_bar)
+    strays = [
+        (x, y)
+        for y in range(surface.get_height())
+        for x in range(surface.get_width())
+        if surface.get_at((x, y))[:3] != Colors.black
+        and not any(rect.collidepoint(x, y) for rect in declared)
+    ]
+    assert strays == [], f"{len(strays)} painted pixels fall outside the layout"
 
 
-def test_draw_represents_last_frame_so_an_expired_combo_disappears() -> None:
-    """The HUD hands both frames' rects over: the loop presents dirty rects only."""
-    hud = _hud()
+def test_an_expired_combo_stops_being_painted() -> None:
+    """It used to also be *reported*, so a stale area could be refreshed.
+
+    With a full repaint there is nothing to report, so the assertion is that the
+    bar is no longer drawn at all -- the caller's erase is what removes it.
+    """
+    surface = _surface()
+    surface.fill(Colors.black)
+    hud = HUD(PanelRenderer(surface))
     combo = SimpleNamespace(combo_count=3, combo_timer=0.4)
-    with_combo = hud.draw(_player(combat=combo))
+    hud.draw(_player(combat=combo))
     combo_bar = hud.layout(_player(combat=combo)).combo_bar
     assert combo_bar is not None
-    assert any(rect.contains(combo_bar) for rect in with_combo)
+    painted = surface.get_at(combo_bar.center)[:3]
+    assert painted != Colors.black, "the live combo is drawn"
 
-    without_combo = hud.draw(_player())
-    assert any(rect.contains(combo_bar) for rect in without_combo), (
-        "the stale combo area must be presented"
+    # Erase the way the caller does, then draw a frame with no combo.
+    surface.fill(Colors.black)
+    hud.draw(_player())
+    assert surface.get_at(combo_bar.center)[:3] == Colors.black, (
+        "with no combo the HUD paints nothing there; the erase did the rest"
     )
 
 
@@ -233,24 +292,22 @@ def test_gameplay_scene_draws_the_hud_even_with_debug_off(
 
     monkeypatch.delenv("DEBUG", raising=False)
     surface = _surface(1024, 768)
-    renderer = Renderer(surface, Camera(1024, 768))
-    dirty = [pygame.Rect(0, 0, 40, 40)]  # what a non-debug world frame reports
+    renderer = Renderer(
+        surface, Camera(Framing(float(1024), float(768))), overlay=make_overlay(surface)
+    )
     level = SimpleNamespace(
         renderer=renderer,
         player=_player(health=20.0),
-        draw=lambda *args, **kwargs: list(dirty),
+        draw=lambda *args, **kwargs: None,
     )
-    scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
+    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
-    rects = scene.draw()
+    scene.draw(pygame.display.get_surface())
 
-    assert rects is not None
-    assert dirty[0] in rects, "the world's own dirty rect is kept"
-    hud_layout = renderer.ui_manager.hud.layout(level.player)
+    # Nothing to declare any more: the next frame erases the whole target, so
+    # the only thing that matters is that the gauges reached the pixels.
+    hud_layout = renderer.overlay.hud.layout(level.player)
     assert hud_layout is not None
-    assert any(rect.contains(hud_layout.health_bar) for rect in rects), (
-        "the HUD must join the presented rects"
-    )
     assert surface.get_at(hud_layout.health_fill.center)[:3] == TEXT_CRIT
 
 
@@ -263,8 +320,10 @@ def test_gameplay_scene_hud_survives_a_level_without_a_player(
     from src.core.rendering.renderer import Renderer
 
     monkeypatch.delenv("DEBUG", raising=False)
-    renderer = Renderer(_surface(), Camera(1024, 768))
+    renderer = Renderer(
+        _surface(), Camera(Framing(float(1024), float(768))), overlay=make_overlay(_surface())
+    )
     level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
-    scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
+    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
-    assert scene.draw() is None
+    assert scene.draw(pygame.display.get_surface()) is None

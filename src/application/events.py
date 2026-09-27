@@ -4,14 +4,38 @@ The bus is **synchronous and strictly ordered**: ``emit`` invokes subscribers
 immediately, in subscription order, on the simulation thread.  It therefore
 introduces no non-determinism (no async queue, no threads) — subscribers are
 observers (UI, save, audio, logs) and must **never mutate simulated state**.
+
+Two families of facts travel on it, and a producer publishes in the form its
+own layer allows:
+
+* **simulation notifications** — ``LevelStarted``, ``PlayerDied``,
+  ``LevelCompleted``. Emitted from inside the fixed tick by
+  ``NotificationSystem`` and ``Level``, which hold no reference to the
+  application: the bus is the *only* channel available to them, which is also
+  what keeps a rewind from re-emitting a fact the player already saw.
+* **interface feedback** — ``UiFeedback``, emitted by ``InputDispatcher`` from
+  the report a scene returns. Here the producer *can* name its consumer, and it
+  still does not, so that a second one (haptics, an on-screen tutorial) is
+  added by subscribing rather than by reopening the screens.
+
+Isolation
+---------
+Subscribers cannot take the emitter down with them: :meth:`EventBus.emit`
+gives each handler its own boundary, logs a failure and carries on. The
+reason is in :class:`EventBus` — the emitter is the fixed tick, and the
+subscribers are code the simulation cannot vouch for.
 """
 
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from enum import StrEnum
+from typing import NamedTuple, TypeVar
+
+logger = logging.getLogger(__name__)
 
 EventT = TypeVar("EventT", bound="Event")
 
@@ -48,21 +72,95 @@ class LevelCompleted(Event):
     unlock_level_id: int | None = None
 
 
-GameEvent = LevelStarted | PlayerDied | LevelCompleted
+class UiEffect(StrEnum):
+    """What the interface just did, in the vocabulary producers share.
+
+    Deliberately coarser than a menu action: the audio system must not have to
+    know ``MenuItem`` actions to answer, and a consumer that needs the detail
+    reads ``UiFeedback.action``. Dismissal is a third value and not a flavour
+    of confirmation — it is what a screen that closes sounds like, and it is
+    the only way the audio side can tell the two apart without a convention.
+    """
+
+    NAVIGATED = "navigated"
+    CONFIRMED = "confirmed"
+    DISMISSED = "dismissed"
+
+
+@dataclass(frozen=True)
+class UiFeedback(Event):
+    """One interface interaction that reached a screen and was acted on.
+
+    Published only when a screen actually performed the action, which is what
+    makes the silence structural: a key the gameplay scene ignores, a press
+    swallowed by a rebinding capture, a stick release, an unplugged pad — none
+    of them is an interaction, so none of them is published.
+    """
+
+    effect: UiEffect
+    action: str = ""
+
+
+GameEvent = LevelStarted | PlayerDied | LevelCompleted | UiFeedback
 """Union of every concrete event payload."""
 
 Handler = Callable[[GameEvent], None]
 
 
+class SubscriberFailure(NamedTuple):
+    """One subscriber that raised while handling an event."""
+
+    event: GameEvent
+    handler: Handler
+    error: BaseException
+
+
 class EventBus:
-    """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``."""
+    """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``.
+
+    **Subscribers are isolated from each other and from the producer.** A
+    handler that raises is logged and skipped; the remaining handlers still
+    run, and the emitter is not interrupted.
+
+    That is not a stylistic choice, it is the difference between a cosmetic
+    fault and a lost save. ``emit`` is called from inside the fixed tick --
+    ``NotificationSystem`` publishes the player's death and the level
+    completion from there -- and the subscribers are UI, audio, save and
+    logging code that the simulation knows nothing about and cannot defend
+    itself against. Before this boundary, a missing sound file or a full disk
+    raised out of a handler and killed the tick that happened to publish a
+    fact, which is the one tick in which the player was about to be told they
+    had died. And because the notification system marks an event emitted
+    *before* publishing it, the fact would then never be republished: the
+    progression was not merely delayed, it was gone.
+
+    Failures are recorded on :attr:`failures` as well as logged, because a
+    swallowed exception that leaves no trace anywhere is how a subscriber
+    quietly stops working months later.
+    """
 
     def __init__(self) -> None:
         self._subscribers: dict[type[Event], list[Handler]] = {}
+        self._failures: list[SubscriberFailure] = []
+
+    @property
+    def failures(self) -> tuple[SubscriberFailure, ...]:
+        """Subscribers that raised, oldest first. Cleared by :meth:`clear`."""
+        return tuple(self._failures)
 
     def subscribe(self, event_type: type[EventT], handler: Callable[[EventT], None]) -> None:
-        """Register ``handler`` for events of exactly ``event_type``."""
-        self._subscribers.setdefault(event_type, []).append(handler)  # type: ignore[arg-type]
+        """Register ``handler`` for events of exactly ``event_type``.
+
+        Idempotent for a given handler: subscribing the same one twice used to
+        register it twice, and since ``unsubscribe`` removes a single
+        occurrence the pair was not even symmetric — a subscribe/unsubscribe
+        cycle left a ghost subscriber behind. A double-registered subscriber
+        also runs its effect twice, which for a sound is a doubled click and
+        for the save handler a second write of the progression file.
+        """
+        handlers = self._subscribers.setdefault(event_type, [])
+        if handler not in handlers:
+            handlers.append(handler)  # type: ignore[arg-type]
 
     def unsubscribe(self, event_type: type[EventT], handler: Callable[[EventT], None]) -> None:
         """Remove a previously registered handler (no-op if absent)."""
@@ -73,10 +171,27 @@ class EventBus:
             handlers.remove(handler)  # type: ignore[arg-type]
 
     def emit(self, event: GameEvent) -> None:
-        """Dispatch ``event`` synchronously, in subscription order."""
+        """Dispatch ``event`` synchronously, in subscription order.
+
+        Each handler runs inside its own boundary, so one raising does not
+        cost the others their turn and does not reach the caller. The
+        iteration is over a copy because a handler is allowed to subscribe or
+        unsubscribe -- mutating the list while walking it is the one thing
+        that would make the isolation incomplete.
+        """
         for handler in tuple(self._subscribers.get(type(event), ())):
-            handler(event)
+            try:
+                handler(event)
+            except Exception as error:  # noqa: BLE001 - the boundary is the point
+                self._failures.append(SubscriberFailure(event, handler, error))
+                logger.exception(
+                    "Event subscriber %r failed handling %s; the remaining "
+                    "subscribers and the emitter are unaffected",
+                    handler,
+                    type(event).__name__,
+                )
 
     def clear(self) -> None:
         """Drop every subscription (level teardown, tests)."""
         self._subscribers.clear()
+        self._failures.clear()

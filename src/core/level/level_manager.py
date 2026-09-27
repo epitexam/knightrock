@@ -1,6 +1,4 @@
-"""
-Manages level loading and caching with automatic progression.
-"""
+"""Manages level loading and caching with automatic progression."""
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -19,6 +17,28 @@ Replaces imperative ``level_manager.register(0, ...)`` calls: a new level is
 declared here (and its ``level_unlock`` progression in the TMX *Data* layer
 properties), without touching game code.
 """
+
+
+class UnknownLevelError(LookupError):
+    """A level id was requested that is not in the registry.
+
+    A ``LookupError`` rather than a bare ``KeyError`` because the two failures
+    a caller can hit here are not interchangeable: a registered id whose file
+    is missing is a broken installation (``FileNotFoundError``), whereas an
+    unregistered id is a bad reference -- typically a save file written by a
+    build that shipped a level this one no longer has. The message names the
+    known ids, because the id that failed is not the interesting part.
+    """
+
+    def __init__(self, level_id: int, known_ids: list[int]) -> None:
+        self.level_id = level_id
+        self.known_ids = tuple(known_ids)
+        known = ", ".join(str(known_id) for known_id in self.known_ids) or "none"
+        super().__init__(
+            f"Unknown level id {level_id!r}; registered levels: {known}. "
+            "A save file written by a build that shipped more levels than this "
+            "one references an id that no longer exists."
+        )
 
 
 class LevelManager:
@@ -52,8 +72,14 @@ class LevelManager:
 
         Returns:
             The parsed LevelData object.
+
+        Raises:
+            UnknownLevelError: ``level_id`` is not in the registry.
+            FileNotFoundError: The level is registered but its file is missing.
         """
         if level_id not in self._cache:
+            if level_id not in self.level_paths:
+                raise UnknownLevelError(level_id, sorted(self.level_paths))
             absolute_path = resource_path(self.level_paths[level_id])
             if not Path(absolute_path).exists():
                 raise FileNotFoundError(

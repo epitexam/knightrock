@@ -10,3 +10,4 @@ TEXT_TITLE = Colors.text_title
 TEXT_WARN = Colors.text_warn
 TEXT_CRIT = Colors.text_crit
 TEXT_OK = Colors.text_ok
+GOLD = Colors.gold

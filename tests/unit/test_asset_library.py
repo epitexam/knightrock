@@ -137,3 +137,77 @@ def test_shared_library_is_lazy_singleton() -> None:
     second = module.shared_library()
 
     assert first is second
+
+
+# -- the dash fallback --------------------------------------------------------
+#
+# `player/dash` degrades to `player/run` when the dash frameset is absent, and
+# the degradation used to be invisible to the cache: the recursive call
+# returned the fallback's frames, so the *requested* key stayed empty and every
+# later call redid the `is_dir()` that found the fallback. That is a stat
+# syscall per animation per frame.
+
+
+@pytest.fixture()
+def animation_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A `player/run` frameset the fallback can resolve to."""
+    run = tmp_path / "assets/graphics/player/run"
+    run.mkdir(parents=True)
+    for index in range(2):
+        raw = pygame.Surface((8, 8))
+        raw.fill((10 * index, 20, 30))
+        pygame.image.save(raw, run / f"{index}.png")
+    monkeypatch.setattr("src.core.asset_library.resource_path", lambda path: str(tmp_path / path))
+    return tmp_path
+
+
+def test_a_missing_dash_directory_falls_back_to_run(animation_tree: Path) -> None:
+    library = AssetLibrary()
+
+    frames = library.frames("assets/graphics/player/dash")
+
+    assert len(frames) == 2
+
+
+def test_the_fallback_is_cached_under_the_key_that_was_asked_for(
+    animation_tree: Path,
+) -> None:
+    """The regression: a cache that only knows the fallback re-stats forever."""
+    library = AssetLibrary()
+    requested = "assets/graphics/player/dash"
+
+    first = library.frames(requested)
+    calls = {"n": 0}
+    original = Path.is_dir
+
+    def counting_is_dir(self: Path) -> bool:  # noqa: ANN001
+        calls["n"] += 1
+        return original(self)
+
+    Path.is_dir = counting_is_dir  # type: ignore[method-assign]
+    try:
+        second = library.frames(requested)
+    finally:
+        Path.is_dir = original  # type: ignore[method-assign]
+
+    assert second is first
+    assert calls["n"] == 0, "a cached fallback must not touch the filesystem again"
+
+
+def test_the_fallback_and_its_target_share_one_list(animation_tree: Path) -> None:
+    """Two keys, one object: the frames are mutable and documented as shared."""
+    library = AssetLibrary()
+
+    dash = library.frames("assets/graphics/player/dash")
+    run = library.frames("assets/graphics/player/run")
+
+    assert dash is run
+
+
+def test_only_dash_degrades_and_anything_else_still_raises(animation_tree: Path) -> None:
+    """A missing frameset for another animation is a broken asset, not a
+    graceful degradation, and must keep saying so."""
+    library = AssetLibrary()
+
+    with pytest.raises(FileNotFoundError, match="Animation directory not found"):
+        library.frames("assets/graphics/player/jump")

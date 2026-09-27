@@ -10,9 +10,17 @@ import os
 import pygame
 import pytest
 
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import letterbox
+from src.core.display.viewport import Viewport
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.settings import Display
+
+#: A window shape with nothing awkward about it: 16:9, so the letterbox adds no
+#: bars, and big enough that the density is a fraction rather than an integer --
+#: which is the case worth testing, since it is the one a whole-pixel shortcut
+#: would get wrong.
+TEST_WINDOW = (1440, 810)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -21,7 +29,23 @@ def _headless_pygame_display() -> None:
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
-    pygame.display.set_mode((min(Display.WIDTH, 640), min(Display.HEIGHT, 480)))
+    pygame.display.set_mode((min(TEST_WINDOW[0], 640), min(TEST_WINDOW[1], 480)))
+
+
+def make_viewport(window: tuple[int, int] = TEST_WINDOW) -> Viewport:
+    """A render target, the way the game builds one: from a window.
+
+    Tests used to hand ``pygame.display.get_surface()`` straight to a Level,
+    which is the coupling this rework removed: the window is not what anything is
+    drawn into. It happens to still work under the dummy driver, and it is the
+    reason a fixture can quietly disagree with the game about what a frame is.
+
+    The default is a fractional density on purpose. A target that is a whole
+    multiple of the framing agrees with a snapped blit rect by accident, so a
+    suite built entirely on those cannot tell a correct rounding rule from a
+    broken one.
+    """
+    return Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size)
 
 
 def make_programmatic_level_data() -> LevelData:
@@ -52,12 +76,11 @@ def build_level(mock_input_manager):
     """Factory returning a real player-populated ``Level``."""
 
     def _build() -> Level:
-        level = Level(
-            pygame.display.get_surface(),
+        return Level(
+            make_viewport().surface,
             make_programmatic_level_data(),
             mock_input_manager,
         )
-        return level
 
     return _build
 
@@ -71,6 +94,8 @@ def game_runtime(tmp_path):
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
-    game.display_surface = pygame.display.get_surface()
+    # The real construction path, so the fixture cannot drift from the loop:
+    # window, render target and presentation, all three.
+    game.initialize_display()
     game.clock = pygame.time.Clock()
     return game

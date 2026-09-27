@@ -1,9 +1,9 @@
 """Axe G reception: per-tick HitCandidate dump (hitbox_amelioration.md).
 
-- désactivé par défaut : aucun écriture, buffer vide ;
-- anneau borné (maxlen) : les plus vieux candidats tombent ;
-- drain JSONL : une ligne JSON par candidat, puis le buffer est vidé ;
-- le compteur de tick avance via begin_tick (aligné sur le game loop).
+- off by default: nothing written, buffer empty;
+- a bounded ring (maxlen): the oldest candidates drop out;
+- a JSONL drain: one JSON line per candidate, then the buffer is emptied;
+- the tick counter advances through begin_tick, aligned with the game loop.
 """
 
 from __future__ import annotations

@@ -1,422 +1,676 @@
-# Audit UI — Interface, navigation, paramétrage (audit_consolide.md complément)
+# Audit UI — Interface, navigation et paramétrage
 
-- **Commit audité** : `a6d20f821ccb1c4177ee0e3a56d4ebf8b423228a` (branche `master`, 2026-09-22) — **re-vérifié intégralement contre HEAD** ce jour (audit initial sur `b493d802`, 2026-09-19 ; 28 commits d'écart, dont des dérives constatées ci-dessous). **Document durci le même jour pour exécution autonome par un agent** : décisions tranchées, API figée, fiches de lot §4b.
-- **Prérequis** : le socle d'entrée est audité dans `notes/audit_controles.md` (C-Lot 0a + 0b) — **exécuter ce contrôle avant les lots 1-2** de ce document (règle C-D9 du contrôle ; voir §4a dépendances). Le chantier « bindings persistés » (ex-UI-5) est **porté par le contrôle** (C-7 / C-D6) ; UI-5 ici ne garde que l'écran.
-- **Périmètre** : `src/application/` (scenes, scene_manager, save_game), `src/ui/`, `src/core/input/` (routes menu via le routeur du contrôle), `src/core/game.py`, `src/core/settings.py` (Display/Debug), `tests/` existants.
-- **Méthode** : relecture ligne à ligne des 4 scènes, du pipeline d'événements (`game.py:_handle_events`) et de la chaîne UI ; greps exhaustifs (souris, manette, audio, modèle de sélection, persistance de réglages) — chaque chiffre ci-dessous est rejouable via la section [§7 Commandes de vérification](#7-commandes-de-vérification).
-- **Verdict** : le ressenti « tout est à refaire » est **confirmé par le code**. Aucun des 4 usages attendus d'une interface de jeu n'est couvert : navigation souris (0 hit), navigation manette dans les menus (0 hit), sous-menus/réglages (0 scène, 0 fichier), HUD joueur lisible (pas de barre de vie/posture/dash/combo *du joueur* ; les barres de vie d'entités existent hors debug — voir UI-7). Le socle technique (`SceneManager` à pile, `PanelRenderer`, `InputBindings`, `SaveGame`) est sain et réutilisable — c'est le contenu UI qui manque, pas l'architecture. Le **routeur multi-périphériques** et le vocabulaire `ui_*` sont du côté contrôle (audit contrôles) ; ce document couvre le **modèle de focus**, les **scènes**, le **HUD** et les **réglages**.
-- **Pour un agent** : commencer par le contrôle C-Lot 0a/0b si pas fait, puis la fiche du lot UI visé (§4b), respecter §5, finir par le *DoD* de la fiche + §6. Les cases « à trancher » de la version pré-durcissement sont **décidées** (§4a décisions, UI-14, §7 croisements) — ne pas rouvrir l'arbitrage sans écrire la nouvelle décision ici.
+> Audit réécrit le 2026-09-24 contre `master` au commit `afe044f`, mis à jour le
+> 2026-09-26 contre `40ca5a9` (lot 6, cohérence de frame et cadence), puis le
+> 2026-09-26 contre `1084370` + lot 5 (sons d'interface, §5 UI-10).
+> L’historique des versions précédentes reste conservé dans Git.
 
-## 1. État des lieux
+## 1. Verdict exécutif
 
-Statut : `✅` = re-vérifié le 2026-09-22 sur `a6d20f8` ; `🆕` = constat apparu depuis l'audit initial.
+Le codebase possède un socle UI technique sain (`SceneManager`, panneaux, interactions debug, HUD joueur), mais l’interface de jeu reste volontairement minimale :
 
-| Capacité attendue | État actuel | Preuve | Statut |
+- les menus principal, pause et game over sont clavier-only ;
+- il n’existe pas encore de modèle de focus/hover menu ;
+- il n’existe pas de scène Options, Level Select ou Victory ;
+- il n’existe pas de réglages vidéo/audio persistés ;
+- il n’existe pas de rebinding ;
+- l’audio n’est pas implémenté.
+
+Le HUD joueur et le gating des panneaux debug sont désormais livrés et ne doivent pas être réimplémentés.
+
+**État au 2026-09-24 (branche `feat/audit-ui-implementation`) :** les lots 0 à 4 sont
+livrés et vérifiés — navigation clavier / souris / manette, `MenuModel`/`MenuView`,
+Options, Level Select, Victory, `ui.scale`, bindings persistés, écran Contrôles
+(rebinding clavier et manette) et redimensionnement utilisateur.  Restent ouverts :
+l’audio (lot 5, optionnel) et un tutoriel de contrôles gameplay (UI-8, partiel).
+
+**État au 2026-09-26 (`40ca5a9`) :** le lot 6 est livré — une seule transform de
+frame (le blend est porté par la caméra), `Camera.apply_covering()` pour tout ce que
+le renderer blitte, les barres HP ancrées sur les rects réellement blittés, les
+rectangles overlay déclarés au renderer, et une boucle cadencée une seule fois. La
+section 3 et le lot 6 de la section 8 portent les preuves. Restent ouverts : l’audio
+(lot 5, livré depuis, voir l’état suivant), le tutoriel gameplay (UI-8), le réglage
+de limite de frames (lot 7, planifié dans `notes/plan_limit_frames_video.md`) et
+l’écart O10 consigné dans `notes/ecarts_ouverts.md` (la suite n’est pas verte avec
+`DEBUG=1`).
+
+**État au 2026-09-26 (lot 5, branche `feat/audio-ui-system`) :** le lot 5 est livré
+pour les **sons d’interface et de menus** — `AudioBus` (`src/core/audio.py`) seul
+possesseur de `pygame.mixer`, sons de navigation / validation / retour branchés sur
+les interactions de menu existantes, dégradation propre quand le mixer ou les
+fichiers manquent. Restent ouverts : la **musique par scène**, les **sons de
+gameplay**, le **réglage de volume** (ni menu ni persistance — l’API par catégorie
+est en place), le tutoriel gameplay (UI-8), la limite de frames (lot 7) et l’écart
+O10.
+
+## 2. Base vérifiée
+
+- **HEAD :** `40ca5a9` (`master`), + lot 5 sur `feat/audio-ui-system`
+- **Historique UI :** `4f8b025` → `1f5e3fa` → `afe044f` (état du 2026-09-24) → `40ca5a9` → lot 5
+- **Périmètre :** `src/application/`, `src/ui/`, `src/core/game.py`, `src/core/input/`, `src/core/settings.py`, `src/core/rendering/`, `src/core/audio.py`, tests associés.
+- **Validation de référence (2026-09-26, lot 5) :** suite complète à **1158 tests** verts
+  (`env -u DEBUG uv run pytest -q`) ; Ruff (check + format) et mypy propres
+  (`mypy src main.py tools`, 145 fichiers). Les 33 tests du lot 5 sont
+  `tests/unit/test_audio.py` (14), `tests/headless/test_ui_audio.py` (22),
+  plus 3 dans `test_menu_model.py` et 2 dans `test_event_router.py`.
+  Référence précédente avant lot 5 : 1117 tests, 89 % instructions / 86 % branches,
+  mypy 142 (`src`) et 144 (CI).
+- **Réserve connue (inchangée) :** `DEBUG=1 uv run pytest -q` est **rouge sur 1 test**,
+  `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`. Le
+  chemin debug fait toujours un refresh complet, donc `Level.draw` renvoie `None`
+  et rien n’est présenté partiellement. Le même test échoue aussi **isolé**, avec ou
+  sans `DEBUG` : il dépend d’un test précédent qui agrandit l’écran, sans quoi la
+  barre de l’ennemi est cullée. Consigné comme O10 dans `notes/ecarts_ouverts.md`,
+  non corrigé.
+
+Les références de lignes de l’ancienne version ne sont pas reproduites telles quelles : elles sont remplacées par les chemins de fichiers et les tests qui définissent désormais le contrat.
+
+## 3. Matrice d’état
+
+| Domaine | État actuel | Statut | Preuve |
 |---|---|---|---|
-| Menu navigable clavier | ❌ raccourcis fixes uniquement (`ENTER`/`N`/`Q`/`ESC`), pas de curseur | `menu_scene.py:47-57` | ✅ |
-| Menu navigable souris | ❌ aucun (`MOUSEMOTION`/`MOUSEBUTTON` : **0 hit** dans `src/`) | grep §7 | ✅ |
-| Menu navigable manette | ❌ menus = `KEYDOWN` only ; manette initialisée mais réservée au gameplay | `game.py:82,133-146`, scènes | ✅ |
-| Sous-menus / Options | ❌ 4 scènes plates (menu, gameplay, pause, gameover), aucune scène Options | `src/application/scenes/` | ✅ |
-| Réassignation des touches | ❌ defaults en dur, jamais sérialisés | `input_bindings.py:31-76` | ✅ |
-| Réglages vidéo (fenêtre/plein écran/vsync) | ❌ `set_mode` fixe, aucun `RESIZABLE`/vsync | `game.py:84` | ✅ |
-| Réglages audio (volumes) | ❌ aucun audio du tout (`pygame.mixer`/`Sound`/`music` : **0 hit**) | grep §7 | ✅ |
-| Sélection de niveau | ❌ seuls « continue » (dernier niveau) et « new game » ; `unlocked_levels` au-delà du dernier **inaccessibles** | `menu_scene.py:32-55`, `save_game.py:27-28` | ✅ |
-| HUD joueur lisible | ✅ **soldé** : `src/ui/hud.py` (vie/posture/dash/combo, ancré écran, hors `Debug`), branché depuis `GameplayScene.draw` (D9) ; barre world-space du **joueur retirée** (gate dans `_has_health_bar`), celle des *entités* reste hors debug (`level.py:316`) | `src/ui/hud.py`, `gameplay_scene.py:156-172`, `tests/unit/test_hud.py` | 🆕 (UI-7) |
-| Écran d'aide aux contrôles | ❌ le panneau « aide » liste les touches du banc de debug (F1-F7), pas les contrôles du joueur | `ui_manager.py:59-83` | ✅ |
-| Modèle de sélection (focus/hover) | ❌ 0 hit `selected/focused/hover/highlight` (hits `cursor` = curseurs de layout debug : `panel_renderer.py:23,41`, `world_ui.py` timeline/sweep) | greps §7 | ✅ |
-| Panneau COMBAT hors debug | ❌ `draw_metrics_panel` + `note_clash` appelés **avant** le gate `Debug` — visibles en mode joueur | `level.py:317-326` vs `level.py:328` | 🆕 (UI-14) |
+| Menus clavier | Touches par défaut + actions `ui_*` routées | **Clos** | `event_router.py`, `menu_model.py`, tests headless |
+| Menus souris | Hover, clic gauche, clic droit = retour | **Clos** | `MenuModel.hover`, `test_scenes.py` (pointeur) |
+| Menus manette | Boutons, hat et stick (repeats inclus) | **Clos** | `event_router._route_hat/_route_axis`, `test_menu_navigation_supports_stick_and_hat` |
+| Modèle focus/hover | `MenuModel` + `MenuView` (rects, wrap, items désactivés) | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py` |
+| Scène Options | Hub de navigation (Video settings, Controls) | **Clos** | `options_scene.py`, `test_options_scene.py` |
+| Rebinding/persistance | Écran Contrôles + `settings.json` versionné | **Clos** | `settings_store.py`, `controls_scene.py`, `test_controls_scene.py` |
+| Réglages vidéo | Mode d'écran, tailles dérivées du bureau, letterbox maison, vsync vérifié | **Clos** | `src/core/display/`, `video_scene.py`, `resolution_scene.py` |
+| Audio | **Partiel** — sons d'interface livrés (navigation, validation, retour) ; musique, sons gameplay et volume ouverts | Ouvert | `core/audio.py`, `InputDispatcher._apply`, `test_audio.py`, `test_ui_audio.py` |
+| HUD joueur | Vie, posture, dash et combo | **Clos** | `src/ui/hud.py`, `GameplayScene.draw` |
+| Panneau COMBAT hors debug | Gaté | **Clos** | `WorldUI.draw_metrics_panel`, tests debug |
+| Aide aux contrôles joueur | Écran Contrôles listant les bindings | Partiel | `controls_scene.py` ; pas de tutoriel gameplay |
+| Level Select | Livré (progression `SaveGame`) | **Clos** | `level_select_scene.py`, tests headless |
+| Victory Scene | Livrée (fin du dernier niveau) | **Clos** | `victory_scene.py`, tests headless |
+| `ui.scale` | 0.8 / 1.0 / 1.2, persisté, appliqué au rendu | **Clos** | `settings_store.py`, `MenuView.set_scale` |
+| Debug panels interactifs | Souris close/drag, F1–F10, F4 statics **off par défaut** | Clos | `panel_renderer.py`, `world_ui.py:319`, `GameplayScene` |
+| Sauvegarde progression | JSON avec fallback | Clos | `save_game.py`, tests save |
+| Cohérence de frame | Une seule transform : le blend est dans la caméra | **Clos** | `Camera.begin_frame`, `test_frame_coherence.py` |
+| Arrondi écran sortant | `apply_covering()` : floor/ceil, arêtes lointaines depuis `apply` | **Clos** | `camera.py:166-197`, `test_camera_zoom.py` |
+| Rectangles overlay | HUD et barres HP déclarés au renderer pour l’erase et le present | **Clos** | `level.py:340`, `gameplay_scene.py:231`, `test_no_stale_pixels.py` |
+| Présentation partielle | Une frame portant des overlay rects ne prend jamais le chemin partiel | **Clos** | `test_frame_coherence.py` |
+| Cadence de boucle | Present = seul pacer sous vsync, plafond dérivé de `Display.FPS` | **Clos** | `game.py:40,250-277`, `test_frame_pacing.py` |
+| Limite de frames (menu vidéo) | Absente, planifiée | Ouvert | lot 7, `notes/plan_limit_frames_video.md` |
 
-Base de tests existante réutilisable pour la réception : `tests/headless/test_scenes.py` (14 tests, verts), `tests/unit/test_menu_panel.py` (6), `test_save_game.py` (10), `test_player_ui.py` (12), `test_ui_debug_panels.py` (5), `tests/headless/test_input_manager.py`.
+## 4. Capacités existantes à préserver
 
-## 2. Constats
+### 4.1 Architecture des scènes
 
-### Axe A — Navigation
+`SceneManager` fournit déjà `switch()`, `push()` et `pop()`. Les futures Options, Level Select et Victory doivent utiliser cette API sans refonte du manager.
 
-**UI-1 — Aucune interaction souris (priorité haute, effort M)**
-- *Constat* : toutes les scènes filtrent à la source sur le clavier — `menu_scene.py:48` (`if event.type != pygame.KEYDOWN: return`, idem `pause_scene.py:33`, `gameover_scene.py:34`) ; `gameplay_scene.py:101-118` ne traite qu'ESC et F1-F7. Aucun hit-test, aucune zone cliquable : `draw_centered_menu_panel` (`menu_panel.py:20-62`) retourne pourtant un `Rect` (prévu « useful for headless tests », `:39-43`) mais personne ne le réutilise.
-- *Impact* : un joueur sans clavier AZERTY/QWERTY connu ne peut ni lancer, ni reprendre, ni quitter proprement.
-- *Cible* : chaque item de menu expose son Rect ; clic = activation, survol = focus visuel.
-- *Réception* : headless — injecter `pygame.event.Event(MOUSEBUTTONDOWN, pos=…)`, vérifier le changement de scène ; hover change le rendu de l'item.
+### 4.2 HUD joueur
 
-**UI-2 — Manette inutile dans les menus (priorité haute, effort S/M)**
-- *Constat* : la manette est correctement gérée au niveau application (`game.py:82` `joystick.init()`, `:133-146` `JOYDEVICEADDED/REMOVED` avec hot-plug et réassignation), mais `MenuScene/PauseScene/GameOverScene` ne traitent que `KEYDOWN`. `InputBindings.gamepad_buttons` (`input_bindings.py:47-57`) ne couvre que les actions de gameplay (jump/attack/guard), aucune action de menu (`ui_confirm`, `ui_back`, `ui_up/down`).
-- *Impact* : joueur manette > obligé de poser la manette pour naviguer. Contradiction directe avec la cible « beat'em up jouable à la manette ».
-- *Cible* : actions de menu dédiées (déplacer/valider/retour). **Mapping figé** (standard Xbox / SDL, aligné sur les indices déjà en dur dans `input_bindings.py`) :
-  | Action | Manette | Clavier équivalent |
-  |---|---|---|
-  | `ui_confirm` | bouton **0 (A)** | `ENTER` / `SPACE` |
-  | `ui_back` | bouton **1 (B)** | `ESC` / `Q` (selon scène) |
-  | `ui_up` / `ui_down` | **hat Y** (`JOYHATMOTION` ±1) **ou** stick gauche `axis 1` si `abs(v) >= 0.5` (edge only, pas de répétition tant que le seuil n'est pas repassé sous 0.3) | `UP` / `DOWN` |
-  - Ces 3 actions s'ajoutent à `InputBindings` (dict `menu` — **implémenté par C-Lot 0a du contrôle**) et sont routées par le **routeur d'événements du contrôle** (`src/core/input/event_router.py`, C-Lot 0b), pas par la boucle gameplay.
-- *Réception* : headless — `Event(JOYHATMOTION, value=(0,-1))`, `Event(JOYBUTTONDOWN, button=0)`, `Event(JOYBUTTONDOWN, button=1)` simulés changent l'item courant / activent / reviennent.
+`src/ui/hud.py` fournit un HUD screen-space avec vie, posture, dash, combo, seuils de couleur, layout responsive et rects dirty. `GameplayScene.draw()` le dessine après le niveau, même sans `DEBUG`.
 
-**UI-3 — Pas de modèle de sélection (priorité haute, effort M — socle de UI-1/UI-2)**
-- *Constat* : les options sont des chaînes figées : `self.options: tuple[str, ...]` (`menu_scene.py:34-42`), `"ENTER / ESC: resume"` (`pause_scene.py:23`), dessinées en texte brut (`menu_panel.py:46`). Aucun index d'item courant, aucun état `enabled`, aucun ordre de navigation — greps `selected|focused|hover|highlight` = 0 hit.
-- *Impact* : impossible d'ajouter souris/manette/sous-menus sans d'abord inventer ce modèle à chaque scène. C'est la racine de « menu impraticable ».
-- *Cible* : **API figée** `src/ui/menu_model.py` (module pur, zéro import pygame obligatoire sauf `Rect` si besoin — préférer un tuple `(x,y,w,h)` ou `pygame.Rect` au choix, documenté) :
+**Ne pas recréer un HUD ni ajouter une barre world-space au joueur.**
 
-  ```python
-  @dataclass
-  class MenuItem:
-      label: str
-      callback: Callable[[], None] | None = None  # None => jamais activable
-      enabled: bool = True
-      rect: pygame.Rect | None = None             # alimenté par menu_view après draw
+### 4.3 Debug UI
 
-  class MenuModel:
-      items: list[MenuItem]
-      index: int                                  # focus clavier/manette/hover (état UNIQUE)
+Le debug conserve déjà hitboxes, hurtboxes, vecteurs, labels, timeline, panels, métriques, F1–F10, fermeture de panels au clic, drag-and-drop, export F9 et rejeu F8. Ces capacités sont hors scope de l’UI joueur.
 
-      def rebuild(self, items: list[MenuItem]) -> None   # appelé à chaque enter() de scène
-      def move(self, delta: int) -> None   # wrap circulaire ; saute les items !enabled
-      def hover(self, pos: tuple[int, int]) -> None  # si rect contient pos => index = i (sinon no-op)
-      def point_inside(self, pos: tuple[int, int]) -> bool
-      def activate(self) -> bool  # False si !enabled ou callback None ; sinon appelle callback, True
-      @property
-      def current(self) -> MenuItem
-  ```
+Deux règles ont été ajoutées le 2026-09-25 et sont à considérer comme du contrat :
 
-  - **Wrap** (pas clamp) : `move(+1)` sur le dernier revient au premier *enabled* ; idem `move(-1)` ; si **aucun** item enabled, `move` est no-op.
-  - **Un seul état de focus** : clavier, manette et hover partagent `index` ; le survol souris *déplace* le curseur, le clavier/manette le reprend au prochain `UP/DOWN`.
-  - **Menu dynamique** : les items sont reconstruits dans `Scene.enter()` (pas seulement `__init__`) — `MenuScene` a 2 ou 3 options selon `has_progress` (`menu_scene.py:33-42`).
-  - Rendu du curseur (flèche `▶` ou surlignage) dans `src/ui/menu_view.py` : `draw_menu(renderer, surface, model, ...) -> list[pygame.Rect]` (Rects par item, alimentés dans `model.items[i].rect`).
-- *Réception* : `tests/unit/test_menu_model.py` pur (wrap, skip désactivé, activate désactivé → False, hover, rebuild) + `tests/unit/test_menu_view.py` (curseur rendu, Rects renseignés) + headless ↑/↓/Enter sur les 3 scènes menu.
+- **`F4` statics est off par défaut** (`world_ui.py:319`). Un niveau porte ~970
+  tuiles de terrain dont le contour n’apprend rien, et `_debug_reference` — le
+  poste le plus lourd de la frame — leur coûtait 2.8 ms. Le gate `statics` passe
+  maintenant **avant** la construction de la référence : le test de type exact qui
+  précédait (`type(sprite) is pygame.sprite.Sprite`) ne matchait jamais, les tuiles
+  étant des sous-classes, donc chaque tuile payait l’allocation avant que le
+  toggle puisse l’éviter. Mesuré sur le niveau 0 (972 sprites) en `DEBUG=1` :
+  p50 6.0 → 4.3 ms, p95 7.3 → 6.2 ms, pire 15.0 → 12.8 ms.
+- **L’overlay lit la même transform que le monde.** Il ne se punit plus lui-même à
+  `alpha = 1.0` : c’est la caméra qui interpole, une fois par frame, et l’overlay
+  passe par le même `camera.apply`. Conséquence : plus aucun debug ne se détache
+  du sprite qu’il annote, et les deux contournements construits autour de l’ancien
+  split (la map des rects blittés pour les barres, le pin à 1.0) ont disparu.
 
-### Axe B — Paramétrage
+## 5. Constats : état de livraison
 
-**UI-4 — Aucun sous-menu, aucune scène Options (priorité haute, effort M)**
-- *Constat* : `src/application/scenes/` contient exactement `menu_scene.py`, `gameplay_scene.py`, `pause_scene.py`, `gameover_scene.py`. `SceneManager` (`scene_manager.py:34-51`) expose `switch/push/pop` — la pile supporte nativement un sous-menu — mais jamais utilisée autrement que pause/game-over.
-- *Cible* : `OptionsScene` **push** depuis menu et pause ; sections en liste (pas d'onglets) : **Contrôles** / **Vidéo** / **Audio** / **Retour**. **Décision D6 : une seule scène + attribut `section`** (pas de sous-scenes multiples). `ESC`/`ui_back` = `pop` (retour menu ou pause selon la scène dessous).
-- *Réception* : push depuis pause → `pop` restaure la pause (étendre `test_scenes.py`).
-
-**UI-5 — Écran de rebinding (données portées par le contrôle C-7)**
-- *Constat* : `input_bindings.py:5` promet la personnalisation des touches ; les defaults sont en dur (`:31-76`), sans `to_dict`/`from_dict` ni écriture disque — **constat détaillé et plan de données en `notes/audit_controles.md` C-7 / C-Lot 0d (décision C-D6)**. Ici ne reste que **l'écran**.
-- *Cible (partie UI)* : `src/application/settings_store.py` — sections `video` / `audio` / `ui` de `settings.json` (même contrat que `SaveGame` : `version`, fallback, `KNIGHTROCK_SAVE_DIR` + `/.knightrock/settings.json`) ; la section `bindings` est **écrite/lue par C-Lot 0d** et seulement **consommée** par l'écran Contrôles :
-
-  ```json
-  {
-    "version": 1,
-    "bindings": { "...": "porté par audit contrôles C-7 — cf. audit_ui UI-5 renvoi" },
-    "video": { "fullscreen": false, "vsync": false, "windowed_size": [1440, 900] },
-    "audio": { "master": 1.0, "sfx": 1.0, "music": 1.0 },
-    "ui": { "scale": "normal" }
-  }
-  ```
-
-  - `SettingsStore.load()/save()`, defaults en code, **mêmes catches parenthésés** que UI-11.
-  - Écran Contrôles : état `waiting_for_key` — injecter `Event(KEYDOWN, key=…)` met à jour le binding **via l'API du contrôle** ; conflit → refuser + message (D10).
-- *Réception (partie UI)* : capture de touche headless ; roundtrip disque des sections vidéo/audio/ui (bindings = DoD C-Lot 0d) ; fichier corrompu → defaults sans crash.
-
-**UI-6 — Aucun réglage vidéo (priorité moyenne, effort M)**
-- *Constat* : `Display` (`settings.py:8-18`) : `WIDTH=1440, HEIGHT=900, FPS=180` constants ; `game.py:84` crée la fenêtre une fois via `set_mode(SIZE)` sans `RESIZABLE`, sans vsync, sans bascule plein écran. Le commentaire `settings.py:14-16` annonce « rendering at 120 FPS » et traite 180 comme « *previous* 180 FPS setting » (référence audit F1.4/F6.1) alors que `FPS = 180` (ligne 17) — l'incohérence R-1 est **toujours non résolue**. **Décision : le lot 3 absorbe R-1** (voir §7 croisements).
-- *Cible* : bascule plein écran via `pygame.FULLSCREEN | pygame.SCALED` (reco.) ou `pygame.display.toggle()` ; `RESIZABLE` en fenêtré ; vsync : recréer le display avec `pygame.display.set_mode(size, flags, vsync=1)` (pygame-ce) — relever le FPS clock en conséquence. Résolutions fenêtrées proposées : `[1280×720, 1440×900, 1920×1080]` uniquement. `PanelLayout` est déjà « responsive by construction » (`panel_renderer.py:8-46`).
-- *Réception* : headless — toggles appliqués à un display de test, persistés dans `settings.json`.
-
-### Axe C — HUD & feedback joueur
-
-**UI-7 — Pas de HUD joueur ; l'« UI » actuelle est l'outil de debug (priorité haute, effort M)**
-- *Constat* : `UIManager` (`ui_manager.py:20-156`) n'expose que des panneaux debug (`draw_state_panel`/`draw_stats_panel`/`draw_scene_panel`/`draw_help_panel`/`draw_legend_panel`/`draw_performance_panel` — routage `renderer.py:201-222`, affichés uniquement quand `Debug.is_enabled()` via `level.py:328-334`). `player_ui.py:13-140` montre des valeurs internes en jargon debug, utiles au dev, illisibles pour un joueur. `world_ui.py` (1275 lignes) est l'overlay debug : excellent outil, pas un HUD.
-  - *Nuance (re-vérification 2026-09-22)* : `level.py:316` appelle `draw_health_bars` **hors** du gate Debug — des barres de vie *world-space* pour les entités avec `health` (`world_ui.py:1247-1275`) s'affichent déjà en jeu normal. Ce n'est **pas** un HUD joueur : ni posture, ni dash, ni combo, ni ancrage fixe écran.
-- *Impact* : en jeu normal, l'écran ne dit ni la posture, ni les charges de dash, ni le combo — alors que le combat (posture, riposte, juggle/OTG) est précisément conçu autour de ces fenêtres.
-- *Cible* : `src/ui/hud.py` — **champs figés** (lecture seule, mêmes attributs que `player_ui.draw_stats_panel`) :
-
-  | Élément HUD | Source | Seuils couleur |
-  |---|---|---|
-  | Barre de vie | `player.health` / `player.max_health` | >50 % OK, >25 % WARN, sinon CRIT (`styles`) |
-  | Posture de garde | `player.guard_posture` / `player.guard_posture_max` | ≤30 % WARN ; `guard_lockout_timer > 0` → CRIT |
-  | Charges de dash | `player.dash_charges` / `player.max_dash_charges` | pastilles pleines/vides |
-  | Combo | `player.combat.combo_count`, `combo_timer` | affiché si `count > 0` |
-
-  - Ancrage écran (coin bas-gauche vie/posture, bas-droite dash/combo), **pas** de world-space, **pas** de `Debug.is_enabled()`. Classe `HUD.draw(player) -> None` ; **branchement D9** : `GameplayScene.draw` (`src/application/`, périmètre autorisé) appelle `self.level.renderer.ui_manager.draw_hud(self.level.player)` **après** `level.draw()` — ni `level.py`, ni `renderer.py` modifiés (règle 1).
-- *Réception* : headless — HUD dessiné sans `Debug.is_enabled()`, contenu et couleurs vérifiés par état (vie basse → rouge) via snapshot de texte/Rects (pas de pixel-perfect).
-- *État (2026-09-22)* : **soldé**. `src/ui/hud.py` (`HUD.draw(player) -> list[Rect]`), seuils UI-7 dans `health_color`/`posture_color`, largeur de barre proportionnelle bornée à l'écran (`bar_width_for`), `HudLayout` gelé pour l'assertion par état ; `UIManager.draw_hud` + branchement D9 dans `GameplayScene.draw`, rects HUD ajoutés au set dirty (frame non-debug). 23 tests dans `tests/unit/test_hud.py` (ancrage, seuils, pips, combo expiré, clamp des résolutions, rects présentés).
-- *Complément (2026-09-22)* : la **barre world-space du joueur est retirée** (redondante avec le HUD) — gate `faction == "player"` dans `WorldUI._has_health_bar` (`src/ui/`, règle 1 respectée ; `level.py:316` inchangé), ce qui supprime aussi la salle réservée par les cartes debug pour une barre jamais dessinée. Les barres des **entités ennemies** restent hors debug. Test `test_player_has_no_world_space_health_bar`.
-
-**UI-8 — Pas d'aide aux contrôles, libellés figés (priorité moyenne, effort S/M)**
-- *Constat* : le seul panneau « aide » (`ui_manager.py:59-83`) liste `1-4 test attacks / F1-7 boxes/step…` = touches du banc de debug. Les libellés de menu (`"ENTER: play"`, `menu_scene.py:37-42`) sont des chaînes en dur qui ne reflètent ni `InputBindings` ni d'éventuels rebidings (UI-5). Aucun écran « Contrôles » consultable depuis menu ou pause.
-- *Cible* : section `controls` d'`OptionsScene` (D6) listant chaque action × (nom de touche clavier, bouton manette) générés depuis `InputBindings` effectif ; libellés de menu calculés (`f"{name_key}: continue"`). Accessible depuis menu **et** pause (push d'`OptionsScene` au lot 3).
-- *Réception* : headless — le texte affiché contient le nom de touche retourné par les bindings (après rebinding, le libellé change).
-
-**UI-9 — Feedback et parcours joueur incomplets (priorité moyenne, effort M)**
-- *Constat* :
-  - **Sélection de niveau impossible** : le menu n'offre que « continue » (reprenant `last_level_id`, `menu_scene.py:52`) et « new game ». `SaveGame.unlocked_levels` (`save_game.py:27`) peut contenir plusieurs niveaux, mais il n'existe **aucun moyen** d'y accéder.
-  - **Fin de jeu sans écran de victoire** : `gameplay_scene.py:83-99` (`_advance_level`) — dernier niveau fini → `switch(MenuScene)` direct (`:97`).
-  - **Transitions brutes** : `switch` sans fondu ; Game Over pousse un panneau statique (`gameover_scene.py:41-57`).
-- *Cible* :
-  - `LevelSelectScene` : **liste verticale** (pas grille — réutilise `MenuModel`) des niveaux **uniquement** dans `unlocked_levels` triés ; les ids non débloqués ne sont **pas** affichés morts (règle « no dead options ») ou affichés `enabled=False` avec libellé `level N (locked)` — **choix : afficher locked `enabled=False`** pour montrer l'existence. Item → `GameplayScene(game, level_id)`.
-  - `VictoryScene` : titre, `level_id`, boutons `Next`/`Retry`/`Menu` via `MenuModel`. Déclenchée par `_advance_level` quand `next_id is None`.
-  - Fade : `src/ui/fade.py` helper 0→255 alpha sur N frames, appelé par `SceneManager.switch` wrapper **sans modifier `scene_manager`** — helper utilisé explicitement par les scènes qui transitionnent. (Lot 5.)
-- *Réception* : headless — ouvrir la sélection, lancer un niveau N débloqué, naviguer ↑/↓ ; fin du dernier niveau → `VictoryScene` ; les ids non débloqués ne sont pas activables.
-
-### Axe D — Fondations & santé du code
-
-**UI-10 — Aucun audio (priorité moyenne, effort L — prérequis des volumes d'UI-6/lot 3)**
-- *Constat* : `pygame.mixer`/`Sound`/`music` : **0 hit** dans `src/`. **Décision : le lot 5 porte `AudioBus`** et couvre donc R-2.4 (§7 croisements).
-- *Cible* : `src/application/audio_bus.py` — `init()` dummy-safe, canaux `sfx`/`music`, `set_volume(channel, v)`, hooks EventBus (`LevelStarted`, `PlayerDied`, `LevelCompleted`) + sons de menu sur `activate()`.
-- *Réception* : headless — `SDL_AUDIODRIVER=dummy`, volumes appliqués et persistés ; absence de périphérique → dégradation silencieuse.
-
-**UI-11 — Syntaxe Python 3.14 exclusive dans `save_game.py` (priorité basse, effort XS)**
-- *Constat* : `save_game.py:63` et `:78` — `except` sans parenthèses (PEP 758). `pyproject.toml:6` : `requires-python = ">=3.14"`.
-- *Cible* : `except (KeyError, TypeError, ValueError):` et `except (OSError, json.JSONDecodeError):`.
-- *Réception* : `python3 -m py_compile src/application/save_game.py` + `uv run pytest tests/unit/test_save_game.py`.
-
-**UI-12 — Incohérences commentaires/décisions à trancher (effort XS)**
-- `settings.py:14-17` : commenter/aligner avec la valeur réelle **dans le lot 3** (R-1 absorbé) — si `FPS` passe à 120, réécrire le commentaire pour décrire 120, sinon le commentaire ne doit pas dire « previous 180 ».
-- `menu_scene.py:23-25` : réécrire la docstring « deliberately textual » dès le lot 1 (elle décrit ce qui est remplacé).
-- `input_bindings.py:5` : la promesse devient vraie via **C-7 / C-Lot 0d du contrôle** (données) + écran UI-5 — ne pas supprimer la phrase, l'implémenter côté contrôle.
-
-**UI-13 — Accessibilité (transverse, effort M, lot 4)**
-- Tailles fixes : `SysFont("Consolas", …)` (`panel_renderer.py:55-63`), `Debug.FONT_SIZE=24` (`settings.py:248`), menu 48/40 px (`menu_panel.py:29-30`).
-- Palette : thème debug (`styles.py:2`) — étendre en charte UI (couleurs HUD dédiées) ou assumer.
-- Cible : réglage `ui.scale` ∈ `small|normal|large` (0.8 / 1.0 / 1.25) multiplie les tailles de polices **menu + HUD uniquement** (pas les panneaux debug F1-F5).
-
-**UI-14 — Panneau COMBAT affiché hors mode debug (nouveau constat, priorité moyenne, effort S)**
-- *Constat* : `level.py:317-326` appelle `world_ui.note_clash(...)` et `world_ui.draw_metrics_panel(...)` **avant** le gate `if not debug_enabled: return dirty` (`level.py:328`). Le panneau COMBAT (`world_ui.py:382-425`) s'affiche en mode joueur, thème debug. Apparu en `a6d20f8`.
-- *Impact* : bruit visuel ; contradiction avec §5 règle 5.
-- ***Décision (figée) : option (a), gate DANS `src/ui/world_ui.py`*** — en tête de `WorldUI.draw_metrics_panel` et `WorldUI.note_clash` (+ le rendu du marqueur clash dans la boucle existante) :
-
-  ```python
-  if not Debug.is_enabled():
-      return
-  ```
-
-  - **Aucune édition de `level.py`** → règle 1 intacte (pas d'exception).
-  - Option (b) (asserter le panneau comme feedback joueur) est **rejetée** pour l'instant : à rouvrir seulement avec une refonte vers `ui/hud.py` et une ligne écrite ici.
-- *Réception* : headless — `DEBUG` unset : `draw_metrics_panel` ne blitte rien (compteur de `display_surface` ou spy) ; `DEBUG=1` : comportement inchangé (`test_debug_overlay.py` / `test_ui_debug_panels.py` restent verts).
-- *État (2026-09-22)* : **soldé autrement que par le gate sec** — `draw_metrics_panel` collecte les lignes (gate `Debug.is_enabled()` dans `world_ui.py`, zéro édition de `level.py` : décision D1 intacte) et le **flux de colonnes** les dessine (`UIManager.draw_combat_panel`, appelé par `Renderer.draw_debug_panels`). Le COMBAT a donc en plus quitté sa position fixe `(10, 150)` où il s'empilait sur STATE/STATS. Tests : `tests/unit/test_debug_layout.py` (gate + flux) ; `DEBUG` unset → `combat_panel_lines` vide et aucun pixel COMBAT.
-
-## 3. Cible proposée (architecture)
-
-```
-src/ui/menu_model.py        # MenuModel/MenuItem : API figée UI-3 (pur)
-src/ui/menu_view.py         # draw_menu -> list[Rect] ; curseur ; alimente item.rect
-src/core/input/event_router.py  # route KEYDOWN/MOUSE*/JOY* -> ui_* (porté par audit contrôles C-Lot 0b)
-src/ui/hud.py               # HUD joueur (fields UI-7), sans Debug
-src/ui/fade.py              # (lot 5) helper fade
-src/application/settings_store.py   # settings.json versionné (schéma UI-5 ; section bindings = C-7 contrôle)
-src/application/audio_bus.py        # (lot 5) — couvre aussi R-2.4
-src/application/scenes/options_scene.py      # 1 scène + sections Contrôles/Vidéo/Audio (UI-4, D6)
-src/application/scenes/level_select_scene.py
-src/application/scenes/victory_scene.py
-```
-
-- Les scènes restent les points d'entrée `handle_event` ; le **routeur du contrôle** (`event_router.py`) est la porte unique des périphériques → actions `ui_*` ; l'UI branche `MenuModel` sur ces actions (hover/clic = Rects du modèle). Une seule table de navigation pour les 3 périphériques.
-- `SceneManager` push/pop sert pour Options/Sélection/Victoire (`scene_manager.py:41-51`, aucune modification du manager).
-
-## 4a. Décisions figées (ne pas rouvrir sans mise à jour écrite)
-
-| # | Sujet | Décision |
+| Constat | Statut | Preuve |
 |---|---|---|
-| D1 | UI-14 | Option (a), gate **dans** `world_ui.py` (`Debug.is_enabled()`), zéro édition de `level.py` |
-| D2 | R-1 (FPS/vsync) | **Absorbé par le lot 3** (UI-6) — ne pas traiter séparément dans `audit_consolide.md` tant que le lot 3 n'est pas soldé |
-| D3 | `AudioBus` / R-2.4 | **Lot 5** livre l'implémentation unique ; R-2.4 est couverte quand le lot 5 passe ; sinon R-2 reste ouverte |
-| D4 | Wrap navigation | **Wrap circulaire**, skip `!enabled` |
-| D5 | Focus | **Un seul `index`** partagé clavier/manette/hover |
-| D6 | Options | **1 scène** `OptionsScene` + attribut `section` (pas de sous-scenes multiples) ; section `controls` = écran Contrôles UI-8, livrée au **lot 3** avec le store |
-| D7 | Level select | Liste ; locked **affichés** `enabled=False` + libellé `(locked)` |
-| D8 | Contrôleur | **Routeur du contrôle** `src/core/input/event_router.py` (C-Lot 0b) produit les actions `ui_*` ; l'UI l'appelle via `route_event` et gère seulement focus/Rects (`MenuModel` + `menu_view`) — un seul routeur, pas deux |
-| D9 | HUD branchement | Appelé depuis `GameplayScene.draw` après `level.draw()` (fichier autorisé) |
-| D10 | Conflit rebinding | **Refuser** la capture + message (pas d'échange automatique) |
-| D11 | Lot 1 scènes | **menu / pause / gameover uniquement** — `GameplayScene` n'a pas d'items de menu, hors lot 1 |
-| D12 | Manette menu | boutons 0/1, hat + stick seuil 0.5/0.3, actions `ui_*` dans `InputBindings` — **codes/seuils portés par C-Lot 0a/0c du contrôle** ; le tableau UI-2 reste la référence UX |
+| UI-1 Navigation souris | **Clos** | `MenuModel.hover`, `MenuView.item_rects`, parcours pointeur headless |
+| UI-2 Navigation manette | **Clos** | `event_router` (boutons, hat, stick, repeats), tests headless |
+| UI-3 Modèle de sélection | **Clos** | `src/ui/menu_model.py`, `src/ui/menu_view.py`, tests unitaires |
+| UI-4 Options | **Clos** | `options_scene.py` : hub sans réglage propre, chaque valeur dans l'écran qui la possède (Video / Controls) |
+| UI-5 Rebinding et settings | **Clos** | `settings_store.py` + `controls_scene.py` (capture touche/bouton + persistance) |
+| UI-6 Vidéo | **Rouvert puis re-clos 2026-09-26** | Le verdict d'origine était faux : voir §5 ci-dessous. Livré : `src/core/display/` (Framing / Viewport / Stage / Presentation), fenêtre redimensionnable, letterbox maison, mode d'écran et taille derivés du bureau, schéma settings v2, vsync vérifié par `is_vsync()` |
+| UI-8 Aide aux contrôles | Partiel | l’écran Contrôles liste les bindings ; pas de tutoriel gameplay |
+| UI-9 Parcours de progression | **Clos** | `level_select_scene.py`, `victory_scene.py`, tests headless |
+| UI-10 Audio | **Partiel** | sons d'interface livrés (navigation, validation, retour) ; §5 UI-10. Musique, sons gameplay et volume ouverts |
+| UI-13 Accessibilité UI | **Clos** | `ui.scale` persisté, `MenuView` recalculé à chaque dessin |
+| UI-14 Cohérence de frame et cadence | **Clos** | `Camera.begin_frame` / `apply_covering` conservés ; l'appareil de dirty rects a été **supprimé** (cible fixe = rafraîchi complet), `Game._frame_delta` / `_run_ticks`, `test_frame_coherence.py`, `test_frame_pacing.py`, `test_no_stale_pixels.py` |
+| UI-15 Limite de frames (menu vidéo) | **Clos 2026-09-26** | `UserSettings.frame_limit` (None = non plafonné), ligne du menu vidéo, `Game._frame_target` ; plan de `notes/plan_limit_frames_video.md` exécuté avec `get_desktop_refresh_rates()` |
 
-## 4b. Fiches de lot (exécution agent)
+Comportements de retour verrouillés par des tests (toute modification demande une
+décision explicite et la mise à jour des deux documents) :
 
-Chaque fiche : **Ordre**, **Fichiers**, **Tests**, **DoD** (bloquant). Efforts : S ≈ 0,5 j, M ≈ 1-2 j, L ≈ 3-5 j.
+- pause : bouton B / clic droit / ESC = **reprise** (`PauseScene` → `pop`) ;
+- menu principal : ESC / bouton B = **quitter** (`MenuScene` → `running = False`) ;
+- gameplay : bouton B / clic droit = **pause** (`GameplayScene` → `push(PauseScene)`).
 
-### Lot 1 — Socle navigation (UI-3, UI-12 docstring) — effort M
+### UI-1 — Navigation souris
 
-**Prérequis** : **C-Lot 0a + 0b de `notes/audit_controles.md` verts** (vocabulaire `ui_*`, routeur d'événements) — voir C-D9.
+Les scènes de menu filtrent `KEYDOWN`. La souris existe uniquement pour les panneaux debug via `MOUSEMOTION` et `MOUSEBUTTON*`.
 
-**Ordre**
-1. `src/ui/menu_model.py` — API UI-3 exacte (dataclass `MenuItem`, `MenuModel` : `rebuild/move/hover/point_inside/activate/current`, wrap D4, focus D5).
-2. `tests/unit/test_menu_model.py` — wrap, skip désactivé, `activate()` désactivé → `False`, hover, rebuild vide/tous désactivés.
-3. `src/ui/menu_view.py` — `draw_menu(...) -> list[pygame.Rect]`, curseur `▶` sur `model.index`, écrit `item.rect`.
-4. `tests/unit/test_menu_view.py` — Rects non vides, curseur présent si `len(items)>0`.
-5. Converter **`MenuScene`**, **`PauseScene`**, **`GameOverScene`** (D11) : remplacer les tuples de strings par `MenuModel` ; `enter()` → `rebuild()` (D-menu dynamique) ; `handle_event` : `UP/DOWN` (wrap), `ENTER`/`SPACE` → `activate()`, garder `ESC`/`Q` raccourcis existants **en plus** ; `draw` via `draw_menu`.
-6. Réécrire la docstring `menu_scene.py:23-25` (UI-12).
-7. Ne **pas** toucher `GameplayScene.handle_event` (ESC/F1-F7 restent).
+**Manque :** position de curseur, hover d’item, clic sur Rect et propagation vers le modèle de menu.
 
-**Fichiers créés** : `src/ui/menu_model.py`, `src/ui/menu_view.py`, `tests/unit/test_menu_model.py`, `tests/unit/test_menu_view.py`.  
-**Fichiers modifiés** : `menu_scene.py`, `pause_scene.py`, `gameover_scene.py`, éventuellement `menu_panel.py` (réutilisation interne).
+### UI-2 — Navigation manette
 
-**DoD lot 1**
-```bash
-uv run pytest tests/unit/test_menu_model.py tests/unit/test_menu_view.py \
-  tests/unit/test_menu_panel.py tests/headless/test_scenes.py -q
-uv run ruff check src tests && uv run ruff format --check src tests
-uv run mypy src
+Le joystick est géré pour le gameplay, mais aucune action `ui_up`, `ui_down`, `ui_confirm` ou `ui_back` n’est routée vers les scènes menu.
+
+**Manque :** boutons, hat et stick vertical avec seuil dans le routeur d’entrée.
+
+### UI-3 — Modèle de sélection
+
+Il n’existe pas de `MenuModel` ou `menu_view.py`.
+
+**Manque :** index partagé entre clavier, manette et souris ; hover ; wrap ; item désactivé ; rectangles de rendu.
+
+### UI-4 — Options
+
+Il n’existe pas de scène Options. Elle doit être accessible depuis le menu principal et la pause, avec retour par `pop()`.
+
+### UI-5 — Rebinding et settings
+
+`InputBindings` ne possède pas de contrat de persistance et `settings.json` n’existe pas.
+
+**Manque :** store versionné, valeurs par défaut, fichier corrompu sans crash, section bindings et sections vidéo/audio/ui.
+
+### UI-6 — Vidéo
+
+`Game._initialize()` appelle :
+
+```python
+pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))
 ```
-+ scénario headless : `KEYDOWN UP/DOWN` change l'item actif sur les 3 scènes ; `ENTER` déclenche le callback ; les 2-3 options dynamiques du menu principal suivent `has_progress`.
 
----
+Avant l’implémentation de la UI, `Game._initialize()` appelait `pygame.display.set_mode((Display.WIDTH, Display.HEIGHT))` en dur, sans `RESIZABLE`, `FULLSCREEN`, `SCALED` ni vsync. L’état livré expose désormais un menu **Video** (résolutions prédéfinies, plein écran letterbox, vsync) et une fenêtre **non redimensionnable**, afin que la résolution choisie reste le viewport stable du jeu (culling caméra, budget de rendu).
 
-### Lot 2 — Souris + manette (UI-1, UI-2) — effort M
+La cadence appartient au même écran, et a été reprise le 2026-09-25 :
 
-**Prérequis** : lot 1 vert ; **C-Lot 0b** (routeur KEYDOWN/MOUSE/JOY déjà en place — ici on ajoute le **focus/Rects**, pas le polling matériel) ; **C-Lot 0c** recommandé (stabilité hat/deadzone).
+- la boucle est cadencée **exactement une fois**. `clock.tick(Display.FPS)` dort
+  pour tenir la cadence, alors que sous vsync le present bloque déjà jusqu’au
+  blanc vertical : faire les deux cadencent deux fois, et les deux attentes ne
+  s’additionnent pas — une frame arrive juste après le blanc, le present attend
+  alors le *suivant*, et la frame d’après trouve son sommeil déjà écoulé. La
+  cadence alterne entre à l’heure et un refresh de retard, ce qui se lit comme un
+  micro-saccade ;
+- `Game._frame_delta()` (:250) laisse donc le present être le seul pacer sous
+  vsync, et ne tique l’horloge que contre un plafond anti-emballement. Ce plafond
+  est **dérivé** (`DISPLAY_SAFETY_CEILING_FPS = Display.FPS * 4`, `game.py:40`),
+  jamais codé en dur : un 125 fixe passait sous une cible de 240 et coupait
+  silencieusement la cadence demandée, vsync actif et sans rien à l’écran pour le
+  dire. Le multiplicateur dégage tout taux de rafraîchissement réel (4.2 ms à
+  240 Hz pour un present), donc le seul cas qu’il attrape est un present qui ne
+  bloque pas du tout ;
+- le compteur FPS a été rétabli sur le chemin vsync : un `pygame.time.Clock` ne
+  met son propre chronomètre à jour que si on appelle `tick()`, et un
+  `pygame.time.wait` manuel se place hors de la fenêtre que le Clock mesure, donc
+  le compteur ne le voyait pas. Le garde-fou est désormais exprimé comme une cadence
+  confiée à l’horloge, dans la même unité que ce qu’elle garde ;
+- le réglage de limite de frames reste absent : `Display.FPS` est ignoré sous
+  vsync (c’est la fréquence de l’écran qui décide), donc un curseur « FPS » serait
+  inerte. Le lot 7 le nomme *Frame limit* et le plan est
+  `notes/plan_limit_frames_video.md`.
 
-**Ordre**
-1. Le dict `menu` (`ui_confirm:0`, `ui_back:1`) et les seuils stick (D12) **existent déjà** via le contrôle — ne pas les redéfinir.
-2. `MenuModel` + la scène consomment les retours du routeur (`src/core/input/event_router.py`) : `MOUSEMOTION` → `model.hover`, `MOUSEBUTTONDOWN` → `activate` si `point_inside`, `JOYHAT`/`JOYAXIS` → `move`, `JOYBUTTONDOWN` → `activate` / `on_back`.
-3. Supprimer tout filtre résiduel `!= KEYDOWN` dans les 3 scènes menu (le routeur est la porte unique).
-4. Hot-plug inchangé (`game.py`).
+### UI-8 — Aide aux contrôles
 
-**Fichiers** : **créés** `tests/unit/test_menu_route_bridge.py` (ou tests intégrés scènes), modifiés les 3 scènes, éventuellement `menu_view.py`.  
-**DoD lot 2**
-```bash
-uv run pytest tests/unit/test_event_router.py tests/unit/test_menu_model.py \
-  tests/headless/test_scenes.py tests/headless/test_input_manager.py -q
-uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy src
+Le panneau actuel est une aide debug (`1-6`, V/B, G/P/T, F1–F10), pas un écran de contrôles joueur généré depuis les bindings.
+
+### UI-9 — Parcours de progression
+
+`SaveGame.unlocked_levels` existe, mais aucun menu ne permet de choisir un niveau. La fin du dernier niveau retourne directement au menu.
+
+### UI-10 — Audio — **Partiel (2026-09-26, sons d'interface)**
+
+Livraison : les sons d'interface et de menus, sur les sons réellement présents dans
+`assets/sounds/ui/`. Musique, sons de gameplay et réglage de volume restent ouverts.
+
+**Répartition des responsabilités** (une seule fois chacune) :
+
+| Élément | Responsabilité |
+|---|---|
+| `src/core/audio.py` | Seul module autorisé à toucher `pygame.mixer` : chargement, cache, volume, lecture. **Consommateur** : il ne demande jamais *qui* a fait quoi |
+| `cue_for(effect)` | Toute la politique : un effet d'interface → un cue. 3 branches, fonction pure |
+| `AudioBus.attach(bus)` | L'abonnement : le bus audio s'abonne lui-même, donc **une seule ligne** dans toute la couche application mentionne l'audio (`Game`) |
+| `Scene.handle_routed -> str \| None` | Le **rapport** : ce que l'écran a réellement fait, ou `None` |
+| `InputDispatcher` | Le **producteur** : route, appelle la scène, publie un `UiFeedback` |
+
+| Effet publié | Déclencheur | Cue | Fichier |
+|---|---|---|---|
+| `NAVIGATED` | `HOVER`, `MOVE_UP`, `MOVE_DOWN` | `NAVIGATE` | `assets/sounds/ui/hover.mp3` |
+| `CONFIRMED` | activation d'un item, changement de valeur, ouverture de capture | `CONFIRM` | `assets/sounds/ui/click.mp3` |
+| `DISMISSED` | `MenuAction.BACK` : l'écran s'est refermé | `BACK` | `assets/sounds/ui/click.mp3` |
+| *rien* | `variant="release"` | — | le relâchement du stick porte l'action tenue : un appui, un son |
+| *rien* | `variant="device_removed"` | — | manette débranchée : les écrans l'ignorent volontairement |
+| *rien* | pas de mouvement de la sélection | — | `MenuModel.move` renvoie `None` quand il est bloqué en bord de liste |
+| *rien* | `UI_POINTER_UP`, pointeur hors lignes | — | la validation est portée par `UI_POINTER_DOWN` |
+| — | `DENIED` **réservé** | — | `assets/sounds/ui/errors_and_warnings.mp3`, sans déclencheur (§ Evolution) |
+
+**Le chemin, en une phrase par étape.** L'écran *rapporte* (valeur de retour), le
+seam d'input *publie* le fait (`EventBus`), l'audio *décide* du son. Les deux
+mécanismes sont complémentaires et non concurrents : le rapport répond à « qu'as-tu
+fait ? » au seul appelant qui doit agir ensuite ; la notification porte le fait à
+ceux qui écoutent, sans que l'émetteur sache qui ils sont.
+
+**Pourquoi l'EventBus et pas un appel direct.** Trois éléments du code ont
+tranché :
+
+- le projet a déjà un précédent pour « une action d'UI produit un effet global »,
+  et c'est l'appel direct au propriétaire (`video_scene.py` → `game.apply_settings`,
+  `controls_scene.py` → `game.apply_bindings`, `menu_scene.py` → `game.running`) ;
+- l'`EventBus` a une portée précise — simulation → couche application : les 3
+  émissions viennent de la sim, les 3 abonnés de `game.py`, et sa docstring la
+  nomme « subscribers (UI, save, **audio**, logs) ». L'audio en est le 4ᵉ
+  consommateur *conçu* ;
+- et surtout, **la simulation n'a pas le choix** : un `Level` ne reçoit que
+  l'`EventBus` et ne doit pas recevoir `Game` (rollback, déterminisme). R-2.4 de
+  l'audit consolidé dit donc « déclenchés par `EventBus` » non par goût, mais
+  parce que c'est le seul canal disponible de l'intérieur du tick.
+
+Résultat : l'audio a **une seule entrée** (faits d'UI *et* jalons de simulation),
+et le jour où un deuxième consommateur d'UI existe (haptique, tutoriel), il
+s'abonne — sans qu'un seul producteur soit rouvert.
+
+**Le silence est structurel, pas un réglage.** Une scène renvoie `None` quand elle
+n'agit pas, et rien n'est publié :
+
+- `GameplayScene` ne traite que `UI_BACK` : les flèches, `Espace` et `Q` — qui sont
+  aussi les bindings joueur — renvoient `None`. Le premier jet de ce lot portait un
+  hook `Scene.plays_ui_input_audio()` et trois overrides pour obtenir ce silence ;
+  il a disparu ;
+- `ControlsScene` renvoie `None` pendant une capture et après `_ignore_routed`.
+  Remplir la cellule « Move up » avec `X` **rebind** `UI_UP` sur cette touche : le
+  même événement se route donc comme une navigation une ligne plus loin. L'écran a
+  consommé l'appui, donc il ne rapporte rien — ce qui est la règle qu'il s'était
+  déjà donnée sous le nom `_ignore_routed` ;
+- un item verrouillé (niveau non débloqué) : le modèle refuse, donc rien.
+
+Conséquence de conception : la décision de jouer un son est prise **après** l'action,
+d'après le rapport. L'ordre de `handle_event` par rapport à `handle_routed` n'a donc
+plus aucune incidence sur l'audio.
+
+**Le pointeur parle au changement de ligne, et la position du pointeur est distincte
+de la sélection.** `UI_POINTER_MOVE` est routé à chaque échantillon : jouer dessus en
+rafale était le risque, mais l'exclure purement (premier jet) laissait un joueur à la
+souris **sans aucun retour sonore** — le fichier s'appelle `hover.mp3`.
+`MenuModel.hover()` ne rapporte donc que la **ligne sur laquelle le pointeur
+arrive**, l'exact contraire de `move()` qui renvoie `None` quand il est bloqué.
+`ControlsScene`, qui conduit le modèle lui-même (son focus est une cellule, pas une
+ligne), applique la même règle via son propre état.
+
+La position du pointeur est tenue **à part de la sélection** dans les deux cas, et
+c'est un point non négociable : fusionner les deux rend le pointeur muet exactement
+quand il contredit le clavier. Si le surlignage est en ligne 3 et que le pointeur
+arrive en ligne 0, ligne 0 était déjà « la ligne survolée » pour la sélection — le
+saut visible n'aurait produit aucun rapport. Couvert par
+`test_menu_model.py::test_the_pointer_reports_even_over_the_row_the_keyboard_already_selected`.
+
+**Dégradation, pas exception.** `assets/` est git-ignoré : un checkout sans assets,
+une CI et une machine sans carte son atterrissent tous ici. Mixer refusant de
+démarrer, fichier absent, fichier indécodable, périphérique débranché en cours de
+partie → `logger.warning` et cue marqué indisponible (sans réessai), jeu muet.
+Vérifié : `SDL_AUDIODRIVER=bogus_driver` démarre le jeu sans crash, et les faits
+continuent d'être publiés.
+
+**Ce qui reste ouvert, et pourquoi rien n'a été inventé pour le remplir.**
+`assets/sounds/music/` est vide et il n'existe aucun son de gameplay dans le dépôt :
+câbler la musique ou les SFX gameplay n'aurait produit que du code sans rien à jouer.
+La suite est **additive** :
+
+- **musique par scène** : `Scene.enter()`/`exit()` existent déjà (appelés par
+  `switch`/`push`/`pop`) ; il manque `play_music` + fondu. SDL_music a son propre
+  flux et ne concurrence pas les canaux du mixer ;
+- **sons de gameplay** : les trois abonnements existent déjà (`LevelStarted`,
+  `PlayerDied`, `LevelCompleted`) et sont **muets faute d'assets** ; il n'y a plus
+  qu'à ajouter une entrée dans `SOUNDS` quand un fichier existera ;
+- **impacts/parry/break** : `CombatSystem` produit une liste de `GuardEvent` consommée
+  par `GameplayLoop._spawn_fx_for_event` — mais **dans** le tick ; il faudra un
+  événement déterministe, pas un appel ;
+- **volume** : `AudioCategory` + `set_volume`/`volume` sont en place, un curseur par
+  catégorie et une section persistée dans `settings.json` restent à faire
+  (sans bumper `SETTINGS_FORMAT_VERSION` : `from_dict` lit une section absente avec
+  sa valeur par défaut) ;
+- **`DENIED`** : le câbler à un niveau verrouillé exige que `MenuModel.activate`
+  distingue « refusé » de « aucune cible » ;
+- **deuxième consommateur d'UI** : il s'abonne, rien à reopening. Rien n'en existe
+  aujourd'hui (aucune haptique dans le code) et il n'en a pas été fabriqué.
+
+**Preuves :** `tests/unit/test_audio.py` (14 — politique, table, transport,
+volumes, abonnement), `tests/headless/test_ui_audio.py` (22 — un appui = un fait, et
+les silence structurels), `tests/unit/test_menu_model.py` (3 — contrat de survol),
+`tests/unit/test_event_router.py` (2 — publication et filtrage des variants).
+Contrôle d'étanchéité : `grep -rln "AudioBus\|SoundId" src/` ne renvoie que
+`src/core/audio.py` et `src/core/game.py`.
+
+### UI-13 — Accessibilité UI
+
+Il n’existe pas de réglage `ui.scale` (`small`, `normal`, `large`). Les tailles de police sont fixes.
+
+### UI-14 — Cohérence de frame et cadence — **Clos (2026-09-25)**
+
+Ce constat n’est pas né d’une demande UI : il est apparu en mesurant le niveau 0
+pendant l’audit, et il touche directement ce que le joueur voit — le HUD et les
+barres HP. Les sept défauts constatés et leur contrat livré :
+
+| Défaut constaté | Contrat livré | Preuve |
+|---|---|---|
+| Bandes horizontales pendant le scroll | le blend est **dans la caméra** (`Camera.begin_frame`) : une seule transform par frame, tous les sprites se déplacent du même amount | `test_frame_coherence.py::test_scrolling_never_exposes_the_background`, `::test_every_sprite_moves_by_the_same_amount` |
+| Le debug s’éloigne des pixels qu’il annote | l’overlay passe par la même transform ; plus de pin à `alpha = 1.0` | `::test_the_bar_and_the_overlay_read_the_same_transform` |
+| Barre HP à moitié de tick en retard sur son sprite | la passe de barres reçoit les rects **blittés** (`Renderer.draw_health_bars` → `WorldUI.draw_health_bars(..., screen_rects)`) | `::test_the_hp_bar_stays_on_its_sprite`, `test_no_stale_pixels.py` |
+| HUD et barres jamais effacés (bandes de pixels périmés) | les deux passes déclarent leurs rects au renderer (`Level.draw`, `GameplayScene.draw` → `add_overlay_rects`) ; une frame qui porte des overlay rects ne prend jamais le chemin partiel | `::test_a_frame_carrying_the_hud_never_presents_partially`, `::test_a_frame_without_overlays_still_uses_the_partial_path`, `test_no_stale_pixels.py::test_a_moving_frame_leaves_no_stale_pixel` |
+| Dernière colonne / dernière ligne de fenêtre jamais peinte | `Camera.apply_covering()` : `floor` des arêtes proches, `ceil` des lointaines, ces dernières **prises depuis le résultat de `apply`** | `test_camera_zoom.py::test_a_screen_rect_covers_the_pixels_it_was_meant_to_cover` (fuzz : 3 cas sur 129 600 avant, 0 après) |
+| Traînée du dash clouée à la fenêtre | un ghost retient son rect **monde** et le remappe à chaque frame | `test_frame_coherence.py::test_a_dash_ghost_stays_anchored_to_the_world_while_the_camera_moves` |
+| Compteur FPS à 0 sous vsync, cadence alternée | `_frame_delta()` : un seul pacer, plafond dérivé, horloge toujours tiquée | `test_frame_pacing.py` (9 tests, invariant plutôt que constante) |
+
+Deux invariants de suite, à ne pas réintroduire :
+
+1. **une constante partagée a un seul home**, celui du module qui agit. La
+   géométrie de la barre HP est définie dans `world_ui.py`, qui la dessine, et le
+   renderer l’importe pour sa tête d’effacement au lieu d’en garder une copie ;
+2. **une frame qui porte des overlay rects ne présente jamais partiellement**,
+   puisque ces rects sont peints *après* que le renderer ait choisi quoi présenter.
+
+La vérification de non-régression est la comparaison pixel à pixel du chemin
+incrémental contre une repinte complète de la même séquence de 40 frames : 0
+divergence en alpha 0 et 0.5, jusqu’à 40 px/frame sans le correctif.
+
+### UI-15 — Limite de frames (menu vidéo) — **Ouvert, planifié**
+
+`UserSettings` porte `width`, `height`, `fullscreen`, `vsync`, `ui_scale` et rien
+d’autre : il n’existe aucun plafond de frames réglable. Le plan (valeurs, bornes,
+persistance, tests) est dans `notes/plan_limit_frames_video.md`. Ne pas nommer ce
+réglage « FPS » : sous vsync, `Display.FPS` ne contrôle rien.
+
+## 6. Points explicitement hors scope
+
+- Grab/throw et gameplay ;
+- niveaux, attaques, physique ou combat ;
+- rollback réseau ;
+- refonte de `SceneManager` ;
+- suppression des outils debug ;
+- ajout d’un framework UI externe.
+
+## 7. Dépendance obligatoire : audit contrôles
+
+`notes/audit_controles.md` reste le prérequis pour les entrées UI. Avant le lot navigation UI, il faut traiter ou valider :
+
+- C-1 : routeur d’événements commun ;
+- C-2 : migration massive de l’API gameplay et retrait de la façade d’edges ;
+- C-3 : actions de menu ;
+- C-4 : souris hors simulation ;
+- C-5/C-6 : mapping manette et deadzones ;
+- C-7 : bindings persistés.
+
+La séparation responsibilities doit rester :
+
+```text
+audit_controles : provider, bindings, routeur, événements et seuils
+audit_ui        : MenuModel, MenuView, scènes, HUD, options et feedback
 ```
-+ 3 parcours headless : clavier ↑↓Enter, souris motion+clic sur Rect, hat+button0/1 — même transition de scène.
 
----
+## 8. Plan d’implémentation futur
 
-### Lot 3 — Réglages persistés (UI-4, UI-5, UI-6, UI-11, R-1/D2) — effort L
+### Lot 0 — Valider le socle contrôles — **Livré**
 
-**Prérequis** : lot 1 (Options est un menu) ; **C-Lot 0d du contrôle** pour la section `bindings` de `settings.json` (sinon l'écran Contrôles n'a rien à relire — C-D6).
+- terminer C-2 : migration massive de l’API gameplay, parité et retrait de la façade d’edges ;
+- routeur `KEYDOWN`, `MOUSE*`, `JOYBUTTON*`, `JOYHAT*`, `JOYAXIS*` ;
+- actions `ui_*` ;
+- seuils et deadzones ;
+- hot-plug et tests headless.
 
-**Ordre**
-1. UI-11 quick win : parenthéser les 2 `except` de `save_game.py` + pytest save.
-2. `src/application/settings_store.py` — schéma §UI-5 (**hors `bindings`, porté par C-7**), `default_settings_path()` miroir de `default_save_path()`, roundtrip + corrupted → defaults.
-3. Wiring boot : `settings_store` (sections vidéo/audio/ui) + bindings chargés par **C-Lot 0d** déjà en place ; ne pas réimplémenter `InputBindings.to_dict` ici.
-4. `src/application/scenes/options_scene.py` (D6) : sections Contrôles / Vidéo / Audio / Retour ; Contrôles = liste actions + capture (`waiting_for_key`, conflit → refus D10) **et** source de données de UI-8 (écrit via l'API bindings du contrôle) ; Vidéo = fullscreen/vsync/resolution (UI-6 cible) ; Audio = 3 sliders persistés (efficaces lot 5).
-5. Intégrer : item « Options » dans `MenuScene` **et** `PauseScene` → `push(OptionsScene)` ; ESC → `pop`. La section Contrôles est donc accessible menu + pause dès ce lot (UI-8).
-6. **R-1 (D2)** : dans la foulée vidéo, aligner `FPS` + commentaire (`settings.py:14-17`) et brancher le vsync demandé.
-7. Remplacer `set_mode` fixe de `game.py:84` par un `apply_video_settings(settings)` appelé au boot et à chaque changement — **`game.py` est dans le périmètre autorisé**.
+### Lot 1 — Navigation clavier et modèle de menu — **Livré**
 
-**Fichiers** : **créés** `settings_store.py`, `options_scene.py`, `tests/unit/test_settings_store.py`, `tests/unit/test_options_scene.py` ; modifiés `save_game.py`, `menu_scene.py`, `pause_scene.py`, `game.py`, `settings.py` (FPS/commentaire). `input_bindings.py` resté sous contrôle C-0d.
+Créer :
 
-**DoD lot 3**
+- `src/ui/menu_model.py` ;
+- `src/ui/menu_view.py` ;
+- `tests/unit/test_menu_model.py` ;
+- `tests/unit/test_menu_view.py`.
+
+Convertir les trois scènes menu sans toucher au gameplay.
+
+### Lot 2 — Souris et manette — **Livré**
+
+Brancher le routeur sur `MenuModel` :
+
+- `MOUSEMOTION` → hover ;
+- clic → activation ;
+- hat/stick → déplacement ;
+- bouton confirmer/back → activation/retour.
+
+Ajouter les parcours headless des trois périphériques.
+
+### Lot 3 — Persistance et Options — **Livré**
+
+Créer :
+
+- `src/application/settings_store.py` ;
+- `src/application/scenes/options_scene.py` ;
+- tests settings/options.
+
+Implémenter vidéo, audio UI, scale et lecture des bindings. Ne pas réimplémenter la couche bindings si `audit_controles` la fournit.
+
+Livré en complément (vérification 2026-09-24) :
+
+- **écran Contrôles** (`controls_scene.py`, UI-5) : rebinding clavier et boutons
+  manette, paire gauche/droite pour `move_x`, raccourci nouvelle partie, annulation
+  par ESC / clic droit / bouton B. La capture est neutralisée côté routeur par
+  `EventRouter.would_route_key` / `would_route_button` : l’appui qui termine la
+  capture ne déclenche pas l’action qu’il route ;
+- **vidéo** : ce qui suit **remplace** la livraison décrite plus haut dans ce
+  même document, dont le verdict « Clos » était erroné. La fenêtre est
+  redimensionnable, et `pygame.SCALED` a disparu — c'était l'API
+  expérimentale qui faisait le letterbox, et la cible de rendu le fait
+  désormais elle-même. Le letterbox est calculé dans
+  `src/core/display/presentation.py`, et le pointeur revient par l'inverse exact
+  de la même transformation. `VIDEORESIZE` n'est plus ignoré : il recalcule le
+  rectangle de présentation et s'arrête là, ce qui est possible parce que rien
+  de ce qui est dessiné n'en dépend ;
+- **taille de fenêtre** : elle ne vient plus d'une liste de résolutions
+  absolues. `window_size_choices(desktop)` propose des fractions de l'écran du
+  joueur, filtrées sur « ça tient ». Le mode d'écran et la taille ont une valeur
+  `auto` réévaluée à chaque lancement, et une taille choisie à la main est
+  refusée — avec un log — quand l'écran courant ne peut plus la montrer ;
+- **viewport caméra** : la caméra ne reçoit plus la taille de la surface. Elle
+  reçoit `Framing`, une constante en unités monde. C'est la correction de fond :
+  voir `notes/audit_dimensions_fenetre.md`.
+
+- **nettoyage** : `src/application/scenes/menu_panel.py` supprimé (code mort, plus
+  aucun appelant de production) ; tous les écrans passent par `MenuView`.
+
+### Lot 4 — Parcours joueur — **Livré**
+
+Créer :
+
+- `src/application/scenes/level_select_scene.py` ;
+- `src/application/scenes/victory_scene.py` ;
+- tests associés.
+
+Brancher la sélection de niveau et la victoire sur la progression.
+
+### Lot 5 — Audio et polish optionnels — **Partiel (2026-09-26)**
+
+**Livré** — les sons d'interface et de menus, sur les trois fichiers réellement
+présents. Détail, contrats et preuves en §5 UI-10.
+
+- `src/core/audio.py` : `AudioBus` seul possesseur de `pygame.mixer`, table
+  `SOUNDS`, politique `cue_for(effect)` en 3 branches, abonnement par `attach` ;
+- `src/application/events.py` : `UiEffect` + `UiFeedback`, deux familles de
+  producteurs sur le bus (simulation et interface) ;
+- `Scene.handle_routed -> str | None` : les 10 écrans rapportent ce qu'ils ont
+  fait, et c'est **mypy** qui garantit qu'aucun n'oublie (une sous-classe annotée
+  `-> None` contre la base serait une erreur) ;
+- `InputDispatcher` : route, appelle la scène, publie le fait. 40 lignes, aucun
+  état de présentation, aucune vue lue, aucune notion de son ;
+- sons de navigation, de validation et de retour sur les interactions de menu
+  existantes, et **silence structurel** pour le gameplay et les captures ;
+- dégradation propre sans mixer et sans assets (chemin CI, `assets/` git-ignoré).
+
+**Le chemin parcouru, et pourquoi il est worthwhile de l'écrire.** Ce lot a été
+livré en trois versions, et les deux premières étaient fausses — ce que seule une
+revue par les couches a révélé :
+
+1. **Mapping input → son, dans le dispatcher.** Fonctionnait, mais la couche
+   input lisait la mise en page des vues (`scene.view.item_rects`) et cinq fichiers
+   de la couche application connaissaient l'audio. Un test a en outre échoué sur le
+   seul volume de sons d'un appui, parce que remplir une cellule de binding
+   *rebind* l'action routée sur cette touche.
+2. **Correction par la ligne.** `row_at` + un `int` de mémoire dans le dispatcher.
+   fonctionnait, mais c'était un pansement : `ui_sound_for` mappe un **input** vers
+   un cue alors que le son du pointeur est une fonction d'un **état** (« la ligne a-t-
+   elle changé ? »). Le mapping était structurellement incomplet, et l'atteinte
+   courait dans la mauvaise couche.
+3. **Version livrée : rapport → fait publié → abonné.** Un système correct parce
+   qu'un test a échoué n'est pas une architecture ; celle-ci l'est, et le
+   raccourci a disparu avec `_pointer_cue`, `row_at`, `ui_sound_for` et
+   `plays_ui_input_audio()`.
+
+**Correction d'asset.** La version précédente de cet audit citait
+`assets/sounds/universfield-computer-mouse-click-02-383961.mp3`. **Ce fichier
+n'existe pas** : le dossier réel est `assets/sounds/ui/`, qui contient
+`hover.mp3`, `click.mp3` et `errors_and_warnings.mp3`. Il n'y a pas de dossier
+`assets/audio/`.
+
+**Resté ouvert, volontairement.** `assets/sounds/music/` est vide et il n'existe
+aucun son de gameplay dans le dépôt : brancher la musique ou les SFX gameplay
+n'aurait produit que du code sans rien à jouer. Restent donc pour un lot 5 bis :
+
+- musique par scène (`Scene.enter()`/`exit()` existent déjà ; il manque
+  `play_music` et le fondu) ;
+- sons de gameplay **émis** sur l'`EventBus` — la simulation n'a aucune référence
+  vers `Game`, et c'est aussi ce qu'exige le rollback (un son dans le tick fixe
+  retentirait à chaque rewind) ; R-2.4 de l'audit consolidé ;
+- section volume persistée dans `settings.json` + écran Audio (l'API par catégorie
+  est déjà là, sans bumper de `SETTINGS_FORMAT_VERSION`) ;
+- le cue `DENIED`, réservé : il attend que `MenuModel.activate` distingue « refusé »
+  de « aucune cible » ;
+- un deuxième consommateur d'interface (haptique, tutoriel) : il s'abonne au bus,
+  et c'est tout — aucun producteur n'est rouvert.
+
+### Lot 6 — Cohérence de frame et cadence — **Livré (2026-09-25)**
+
+Ce lot n’était pas au plan initial : il est né des mesures de frame du niveau 0,
+et il est livré (détail et preuves en §5, UI-14). Il a touché :
+
+- `src/core/rendering/camera.py` : `begin_frame` porte le blend, `apply_covering`
+  arrondit vers l’extérieur ;
+- `src/core/rendering/renderer.py` : une seule transform lue par tous les
+  consommateurs, `add_overlay_rects`, suppression du cache de position par sprite
+  (60 lignes) et des deux contournements qu’il nourrissait ;
+- `src/core/game.py` : `_frame_delta()` et le plafond dérivé de `Display.FPS` ;
+- `src/ui/world_ui.py` : barres ancrées sur les rects blittés, gate `statics` avant
+  la construction de la référence, `F4` statics off par défaut ;
+- `src/ui/ui_manager.py`, `src/core/level/level.py`,
+  `src/application/scenes/gameplay_scene.py` : déclaration des overlay rects.
+
+Tests : `tests/unit/test_frame_coherence.py` (nouveau), `test_frame_pacing.py`
+(nouveau), `test_no_stale_pixels.py` (nouveau), `test_camera_zoom.py` (13 tests
+ajoutés), `test_renderer_dirty_rects.py`. Les cinq tests d’interpolation par
+sprite de `test_world_render_perf.py` ont été retirés : le cache de position par
+sprite a disparu, donc ils testaient une API qui n’existe plus ; l’équivalent est
+désormais couvert au niveau caméra.
+
+### Lot 7 — Limite de frames dans le menu vidéo — **Ouvert, planifié**
+
+Réglage *Frame limit* (`Uncapped, 20, 30, 60, 120, 144, 240`), valeur par défaut
+`Display.FPS`, appliqué à chaud sans recréer la fenêtre, avec le taux réel de
+l’écran affiché quand le vsync est actif. Plan, bornes et tests :
+`notes/plan_limit_frames_video.md`. Contrainte à respecter : ne pas nommer ce
+réglage « FPS », ne pas toucher `_mode_signature`, ne pas bumper
+`SETTINGS_FORMAT_VERSION`.
+
+## 9. Réception globale — état
+
+- [x] Menu clavier, souris et manette produisent les mêmes transitions.
+- [x] Options accessible depuis menu et pause.
+- [x] `settings.json` round-trip et fichier corrompu sans crash.
+- [x] Vidéo : fenêtre, plein écran, vsync et redimensionnement.
+- [x] Rebinding clavier / manette persisté depuis l’écran Contrôles.
+- [x] Level Select et Victory fonctionnels.
+- [x] HUD présent sans `DEBUG`.
+- [x] Aucun panneau COMBAT/clash visible sans `DEBUG`.
+- [x] Une seule transform par frame ; sprites, barres HP et overlay debug se
+      déplacent du même amount.
+- [x] Aucun pixel périmé : chemin incrémental vs repinte complète, 0 divergence.
+- [x] Une frame portant des overlay rects ne présente jamais partiellement.
+- [x] Boucle cadencée une fois ; compteur FPS juste sur les deux chemins
+      (vsync off 62,1 sur 62,1 mesuré ; vsync on 125,0 sur 124,1).
+- [x] Tests UI, Ruff, format, mypy et suite complète verts **sans `DEBUG`**
+      (1158 tests au 2026-09-26, lot 5 inclus).
+- [ ] `DEBUG=1 uv run pytest -q` : 1 test rouge
+      (`test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`,
+      écart O10 de `notes/ecarts_ouverts.md`).
+- [x] Sons d'interface : navigation, validation, retour, un appui = un son, jeu
+      muet, capture muette, pointeur = un son par ligne.
+- [ ] Audio : musique par scène, sons de gameplay, volume persisté (lot 5 bis).
+- [ ] Limite de frames réglable (lot 7, planifié).
+
+## 10. Commandes de vérification
+
 ```bash
-uv run pytest tests/unit/test_settings_store.py tests/unit/test_options_scene.py \
-  tests/unit/test_save_game.py tests/headless/test_scenes.py -q
-uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy src
+env -u DEBUG uv run pytest -q          # 1158 passed, 1 skipped
+DEBUG=1 uv run pytest -q               # 1 failed : écart O10 connu, non corrigé
+uv run ruff check src tests main.py tools
+uv run ruff format --check src tests main.py tools
+uv run mypy src                        # 143 fichiers
+uv run mypy src main.py tools          # 145 fichiers (commande CI)
+git diff --check
 ```
-+ scénario : pause → Options → changer une touche → ESC → ESC → relancer le process (ou re-`load`) → binding conservé ; `settings.json` corrompu → defaults ; greps §7 « set_mode » montrent maintenant RESIZABLE/vsync **attendus** (mettre à jour le commentaire de §7 au besoin).
 
----
+Un test n’est pas exécutable isolément, et cela ne doit pas être lu comme une
+régression : `test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`
+dépend d’un test précédent qui agrandit l’écran, faute de quoi la barre de
+l’ennemi de test est cullée par la caméra. C’est le même écart que O10.
 
-### Lot 4 — HUD & parcours (UI-7, UI-8, UI-9, UI-13, UI-14/D1) — effort L
+`ruff format --check .` n’est pas dans cette liste : il échoue sur deux blocs de
+code des notes (`audit_controles.md`, `hitbox_amelioration.md`), état antérieur à
+cette mise à jour et hors de la commande CI, qui ne couvre que `src`, `tests`,
+`main.py` et `tools/`.
 
-**Prérequis** : lot 1 (`MenuModel`) ; UI-8 (libellés dynamiques post-rebinding) suppose le store du lot 3 pour un écran Contrôles *utile*, mais la section existe déjà au lot 3.
+Contrôle d'étanchéité de l'audio (l'inverse du grep d'absence initial) :
 
-**Ordre**
-1. **UI-14 (D1)** : `if not Debug.is_enabled(): return` en tête de `WorldUI.draw_metrics_panel` + `note_clash` (+ garde du marqueur) ; tests overlay existants verts sans `DEBUG`, vert avec `DEBUG=1`.
-2. `src/ui/hud.py` + branchement `GameplayScene.draw` (D9) + `tests/unit/test_hud.py` (champs UI-7, couleurs par seuils).
-3. `LevelSelectScene` (D7) depuis `MenuScene` (item « Level select » si `len(unlocked_levels) > 1`).
-4. `VictoryScene` branchée sur `_advance_level` (`next_id is None`).
-5. UI-8 : vérifier que la section `controls` (lot 3) affiche les bindings **effectifs** après rebinding ; calculer les libellés de menu depuis `InputBindings` (fin de UI-8).
-6. UI-13 : `ui.scale` appliqué aux polices menu + HUD (pas debug).
-
-**Fichiers** : **créés** `src/ui/hud.py`, `level_select_scene.py`, `victory_scene.py`, `tests/unit/test_hud.py`, `tests/unit/test_level_select.py`, `tests/unit/test_victory_scene.py` ; modifiés `world_ui.py` (gate), `gameplay_scene.py` (draw HUD + victoire), `menu_scene.py` (libellés), `panel_renderer.py`/`menu_view.py` (scale UI-13).
-
-**DoD lot 4**
 ```bash
-uv run pytest tests/unit/test_hud.py tests/unit/test_level_select.py \
-  tests/unit/test_victory_scene.py tests/unit/test_ui_debug_panels.py \
-  tests/unit/test_debug_overlay.py tests/headless/test_scenes.py -q
-uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy src
+grep -rnE 'pygame\\.mixer|Sound\\(|music\\.' src/
 ```
-+ headless **sans** `DEBUG` : HUD présent (vie/posture/dash/combo), panneau COMBAT **absent** ; **avec** `DEBUG=1` : COMBAT présent, panneaux F1 inchangés ; level select n'offre que `unlocked_levels`.
 
----
-
-### Lot 5 — Audio & polish (UI-10, R-2.4/D3, fades UI-9) — effort L — optionnel
-
-**Ordre** : `audio_bus.py` dummy-safe → hooks EventBus → sons de menu sur `activate` → volumes branchés sur les sliders lot 3 → `src/ui/fade.py` + utilisation sur `switch` critiques (menu↔gameplay, gameover).
-
-**DoD lot 5**
-```bash
-SDL_AUDIODRIVER=dummy uv run pytest tests/unit/test_audio_bus.py \
-  tests/unit/test_settings_store.py tests/headless/test_scenes.py -q
-uv run ruff check src tests && uv run ruff format --check src tests && uv run mypy src
-```
-+ mixer absent → pas de crash ; volumes persistés ; fade testé (alpha 0→255 sur N frames, pur).
-
----
-
-### Dépendances
-- **Prérequis global** : `notes/audit_controles.md` **C-Lot 0a + 0b** avant lot 1 (C-D9) ; **C-Lot 0c** recommandé avant lot 2 ; **C-Lot 0d** avant ou avec lot 3 (section `bindings`).
-- Lot 2 ← lot 1 ; lot 3 ← lot 1 + C-Lot 0d ; lot 4 ← lot 1 (MenuModel) ; lot 5 ← lot 3 (sliders) seulement pour les volumes.
-- Lots 3 ∥ 4 possibles (chevauchement unique : `menu_scene.py` — un seul éditeur à la fois ou fusion soignée).
-- UI-14 (D1) : quick win autonome avant lot 1.
-
-## 5. Règles (à respecter pendant l'implémentation)
-
-1. **Aucun changement de gameplay** : les lots touchent `src/application/`, `src/ui/`, `src/core/input/`, `src/core/game.py` (boot video), `src/core/settings.py` (FPS/DISPLAY) — **jamais** `src/core/level/`, `src/combat/`, `src/entities/`, `src/states/`, `src/physics/`. UI-14 ne crée **aucune exception** (D1 : gate côté `src/ui/`).
-2. **Pas de nouveau framework** : pygame seul, réutilisation de `SceneManager`, `PanelRenderer`, `PanelLayout`, `SaveGame`/`SettingsStore` pour la persistance.
-3. **Tout item affiché est atteignable et testé** (README « No dead menu options ») — un item désactivé affiche sa cause (ex. `(locked)`).
-4. **Réception headless uniquement** : `SDL_VIDEODRIVER=dummy`, événements `pygame.event.Event` injectés — aucune saisie réelle en CI.
-5. **Panneaux debug intacts en mode debug** : F1-F7, `world_ui.py`, `player_ui.py` opérationnels avec `DEBUG=1` ; **rien de debug ne fuit sans `DEBUG`** (UI-14/D1). Le HUD joueur s'ajoute, il ne remplace pas.
-6. **Deux fichiers de persistance** : `settings.json` (réglages) ≠ `savegame.json` (progression), même contrat version/fallback.
-7. **Les décisions §4a font autorité** ; toute divergence doit modifier §4a **avant** le code.
-
-## 6. Réception globale (checklist de bout en bout)
-
-- [ ] Menu praticable **100 % clavier** (↑/↓/Enter/ESC), **100 % souris** (hover + clic), **100 % manette** (hat/stick/A/B) — trois parcours automatisés verts.
-- [ ] Pause → Options → modifier une touche → retour → rechargement : rebinding conservé ; `settings.json` corrompu → defaults sans crash.
-- [ ] Options Vidéo : plein écran/fenêtré + vsync persistés ; HUD et menus lisibles après redimensionnement (`PanelLayout`) ; R-1 soldé (FPS/commentaire cohérents).
-- [ ] Options Audio : volumes master/sfx/music modifiables et persistés (sans périphérique : dégradation silencieuse).
-- [ ] En jeu **sans `DEBUG`** : HUD (vie, posture, dash, combo) visible et à jour ; panneau COMBAT/clash **invisible**.
-- [ ] En jeu **avec `DEBUG=1`** : COMBAT + F1-F7 + panneaux inchangés.
-- [ ] Level select : navigation ↑/↓ ; seuls `unlocked_levels` activables (locked visibles `enabled=False`).
-- [ ] Fin du dernier niveau → `VictoryScene` (plus de retour menu muet).
-- [ ] Écran Contrôles depuis menu **et** pause, généré depuis les bindings effectifs.
-- [ ] Suites existantes vertes + nouveaux tests des lots livrés ; `ruff`/`format`/`mypy` bloquants.
-- [ ] Aucune édition dans `src/core/level/`, `src/combat/`, `src/entities/` (règle 1) — vérifier par `git diff --stat`.
-
-## 7. Commandes de vérification
-
-Rejouer l'audit (ou constater qu'un lot a bien couvert le point) — racine du dépôt :
+Recherche des scènes UI prévues :
 
 ```bash
-# Souris : 0 hit tant que lot 2 non livré
-grep -rnE 'MOUSEMOTION|MOUSEBUTTON|pygame\.mouse' src/
-
-# Audio : 0 hit tant que lot 5 non livré
-grep -rnE 'mixer|Sound\(|music\.' src/
-
-# Modèle de sélection : 0 hit selected/focused/hover/highlight
-grep -rnE 'selected|focused|hover|highlight' src/
-
-# Menus KEYDOWN only (0 hit après lot 2, le contrôleur centralise)
-grep -rn 'event.type != pygame.KEYDOWN' src/application/scenes/
-
-# Pas d'actions de menu ni sérialisation bindings (0 hit après lot 2/3)
-grep -rnE 'ui_confirm|ui_back|to_dict|from_dict' src/core/input/ ; echo "0 hit avant lots 2-3"
-
-# Fenêtre : un set_mode de base ; RESIZABLE/vsync attendus APRÈS lot 3
-grep -rnE 'set_mode|RESIZABLE|vsync|FULLSCREEN|SCALED' src/
-
-# Scènes (4 + menu_panel avant lots 3-4 ; options/victory/level_select après)
 ls src/application/scenes/
-
-# UI-11 PEP 758 sans parenthèses (0 hit après lot 3)
-grep -n 'except .*,' src/application/save_game.py
-
-# FPS commentaire vs valeur (soldé par lot 3 / R-1)
-sed -n '8,18p' src/core/settings.py
-
-# UI-14 : gate présent dans world_ui après lot 4 (quick win)
-grep -n 'Debug.is_enabled' src/ui/world_ui.py | head
-
-# Comptage de tests
-grep -rc 'def test_' tests/unit/*.py tests/headless/*.py
+test -e src/ui/menu_model.py
+test -e src/ui/menu_view.py
+test -e src/application/settings_store.py
+test -e src/core/audio.py
 ```
 
-### Croisements avec `audit_consolide.md` et `audit_controles.md` (décisions §4a)
+## 11. Historique et validation
 
-| Point | Audit UI | Audit consolidé | Audit contrôles | Décision |
-|---|---|---|---|---|
-| FPS 180 + vsync | UI-6, UI-12 (lot 3) | **R-1** | — | **D2 : absorbé par le lot 3** — ne pas faire R-1 deux fois ; soldé = DoD lot 3. |
-| `AudioBus` | UI-10 (lot 5) | **R-2.4** (R-2 Phase 4) | — | **D3 : le lot 5 livre le seul `AudioBus`** ; R-2.4 couverte alors ; sinon R-2 reste ouverte. Écrire la décision dans les deux fichiers quand le lot 5 démarre. |
-| Rebinding / bindings persistés | UI-5 (écran), UI-8 (libellés) | — | **C-7**, C-Lot 0d (données + disque) | **C-D6** : données et `settings.json` `bindings` côté contrôle ; UI ne livre que l'écran Contrôles. |
-| Routeur / actions `ui_*` | UI-1, UI-2, D8 (focus Rects) | — | **C-1**, **C-3**, C-Lot 0b (`event_router.py`) | Un seul routeur sous `src/core/input/` ; l'UI ne fait que le modèle de focus et le rendu. |
-| Mapping manette menu | UI-2, D12 (référence UX) | — | C-3 / C-5 (codes + seuils `settings.Input`) | Même mapping ; implémentation et tests matériels côté contrôle. |
-
-## Validation du document
-
-- Re-vérification code : 2026-09-22, `a6d20f8` — preuves §1/§2/§7.
-- Durcissement agent : 2026-09-22 — §3, §4a, §4b, champs UI-7, mapping UI-2, schéma UI-5, D1-D12.
-- Enchaînement contrôle : 2026-09-22 — renvois vers `notes/audit_controles.md` (C-Lot 0a/0b bloquants lots UI 1-2 ; rebinding porté C-7/C-D6 ; routeur `event_router.py`).
+- Audit initial : `4f8b025`.
+- Mise à jour UI/debug/HUD : `1f5e3fa`.
+- Réécriture courante : 2026-09-24 contre `afe044f`.
+- Vérification d’implémentation : 2026-09-24, branche `feat/audit-ui-implementation` —
+  lots 0–4 clos, écran Contrôles et redimensionnement livrés, `menu_panel.py` supprimé,
+  matrice §3 et réception §9 mises à jour.
+- Mise à jour : 2026-09-26 contre `40ca5a9` — lot 6 livré (§5 UI-14, §8), lot 7
+  planifié, `F4` statics off par défaut et transform unique en §4.3, cadence en
+  §5 UI-6. Base §2 rafraîchie : 1117 tests, 89 % / 86 %, mypy 142 (`src`) et 144
+  (CI), Ruff propre. La réception §9 ne peut plus afficher une suite verte « avec et
+  sans `DEBUG` » : l’écart O10 est consigné et non corrigé.
+- Lot 5 : 2026-09-26, branche `feat/audio-ui-system` sur `1084370` — sons
+  d'interface livrés (§5 UI-10, §8 lot 5), chemin d'asset du lot 5 corrigé
+  (`universfield-…mp3` n'existe pas), §2, §3, §9, §10 et §11 rafraîchies :
+  1158 tests, mypy 143 (`src`) et 145 (CI), Ruff propre. Le grep d'absence audio
+  devient un contrôle d'étanchéité.
+  Le lot a été **réécrit deux fois** après une revue par les couches, et le §8
+  conserve le chemin : (1) mapping input → son dans le dispatcher, qui lisait la
+  mise en page des vues ; (2) correction par la ligne, `row_at` + mémoire dans le
+  dispatcher, un pansement sur un mapping input → cue structurellement incomplet ;
+  (3) version livrée, **rapport de la scène → `UiFeedback` publié sur l'EventBus
+  → abonné**. Un retour joueur (le son de survol souris inaudible) et deux tests
+  en échec ont révélé les deux premières. Trois défauts réels ont été corrigés au
+  passage : `MenuModel.hover` comparait après avoir remis son état à zéro (un son
+  par échantillon souris), la position du pointeur y était confondue avec la
+  sélection (souris muet quand il contredit le clavier), et `EventBus.subscribe`
+  n'était pas idempotent alors qu'`unsubscribe` ne retire qu'une occurrence
+  (abonné fantôme, double son).

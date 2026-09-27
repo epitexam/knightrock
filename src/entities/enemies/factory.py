@@ -6,6 +6,7 @@ from pygame.sprite import Group
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy, PlayerReference
 from src.entities.enemies.schema import EnemyConfig
+from src.physics.spatial_hash import SpatialHash
 
 
 def is_enemy_type(name: str) -> bool:
@@ -31,6 +32,7 @@ def create_enemy(
     collision_sprites: Group,
     player_reference: PlayerReference | None = None,
     config: EnemyConfig | None = None,
+    spatial_hash: SpatialHash | None = None,
 ) -> Enemy:
     """Create an enemy from the shared enemy registry.
 
@@ -50,6 +52,10 @@ def create_enemy(
         Group of sprites that block movement.
     player_reference : PlayerReference | None
         Reference to the player entity for AI targeting.
+    spatial_hash : SpatialHash | None
+        Shared collision grid covering ``collision_sprites``. Pass it here so
+        a runtime-spawned enemy is wired for O(1) neighbour lookups at birth,
+        the same way the level's own enemies are.
 
     Returns
     -------
@@ -70,4 +76,5 @@ def create_enemy(
         player_reference=player_reference,
         config=config,
         enemy_type=name,
+        spatial_hash=spatial_hash,
     )

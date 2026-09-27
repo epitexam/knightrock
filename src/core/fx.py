@@ -4,6 +4,27 @@ Dust lives in ``groups.fx_sprites`` (no collision, no damage): it is
 integrated by :class:`PhysicsSystem`, drawn by :class:`Renderer` like any
 visible sprite, and deliberately excluded from rollback snapshots and
 golden digests — pure juice, zero simulation impact.
+
+Which particles rebuild their surface
+-------------------------------------
+Some of these draw a fresh ``pygame.Surface`` in ``update``, and that is not
+an oversight to be pooled away — the cost is the drawing, not the
+allocation, so recycling the surface would leave the cost where it is. Only
+the particles whose *look* changes per frame need to redraw:
+
+- ``DizzyVortexParticle`` rotates and pulses, and ``DashShockwaveParticle``
+  expands, so both genuinely have new pixels to draw.
+- ``DustParticle`` cycles through a framed strip; it copies the current
+  frame, which it must do because the frames are shared cached surfaces it is
+  not allowed to mutate.
+- ``DashTrailParticle`` used to be in this list, and was the odd one out: its
+  shape is a function of ``direction`` and three constants, all fixed at
+  construction, so it rebuilt an identical image every frame. It now builds
+  once and only fades.
+
+The measured cost of the remaining per-frame redraws is small — 0.17us per
+vortex particle per frame — so this is a correctness-of-intent note rather
+than a performance lever.
 """
 
 from __future__ import annotations
@@ -568,17 +589,27 @@ class DashTrailParticle(pygame.sprite.Sprite):
         return surface
 
     def update(self, delta_time: float) -> None:
-        """Fade and reap the trail."""
+        """Fade and reap the trail.
+
+        The surface is *not* rebuilt here. It used to be, every frame, and
+        every rebuild produced the identical image: the streak's shape is a
+        function of ``direction`` and three module constants, all fixed at
+        construction, so re-rendering it was 28 ``sin`` evaluations and two
+        polygon fills to copy the same pixels. Only the alpha changes as the
+        trail fades, and that is a property of the surface, not of its
+        contents.
+        """
         self.ttl -= delta_time
         if self.ttl <= 0.0:
             self.kill()
             return
 
-        progress = 1.0 - self.ttl / self.max_ttl
-        self.image = self._render()
-        self.rect = self.image.get_frect(center=self.pos)
         assert self.image is not None
-        self.image.set_alpha(int(255 * (1.0 - progress) ** 1.2))
+        self.rect = self.image.get_frect(center=self.pos)
+        # `ttl / max_ttl` is the fraction of life left, so this falls to 0 as
+        # the trail dies. Reading it as the elapsed fraction would invert the
+        # fade, which is invisible in a still frame and obvious in motion.
+        self.image.set_alpha(int(255 * (self.ttl / self.max_ttl) ** 1.2))
 
 
 _frames_cache: list[pygame.Surface] | None = None
@@ -604,6 +635,18 @@ def particle_frames() -> list[pygame.Surface] | None:
     except FileNotFoundError:
         _frames_miss = True
         return None
+
+
+def clear_frame_cache() -> None:
+    """Forget the memoized frames and whether the assets are missing.
+
+    A display format change (``pygame.display.set_mode``) invalidates every
+    converted surface, so this second cache layer has to be dropped with
+    ``AssetLibrary`` or it would keep handing back stale ones.
+    """
+    global _frames_cache, _frames_miss
+    _frames_cache = None
+    _frames_miss = False
 
 
 def _puff_rng(entity: Any) -> random.Random:
@@ -801,16 +844,19 @@ def _spawn_sparks(
 
 
 def spawn_guard_spark(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The spatter when a guard absorbs a hit: one-sided, so it reads as a block rather than a wound."""
     return _spawn_sparks(fx_group, entity, GUARD_SPARK_COLORS, GUARD_SPARK_COUNT, (260.0, 220.0))
 
 
 def spawn_parry_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The burst on a successful parry, thrown from the contact point outward."""
     return _spawn_sparks(
         fx_group, entity, PARRY_SPARK_COLORS, PARRY_SPARK_COUNT, (420.0, 340.0), upward=True
     )
 
 
 def spawn_break_burst(fx_group: pygame.sprite.Group, entity: Any) -> list[SparkParticle]:
+    """The burst when a guard breaks, heavier than a guard spark and in the break colour."""
     return _spawn_sparks(fx_group, entity, BREAK_SPARK_COLORS, BREAK_SPARK_COUNT, (380.0, 300.0))
 
 

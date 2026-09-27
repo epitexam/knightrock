@@ -7,13 +7,20 @@ import pygame
 from src.core.input.input_actions import InputAction
 
 type KeyBinding = int | tuple[int, ...]
+# Gamepad button: one SDL index, or a (left, right) pair for MOVE_X when the
+# d-pad is exposed as buttons rather than a hat (Xbox/SDL2 pads).
+type PadBinding = int | tuple[int, ...]
 type ActionMap = Mapping[InputAction, KeyBinding]
-type ButtonMap = Mapping[InputAction, int]
+type ButtonMap = Mapping[InputAction, PadBinding]
 type AxisMap = Mapping[InputAction, int]
 type ComboMap = Mapping[InputAction, tuple[int, ...]]
 
 
-def _immutable(values: dict[InputAction, int]) -> ButtonMap:
+def _immutable(values: dict[InputAction, PadBinding]) -> ButtonMap:
+    return MappingProxyType(values)
+
+
+def _immutable_axes(values: dict[InputAction, int]) -> AxisMap:
     return MappingProxyType(values)
 
 
@@ -57,7 +64,7 @@ class GameplayBindings:
         )
     )
     gamepad_axes: AxisMap = field(
-        default_factory=lambda: _immutable(
+        default_factory=lambda: _immutable_axes(
             {
                 InputAction.MOVE_X: 0,
                 InputAction.DASH: 2,
@@ -85,7 +92,7 @@ class GameplayBindings:
     def __post_init__(self) -> None:
         object.__setattr__(self, "keyboard", _immutable_keys(dict(self.keyboard)))
         object.__setattr__(self, "gamepad_buttons", _immutable(dict(self.gamepad_buttons)))
-        object.__setattr__(self, "gamepad_axes", _immutable(dict(self.gamepad_axes)))
+        object.__setattr__(self, "gamepad_axes", _immutable_axes(dict(self.gamepad_axes)))
         object.__setattr__(self, "gamepad_hats", _immutable(dict(self.gamepad_hats)))
         object.__setattr__(
             self,
@@ -118,10 +125,12 @@ class MenuBindings:
             }
         )
     )
+    mouse_buttons: ButtonMap = field(default_factory=lambda: _immutable({InputAction.UI_BACK: 3}))
     gamepad_buttons: ButtonMap = field(
         default_factory=lambda: _immutable(
             {
                 InputAction.UI_CONFIRM: 0,
+                InputAction.UI_BACK: 1,
                 InputAction.UI_CANCEL: 1,
             }
         )
@@ -137,7 +146,7 @@ class MenuBindings:
         )
     )
     gamepad_axes: AxisMap = field(
-        default_factory=lambda: _immutable(
+        default_factory=lambda: _immutable_axes(
             {
                 InputAction.UI_LEFT: 0,
                 InputAction.UI_RIGHT: 0,
@@ -147,9 +156,11 @@ class MenuBindings:
         )
     )
     new_game_key: int | None = pygame.K_n
+    invert_y: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "keyboard", _immutable_keys(dict(self.keyboard)))
+        object.__setattr__(self, "mouse_buttons", _immutable(dict(self.mouse_buttons)))
         object.__setattr__(self, "gamepad_buttons", _immutable(dict(self.gamepad_buttons)))
         object.__setattr__(self, "gamepad_hats", _immutable(dict(self.gamepad_hats)))
         object.__setattr__(self, "gamepad_axes", _immutable(dict(self.gamepad_axes)))

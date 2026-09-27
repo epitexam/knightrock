@@ -26,6 +26,7 @@ from src.entities.player_controllers import (
 )
 from src.entities.player_input import PlayerInputHandler
 from src.physics import resolve_jump
+from src.physics.spatial_hash import SpatialHash
 from src.states.player_states import (
     ATTACK_FORBIDDEN_STATES,
     PlayerState,
@@ -90,6 +91,7 @@ class Player(ControllerView, Entity):
         moving_platforms: Iterable[Any],
         input_manager: InputManager,
         config: PlayerConfig | None = None,
+        spatial_hash: SpatialHash | None = None,
     ) -> None:
         """Initialise the player.
 
@@ -107,6 +109,9 @@ class Player(ControllerView, Entity):
             Input source.
         config : PlayerConfig | None
             Optional player configuration. Uses DEFAULT_PLAYER_CONFIG if not provided.
+        spatial_hash : SpatialHash | None
+            Shared collision grid covering ``collision_sprites``; see
+            :class:`~src.entities.entity.Entity`.
         """
         config = config or DEFAULT_PLAYER_CONFIG
 
@@ -132,6 +137,7 @@ class Player(ControllerView, Entity):
             attacks=attacks,
             hurt_duration=config.hurt_duration,
             invincibility_duration=config.invincibility_duration,
+            spatial_hash=spatial_hash,
         )
 
         self.speed = config.speed

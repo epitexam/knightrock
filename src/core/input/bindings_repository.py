@@ -1,11 +1,7 @@
-import json
-import logging
 import os
-import tempfile
-from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import cast
 
 import pygame
 
@@ -19,11 +15,15 @@ from src.core.input.input_bindings import (
     InputBindings,
     KeyBinding,
     MenuBindings,
+    PadBinding,
 )
 
-logger = logging.getLogger(__name__)
-
 BINDINGS_FORMAT_VERSION = 1
+
+# Actions bound as a (left, right) pair: the keyboard stores them as a tuple,
+# and ``gamepad_buttons`` can take a pair of buttons for pads that expose their
+# d-pad as buttons.
+_PAIR_ACTIONS = frozenset({InputAction.MOVE_X})
 
 
 def _serialize_action_map(values: ActionMap) -> dict[str, object]:
@@ -34,7 +34,10 @@ def _serialize_action_map(values: ActionMap) -> dict[str, object]:
 
 
 def _serialize_int_map(values: ButtonMap | AxisMap) -> dict[str, object]:
-    return {action.value: value for action, value in values.items()}
+    return {
+        action.value: list(value) if isinstance(value, tuple) else value
+        for action, value in values.items()
+    }
 
 
 def _serialize_combo_map(values: ComboMap) -> dict[str, object]:
@@ -57,17 +60,43 @@ def _parse_action(data: object, allowed: set[InputAction]) -> InputAction:
 
 
 def _parse_key_value(value: object, action: InputAction, allow_pair: bool) -> KeyBinding:
+    pair_required = allow_pair and action in _PAIR_ACTIONS
     if isinstance(value, int) and not isinstance(value, bool):
         if value < 0:
             raise ValueError("key code must be positive")
+        if pair_required:
+            # move_x is a (left, right) pair: a single int would break
+            # ``InputProvider._calculate_move_axis``.
+            raise ValueError(f"{action.value} requires a pair of keys")
         return value
-    if isinstance(value, list) and all(isinstance(item, int) for item in value):
+    if isinstance(value, list) and all(
+        isinstance(item, int) and not isinstance(item, bool) for item in value
+    ):
         if not value or (allow_pair and len(value) != 2):
             raise ValueError("invalid key binding")
         return tuple(value)
-    if action is InputAction.MOVE_X and allow_pair:
-        raise ValueError("MOVE_X requires a pair of keys")
     raise ValueError("invalid key binding")
+
+
+def _repair_menu_direction_conflicts(bindings: ActionMap) -> ActionMap:
+    """Restore defaults for every arrow involved in an old conflict."""
+    defaults = {
+        InputAction.UI_UP: pygame.K_UP,
+        InputAction.UI_DOWN: pygame.K_DOWN,
+        InputAction.UI_LEFT: pygame.K_LEFT,
+        InputAction.UI_RIGHT: pygame.K_RIGHT,
+    }
+    result = dict(bindings)
+    by_key: dict[int, list[InputAction]] = {}
+    for action in defaults:
+        value = result.get(action)
+        if isinstance(value, int):
+            by_key.setdefault(value, []).append(action)
+    for actions in by_key.values():
+        if len(actions) > 1:
+            for action in actions:
+                result[action] = defaults[action]
+    return MappingProxyType(result)
 
 
 def _parse_action_map(
@@ -82,15 +111,42 @@ def _parse_action_map(
     return MappingProxyType(result)
 
 
-def _parse_int_map(data: object, allowed: set[InputAction]) -> ButtonMap:
+def _int_index(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def _parse_int_map(data: object, allowed: set[InputAction], allow_pair: bool = False) -> ButtonMap:
+    """Parse a single SDL index, or MOVE_X's (left, right) pair.
+
+    ``allow_pair`` is opened only for the gameplay context, so a pad that
+    exposes its d-pad as buttons (Xbox/SDL2) can bind horizontal movement to two
+    buttons the way the keyboard does.
+    """
     if not isinstance(data, dict):
         raise ValueError("integer map must be an object")
-    result: dict[InputAction, int] = {}
+    result: dict[InputAction, PadBinding] = {}
     for raw_action, raw_value in data.items():
         action = _parse_action(raw_action, allowed)
-        if not isinstance(raw_value, int) or isinstance(raw_value, bool) or raw_value < 0:
-            raise ValueError("binding index must be a non-negative integer")
-        result[action] = raw_value
+        single = _int_index(raw_value)
+        if single is not None:
+            if allow_pair and action in _PAIR_ACTIONS:
+                raise ValueError(f"{action.value} requires a pair of indices")
+            result[action] = single
+            continue
+        if (
+            isinstance(raw_value, list)
+            and allow_pair
+            and action in _PAIR_ACTIONS
+            and len(raw_value) == 2
+        ):
+            left, right = (_int_index(item) for item in raw_value)
+            if left is None or right is None:
+                raise ValueError("binding index must be a non-negative integer")
+            result[action] = (left, right)
+            continue
+        raise ValueError("binding index must be a non-negative integer")
     return MappingProxyType(result)
 
 
@@ -109,6 +165,7 @@ def _parse_combo_map(data: object, allowed: set[InputAction]) -> ComboMap:
 
 
 def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
+    """Serialise back to the on-disk schema, the exact inverse of `bindings_from_dict`."""
     gameplay = bindings.gameplay
     menu = bindings.menu
     return {
@@ -123,43 +180,28 @@ def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
         },
         "menu": {
             "keyboard": _serialize_action_map(menu.keyboard),
+            "mouse_buttons": _serialize_int_map(menu.mouse_buttons),
             "gamepad_buttons": _serialize_int_map(menu.gamepad_buttons),
             "gamepad_hats": _serialize_int_map(menu.gamepad_hats),
             "gamepad_axes": _serialize_int_map(menu.gamepad_axes),
             "new_game_key": menu.new_game_key,
+            "invert_y": menu.invert_y,
         },
     }
 
 
-def _require_actions(mapping: object, required: set[InputAction], context: str) -> None:
-    if not isinstance(mapping, Mapping):
-        raise ValueError(f"{context} must be an object")
-    present = {_parse_action(action, required) for action in mapping}
-    missing = required - present
-    if missing:
-        raise ValueError(
-            f"{context} is missing actions: {sorted(action.value for action in missing)}"
-        )
-
-
-def _validate_context(
-    keyboard: ActionMap,
-    buttons: ButtonMap,
-    axes: AxisMap,
-    hats: ButtonMap,
-    keyboard_required: set[InputAction],
-    buttons_required: set[InputAction],
-    axes_required: set[InputAction],
-    hats_required: set[InputAction],
-    context: str,
-) -> None:
-    _require_actions(keyboard, keyboard_required, f"{context}.keyboard")
-    _require_actions(buttons, buttons_required, f"{context}.gamepad_buttons")
-    _require_actions(axes, axes_required, f"{context}.gamepad_axes")
-    _require_actions(hats, hats_required, f"{context}.gamepad_hats")
-
-
 def bindings_from_dict(data: object) -> InputBindings:
+    """Validate a bindings file: free-form subsets, context respected.
+
+    The contract comes from the two-column controls screen (audit UI-5):
+
+    * every key of a map must belong to its context (gameplay or menu);
+    * a map may be partial -- a missing action means unbound, and
+      ``InputProvider`` tolerates the gaps, which is what lets the UI detach a
+      single key or button;
+    * ``move_x`` stays a pair: two keys on the keyboard, two buttons if the
+      gameplay ``gamepad_buttons`` section declares it.
+    """
     if not isinstance(data, dict) or data.get("version") != BINDINGS_FORMAT_VERSION:
         raise ValueError("unsupported bindings schema")
     gameplay_data = data["gameplay"]
@@ -191,65 +233,41 @@ def bindings_from_dict(data: object) -> InputBindings:
     gameplay_keyboard = _parse_action_map(
         gameplay_data["keyboard"], gameplay_actions, allow_pair=True
     )
-    gameplay_buttons = _parse_int_map(gameplay_data["gamepad_buttons"], gameplay_actions)
-    gameplay_axes = _parse_int_map(gameplay_data["gamepad_axes"], gameplay_actions)
+    gameplay_buttons = _parse_int_map(
+        gameplay_data["gamepad_buttons"], gameplay_actions, allow_pair=True
+    )
+    gameplay_axes = cast(AxisMap, _parse_int_map(gameplay_data["gamepad_axes"], gameplay_actions))
     gameplay_hats = _parse_int_map(gameplay_data["gamepad_hats"], gameplay_actions)
     gameplay_keyboard_combos = _parse_combo_map(gameplay_data["keyboard_combos"], gameplay_actions)
     gameplay_gamepad_combos = _parse_combo_map(gameplay_data["gamepad_combos"], gameplay_actions)
     menu_keyboard = _parse_action_map(menu_data["keyboard"], menu_actions)
+    # Older files: capturing an arrow sometimes left two menu directions on one
+    # key. Repaired without disturbing the other custom remaps.
+    menu_keyboard = _repair_menu_direction_conflicts(menu_keyboard)
+    menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)
-    menu_axes = _parse_int_map(menu_data["gamepad_axes"], menu_actions)
+    menu_axes = cast(AxisMap, _parse_int_map(menu_data["gamepad_axes"], menu_actions))
+    if InputAction.UI_BACK not in menu_buttons and InputAction.UI_CANCEL in menu_buttons:
+        # A file written before universal back (B button / right click) bound
+        # that button to ui_cancel. Copy the binding to ui_back so the router
+        # emits the action the scenes expect, keeping the rest of the file.
+        menu_buttons = MappingProxyType(
+            {**menu_buttons, InputAction.UI_BACK: menu_buttons[InputAction.UI_CANCEL]}
+        )
     new_game_key = menu_data.get("new_game_key", pygame.K_n)
     if new_game_key is not None and (
         not isinstance(new_game_key, int) or isinstance(new_game_key, bool) or new_game_key < 0
     ):
         raise ValueError("menu.new_game_key must be a non-negative integer or null")
+    invert_y = menu_data.get("invert_y", False)
+    if not isinstance(invert_y, bool):
+        raise ValueError("menu.invert_y must be boolean")
 
-    _validate_context(
-        gameplay_keyboard,
-        gameplay_buttons,
-        gameplay_axes,
-        gameplay_hats,
-        gameplay_actions - {InputAction.SPECIAL_ATTACK},
-        {
-            InputAction.JUMP,
-            InputAction.ATTACK_1,
-            InputAction.ATTACK_2,
-            InputAction.ATTACK_3,
-            InputAction.ATTACK_4,
-            InputAction.GUARD,
-            InputAction.RESET,
-        },
-        {InputAction.MOVE_X, InputAction.DASH, InputAction.MOVE_DOWN},
-        {InputAction.MOVE_X, InputAction.MOVE_DOWN},
-        "gameplay",
-    )
     if InputAction.SPECIAL_ATTACK not in gameplay_keyboard_combos:
         raise ValueError("gameplay.keyboard_combos is missing special_attack")
     if InputAction.SPECIAL_ATTACK not in gameplay_gamepad_combos:
         raise ValueError("gameplay.gamepad_combos is missing special_attack")
-    _validate_context(
-        menu_keyboard,
-        menu_buttons,
-        menu_axes,
-        menu_hats,
-        menu_actions,
-        {InputAction.UI_CONFIRM, InputAction.UI_CANCEL},
-        {
-            InputAction.UI_LEFT,
-            InputAction.UI_RIGHT,
-            InputAction.UI_UP,
-            InputAction.UI_DOWN,
-        },
-        {
-            InputAction.UI_LEFT,
-            InputAction.UI_RIGHT,
-            InputAction.UI_UP,
-            InputAction.UI_DOWN,
-        },
-        "menu",
-    )
     gameplay = GameplayBindings(
         keyboard=gameplay_keyboard,
         gamepad_buttons=gameplay_buttons,
@@ -260,10 +278,12 @@ def bindings_from_dict(data: object) -> InputBindings:
     )
     menu = MenuBindings(
         keyboard=menu_keyboard,
+        mouse_buttons=menu_mouse,
         gamepad_buttons=menu_buttons,
         gamepad_hats=menu_hats,
         gamepad_axes=menu_axes,
         new_game_key=new_game_key,
+        invert_y=invert_y,
     )
     return InputBindings(gameplay=gameplay, menu=menu)
 
@@ -273,24 +293,18 @@ class BindingsRepository:
         self.path = path or default_bindings_path()
 
     def load(self) -> InputBindings:
-        try:
-            data: Any = json.loads(self.path.read_text(encoding="utf-8"))
-            return bindings_from_dict(data)
-        except OSError, ValueError, TypeError, KeyError, json.JSONDecodeError:
-            logger.warning("Unable to load input bindings, using defaults")
-            return InputBindings()
+        from src.application.settings_store import SettingsStore
+
+        return SettingsStore(self.path).load().bindings
 
     def save(self, bindings: InputBindings) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(bindings_to_dict(bindings), indent=2)
-        with tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=self.path.parent, delete=False
-        ) as temporary:
-            temporary.write(payload)
-            temporary_path = Path(temporary.name)
-        temporary_path.replace(self.path)
+        from src.application.settings_store import SettingsStore
+
+        store = SettingsStore(self.path)
+        store.save(store.load().with_bindings(bindings))
 
 
 def default_bindings_path() -> Path:
+    """Where bindings live when nothing overrides it: beside the settings, not in the user config."""
     base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"

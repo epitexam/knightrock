@@ -35,7 +35,7 @@ from src.entities.entity import Entity
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
-from src.core.settings import CameraShake
+from src.core.settings import CameraShake, World
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
@@ -80,15 +80,13 @@ class GameplayLoop:
         self.contact_system: ContactSystem = (
             contact_system if contact_system is not None else ContactSystem()
         )
-        self.combat_system: CombatSystem = CombatSystem(
-            contact_system=self.contact_system
-        )
+        self.combat_system: CombatSystem = CombatSystem(contact_system=self.contact_system)
         self.separation_system: SeparationSystem = SeparationSystem()
         # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
         # pass at the start of process_combat_and_separation (positions are
         # up to date there) and shared with every pairing system, turning
         # the legacy O(n²) pair loops into O(n · k) local queries.
-        self.entity_grid: EntityGrid = EntityGrid(cell_size=128)
+        self.entity_grid: EntityGrid = EntityGrid(cell_size=World.HASH_CELL_SIZE)
 
         # World stages, assembled by the level and run in the order below.
         self.platform_system = platform_system
@@ -194,9 +192,7 @@ class GameplayLoop:
                 player._dash_started_this_frame = False
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
-            hazard_damage.process(
-                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
-            )
+            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
             self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 

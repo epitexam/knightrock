@@ -73,15 +73,17 @@ def test_resolve_locomotion_hysteresis_run_to_walk() -> None:
 
 def test_resolve_locomotion_hysteresis_walk_to_walk_slow() -> None:
     assert resolve_locomotion_state(_locomotion_entity(0.4, "walk")) == "walk"
-    assert resolve_locomotion_state(_locomotion_entity(
-        Locomotion.WALK_SLOW_DEMOTE - 0.01, "walk"
-    )) == "walk_slow"
+    assert (
+        resolve_locomotion_state(_locomotion_entity(Locomotion.WALK_SLOW_DEMOTE - 0.01, "walk"))
+        == "walk_slow"
+    )
 
 
 def test_resolve_locomotion_hysteresis_walk_slow_to_walk() -> None:
-    assert resolve_locomotion_state(
-        _locomotion_entity(Locomotion.WALK_SLOW_PROMOTE, "walk_slow")
-    ) == "walk"
+    assert (
+        resolve_locomotion_state(_locomotion_entity(Locomotion.WALK_SLOW_PROMOTE, "walk_slow"))
+        == "walk"
+    )
     assert resolve_locomotion_state(_locomotion_entity(0.49, "walk_slow")) == "walk_slow"
 
 

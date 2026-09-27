@@ -138,7 +138,6 @@ def test_zone_index_propagated_to_resolver() -> None:
     assert contacts[0].kind == "melee"
 
 
-
 def test_projectile_parity_with_direct_resolver() -> None:
     """Projectile: same damage as a direct ``HitResolver`` pass."""
     reference = make_entity(pos=(100.0, 100.0), faction="enemy")
@@ -279,4 +278,3 @@ def test_contact_damage_skips_hurt_and_invincible_targets() -> None:
     ContactDamageSystem().process(Group(c, d))
 
     assert d.damage_taken == 0.0
-

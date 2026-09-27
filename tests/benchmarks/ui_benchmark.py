@@ -1,17 +1,49 @@
+"""Frame cost of the debug panels and of every menu screen.
+
+Run it from the repo root::
+
+    uv run python tests/benchmarks/ui_benchmark.py
+
+The dummy SDL driver has no fast renderer, so the absolute numbers are
+CPU-only and not representative of a real window; the per-scene ratios are
+the actionable part. The ``menu/*`` keys cover the menu screens, whose
+frames are redrawn 60 times a second while nothing moves.
+"""
+
 from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
 from time import perf_counter
 from types import SimpleNamespace
+
+if __package__ in {None, ""}:
+    # Support ``python tests/benchmarks/ui_benchmark.py`` from the repo root:
+    # the ``src`` imports below need the repo root on the path first. The SDL
+    # drivers must also be chosen before pygame is imported.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 
+from src.application.scene import Scene
+from src.application.scenes.controls_category_scene import ControlsCategoryScene
+from src.application.scenes.controls_scene import ControlsScene
+from src.application.scenes.gameover_scene import GameOverScene
+from src.application.scenes.level_select_scene import LevelSelectScene
+from src.application.scenes.menu_scene import MenuScene
+from src.application.scenes.options_scene import OptionsScene
+from src.application.scenes.pause_scene import PauseScene
+from src.application.scenes.victory_scene import VictoryScene
+from src.application.scenes.video_scene import VideoScene
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.ui.ui_manager import UIManager
 
 
 def _player() -> SimpleNamespace:
@@ -78,7 +110,17 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
     pygame.init()
     pygame.display.set_mode(size)
     surface = pygame.Surface(size)
-    renderer = Renderer(surface, Camera(*size))
+    # The renderer no longer builds the interface -- it is handed one, which is
+    # the whole point of the injected overlay. So the manager is held here to
+    # read the text cache off, instead of being reached back through the
+    # renderer as `renderer.ui_manager`, which stopped existing when the
+    # dependency was inverted.
+    ui = UIManager(surface)
+    renderer = Renderer(
+        surface,
+        Camera(Framing(float(size[0]), float(size[1]))),
+        overlay=ui,
+    )
     panel_samples: list[float] = []
     player = _player()
     game = _game()
@@ -93,17 +135,63 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
             collision_count=0,
             hit_stop=0.0,
             spawn_cooldown=0.0,
-            game=game,
+            scene_host=game,
             frame_time=16.0,
         )
         panel_samples.append((perf_counter() - started) * 1000.0)
-    return {
+    result = {
         "p50": _percentile(panel_samples, 0.50),
         "p95": _percentile(panel_samples, 0.95),
         "p99": _percentile(panel_samples, 0.99),
         "max": max(panel_samples),
-        "cache_entries": float(renderer.ui_manager.renderer.text_cache_stats["entries"]),
+        "cache_entries": float(ui.renderer.text_cache_stats["entries"]),
     }
+    result.update(_menu_samples(size, iterations))
+    return result
+
+
+def _menu_scenes(game) -> dict[str, Scene]:
+    """One instance of every full-screen menu, keyed by display name."""
+    return {
+        "MenuScene": MenuScene(game),
+        "OptionsScene": OptionsScene(game),
+        "VideoScene": VideoScene(game),
+        "ControlsCategoryScene": ControlsCategoryScene(game),
+        "ControlsScene": ControlsScene(game, ControlsScene.MENU_SECTION),
+        "ControlsGameplayScene": ControlsScene(game, ControlsScene.GAMEPLAY_SECTION),
+        "LevelSelectScene": LevelSelectScene(game),
+        "PauseScene": PauseScene(game, level_id=0),
+        "GameOverScene": GameOverScene(game, level_id=0),
+        "VictoryScene": VictoryScene(game, level_id=0),
+    }
+
+
+def _menu_samples(size: tuple[int, int], iterations: int) -> dict[str, float]:
+    """Per-frame draw cost of each menu screen.
+
+    The menu frames are the ones a player stares at while nothing moves, so a
+    dropped cache there is pure waste. Reported as ``menu/<name>`` keys; the
+    dummy SDL driver has no fast renderer, so these are CPU-only figures and
+    the absolute values are not representative of a real window.
+    """
+    from src.core.game import Game
+
+    game = Game()
+    game.initialize_display()
+    game.clock = pygame.time.Clock()
+    results: dict[str, float] = {}
+    for name, scene in _menu_scenes(game).items():
+        game.scene_manager.switch(scene)
+        for _ in range(20):
+            game.scene_manager.draw(pygame.display.get_surface())
+        samples: list[float] = []
+        for _ in range(iterations):
+            started = perf_counter()
+            game.scene_manager.draw(pygame.display.get_surface())
+            samples.append((perf_counter() - started) * 1000.0)
+        results[f"menu/{name}/p50"] = _percentile(samples, 0.50)
+        results[f"menu/{name}/p95"] = _percentile(samples, 0.95)
+    return results
 
 
 def main() -> None:

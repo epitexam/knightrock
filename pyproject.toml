@@ -41,25 +41,18 @@ warn_unused_configs = true
 ignore_missing_imports = true
 explicit_package_bases = true
 disallow_untyped_defs = true
-# Remaining typing debt, measured 2026-09-18: `src.combat`, `src.entities`
-# and `src.states` are strict-clean and out of the overrides below.
+disallow_incomplete_defs = true
+# `src` carries no per-module overrides any more: the last one
+# (`src.core.rendering.*`, 16 hidden errors) was closed 2026-09-25 by
+# annotating renderer.py. `disallow_incomplete_defs` is global for the same
+# reason -- a partially annotated signature is a lie mypy cannot check.
 # mypy is blocking in CI (`uv run mypy src`).
-
-[[tool.mypy.overrides]]
-module = [
-    "src.core.level.*",
-    "src.core.rendering.*",
-    "src.core.sprites",
-    "src.core.hazards",
-    "src.ui.*",
-    "src.physics.*",
-]
-disallow_untyped_defs = false
 
 [dependency-groups]
 dev = [
+    "mypy>=1.18.0",
+    "pre-commit>=4.3.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.14.0",
-    "mypy>=1.18.0",
 ]

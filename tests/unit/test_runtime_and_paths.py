@@ -1,14 +1,22 @@
 """Tests for resource lookup and the top-level game runtime boundary."""
 
+import logging
 import sys
+from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import Mock
 
 import pygame
 import pytest
 
+from src.application.settings_store import UserSettings
+from src.core.display import detection
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.mode import DisplayMode
+from src.core.display.stage import Stage, WindowSpec
+from src.core.display.viewport import Viewport
 from src.core.game import Game
-from src.core.level.level_manager import LevelManager
+from src.core.level.level_manager import LevelManager, UnknownLevelError
 from src.core.paths import PROJECT_ROOT, resource_path
 
 
@@ -39,6 +47,41 @@ def test_level_manager_raises_clear_error_for_missing_level() -> None:
         manager.get(99)
 
     assert "Level file not found" in str(exc_info.value)
+
+
+def test_an_unregistered_level_id_is_not_a_bare_key_error() -> None:
+    """A stale id from an old save must say so, not raise ``KeyError: 7``.
+
+    The bare-KeyError version of this failure was a crash at launch with no
+    message at all, on the path that resolves a save file's ``last_level_id``.
+    """
+    manager = LevelManager({0: "assets/data/levels/1.tmx", 3: "assets/data/levels/4.tmx"})
+
+    with pytest.raises(UnknownLevelError) as exc_info:
+        manager.get(7)
+
+    message = str(exc_info.value)
+    assert "7" in message
+    assert "0, 3" in message, "the message must name the ids that do exist"
+
+
+def test_the_two_level_failures_are_distinguishable() -> None:
+    """Unregistered id and missing file are different problems, not one."""
+    manager = LevelManager()
+    manager.register(99, "assets/data/levels/does_not_exist.tmx")
+
+    with pytest.raises(LookupError):
+        manager.get(98)
+    with pytest.raises(FileNotFoundError):
+        manager.get(99)
+
+
+def test_an_empty_registry_still_produces_a_readable_message() -> None:
+    """``known: none`` beats an empty parenthesis nobody can act on."""
+    with pytest.raises(UnknownLevelError) as exc_info:
+        LevelManager().get(0)
+
+    assert "none" in str(exc_info.value)
 
 
 def test_run_handles_initialization_errors_and_always_quits(
@@ -194,3 +237,306 @@ def test_removing_inactive_joystick_keeps_active_device(
 
     assert game.joysticks == {7: active}
     reassign_joystick.assert_called_once_with({7: active})
+
+
+def test_game_applies_persisted_video_settings(tmp_path: Path) -> None:
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW, vsync=True))
+
+    assert game.surface is not None
+    assert game.surface.get_size() == game.stage.size
+    assert game.settings.vsync is True
+
+
+def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The two modes, by what they ask the driver for.
+
+    Windowed is resizable, and the drag is the point: the window is the render
+    target, so a resize is a first-class case rather than something to protect
+    the picture from. Borderless asks for FULLSCREEN *at the desktop's own size*
+    rather than a mode change, which is what keeps it safe on a hybrid-GPU
+    laptop.
+
+    ``pygame.SCALED`` is deliberately absent. It was doing the letterboxing,
+    which the render target now does itself, and pygame's documentation calls it
+    an experimental API.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    set_mode = Mock(wraps=pygame.display.set_mode)
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+
+    # From a mode that is definitely not the one under test: the dummy driver
+    # reports a desktop whose shape depends on whichever test ran last, so
+    # AUTO may already have resolved to WINDOW here.
+    game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+
+    windowed_flags = set_mode.call_args.args[1]
+    assert windowed_flags & pygame.RESIZABLE
+    assert not windowed_flags & pygame.FULLSCREEN
+    assert not windowed_flags & pygame.SCALED
+    # No size of our own: the desktop decides how big a window to open, and the
+    # player drags it from there.
+    requested = set_mode.call_args.args[0]
+    assert requested == detection.initial_window_size(detection.desktop_size())
+
+    game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
+
+    fullscreen_flags = set_mode.call_args.args[1]
+    assert fullscreen_flags & pygame.FULLSCREEN
+    assert not fullscreen_flags & pygame.RESIZABLE
+    assert not fullscreen_flags & pygame.SCALED
+    assert set_mode.call_args.args[0] == detection.desktop_size()
+
+
+def test_fullscreen_asks_sdl_for_the_displays_own_mode(tmp_path: Path) -> None:
+    """``(0, 0)`` is how SDL is told to use the current mode.
+
+    The alternative is asking for a resolution, which is the claim this whole
+    rework removed: a mode change to a size the game picked, on a panel it never
+    measured.
+    """
+    spec = WindowSpec(mode=DisplayMode.FULLSCREEN)
+    assert Stage._window_size(spec, (2560, 1440)) == (0, 0)
+
+
+def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> None:
+    """The regression, as a runtime property.
+
+    The window used to be rebuilt from a stored size, and the target was a
+    constant, so a player who set a resolution saw the menu and the screen
+    disagree -- in borderless the window is the desktop's size whatever the file
+    says, and nothing wrote the difference back. There is no setting left that
+    could describe a window, which is the only way to be sure no two of them can
+    disagree.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+
+    names = {field.name for field in fields(UserSettings)}
+    assert not names & {"width", "height", "size_mode", "render_scale", "smoothing"}
+    assert names == {
+        "bindings",
+        "display",
+        "pixel_perfect",
+        "vsync",
+        "frame_limit",
+        "ui_scale",
+    }
+
+
+class FakeWindow:
+    """A window that changes size in place, the way SDL's surface does.
+
+    ``pygame`` gives back one surface object and a resize changes its size, so
+    ``Presentation`` must be able to notice without being handed a new object.
+    A plain ``pygame.Surface`` cannot do that -- it has no resize -- which is
+    why this exists rather than a mock of ``Presentation`` itself: the method
+    under test is ``recompute``, and a mock of it would prove nothing.
+    """
+
+    def __init__(self, size: tuple[int, int]) -> None:
+        self._size = size
+        self.surface = pygame.Surface(size)
+
+    def get_size(self) -> tuple[int, int]:
+        return self._size
+
+    def resize(self, size: tuple[int, int]) -> None:
+        self._size = size
+        self.surface = pygame.Surface(size)
+
+    def fill(self, *args: object, **kwargs: object) -> None:
+        self.surface.fill(*args, **kwargs)  # type: ignore[arg-type]
+
+    def blit(self, *args: object, **kwargs: object) -> None:
+        self.surface.blit(*args, **kwargs)  # type: ignore[arg-type]
+
+
+def test_the_target_is_the_window_so_a_resize_reaches_the_views(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``VIDEORESIZE`` used to be dropped to protect the logical resolution.
+
+    There is no logical resolution left to protect: the visible world is the
+    framing, and the target *is* the window. So the event is handled rather than
+    ignored, and what it does is rebuild the target, re-read the density and
+    re-lay out the interface -- the same cascade a display change goes through,
+    which is why it is one method.
+    """
+    from src.core.display.letterbox import letterbox
+
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    assert game.presentation is not None
+    # Pinned rather than taken from the runtime: under the dummy driver the
+    # desktop is whatever the last test left behind, so the window the game
+    # opened is not the same from one run to the next.
+    window = FakeWindow((1600, 900))
+    game.presentation.stage = window  # type: ignore[assignment]
+    game.presentation.recompute()
+    notified = Mock()
+    game.scene_manager.set_surface = notified  # type: ignore[method-assign]
+    start = game.presentation.surface.get_size()
+
+    for size in ((1920, 1080), (1024, 768), (800, 600)):
+        assert letterbox(size, DEFAULT_FRAMING).size != start
+        window.resize(size)
+        monkeypatch.setattr(
+            pygame.event,
+            "get",
+            lambda size=size: [
+                pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size)
+            ],
+        )
+
+        game._handle_events()
+
+        assert game.presentation.surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        assert game.presentation.density == pytest.approx(
+            letterbox(size, DEFAULT_FRAMING).width / DEFAULT_FRAMING.width
+        )
+        assert game.ui_scale == pytest.approx(game.settings.ui_scale * game.presentation.density)
+
+    # Once per new picture, and every surface handed over is the one that is
+    # about to be drawn into.
+    assert notified.call_count == 3, "the views were never told about the new target"
+    handed = [call.args[0] for call in notified.call_args_list]
+    assert handed == [
+        Viewport(DEFAULT_FRAMING, letterbox(size, DEFAULT_FRAMING).size).surface
+        for size in ((1920, 1080), (1024, 768), (800, 600))
+    ] or all(
+        surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        for surface, size in zip(handed, ((1920, 1080), (1024, 768), (800, 600)), strict=True)
+    )
+
+
+def test_a_resize_that_changes_nothing_does_not_rebuild_the_target(tmp_path: Path) -> None:
+    """SDL announces a resize during its own ``set_mode``; that has to be a no-op.
+
+    Otherwise every display change rebuilds the target twice, and a drag of the
+    window rebuilds it once per event whether or not the size moved.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    assert game.presentation is not None
+    before = game.presentation.surface
+    assert game.presentation.recompute() is False
+    assert game.presentation.surface is before
+
+
+# -- the fatal error path -----------------------------------------------------
+#
+# This runs when something has already gone wrong, so every part of it has to
+# be safe: the log is the artifact worth keeping, the screen is a courtesy, and
+# neither may replace a reportable crash with an unreportable one.
+
+
+def test_a_fatal_error_is_logged_with_its_traceback(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The log, not the screen, is what a player sends you.
+
+    It used to be `logger.error(f"FATAL ERROR: {error}")` -- the message and
+    nothing else, so a crash whose exception had an empty message logged an
+    empty line, and the frame that raised it was recorded nowhere.
+    """
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    with caplog.at_level(logging.CRITICAL):
+        game._handle_fatal_error(RuntimeError("the level would not build"))
+
+    record = caplog.records[-1]
+    assert record.levelno == logging.CRITICAL
+    assert record.exc_info is not None, "the traceback is the point"
+    assert "the level would not build" in caplog.text
+
+
+def test_the_fatal_screen_goes_on_the_render_target_and_is_presented(
+    tmp_path: Path,
+) -> None:
+    """Not on the window, and not until something presents it.
+
+    Drawing straight to the window put the message at 1:1 whatever the
+    letterbox and density were, and the next present would have wiped it.
+    """
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    presented = Mock()
+    monkey = Mock(wraps=game.presentation)
+    game.presentation = monkey
+    monkey.present = presented
+
+    game._handle_fatal_error(RuntimeError("boom"))
+
+    presented.assert_called_once_with()
+    # Something was painted into the target, not only the window.
+    assert any(
+        game.presentation.surface.get_at((x, y))[:3] != (0, 0, 0)
+        for x in range(0, 200, 7)
+        for y in range(0, 120, 7)
+    )
+
+
+def test_a_crash_before_the_display_falls_back_to_the_window(
+    tmp_path: Path,
+) -> None:
+    """No presentation yet is the normal case for an initialization failure."""
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    game.presentation = None  # as if the crash happened before it was built
+    window = pygame.display.get_surface()
+
+    game._handle_fatal_error(RuntimeError("no display"))
+
+    assert window is not None
+    assert game.surface is window
+    assert any(
+        window.get_at((x, y))[:3] != (0, 0, 0) for x in range(0, 400, 5) for y in range(0, 40, 5)
+    ), "the message reached the window"
+
+
+def test_the_fatal_handler_never_raises(tmp_path: Path) -> None:
+    """A display that has gone away must not turn a crash into a hang."""
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    def exploding(*args, **kwargs):
+        raise pygame.error("the display driver has gone")
+
+    game.presentation = exploding
+
+    game._handle_fatal_error(RuntimeError("boom"))  # must not raise
+
+
+def test_a_crash_with_an_empty_message_still_says_something(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+
+    with caplog.at_level(logging.CRITICAL):
+        game._handle_fatal_error(RuntimeError())
+
+    assert "RuntimeError" in caplog.text

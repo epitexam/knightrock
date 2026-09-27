@@ -8,6 +8,7 @@ import pytest
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.core.colors import Colors
+from src.core.display.framing import Framing
 from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.level.systems.spawn_system import (
     DEBUG_ATTACKS,
@@ -18,6 +19,9 @@ from src.core.level.systems.spawn_system import (
 from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
+from src.physics.spatial_hash import SpatialHash
+from src.ui.world_overlay_geo import GeoLayer
+from src.ui.world_overlay_panels import PanelLayer
 from tests.unit.helpers import make_entity
 
 
@@ -41,7 +45,7 @@ def world_ui():
 def camera():
     from src.core.rendering.camera import Camera as _Camera
 
-    return _Camera(1024, 768)
+    return _Camera(Framing(float(1024), float(768)))
 
 
 def _player() -> object:
@@ -193,13 +197,61 @@ def test_debug_juggle_key_is_bound() -> None:
     assert pygame.K_c == DEBUG_JUGGLE_KEY
 
 
-def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
-    from src.ui.world_ui import WorldUI
+# --- Runtime spawns join the collision grid --------------------------------
+#
+# These pin the regression the level-level wiring fixed. A grid assigned after
+# the world is built never reaches an entity the spawner creates later, and the
+# symptom is not an error: the enemy works, hits what it should, and quietly
+# costs a scan of every collider in the level on every one of its sub-steps.
 
-    surface = world_ui.display_surface
+
+def test_a_spawned_enemy_is_wired_to_the_grid() -> None:
+    groups = SpriteGroups()
+    grid = SpatialHash(cell_size=128)
+    system = SpawnSystem(groups, spatial_hash=grid)
+    player = _player()
+
+    system._spawn_enemy("goblin", player)
+
+    spawned = [enemy for enemy in groups.entity_sprites if enemy is not player]
+    assert spawned, "the spawner should have produced an enemy"
+    for enemy in spawned:
+        assert enemy.spatial_hash is grid
+
+
+def test_a_juggle_dummy_is_wired_to_the_grid() -> None:
+    groups = SpriteGroups()
+    grid = SpatialHash(cell_size=128)
+    system = SpawnSystem(groups, spatial_hash=grid)
+
+    dummy = system.spawn_juggle_dummy(_player())
+
+    assert dummy is not None
+    assert dummy.spatial_hash is grid
+
+
+def test_a_spawn_without_a_grid_still_works() -> None:
+    """``None`` stays legal: standalone use is correct, only slower.
+
+    The grid is an optimization, not a precondition, so a system built without
+    one must keep producing working entities rather than raising.
+    """
+    groups = SpriteGroups()
+    system = SpawnSystem(groups)
+
+    dummy = system.spawn_juggle_dummy(_player())
+
+    assert dummy is not None
+    assert dummy.spatial_hash is None
+
+
+def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
+
+    surface = world_ui.surface
+    attack_box = pygame.FRect(100, 100, 30, 20)
     combat = SimpleNamespace(
-        attack_boxes=(pygame.FRect(100, 100, 30, 20),),
-        swept_attack_boxes=lambda: (pygame.FRect(100, 100, 30, 20),),
+        attack_boxes=(attack_box,),
+        swept_attack_boxes=lambda: (attack_box,),
         state=SimpleNamespace(attack_name=None),
         current_phase=None,
     )
@@ -212,61 +264,97 @@ def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
         otg_timer=0.0,
         gravity_scale=1.0,
     )
+    # Sample where the camera actually puts the box: the overlay draws in screen
+    # space, so a hardcoded window silently stops matching the box as soon as
+    # ``GameplayCamera.ZOOM`` changes.
+    drawn = pygame.Rect(camera.apply(attack_box))
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
     box_pixels = sum(
         1
-        for x in range(100, 130)
-        for y in range(100, 120)
+        for x in range(drawn.left, drawn.right)
+        for y in range(drawn.top, drawn.bottom)
         if surface.get_at((x, y))[:3] == Colors.debug_attack_box
     )
     assert box_pixels > 0
-    assert WorldUI._swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
+    assert GeoLayer.swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
 
 
 def test_swept_ghost_exposes_previous_origin(world_ui, camera) -> None:
-    from src.ui.world_ui import WorldUI
 
     combat = SimpleNamespace(
         attack_boxes=(pygame.FRect(120, 100, 30, 20),),
         swept_attack_boxes=lambda: (pygame.FRect(100, 100, 50, 20),),
     )
-    swept = WorldUI._swept_boxes(combat, 1)
+    swept = GeoLayer.swept_boxes(combat, 1)
     assert swept[0] != combat.attack_boxes[0]
     assert swept[0].width == 50.0
 
 
-def test_attack_timeline_marks_phase_progress(world_ui) -> None:
-    from src.ui.world_ui import WorldUI
+@pytest.mark.parametrize(
+    ("density", "per_frame"),
+    [
+        (1.0, 3),
+        (1.8889, 6),
+        # Below one the timeline keeps its design size rather than thinning to
+        # nothing: an overlay that vanishes is worse than one that is too big.
+        (0.5, 3),
+    ],
+)
+def test_attack_timeline_marks_phase_progress(world_ui, density: float, per_frame: int) -> None:
+    """Phase progress, in pixels that belong to the target.
 
+    The three pixels per frame are a *world* dimension like every other here,
+    so they follow the density -- the same reason a hitbox outline does, and the
+    same bug when it did not.
+    """
+    world_ui.renderer.set_surface(world_ui.renderer.surface, density)
     state = SimpleNamespace(attack_name="jab", frame_counter=2)
     phase = SimpleNamespace(startup_frames=4, active_frames=4, recovery_frames=4)
-    assert WorldUI._timeline_progress(state, "startup", phase) == 2 * 3
-    assert WorldUI._timeline_progress(state, "active", phase) == (4 + 2) * 3
-    assert WorldUI._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * 3
+    assert world_ui.metrics.timeline_px_per_frame == per_frame
+    assert world_ui._geo.timeline_progress(state, "startup", phase) == 2 * per_frame
+    assert world_ui._geo.timeline_progress(state, "active", phase) == (4 + 2) * per_frame
+    assert world_ui._geo.timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * per_frame
+
+
+@pytest.mark.parametrize("density", [1.0, 1.25, 1.8889, 2.0, 3.3333])
+def test_the_overlay_is_never_thinner_than_one_art_pixel(world_ui, density: float) -> None:
+    """The regression that made F1 look like a dead key.
+
+    A hitbox outline is one art pixel wide by design. Handed to pygame unscaled
+    on a window where the world is drawn 1.9x larger, it arrived at 53% of its
+    weight and vanished into the tile grid -- and the labels, the zone seals and
+    the timeline with it, because every dimension in the layer had the same
+    units mistake. Below a density of one it must not *shrink* either.
+    """
+    world_ui.renderer.set_surface(world_ui.renderer.surface, density)
+    assert world_ui.stroke() == max(1, round(density))
+    assert world_ui.metrics.zone_outline == max(1, round(density))
+    assert world_ui.metrics.zone_boost_outline == max(1, round(2 * density))
+    assert world_ui.metrics.timeline_bar_height >= 1
+    assert world_ui.metrics.tier_gap >= 1
 
 
 def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
-    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
-    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
-    assert world_ui.metrics_text == ()
+    world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    assert world_ui.panels.metrics_text == ()
     for _ in range(8):
-        world_ui.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
-    assert world_ui.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
+        world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
+    assert world_ui.panels.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
 
 
 def test_live_attack_text_formats_player_state(world_ui) -> None:
-    from src.ui.world_ui import WorldUI
 
     player = SimpleNamespace(
         combat=SimpleNamespace(
             state=SimpleNamespace(attack_name="jab", sub_state="active", frame_counter=3)
         )
     )
-    assert WorldUI._live_attack_text(player) == "jab active f3"
-    assert WorldUI._live_attack_text(None) is None
+    assert GeoLayer.live_attack_text(player) == "jab active f3"
+    assert GeoLayer.live_attack_text(None) is None
     idle = SimpleNamespace(combat=SimpleNamespace(state=SimpleNamespace(attack_name=None)))
-    assert WorldUI._live_attack_text(idle) is None
+    assert GeoLayer.live_attack_text(idle) is None
 
 
 def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:
@@ -276,29 +364,39 @@ def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:
         )
     )
     for _ in range(10):
-        world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
-    world_ui.note_clash((10.0, 10.0))
-    world_ui.draw_metrics_panel(player=player, hit_stop=0.05)
-    assert world_ui.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
-    assert world_ui._clash_ttl > 0.0
+        world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    world_ui.panels.note_clash((10.0, 10.0))
+    world_ui.panels.draw_metrics_panel(player=player, hit_stop=0.05)
+    assert world_ui.panels.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
+    assert world_ui.panels._clash_ttl > 0.0
 
 
 def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
-    world_ui.note_clash((42.0, 7.0))
-    assert world_ui.clash_point == (42.0, 7.0)
-    assert world_ui._clash_ttl > 0.0
-    world_ui.note_clash(None)
-    assert world_ui.clash_point == (42.0, 7.0)
+    world_ui.panels.note_clash((42.0, 7.0))
+    assert world_ui.panels.clash_point == (42.0, 7.0)
+    assert world_ui.panels._clash_ttl > 0.0
+    world_ui.panels.note_clash(None)
+    assert world_ui.panels.clash_point == (42.0, 7.0)
 
 
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
-    from src.ui.world_ui import CLASH_MARKER_LIFETIME, WorldUI
+    from src.ui.world_ui import CLASH_MARKER_LIFETIME, CLASH_TICK_S
 
-    surface = world_ui.display_surface
+    surface = world_ui.surface
     surface.fill((0, 0, 0))
-    world_ui.note_clash((120.0, 110.0))
-    assert world_ui._clash_ttl == CLASH_MARKER_LIFETIME
-    world_ui._draw_clash_marker(camera)
+    world_ui.panels.note_clash((120.0, 110.0))
+    assert world_ui.panels._clash_ttl == CLASH_MARKER_LIFETIME
+    world_ui.panels.draw_clash_marker(camera)
+    # The decay has to be observed *between* the start and the expiry: a marker
+    # that jumped straight to zero would satisfy the end-state check below while
+    # being a ring that blinks out in a single frame.
+    assert world_ui.panels._clash_ttl == pytest.approx(CLASH_MARKER_LIFETIME - CLASH_TICK_S), (
+        "one frame must cost one tick, not the whole lifetime"
+    )
+    world_ui.panels.draw_clash_marker(camera, 0.1)
+    assert world_ui.panels._clash_ttl == pytest.approx(CLASH_MARKER_LIFETIME - CLASH_TICK_S - 0.1)
+    world_ui.panels._clash_ttl = CLASH_MARKER_LIFETIME
+    world_ui.panels.draw_clash_marker(camera)
     gold_pixels = sum(
         1
         for x in range(90, 150)
@@ -309,10 +407,10 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
 
     surface.fill((0, 0, 0))
     for _ in range(30):
-        world_ui._draw_clash_marker(camera)
-    assert world_ui._clash_ttl <= 0.0
+        world_ui.panels.draw_clash_marker(camera)
+    assert world_ui.panels._clash_ttl <= 0.0
     surface.fill((0, 0, 0))
-    world_ui._draw_clash_marker(camera)
+    world_ui.panels.draw_clash_marker(camera)
     assert (
         sum(
             1
@@ -322,4 +420,4 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
         )
         == 0
     )
-    assert WorldUI._draw_clash_marker  # bound method still wired in overlays
+    assert PanelLayer.draw_clash_marker  # bound method still wired in overlays

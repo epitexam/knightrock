@@ -1,9 +1,52 @@
+from collections.abc import Iterable
+from typing import Any, cast
+
 import pygame
 
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
-def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
+def _blocks(sprite: Any, candidate: pygame.Rect) -> bool:
+    """Whether ``sprite``'s box overlaps ``candidate``."""
+    box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+    return box is not None and box.colliderect(candidate)
+
+
+def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | None:
+    """The static terrain that could block ``candidate``.
+
+    Prefers the spatial hash: a full scan of the level's collision tiles was
+    the single most expensive thing in the simulation tick, for one platform.
+    ``get_nearby`` returns a superset of the real blockers (it inflates the
+    query) but never omits one, and the caller only asks *whether* something
+    blocks, so the extra candidates cost nothing and the order is irrelevant.
+
+    A platform is never one of its own blockers.  ``MovingPlatform`` joins
+    ``collision_sprites`` so entities collide with it, and the grid indexes
+    that same group — so without the filter below a platform is handed back by
+    its own query, always overlaps the candidate it just stepped into, and
+    reads as permanently blocked: the pad refuses to move at all.  The bare
+    scan below has always said so with ``not hasattr(s, "waypoints")``; the
+    grid path has to say it the same way, or the two disagree about where a
+    platform is allowed to stop.
+    """
+    static_sprites = getattr(platform, "collision_sprites", None)
+    if not static_sprites:
+        return None
+    spatial_hash = getattr(platform, "spatial_hash", None)
+    if spatial_hash is not None:
+        return cast(
+            "Iterable[Any]",
+            (s for s in spatial_hash.get_nearby(candidate) if s is not platform),
+        )
+    return (
+        s
+        for s in static_sprites
+        if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
+    )
+
+
+def _limit_to_clear(platform: Any, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:
     """Shorten a platform's step so it never overlaps static terrain.
 
     Returns the allowed step (possibly a zero vector) and whether the
@@ -11,25 +54,20 @@ def _limit_to_clear(platform, step: pygame.math.Vector2) -> tuple[pygame.math.Ve
     itself are ignored: only the world's static colliders block.  Platforms
     without a ``collision_sprites`` reference keep the legacy ghost move.
     """
-    static_sprites = getattr(platform, "collision_sprites", None)
-    if not static_sprites:
-        return step, False
     for divisor in _BLOCK_DIVISORS:
         candidate = platform.hitbox.copy()
         candidate.x += step.x / divisor
         candidate.y += step.y / divisor
-        blocked = any(
-            (box := getattr(s, "hitbox", getattr(s, "rect", None))) is not None
-            and box.colliderect(candidate)
-            for s in static_sprites
-            if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
-        )
+        blockers = _static_blockers(platform, candidate)
+        if blockers is None:
+            return step, False
+        blocked = any(_blocks(s, candidate) for s in blockers)
         if not blocked:
             return step / divisor, False
     return step * 0, True
 
 
-def update_moving_platform(platform, delta_time: float) -> None:
+def update_moving_platform(platform: Any, delta_time: float) -> None:
     """Update a moving platform's position along its waypoints."""
     platform.old_rect = platform.rect.copy()
     platform.old_hitbox = platform.hitbox.copy()

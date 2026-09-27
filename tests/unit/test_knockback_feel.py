@@ -9,6 +9,7 @@ from pygame.math import Vector2
 
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
+from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.settings import Combat as CombatSettings
 from src.states.reaction_states import KnockbackState
@@ -75,7 +76,8 @@ def test_grounded_entity_still_stops_dead() -> None:
 
 
 def test_camera_shake_decays_and_is_deterministic() -> None:
-    first, second = Camera(800, 600), Camera(800, 600)
+    # zoom=1.0: same ticks must give the same world-space pixels.
+    first, second = Camera(Framing(float(800), float(600))), Camera(Framing(float(800), float(600)))
     first.add_trauma(2.0)  # clamped to 1.0
     second.add_trauma(1.0)
     assert first.trauma == pytest.approx(1.0)
@@ -87,7 +89,8 @@ def test_camera_shake_decays_and_is_deterministic() -> None:
 
 
 def test_camera_rests_without_trauma() -> None:
-    camera = Camera(800, 600)
+    # zoom=1.0: an unzoomed, unshaken camera is the identity mapping.
+    camera = Camera(Framing(float(800), float(600)))
     box = pygame.FRect(100, 100, 40, 40)
     assert camera.apply(box) == box
     assert camera.shake_offset() == Vector2(0, 0)

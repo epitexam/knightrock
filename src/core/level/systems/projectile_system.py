@@ -110,8 +110,11 @@ class ProjectileSystem:
                 continue
             box = pygame.FRect(box)
             shape_hit = any(
-                (shape_aabb_intersects(shape.current, box) if shape.previous is None
-                 else swept_intersects_aabb(shape.previous, shape.current, box))
+                (
+                    shape_aabb_intersects(shape.current, box)
+                    if shape.previous is None
+                    else swept_intersects_aabb(shape.previous, shape.current, box)
+                )
                 for shape in shape_sweeps
                 if shape.current.kind is not ShapeKind.AABB
             )

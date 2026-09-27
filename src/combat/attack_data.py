@@ -129,7 +129,7 @@ PLAYER_ATTACKS = {
         lock_direction=False,
         attack_move_multiplier=0.6,
     ),
-    # ── Phase 5 showcase (testables via les touches debug 1-4) ──
+    # ── Phase 5 showcase (reachable with the debug keys 1-4) ──
     "twin_fangs": AttackDefinition(
         phases=(
             PhaseDefinition(

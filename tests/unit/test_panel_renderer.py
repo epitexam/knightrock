@@ -75,7 +75,7 @@ def test_set_display_surface_resets_cache_and_clamps_drops() -> None:
     renderer.render_text("cached", renderer.debug_font, TEXT_MUTED)
     renderer.interaction.set_position("keys", (900, 700))
 
-    renderer.set_display_surface(pygame.Surface((640, 480)))
+    renderer.set_surface(pygame.Surface((640, 480)))
 
     assert renderer.text_cache_stats["entries"] == 0
     assert renderer.interaction.positions["keys"] == (630, 470)
