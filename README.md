@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-1930%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-1936%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 1930 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 1936 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -435,7 +435,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 1930 tests passing · 90 % instruction coverage ·
+> **Current baseline:** 1936 tests passing · 90 % instruction coverage ·
 > 76 % branch coverage · Ruff clean · mypy clean (156 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 153). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
@@ -471,6 +471,7 @@ src/
 │   │              and the tile chunk index that culls the frozen terrain
 │   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
+│   ├── rendering/ Camera, renderer, tile chunk index, world-overlay port
 │                   Asset library and animator (`core/asset_library.py`)
 │                   Audio bus (`core/audio.py`)
 ├── combat/        Frame data, hit resolver, knockback, charge and combo
@@ -480,6 +481,7 @@ src/
 ├── physics/       Collisions, gravity, movement, spatial hash, entity grid
 ├── states/        State machines (player, enemies, shared reactions)
 ├── ui/            Player HUD, panels, world-space debug overlay
+│                 (dimensions in `world_overlay_metrics.py`)
 └── data/          Strict JSON loaders + in-code fallback values
 data/gameplay/     Tracked JSON gameplay values (attacks, enemies, player, levels)
 assets/            TMX levels and sprites — required at runtime (git-ignored)
