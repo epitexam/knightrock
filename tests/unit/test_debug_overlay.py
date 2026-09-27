@@ -835,7 +835,7 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
     )
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
-        completed=False,
+        exit_reached=False,
         deaths=0,
     )
     scene = GameplayScene(game, level_id=0, level=level)
@@ -861,7 +861,7 @@ def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch
     game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None))
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
-        completed=False,
+        exit_reached=False,
         deaths=0,
     )
     scene = GameplayScene(game, level_id=0, level=level)

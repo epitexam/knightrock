@@ -109,7 +109,7 @@ class GameplayScene(Scene):
             self._step_pending = False
         self.level.update(delta_time)
 
-        if self.level.completed:
+        if self.level.exit_reached:
             self._advance_level()
         elif self.level.deaths >= Gameplay.MAX_DEATHS:
             # Local import: Menu/GameOver/Gameplay reference each other.

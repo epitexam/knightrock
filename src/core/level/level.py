@@ -238,6 +238,26 @@ class Level:
             groups.combat_sprites,
         )
 
+    # -- the facade's read/write surface over the systems' state --------------
+    #
+    # Three delegating properties, and they are here on purpose. The whole
+    # point of the level being a strict facade over its systems (audit F1.2)
+    # is that a scene asks the level a question instead of reaching into
+    # `level.respawn_system`; without these, every consumer would know how the
+    # level is built, and the moment the respawn state moved into a different
+    # system every one of them would change.
+    #
+    # The setters exist for exactly one caller: `load_state`, restoring a
+    # rollback capture. They are not a general write API -- a scene that set
+    # `level.deaths` would be editing the simulation's history, and the
+    # property cannot tell the two apart. Making the restore path explicit
+    # would need a second name for the same three fields, which is a worse
+    # trade than documenting the one that exists.
+    #
+    # There used to be a fourth, `completed`, aliasing `exit_reached`. Two
+    # names for one fact is a question every reader has to answer, and a
+    # subclass overriding one of them would silently not affect the other.
+
     @property
     def respawn_timer(self) -> float:
         """Respawn countdown in seconds, owned by the respawn system."""
@@ -262,17 +282,16 @@ class Level:
 
     @property
     def exit_reached(self) -> bool:
-        """True once the player touched the exit, owned by progression."""
+        """True once the player touched the exit, owned by progression.
+
+        The whole "has the player finished this level" question, asked of the
+        simulation rather than of the scene that started it.
+        """
         return self.progression_system.exit_reached
 
     @exit_reached.setter
     def exit_reached(self, value: bool) -> None:
         self.progression_system.exit_reached = value
-
-    @property
-    def completed(self) -> bool:
-        """Return True if the player has reached the level exit flag."""
-        return self.exit_reached
 
     def update(self, delta_time: float) -> None:
         """
