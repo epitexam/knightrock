@@ -82,12 +82,19 @@ EXPECTED = {
 
 
 def test_the_module_owns_exactly_the_named_dimensions() -> None:
-    assert set(metrics_module.__all__) == EXPECTED
+    """`__all__` is the dimensions and the two things that build them.
+
+    `MetricsCache` is in it because it is what keeps a stale table out of the
+    three drawing layers, not because it is a dimension. The set is spelled out
+    rather than derived, so a new constant that nobody re-exported fails here
+    instead of quietly existing in one module only.
+    """
+    assert set(metrics_module.__all__) == EXPECTED | {"MetricsCache"}
 
 
 def test_world_ui_re_exports_the_same_objects_not_copies() -> None:
     """A second copy is a second number, and the two would drift."""
-    for name in EXPECTED - {"WorldOverlayMetrics", "scaled_world_px"}:
+    for name in EXPECTED - {"WorldOverlayMetrics", "scaled_world_px", "MetricsCache"}:
         assert getattr(world_ui, name) is getattr(metrics_module, name), name
     # The scale helper is imported under its old private name for the callers
     # inside world_ui; the object is the same either way.

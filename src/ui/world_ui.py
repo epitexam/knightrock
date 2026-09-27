@@ -146,6 +146,7 @@ from src.ui.world_overlay_metrics import (  # noqa: F401 - re-exported
     ZONE_SEAL_DASH,
     ZONE_SEAL_GAP,
     ZONE_SEAL_WIDTH,
+    MetricsCache,
     WorldOverlayMetrics,
 )
 from src.ui.world_overlay_metrics import (
@@ -224,20 +225,19 @@ class WorldUI:
         #: box pass writes them, the card pass reads them, and the sink is what
         #: makes that one-way; see ``world_overlay_shared.AnnotationSink``.
         self._sink = AnnotationSink()
-        self._metrics_scale: float = -1.0
-        self._metrics = WorldOverlayMetrics(1.0)
+        self._metrics_cache = MetricsCache(self.renderer)
         #: Producer half of the frame: the sprite geometry and the tiers drawn
         #: above it. Built once, and reads the surface and the metrics live so a
         #: resize needs no push.
-        self._geo = GeoLayer(self.renderer, lambda: self.metrics, self._sink)
+        self._geo = GeoLayer(self.renderer, self._metrics_cache, self._sink)
         #: Consumer half of the frame: one label card per sprite, placed around
         #: what the box pass just claimed. Built once, and reads the surface and
         #: the metrics live so a resize needs no push.
-        self._cards = CardLayer(self.renderer, lambda: self.metrics, self._sink, self.layers)
+        self._cards = CardLayer(self.renderer, self._metrics_cache, self._sink, self.layers)
         #: Screen-space furniture: the COMBAT readout and the clash ring, with
         #: the state they keep between frames. Public, because ``level.py`` and
         #: ``ui_manager.py`` drive it directly.
-        self.panels = PanelLayer(self.renderer, lambda: self.metrics, self._geo)
+        self.panels = PanelLayer(self.renderer, self._metrics_cache, self._geo)
 
     @property
     def annotation_rects(self) -> dict[int, list[pygame.Rect]]:
@@ -256,11 +256,7 @@ class WorldUI:
         Cached on the scale, so a static window costs one identity comparison per
         frame and a resize costs one table.
         """
-        scale = self.renderer.world_scale
-        if scale != self._metrics_scale:
-            self._metrics_scale = scale
-            self._metrics = WorldOverlayMetrics(scale)
-        return self._metrics
+        return self._metrics_cache.current
 
     def stroke(self, world_px: int = 1) -> int:
         """An outline of ``world_px`` art pixels, in whole target pixels.

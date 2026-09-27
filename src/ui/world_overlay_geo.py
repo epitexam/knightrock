@@ -26,7 +26,6 @@ callers, not a relay between its layers.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import pygame
@@ -67,6 +66,7 @@ from src.ui.world_overlay_metrics import (
     VELOCITY_TAIL_RADIUS,
     VELOCITY_TAIL_WIDTH,
     ZONE_FILL_ALPHA,
+    MetricsCache,
     WorldOverlayMetrics,
     scaled_world_px,
 )
@@ -117,11 +117,11 @@ class GeoLayer:
     def __init__(
         self,
         renderer: PanelRenderer,
-        metrics: Callable[[], WorldOverlayMetrics],
+        metrics: MetricsCache,
         sink: AnnotationSink,
     ) -> None:
         self.renderer = renderer
-        self._metrics_source = metrics
+        self._metrics = metrics
         self.sink = sink
 
     @property
@@ -138,11 +138,12 @@ class GeoLayer:
     def metrics(self) -> WorldOverlayMetrics:
         """The overlay dimensions for the current density.
 
-        Asked for on every use rather than held, because the table is rebuilt
-        when the scale moves and a cached copy here would be stale for exactly
-        as long as nobody resized twice.
+        Never held: the table is rebuilt when the scale moves, so a copy kept
+        here would go stale for exactly as long as nobody resized twice. The
+        cache that decides that is ``MetricsCache``, shared with the other two
+        layers so they cannot disagree about when the table went stale.
         """
-        return self._metrics_source()
+        return self._metrics.current
 
     def stroke(self, world_px: int = 1) -> int:
         """An outline of ``world_px`` art pixels, in whole target pixels.

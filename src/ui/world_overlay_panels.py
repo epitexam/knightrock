@@ -20,8 +20,6 @@ concern has moved.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pygame
 
 from src.core.colors import Color, Colors
@@ -35,6 +33,7 @@ from src.ui.world_overlay_metrics import (
     CLASH_TICK_S,
     COMBAT_PANEL_TITLE,
     METRICS_TICK_DIVISOR,
+    MetricsCache,
     WorldOverlayMetrics,
 )
 
@@ -51,11 +50,11 @@ class PanelLayer:
     def __init__(
         self,
         renderer: PanelRenderer,
-        metrics: Callable[[], WorldOverlayMetrics],
+        metrics: MetricsCache,
         geo: GeoLayer,
     ) -> None:
         self.renderer = renderer
-        self._metrics_source = metrics
+        self._metrics = metrics
         #: Read only, and only for the live attack line. Panels -> geo is the
         #: one direction that edge runs in: a panel reports on a swing, it never
         #: asks the geometry pass to place anything.
@@ -77,7 +76,7 @@ class PanelLayer:
     @property
     def metrics(self) -> WorldOverlayMetrics:
         """The overlay dimensions for the current density, asked for each time."""
-        return self._metrics_source()
+        return self._metrics.current
 
     def draw_clash_marker(self, camera: Camera, delta_time: float | None = None) -> None:
         """Expanding ring at the last clash point; fades over its lifetime."""

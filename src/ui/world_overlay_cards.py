@@ -28,7 +28,6 @@ the two sizes disagreed.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import pygame
@@ -46,6 +45,7 @@ from src.ui.world_overlay_metrics import (
     LABEL_MAX_NUDGES,
     LABEL_SEP,
     LABEL_TAG,
+    MetricsCache,
     WorldOverlayMetrics,
 )
 from src.ui.world_overlay_shared import AnnotationSink, display_name, faction, label_color
@@ -85,12 +85,12 @@ class CardLayer:
     def __init__(
         self,
         renderer: PanelRenderer,
-        metrics: Callable[[], WorldOverlayMetrics],
+        metrics: MetricsCache,
         sink: AnnotationSink,
         layers: dict[str, bool],
     ) -> None:
         self.renderer = renderer
-        self._metrics_source = metrics
+        self._metrics = metrics
         self.sink = sink
         #: Read live, because a layer toggled mid-frame has to take effect on
         #: the next sprite rather than the next frame.
@@ -109,7 +109,7 @@ class CardLayer:
     @property
     def metrics(self) -> WorldOverlayMetrics:
         """The overlay dimensions for the current density, asked for each time."""
-        return self._metrics_source()
+        return self._metrics.current
 
     def attack_line(self, sprite: pygame.sprite.Sprite) -> list[tuple[str, Color]] | None:
         """Attack row: gold name plus muted phase stats, ``None`` while idle."""

@@ -120,7 +120,7 @@ re-open the closed ones.
 | P2.5 fatal error path | **fixed** -- traceback logged, target painted, never raises |
 | P2.6 duplicated cell size, late injection | **fixed** -- one constant, spawner wired once |
 | P2.7 split the 1106-line `Entity` | **already done** -- see below |
-| P3.1 split the 2095-line `world_ui.py` | **in progress** -- dimensions and health bars moved out |
+| P3.1 split the 2095-line `world_ui.py` | **done** -- four layers plus a 377-line orchestrator; see below |
 | P3.2 `Level`'s delegating properties | **one name, not six** -- the rest is the deliberate facade |
 | P3.3 dead sprite type check | **removed** |
 | P3.4 `DISPLAY_SAFETY_CEILING_FPS = 720` | **already correct** -- see below |
@@ -145,6 +145,79 @@ call sites for no gain.
 *opposite* regression: inlining the state back into `Entity` would pass every
 behavioural test in the suite while re-creating the coupling the components
 removed.
+
+### P3.1 — the overlay split, and why it is four modules and not three
+
+`world_ui.py` is now a 377-line orchestrator, down from 2095. The four
+extractions were planned against a call graph rather than against subject
+matter, and the graph is what decided the shape:
+
+| Module | Lines | Role |
+|---|---|---|
+| `world_overlay_shared` | 227 | sprite facts, annotation placement, the per-frame sink |
+| `world_overlay_geo` | 911 | the producer pass: boxes, zones, sweeps, the attack chip |
+| `world_overlay_cards` | 618 | the consumer pass: one card per sprite, dodging the above |
+| `world_overlay_panels` | 180 | screen furniture: the COMBAT readout, the clash ring |
+| `world_ui.WorldUI` | 377 | reset, walk the sprites, place the cards, stamp the ring |
+
+The split that was asked for -- labels, boxes, panels -- cannot be done in three
+modules without a cycle, and the reason is one method. The attack header chip
+*draws* itself while the box pass is running, which means the box pass asks the
+label pass where the chip landed; and the chip, in turn, asks the box pass what
+it is dodging. Two calls, two directions. The way out was to let the chip travel
+with the boxes, which makes the offending call internal to one module and leaves
+`shared -> geo -> cards` and `geo -> panels` as a strict DAG. The first plan
+called for five modules and was wrong about three of them: two of the five came
+out smaller than anything else in `src/ui`, and `world_overlay_boxes` differed
+from the already-shipped `world_overlay_bars` by two letters.
+
+**The safety net came first.** `test_world_overlay_golden.py` froze the
+geometry -- bar rects, annotation rects, and the padded rect of every placed
+card, in a five-sprite scene chosen for the branch each sprite forces -- before
+anything moved. It is geometry only: a pixel checksum would be a stronger test
+and a worse one, breaking on font hinting between two SDL builds and then being
+regenerated without being read. Every rectangle in it is byte-identical to what
+the pre-split code produced, and that is the claim this refactor rests on.
+
+The net was checked by mutation rather than trusted. Six deliberate breakages
+were run against it; five failed a test, and the sixth -- neutering
+`dodge_annotation` -- passed the entire suite, which is how it was found to be
+unreachable: the attack header is always placed clear of the only obstacle it is
+ever handed. It was kept, as the documented contract of the placement rule, and
+written a test for, which corrected two wrong assumptions about its top-edge
+branch along the way.
+
+**Three things the split found that nothing was looking for.** The `rect`
+fallback in `debug_reference` -- the one that gives hazards, moving platforms
+and exits a rectangle at all -- was covered by no test anywhere, and deleting it
+left the suite green. `previous_bar_obstacles` was read by a test and never
+written by one, so removing the write was also green; there is now a test that
+walks an entity under the top of the screen, which flips its bar from above to
+below, and checks the card still clears the ground the bar left. And
+`test_combat_panel_only_collects_when_debug_is_enabled` was passing on the
+metrics throttle rather than on the DEBUG guard it claimed to test.
+
+**The split cost 7 % of the overlay pass, and a benchmark caught it.** Each
+layer was handed the metrics through a callable, because `WorldUI.metrics` is a
+property and a layer has to see the table *change* on a resize rather than hold
+a copy. That made every read of `metrics` -- several per sprite, hundreds per
+frame -- go through a property, then a lambda, then the property again. Measured
+against the pre-split tree on a 96-entity frame, four paired trials each showed
+the new tree 2 to 7 % slower, with the sign never flipping. `MetricsCache` in
+`world_overlay_metrics` now owns the "rebuild when the scale moves" rule and is
+passed to the three layers directly, so a read is one attribute access and the
+rule lives in one place -- which is also the only way three layers cannot
+disagree about when the table went stale. The trials are mixed again afterwards,
+and the 840-tile case is slightly faster. Worth recording because the number was
+only visible by measuring both trees, and the golden cannot see time at all.
+
+**One thing this branch broke and did not notice.** `tests/benchmarks/
+ui_benchmark.py` read `renderer.ui_manager`, which commit 162d951 removed when
+it inverted the core-to-ui dependency. The benchmark holds no `test_` function,
+so pytest collected nothing from it and it stayed broken for several commits
+while the README pointed at it for frame timing. It is fixed, and
+`test_benchmarks_runnable.py` now runs all three entry points -- which is the
+guard whose absence let this sit.
 
 ### P3.4 — the frame ceiling was never the frame rate
 
@@ -191,7 +264,7 @@ Both trees, same process, same level, medians of unprofiled runs:
 
 | | base | this branch | |
 |---|---|---|---|
-| world draw, 1280×720 | 1.600 ms | 1.434 ms | **−10 %** |
+| world draw, 1280×720 | 1.600 ms | 1.434 ms | **−10 %** (P1 only; the P3 split is a move, not a change) |
 | `Level.update` | 537.5 µs | 391.1 µs | **−27 %** |
 
 The tick is where the work went, and almost all of it is P1.2: the hazard and
@@ -201,10 +274,24 @@ producer per tick, for producers whose damage never changes.
 ## The gates
 
 `ruff check` clean · `ruff format --check` clean (it was **red** on the base
-branch) · `C901` clean · `mypy src main.py tools` clean on 160 files ·
-**1946 passed, 4 skipped** · coverage 91 %.
+branch) · `C901` clean · `mypy src main.py tools` clean on 165 files ·
+**2003 passed, 4 skipped** · `src/ui` coverage: bars, metrics and shared at
+100 %, facade 99 %, cards 96 %, panels 93 %, geo 74 %.
 
-The suite grew from 1813 to 1946, and it grew for a reason: every fix here
+Those percentages are *not* comparable to the pre-split baseline, which could
+only be measured in a worktree where seventeen unrelated tests failed on missing
+level assets. What is comparable is the accounting: of the 1424 test functions
+present when the extraction started, one is gone -- the manifest check, replaced
+by a strictly stronger version -- and 22 were added, 21 of them covering
+`world_overlay_shared`. No test was narrowed, and every changed assertion line
+across the four steps was a receiver rename with a byte-identical right-hand
+side.
+
+`geo` at 74 % is the honest weak spot and it is not new: it is the swept-box and
+velocity-preview drawing, which a debug overlay's suite has never exercised
+end-to-end because those paths need a mid-swing state the fixtures do not build.
+
+The suite grew from 1813 to 2003, and it grew for a reason: every fix here
 came with a test that fails against the old code, which was checked rather
 than assumed. `test_readme_claims.py` also re-collects the suite on every run
 and fails if the README's test count is wrong, so the number quoted above
