@@ -53,7 +53,7 @@ class VideoScene(Scene):
     def __init__(self, game: Game) -> None:
         super().__init__(game)
         self.model = MenuModel()
-        self.view = MenuView(game.ui_scale)
+        self.view: MenuView = MenuView(game.ui_scale)
         self._signature = self._current_signature()
         self._flash_row = -1
         self._flash_remaining = 0.0

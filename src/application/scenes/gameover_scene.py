@@ -29,7 +29,7 @@ class GameOverScene(Scene):
         self.level_id = level_id
         items = (MenuItem("retry", "Retry"), MenuItem("menu", "Back to menu"))
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None

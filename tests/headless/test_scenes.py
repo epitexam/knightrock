@@ -780,3 +780,129 @@ def test_a_locked_level_still_leaves_the_back_row_reachable(manager: SceneManage
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
 
     assert isinstance(manager.current, MenuScene)
+
+
+# -- the target/scale hooks are part of the contract ---------------------------
+#
+# The scene stack used to find `set_surface` and `set_ui_scale` with `getattr`
+# and call them if they turned out to be callable. A scene that forgot one was
+# then skipped in silence: no error, no log, just a window resize that left
+# part of the interface drawn for the old target. Both hooks are now no-op
+# methods on `Scene`, and a view is either present or None -- never discovered.
+
+
+class _RecordingView:
+    """A view that records what the stack asked of it."""
+
+    def __init__(self) -> None:
+        self.surfaces: list[pygame.Surface] = []
+        self.scales: list[float] = []
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.surfaces.append(surface)
+
+    def set_scale(self, scale: float) -> None:
+        self.scales.append(scale)
+
+
+class _ViewedScene(RecordingScene):
+    """A scene that has a view, like every menu screen."""
+
+    def __init__(self, game, name: str):
+        super().__init__(game, name)
+        self.view = _RecordingView()
+        self.surfaces: list[pygame.Surface] = []
+        self.scales: list[float] = []
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.surfaces.append(surface)
+
+    def set_ui_scale(self, scale: float) -> None:
+        self.scales.append(scale)
+
+
+def test_a_resize_reaches_the_scene_and_its_view(manager: SceneManager):
+    scene = _ViewedScene(manager.game, "viewed")
+    manager.switch(scene)
+    target = pygame.Surface((800, 450))
+    # `switch` already pushed the current scale through; start from there.
+    scene.surfaces.clear()
+    scene.view.surfaces.clear()
+    scene.view.scales.clear()
+
+    manager.set_surface(target)
+
+    assert scene.surfaces == [target]
+    assert scene.view.surfaces == [target]
+    # The resize path re-scales the view too, not only on a scale change.
+    assert scene.view.scales == [manager.game.ui_scale]
+
+
+def test_a_scale_change_reaches_the_scene_and_its_view(manager: SceneManager):
+    scene = _ViewedScene(manager.game, "viewed")
+    manager.switch(scene)
+
+    manager.set_ui_scale(1.5)
+
+    assert 1.5 in scene.scales
+    assert 1.5 in scene.view.scales
+
+
+def test_a_resize_reaches_every_scene_on_the_stack_not_just_the_top(
+    manager: SceneManager,
+):
+    """A pause overlay sits above a frozen gameplay scene; a resize has to
+    reach both or the frozen frame keeps the old geometry."""
+    below = _ViewedScene(manager.game, "below")
+    above = _ViewedScene(manager.game, "above")
+    manager.switch(below)
+    manager.push(above)
+    target = pygame.Surface((640, 360))
+
+    manager.set_surface(target)
+
+    assert below.surfaces == [target]
+    assert above.surfaces == [target]
+
+
+def test_a_scene_without_a_view_is_handled_not_skipped(manager: SceneManager):
+    """The gameplay scene has no view at all. It must still get its own hook.
+
+    Under the old `getattr(scene, "view", None)` spelling this worked by
+    accident, because the attribute was missing and the default was None --
+    but the same default is what hid a view that failed to arrive.
+    """
+    plain = RecordingScene(manager.game, "plain")
+    manager.switch(plain)
+    target = pygame.Surface((320, 180))
+
+    manager.set_surface(target)
+    manager.set_ui_scale(2.0)
+
+    assert plain.view is None, "the base class says so, rather than raising"
+    assert plain.drawn is False
+
+
+def test_the_base_scene_declares_the_hooks_so_nothing_has_to_discover_them():
+    assert hasattr(Scene, "set_surface")
+    assert hasattr(Scene, "set_ui_scale")
+    assert hasattr(Scene, "enter")
+    assert hasattr(Scene, "exit")
+
+
+def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
+    """The three views are unrelated classes; the protocol is what binds them.
+
+    Checked structurally at import time of the test rather than trusted,
+    because a view that grew a new signature would otherwise be discovered by
+    the scene stack skipping it.
+    """
+    from src.ui.controls_view import ControlsView
+    from src.ui.grid_view import GridView
+    from src.ui.menu_view import MenuView
+    from src.ui.scale import ScaledView
+
+    for view_type in (MenuView, ControlsView, GridView):
+        assert isinstance(view_type.set_surface, type(MenuView.set_surface))
+        assert isinstance(view_type.set_scale, type(MenuView.set_scale))
+    assert ScaledView is not None

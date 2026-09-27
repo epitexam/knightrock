@@ -16,6 +16,10 @@ the ladder impossible anyway: at a density of 1.889 the scale is 1.511, which
 the old check rejected on sight.
 """
 
+from typing import Protocol
+
+import pygame
+
 #: Outside this, the interface is either invisible or larger than any display.
 MIN_UI_SCALE = 0.25
 MAX_UI_SCALE = 8.0
@@ -82,3 +86,27 @@ def screen_scale(density: float) -> float:
 #: the cache is emptied rather than grown when it gets unreasonable. The cost of
 #: getting it wrong is a font scan per frame, which is what the cache is for.
 FONT_CACHE_ENTRIES = 16
+
+
+class ScaledView(Protocol):
+    """A view that has to be told when the target or the scale changes.
+
+    ``MenuView``, ``ControlsView`` and ``GridView`` are three independent
+    classes with three independent font and metric caches, and nothing else
+    binds them together. What the scene stack needs from any of them is
+    exactly this pair of calls, so it is declared here rather than discovered
+    at the call site with ``getattr``.
+
+    The alternative was a base class, and a Protocol is the better fit: the
+    views share no state and no drawing code, so an inheritance edge would buy
+    nothing and cost them their independence. What it replaces is a silent
+    failure -- a view that forgot ``set_scale`` was not scaled, and nothing
+    said so, because the caller had asked whether the method existed and taken
+    the answer as consent.
+    """
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        """Adopt a new render target; drop anything cached against the old one."""
+
+    def set_scale(self, scale: float) -> None:
+        """Adopt a new interface scale; rebuild the metrics derived from it."""

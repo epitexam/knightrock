@@ -35,7 +35,7 @@ class LevelSelectScene(Scene):
         # reachable only with a keyboard is a screen a controller or a mouse
         # cannot leave.
         self.model = MenuModel((*levels, MenuItem("back", "Back")))
-        self.view = MenuView(game.ui_scale)
+        self.view: MenuView = MenuView(game.ui_scale)
 
     def update(self, delta_time: float) -> None:
         return None

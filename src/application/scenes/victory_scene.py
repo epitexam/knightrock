@@ -35,7 +35,7 @@ class VictoryScene(Scene):
                 MenuItem("menu", "Main menu"),
             )
         )
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.core.input.event_router import RoutedInput
+from src.ui.scale import ScaledView
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -21,11 +22,42 @@ class Scene(ABC):
     partial presentation for a scene to take part in.
     """
 
+    view: ScaledView | None = None
+    """The scene's view, when it has one.
+
+    A class-level ``None`` rather than something every subclass sets, because
+    the gameplay scene has no view at all: it draws the world. The scene stack
+    pushes a new target and a new scale through every scene on it, and it has
+    to be able to ask "does this scene have a view" without the answer being an
+    ``AttributeError`` on the ones that do not.
+    """
+
     def __init__(self, game: Game) -> None:
         self.game = game
 
     def enter(self) -> None:  # noqa: B027 - optional lifecycle hook
         """Called when the scene becomes active."""
+
+    def set_surface(self, surface: pygame.Surface) -> None:  # noqa: B027
+        """Adopt a new render target, after a resize or a render-scale change.
+
+        A no-op here, exactly like ``enter`` and ``exit``: a scene that draws
+        through a view gets the target through :attr:`view`, and one that draws
+        the world is handed the target on every :meth:`draw` anyway.
+
+        Declared rather than discovered. It used to be found with
+        ``getattr(scene, "set_surface", None)`` and called if it turned out to
+        be callable, which meant a scene that forgot to implement it was
+        *skipped in silence* -- no error, no log, just a window resize that left
+        half the interface drawn for the old target size.
+        """
+
+    def set_ui_scale(self, scale: float) -> None:  # noqa: B027
+        """Adopt a new interface scale, after the player changed the setting.
+
+        A no-op for the same reason and with the same consequence as
+        :meth:`set_surface`.
+        """
 
     @property
     def halts_simulation(self) -> bool:

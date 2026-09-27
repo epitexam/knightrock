@@ -32,7 +32,7 @@ class PauseScene(Scene):
             MenuItem("menu", "Back to menu"),
         )
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
         self._overlay: pygame.Surface | None = None
         self._overlay_size: tuple[int, int] = (0, 0)
         self._overlay_color: tuple[int, int, int, int] = (8, 10, 14, 190)

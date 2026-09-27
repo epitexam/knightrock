@@ -87,7 +87,7 @@ class ControlsScene(Scene):
         self.model = MenuModel(
             items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
-        self.view = ControlsView(game.ui_scale)
+        self.view: ControlsView = ControlsView(game.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
         self._capture: tuple[int, int] | None = None
         # The pointer's own cell, apart from the selection, for the same reason
