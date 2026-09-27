@@ -113,6 +113,11 @@ class Level:
         self.spawn_system = SpawnSystem(self.groups, self.spatial_hash)
 
         self.world_builder = WorldBuilder(level_data, gameplay_data)
+        # The grid is bound *before* the build so every entity comes out of the
+        # world builder already wired. Entities created by a registry or object
+        # factory behind the builder's back are still swept up by the pass
+        # below, so no creation path can end up without one.
+        self.world_builder.bind_spatial_hash(self.spatial_hash)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         # Bucket the static collidables once; entities query the grid every
@@ -120,7 +125,8 @@ class Level:
         # each tick by PlatformSystem).
         self.spatial_hash.add_all(self.groups.collision_sprites)
         for entity in self.groups.entity_sprites:
-            entity.spatial_hash = self.spatial_hash
+            if entity.spatial_hash is None:
+                entity.spatial_hash = self.spatial_hash
         for platform in self.groups.moving_platforms:
             # Same reason: the platform checks the terrain it would phase
             # through every tick, and that check was a full scan of every

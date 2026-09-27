@@ -20,6 +20,7 @@ from src.core.sprites import LevelExit, MovingPlatform, Sprite
 from src.data.provider import GameplayData
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
+from src.physics.spatial_hash import SpatialHash
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,15 @@ class WorldBuilder:
     def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
         self.level_data = level_data
         self.gameplay_data = gameplay_data
+        #: Shared collision grid handed to every entity this builder creates.
+        #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
+        #: born without it falls back to a linear scan of every collidable in
+        #: the level (correct, but a measured x2.4 on the whole simulation).
+        self.spatial_hash: SpatialHash | None = None
+
+    def bind_spatial_hash(self, spatial_hash: SpatialHash) -> None:
+        """Adopt the level's collision grid for the entities about to be built."""
+        self.spatial_hash = spatial_hash
 
     def build(self, groups: SpriteGroups, input_manager: InputManager) -> Player:
         """
@@ -303,6 +313,7 @@ class WorldBuilder:
                         groups.moving_platforms,
                         input_manager,
                         config=config,
+                        spatial_hash=self.spatial_hash,
                     )
                     groups.combat_sprites.add(player)
                     groups.entity_sprites.add(player)
@@ -329,6 +340,7 @@ class WorldBuilder:
                 collision_sprites=groups.collision_sprites,
                 player_reference=player,
                 config=config,
+                spatial_hash=self.spatial_hash,
             )
             groups.combat_sprites.add(entity)
             groups.entity_sprites.add(entity)

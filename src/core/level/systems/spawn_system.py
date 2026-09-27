@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.core.settings import Respawn
+from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
 from src.entities.projectile import (
@@ -94,7 +94,17 @@ class SpawnSystem:
         return max([*self.spawn_cooldowns.values(), *self.debug_cooldowns.values(), 0.0])
 
     def process(self, delta_time: float, player: Player) -> None:
-        """Decay cooldowns, then spawn enemies for the debug keys held."""
+        """Decay cooldowns, then spawn enemies for the debug keys held.
+
+        The whole method is the Phase 5 test bench, and none of it can act
+        without ``DEBUG=1`` anyway (the shortcuts it reads are only ever bound
+        by the debug overlay). Gating here rather than per-branch keeps the
+        test bench's work -- ``pygame.key.get_pressed()`` builds a fresh
+        sequence of per-key booleans every call, and four debug dictionaries
+        are walked on top of it -- out of the production tick entirely.
+        """
+        if not Debug.is_enabled():
+            return
         self._decay_cooldowns(delta_time)
         keys = pygame.key.get_pressed()
         self._spawn_enemies(keys, player)
@@ -205,13 +215,12 @@ class SpawnSystem:
                 groups=(self.groups.all_sprites,),
                 collision_sprites=self.groups.collision_sprites,
                 player_reference=player,  # type: ignore[arg-type]
+                spatial_hash=self.spatial_hash,
             )
         except KeyError:
             return None
         self.groups.combat_sprites.add(enemy)
         self.groups.entity_sprites.add(enemy)
-        if self.spatial_hash is not None:
-            enemy.spatial_hash = self.spatial_hash
         enemy.velocity.y = -550.0
         enemy.on_surface["floor"] = False
         return enemy
@@ -230,10 +239,8 @@ class SpawnSystem:
             groups=(self.groups.all_sprites,),
             collision_sprites=self.groups.collision_sprites,
             player_reference=player,
+            spatial_hash=self.spatial_hash,
         )
         self.groups.combat_sprites.add(enemy)
         self.groups.entity_sprites.add(enemy)
-        # Runtime-spawned enemies must join the collision grid too (PERF-01).
-        if self.spatial_hash is not None:
-            enemy.spatial_hash = self.spatial_hash
         self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

@@ -38,7 +38,6 @@ from src.application.scenes.level_select_scene import LevelSelectScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
-from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.victory_scene import VictoryScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import Framing
@@ -146,7 +145,6 @@ def _menu_scenes(game) -> dict[str, Scene]:
         "MenuScene": MenuScene(game),
         "OptionsScene": OptionsScene(game),
         "VideoScene": VideoScene(game),
-        "ResolutionScene": ResolutionScene(game),
         "ControlsCategoryScene": ControlsCategoryScene(game),
         "ControlsScene": ControlsScene(game, ControlsScene.MENU_SECTION),
         "ControlsGameplayScene": ControlsScene(game, ControlsScene.GAMEPLAY_SECTION),
