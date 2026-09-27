@@ -123,9 +123,7 @@ class MenuView:
         footer_surfaces = [self._render_cached(footer_font, text, TEXT_WARN) for text in footers]
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        available_height = max(
-            metrics.px(120), surface.get_height() - top - metrics.margin
-        )
+        available_height = max(metrics.px(120), surface.get_height() - top - metrics.margin)
         # A row is never shorter than the text inside it. Compressing the text is
         # the alternative, and the panel simply grows taller otherwise.
         item_height = max(
@@ -158,7 +156,9 @@ class MenuView:
             + footer_height
         )
         panel_x = (surface.get_width() - panel_width) // 2
-        panel_y = min(top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin))
+        panel_y = min(
+            top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin)
+        )
         panel = self._panel_for(panel_width, panel_height)
         panel.fill((*PANEL_BG[:3], 230))
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), metrics.border)
