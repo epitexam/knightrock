@@ -10,10 +10,9 @@ identical snapshots (positions, health) for the whole run.
 
 import random
 
-import pygame
-
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from tests.headless.conftest import make_viewport
 
 TICKS = 180  # 3 simulated seconds: plenty of pushes, chases, and hits
 SEED = 20260913
@@ -50,7 +49,7 @@ def _make_level(mock_input_manager) -> Level:
         object_layers={"Entities": entities},
         config=LevelConfig(death_border_bottom=0.0),
     )
-    level = Level(pygame.display.get_surface(), data, mock_input_manager)
+    level = Level(make_viewport().surface, data, mock_input_manager)
     _seed_entities(level)
     return level
 

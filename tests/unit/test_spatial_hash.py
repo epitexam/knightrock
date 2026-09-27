@@ -6,15 +6,19 @@ QUERY_MARGIN_PX so boundary-resting sprites are found), and moved sprites
 can be re-bucketed with ``update``.
 """
 
+from types import SimpleNamespace
 from typing import cast
 
 import pygame
 
+from src.core.level.level import Level
+from src.core.settings import World
 from src.physics.spatial_hash import (
     QUERY_MARGIN_PX,
     SpatialHash,
     SpatialHashMember,
 )
+from tests.unit.helpers import make_entity
 
 
 class BoxSprite:
@@ -288,3 +292,126 @@ def test_zero_area_box_with_negative_dimensions_never_crashes():
     # Flipped box: left=100, right=80 -> x1 < x0 -> collapses to column of x0
     cells = grid._cells_for_box(pygame.FRect(100, 100, -20, -20))
     assert len(cells) == 1  # both axes collapse to a single cell
+
+
+# -- one cell size for both grids ---------------------------------------------
+#
+# The environment hash buckets terrain and the entity grid buckets combatants.
+# They are queried with the same rectangles, so a cell edge that one of them
+# treats as too far is a collision the other cannot see. The number therefore
+# lives in `settings.World` and both default to it.
+
+
+def test_both_spatial_grids_default_to_the_same_cell_size() -> None:
+    from src.physics.entity_grid import EntityGrid
+
+    environment = SpatialHash()
+    entities = EntityGrid()
+
+    assert environment.cell_size == entities.cell_size
+    assert environment.cell_size == World.HASH_CELL_SIZE
+
+
+def test_a_level_wires_both_grids_to_the_shared_cell_size() -> None:
+    """Not just the defaults: what the level actually builds."""
+    from src.physics.entity_grid import EntityGrid
+    from tests.headless.conftest import make_programmatic_level_data, make_viewport
+
+    level = Level(
+        make_viewport().surface,
+        make_programmatic_level_data(),
+        SimpleNamespace(poll=lambda: None, snapshot=lambda: None, restore_snapshot=lambda _s: None),
+    )
+
+    assert level.spatial_hash.cell_size == World.HASH_CELL_SIZE
+    assert level.gameplay_loop.entity_grid.cell_size == World.HASH_CELL_SIZE
+    assert isinstance(level.gameplay_loop.entity_grid, EntityGrid)
+
+
+def test_the_cell_size_is_two_tiles() -> None:
+    """A 64-unit tile lands in one or two cells, not split four ways."""
+    assert World.HASH_CELL_SIZE == 2 * World.TILE_SIZE
+
+
+# -- the id() key, and what happens when it is recycled -----------------------
+#
+# CPython hands the address of a freed object to the next object allocated, so
+# a dict keyed by `id()` can be holding a key that a brand new sprite will
+# collide with. `add` is idempotent by that key, so the naive implementation
+# silently declines to insert the newcomer -- which then passes through
+# everything. These are the two halves: the key must be checkable, and a
+# sprite that dies must actually leave.
+
+
+def test_a_recycled_id_does_not_silently_swallow_the_newcomer() -> None:
+    """The failure this guards is invisible: no error, just a ghost."""
+    grid = SpatialHash(cell_size=128)
+    gone = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid.add(gone)
+    # Forge the state a recycled id would leave behind: the key present, the
+    # object it was registered for gone.
+    assert id(gone) in grid._cells_by_sprite
+    grid._cells_by_sprite[id(gone)] = (gone, grid._cells_by_sprite[id(gone)][1])
+
+    newcomer = BoxSprite(pygame.FRect(5000, 5000, 64, 64))
+    grid._cells_by_sprite[id(newcomer)] = (gone, ((0, 0),))
+
+    grid.add(newcomer)
+
+    assert newcomer in grid.get_nearby(pygame.FRect(5000, 5000, 64, 64)), (
+        "a newcomer must never be skipped because of a stale key"
+    )
+    assert gone not in grid.get_nearby(pygame.FRect(5000, 5000, 64, 64))
+
+
+def test_removing_a_sprite_whose_id_belongs_to_another_touches_nothing() -> None:
+    """The mirror image: a stale *removal* must not empty someone else's cells."""
+    grid = SpatialHash(cell_size=128)
+    real = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid.add(real)
+    impostor = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid._cells_by_sprite[id(impostor)] = (real, grid._cells_by_sprite[id(real)][1])
+
+    grid.remove(impostor)
+
+    assert real in grid.get_nearby(pygame.FRect(0, 0, 64, 64))
+
+
+def test_adding_the_same_sprite_twice_is_still_idempotent() -> None:
+    """The identity check must not turn `add` into a re-bucket on every call."""
+    grid = SpatialHash(cell_size=128)
+    sprite = BoxSprite(pygame.FRect(0, 0, 64, 64))
+
+    grid.add(sprite)
+    grid.add(sprite)
+
+    assert grid.get_nearby(pygame.FRect(0, 0, 64, 64)).count(sprite) == 1
+
+
+def test_a_killed_entity_leaves_the_collision_grid() -> None:
+    """`Sprite.kill` only leaves the groups; the grid is not a group."""
+
+    grid = SpatialHash(cell_size=128)
+    entity = make_entity(pos=(100.0, 100.0), faction="enemy")
+    entity.spatial_hash = grid
+    grid.add(entity)
+
+    entity.kill()
+
+    assert grid.get_nearby(pygame.FRect(100, 100, 40, 40)) == []
+    assert id(entity) not in grid._cells_by_sprite
+
+
+def test_a_dead_entity_does_not_stay_reachable_through_the_entity_grid() -> None:
+    """The grid that *does* hold entities is per-tick, so this is about the
+    boundary: nothing that has died is reachable through a stale bucket."""
+    from src.physics.entity_grid import EntityGrid
+
+    grid = EntityGrid()
+    entity = make_entity(pos=(100.0, 100.0), faction="enemy")
+    grid.rebuild([entity])
+    assert grid.near(entity.hitbox) == [entity]
+
+    grid.rebuild([])
+
+    assert grid.near(entity.hitbox) == []

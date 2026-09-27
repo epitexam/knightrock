@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 class PauseScene(Scene):
     TITLE = "PAUSE"
 
+    #: The world stops; see ``Scene.halts_simulation`` for why saying so
+    #: is not the same as simply not updating.
+    halts_simulation = True
+
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)
         self.level_id = level_id
@@ -27,9 +31,8 @@ class PauseScene(Scene):
             MenuItem("options", "Options"),
             MenuItem("menu", "Back to menu"),
         )
-        self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
         self._overlay: pygame.Surface | None = None
         self._overlay_size: tuple[int, int] = (0, 0)
         self._overlay_color: tuple[int, int, int, int] = (8, 10, 14, 190)
@@ -60,10 +63,7 @@ class PauseScene(Scene):
             self.game.scene_manager.push(OptionsScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         size = surface.get_size()
         if self._overlay is None or self._overlay_size != size:
             self._overlay = pygame.Surface(size, pygame.SRCALPHA)
@@ -71,4 +71,3 @@ class PauseScene(Scene):
             self._overlay.fill(self._overlay_color)
         surface.blit(self._overlay, (0, 0))
         self.view.draw(surface, self.TITLE, self.model, top=220, title_color=TEXT_WARN)
-        return None

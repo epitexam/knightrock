@@ -1,4 +1,17 @@
-"""Repeatable contact-pipeline benchmark for the O4 baseline."""
+"""Repeatable contact-pipeline benchmark for the O4 baseline.
+
+This is also the acceptance check for ``EntityGrid``'s indexing threshold, and
+the rosters here are chosen to make that check meaningful. All of them stack
+every entity on the same point, so the grid can prune nothing: a query returns
+the whole population whatever the cells say. That is the pathological case for
+a spatial index, and it is why the benchmark is worth keeping -- an index that
+looks good on a spread roster proves nothing about the tight melee the game
+actually simulates.
+
+With the threshold in place the grid is consulted only when it can pay, so
+the expectation is ``grid <= exhaustive`` at every size here. Before it, 1v1
+was 40% *slower* with the grid and 8v8 was 15% slower.
+"""
 
 from __future__ import annotations
 

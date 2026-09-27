@@ -18,10 +18,11 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
+from src.core.display.mode import DisplayMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 class RecordingFeedback:
@@ -82,15 +83,30 @@ def test_opening_a_screen_and_coming_back_are_two_distinct_effects(
 
 
 def test_a_value_change_in_place_is_a_confirmation(manager: SceneManager, feedback) -> None:
-    """← on the focused row adjusts the setting without leaving the screen."""
+    """→ on a value row adjusts the setting without leaving the screen."""
+    manager.game.settings = manager.game.settings.with_video(display=DisplayMode.WINDOW)
     manager.switch(VideoScene(manager.game))
-    before = (manager.game.settings.width, manager.game.settings.height)
+    before = manager.game.settings.vsync
 
-    press(manager, pygame.K_RIGHT)  # the resolution row is focused on entry
+    # Walk onto the vsync row by name rather than by counting presses: a row can
+    # be disabled (whole-pixel art on a window too small for one), and the model
+    # skips what it cannot select.
+    scene = manager.current
+    assert isinstance(scene, VideoScene)
+    for _ in range(len(scene.model.items)):
+        current = scene.model.current_item
+        assert current is not None
+        if current.action == "vsync":
+            break
+        press(manager, pygame.K_DOWN)
+    moves = len(feedback.cues)
 
-    assert (manager.game.settings.width, manager.game.settings.height) != before
+    press(manager, pygame.K_RIGHT)
+
+    assert manager.game.settings.vsync != before
     assert isinstance(manager.current, VideoScene)
-    assert feedback.cues == [UiEffect.CONFIRMED]
+    # The moves onto the row are navigation; the change is the confirmation.
+    assert feedback.cues == [UiEffect.NAVIGATED] * moves + [UiEffect.CONFIRMED]
 
 
 def test_a_single_press_of_a_held_direction_publishes_once(manager: SceneManager, feedback) -> None:
@@ -129,7 +145,7 @@ def test_the_pointer_publishes_once_per_row_it_lands_on(manager: SceneManager, f
     """
     manager.switch(OptionsScene(manager.game))
     options = manager.current
-    options.draw()
+    options.draw(pygame.display.get_surface())
     first, second = options.view.item_rects[0], options.view.item_rects[1]
 
     for offset in range(6):
@@ -146,7 +162,7 @@ def test_the_pointer_publishes_once_per_row_it_lands_on(manager: SceneManager, f
 def test_leaving_the_rows_and_coming_back_publishes_again(manager: SceneManager, feedback) -> None:
     manager.switch(OptionsScene(manager.game))
     options = manager.current
-    options.draw()
+    options.draw(pygame.display.get_surface())
     centre = options.view.item_rects[0].center
 
     move(manager, centre)
@@ -197,7 +213,7 @@ def test_the_gameplay_scene_publishes_nothing_for_the_player_keys(
     be heard — at the menu auto-repeat rate for the whole level.
     """
     level = Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )
@@ -215,7 +231,7 @@ def test_opening_the_pause_from_gameplay_is_published(
 ) -> None:
     """The one sound the gameplay scene owes: the pause menu opening."""
     level = Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )
@@ -283,7 +299,7 @@ def test_the_controls_pointer_publishes_when_the_focus_moves(
     """This screen drives the model itself, so it reports the move itself."""
     manager.switch(ControlsScene(manager.game, ControlsScene.MENU_SECTION))
     controls = manager.current
-    controls.draw()
+    controls.draw(pygame.display.get_surface())
     rows = controls.view.row_rects
 
     move(manager, rows[0].center)

@@ -29,6 +29,7 @@ from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.core.paths import PROJECT_ROOT
 from src.core.sprites import MovingPlatform
+from tests.headless.conftest import make_viewport
 
 SEED = 20260913
 TICKS = 300
@@ -69,7 +70,7 @@ def _build(level_config: LevelConfig, objects: list[ObjectData]) -> Level:
     )
     input_manager = InputManager()
     input_manager.apply_remote_state(InputState(move_axis=1.0))
-    return Level(pygame.display.get_surface(), data, input_manager)
+    return Level(make_viewport().surface, data, input_manager)
 
 
 def build_physics_level() -> Level:

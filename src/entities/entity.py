@@ -125,6 +125,7 @@ class Entity(Sprite):
         invincibility_duration: float = 0.0,
         rng: random.Random | None = None,
         entity_id: str | None = None,
+        spatial_hash: SpatialHash | None = None,
     ) -> None:
         """Initialize the entity.
 
@@ -162,6 +163,12 @@ class Entity(Sprite):
             Duration of invincibility frames after taking damage.
         rng : random.Random | None
             Optional random number generator instance for deterministic behaviors.
+        spatial_hash : SpatialHash | None
+            Shared collision grid covering ``collision_sprites``. Passed in
+            rather than assigned after construction because the fallback in
+            :func:`get_nearby_sprites` is an O(n) scan of every collidable in
+            the level, and a level that forgets to hand the grid over pays a
+            measured x2.4 on the whole simulation with no visible symptom.
         """
         super().__init__(groups)
         self.id: str = entity_id if entity_id is not None else f"e{next(_ENTITY_ID_SEQUENCE)}"
@@ -209,9 +216,12 @@ class Entity(Sprite):
         self.collision_sprites: Iterable[CollisionSprite] = cast(
             Iterable[CollisionSprite], collision_sprites
         )
-        # Shared collision grid (PERF-01): assigned by the Level after the
-        # world is built; ``move_entity`` queries it for O(1) neighbor lookups.
-        self.spatial_hash: SpatialHash | None = None
+        # Shared collision grid (PERF-01), injected at construction so an
+        # entity cannot end up without one by being born after the level
+        # assembled its wiring. ``move_entity`` queries it for O(1) neighbour
+        # lookups; ``None`` stays legal for standalone/test entities and falls
+        # back to a linear scan (correct, just slow).
+        self.spatial_hash: SpatialHash | None = spatial_hash
         # Kinematic state (velocity, surface contacts) is owned by the
         # MovementComponent (Phase 3 #2); ``Entity`` exposes it via delegating
         # properties so the historical ``entity.velocity``/``entity.on_surface``
@@ -548,8 +558,18 @@ class Entity(Sprite):
         The single derivation point of the hurt geometry (P2): the dash
         squish mutates the pushbox, this re-derives zones — including the
         cached union backing the legacy ``hurtbox`` view.
+
+        ``resolve_collisions`` calls this after *every* sub-step of *both*
+        axes, so it is the most-executed method in the simulation. It is
+        written to be cheap when it can be: the zone ``FRect``s are already
+        in the right list, and the pushbox rarely moves between two
+        consecutive calls, so the union and the contact shape are rebuilt
+        only when their inputs actually changed. Identical inputs produce an
+        identical result either way, so this is a pure short-circuit, not an
+        approximation.
         """
-        self.rect.midbottom = self._pushbox.midbottom
+        pushbox = self._pushbox
+        self.rect.midbottom = pushbox.midbottom
         while len(self._hurtbox_rects) < len(self._zones):
             self._hurtbox_rects.append(pygame.FRect(0, 0, 0, 0))
         while len(self._hurtbox_rects) > len(self._zones):
@@ -557,19 +577,39 @@ class Entity(Sprite):
         for rect, zone in zip(self._hurtbox_rects, self._zones, strict=True):
             inflate_x, inflate_y = zone.inflate
             rect.size = (
-                self._pushbox.width + inflate_x,
-                self._pushbox.height + inflate_y,
+                pushbox.width + inflate_x,
+                pushbox.height + inflate_y,
             )
-            rect.center = self._pushbox.center
-        self._hurtbox_union = (
-            self._hurtbox_rects[0].unionall(self._hurtbox_rects[1:])
-            if len(self._hurtbox_rects) > 1
-            else self._hurtbox_rects[0].copy()
-        )
+            rect.center = pushbox.center
+        # Only the single-zone layout can be short-circuited, and only by its
+        # own rect: with several zones the union depends on all of them, so
+        # one of the others moving would leave a stale union behind. The
+        # common case is one zone, and this is the common path.
+        #
+        # The contact shape below is skipped on the same condition, and
+        # correctly so: it is derived from the pushbox centre, which is what
+        # `only.center` mirrors, so an unchanged zone rect means an unchanged
+        # centre and a fresh `ShapePose` would be equal to the one held.
+        if len(self._hurtbox_rects) == 1:
+            only = self._hurtbox_rects[0]
+            unchanged = (
+                self._hurtbox_union.size == only.size and self._hurtbox_union.center == only.center
+            )
+            if not unchanged:
+                self._hurtbox_union = only.copy()
+        else:
+            self._hurtbox_union = (
+                self._hurtbox_rects[0].unionall(self._hurtbox_rects[1:])
+                if len(self._hurtbox_rects) > 1
+                else self._hurtbox_rects[0].copy()
+            )
+            unchanged = False
+        if unchanged:
+            return
         self.contact_shape = ShapePose(
             self.contact_shape.kind,
             self.contact_shape.size,
-            self._pushbox.center,
+            pushbox.center,
             self.contact_shape.angle,
         )
 
@@ -703,17 +743,9 @@ class Entity(Sprite):
         """Called when the entity touches a wall while airborne."""
         pass
 
-    def apply_gravity(self, delta_time: float) -> None:
-        """Apply gravity with drag, respecting wall sliding."""
-        self._movement.apply_gravity(delta_time)
-
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal acceleration and control based on move_axis."""
         self._movement.apply_horizontal_movement(delta_time)
-
-    def check_contact(self) -> None:
-        """Update surface contact flags."""
-        self._movement.check_contact()
 
     def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""
@@ -824,6 +856,29 @@ class Entity(Sprite):
             X-coordinate of the damage source for knockback direction.
         """
         return self._reaction.handle_heavy_knockback(knockback, source_center_x)
+
+    def kill(self) -> None:
+        """Leave the sprite groups *and* the collision grid.
+
+        ``pygame.sprite.Sprite.kill`` only leaves the groups, and the
+        environment hash is not a group -- it is handed the level's collidables
+        and queried directly by every entity that moves. So an entity removed
+        through the historical API stayed in the grid: no query could find it
+        (it is gone, so it cannot be a neighbour) and nothing ever dropped it.
+
+        Today that costs nothing, because nothing that dies is in the
+        environment grid: the tiles are static and the spawner-created enemies
+        are never added to it. It is the *shape* of the bug that matters. A
+        grid that keeps a dead entity alive also keeps the bucket pointing at
+        it, and the next entity allocated can be handed the recycled address --
+        at which point ``add`` would see a key it already has and skip the
+        insertion, and the new entity would pass through everything. See
+        :meth:`src.physics.spatial_hash.SpatialHash.add`.
+        """
+        spatial_hash = self.spatial_hash
+        if spatial_hash is not None:
+            spatial_hash.remove(self)
+        super().kill()
 
     def receive_damage(
         self,

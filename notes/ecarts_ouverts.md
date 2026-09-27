@@ -1,7 +1,7 @@
 # Écarts hitbox — état de conformité 2026-09-26
 
 > Synthèse courante des écarts O1–O10. La source historique détaillée reste `notes/hitbox_amelioration.md`.
-> Cette version décrit uniquement le code présent sur `master` au `40ca5a9`.
+> Cette version décrit uniquement le code présent sur `feat/display-cadrage-system` au `c679234`.
 > O1–O9 sont des écarts hitbox ; O10 est un écart de recette, ajouté le 2026-09-26.
 
 ## Récapitulatif
@@ -17,7 +17,7 @@
 | O7 | Sweep multi-producteurs | Clos | `projectile_system.py`, `hazard_damage.py`, `contact_system.py` ; contact reste discret |
 | O8 | Offset des keyframes | Clos | `_validate_keyframes`, `test_attack_validation.py` |
 | O9 | Indices debug | Clos par décision de forme | `world_ui.py`, points `●/○`, `test_debug_overlay.py` |
-| O10 | Recette `DEBUG=1` | **Ouvert** | `test_frame_presentation.py`, `renderer.py:252-259`, `level.py:359-375` |
+| O10 | Recette `DEBUG=1` | Clos | Suppression de la présentation partielle ; `test_level_draw_paints_the_health_bars_over_the_world`, `test_camera.py` |
 
 **Limites hors périmètre :** grab/throw/command-grab, extension du sweep aux hazards statiques ou au contact damage, réseau et rééquilibrage global.
 
@@ -83,40 +83,52 @@ Les indices de boîte sont dessinés comme points vectoriels `●/○` en place 
 
 **Tests :** `tests/unit/test_debug_overlay.py`, `tests/unit/test_frame_coherence.py`.
 
-### O10 — `DEBUG=1` : la suite n’est pas verte
+### O10 — `DEBUG=1` : la suite n’est pas verte — **Clos 2026-09-26**
 
-`DEBUG=1 uv run pytest -q` donne **1 failed, 1116 passed** au `40ca5a9` :
+Le 2026-09-25, `DEBUG=1 pytest -q` donnait 1 failed, 1116 passed :
+`test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`.
+Le chemin debug renvoyait `None` (présentation complète) et la branche non-debug
+renvoyait des rects partiels, et le test exigeait les deux.
 
-- `tests/unit/test_frame_presentation.py::test_level_draw_presents_the_health_bar_rects`
-  exige que `Level.draw` renvoie un ensemble de rects partiels à présenter. Or le
-  chemin debug fait toujours un refresh complet — `Renderer.draw` renvoie `None`
-  dès que `debug_enabled` est vrai (`renderer.py:252-259`), et `Level.draw` aussi
-  (`level.py:359-375`). Le test échoue donc sur `assert rects is not None`.
-- Le même test échoue **isolé**, avec ou sans `DEBUG` : il hérite de l’écran
-  320×240 du fixture de module et compte sur un test précédent
-  (`test_a_resolution_change_drops_the_converted_art`) pour l’agrandir en 800×600.
-  Sans cela, la caméra cull l’ennemi de test placé en (200, 200) et la passe de
-  barres ne peint rien.
+**La correction n’est pas une correction de test : la présentation partielle
+n’existe plus.** La cible de rendu a une taille fixe, donc la frame terminée est
+mise à l’échelle d’un bloc sur la fenêtre et il n’y a plus de chemin partiel à
+emprunter. L’appareil de dirty rects a été supprimé avec le besoin qu’il
+servait (voir `notes/audit_dimensions_fenetre.md` §3).
 
-Ce n’est pas une régression : le test est né avec `40833b0` et la branche debug
-renvoyait déjà `None` avant la session du 2026-09-25. C’est un contrat de test faux
-(dans un cas) et une dépendance à l’ordre d’exécution (dans l’autre). Les audits
-qui annonçaient une suite verte « avec et sans `DEBUG` » n’étaient plus exacts ;
-`notes/audit_consolide.md` le suit sous **R-10**.
+Le test lui-même a disparu, remplacé par
+`test_level_draw_paints_the_health_bars_over_the_world`, qui vérifie ce qui
+restait vérifiable : qu’une barre atteint les pixels. `add_overlay_rects` n’existe
+plus non plus, et `test_camera.py` assert son absence.
 
-**Correction envisagée :** assumer que la présentation partielle n’a de sens
-qu’hors debug (l’assertion saute sous `DEBUG=1`) et faire construire le niveau à
-la taille d’écran voulue par le test plutôt que d’hériter de l’état global — le
-test doit alors passer isolément. Aucun code de rendu n’est en cause.
+Le second défaut du même test — hériter de la taille d’écran laissée par un
+test précédent — a disparu avec lui : plus aucun test ne dépend de l’état
+d’un autre.
+
+Vérifié le 2026-09-26 sur `feat/display-cadrage-system` :
+`pytest -q` → **1273 passed**, `DEBUG=1 pytest -q` → **1273 passed**.
+C’est la première fois que les deux sont vertes.
+
+**Ce que cet écart disait de la méthode, et pas seulement du test.** L’écart était
+consigné depuis six jours avec une « correction envisagée » qui consistait à
+faire sauter une assertion sous `DEBUG=1`. C’était traiter un symptôme. La
+question utile était : *pourquoi existe-t-il deux chemins de présentation ?*
+Réponse : parce que la fenêtre était la cible de rendu, donc qu’une présentation
+partielle avait un sens. La question suivante était : *que devient la
+présentation partielle quand la cible ne dépend plus de la fenêtre ?* Réponse :
+rien. Un écart de recette est parfois le dernier témoin d’une architecture qui
+n’a plus lieu d’être.
 
 ## Recette de référence
 
-- `pytest -q` : **1117 passed** ;
-- `DEBUG=1 pytest -q` : **1 failed, 1116 passed** (O10) ;
-- `ruff check .` : propre ;
-- `mypy src` : propre, 142 fichiers (144 pour `mypy src main.py tools`) ;
-- couverture : 89 % instructions, 86 % branches ;
-- benchmark de contact : reproductible, contacts 1/16/64 ;
-- tests UI : hermétiques avec `DEBUG=1` **sauf** le test de O10.
+Recette au 2026-09-26, branche `feat/display-cadrage-system` :
 
-Dernière mise à jour : 2026-09-26, branche `master` au `40ca5a9`.
+- `pytest -q` : **1273 passed** ;
+- `DEBUG=1 pytest -q` : **1273 passed** (O10 clos) ;
+- `ruff check .` : propre ;
+- `mypy src` : propre, 152 fichiers (154 pour `mypy src main.py tools`) ;
+- couverture : 89 % instructions ;
+- benchmark de contact : reproductible, contacts 1/16/64 ;
+- tests UI : hermétiques avec `DEBUG=1`, sans exception.
+
+Dernière mise à jour : 2026-09-26, branche `feat/display-cadrage-system`.

@@ -6,40 +6,46 @@ import os
 
 
 class Display:
-    """Display and rendering settings."""
+    """The window's title, and the refresh rate this build targets.
 
-    WIDTH = 1440
-    HEIGHT = 900
-    SIZE = (WIDTH, HEIGHT)
-    # Simulation runs at 60 Hz (Simulation.TICK_RATE); rendering at 120 FPS
-    # keeps motion smooth without redrawing the same state 2 frames out of 3
-    # as the previous 180 FPS setting did (audit F1.4/F6.1).
-    FPS = 60
-    TITLE = "Knightrock"
+    The starting window size used to live here too, as ``WIDTH``/``HEIGHT``. It
+    does not any more: it is derived from the desktop at launch
+    (:func:`src.core.display.detection.initial_window_size`), and the window
+    manager owns the geometry from then on -- there is no size left for the game
+    to hold an opinion about. What the game draws into is a separate question
+    again, answered by ``src.core.display.framing``.
 
-
-class GameplayCamera:
-    """Gameplay camera framing (see ``src/core/rendering/camera.py``).
-
-    ``ZOOM`` is the gameplay camera scale. A value above ``1`` draws the
-    world larger and shrinks the visible world area, which tightens the
-    framing on the player and hides what is far ahead — more tension, less
-    free information. This is the non-cinematic default; a future cinematic
-    camera would drive its own zoom instead of reusing this constant.
-
-    Set ``ZOOM = 1.0`` to restore the previous fully de-zoomed framing.
+    ``FPS`` is the refresh rate this build is written against, and nothing more.
+    It is **not** the default frame limit: that is
+    ``src.application.settings_store.DEFAULT_FRAME_LIMIT``, because the player
+    changes it in the video menu and the two stopped being the same number when
+    the frame limit became a setting. ``FPS`` is read in exactly one place, as
+    the base of the runaway ceiling ``game.DISPLAY_SAFETY_CEILING_FPS``, so
+    raising it cannot silently change what the game presents.
     """
 
-    #: Gameplay zoom. 1.15 removes ~15% of the visible world on every axis
-    #: (a 1440x900 window then shows a ~1252x783 world area) and scales the
-    #: sprites, their health bars and their debug overlays accordingly.
-    ZOOM = 1.25
+    FPS = 180
+    TITLE = "Knightrock"
 
 
 class World:
     """World and tilemap dimensions."""
 
     TILE_SIZE = 64
+
+    #: Grid cell edge of both spatial hashes, in world units.
+    #:
+    #: One number, because there are two hashes and they must agree: the
+    #: environment hash the level buckets terrain into, and the entity grid the
+    #: pairing systems bucket combatants into. They are queried with the same
+    #: rectangles, so a mismatch would not be a performance difference but a
+    #: correctness one -- a cell that one of them considers too far away is a
+    #: collision the other one cannot see.
+    #:
+    #: 128 is two tiles: large enough that a 64-unit tile lands in one or two
+    #: cells rather than being split four ways, small enough that a query does
+    #: not drag half the level in with it.
+    HASH_CELL_SIZE = 128
 
 
 class Physics:
@@ -119,21 +125,21 @@ class Combat:
     # Juggle scaling: consecutive air hits decay toward this floor.
     JUGGLE_DECAY_STEP = 0.1
     JUGGLE_DAMAGE_FLOOR = 0.5
-    # Phase 5 #4 (juggle / hit-stun avancé): stagger scales with damage,
+    # Phase 5 #4 (juggle / advanced hit-stun): stagger scales with damage,
     # juggle gravity lasts one float window, OTG guards knockdown wakeup.
     HITSTUN_DAMAGE_FACTOR = 0.004
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
     DIZZY_DAMAGE_MULT = 1.5
-    # P1 sweep CCD (D1) : borne BASSE en deplacement mesure, pas en vitesse.
-    # Distance euclidienne des centres par index de boite ; en dessous, le
-    # sweep est inutile (goldens stables) et `swept = cur`.
+    # P1 sweep CCD (D1): the LOW bound, on measured displacement rather than
+    # speed. Euclidean distance between box centres per box index; below this
+    # the sweep is pointless (goldens stay stable) and `swept = cur`.
     SWEEP_MIN_DISPLACEMENT_PX = 4.0
-    # P1 sweep CCD (D4) : borne HAUTE. Au-dela (respawn, teleport, carry
-    # anormal), `swept = cur` : pas de smear geant, pas de touche fantome.
-    # Invariant a dt sim fixe (TIMESTEP = 1/60) :
+    # P1 sweep CCD (D4): the HIGH bound. Past it (respawn, teleport, abnormal
+    # carry) `swept = cur`: no giant smear, no phantom touch.
+    # Invariant at fixed sim dt (TIMESTEP = 1/60):
     # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
-    # * TIMESTEP * 1.5  (KB_MAX = magnitude max des power d'attacks.json).
+    # * TIMESTEP * 1.5  (KB_MAX = the largest magnitude in attacks.json).
     SWEEP_MAX_DISPLACEMENT_PX = 64.0
     SHAPE_SWEEP_MAX_ITERATIONS = 16
     SHAPE_CONTACT_EPSILON_PX = 0.001
@@ -299,7 +305,18 @@ class Simulation:
     # rewind depth a future netcode transport will cap re-simulation at.
     MAX_PREDICTION_FRAMES = 8
     ROLLBACK_FRAMES = 4
-    MAX_FRAME_TIME = 0.1  # Maximum frame time to prevent spiral of death
+    #: Longest frame the accumulator will believe in. Past this the extra time
+    #: is dropped, so a hitch cannot be compounded by replaying it.
+    #:
+    #: Note what that costs: dropping time is not the same as dropping ticks. A
+    #: frame that really took 300ms bills 100ms, and the game runs in slow
+    #: motion for that frame rather than skipping ahead. ``MAX_TICKS_PER_FRAME``
+    #: is the other half of the guard; see the loop.
+    MAX_FRAME_TIME = 0.1
+    #: Ticks one presented frame may run. Six is a 100Hz frame against a 60Hz
+    #: tick rate, which is twice what a player can see; past that the frame is
+    #: already lost and catching up only delays the next one -- the spiral.
+    MAX_TICKS_PER_FRAME = 6
     MAX_SUBSTEPS_PER_AXIS = 8  # Guard: dash spikes must not spiral (F3.4)
 
 
@@ -308,10 +325,32 @@ class Input:
 
     AXIS_DEADZONE = 0.1
     DASH_AXIS_THRESHOLD = 0.5
-    UI_AXIS_TRIGGER_THRESHOLD = 0.5
-    UI_AXIS_RELEASE_THRESHOLD = 0.3
-    # Stick tenu : 0.25s avant la 1re répétition puis 1 pas / 80ms.
-    # Au-delà (~0.4/0.1) la navigation paraît "collée" / en retard.
+    #: A stick has to travel this far before a menu moves. It was 0.5, which
+    #: asks for half the stick's full deflection, and then 0.4, which is still a
+    #: third of it. Both read as lag rather than as a stick that has to be
+    #: pushed hard: the menu stays where it is while the player pushes, then
+    #: moves all at once, and a quick flick to 35% -- the travel most of a
+    #: thumb actually makes -- did nothing at all. 0.25 is a quarter of the
+    #: deflection, which is where a console menu starts listening, and it is
+    #: still twice :data:`AXIS_DEADZONE`, so a stick at rest does not drift the
+    #: selection.
+    UI_AXIS_TRIGGER_THRESHOLD = 0.25
+    #: Below this the direction is considered let go. The 0.10 gap to the
+    #: trigger is the hysteresis that stops a stick resting near the threshold
+    #: from chattering the selection -- and it is exactly the band between the
+    #: two, so a stick held at 0.20 neither moves the menu nor counts as held.
+    UI_AXIS_RELEASE_THRESHOLD = 0.15
+    #: A stick has to be pushed *this* far before a held direction repeats. It is
+    #: a second threshold on purpose, and it is the answer to "one push of the
+    #: stick walks the whole menu": a stick is a position, so a hold is not a
+    #: press and there is no key to release. Moving asks for a quarter of the
+    #: travel and repeating asks for most of it, which is the only way the
+    #: player can say "I meant that" -- push harder to scroll, ease back to stop
+    #: (easing back is not a step back: the direction is still held).
+    UI_AXIS_REPEAT_THRESHOLD = 0.7
+    # Held stick: 0.22s before the first repeat, then one step per 60ms. Beyond
+    # that (~0.4/0.1) navigation reads as stuck or lagging. The first step is
+    # immediate -- SDL triggers it, not this delay.
     UI_REPEAT_INITIAL_DELAY = 0.22
     UI_REPEAT_INTERVAL = 0.06
     ATTACK_BUFFER_WINDOW = 0.2

@@ -16,6 +16,7 @@ from src.core.settings import Locomotion
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.entity import Entity
 from src.physics import apply_velocity_friction
+from src.physics.spatial_hash import SpatialHash
 from src.states.enemy_states import (
     EnemyAttackState,
     EnemyChargeState,
@@ -111,6 +112,7 @@ class Enemy(Entity):
         config: EnemyConfig,
         rng: random.Random | None = None,
         enemy_type: str | None = None,
+        spatial_hash: SpatialHash | None = None,
     ) -> None:
         """Initialize an enemy from its configuration.
 
@@ -131,6 +133,9 @@ class Enemy(Entity):
         enemy_type : str | None
             Registry name of this enemy (e.g. ``"goblin"``), shown in the
             debug label card. ``None`` when built without the factory.
+        spatial_hash : SpatialHash | None
+            Shared collision grid covering ``collision_sprites``; see
+            :class:`~src.entities.entity.Entity`.
         """
         max_health = config.max_health if config.max_health is not None else config.health
 
@@ -150,6 +155,7 @@ class Enemy(Entity):
             attacks=config.attacks if config.attacks else None,
             hurt_duration=CombatSettings.HURT_DURATION,
             rng=rng,
+            spatial_hash=spatial_hash,
         )
 
         self.config = config

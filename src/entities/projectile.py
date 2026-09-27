@@ -96,10 +96,30 @@ class Projectile(Sprite):
         self.active = True
         self.is_dead = False
         self.targets_hit.clear()
-        self.image = pygame.Surface((int(config.size[0]), int(config.size[1])))
-        self.image.fill((255, 200, 60))
+        self.image = self._surface_for(config.size)
         self.rect = pygame.Rect(int(pos[0]), int(pos[1]), int(config.size[0]), int(config.size[1]))
         self.sync_rects()
+
+    def _surface_for(self, size: tuple[float, float]) -> pygame.Surface:
+        """The flight surface for ``size``, rebuilt only when the size changes.
+
+        This instance comes from an :class:`~src.core.object_pool.ObjectPool`,
+        and the pool's whole premise is that a recycled projectile costs an
+        arming rather than a construction. Allocating a surface here gave
+        that back on every launch: a pooled object whose largest field was
+        still rebuilt from scratch each time.
+
+        Reuse is keyed on the size, because a surface is blitted into a
+        rectangle of the projectile's size and ``pygame.blit`` silently
+        resamples a source that does not fit — so a projectile resized onto a
+        borrowed surface would be drawn at the wrong scale.
+        """
+        wanted = (max(1, int(size[0])), max(1, int(size[1])))
+        surface = self.image
+        if surface is None or surface.get_size() != wanted:
+            surface = pygame.Surface(wanted)
+        surface.fill((255, 200, 60))
+        return surface
 
     def reset(self) -> None:
         """Park the instance back to an inert state (pool ``reset`` hook)."""

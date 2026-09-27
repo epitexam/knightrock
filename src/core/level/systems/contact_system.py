@@ -52,7 +52,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
+@dataclass
 class OffensiveBox:
     """One offensive contact emitted by a producer.
 
@@ -61,6 +61,16 @@ class OffensiveBox:
     populate it from their previous/current rectangles. ``record_contact`` is
     called with the *target* once a hit landed, so a producer can remember it
     (and release itself).
+
+    **Mutable, and split by lifetime.** The geometry is per-tick and is
+    rewritten in place by a producer that keeps the box across ticks (the
+    hazard and contact-damage systems, whose producers are static); ``hit`` and
+    the per-producer fields are per-producer and are written once. It used to
+    be frozen, which was never enforced by anything -- no caller hashes a box
+    or puts one in a set -- and only made the construction expensive, since a
+    frozen dataclass assigns each field through ``object.__setattr__``.
+    Producers that build a fresh box every tick (melee, projectiles) are
+    unaffected; they just do not get to skip the work.
     """
 
     box: pygame.FRect
@@ -131,9 +141,14 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
     """Per-zone swept rectangles (P2), single legacy box as fallback.
 
-    ``getattr`` only bridges minimal hazard/contact stubs that never
-    implement the zone surface; full combatants expose
-    ``Combatant.swept_hurtboxes`` from the protocol.
+    The ``getattr`` looks redundant next to ``Combatant.swept_hurtboxes``,
+    which the protocol does declare, and the audit read it that way. It is not
+    redundant: the fallback is *behaviour*, not tolerance. A target that has
+    no previous-tick capture -- one that has not been swept since it was
+    placed, or a duck-typed producer's stand-in -- has no swept geometry to
+    offer, and the discrete hurtbox is then the best available answer rather
+    than a wrong one. The protocol says what a combatant *is*; this says what
+    to do when it cannot answer.
     """
     swept = getattr(target, "swept_hurtboxes", None)
     if callable(swept):
@@ -189,7 +204,12 @@ def _eligible(box: OffensiveBox, target: Combatant) -> bool:
 
 
 def _swept_target_box(box: OffensiveBox, target: Combatant) -> pygame.FRect:
-    """Return the target geometry swept only for swept offensive producers."""
+    """Return the target geometry swept only for swept offensive producers.
+
+    Same reasoning as :func:`_target_swept_zones`: a target with no sweep
+    falls back to its discrete geometry, which is a decision about what to
+    draw rather than a duck-typing concession.
+    """
     if box.kind == "projectile":
         swept = getattr(target, "swept_hurtbox", None)
         if callable(swept):
@@ -362,8 +382,14 @@ class ContactSystem:
         order: dict[int, int],
         entity_grid: EntityGrid | None,
     ) -> list[Combatant]:
-        """Broadphase with caller-owned buffers and stable target order."""
-        if entity_grid is None:
+        """Broadphase with caller-owned buffers and stable target order.
+
+        A grid that decided it was not worth indexing is treated as no grid at
+        all, not as a grid that returns everything. The two are not the same
+        cost: the unfiltered path skips the candidate sort, which at a small
+        roster is the most expensive thing left in here.
+        """
+        if entity_grid is None or not entity_grid.indexed:
             self._candidates_buffer.clear()
             self._candidates_buffer.extend(target for target in targets if _eligible(box, target))
             return self._candidates_buffer

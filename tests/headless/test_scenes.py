@@ -18,10 +18,11 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.victory_scene import VictoryScene
+from src.core.display.viewport import Viewport
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Gameplay
-from tests.headless.conftest import make_programmatic_level_data
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
 
 
 class RecordingScene(Scene):
@@ -31,7 +32,7 @@ class RecordingScene(Scene):
         super().__init__(game)
         self.name = name
         self.events: list[str] = []
-        self.dirty_called = False
+        self.drawn = False
 
     def enter(self) -> None:
         self.events.append(f"enter:{self.name}")
@@ -42,9 +43,8 @@ class RecordingScene(Scene):
     def update(self, delta_time: float) -> None:
         self.events.append(f"update:{self.name}")
 
-    def draw(self) -> list[pygame.Rect]:
-        self.dirty_called = True
-        return []
+    def draw(self, surface: pygame.Surface) -> None:
+        self.drawn = True
 
 
 @pytest.fixture()
@@ -86,8 +86,8 @@ def test_draw_draws_all_scenes_when_stacked(manager: SceneManager):
     manager.switch(gameplay)
     manager.push(pause)
 
-    assert manager.draw() is None  # overlay: full refresh
-    assert gameplay.dirty_called and pause.dirty_called
+    manager.draw(pygame.display.get_surface())
+    assert gameplay.drawn and pause.drawn
 
 
 def test_popping_the_last_scene_stops_the_game(manager: SceneManager):
@@ -150,7 +150,7 @@ def test_menu_quit_confirmation_cancels_on_back(manager: SceneManager):
 def test_menu_quit_confirmation_is_armed_by_the_quit_row(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
-    menu.draw()
+    menu.draw(pygame.display.get_surface())
     target = menu.view.item_rects[-1].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
@@ -173,7 +173,7 @@ def test_menu_navigation_supports_keyboard_and_gamepad(manager: SceneManager):
 def test_menu_navigation_supports_pointer(manager: SceneManager):
     menu = MenuScene(manager.game)
     manager.switch(menu)
-    menu.draw()
+    menu.draw(pygame.display.get_surface())
     target = menu.view.item_rects[3].center
 
     manager.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=target))
@@ -205,18 +205,75 @@ def test_options_opens_from_menu_and_pause(manager: SceneManager):
     assert isinstance(manager.current, OptionsScene)
 
 
-def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
-    """Lot 2 : le hat puis le stick déplacent la sélection, le bouton A valide."""
+def test_the_hat_and_the_stick_agree_on_which_way_is_up(manager: SceneManager):
+    """The D-pad and the stick must not disagree about up.
+
+    A hat is a direction and an axis is a measurement, and SDL disagrees about
+    the vertical between them: pygame reports ``(0, 1)`` as **up** -- that is
+    ``SDL_HAT_UP`` -- while a stick pushed up reads *negative*. So the two
+    directions arrive with opposite signs, and a router that treats them alike
+    moves the menu up on the D-pad and down on the stick.
+
+    It did, and it had been the other way round before that. Both states passed
+    this suite, because the test fired the hat and the stick one after the other
+    and compared only where the selection landed: a pair of consistent
+    inversions ends in the expected place. So the comparison is kept -- it is
+    the property that matters -- but the convention is pinned explicitly by
+    ``test_the_menu_and_the_game_read_one_hat_the_same_way``, which asks two
+    readers of the same hat for the same direction.
+    """
+
+    def selection_after(event: pygame.event.Event) -> str:
+        menu = MenuScene(manager.game)
+        manager.switch(menu)
+        assert menu.model.current_item is not None
+        start = menu.model.current_item.action
+        manager.handle_event(event)
+        assert menu.model.current_item is not None
+        return f"{start}->{menu.model.current_item.action}"
+
+    up = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
+    stick_up = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=-0.8)
+    down = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
+    stick_down = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8)
+
+    assert selection_after(up) == selection_after(stick_up)
+    assert selection_after(down) == selection_after(stick_down)
+    assert selection_after(up) != selection_after(down), "up and down moved the same way"
+
+
+def test_the_dpad_needs_only_a_partial_push(manager: SceneManager):
+    """A stick does not have to be pushed a third of the way to move a menu.
+
+    The trigger threshold was 0.5 and then 0.4, so a partial push did nothing:
+    the menu stayed where it was while the player pushed, then moved all at
+    once, which reads as lag rather than as a stick that has to be pushed hard.
+    A thumb's flick lands around 0.2, so the threshold now answers to that.
+    """
     menu = MenuScene(manager.game)
     manager.switch(menu)
+    before = menu.model.current_index
 
+    manager.handle_event(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.3))
+
+    assert menu.model.current_index != before
+
+
+def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
+    """Batch 2: the d-pad then the stick move the selection, A confirms."""
+    menu = MenuScene(manager.game)
+    manager.switch(menu)
+    start = menu.model.current_index
+
+    # One D-pad press, one stick press: two rows down from where we were. The
+    # hat carries ``+1`` for up and the stick ``-1``, so both are the same
+    # physical push down the menu.
     manager.handle_event(
         pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
     )
     manager.handle_event(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8))
 
-    assert menu.model.current_item is not None
-    assert menu.model.current_item.action == "options"
+    assert menu.model.current_index == start + 2
 
     manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=0))
 
@@ -294,28 +351,70 @@ def test_victory_can_open_level_select(manager: SceneManager):
 
 def _make_level(game_runtime) -> Level:
     return Level(
-        pygame.display.get_surface(),
+        make_viewport().surface,
         make_programmatic_level_data(),
         game_runtime.input_manager,
     )
 
 
-def test_level_camera_viewport_matches_the_chosen_resolution(manager: SceneManager):
-    """Le viewport caméra est la résolution choisie, pas les constantes Display.
+def test_the_camera_viewport_ignores_the_window(manager: SceneManager):
+    """The bug this rework exists for, stated as a test.
 
-    La fenêtre n'étant pas redimensionnable, la résolution du menu vidéo est
-    le viewport stable du jeu. Si la caméra gardait 1440x900 dans une fenêtre
-    1280x720, des sprites visibles seraient écartés par le culling.
+    The camera used to be built from the window's pixel size, so the slice of
+    world the player saw was decided by a video setting: at a large enough
+    resolution a whole level fitted on screen. The viewport is now the framing,
+    and the only thing that moves it is the window -- which changes how large the
+    world is *drawn*, at whatever density the window implies, and never how much
+    of it is shown.
     """
+    from src.core.display.framing import DEFAULT_FRAMING
+    from src.core.display.letterbox import letterbox
+
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
-    for width, height in ((1280, 720), (1920, 1080)):
-        surface = pygame.Surface((width, height))
-        gameplay.set_display_surface(surface)
+    for window in ((640, 360), (1280, 720), (1920, 1080), (2560, 1440), (1000, 1000)):
+        size = letterbox(window, DEFAULT_FRAMING).size
+        surface = Viewport(DEFAULT_FRAMING, size).surface
+        gameplay.set_surface(surface)
 
         assert gameplay.level is not None
-        assert (gameplay.level.camera.width, gameplay.level.camera.height) == (width, height)
+        camera = gameplay.level.camera
+        assert (camera.viewport_width, camera.viewport_height) == DEFAULT_FRAMING.size
+        assert camera.density == pytest.approx(size[0] / DEFAULT_FRAMING.width)
+        # And the framing still covers the target, to within the pixel that
+        # rounding a letterbox and rounding a sprite size cannot both avoid.
+        # The rule rounds a sprite's size *up* so neighbours overlap rather than
+        # gap, which can overshoot the target by one row -- clipped away.
+        camera.begin_frame(1.0)
+        covered = camera.apply_snapped(
+            pygame.FRect(0.0, 0.0, DEFAULT_FRAMING.width, DEFAULT_FRAMING.height)
+        )
+        assert abs(covered.width - surface.get_width()) <= 1
+        assert abs(covered.height - surface.get_height()) <= 1
+
+
+def test_a_surface_that_is_not_the_framing_is_refused(manager: SceneManager) -> None:
+    """The window is not a target, and a target is not an arbitrary surface.
+
+    A target whose two axes imply different densities is not the framing drawn at
+    some density, so it is refused rather than half-honoured -- and the camera
+    is left exactly as it was, rather than moved to a density nobody asked for.
+    The window itself is not refused because it *is* one: ``set_surface`` is
+    handed the window's letterbox rectangle, which is the whole design.
+    """
+    from src.core.display.framing import DEFAULT_FRAMING
+
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+    assert gameplay.level is not None
+    before = (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height)
+
+    with pytest.raises(ValueError):
+        gameplay.set_surface(pygame.Surface((1280, 700)))
+
+    assert (gameplay.level.camera.viewport_width, gameplay.level.camera.viewport_height) == (before)
+    assert before == DEFAULT_FRAMING.size
 
 
 def test_gameplay_escape_pushes_pause(manager: SceneManager):
@@ -435,7 +534,7 @@ def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
 
 
 def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: Path) -> None:
-    """UI-5 : Options → Contrôles capture une touche et écrit settings.json."""
+    """UI-5: Options -> Controls captures a key and writes settings.json."""
     game = manager.game
     options = OptionsScene(game)
     manager.switch(options)
@@ -476,9 +575,9 @@ def test_controls_screen_rebinds_and_persists(manager: SceneManager, tmp_path: P
     manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x))
 
     assert game.settings.bindings.menu.keyboard[InputAction.UI_DOWN] == pygame.K_x
-    # L'appui qui termine la capture était routé (X = ui_down) : neutralisé.
+    # The press that ends the capture was routed (X = ui_down): neutralised.
     assert menu_controls.model.current_index == 1
-    # Les écritures sont groupées par frame : la boucle les vide, ce test drive
+    # Writes are batched per frame: the loop drains them, and this test drives
     # le SceneManager sans boucle, il demande donc le flush explicitement.
     game.flush_settings()
     saved = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
@@ -509,7 +608,7 @@ def test_options_controls_is_a_category_with_two_submenus(manager: SceneManager)
 
 
 def test_controls_capture_cancels_with_escape_before_leaving(manager: SceneManager) -> None:
-    """ESC annule la capture ; un second ESC quitte l'écran."""
+    """ESC cancels the capture; a second ESC leaves the screen."""
     game = manager.game
     menu = MenuScene(game)
     manager.switch(menu)
@@ -527,8 +626,58 @@ def test_controls_capture_cancels_with_escape_before_leaving(manager: SceneManag
     assert manager.current is menu
 
 
-def test_controls_rebinds_a_pad_button_and_can_reassign_b(manager: SceneManager) -> None:
-    """Un bouton manette reste assignable, y compris B."""
+def test_the_cancel_button_leaves_a_capture_instead_of_binding(manager: SceneManager) -> None:
+    """A pad must be able to back out of a rebind.
+
+    It could not: every button was treated as a binding, so pressing anything
+    assigned it and the "press a key" prompt stayed up. No button got you out,
+    which reads as a frozen screen rather than a wrong one, and the only escape
+    was the keyboard.
+
+    The cancel button is exempt while it *is* the cancel button -- the same
+    trade ESC makes on the keyboard -- and becomes bindable again once cancel is
+    moved elsewhere, which the second half checks. Nothing is lost for good.
+    """
+    game = manager.game
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    manager.switch(controls)
+    for _ in range(3):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert controls.capturing
+
+    cancel = game.settings.bindings.menu.gamepad_buttons[InputAction.UI_BACK]
+    manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=cancel))
+
+    assert not controls.capturing, "the cancel button bound a key instead of leaving"
+    assert manager.current is controls, "cancelling must not also pop the screen"
+    assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] != cancel
+
+
+def test_escape_leaves_a_capture_on_either_column(manager: SceneManager) -> None:
+    """ESC used to work only while capturing a *key*.
+
+    Armed on a pad cell it fell through and did nothing, so the keyboard had the
+    same dead end the pad had, just from the other device.
+    """
+    game = manager.game
+    controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
+    manager.switch(controls)
+    for _ in range(3):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    # Arm the *pad* cell, which is the column that used to have no way out.
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert controls.capturing, "the pad cell should be armed"
+
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
+
+    assert not controls.capturing
+    assert manager.current is controls
+
+
+def test_controls_rebinds_a_pad_button(manager: SceneManager) -> None:
+    """Un bouton manette reste assignable."""
     game = manager.game
     controls = ControlsScene(game, ControlsScene.GAMEPLAY_SECTION)
     manager.switch(controls)
@@ -541,16 +690,9 @@ def test_controls_rebinds_a_pad_button_and_can_reassign_b(manager: SceneManager)
 
     assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] == 7
 
-    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
-    assert controls.capturing
-    manager.handle_event(pygame.event.Event(pygame.JOYBUTTONDOWN, button=1))
-
-    assert game.settings.bindings.gameplay.gamepad_buttons[InputAction.JUMP] == 1
-    assert manager.current is controls
-
 
 def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) -> None:
-    """§9 : chaque écran plein-écran se dessine (remplace les tests menu_panel)."""
+    """Section 9: every fullscreen scene draws (replaces the menu_panel tests)."""
     game = manager.game
     scenes: list[Scene] = [
         MenuScene(game),
@@ -566,4 +708,201 @@ def test_all_menu_screens_draw_without_dedicated_display(manager: SceneManager) 
 
     for scene in scenes:
         manager.switch(scene)
-        assert manager.draw() is None
+        assert manager.draw(pygame.display.get_surface()) is None
+
+
+def _level_select(manager: SceneManager) -> LevelSelectScene:
+    """The level select, reached the way the menu reaches it."""
+    manager.switch(MenuScene(manager.game))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert isinstance(manager.current, LevelSelectScene)
+    return manager.current
+
+
+def test_the_level_select_offers_a_back_row(manager: SceneManager):
+    """A row, not only a key.
+
+    ESC, the gamepad B button and the right mouse button all left this screen,
+    and a pointer had nothing to click. Every other menu offers the row *and*
+    the keys, and a screen that can only be left with a keyboard is a screen a
+    controller or a mouse cannot leave.
+    """
+    scene = _level_select(manager)
+
+    assert [item.action for item in scene.model.items][-1] == "back"
+    assert scene.model.items[-1].label == "Back"
+    assert scene.model.items[-1].enabled
+
+
+def test_the_back_row_leaves_the_level_select_with_the_keyboard(manager: SceneManager):
+    scene = _level_select(manager)
+
+    for _ in scene.model.items:
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, MenuScene)
+
+
+def test_the_back_row_leaves_the_level_select_with_the_pointer(manager: SceneManager):
+    """The click lands on the rectangle the view drew, not on an assumed row.
+
+    The point of a row is that it is somewhere you can see, so the test uses the
+    rectangle the panel published -- the same one a player's cursor is over.
+    """
+    from src.core.input.event_router import InputDevice, RoutedInput
+
+    scene = _level_select(manager)
+    scene.draw(pygame.display.get_surface())
+    rect = scene.view.item_rects[-1]
+
+    action = scene.handle_routed(
+        RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=rect.center)
+    )
+
+    assert action is not None and action.value == "back"
+    assert isinstance(manager.current, MenuScene)
+
+
+def test_a_locked_level_still_leaves_the_back_row_reachable(manager: SceneManager):
+    """The row is not swallowed by a disabled neighbour.
+
+    A disabled level is skipped by the selection, which is right, and the row
+    after the list has to survive that: otherwise the only way out is a key the
+    screen does not advertise.
+    """
+    scene = _level_select(manager)
+    locked = [index for index, item in enumerate(scene.model.items) if not item.enabled]
+
+    for _ in range(len(scene.model.items) + len(locked)):
+        manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))
+    manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+
+    assert isinstance(manager.current, MenuScene)
+
+
+# -- the target/scale hooks are part of the contract ---------------------------
+#
+# The scene stack used to find `set_surface` and `set_ui_scale` with `getattr`
+# and call them if they turned out to be callable. A scene that forgot one was
+# then skipped in silence: no error, no log, just a window resize that left
+# part of the interface drawn for the old target. Both hooks are now no-op
+# methods on `Scene`, and a view is either present or None -- never discovered.
+
+
+class _RecordingView:
+    """A view that records what the stack asked of it."""
+
+    def __init__(self) -> None:
+        self.surfaces: list[pygame.Surface] = []
+        self.scales: list[float] = []
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.surfaces.append(surface)
+
+    def set_scale(self, scale: float) -> None:
+        self.scales.append(scale)
+
+
+class _ViewedScene(RecordingScene):
+    """A scene that has a view, like every menu screen."""
+
+    def __init__(self, game, name: str):
+        super().__init__(game, name)
+        self.view = _RecordingView()
+        self.surfaces: list[pygame.Surface] = []
+        self.scales: list[float] = []
+
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self.surfaces.append(surface)
+
+    def set_ui_scale(self, scale: float) -> None:
+        self.scales.append(scale)
+
+
+def test_a_resize_reaches_the_scene_and_its_view(manager: SceneManager):
+    scene = _ViewedScene(manager.game, "viewed")
+    manager.switch(scene)
+    target = pygame.Surface((800, 450))
+    # `switch` already pushed the current scale through; start from there.
+    scene.surfaces.clear()
+    scene.view.surfaces.clear()
+    scene.view.scales.clear()
+
+    manager.set_surface(target)
+
+    assert scene.surfaces == [target]
+    assert scene.view.surfaces == [target]
+    # The resize path re-scales the view too, not only on a scale change.
+    assert scene.view.scales == [manager.game.ui_scale]
+
+
+def test_a_scale_change_reaches_the_scene_and_its_view(manager: SceneManager):
+    scene = _ViewedScene(manager.game, "viewed")
+    manager.switch(scene)
+
+    manager.set_ui_scale(1.5)
+
+    assert 1.5 in scene.scales
+    assert 1.5 in scene.view.scales
+
+
+def test_a_resize_reaches_every_scene_on_the_stack_not_just_the_top(
+    manager: SceneManager,
+):
+    """A pause overlay sits above a frozen gameplay scene; a resize has to
+    reach both or the frozen frame keeps the old geometry."""
+    below = _ViewedScene(manager.game, "below")
+    above = _ViewedScene(manager.game, "above")
+    manager.switch(below)
+    manager.push(above)
+    target = pygame.Surface((640, 360))
+
+    manager.set_surface(target)
+
+    assert below.surfaces == [target]
+    assert above.surfaces == [target]
+
+
+def test_a_scene_without_a_view_is_handled_not_skipped(manager: SceneManager):
+    """The gameplay scene has no view at all. It must still get its own hook.
+
+    Under the old `getattr(scene, "view", None)` spelling this worked by
+    accident, because the attribute was missing and the default was None --
+    but the same default is what hid a view that failed to arrive.
+    """
+    plain = RecordingScene(manager.game, "plain")
+    manager.switch(plain)
+    target = pygame.Surface((320, 180))
+
+    manager.set_surface(target)
+    manager.set_ui_scale(2.0)
+
+    assert plain.view is None, "the base class says so, rather than raising"
+    assert plain.drawn is False
+
+
+def test_the_base_scene_declares_the_hooks_so_nothing_has_to_discover_them():
+    assert hasattr(Scene, "set_surface")
+    assert hasattr(Scene, "set_ui_scale")
+    assert hasattr(Scene, "enter")
+    assert hasattr(Scene, "exit")
+
+
+def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
+    """The three views are unrelated classes; the protocol is what binds them.
+
+    Checked structurally at import time of the test rather than trusted,
+    because a view that grew a new signature would otherwise be discovered by
+    the scene stack skipping it.
+    """
+    from src.ui.controls_view import ControlsView
+    from src.ui.grid_view import GridView
+    from src.ui.menu_view import MenuView
+    from src.ui.scale import ScaledView
+
+    for view_type in (MenuView, ControlsView, GridView):
+        assert isinstance(view_type.set_surface, type(MenuView.set_surface))
+        assert isinstance(view_type.set_scale, type(MenuView.set_scale))
+    assert ScaledView is not None

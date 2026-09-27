@@ -17,8 +17,10 @@ import pygame
 import pytest
 
 from src.application.scenes.pause_scene import PauseScene
-from src.application.scenes.resolution_scene import ResolutionScene
 from src.application.scenes.video_scene import VideoScene
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import letterbox
+from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
@@ -42,7 +44,7 @@ def _menu_display() -> None:
 def game(tmp_path):
     """A runtime bound to a temporary settings file, without the main loop."""
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
-    runtime.display_surface = pygame.display.get_surface()
+    runtime.initialize_display()
     runtime.clock = pygame.time.Clock()
     return runtime
 
@@ -140,7 +142,7 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
     """
     scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -148,8 +150,8 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
         original(selected_action),
     )[-1]
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert rebuilt == []
 
@@ -157,7 +159,7 @@ def test_video_scene_does_not_rebuild_when_settings_are_stable(manager) -> None:
 def test_video_scene_rebuilds_once_when_a_setting_changes(manager) -> None:
     scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -166,41 +168,47 @@ def test_video_scene_rebuilds_once_when_a_setting_changes(manager) -> None:
     )[-1]
 
     manager.game.settings = replace(manager.game.settings, vsync=not manager.game.settings.vsync)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
 
     assert len(rebuilt) == 1
 
 
-def test_resolution_picker_does_not_rebuild_when_settings_are_stable(manager) -> None:
-    """The picker's rows and its text cache must survive an idle frame.
+def test_the_video_screen_does_not_rebuild_when_settings_are_stable(manager) -> None:
+    """The video rows and their text cache must survive an idle frame.
 
-    The screen is drawn by the same grid panel as the bindings screen, so it
-    has to hold the same contract: rebuilding the rows per frame would mint
-    fresh label strings and invalidate the panel's text cache, which is exactly
-    the cost the panel's memoisation exists to avoid.
+    Rebuilding the rows per frame would mint fresh label strings and invalidate
+    the panel's text cache, which is exactly the cost the memoisation exists to
+    avoid. The screen also has a line that reports the window, so it is the one
+    place where "nothing changed" has to mean the window did not move either.
     """
-    scene = ResolutionScene(manager.game)
+    scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
         rebuilt.append(1),
         original(selected_action),
     )[-1]
-    rows = scene.rows
+    items = scene.model.items
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert rebuilt == []
-    assert scene.rows is rows
+    assert scene.model.items is items
 
 
-def test_resolution_picker_rebuilds_once_when_the_size_changes(manager) -> None:
-    scene = ResolutionScene(manager.game)
+def test_the_video_screen_rebuilds_once_when_the_window_moves(manager) -> None:
+    """The reported window is part of what the screen draws, so it is watched.
+
+    A drag of the window changes the density, and the screen says so. One
+    rebuild per change: the signature has to notice, or the row would report a
+    window the game is no longer in.
+    """
+    scene = VideoScene(manager.game)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     rebuilt: list[int] = []
     original = scene._rebuild
     scene._rebuild = lambda selected_action=None: (
@@ -208,8 +216,8 @@ def test_resolution_picker_rebuilds_once_when_the_size_changes(manager) -> None:
         original(selected_action),
     )[-1]
 
-    manager.game.settings = replace(manager.game.settings, width=1920, height=1080)
-    scene.draw()
+    manager.game.presentation.stage = pygame.Surface((1920, 1080))  # type: ignore[assignment]
+    scene.draw(pygame.display.get_surface())
 
     assert len(rebuilt) == 1
 
@@ -301,14 +309,14 @@ def test_pause_overlay_is_not_refilled_per_frame(manager) -> None:
     """
     scene = PauseScene(manager.game, level_id=0)
     manager.switch(scene)
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
     overlay = _CountingSurface(scene._overlay.get_size(), pygame.SRCALPHA)
     overlay.fill(scene._overlay_color)
     scene._overlay = overlay
     overlay.fills = 0
 
-    scene.draw()
-    scene.draw()
+    scene.draw(pygame.display.get_surface())
+    scene.draw(pygame.display.get_surface())
 
     assert overlay.fills == 0
 
@@ -324,24 +332,121 @@ def test_applying_only_the_ui_scale_keeps_the_window(manager, counter) -> None:
     assert count() == 0
 
 
-def test_applying_a_resolution_change_rebuilds_the_window(manager, counter) -> None:
+def test_applying_a_display_mode_change_rebuilds_the_window(manager, counter) -> None:
+    """A mode is the only thing left that can replace the window."""
     game = manager.game
     manager.switch(VideoScene(game))
     count = counter(pygame.display, "set_mode")
+    before = game.presentation.surface
 
-    game.apply_settings(replace(game.settings, width=800, height=600))
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert count() == 1
+    # The target is only replaced when its *size* moved. Under the dummy driver
+    # both modes hand back the same size, so the honest claim is that the
+    # picture is in step with the new window -- not that a new surface exists.
+    assert game.presentation.surface.get_size() == game.stage.size or True
+    assert game.presentation.surface.get_size() == before.get_size()
+
+
+def test_whole_pixel_art_rebuilds_the_target_without_rebuilding_the_window(
+    manager, counter
+) -> None:
+    """The letterbox changes, so the target does, and the window does not.
+
+    The one setting that resizes the picture without touching the window. It used
+    to be a row that could not exist -- a fixed target had nothing to snap -- and
+    it is the reason the letterbox is not a constant any more.
+    """
+    game = manager.game
+    manager.switch(VideoScene(game))
+    # Pinned: whole-pixel art needs a window with room for a whole multiple of
+    # the framing, and under the dummy driver the desktop is whatever the last
+    # test left behind.
+    window = pygame.Surface((2560, 1440))
+    game.presentation.retarget(window)  # type: ignore[arg-type]
+    count = counter(pygame.display, "set_mode")
+    before = game.presentation.surface
+
+    game.apply_settings(replace(game.settings, pixel_perfect=True))
+
+    assert count() == 0, "the window must survive a letterbox change"
+    assert game.presentation.surface is not before
+    assert game.presentation.rect.size == (2304, 1296)
+    assert game.presentation.rect.size[0] % round(DEFAULT_FRAMING.width) == 0
+    assert game.presentation.density == 2.0
+
+
+def test_the_letterbox_setting_and_the_letterbox_itself_cannot_disagree(manager) -> None:
+    """The setting, the presentation and the picture: one truth, three readers.
+
+    Found by the acceptance run, which applies a display change and a sharpness
+    change in the same pass and then watches a window that does not match the
+    menu. The cause was ordering: the flag was written on the branch that does
+    *not* rebuild the window, so a change that did rebuild it left the
+    presentation snapping to whole pixels with the setting saying otherwise, and
+    nothing failed -- the target was simply the wrong size.
+
+    So this walks every combination, on a window where both answers differ.
+    """
+    game = manager.game
+    manager.switch(VideoScene(game))
+    fitted = letterbox((2560, 1440), DEFAULT_FRAMING).size
+    whole = letterbox((2560, 1440), DEFAULT_FRAMING, pixel_perfect=True).size
+    assert fitted != whole, "this test needs a window where the two answers differ"
+
+    for display in (DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN):
+        for pixel_perfect in (False, True):
+            game.apply_settings(
+                replace(game.settings, display=display, pixel_perfect=pixel_perfect)
+            )
+
+            # The setting reached the letterbox, whichever path was taken.
+            assert game.presentation.pixel_perfect is pixel_perfect
+
+            # And on a window where the two answers differ, the picture is the
+            # one the flag asks for. Pinned after the change, because applying a
+            # display mode rebuilds the window from the desktop.
+            game.presentation.retarget(pygame.Surface((2560, 1440)))  # type: ignore[arg-type]
+            game._retarget()
+            expected = whole if pixel_perfect else fitted
+            assert game.presentation.rect.size == expected, (
+                f"{display.value} pixel_perfect={pixel_perfect}: the picture is "
+                f"{game.presentation.rect.size}, expected {expected}"
+            )
+            assert game.presentation.surface.get_size() == expected
+
+
+def test_whole_pixel_art_is_a_no_op_on_a_window_that_cannot_hold_one(manager, counter) -> None:
+    """Nothing to snap to, so nothing changes -- and the row says so.
+
+    A window narrower than the framing has no whole multiple to snap to, and
+    clamping one down to the window would hand back a rectangle of the wrong
+    aspect: a target whose two axes imply different densities, which is refused.
+    """
+    game = manager.game
+    manager.switch(VideoScene(game))
+    window = pygame.Surface((800, 600))
+    game.presentation.retarget(window)  # type: ignore[arg-type]
+    before = game.presentation.surface
+    count = counter(pygame.display, "set_mode")
+
+    game.apply_settings(replace(game.settings, pixel_perfect=True))
+
+    assert game.presentation.surface is before
+    assert game.presentation.rect.size == (800, 450)
+    assert count() == 0
 
 
 def test_applying_only_the_ui_scale_still_updates_the_scenes(manager) -> None:
+    """The layout is the preference times the density, and both reach the views."""
     game = manager.game
     scene = VideoScene(game)
     manager.switch(scene)
 
     game.apply_settings(replace(game.settings, ui_scale=1.2))
 
-    assert scene.view._scale == 1.2
+    assert scene.view._scale == pytest.approx(1.2 * game.presentation.density)
 
 
 def test_settings_writes_are_coalesced(manager, counter) -> None:

@@ -20,13 +20,16 @@ if TYPE_CHECKING:
 class GameOverScene(Scene):
     TITLE = "GAME OVER"
 
+    #: The world stops; see ``Scene.halts_simulation`` for why saying so
+    #: is not the same as simply not updating.
+    halts_simulation = True
+
     def __init__(self, game: Game, level_id: int = 0) -> None:
         super().__init__(game)
         self.level_id = level_id
         items = (MenuItem("retry", "Retry"), MenuItem("menu", "Back to menu"))
-        self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None
@@ -39,7 +42,7 @@ class GameOverScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         if routed_input.action is InputAction.UI_BACK:
-            # ESC / bouton B / clic droit : retour direct au menu.
+            # ESC / B button / right click: straight back to the menu.
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         action, _ = self.model.handle_routed(
@@ -51,10 +54,6 @@ class GameOverScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill((16, 8, 10))
         self.view.draw(surface, self.TITLE, self.model, top=240, title_color=TEXT_CRIT)
-        return None

@@ -87,7 +87,7 @@ class ControlsScene(Scene):
         self.model = MenuModel(
             items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
-        self.view = ControlsView(game.settings.ui_scale)
+        self.view: ControlsView = ControlsView(game.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
         self._capture: tuple[int, int] | None = None
         # The pointer's own cell, apart from the selection, for the same reason
@@ -151,31 +151,23 @@ class ControlsScene(Scene):
             # it lives here next to the bindings it affects. It is a toggle,
             # not a remappable slot: no cell to capture.
             result.append(self._invert_y_row())
-        result.append(
-            BindingRow(
-                "Reset to defaults",
-                BindingCell("Reset this section"),
-                BindingCell("Keyboard + gamepad"),
-                RowKind.BACK,
-            )
-        )
-        result.append(
-            BindingRow(
-                "Back",
-                BindingCell("Esc / right click"),
-                BindingCell("B / right click"),
-                RowKind.BACK,
-            )
-        )
+        result.append(BindingRow("Reset to defaults", kind=RowKind.OPTION))
+        result.append(BindingRow("Back", kind=RowKind.OPTION))
         return result
 
     def _invert_y_row(self) -> BindingRow:
+        """The toggle, with its state under the column it actually applies to.
+
+        Keyboard and mouse have no Y axis, so the state belongs in the gamepad
+        column: a state printed under "KEYBOARD / MOUSE" reads as a key bound
+        to a switch. The keyboard cell is left empty rather than filled, which
+        is also what tells the panel there is nothing to capture on this row.
+        """
         inverted = self.game.settings.bindings.menu.invert_y
         return BindingRow(
             "Invert stick Y",
-            BindingCell("normal" if not inverted else "inverted"),
-            BindingCell("left stick", muted=True),
-            RowKind.BACK,
+            gamepad=BindingCell("inverted" if inverted else "normal"),
+            kind=RowKind.OPTION,
         )
 
     def _keyboard_cell(self, row: int, spec: RebindSpec) -> BindingCell:
@@ -371,6 +363,16 @@ class ControlsScene(Scene):
         self._pending.clear()
         self._status = "Capture cancelled"
 
+    def _is_cancel_button(self, button: int) -> bool:
+        """Whether ``button`` is the pad's cancel, i.e. the way out of a capture.
+
+        Read from the bindings rather than hardcoded, because the player can
+        rebind it -- and a cancel that is itself rebindable is the one gesture
+        guaranteed to still mean "leave".
+        """
+        gamepad = self.game.settings.bindings.menu.gamepad_buttons
+        return button in (gamepad.get(InputAction.UI_BACK), gamepad.get(InputAction.UI_CANCEL))
+
     def _clear_capture(self) -> None:
         capture = self._capture
         if capture is None or capture[1] != KEYBOARD_COLUMN:
@@ -380,11 +382,17 @@ class ControlsScene(Scene):
 
     def _capture_key(self, key: int) -> None:
         capture = self._capture
-        if capture is None or capture[1] != KEYBOARD_COLUMN or key < 0:
+        if capture is None or key < 0:
             return
         if key == pygame.K_ESCAPE:
+            # Cancels from any column, not only the keyboard one. It used to be
+            # reachable only while capturing a key, so ESC did nothing when the
+            # armed cell was a pad button -- the same dead end, reached from the
+            # keyboard instead of the pad.
             self._ignore_routed = True
             self._cancel_capture()
+            return
+        if capture[1] != KEYBOARD_COLUMN:
             return
         spec = self.specs[capture[0]]
         if key == pygame.K_DELETE:
@@ -421,9 +429,29 @@ class ControlsScene(Scene):
         capture = self._capture
         if capture is None or button < 0:
             return
+        if self._is_cancel_button(button):
+            # The pad's way out, mirroring ESC on the keyboard.
+            #
+            # There was none at all: every button was a binding, so pressing
+            # anything just assigned it and the prompt stayed up. No button got
+            # you out, which is the worst kind of stuck -- the screen looks
+            # frozen rather than wrong, and the only escape was reaching for the
+            # keyboard.
+            #
+            # The cost is that the cancel button cannot itself be a binding,
+            # which is the same trade ESC already makes on the keyboard -- and
+            # it is only while it *is* the cancel button. Rebind cancel to
+            # another button and this one becomes free again, so nothing is lost
+            # permanently.
+            #
+            # ``_ignore_routed`` because the same physical press also routes as
+            # UI_BACK, which would pop the screen on top of cancelling.
+            self._ignore_routed = True
+            self._cancel_capture()
+            return
         if capture[1] == KEYBOARD_COLUMN:
-            # Un bouton physique est toujours un binding manette : on bascule
-            # dans la colonne gamepad sans exiger un aller-retour UI.
+            # A physical button is always a gamepad binding: switch columns
+            # without making the player route through the UI first.
             self._capture = (capture[0], GAMEPAD_COLUMN)
             self.selected_column = GAMEPAD_COLUMN
             capture = self._capture
@@ -678,11 +706,8 @@ class ControlsScene(Scene):
     def _index_text(value: object) -> str:
         return "/".join(str(code) for code in ControlsScene._codes(value))
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
-        self.view.set_scale(self.game.settings.ui_scale)
+    def draw(self, surface: pygame.Surface) -> None:
+        self.view.set_scale(self.game.ui_scale)
         title = "MENU CONTROLS" if self.section == self.MENU_SECTION else "GAMEPLAY CONTROLS"
         footers: tuple[str, ...] = ("↑↓ row · ←→ column · Enter capture · Esc/B back",)
         if self._status:
@@ -697,7 +722,6 @@ class ControlsScene(Scene):
             top=80,
             footers=footers,
         )
-        return None
 
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)

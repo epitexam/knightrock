@@ -20,6 +20,7 @@ from src.core.sprites import LevelExit, MovingPlatform, Sprite
 from src.data.provider import GameplayData
 from src.entities.enemies.factory import create_enemy, is_enemy_type
 from src.entities.player import Player
+from src.physics.spatial_hash import SpatialHash
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +32,29 @@ TileList = Sequence[tuple[int, int, pygame.Surface]]
 
 
 def _build_terrain(tiles: TileList, groups: SpriteGroups) -> None:
-    """Create solid terrain sprites from tile layer tiles."""
+    """Create solid terrain sprites from tile layer tiles.
+
+    Terrain goes in ``static_sprites`` (the frozen draw plane) and
+    ``collision_sprites`` (the physics plane), and deliberately not in
+    ``all_sprites``: see :class:`~src.core.sprite_groups.SpriteGroups` for why
+    the draw planes are split.
+    """
     for x, y, surf in tiles:
         Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
             surf=surf,
-            groups=(groups.all_sprites, groups.collision_sprites),
+            groups=(groups.static_sprites, groups.collision_sprites),
         )
 
 
 def _build_decor(tiles: TileList, groups: SpriteGroups, *, foreground: bool) -> None:
-    """Create decorative sprites from tile layer tiles."""
-    target = groups.fg_sprites if foreground else groups.all_sprites
+    """Create decorative sprites from tile layer tiles.
+
+    Foreground decor is its own plane because it draws last; background decor
+    is part of the frozen plane the terrain belongs to, and keeps the Tiled
+    layer order that decides which surface covers which.
+    """
+    target = groups.fg_sprites if foreground else groups.static_sprites
     for x, y, surf in tiles:
         Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
@@ -62,7 +74,7 @@ def _build_one_way_platforms(tiles: TileList, groups: SpriteGroups) -> None:
         sprite = Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
             surf=surf,
-            groups=(groups.all_sprites, groups.collision_sprites),
+            groups=(groups.static_sprites, groups.collision_sprites),
         )
         sprite.one_way = True
 
@@ -260,6 +272,15 @@ class WorldBuilder:
     def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
         self.level_data = level_data
         self.gameplay_data = gameplay_data
+        #: Shared collision grid handed to every entity this builder creates.
+        #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
+        #: born without it falls back to a linear scan of every collidable in
+        #: the level (correct, but a measured x2.4 on the whole simulation).
+        self.spatial_hash: SpatialHash | None = None
+
+    def bind_spatial_hash(self, spatial_hash: SpatialHash) -> None:
+        """Adopt the level's collision grid for the entities about to be built."""
+        self.spatial_hash = spatial_hash
 
     def build(self, groups: SpriteGroups, input_manager: InputManager) -> Player:
         """
@@ -303,6 +324,7 @@ class WorldBuilder:
                         groups.moving_platforms,
                         input_manager,
                         config=config,
+                        spatial_hash=self.spatial_hash,
                     )
                     groups.combat_sprites.add(player)
                     groups.entity_sprites.add(player)
@@ -329,6 +351,7 @@ class WorldBuilder:
                 collision_sprites=groups.collision_sprites,
                 player_reference=player,
                 config=config,
+                spatial_hash=self.spatial_hash,
             )
             groups.combat_sprites.add(entity)
             groups.entity_sprites.add(entity)

@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 class VictoryScene(Scene):
     TITLE = "VICTORY"
 
+    #: The world stops; see ``Scene.halts_simulation`` for why saying so
+    #: is not the same as simply not updating.
+    halts_simulation = True
+
     def __init__(self, game: Game, level_id: int) -> None:
         super().__init__(game)
         self.level_id = level_id
@@ -31,7 +35,7 @@ class VictoryScene(Scene):
                 MenuItem("menu", "Main menu"),
             )
         )
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None
@@ -41,8 +45,8 @@ class VictoryScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         if routed_input.action is InputAction.UI_CANCEL:
-            # Bouton B (manette) = retour menu, comme ESC / clic droit.
-            # (device_removed = manette débranchée : on retourne au menu aussi.)
+            # B button (gamepad) = back to menu, same as ESC / right click.
+            # (device_removed = gamepad unplugged: also returns to the menu.)
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         action, _ = self.model.handle_routed(
@@ -56,10 +60,6 @@ class VictoryScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
         return action
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill((12, 20, 14))
         self.view.draw(surface, self.TITLE, self.model, top=190, title_color=TEXT_OK)
-        return None

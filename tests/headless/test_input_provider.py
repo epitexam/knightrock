@@ -1,6 +1,7 @@
 import pygame
 import pytest
 
+from src.core.input.event_router import EventRouter
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider, resolve_move_axis
@@ -140,3 +141,43 @@ def test_disconnect_and_reassign_joystick(monkeypatch: pytest.MonkeyPatch) -> No
     provider.reassign_joystick({replacement.get_instance_id(): replacement})  # type: ignore[dict-item]
     replacement.axes[0] = 1.0
     assert provider.poll().move_axis == 1.0
+
+
+@pytest.mark.parametrize(
+    ("hat", "menu_action", "crouching"),
+    [
+        ((0, 1), InputAction.UI_UP, False),
+        ((0, -1), InputAction.UI_DOWN, True),
+        ((-1, 0), InputAction.UI_LEFT, False),
+        ((1, 0), InputAction.UI_RIGHT, False),
+    ],
+)
+def test_the_menu_and_the_game_read_one_hat_the_same_way(
+    monkeypatch: pytest.MonkeyPatch,
+    hat: tuple[int, int],
+    menu_action: InputAction,
+    crouching: bool,
+) -> None:
+    """One D-pad, one meaning: the menu and the simulation cannot disagree.
+
+    A hat is a direction, not a measurement, so pygame reports it the other way
+    round from an axis: ``(0, 1)`` is **up** (``SDL_HAT_UP``), while a stick
+    pushed up reads negative. Both halves of the input layer read the same hat,
+    so the vertical case needs each of them to say which convention it uses --
+    and each of them has now been wrong once, in opposite directions, with a
+    test that agreed with the bug rather than with the controller.
+
+    This is the assertion that has no such hole: it feeds one hat value to the
+    gameplay poll and to the menu router and asks for the same direction out of
+    both. A shared endpoint could not tell a correct pair from a consistently
+    inverted one; a disagreement between two readers of the same wire can.
+    """
+    provider, joystick = _provider(monkeypatch)
+    router = EventRouter()
+    joystick.hat = hat
+
+    routed = router.route(pygame.event.Event(pygame.JOYHATMOTION, instance_id=1, hat=0, value=hat))
+    polled = provider.poll()
+
+    assert routed is not None and routed.action is menu_action
+    assert (InputAction.MOVE_DOWN in polled.held_actions) is crouching

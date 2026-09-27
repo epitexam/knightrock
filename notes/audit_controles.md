@@ -196,12 +196,14 @@ class GameplayBindings:
     keyboard_combos: Mapping[InputAction, tuple[int, ...]]
     gamepad_combos: Mapping[InputAction, tuple[int, ...]]
 
+
 @dataclass(frozen=True)
 class MenuBindings:
     keyboard: Mapping[InputAction, int]
     gamepad_buttons: Mapping[InputAction, int]
     gamepad_hats: Mapping[InputAction, int]
     gamepad_axes: Mapping[InputAction, int]
+
 
 @dataclass(frozen=True)
 class InputBindings:

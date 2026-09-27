@@ -2,33 +2,83 @@ import math
 
 import pygame
 
-from src.core.settings import CameraShake, GameplayCamera
+from src.core.display.framing import DEFAULT_FRAMING, Framing
+from src.core.settings import CameraShake
+
+WorldRect = pygame.FRect | pygame.Rect
+"""A world-space rectangle, whole-pixel or fractional.
+
+Both, because the sprites being transformed carry a
+:class:`pygame.Rect` -- ``Sprite.rect`` is an integer one -- while the
+simulation produces :class:`pygame.FRect` from interpolated positions. Every
+method on :class:`Camera` only ever reads ``x``, ``y``, ``width`` and
+``height`` from its argument, so the distinction is not one any of them can
+observe. Naming the union once is what keeps the annotations honest instead
+of forcing every call site to convert a rect it only reads.
+"""
+
+
+def checked_density(density: float) -> float:
+    """The pixel density, or refused.
+
+    One implementation for everything that has to agree on the number: the
+    viewport that builds the surface and the camera that maps rectangles onto
+    it. A density below 1 is refused rather than clamped -- clamping to 1 is
+    precisely the images-and-rectangles disagreement a render target is
+    supposed to make impossible, and a window narrower than the framing is a
+    legitimate answer, not an error to be hidden.
+    """
+    if density != density or density <= 0.0:  # NaN never compares equal to itself
+        raise ValueError(f"The pixel density must be a positive number, got {density!r}")
+    return density
 
 
 class Camera:
-    """Scrollable world camera with a fixed gameplay zoom.
+    """Scrollable world camera: a translation and a magnification.
 
-    The camera keeps two distinct notions:
+    The camera used to scale as well as translate, and the scale was the
+    window's business -- it was built from the window's pixel size and a zoom
+    constant, so the slice of world a player saw was a free variable of a video
+    setting. ``Framing`` fixed that slice, which left nothing for a zoom to do:
+    the camera only says where in the world the frame is looking, and how large
+    a world unit is drawn is the render target's business.
 
-    - the *display* size (the window), which is the canvas everything is
-      painted on;
-    - the *world viewport* size, which is the visible slice of the world
-      once the zoom is taken into account.
+    What changed is where that number comes from. It used to be a constant
+    divided by the *window* size, which made the visible world a function of a
+    video setting; it is now the density read back off the target
+    (:meth:`for_target`), which the window cannot contradict because the target
+    *is* the window.
 
-    ``apply()`` maps a world rectangle to screen coordinates by translating
-    it and then scaling it by ``zoom``; ``is_visible()`` culls against the
-    zoomed world viewport. Every consumer of the camera (sprites, health
-    bars, debug overlays, afterimages) therefore follows the zoom without any
-    extra work, and a higher zoom shows *less* of the world.
+    The mistake worth recording, because this branch shipped it once: making the
+    camera a *pure translation* looks right -- the magnification belongs to the
+    asset pipeline -- and it breaks the frame, because the magnification applies
+    to the rectangles as much as to the images. At a 2x target a 64-unit sprite
+    was scaled to 128px and then blitted into a 64px rect, and ``pygame.blit``
+    **resamples the source to fit the destination** without saying so, so the
+    world was drawn at half the density the framing claims and occupied a
+    quarter of the frame. Pure translation is only correct when one world unit
+    is one target pixel, which is a density of 1 and nothing else.
 
-    ``zoom = 1`` keeps the previous de-zoomed behaviour.
+    That is also why the density is a float here and why :meth:`scaled_size`
+    exists. A density of 1.889 means a 64-unit sprite is 121px, and a 121px
+    image blitted into a 120.9px rect is resampled by ``pygame.blit`` -- the
+    same failure, one rounding step later. So the rounding lives in exactly one
+    method, and both the image and the rect it is blitted into are asked for it.
+
+    ``apply()`` maps a world rectangle to exact target coordinates;
+    ``apply_snapped()`` maps it to a whole-pixel rectangle whose size is
+    :meth:`scaled_size`, which is what everything that blits an image uses.
+    Every consumer (sprites, health bars, debug overlays, afterimages) goes
+    through those two, so none of them can drift from the others.
     """
 
-    def __init__(self, width: int, height: int, zoom: float = GameplayCamera.ZOOM):
+    def __init__(self, framing: Framing = DEFAULT_FRAMING, density: float = 1.0):
         self.offset = pygame.math.Vector2(0, 0)
-        self.width = width
-        self.height = height
-        self.zoom = self._valid_zoom(zoom)
+        self.framing = framing
+        #: Target pixels per world unit. The target is a letterbox rectangle for
+        #: ``framing``, so this is not a free parameter: it is read back off the
+        #: target rather than configured, by :meth:`for_target`.
+        self.density = checked_density(density)
         self.world_width = 0.0
         self.world_height = 0.0
         self.trauma = 0.0
@@ -42,6 +92,60 @@ class Camera:
         #: Offset the camera had when the last tick finished, so the draw can
         #: show it partway towards the current one. See begin_frame.
         self._previous_offset = pygame.math.Vector2(0.0, 0.0)
+
+    @classmethod
+    def for_target(cls, target: pygame.Surface, framing: Framing = DEFAULT_FRAMING) -> Camera:
+        """A camera whose density is read off the render target.
+
+        Deriving it from the surface it has to draw into is what keeps the two
+        from disagreeing: a density passed alongside a target that implies
+        another one produces a frame whose rectangles and images do not match,
+        and nothing about that is visible until the level looks wrong.
+        """
+        from src.core.display.letterbox import density_for
+
+        return cls(framing, density_for(target.get_size(), framing))
+
+    def set_target(self, target: pygame.Surface) -> None:
+        """Adopt a new render target and re-read the density from it.
+
+        The camera's offset, shake and framing are untouched: a window resize
+        is a sharpness decision, not a change of what is being looked at. Only
+        the density moves, and it has to move here rather than in the renderer --
+        a renderer holding its own copy of the number is how the images and the
+        rectangles end up scaled differently.
+        """
+        self.density = Camera.for_target(target, self.framing).density
+        self._viewport = None
+
+    def scaled_size(self, size: tuple[float, float]) -> tuple[int, int]:
+        """A world size in whole target pixels.
+
+        The one rounding rule in the rendering path. A sprite's image is
+        magnified to this size and blitted into a rectangle of this size, so
+        ``pygame.blit`` is never asked to fit one into the other and never
+        resamples behind our back. Anything that rounds a size for a blit
+        without asking here is the bug this method exists to make impossible.
+
+        **Up**, not to the nearest. That is not a preference, it is what makes
+        :meth:`apply_snapped` gap-free: the position there is rounded *down*, and
+        the difference between two rounded positions is at least ``floor(step)``
+        and at most ``ceil(step)``. A size of ``round(step)`` is smaller than
+        ``ceil(step)`` whenever the step's fraction is under a half, so a run of
+        tiles drifts apart by a pixel every few tiles and a line of background
+        opens through the terrain. Measured at density 0.5 with a 138.5-unit
+        sprite: step 69.25, size 69, and the neighbour started one pixel after
+        the previous one ended. With ``ceil`` the neighbour can at worst overlap
+        by a pixel, which is invisible, against a gap, which is not.
+
+        Takes floats because a world rect is fractional -- a tile is 64 units but
+        a player's hurtbox is not -- and rounds both axes the same way, so a
+        rectangle and the image drawn into it always agree.
+        """
+        return (
+            max(1, math.ceil(size[0] * self.density)),
+            max(1, math.ceil(size[1] * self.density)),
+        )
 
     def begin_frame(self, alpha: float = 1.0) -> None:
         """Recompute the per-frame transform, once for the whole draw pass.
@@ -63,7 +167,7 @@ class Camera:
         aligned for free, since the overlay maps through this same transform.
 
         Any code that mutates the camera between frames must call this, or go
-        through ``follow``/``set_viewport_size``/``set_zoom`` which do.
+        through ``follow`` which does.
         """
         self._shake = self.shake_offset()
         alpha = min(max(alpha, 0.0), 1.0)
@@ -77,36 +181,31 @@ class Camera:
         if self._viewport is None:
             self.begin_frame()
 
-    @staticmethod
-    def _valid_zoom(zoom: float) -> float:
-        if zoom <= 0.0:
-            raise ValueError("Camera zoom must be strictly positive")
-        return zoom
+    @property
+    def viewport(self) -> pygame.FRect:
+        """The world rectangle the frame is looking at.
+
+        Read by the spatial cull, which needs the same rectangle
+        :meth:`is_visible` tests against. Exposed as a property so the frame
+        is resolved through :meth:`begin_frame` like every other consumer,
+        rather than by a caller reaching for ``_viewport``.
+        """
+        self._ensure_frame()
+        assert self._viewport is not None
+        return self._viewport
 
     @property
     def viewport_width(self) -> float:
-        """Visible world width, i.e. the display width divided by the zoom."""
-        return self.width / self.zoom
+        """Visible world width: the framing, which does not depend on the window."""
+        return self.framing.width
 
     @property
     def viewport_height(self) -> float:
-        """Visible world height, i.e. the display height divided by the zoom."""
-        return self.height / self.zoom
-
-    def set_zoom(self, zoom: float) -> None:
-        """Change the framing and re-clamp so the viewport stays in world."""
-        self.zoom = self._valid_zoom(zoom)
-        self._clamp_to_world()
-        self._viewport = None
-
-    def set_viewport_size(self, width: int, height: int) -> None:
-        """Update the display size (a resolution or a window change)."""
-        self.width = width
-        self.height = height
-        self._clamp_to_world()
-        self._viewport = None
+        """Visible world height: the framing, which does not depend on the window."""
+        return self.framing.height
 
     def set_world_size(self, world_width: float, world_height: float) -> None:
+        """Tell the camera how big the level is, so it can clamp against it."""
         self.world_width = world_width
         self.world_height = world_height
 
@@ -152,58 +251,59 @@ class Camera:
         else:
             self.offset.y = -(view_h - self.world_height) / 2.0
 
-    def apply(self, rect: pygame.FRect) -> pygame.FRect:
-        """Map a world rectangle to screen coordinates (translate + zoom)."""
+    def apply(self, rect: WorldRect) -> pygame.FRect:
+        """Map a world rectangle to exact target coordinates.
+
+        Fractional on purpose: this is geometry, used for interpolation and for
+        anything that wants the true bounds. It is **not** what a blit wants --
+        see :meth:`apply_snapped`.
+        """
         self._ensure_frame()
-        zoom = self.zoom
+        density = self.density
         return pygame.FRect(
-            (rect.x + self._shift) * zoom,
-            (rect.y + self._shift_y) * zoom,
-            rect.width * zoom,
-            rect.height * zoom,
+            (rect.x + self._shift) * density,
+            (rect.y + self._shift_y) * density,
+            rect.width * density,
+            rect.height * density,
         )
 
-    def apply_covering(self, rect: pygame.FRect) -> pygame.Rect:
-        """Screen rectangle for a world rect, rounded *outward* to cover it.
+    def apply_snapped(self, rect: WorldRect) -> pygame.Rect:
+        """Map a world rectangle to the whole-pixel rect an image is blitted into.
 
-        ``apply`` returns exact fractional bounds, and ``pygame.Rect`` built
-        from those truncates them. Truncation always rounds a rectangle *in*:
-        the world tile at the far edge of a level maps to x 1427.5..1440.0 on
-        a 1440-wide screen, and comes out as ``Rect(1427, .., 12)``, which
-        stops at 1438. The last column of the window is then never painted by
-        anything and keeps whatever the background fill left there -- a
-        one-pixel line of sky down the right edge of the screen, and another
-        along the bottom. It only shows once the camera is pushed against the
-        clamp, which in practice means when the player dashes into a corner of
-        the map.
+        Two rules, and both of them are load-bearing:
 
-        Rounding the near edges down and the far edges up keeps the true
-        extent: the rect grows by at most a pixel, so neighbours may overlap
-        by a pixel instead of leaving a gap between them, and no pixel the
-        caller meant to cover is dropped.
+        - the **size** is :meth:`scaled_size`, the same number the magnified
+          image was built with, so ``pygame.blit`` has nothing to resample. A
+          destination one pixel off the source is enough for it to rebuild the
+          image, silently, every frame.
+        - the **position** is the exact one rounded *down*. Neighbouring tiles
+          then either share a pixel column or overlap by one, and never leave a
+          gap: the rounded positions of ``n`` and ``n+1`` differ by at least
+          ``floor(size)`` and the size is ``round(size)``, which is never less.
 
-        The far edges are taken from ``apply``'s own result rather than
-        recomputed from the world rect. ``(x + w) * z`` and ``x * z + w * z``
-        disagree in the last bit, and ``ceil`` of a value one bit below the
-        true one lands a whole pixel short, which is the very bug this
-        replaces.
+        Rounding the position outward instead -- the old ``apply_covering`` --
+        grew each rectangle to ``ceil`` of its true bounds, which at a fractional
+        density no longer matched the image and reintroduced the resampling this
+        is here to prevent.
         """
         self._ensure_frame()
         exact = self.apply(rect)
-        left = math.floor(exact.x)
-        top = math.floor(exact.y)
-        right = math.ceil(exact.right)
-        bottom = math.ceil(exact.bottom)
-        return pygame.Rect(left, top, right - left, bottom - top)
+        width, height = self.scaled_size((rect.width, rect.height))
+        return pygame.Rect(math.floor(exact.x), math.floor(exact.y), width, height)
 
-    def is_visible(self, rect: pygame.FRect) -> bool:
-        """Check if a world rectangle intersects the zoomed camera viewport.
+    def is_visible(self, rect: WorldRect) -> bool:
+        """Check if a world rectangle intersects the framing rect.
+
+        Accepts an integer :class:`pygame.Rect` as well as an
+        :class:`pygame.FRect` because the sprites being culled carry one:
+        ``Sprite.rect`` is either, and the only thing asked of the argument is
+        an intersection.
 
         Args:
             rect: The world-space rectangle to check.
 
         Returns:
-            True if the rectangle intersects the camera viewport, False otherwise.
+            True if the rectangle intersects the framing, False otherwise.
         """
         self._ensure_frame()
         assert self._viewport is not None

@@ -20,13 +20,25 @@ def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | N
     ``get_nearby`` returns a superset of the real blockers (it inflates the
     query) but never omits one, and the caller only asks *whether* something
     blocks, so the extra candidates cost nothing and the order is irrelevant.
+
+    A platform is never one of its own blockers.  ``MovingPlatform`` joins
+    ``collision_sprites`` so entities collide with it, and the grid indexes
+    that same group — so without the filter below a platform is handed back by
+    its own query, always overlaps the candidate it just stepped into, and
+    reads as permanently blocked: the pad refuses to move at all.  The bare
+    scan below has always said so with ``not hasattr(s, "waypoints")``; the
+    grid path has to say it the same way, or the two disagree about where a
+    platform is allowed to stop.
     """
     static_sprites = getattr(platform, "collision_sprites", None)
     if not static_sprites:
         return None
     spatial_hash = getattr(platform, "spatial_hash", None)
     if spatial_hash is not None:
-        return cast("Iterable[Any]", spatial_hash.get_nearby(candidate))
+        return cast(
+            "Iterable[Any]",
+            (s for s in spatial_hash.get_nearby(candidate) if s is not platform),
+        )
     return (
         s
         for s in static_sprites

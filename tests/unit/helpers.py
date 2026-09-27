@@ -9,6 +9,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pygame
 from pygame.sprite import Group
@@ -25,6 +26,9 @@ from src.combat.knockback import KnockbackConfig
 from src.core.input.input_state import InputState
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
+
+if TYPE_CHECKING:
+    from src.ui.ui_manager import UIManager
 
 
 def make_phase(
@@ -261,5 +265,75 @@ __all__ = [
     "make_active_attacker",
     "make_attack",
     "make_entity",
+    "make_overlay",
     "make_phase",
 ]
+
+
+def make_overlay(surface: pygame.Surface, density: float = 1.0) -> UIManager:
+    """The real interface, for a test that needs one.
+
+    `Renderer` takes its overlay by injection and defaults to drawing nothing
+    (`src/core/rendering/overlay.py`), so a test that asserts on health bars,
+    the HUD or a debug panel has to say it wants the interface rather than
+    getting it as a side effect of constructing a renderer.
+    """
+    from src.ui.ui_manager import UIManager
+
+    return UIManager(surface, density)
+
+
+def overlay_entity(name: str = "Goblin", **overrides) -> SimpleNamespace:
+    """A minimal sprite the world debug overlay can draw and label.
+
+    The overlay reads everything off ``getattr``, so its tests need an object
+    that is *nearly* a sprite rather than a real one -- a ``SimpleNamespace``
+    with a class name, because ``display_name`` falls back to the class name
+    and the fallback is itself worth testing.
+
+    Three test modules need this, and the overlay's readers are unforgiving
+    about a missing field: a factory that quietly omits ``hurtbox_tags`` makes
+    the next test fail somewhere unrelated. The defaults are therefore the
+    complete field set, and a test that wants one absent deletes it.
+    """
+    from pygame.math import Vector2
+
+    base = {
+        "hitbox": pygame.FRect(100, 100, 40, 48),
+        "hurtbox": pygame.FRect(98, 98, 44, 52),
+        "hurtboxes": (pygame.FRect(98, 98, 44, 52),),
+        "hurtbox_zone_names": ("",),
+        "hurtbox_mult": (1.0,),
+        "hurtbox_tags": ((),),
+        "velocity": Vector2(0, 0),
+        "faction": "enemy",
+        "health": 75.0,
+        "max_health": 100.0,
+        "stagger_timer": 0.0,
+        "otg_timer": 0.0,
+        "gravity_scale": 1.0,
+        "on_surface": {"floor": True, "left": False, "right": False},
+        "state_machine": SimpleNamespace(current_state_name="idle"),
+        "combat": SimpleNamespace(
+            state=SimpleNamespace(attack_name=None, sub_state=None, phase_index=0, frame_counter=0),
+            targets_hit=set(),
+        ),
+    }
+    base.update(overrides)
+    return type(name, (SimpleNamespace,), {})(**base)
+
+
+def lit_pixels(surface: pygame.Surface, step: int = 2) -> int:
+    """How many sampled pixels on ``surface`` are not black.
+
+    A shape either drew or it did not, and counting is the probe that says so
+    without depending on which colour it was or exactly where. Sampled on a
+    grid because a full scan of a 1024x768 surface is 786k ``get_at`` calls.
+    """
+    black = (0, 0, 0)
+    return sum(
+        1
+        for x in range(0, surface.get_width(), step)
+        for y in range(0, surface.get_height(), step)
+        if surface.get_at((x, y))[:3] != black
+    )

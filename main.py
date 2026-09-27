@@ -2,6 +2,7 @@
 
 import logging.config
 import os
+import sys
 
 from src.core.game import Game
 
@@ -42,5 +43,24 @@ def main_debug() -> None:
     Game().run()
 
 
-if __name__ == "__main__":
+def _run_from_argv(argv: list[str]) -> None:
+    """Entry point for ``python main.py``.
+
+    ``--debug`` exists because the overlay used to be reachable only by calling
+    ``main_debug()`` from a REPL, and nothing said so. So ``python main.py``
+    quietly started a game with no panels and no F-keys, which reads as the
+    feature being broken rather than as a flag nobody was told about.
+    """
+    if "--debug" in argv[1:]:
+        main_debug()
+        return
+    if any(arg in ("-h", "--help") for arg in argv[1:]):
+        print(__doc__)
+        print("usage: python main.py [--debug]")
+        print("  --debug   draw the debug panels and enable F1-F11")
+        return
     main()
+
+
+if __name__ == "__main__":
+    _run_from_argv(sys.argv)

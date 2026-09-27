@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.core.display.framing import Framing
 from src.core.fx import (
     DASH_BURST_COUNT,
     MAX_FX_SPRITES,
@@ -109,7 +110,7 @@ def _dashing_player() -> DashSprite:
 def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     surface = pygame.Surface((64, 64))
     # zoom=1.0: this test measures the ghost in world-sized pixels.
-    camera = Camera(64, 64, zoom=1.0)
+    camera = Camera(Framing(float(64), float(64)))
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
@@ -119,14 +120,13 @@ def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     groups.all_sprites.add(sprite)
     groups.entity_sprites.add(sprite)
 
-    first = renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
+    renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
     assert len(renderer._ghosts) == 1
 
     for _ in range(12):
         renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
     # Steady state: old ghosts expire as new ones spawn, never above the cap.
     assert 1 <= len(renderer._ghosts) <= Afterimage.MAX
-    assert first is not None
 
     # Dash over: the whole trail fades out, nothing respawns.
     sprite.state_machine = SimpleNamespace(current_state_name="run")
@@ -136,7 +136,7 @@ def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
 
 def test_idle_player_spawns_no_ghosts() -> None:
     surface = pygame.Surface((64, 64))
-    camera = Camera(64, 64, zoom=1.0)
+    camera = Camera(Framing(float(64), float(64)))
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
@@ -300,7 +300,7 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
 def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     surface = pygame.Surface((64, 64))
     # zoom=1.0: this test asserts world-sized ghost geometry.
-    camera = Camera(64, 64, zoom=1.0)
+    camera = Camera(Framing(float(64), float(64)))
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()

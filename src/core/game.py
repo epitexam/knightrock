@@ -1,8 +1,8 @@
 import logging
 import os
-import sys
 import traceback
 from pathlib import Path
+from time import perf_counter
 
 import pygame
 from pygame.joystick import JoystickType
@@ -12,12 +12,19 @@ from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import (
+    MAX_FRAME_LIMIT,
     SettingsStore,
     UserSettings,
 )
 from src.core import fx
 from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
+from src.core.display import detection
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import density_for
+from src.core.display.mode import DisplayMode
+from src.core.display.presentation import Presentation
+from src.core.display.stage import Stage, WindowSpec
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -25,6 +32,7 @@ from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
 from src.data.provider import GameplayData, load_gameplay_data
+from src.ui.ui_manager import UIManager
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +46,18 @@ logger = logging.getLogger(__name__)
 #: for, with vsync on and nothing on screen to say so. The multiplier is
 #: generous on purpose, clearing any real refresh rate by a wide margin, so
 #: the only thing it ever catches is a present that does not block at all.
-DISPLAY_SAFETY_CEILING_FPS = Display.FPS * 4
+DISPLAY_SAFETY_CEILING_FPS = max(Display.FPS * 4, MAX_FRAME_LIMIT)
+
+#: SDL environment set before ``pygame.init()``.
+#:
+#: High-DPI has to be requested here: SDL reads it when the video subsystem
+#: comes up. pygame-ce 2.5.7 has no ``HIDPI`` flag, so this variable is the
+#: whole mechanism. With a scaled desktop and no hint, SDL matches the pixel
+#: size to the window size and the compositor resamples the result.
+SDL_HINTS = {
+    "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS": "1",
+    "SDL_VIDEO_HIDPI": "1",
+}
 
 
 class Game:
@@ -46,15 +65,17 @@ class Game:
 
     The loop itself no longer owns gameplay state (audit F8.1, Phase 2
     #4): :class:`SceneManager` holds Menu/Play/Pause/GameOver scenes and
-    the loop simply feeds it fixed ticks, events, and presents the dirty
-    rects returned by the active scene.  Gameplay systems notify the app
+    the loop simply feeds it fixed ticks, draws the stack into the render
+    target and presents it once.  Gameplay systems notify the app
     layer (UI, save, audio) through the synchronous :class:`EventBus`
     (Phase 2 #5) — subscribers must never mutate the simulation.
     """
 
     def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
-        os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
-        self.display_surface: pygame.Surface | None = None
+        for name, value in SDL_HINTS.items():
+            os.environ[name] = value
+        self.stage: Stage | None = None
+        self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
         self.settings = self.settings_store.load()
@@ -83,10 +104,18 @@ class Game:
         self.audio.attach(self.events)
         self._subscribe_notifications()
         self.scene_manager = SceneManager(self)
+        #: The interface drawn over the world, built on the first level.
+        #: See :meth:`world_overlay`.
+        self.ui: UIManager | None = None
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
         self._settings_dirty = False
+        #: A transient message for the player, with the seconds left on it.
+        #: Empty when there is nothing to say. The only user-visible feedback
+        #: the loop owns, which is why there is exactly one.
+        self._notice: tuple[str, ...] = ()
+        self._notice_ttl = 0.0
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -119,7 +148,8 @@ class Game:
         # must still reach the menu (audit UI, lot 5).
         self.audio.initialize()
 
-        self.display_surface = self._configure_display()
+        self._resolve_display_settings()
+        self.initialize_display()
         pygame.display.set_caption(Display.TITLE)
 
         self.clock = pygame.time.Clock()
@@ -131,14 +161,135 @@ class Game:
         self.clock.tick(0)
         self.scene_manager.switch(MenuScene(self))
 
-    def apply_settings(self, settings: UserSettings) -> None:
-        """Apply new settings, recreating the window only when it must change.
+    @property
+    def surface(self) -> pygame.Surface | None:
+        """The window's surface. For window-level work only.
 
-        ``set_mode`` tears the window down and invalidates every surface
-        ``AssetLibrary`` has converted, so calling it for a pure UI scale change
-        caused a visible flicker and a full re-conversion of the art on every
-        step of the scale slider. VSync is part of the signature because it is
-        a ``set_mode`` argument and would otherwise only apply on restart.
+        Nothing is *drawn* here any more: the game draws into
+        ``self.presentation.surface``. Reaching for this to draw is how the
+        window and the visible world got tangled in the first place.
+        """
+        return None if self.stage is None else self.stage.surface
+
+    @property
+    def ui_scale(self) -> float:
+        """The scale the interface is laid out at.
+
+        The player's own preference multiplied by the target's pixel density,
+        and the multiplication is the whole point: the layout is written once,
+        in the units of a 1152x648 picture, and drawn at whatever density the
+        window turned out to have. The alternative -- laying the interface out
+        in target pixels -- makes every font size and every padding a thing that
+        has to be right for every window, which is the mistake a fixed render
+        target was supposed to prevent.
+        """
+        if self.presentation is None:
+            return self.settings.ui_scale
+        return self.settings.ui_scale * self.presentation.density
+
+    def _draw_target(self) -> pygame.Surface:
+        """The surface every scene draws into."""
+        assert self.presentation is not None, "the display is not initialized"
+        return self.presentation.surface
+
+    def world_overlay(self, target: pygame.Surface) -> UIManager:
+        """The interface drawn over the world, built once and kept.
+
+        Owned here rather than by the renderer, for two reasons. The layering
+        one: the application layer is where ``core`` and ``ui`` meet, and
+        ``core`` importing ``ui`` is the dependency
+        :mod:`src.core.rendering.overlay` exists to remove. The practical one:
+        a level transition used to build a second interface and throw the
+        first one away, which threw away every font it had cached, and font
+        scanning is what those caches are for.
+
+        The density is read with the same rule the camera uses -- the target's
+        own, via ``density_for`` -- rather than measured a second way here.
+        """
+        if self.ui is None:
+            self.ui = UIManager(target, density_for(target.get_size(), DEFAULT_FRAMING))
+        return self.ui
+
+    def _window_spec(self) -> WindowSpec:
+        """The window the settings currently ask for."""
+        return WindowSpec(mode=self.settings.display, vsync=self.settings.vsync)
+
+    def _resolve_display_settings(self) -> None:
+        """Turn ``AUTO`` into a mode the window can be built from.
+
+        The only resolution left at launch, and it is a *mode*, not a size: how
+        to occupy a screen whose dimensions the game does not know. It is
+        re-evaluated every launch, which is what ``AUTO`` is for, and it is not
+        written back -- the file keeps saying "auto" so the next launch on
+        another machine answers again.
+        """
+        if self.settings.display is not DisplayMode.AUTO:
+            return
+        self.settings = self.settings.with_video(
+            display=detection.auto_display_mode(DEFAULT_FRAMING, detection.desktop_size())
+        )
+
+    def initialize_display(self) -> None:
+        """Build the window and the presentation, once.
+
+        Public because the headless fixtures need the same construction the loop
+        does, rather than half of it.
+        """
+        desktop = detection.desktop_size()
+        self.stage = Stage(self._window_spec(), desktop)
+        # The window exists, so the picture can be drawn at its size: the target
+        # is the window's letterbox rectangle and the density is read back off
+        # it. Nothing here is chosen, and nothing here is stored.
+        self.presentation = Presentation(
+            self.stage.surface, DEFAULT_FRAMING, pixel_perfect=self.settings.pixel_perfect
+        )
+
+    def _retarget(self) -> None:
+        """Re-point everything at the render target after it changed size.
+
+        The single cascade for "the window is a different size now", and it is
+        reached from the two things that can cause one: a display setting
+        changing, and the player dragging the window. Both produce the same
+        three consequences -- a new surface to draw into, a new density for the
+        camera, a new interface scale -- and doing them in one place is what
+        keeps a resize from leaving one of the three behind.
+        """
+        assert self.presentation is not None
+        if not self.presentation.recompute():
+            return
+        # set_mode leaves every surface converted for the *previous* display
+        # format stale. AssetLibrary has no display to compare against, so it
+        # must be invalidated explicitly or the next frame blits through a
+        # software alpha path, then pays a full re-decode and re-conversion.
+        self._invalidate_assets()
+        self.scene_manager.set_surface(self.presentation.surface)
+        self.scene_manager.set_ui_scale(self.ui_scale)
+
+    def _rebuild_display(self) -> None:
+        """Recreate the window, then refit the picture to it.
+
+        The window is the only thing a display setting can replace, and the
+        picture follows it: the target is the window's letterbox rectangle, so
+        there is no separate "render target" setting left to keep in step.
+        """
+        desktop = detection.desktop_size()
+        assert self.stage is not None
+        assert self.presentation is not None
+        self.stage.rebuild(self._window_spec(), desktop)
+        self.presentation.retarget(self.stage.surface)
+        self._invalidate_assets()
+        self.scene_manager.set_surface(self.presentation.surface)
+        self.scene_manager.set_ui_scale(self.ui_scale)
+
+    def apply_settings(self, settings: UserSettings) -> None:
+        """Apply new settings, doing only what the change actually touches.
+
+        A display mode or a vsync flag changes the window, and therefore the
+        picture, because the picture *is* the window's size. ``pixel_perfect``
+        changes the letterbox, and therefore the target, without the window
+        moving at all. A frame limit touches neither. The interface scale goes
+        last, and always as the player's preference times the density -- which
+        is why it is not a number read straight out of the settings.
         """
         previous = self.settings
         self.settings = settings
@@ -146,17 +297,20 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
-        if self.display_surface is not None:
-            if self._mode_signature(previous) != self._mode_signature(settings):
-                self.display_surface = self._configure_display()
-                # set_mode leaves every surface converted for the *previous*
-                # display format stale. AssetLibrary has no display to compare
-                # against, so it must be invalidated explicitly or the next
-                # frame blits through a software alpha path, then pays a full
-                # re-decode and re-conversion of the art.
-                self._invalidate_assets()
-                self.scene_manager.set_display_surface(self.display_surface)
-            self.scene_manager.set_ui_scale(settings.ui_scale)
+        if self.stage is None or self.presentation is None:
+            return
+        # Before anything else, and unconditionally: the letterbox belongs to
+        # the presentation, and a rebuild reads it. Setting it only on the branch
+        # that does not touch the window is how the two drift apart -- a display
+        # change and a sharpness change applied together left the presentation
+        # snapping to whole pixels with the setting saying otherwise, which the
+        # acceptance run caught and nothing else did.
+        self.presentation.pixel_perfect = settings.pixel_perfect
+        if self._window_signature(previous) != self._window_signature(settings):
+            self._rebuild_display()
+        elif previous.pixel_perfect != settings.pixel_perfect:
+            self._retarget()
+        self.scene_manager.set_ui_scale(self.ui_scale)
 
     @staticmethod
     def _invalidate_assets() -> None:
@@ -170,18 +324,23 @@ class Game:
         fx.clear_frame_cache()
 
     @staticmethod
-    def _mode_signature(settings: UserSettings) -> tuple[int, int, bool, bool]:
-        """The settings that require a new ``pygame.display.set_mode`` call."""
-        return (settings.width, settings.height, settings.fullscreen, settings.vsync)
+    def _window_signature(settings: UserSettings) -> tuple[object, ...]:
+        """The settings that require a new ``pygame.display.set_mode`` call.
+
+        A mode and a vsync flag, and nothing else. Pixel-perfect art changes the
+        target without the window moving, the frame limit touches neither, and
+        the interface scale is a multiplier on a density the window already
+        decided.
+        """
+        return (settings.display, settings.vsync)
 
     def _persist_settings(self) -> None:
         """Queue the settings for a write, coalesced to one per frame.
 
-        ``SettingsStore.save`` re-reads, rewrites and atomically replaces the
-        JSON file, which blocked the frame on every keypress in the Video menu
-        and on every captured key during rebinding. Marking the state dirty and
-        flushing it from the loop keeps a burst of changes (holding a key on
-        the resolution row) down to a single write.
+        The write is a small file replaced atomically, and it used to block the
+        frame on every keypress in the Video menu and on every captured key
+        during rebinding. Marking the state dirty and flushing it from the loop
+        keeps a burst of changes down to a single write.
         """
         self._settings_dirty = True
 
@@ -192,11 +351,21 @@ class Game:
         the last tick a fraction of a step is always left over. That fraction
         is how far ahead of the simulation the picture is: 0 means the
         picture matches the last completed tick exactly, 1 that a whole tick
-        is already owed. Handing it to the renderer blends each sprite from
+        is already owed.         Handing it to the renderer blends each sprite from
         its last drawn position towards the one the next tick will write,
         which is what removes the judder of a fixed-step sim on a
         variable-rate display.
+
+        While a scene is holding the world still, the answer is 1 and not a
+        fraction. The leftover in the accumulator keeps being fed real time and
+        drained by ticks that do nothing, so the fraction wanders -- and with
+        no tick running there is nothing to close the gap the camera is
+        interpolating across, so every wandering fraction is drawn as motion.
+        The game visibly trembles behind the pause menu. 1 says the picture is
+        exactly where the simulation is, which is both true and still.
         """
+        if self.scene_manager.halts_simulation:
+            return 1.0
         return self._accumulator / Simulation.TIMESTEP
 
     def flush_settings(self) -> None:
@@ -210,38 +379,17 @@ class Game:
             logger.exception("Unable to persist the settings")
 
     def apply_bindings(self, bindings: InputBindings) -> None:
-        """Met à jour les bindings sans recréer l'affichage (rebinding en jeu).
+        """Update the bindings without rebuilding the window (in-game rebinding).
 
-        ``apply_settings`` reconstruit la fenêtre (échelle UI, plein écran…) :
-        inacceptable à chaque capture de touche de l'écran Contrôles. Ici on ne
-        persiste que les bindings et on réarme routeur + provider.
+        ``apply_settings`` rebuilds the window (UI scale, fullscreen...), which
+        is unacceptable on every key capture in the controls screen. This
+        persists the bindings and re-arms the router and provider only.
         """
         self.settings = self.settings.with_bindings(bindings)
         self.input_bindings = self.settings.bindings
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
-
-    def _configure_display(self) -> pygame.Surface:
-        """Create the window at the logical resolution chosen in the menu.
-
-        The window is deliberately **not** resizable: the selected resolution
-        is the stable gameplay viewport the camera culling and the level
-        streaming budget are computed against. A user drag would change that
-        viewport mid-run, so the only way to change it is the Video menu.
-
-        In fullscreen ``pygame.SCALED`` keeps the logical aspect ratio and
-        letterboxes (black bars) the leftover desktop area instead of
-        stretching the image or distorting the menus.
-        """
-        flags = 0
-        if self.settings.fullscreen:
-            flags |= pygame.FULLSCREEN | pygame.SCALED
-        return pygame.display.set_mode(
-            (self.settings.width, self.settings.height),
-            flags,
-            vsync=1 if self.settings.vsync else 0,
-        )
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -255,10 +403,6 @@ class Game:
         finally:
             self.flush_settings()
             pygame.quit()
-
-    def quit(self) -> None:
-        """Stop the loop at the end of the current frame."""
-        self.running = False
 
     def _frame_delta(self) -> float:
         """Seconds elapsed since the previous frame, for the fixed-step accumulator.
@@ -286,29 +430,101 @@ class Game:
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
         if not self.settings.vsync:
-            return self.clock.tick(Display.FPS) / 1000.0
-        return self.clock.tick(DISPLAY_SAFETY_CEILING_FPS) / 1000.0
+            return self.clock.tick(self._frame_target()) / 1000.0
+        return self.clock.tick(max(DISPLAY_SAFETY_CEILING_FPS, self._frame_target())) / 1000.0
+
+    def _frame_target(self) -> int:
+        """The rate the clock paces to when vsync is not doing it.
+
+        ``0`` is pygame's "no limit", which is what an uncapped setting means.
+        Named *target* rather than FPS on purpose: with vsync on, the present
+        decides the rate and this number is ignored, so calling it FPS would
+        promise something the game does not deliver.
+        """
+        return 0 if self.settings.frame_limit is None else self.settings.frame_limit
 
     def _run_loop(self) -> None:
         if self.clock is None:
             raise RuntimeError("The game runtime is not initialized")
-
         while self.running:
-            self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
+            self.step()
 
-            self._handle_events()
-            self.scene_manager.poll_held_repeats()
-            self.flush_settings()
+    def step(self) -> None:
+        """One frame: events, fixed ticks, one draw, one present.
 
-            while self._accumulator >= Simulation.TIMESTEP:
-                self.scene_manager.update(Simulation.TIMESTEP)
-                self._accumulator -= Simulation.TIMESTEP
+        Split out of the loop so a single frame can be driven from outside --
+        the manual acceptance run does, to hold a display state on screen while
+        it is looked at.
+        """
+        if self.clock is None:
+            raise RuntimeError("the game runtime is not initialized")
+        frame_started = perf_counter()
+        self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
 
-            dirty_rects = self.scene_manager.draw()
-            if dirty_rects is None:
-                pygame.display.update()
-            else:
-                pygame.display.update(dirty_rects)
+        self._handle_events()
+        self.scene_manager.poll_held_repeats()
+        self.flush_settings()
+
+        self._run_ticks()
+
+        self.scene_manager.draw(self._draw_target())
+
+        self._present()
+
+        if self._notice_ttl > 0.0:
+            self._notice_ttl = max(0.0, self._notice_ttl - _elapsed_ms(frame_started) / 1000.0)
+            if self._notice_ttl == 0.0:
+                self._notice = ()
+
+    def _run_ticks(self) -> None:
+        """Drain the accumulator, but never more than a frame's worth of ticks.
+
+        The accumulator already refuses to believe a frame longer than
+        ``MAX_FRAME_TIME``, which stops one hitch from being replayed forever.
+        It does not stop a *sustained* overload from queueing ticks faster than
+        they can be run: with 20 owed and 6 affordable, the debt grows and every
+        frame after the hitch spends its whole budget trying to catch up, so the
+        game never recovers.
+
+        Dropping the surplus is the decision every engine makes here, and the
+        fixed timestep is what makes it cheap: the ticks that get dropped were
+        never going to be seen. Catching up on a machine that cannot render
+        fast enough to show them only makes the next frame later.
+        """
+        affordable = min(
+            int(self._accumulator / Simulation.TIMESTEP), Simulation.MAX_TICKS_PER_FRAME
+        )
+        if affordable >= Simulation.MAX_TICKS_PER_FRAME:
+            # The surplus is time the player has already lost; carrying it
+            # forward is what turns one hitch into a stall.
+            self._accumulator = 0.0
+        for _ in range(affordable):
+            self.scene_manager.update(Simulation.TIMESTEP)
+            self._accumulator -= Simulation.TIMESTEP
+        # The subtraction above leaves a residue around -1e-17, and a negative
+        # accumulator makes ``render_alpha`` negative for one frame.
+        self._accumulator = max(0.0, self._accumulator)
+
+    def notice(self, *lines: str, seconds: float = 4.0) -> None:
+        """Say something on screen for a few seconds, replacing what was there.
+
+        For the keys that cannot act. A key that does nothing and says nothing
+        is indistinguishable from a key that is broken, and that ambiguity is
+        exactly what made the debug overlay's death look like a wiring problem
+        instead of a culling one.
+        """
+        self._notice = tuple(lines)
+        self._notice_ttl = max(0.0, seconds)
+
+    @property
+    def notice_lines(self) -> tuple[str, ...]:
+        """The live notice, ticked down by the frame loop."""
+        return self._notice
+
+    def _present(self) -> None:
+        """Put the finished frame on the screen. The only screen read in the loop."""
+        assert self.presentation is not None, "the display is not initialized"
+        self.presentation.present()
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
@@ -322,47 +538,136 @@ class Game:
             self.input_provider.note_event(event)
 
             if event.type == pygame.VIDEORESIZE:
-                # La fenêtre n'est pas redimensionnable : la résolution est
-                # pilotée uniquement par le menu vidéo. SDL peut encore
-                # annoncer un VIDEORESIZE lors d'un set_mode() interne ou d'un
-                # basculement plein écran ; on l'ignore pour que le viewport
-                # logique reste stable et qu'aucune boucle ne naisse.
+                # The window is resizable and the picture is the window's size,
+                # so a drag rebuilds the render target, re-reads the density and
+                # re-lays out the interface -- the same cascade as a display
+                # setting change, which is why it is one method. SDL also
+                # announces this during an internal set_mode(), and recomputing
+                # an unchanged size is a no-op.
+                self._retarget()
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
-                logger.info(f"Connected controller : {joy.get_name()}")
+                logger.info("Connected controller : %s", joy.get_name())
                 self.input_router.notify_joystick_connected(joy.get_instance_id(), joy)
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED and event.instance_id in self.joysticks:
                 disconnected_joy = self.joysticks[event.instance_id]
-                logger.info(f"Controller disconnected : {disconnected_joy.get_name()}")
+                logger.info("Controller disconnected : %s", disconnected_joy.get_name())
                 self.input_provider.disconnect_joystick(event.instance_id)
                 self.input_router.notify_joystick_removed(event.instance_id)
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 
-            # Mouse positions are dispatched as-is: with ``pygame.SCALED``
-            # Pygame already reports ``event.pos`` in the logical surface space
-            # (0..width), which is the space every hit rect is computed in.
-            # Mapping them again here would scale the pointer twice and send
-            # every click off-target in fullscreen.
-            self.scene_manager.handle_event(event)
+            self.scene_manager.handle_event(self._to_target_coordinates(event))
+
+    #: Pointer events whose position the interface hit-tests against.
+    _POINTER_EVENTS = frozenset(
+        {
+            pygame.MOUSEMOTION,
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
+        }
+    )
+    #: The subset that *acts*. A press on a letterbox bar is a press on nothing.
+    _POINTER_PRESSES = frozenset({pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP})
+
+    def _to_target_coordinates(self, event: pygame.event.Event) -> pygame.event.Event | None:
+        """Rewrite a pointer event's position into render-target coordinates.
+
+        Every hit rect in the interface is expressed in the render target's
+        space, and the pointer arrives in the window's, so the position has to
+        come back through the inverse of the presentation. Doing it here, once,
+        is what keeps every scene from having to know a window exists.
+
+        A press that lands in a letterbox bar is dropped rather than clamped.
+        Clamping would fire whatever row happens to be nearest the edge of the
+        image, which is worse than doing nothing: the player clicked black and
+        the game answered. Motion is clamped instead of dropped, so the cursor
+        keeps a sensible position while it crosses a bar.
+        """
+        if self.presentation is None or event.type not in self._POINTER_EVENTS:
+            return event
+        position = getattr(event, "pos", None)
+        if position is None:
+            return event
+
+        if not self.presentation.pointer_in_viewport(position):
+            if event.type in self._POINTER_PRESSES:
+                return None
+            rect = self.presentation.rect
+            position = (
+                min(max(position[0], rect.left), rect.right - 1),
+                min(max(position[1], rect.top), rect.bottom - 1),
+            )
+        event.pos = self.presentation.pointer_to_viewport(position)
+        return event
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        logger.error(f"FATAL ERROR: {error}")
-        if self.display_surface is None:
-            return
+        """Log the failure with its traceback, then try to show it.
 
+        Three things were wrong with this and each had a consequence.
+
+        It logged ``f"FATAL ERROR: {error}"`` at ``error`` level, which is the
+        exception's *message*: a crash with an empty message logged an empty
+        line, and the frame that raised it was not recorded anywhere. It is
+        ``logger.critical`` with the traceback now, and that log is the artifact
+        worth having -- the screen below is a courtesy.
+
+        It drew on ``self.surface``, the window, bypassing the render target
+        and the presentation. So the message appeared at 1:1 on the window
+        whatever the letterbox and the density were, and the next
+        ``present()`` -- had there been one -- would have overwritten it. It
+        paints the target and presents it like any other frame, and falls back
+        to the window only when there is no presentation yet, which is the
+        case where the crash happened before the display was up.
+
+        And it built its own ``SysFont("Arial")``, outside the chain that
+        scales and caches every other glyph in the game, so the one message
+        that matters most was the one drawn at the wrong size on a machine with
+        no Arial. The panel chain is used instead, and if even that fails --
+        a font cache that cannot allocate, a display that has gone away -- the
+        failure is logged and swallowed. Raising out of the handler would
+        replace a reportable crash with an unreportable one.
+        """
+        logger.critical("Fatal error; the game cannot continue", exc_info=error)
         try:
-            self.display_surface.fill((0, 0, 0))
-            font = pygame.font.SysFont("Arial", 30)
-            text = font.render(f"FATAL ERROR: {error}", True, (255, 0, 0))
-            self.display_surface.blit(text, (10, 10))
+            self._paint_fatal_error(error)
+        except Exception:  # noqa: BLE001 - this is the last line of defence
+            logger.exception("Could not paint the fatal error screen")
+
+    def _paint_fatal_error(self, error: Exception) -> None:
+        """Put the failure on screen, on whichever surface is still alive."""
+        # An exception with an empty str() would otherwise paint a blank panel.
+        message = f"{type(error).__name__}: {error}".strip(": ")
+        if self.presentation is not None:
+            target = self.presentation.surface
+            self._paint_error_panel(target, message)
+            self.presentation.present()
+            return
+        # Crashed before the display came up: the window is all there is.
+        surface = self.surface
+        if surface is not None:
+            surface.fill((0, 0, 0))
+            text = pygame.font.Font(None, 24).render(message, True, (255, 0, 0))
+            surface.blit(text, (10, 10))
             pygame.display.update()
-        except pygame.error:
-            print("Unable to render the fatal error screen", file=sys.stderr)
+
+    def _paint_error_panel(self, target: pygame.Surface, message: str) -> None:
+        """Paint the message with the game's own panel chain."""
+        target.fill((12, 8, 10))
+        if self.ui is None:
+            font = pygame.font.Font(None, 24)
+            target.blit(font.render(message, True, (255, 0, 0)), (10, 10))
+            return
+        self.ui.renderer.draw_panel(10, 10, [message], title="FATAL ERROR")
+
+
+def _elapsed_ms(started: float) -> float:
+    """Milliseconds since ``started``, from a :func:`time.perf_counter` reading."""
+    return (perf_counter() - started) * 1000.0

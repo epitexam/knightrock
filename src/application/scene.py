@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.core.input.event_router import RoutedInput
+from src.ui.scale import ScaledView
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -16,8 +17,19 @@ class Scene(ABC):
 
     A scene owns its lifecycle (``enter``/``exit``), receives Pygame events,
     advances the simulation at a fixed step via ``update`` and produces its
-    rendering via ``draw``.  Following the entity pattern, ``draw`` returns
-    the dirty rects to present, or ``None`` for a full-screen refresh.
+    rendering via ``draw``, which paints into the render target it is handed.
+    Nothing is reported back: every frame is a complete repaint, so there is no
+    partial presentation for a scene to take part in.
+    """
+
+    view: ScaledView | None = None
+    """The scene's view, when it has one.
+
+    A class-level ``None`` rather than something every subclass sets, because
+    the gameplay scene has no view at all: it draws the world. The scene stack
+    pushes a new target and a new scale through every scene on it, and it has
+    to be able to ask "does this scene have a view" without the answer being an
+    ``AttributeError`` on the ones that do not.
     """
 
     def __init__(self, game: Game) -> None:
@@ -25,6 +37,50 @@ class Scene(ABC):
 
     def enter(self) -> None:  # noqa: B027 - optional lifecycle hook
         """Called when the scene becomes active."""
+
+    def set_surface(self, surface: pygame.Surface) -> None:  # noqa: B027
+        """Adopt a new render target, after a resize or a render-scale change.
+
+        A no-op here, exactly like ``enter`` and ``exit``: a scene that draws
+        through a view gets the target through :attr:`view`, and one that draws
+        the world is handed the target on every :meth:`draw` anyway.
+
+        Declared rather than discovered. It used to be found with
+        ``getattr(scene, "set_surface", None)`` and called if it turned out to
+        be callable, which meant a scene that forgot to implement it was
+        *skipped in silence* -- no error, no log, just a window resize that left
+        half the interface drawn for the old target size.
+        """
+
+    def set_ui_scale(self, scale: float) -> None:  # noqa: B027
+        """Adopt a new interface scale, after the player changed the setting.
+
+        A no-op for the same reason and with the same consequence as
+        :meth:`set_surface`.
+        """
+
+    @property
+    def halts_simulation(self) -> bool:
+        """Whether this scene stops the world while it is on top.
+
+        A scene that overrides ``update`` to do nothing does not merely freeze
+        the picture -- it breaks an assumption the renderer relies on. The
+        camera interpolates between the position the last tick started from and
+        the one it ended at, and only a tick can close that gap. With no ticks,
+        the gap stays open and every frame re-blends it with a *different*
+        fraction, so the world does not stand still: it slides.
+
+        That reads as the game trembling behind the pause menu, and it is
+        invisible to any test that checks the pause screen's own pixels, because
+        the moving part is the scene underneath it.
+
+        So a scene that stops the world says so here, and the loop stops
+        interpolating: the picture is then exactly where the simulation is, and
+        it stays there. A scene that forgets to declare this gets the sliding
+        world back, which is why this is one property rather than a special case
+        for the pause screen.
+        """
+        return False
 
     def exit(self) -> None:  # noqa: B027 - optional lifecycle hook
         """Called when the scene is replaced or popped."""
@@ -53,5 +109,11 @@ class Scene(ABC):
         """Advance the scene by one fixed tick."""
 
     @abstractmethod
-    def draw(self) -> list[pygame.Rect] | None:
-        """Render the scene; return dirty rects or None for full refresh."""
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the scene into ``surface``, the fixed-size render target.
+
+        The surface is handed in rather than fetched from
+        ``pygame.display.get_surface()``: the window is not what anything is
+        drawn into any more, and a scene that reached for it would be drawing
+        into a surface whose size depends on the player's video settings.
+        """

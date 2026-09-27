@@ -122,9 +122,9 @@ def test_rollback_restore_synchronizes_derived_attack_geometry() -> None:
     assert owner.combat.attack_box is not None
     assert owner.combat.attack_box.centerx == pytest.approx(owner.hitbox.centerx + 20.0)
 
-    # P1 (D3, re-derivation) : la boucle rejoue les captures frontiere
-    # explicitement ; prev est re-derive depuis cur, jamais relu a travers
-    # un load sans capture. Aucun champ snapshot n'existe pour prev.
+    # P1 (D3, re-derivation): the loop replays the boundary captures
+    # explicitly; prev is re-derived from cur, never read back through a load
+    # that captured nothing. There is no snapshot field for prev.
     assert owner.combat.hitbox.prev_rects == ()
     owner.combat.capture_attack_origin()
     owner.capture_sweep_origin()
@@ -335,13 +335,13 @@ def test_invalid_frame_data_fails_fast() -> None:
 
 # ── P0.1 golden trajectoires + recensement (hitbox_amelioration.md) ─────────
 #
-# Les trajectoires ci-dessous figent la geometrie predetection, frame par
-# frame d animation (`attack_state.animation_frame`), proprietaire immobile
-# en x=0. Tout changement de ces valeurs en P1+ doit etre explique dans le
-# recettage du rapport (regression vs changement voulu). Constate notable :
-# `dash_attack` (startup=1) n expose JAMAIS de frame startup — le premier
-# sync voit deja ACTIVE (trou du seed, cf. D1) ; la recovery expose encore
-# de la geometrie (comportement legacy, detection verrouillee sur ACTIVE).
+# The trajectories below freeze the prediction geometry frame by frame
+# (`attack_state.animation_frame`), owner fixed at x=0. Any change to these
+# values in P1+ has to be argued in the report's review (regression versus
+# intended change). Notable finding: `dash_attack` (startup=1) NEVER exposes a
+# startup frame -- the first sync already sees ACTIVE (the seed gap, see D1);
+# recovery still exposes geometry (legacy behaviour, detection locked to
+# ACTIVE).
 
 
 def _drive(name: str, attacks: dict) -> list[tuple[str, int, tuple | None]]:
@@ -417,7 +417,7 @@ def test_golden_special_attack_phase_transitions() -> None:
     assert [sub for sub, _, _ in frames].count("startup") == 26
     assert [sub for sub, _, _ in frames].count("active") == 42
     assert [sub for sub, _, _ in frames].count("recovery") == 41
-    # Tailles figees par phase : 30 -> 40 -> 50 -> 70 -> 90, centre constant.
+    # Sizes frozen per phase: 30 -> 40 -> 50 -> 70 -> 90, centre constant.
     phase_starts = [0, *boundaries]
     phase_ends = [*boundaries, len(frames) - 1]
     for index, (start, end) in enumerate(zip(phase_starts, phase_ends, strict=True)):
@@ -427,7 +427,7 @@ def test_golden_special_attack_phase_transitions() -> None:
             index,
             (20.0, 0.0, size, size),
         ), frames[start]
-        # Toute la phase voit la meme geometrie (pas de keyframes).
+        # The whole phase sees the same geometry (no keyframes).
         for _, ph, box in frames[start:end]:
             if ph == index and box is not None:
                 assert box == (20.0, 0.0, size, size)
@@ -484,7 +484,7 @@ def _lethal_jumps(attacks: dict, name: str) -> list[float]:
 
 
 def test_census_no_lethal_window_jump_needs_sweep_on_static_owner() -> None:
-    """Recensement P0 : aucun saut >= 4 px en fenetre letale, data actuelle.
+    """P0 survey: no >= 4px jump in the lethal window, current data.
 
     Verifie le 2026-09-20 : `sweeping_arc` ~2.43 px/frame en startup->active,
     `claw_swipe` 8.94 px en recovery->startup de phase (non letal),

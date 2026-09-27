@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pygame
@@ -13,6 +14,10 @@ from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
 from src.ui.menu_model import MenuAction
+from src.ui.panel_renderer import compact_panels, set_compact_panels
+from src.ui.ui_manager import UIManager
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -40,6 +45,7 @@ _STEP_KEY = pygame.K_F7
 _REPLAY_KEY = pygame.K_F8
 _EXPORT_KEY = pygame.K_F9
 _PANEL_FOCUS_KEY = pygame.K_F10
+_PANEL_LAYOUT_KEY = pygame.K_F11
 
 #: Mouse events the debug panels may consume (``×`` clicks and drag & drop);
 #: anything else reaches the level untouched.
@@ -70,22 +76,27 @@ class GameplayScene(Scene):
         self.level: Level | None = level
         self.frozen = False
         self._step_pending = False
+        #: One message per session: a hint that repeats every frame is a
+        #: permanent overlay, which is the thing it was warning against.
+        self._dead_key_notice_shown = False
 
     def enter(self) -> None:
         if self.level is None:
             self._load_level()
 
     def _load_level(self) -> None:
-        if self.game.display_surface is None:
-            raise RuntimeError("The game display is not initialized")
+        # The level draws into the render target, never into the window: the
+        # target has a fixed size whatever the player's video settings say.
+        target = self.game._draw_target()
         level_data = self.game.level_manager.get(self.level_id)
         self.level = Level(
-            self.game.display_surface,
+            target,
             level_data,
             self.game.input_manager,
             level_id=self.level_id,
             events=self.game.events,
             gameplay_data=self.game.gameplay_data,
+            overlay=self.game.world_overlay(target),
         )
 
     def update(self, delta_time: float) -> None:
@@ -98,7 +109,7 @@ class GameplayScene(Scene):
             self._step_pending = False
         self.level.update(delta_time)
 
-        if self.level.completed:
+        if self.level.exit_reached:
             self._advance_level()
         elif self.level.deaths >= Gameplay.MAX_DEATHS:
             # Local import: Menu/GameOver/Gameplay reference each other.
@@ -136,15 +147,33 @@ class GameplayScene(Scene):
         # a mute it had to ask for.
         return None
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self.game.display_surface = display_surface
+    def set_surface(self, surface: pygame.Surface) -> None:
+        """Adopt a new render target, after the render scale changed.
+
+        The window never comes through here: a resize leaves the target
+        untouched, which is the whole reason the target exists.
+        """
         if self.level is not None:
-            self.level.display_surface = display_surface
-            self.level.renderer.set_display_surface(display_surface)
+            self.level.surface = surface
+            self.level.renderer.set_surface(surface)
 
     def set_ui_scale(self, scale: float) -> None:
-        if self.level is not None:
-            self.level.renderer.ui_manager.set_ui_scale(scale)
+        ui = self._ui
+        if ui is not None:
+            ui.set_ui_scale(scale)
+
+    @property
+    def _ui(self) -> UIManager | None:
+        """The interface over the world, when this runtime has one.
+
+        The application layer is where ``core`` and ``ui`` meet, so this is
+        the one place allowed to name :class:`UIManager` concretely -- the
+        renderer and the level go through the ``WorldOverlay`` port instead.
+        Optional because the tests drive this scene with a lightweight game
+        stand-in that has no interface at all, and a debug keypress on such a
+        runtime should do nothing rather than raise.
+        """
+        return getattr(self.game, "ui", None)
 
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:
@@ -158,12 +187,21 @@ class GameplayScene(Scene):
                 export_attack(self.game.gameplay_data.attack_sets, selected())
             return True
         if key == _PANEL_FOCUS_KEY:
-            self.level.renderer.ui_manager.cycle_compact_panel()
+            ui = self._ui
+            if ui is not None:
+                ui.cycle_compact_panel()
+            return True
+        if key == _PANEL_LAYOUT_KEY:
+            set_compact_panels(not compact_panels())
+            logger.info("Debug panels: %s layout", "compact" if compact_panels() else "full")
             return True
         return False
 
     def _handle_gameplay_key(self, key: int) -> None:
-        if self.level is None or not Debug.is_enabled():
+        if self.level is None:
+            return
+        if not Debug.is_enabled():
+            self._explain_dead_key(key)
             return
         if key == _FREEZE_KEY:
             self.frozen = not self.frozen
@@ -181,11 +219,44 @@ class GameplayScene(Scene):
         if self._handle_panel_tools_key(key):
             return
         toggle = _OVERLAY_TOGGLES.get(key)
-        if toggle is not None:
-            ui_manager = self.level.renderer.ui_manager
-            ui_manager.world_ui.toggle(toggle)
+        ui = self._ui
+        if toggle is not None and ui is not None:
+            ui.world_ui.toggle(toggle)
             if toggle == "panels":
-                ui_manager.reset_debug_panels()
+                ui.reset_debug_panels()
+
+    #: What each function key is for, for the one message that names them all.
+    _KEY_PURPOSE = {
+        _FREEZE_KEY: "hold the simulation still",
+        _STEP_KEY: "advance one tick while frozen",
+        _REPLAY_KEY: "loop an attack",
+        _EXPORT_KEY: "export an attack",
+        _PANEL_FOCUS_KEY: "cycle the debug panels",
+        _PANEL_LAYOUT_KEY: "panel layout",
+    }
+
+    def _explain_dead_key(self, key: int) -> None:
+        """Say, once, that the debug keys need the flag.
+
+        Every F-key in this class is debug-only, and without ``--debug`` they
+        were *silent*: no overlay, no log, no hint. A key that does nothing and
+        says nothing cannot be told from a key that is broken, and the honest
+        answer here was to name the flag rather than to make the whole overlay
+        unconditional -- which would put a frame counter's worth of panels in
+        front of a player who asked for none.
+        """
+        if not (key in _OVERLAY_TOGGLES or key in self._KEY_PURPOSE):
+            return
+        if self._dead_key_notice_shown:
+            return
+        self._dead_key_notice_shown = True
+        purpose = self._KEY_PURPOSE.get(key, "toggle the overlay")
+        notice = getattr(self.game, "notice", None)
+        if callable(notice):
+            notice(
+                f"F-keys are debug-only -- {purpose}",
+                "Start with:  python main.py --debug",
+            )
 
     def _route_to_panels(self, event: pygame.event.Event) -> bool:
         """Let the debug panels swallow a mouse event (``×``, drag & drop).
@@ -200,15 +271,12 @@ class GameplayScene(Scene):
         if self.level is None or not Debug.is_enabled():
             return False
         # Duck-typed levels (tests) may not carry a renderer at all.
-        renderer = getattr(self.level, "renderer", None)
-        if renderer is None:
+        ui = self._ui
+        if ui is None or not ui.world_ui.layers.get("panels", True):
             return False
-        ui_manager = renderer.ui_manager
-        if not ui_manager.world_ui.layers.get("panels", True):
-            return False
-        return bool(ui_manager.handle_panel_event(event))
+        return bool(ui.handle_panel_event(event))
 
-    def draw(self) -> list[pygame.Rect] | None:
+    def draw(self, surface: pygame.Surface) -> None:
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
         clock = self.game.clock
@@ -219,32 +287,31 @@ class GameplayScene(Scene):
         # runtime gets no interpolation, which is the correct fallback.
         render_alpha = getattr(self.game, "render_alpha", None)
         alpha = render_alpha() if callable(render_alpha) else 0.0
-        rects = self.level.draw(
+        self.level.draw(
             fps,
-            game=self.game,
+            scene_host=self.game,
             frame_time=frame_time,
             alpha=alpha,
         )
         # Always-on player gauges (UI-7): drawn last so the HUD stays on top of
-        # the world and of the debug panels, and never hidden by F5. Its rects
-        # join the dirty set, since a non-debug frame presents those only.
-        ui_manager = self.level.renderer.ui_manager
-        hud_rects = ui_manager.draw_hud(getattr(self.level, "player", None))
-        if rects is not None:
-            rects.extend(hud_rects)
-        # The HUD sits below the world, outside the area the renderer erases.
-        # Declaring it here makes the next frame refresh the gauges' area, so a
-        # shrinking bar or an expiring combo cannot leave stale pixels. The
-        # world HP bars were declared by Level.draw; keep both.
-        self.level.renderer.add_overlay_rects(hud_rects)
+        # the world and of the debug panels, and never hidden by F5. Nothing is
+        # declared about them any more: the next frame erases the whole target,
+        # so a shrinking bar or an expiring combo cannot leave a stripe behind.
+        ui = self._ui
+        if ui is not None:
+            ui.draw_hud(getattr(self.level, "player", None))
+        notice = getattr(self.game, "notice_lines", ())  # absent: nothing to say
+        if ui is not None and notice:
+            ui.hud.draw_notice(notice)
         if self.frozen:
             self._draw_frozen_tag()
-        return rects
 
     def _draw_frozen_tag(self) -> None:
         """Paint a red FROZEN marker, top-center, while the sim is held."""
         assert self.level is not None  # draw() already guarantees a level
-        ui_manager = self.level.renderer.ui_manager
-        surface = ui_manager.renderer.display_surface
-        tag = ui_manager.renderer.render_text("FROZEN", ui_manager.renderer.title_font, Colors.red)
+        ui = self._ui
+        if ui is None:
+            return
+        surface = ui.renderer.surface
+        tag = ui.renderer.render_text("FROZEN", ui.renderer.title_font, Colors.red)
         surface.blit(tag, (surface.get_width() // 2 - tag.get_width() // 2, 10))

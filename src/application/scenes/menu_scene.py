@@ -51,7 +51,7 @@ class MenuScene(Scene):
             )
             self.options = ("ENTER: play", "ESC: quit")
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
         self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
         self.confirm_view = MenuView()
         self._confirming = False
@@ -128,14 +128,10 @@ class MenuScene(Scene):
         self.view.set_scale(scale)
         self.confirm_view.set_scale(scale)
 
-    def draw(self) -> list[pygame.Rect] | None:
-        surface = pygame.display.get_surface()
-        if surface is None:
-            return None
+    def draw(self, surface: pygame.Surface) -> None:
         surface.fill(Colors.dark_grey)
         panel = self.view.draw(surface, self.TITLE, self.model, top=180)
         if self._confirming:
             self.confirm_view.draw(
                 surface, self.CONFIRM_TITLE, self.confirm_model, top=panel.bottom + 24
             )
-        return None

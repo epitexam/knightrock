@@ -25,18 +25,18 @@ class RoutedInput:
     variant: str | None = None
 
 
-# Priorité fixe des boutons de menu : l'écran Contrôles réécrit les maps, donc
-# l'ordre du dict du fichier n'est plus un contrat. UI_BACK passe avant
-# UI_CANCEL pour que le bouton B reste le retour même quand les deux actions le
-# partagent (défaut historique), UI_CONFIRM avant tout le reste.
+# Fixed menu-button priority. The controls screen rewrites the maps, so a
+# file's dict order is no longer a contract. UI_BACK comes before UI_CANCEL so
+# the B button stays "back" even where both actions share it (the historical
+# default), and UI_CONFIRM comes before everything.
 UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
     InputAction.UI_CONFIRM,
     InputAction.UI_BACK,
     InputAction.UI_CANCEL,
 )
 
-# Seules les directions de navigation.auto-répètent au clavier : répéter une
-# validation ou un retour ferait ouvrir puis refermer un menu en boucle.
+# Only the navigation directions auto-repeat on the keyboard: repeating a
+# confirm or a back would open a menu and immediately close it again.
 REPEATABLE_UI_ACTIONS: frozenset[InputAction] = frozenset(
     {
         InputAction.UI_UP,
@@ -174,7 +174,7 @@ class EventRouter:
         return None
 
     def _menu_button_action(self, button: int) -> InputAction | None:
-        """Action de menu émise par ``button`` (priorité fixe, pas d'ordre dict)."""
+        """The menu action ``button`` emits (fixed priority, not dict order)."""
         bindings = self._bindings.menu.gamepad_buttons
         for action in UI_BUTTON_PRIORITY:
             if bindings.get(action) == button:
@@ -215,8 +215,8 @@ class EventRouter:
     def would_route_key(self, key: int) -> bool:
         """Whether a ``KEYDOWN`` of ``key`` emits an action (peek, no state).
 
-        Utilisé par l'écran Contrôles : l'événement qui termine une capture ne
-        doit pas exécuter l'action qu'il route (valider, revenir…).
+        Used by the controls screen: the event that ends a capture must not
+        also perform the action it routes (confirm, back...).
         """
         if key == self._bindings.menu.new_game_key:
             return True
@@ -264,6 +264,23 @@ class EventRouter:
         return repeats
 
     def _poll_axis_repeats(self, now: float) -> list[RoutedInput]:
+        """Repeat a held direction -- but only a *committed* one.
+
+        This is the other half of "one push, one row". A stick has no press, so
+        every hold is a hold: the auto-repeat used to be armed by the trigger
+        threshold, which meant that resting a thumb at a third of the stick's
+        travel and leaving it there for four tenths of a second walked four rows
+        -- on a five-row menu, the whole thing. There is no key to release and
+        nothing to tap, so the only way a player could tell "I am pushing" from
+        "I am holding on purpose" is how far they push.
+
+        So repeating asks for more than moving: a light touch moves one row and
+        stays there however long it is held, and only a deliberate push past
+        :data:`UI_AXIS_REPEAT_THRESHOLD` scrolls. Easing back is the brake, and
+        it is not a step backwards: the direction is still held, so the repeat
+        stops and nothing is announced. A D-pad has no partial deflection to
+        read, so it keeps repeating on a hold -- see ``_poll_hat_repeats``.
+        """
         repeats: list[RoutedInput] = []
         for (instance_id, axis), action in tuple(self._active_axes.items()):
             value = self._read_axis(instance_id, axis)
@@ -274,7 +291,7 @@ class EventRouter:
                 self._active_axes.pop((instance_id, axis), None)
                 self._axis_next_repeat.pop((instance_id, axis), None)
                 continue
-            if abs(value) < InputSettings.UI_AXIS_TRIGGER_THRESHOLD:
+            if abs(value) < InputSettings.UI_AXIS_REPEAT_THRESHOLD:
                 continue
             next_repeat = self._axis_next_repeat.get((instance_id, axis))
             if next_repeat is None or now < next_repeat:
@@ -290,9 +307,9 @@ class EventRouter:
                 continue
             live = self._read_hat(instance_id, hat)
             if live is None:
-                # Pas de lecture live (test sans joystick, driver sans
-                # get_hat) : on expire le bras au lieu de repeter a l'infini
-                # sur la derniere valeur SDL connue.
+                # No live read (a test with no joystick, a driver with no
+                # get_hat): expire the arm rather than repeat forever on the
+                # last known SDL value.
                 self._active_hats.pop((instance_id, hat), None)
                 self._hat_next_repeat.pop((instance_id, hat), None)
                 continue
@@ -373,6 +390,25 @@ class EventRouter:
         return RoutedInput(action, InputDevice.GAMEPAD, value=float(x or y))
 
     def _route_axis(self, instance_id: int, axis: int, value: float) -> RoutedInput | None:
+        """Route one ``JOYAXISMOTION``, remembering what the stick is *doing*.
+
+        A stick is a position, not a press, so this carries a small state
+        machine, and both of its rules are about not announcing itself twice:
+
+        * **The band between the release and the trigger is hysteresis, not a
+          release.** Letting the held direction go there -- which is what this
+          used to do -- meant every dip into the band and back out of it fired
+          the direction again. A stick resting at a third of its travel, with
+          the noise a real one has, announced itself twelve times in four tenths
+          of a second: one push, and the whole menu, several times over. The
+          repeat poller never made that mistake, because it keeps the direction
+          in the band, so the event path and the poller disagreed about what
+          "held" meant and only the event path decided the *first* step.
+        * **A direction is announced once, and a new one has to be committed.**
+          Sweeping from up to down announces the down, once, when it crosses the
+          trigger -- and a value inside the band never clears the direction that
+          is already held, so coming back out of the band is not a second step.
+        """
         key = (instance_id, axis)
         active = self._active_axes.get(key)
         if value == 0.0 or abs(value) <= InputSettings.UI_AXIS_RELEASE_THRESHOLD:
@@ -383,19 +419,22 @@ class EventRouter:
                 return None
             return RoutedInput(active, InputDevice.GAMEPAD, value=value, variant="release")
         action = self._axis_action(axis, value)
+        if action is active:
+            # The same direction, held harder or eased back into the band. The
+            # repeat is the only thing that may speak now, and it is the poller's
+            # to decide -- see ``_poll_axis_repeats`` for why a light hold is
+            # not a request to walk the list.
+            if key not in self._axis_next_repeat:
+                self._axis_next_repeat[key] = self._clock() + InputSettings.UI_REPEAT_INITIAL_DELAY
+            return None
         if action is None or abs(value) < InputSettings.UI_AXIS_TRIGGER_THRESHOLD:
-            self._active_axes.pop(key, None)
-            self._axis_next_repeat.pop(key, None)
-            self._axis_last_value.pop(key, None)
+            # A direction that is not committed yet. The held one stays held: an
+            # uncommitted value is the band, and treating it as a release is
+            # what made every crossing of the threshold a new step.
             return None
         self._axis_last_value[key] = value
-        now = self._clock()
-        if active == action:
-            if key not in self._axis_next_repeat:
-                self._axis_next_repeat[key] = now + InputSettings.UI_REPEAT_INITIAL_DELAY
-            return None
         self._active_axes[key] = action
-        self._axis_next_repeat[key] = now + InputSettings.UI_REPEAT_INITIAL_DELAY
+        self._axis_next_repeat[key] = self._clock() + InputSettings.UI_REPEAT_INITIAL_DELAY
         return RoutedInput(action, InputDevice.GAMEPAD, value=value)
 
     def _axis_action(self, axis: int, value: float) -> InputAction | None:
@@ -414,13 +453,41 @@ class EventRouter:
         return None
 
     def _hat_action(self, hat: int, value: tuple[int, int]) -> InputAction | None:
+        """The direction a hat position means.
+
+        A hat is *not* an axis, and this is the whole reason the vertical case
+        needs saying. SDL axes follow the mathematical convention: pushed up,
+        the Y axis reads negative. A hat follows the screen, because it is a
+        direction and not a measurement -- pygame documents ``(0, 1)`` as **up**
+        (``(0, -1)`` is down), which is ``SDL_HAT_UP``, and so is every D-pad
+        and every hat switch on a console. So the two halves of this class
+        deliberately disagree: ``_axis_action`` calls up negative, this one
+        calls it positive.
+
+        The menu had it backwards. It was "fixed" once in the other direction
+        on the belief that a hat is reported in screen coordinates, meaning
+        ``y = +1`` is down -- which is true of a *window* and false of a hat.
+        The D-pad had been correct until then, and the test that was supposed
+        to prove it agreed with the bug instead of the hardware: it fired the
+        hat up and the stick up and only compared where the selection landed,
+        so a pair of consistent inversions looked like a pass. The proof that
+        does not have that hole is
+        ``test_the_menu_and_the_game_read_one_hat_the_same_way``: the menu and
+        the gameplay provider are handed the *same* hat value and asked for the
+        same direction, so the two cannot disagree again.
+
+        ``invert_y`` is honoured here as the axis path honours it, so the
+        setting moves the D-pad too instead of only the stick.
+        """
         x, y = value
+        inverted = self._bindings.menu.invert_y
         for action, bound_hat in self._bindings.menu.gamepad_hats.items():
             if bound_hat != hat:
                 continue
-            if y > 0 and action is InputAction.UI_UP:
+            is_up = y < 0.0 if inverted else y > 0.0
+            if is_up and action is InputAction.UI_UP:
                 return action
-            if y < 0 and action is InputAction.UI_DOWN:
+            if not is_up and y != 0.0 and action is InputAction.UI_DOWN:
                 return action
             if x < 0 and action is InputAction.UI_LEFT:
                 return action

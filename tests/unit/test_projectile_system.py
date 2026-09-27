@@ -21,6 +21,24 @@ def _config(**kwargs) -> ProjectileConfig:
     return ProjectileConfig(size=(10.0, 10.0), lifetime=2.0, hit=hit, **kwargs)
 
 
+def _fleeting_config() -> ProjectileConfig:
+    """A projectile that expires on the next tick, so the pool gets it back."""
+    return ProjectileConfig(
+        size=(10.0, 10.0),
+        lifetime=0.01,
+        hit=HitProperties(damage=10, knockback=KnockbackConfig(power=(0.0, 0.0))),
+    )
+
+
+def _big_config() -> ProjectileConfig:
+    """A different flight size, to force the surface to be rebuilt."""
+    return ProjectileConfig(
+        size=(24.0, 18.0),
+        lifetime=2.0,
+        hit=HitProperties(damage=10, knockback=KnockbackConfig(power=(0.0, 0.0))),
+    )
+
+
 def _groups_with_target(target) -> SpriteGroups:
     groups = SpriteGroups()
     groups.entity_sprites.add(target)
@@ -188,3 +206,65 @@ def test_zero_delta_freezes_projectiles_for_hit_stop() -> None:
     system.process(0.0)
     assert projectile.hitbox.x == 0.0
     assert len(Group(*groups.projectile_sprites).sprites()) == 1
+
+
+# -- the pooled projectile's surface ------------------------------------------
+#
+# A pooled object that rebuilds its largest field on every launch has not
+# really been pooled. The surface is reused when the size matches, and
+# rebuilt when it does not, because a surface blitted into a mismatched
+# rectangle is resampled by pygame and would draw at the wrong scale.
+
+
+def test_relaunching_at_the_same_size_reuses_the_surface() -> None:
+    system = ProjectileSystem(SpriteGroups())
+    first = system.spawn(
+        _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
+    )
+    # Held in a local on purpose: the pool hands back the same Projectile, so
+    # `first.image` reads the attribute as it is *now*, and comparing it to
+    # `second.image` would compare the attribute with itself.
+    launch_surface = first.image
+    system.process(1 / 60)  # expires it back into the pool
+    second = system.spawn(
+        _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
+    )
+
+    assert first is second, "the pool must hand the same instance back"
+    assert second.image is launch_surface, "the same size must reuse the surface"
+
+
+def test_relaunching_at_a_different_size_rebuilds_the_surface() -> None:
+    system = ProjectileSystem(SpriteGroups())
+    first = system.spawn(
+        _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
+    )
+    # Held separately: the pool hands the same Projectile back, so `first.image`
+    # reads whatever the attribute says *now*, not what it said at launch.
+    small_surface = first.image
+    system.process(1 / 60)
+
+    bigger = system.spawn(_big_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player")
+
+    assert bigger is first, "the pool must hand the same instance back"
+    assert bigger.image is not small_surface
+    assert bigger.image.get_size() == (24, 18)
+    assert bigger.rect.size == (24, 18)
+
+
+def test_a_reused_surface_is_refilled_so_no_state_carries_over() -> None:
+    """Reuse must not mean 'keep whatever was there': the fill is the reset."""
+    system = ProjectileSystem(SpriteGroups())
+    first = system.spawn(
+        _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
+    )
+    first.image.fill((1, 2, 3))
+    system.process(1 / 60)
+
+    second = system.spawn(
+        _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
+    )
+
+    assert second.image.get_at((5, 5))[:3] == (255, 200, 60), (
+        "a refilled surface, not the previous launch's pixels"
+    )

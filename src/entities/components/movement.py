@@ -27,12 +27,10 @@ from typing import TYPE_CHECKING, Any, Literal
 from pygame.math import Vector2
 
 from src.physics import (
-    apply_entity_gravity,
     apply_horizontal_movement,
     apply_moving_platform,
     move_entity,
     resolve_collisions,
-    update_contact_state,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
@@ -70,17 +68,9 @@ class MovementComponent:
             else {"floor": False, "left": False, "right": False}
         )
 
-    def apply_gravity(self, delta_time: float) -> None:
-        """Apply gravity with drag, respecting wall sliding."""
-        apply_entity_gravity(self._owner, delta_time)
-
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal acceleration and control based on ``move_axis``."""
         apply_horizontal_movement(self._owner, delta_time)
-
-    def check_contact(self) -> None:
-        """Update the floor/left/right surface contact flags."""
-        update_contact_state(self._owner, self._owner.collision_sprites)
 
     def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""

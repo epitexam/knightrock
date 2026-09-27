@@ -31,7 +31,13 @@ GAMEPAD_COLUMN = 1
 
 class RowKind(StrEnum):
     REBIND = "rebind"
-    BACK = "back"
+    OPTION = "option"
+    """A row the player picks instead of assigns a key to.
+
+    Both are navigable and both are activated the same way; the difference is
+    what activating them means, and the panel is told so it can paint the block
+    apart from the bindings.
+    """
 
 
 class BindingCell(GridCell):
@@ -58,8 +64,15 @@ class BindingRow:
         ``rebindable`` becomes the panel's own ``activatable``: the panel only
         reports whether a click should *act*, and the screen decides that
         "act" means "arm a capture" for a binding and "act" for a switch.
+        ``OPTION`` becomes its ``option``, which is what separates the choices
+        at the bottom of the screen from the assignments above them.
         """
-        return GridRow(self.label, (self.keyboard, self.gamepad), self.rebindable)
+        return GridRow(
+            self.label,
+            (self.keyboard, self.gamepad),
+            self.rebindable,
+            self.kind is RowKind.OPTION,
+        )
 
 
 class ControlsView:
@@ -84,8 +97,8 @@ class ControlsView:
     def cell_at(self, position: tuple[int, int]) -> CellHit | None:
         return self._grid.cell_at(position)
 
-    def set_display_surface(self, display_surface: pygame.Surface) -> None:
-        self._grid.set_display_surface(display_surface)
+    def set_surface(self, surface: pygame.Surface) -> None:
+        self._grid.set_surface(surface)
 
     def set_scale(self, scale: float) -> None:
         self._grid.set_scale(scale)

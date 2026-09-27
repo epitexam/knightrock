@@ -1,4 +1,4 @@
-"""Juggle / hit-stun avancé tests (audit Phase 5 #4)."""
+"""Juggling and advanced hit-stun (audit Phase 5 #4)."""
 
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver

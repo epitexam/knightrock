@@ -9,7 +9,7 @@ def test_menu_model_moves_with_wrap_and_skips_disabled_items() -> None:
     model = MenuModel(
         [
             MenuItem("one", "One"),
-            MenuItem("locked", "Locked", False),
+            MenuItem("locked", "Locked", enabled=False),
             MenuItem("two", "Two"),
         ],
         wrap=True,
@@ -40,7 +40,7 @@ def test_menu_model_handles_hover_activation_and_empty_state() -> None:
     assert empty.current_item is None
     assert empty.move(1) is None
 
-    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", False)])
+    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", enabled=False)])
     rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
 
     assert model.hover((1, 1), rects) == "hover"
@@ -69,7 +69,7 @@ def test_menu_model_reports_a_hover_only_when_the_pointer_moves() -> None:
 
 def test_hovering_a_locked_item_reports_nothing() -> None:
     """A disabled row is not a place the focus can land, so it is not a move."""
-    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", False)])
+    model = MenuModel([MenuItem("one", "One"), MenuItem("locked", "Locked", enabled=False)])
     rects = [pygame.Rect(0, 0, 10, 10), pygame.Rect(0, 10, 10, 10)]
 
     assert model.hover((5, 5), rects) == "hover"
@@ -106,8 +106,25 @@ def test_menu_model_routes_pointer_down_and_confirm() -> None:
     assert action == "one"
 
 
-def test_menu_model_rejects_invalid_scale() -> None:
+@pytest.mark.parametrize("scale", [0.0, -1.0, 100.0, float("nan")])
+def test_menu_model_rejects_an_unusable_scale(scale: float) -> None:
+    """Bounded, not a fixed set of three.
+
+    The scale the views are handed is the player's preference times the target's
+    pixel density, and the density is a fraction on most displays -- 1.889 on a
+    2176x1224 window -- so a ladder of ``(0.8, 1.0, 1.2)`` would refuse the value
+    the game itself computes. What still has to be refused is a scale that would
+    make the interface invisible or larger than the screen, and a NaN, which
+    would quietly produce zero-sized rects everywhere.
+    """
     from src.ui.menu_view import MenuView
 
-    with pytest.raises(ValueError, match="UI scale"):
-        MenuView(scale=2.0)
+    with pytest.raises(ValueError, match="interface scale"):
+        MenuView(scale=scale)
+
+
+@pytest.mark.parametrize("scale", [0.5, 0.8, 1.0, 1.25, 1.511, 1.8889, 2.4, 4.0])
+def test_menu_model_accepts_the_scales_the_game_actually_produces(scale: float) -> None:
+    from src.ui.menu_view import MenuView
+
+    assert MenuView(scale=scale)._scale == scale

@@ -13,17 +13,22 @@ import pygame
 import pytest
 
 from src.core import fx
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.viewport import Viewport
 from src.core.game import Game
+from src.core.level.level import Level
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from tests.headless.conftest import make_programmatic_level_data, make_viewport
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture()
 def game_runtime(tmp_path):
     """A runtime bound to a temporary settings file, without the main loop."""
     runtime = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
-    runtime.display_surface = pygame.display.get_surface()
+    runtime.initialize_display()
     runtime.clock = pygame.time.Clock()
     return runtime
 
@@ -52,21 +57,35 @@ class _RebuiltSprite(_Sprite):
         self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
 
 
-def make_renderer(zoom: float = 1.25) -> tuple[Renderer, SpriteGroups]:
-    surface = pygame.Surface((320, 240))
-    camera = Camera(320, 240, zoom=zoom)
+def make_renderer(density: float = 1.0) -> tuple[Renderer, SpriteGroups]:
+    """A renderer on a target built the way the game builds one.
+
+    The framing is the game's, not a test's own: a test that picks a framing
+    and a surface separately can produce a pair the game would refuse, and then
+    it tests a configuration that cannot occur. The default is a density of
+    exactly 1 so that "is the image reused" has an unambiguous answer; the tests
+    that care about magnification ask for more.
+    """
+    surface = Viewport(
+        DEFAULT_FRAMING,
+        (round(DEFAULT_FRAMING.width * density), round(DEFAULT_FRAMING.height * density)),
+    ).surface
+    camera = Camera.for_target(surface)
     camera.set_world_size(640, 480)
-    return Renderer(surface, camera), SpriteGroups()
+    # The real interface, because these tests are about the health bars it
+    # draws: a renderer with the default NullOverlay would report no rects,
+    # which is a true answer to a question nobody asked.
+    return Renderer(surface, camera, overlay=make_overlay(surface, camera.density)), SpriteGroups()
 
 
-def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
-    """The scale cache must stay bounded while FX particles churn.
+def test_fx_sprites_do_not_grow_the_magnification_cache() -> None:
+    """The cache must stay bounded while FX particles churn.
 
     FX rebuild their image every tick, so caching them by ``id(image)``
     retained one surface per particle per tick for the whole session, with no
     eviction: a minute of combat was measured retaining tens of megabytes.
     """
-    renderer, groups = make_renderer()
+    renderer, groups = make_renderer(2.0)
     groups.all_sprites.add(_Sprite())
     for _ in range(200):
         particle = _RebuiltSprite()
@@ -80,7 +99,7 @@ def test_fx_sprites_do_not_grow_the_scale_cache() -> None:
 
 def test_static_sprites_are_still_cached_across_frames() -> None:
     """The fix must not disable caching for the planes that benefit from it."""
-    renderer, groups = make_renderer()
+    renderer, groups = make_renderer(2.0)
     groups.all_sprites.add(_Sprite())
 
     renderer._collect_visible_blits(groups)
@@ -89,14 +108,19 @@ def test_static_sprites_are_still_cached_across_frames() -> None:
     assert len(renderer._scaled_cache) == 1
 
 
-def test_fx_sprites_are_still_zoomed() -> None:
-    """Not caching FX must not skip the camera zoom."""
-    renderer, groups = make_renderer(zoom=1.25)
+@pytest.mark.parametrize("density", [1.0, 1.25, 1.8889, 2.0])
+def test_fx_sprites_are_still_magnified_to_the_density(density: float) -> None:
+    """Not caching FX must not skip the magnification either."""
+    renderer, groups = make_renderer(density)
     groups.fx_sprites.add(_RebuiltSprite())
 
     blits = renderer._collect_visible_blits(groups)
+    expected = renderer.camera.scaled_size((40, 40))
 
-    assert [surface.get_size() for surface, _ in blits] == [(50, 50)]
+    assert [surface.get_size() for surface, _ in blits] == [expected]
+    # And the rect agrees exactly, or pygame silently resamples the source to
+    # fit it. At a fractional density this is the case that used to be wrong.
+    assert [rect.size for _, rect in blits] == [expected]
 
 
 def test_health_bars_report_the_rects_they_paint() -> None:
@@ -106,7 +130,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
     minimum width is wider than a narrow sprite, so it is not always inside
     the sprite's own rect.
     """
-    renderer, groups = make_renderer(zoom=1.0)
+    renderer, groups = make_renderer(1.0)
     entity = _Sprite((100.0, 100.0), size=16)
     entity.max_health = 100
     entity.health = 40
@@ -118,7 +142,7 @@ def test_health_bars_report_the_rects_they_paint() -> None:
 
 
 def test_health_bars_report_nothing_without_health() -> None:
-    renderer, _ = make_renderer(zoom=1.0)
+    renderer, _ = make_renderer(1.0)
     entity = _Sprite()
     entity.max_health = 0
     entity.health = 0
@@ -126,25 +150,29 @@ def test_health_bars_report_nothing_without_health() -> None:
     assert renderer.draw_health_bars([entity]) == []
 
 
-def test_a_resolution_change_drops_the_converted_art(game_runtime) -> None:
+def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     """``set_mode`` invalidates converted surfaces, so both caches must go.
 
     ``AssetLibrary`` has no display to compare against and cannot notice on
     its own, which left stale surfaces being blitted through a software alpha
     path and a full re-decode of the art on the next frame that touched a new
     animation.
+
+    There is no resolution to change any more, so the display *mode* is what
+    rebuilds the window, and this is the path that has to carry it.
     """
     from src.core.asset_library import shared_library
+    from src.core.display.mode import DisplayMode
 
     game = game_runtime
-    game.display_surface = pygame.display.get_surface()
+    game.initialize_display()
     library = shared_library()
     library._cache["sentinel"] = pygame.Surface((1, 1), pygame.SRCALPHA)
     library._frame_cache["sentinel"] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
     fx._frames_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
     fx._frames_miss = True
 
-    game.apply_settings(replace(game.settings, width=800, height=600))
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert library._cache == {}
     assert library._frame_cache == {}
@@ -157,7 +185,7 @@ def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
     from src.core.asset_library import shared_library
 
     game = game_runtime
-    game.display_surface = pygame.display.get_surface()
+    game.initialize_display()
     library = shared_library()
     library._cache["sentinel"] = pygame.Surface((1, 1), pygame.SRCALPHA)
 
@@ -177,22 +205,22 @@ def test_fx_frame_cache_forgets_a_missing_asset_tree() -> None:
     assert fx._frames_miss is False
 
 
-def test_level_draw_presents_the_health_bar_rects(mock_input_manager) -> None:
-    """``Level.draw`` must merge the bar rects into what it returns.
+def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) -> None:
+    """The bars are on the target when ``Level.draw`` returns.
 
-    They are painted after the renderer computed its dirty set, so without
-    this they were never presented outside a full-screen refresh. The player
-    is the only entity the fixture places, and it is excluded from world bars
-    on purpose (its HP is on the screen HUD), so a non-player entity is added
-    here to get a bar to present.
+    They used to have to be *declared* so the next frame's partial present
+    would reach them, and this is the test that contract died with: there is no
+    declared set and no partial present, so the only thing left to check is
+    that a bar actually reaches the pixels.
     """
-    from src.core.level.level import Level
-    from tests.headless.conftest import make_programmatic_level_data
-
+    target = make_viewport().surface
     level = Level(
-        pygame.display.get_surface(),
+        target,
         make_programmatic_level_data(),
         mock_input_manager,
+        # The bars come from the injected overlay; a Level built without one
+        # draws the world and no interface, which is the default on purpose.
+        overlay=make_overlay(target, Camera.for_target(target).density),
     )
     level.update(1 / 60)
     enemy = _Sprite((200.0, 200.0), size=40)
@@ -202,12 +230,8 @@ def test_level_draw_presents_the_health_bar_rects(mock_input_manager) -> None:
     enemy.is_dead = False
     level.groups.entity_sprites.add(enemy)
 
-    bar_rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
-    assert bar_rects, "the bar pass must report what it painted"
-    rects = level.draw(60.0, game=None, frame_time=16.0)
+    assert level.draw(60.0, scene_host=None, frame_time=16.0) is None
 
-    assert rects is not None
-    missing = [
-        rect for rect in bar_rects if not any(rect.colliderect(presented) for presented in rects)
-    ]
-    assert missing == [], "every bar rect must end up on the presented set"
+    rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
+    assert rects, "a damaged enemy must get a bar"
+    assert not hasattr(level.renderer, "add_overlay_rects")

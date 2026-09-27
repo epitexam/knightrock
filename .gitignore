@@ -36,4 +36,5 @@ htmlcov/
 .mypy_cache/
 
 # Assets 
-assets/
+assets/data
+assets/graphics

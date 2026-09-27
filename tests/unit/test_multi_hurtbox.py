@@ -65,8 +65,8 @@ def test_head_zone_applies_localized_mult() -> None:
     """La tete (mult 1.2) scale les degats, pas le reste du corps."""
     target = entity_at(20.0, faction="B", hurtbox_zones=_zones())
     target.sync_rects()
-    # Union legacy = englobe les 3 zones ; la tete (bandeau court) est
-    # strictement plus petite que le torse pleine hauteur.
+    # The legacy union spans all 3 zones; the head (short top band) is
+    # strictly smaller than the full-height torso.
     head, torso, _legs = target.hurtboxes
     attacker = AttackerStub()
 

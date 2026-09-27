@@ -21,7 +21,7 @@ from src.core.level.systems.combat_system import CombatSystem
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics as PhysicsSettings
 from src.core.settings import Simulation as SimulationSettings
-from src.physics.entity_grid import EntityGrid
+from src.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid
 from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -32,7 +32,7 @@ def _lunge_definition() -> object:
 
 
 def test_lunge_frame1_sweeps_transition_tick() -> None:
-    """(b) Lunge frame 1 : seed startup -> ACTIVE post-lunge, meme tick.
+    """(b) Lunge frame 1: seed startup -> ACTIVE after the lunge, same tick.
 
     Geometrie (verifiee sur le repro 2.1 : box.x = attacker.x + 10) :
     attaquant en x=10 -> seed (20..40) chevauche la hurtbox cible (20..60) ;
@@ -137,7 +137,7 @@ def _run_sweep_tick(attacker, target) -> CombatSystem:
 
 
 def test_fine_target_miss_discrete_hit_via_sweep() -> None:
-    """(a) Repro 2.1 : saut 40 px, ACTIVE, cible fine.
+    """(a) Repro 2.1: 40px jump, ACTIVE, thin target.
 
     Miss en discret (boxes finales), hit via sweep — le test rejoue la
     capture frontiere comme `gameplay_loop.update`.
@@ -153,7 +153,7 @@ def test_fine_target_miss_discrete_hit_via_sweep() -> None:
     attacker.hitbox.x += 60.0  # saut + lunge du porteur (60 px < borne MAX)
     attacker.combat.sync_attack_box()  # cur box (70..90) : discret, rate (25..65)
 
-    # Discret : les boxes finales ne se recouvrent plus.
+    # Discret: the final boxes no longer overlap.
     assert attacker.combat.attack_box.colliderect(target.hurtbox) is False
     system = _run_sweep_tick(attacker, target)
     # Sweep : la box seed (10..30) recouvre la hurtbox cur (15..55).
@@ -205,40 +205,98 @@ class _CountingGrid(EntityGrid):
         return super().near(box)
 
 
+def _parity_pass(use_grid: bool) -> tuple[int, int, int, int]:
+    """One sweep tick, with or without a grid. Returns metrics and queries.
+
+    A two-entity roster, which is below ``MIN_GRID_MEMBERS`` and therefore
+    takes the bypass: the parity this test is about is still a real one,
+    because the bypass has to produce the same candidates and contacts as
+    both the indexed and the no-grid path. :func:`_indexed_parity_pass` is
+    the same check with a roster large enough to be indexed.
+    """
+    definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
+    attacker = entity_at(10.0, faction="A", definition=definition)
+    target = entity_at(20.0, faction="B")
+    attacker.combat.capture_attack_origin()
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)  # ACTIVE f0 : prev seed (10..30)
+    attacker.hitbox.x += 60.0  # lunge < borne MAX : cur (70..90)
+    attacker.combat.sync_attack_box()
+    target.capture_sweep_origin()
+
+    system = CombatSystem()
+    queries = 0
+    if use_grid:
+        grid = _CountingGrid()
+        grid.rebuild([attacker, target])
+        system.process_attacks([attacker, target], grid)
+        queries = grid.queries
+    else:
+        system.process_attacks([attacker, target])
+    return (
+        system.metrics.pairs_tested,
+        system.metrics.overlaps,
+        system.metrics.contacts,
+        queries,
+    )
+
+
 def test_grid_parity_candidates_and_contacts_with_and_without_grid() -> None:
     """(d) Parite grille : candidats + contacts avec/sans `EntityGrid`.
 
-    Deux passes sur des doublons isomorphes (une par mode) : la premiere
+    Deux passes sur des doublures isomorphes (une par mode) : la premiere
     passe enregistre `targets_hit` et applique les degats, elle ne doit
     pas polluer la seconde (sinon la parite mesure un double-hit, pas
-    l elagage).
+    l'elagage).
     """
-    results = []
-    for use_grid in (False, True):
-        definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
-        attacker = entity_at(10.0, faction="A", definition=definition)
-        target = entity_at(20.0, faction="B")
-        attacker.combat.capture_attack_origin()
-        assert attacker.combat.start_attack("test")
-        attacker.combat.update(1 / 60)  # ACTIVE f0 : prev seed (10..30)
-        attacker.hitbox.x += 60.0  # lunge < borne MAX : cur (70..90)
-        attacker.combat.sync_attack_box()
-        target.capture_sweep_origin()
+    without = _parity_pass(False)
+    with_bypass = _parity_pass(True)
 
-        system = CombatSystem()
-        if use_grid:
-            grid = _CountingGrid()
-            grid.rebuild([attacker, target])
-            system.process_attacks([attacker, target], grid)
-            # Non bloquant (D2) : incremente apres elagage, borne seulement.
-            assert grid.queries == len(attacker.combat.swept_attack_boxes)
-        else:
-            system.process_attacks([attacker, target])
-        results.append(
-            (system.metrics.pairs_tested, system.metrics.overlaps, system.metrics.contacts)
-        )
+    assert without[:3] == with_bypass[:3] == (1, 1, 1)
+    assert with_bypass[3] == 0, (
+        "a two-entity roster is below MIN_GRID_MEMBERS, so the grid must not "
+        "be queried at all -- that is the bypass, and it is the cost this "
+        "size is meant to avoid"
+    )
 
-    assert results[0] == results[1] == (1, 1, 1)
+
+def test_an_indexed_grid_parity_also_holds() -> None:
+    """The same parity with a roster large enough to be worth indexing.
+
+    Without this, the bypass could satisfy the parity test on its own and the
+    indexed path would never be compared against anything.
+    """
+    spread = [
+        entity_at(400.0 * index, faction="B" if index % 2 else "A")
+        for index in range(MIN_GRID_MEMBERS)
+    ]
+    definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
+    attacker = entity_at(10.0, faction="A", definition=definition)
+    attacker.combat.capture_attack_origin()
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+    roster = [attacker, *spread]
+    for entity in roster:
+        entity.capture_sweep_origin()
+
+    system = CombatSystem()
+    grid = _CountingGrid()
+    grid.rebuild(roster)
+    system.process_attacks(roster, grid)
+    indexed = (system.metrics.pairs_tested, system.metrics.overlaps, system.metrics.contacts)
+
+    plain = CombatSystem()
+    plain.process_attacks(roster)
+    exhaustive = (plain.metrics.pairs_tested, plain.metrics.overlaps, plain.metrics.contacts)
+
+    assert grid.indexed is True
+    assert grid.queries > 0, "an indexed grid must actually be queried"
+    # Contacts and overlaps must match exactly. `pairs_tested` must *not*:
+    # it counts how many pairs were looked at, and looking at fewer is the
+    # entire reason the index exists.
+    assert indexed[1:] == exhaustive[1:]
+    assert indexed[0] < exhaustive[0], "a populated grid must prune the far pairs"
 
 
 def test_dodge_within_one_tick_stays_hittable() -> None:
@@ -251,14 +309,14 @@ def test_dodge_within_one_tick_stays_hittable() -> None:
     target.hitbox.x += 5.0  # esquive > SWEEP_MIN au-dela du bord
     target.sync_rects()  # cur hurtbox (75..115) : discret, rate
 
-    # Cote cible seul : l union (70..115) ne rejoint toujours pas la box
+    # Target side only: the union (70..115) still does not reach the
     # d attaque (10..30) — la generosite ne fabrique pas de touche magique.
     assert attacker.combat.attack_box.colliderect(target.hurtbox) is False
     assert target.swept_hurtbox().colliderect(attacker.combat.attack_box) is False
 
-    # Face a un lunge, la meme esquive laisse passer le coup 1 tick :
-    # box cur (42..62) rate la hurtbox esquivée (65..105), mais les unions
-    # se recouvrent (box swept 10..62 vs cible swept 60..105).
+    # Against a lunge, the same dodge lets the hit through by one tick: the
+    # current box (42..62) misses the dodged hurtbox (65..105), but the swept
+    # boxes still overlap (swept box 10..62 vs swept target 60..105).
     attacker2 = entity_at(0.0, faction="A", definition=_lunge_definition())
     target2 = entity_at(60.0, faction="B")
     target2.capture_sweep_origin()  # prev (60..100)
@@ -285,7 +343,7 @@ def test_teleport_beyond_max_yields_no_phantom_contact() -> None:
     assert swept.size == cur.size
     assert swept.topleft == cur.topleft
 
-    # Bout en bout : le smear d une cible teleportee ne cree aucun contact.
+    # End to end: a teleported target's smear creates no contact.
     attacker = entity_at(0.0, faction="A", definition=attack(phase(size=(20.0, 20.0))))
     target = entity_at(2000.0, faction="B")
     attacker.combat.capture_attack_origin()
@@ -310,10 +368,10 @@ def test_owner_push_between_syncs_sweeps_full_width() -> None:
     attacker.combat.update(1 / 60)
     attacker.combat.sync_attack_box()  # 1er sync : cur (0..20), rate la cible
     attacker.hitbox.x += 30.0  # push/separation entre les deux syncs
-    attacker.combat.sync_attack_box()  # 2e sync : cur (30..50)
+    attacker.combat.sync_attack_box()  # second sync: cur (30..50)
 
-    # prev (0..20) intact (aucune capture entre les deux syncs) : sweep
-    # pleine largeur, alors que cur seul reste sous la cible.
+    # prev (0..20) intact (nothing captured between the two syncs): a
+    # full-width sweep, while cur alone still falls short of the target.
     swept = attacker.combat.hitbox.swept_rects[0]
     assert swept.width == pytest.approx(50.0)
     system = _run_sweep_tick(attacker, target)
