@@ -162,6 +162,14 @@ from src.ui.world_overlay_metrics import (  # noqa: F401 - re-exported
 from src.ui.world_overlay_metrics import (
     scaled_world_px as _scaled,
 )
+from src.ui.world_overlay_shared import (
+    debug_reference,
+    display_name,
+    dodge_annotation,
+    faction,
+    hitbox_color,
+    label_color,
+)
 
 if TYPE_CHECKING:
     from src.combat.frame_data import PhaseDefinition
@@ -323,7 +331,7 @@ class WorldUI:
             is_static = getattr(sprite, "hitbox", None) is None
             if is_static and not self.layers["statics"]:
                 continue
-            reference = self._debug_reference(sprite)
+            reference = debug_reference(sprite)
             if reference is None or not camera.is_visible(reference):
                 continue  # culled: off-screen, not worth a single pixel
             if self.layers["boxes"]:
@@ -358,28 +366,12 @@ class WorldUI:
         return (
             priority,
             segments,
-            self._label_color(sprite),
+            label_color(sprite),
             anchor,
             above_lift,
             below_drop,
             sprite,
         )
-
-    @staticmethod
-    def _debug_reference(sprite: pygame.sprite.Sprite) -> pygame.FRect | None:
-        reference = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
-        if reference is None:
-            return None
-        combat = getattr(sprite, "combat", None)
-        rectangles = [pygame.FRect(reference)]
-        for name in ("attack_boxes", "swept_attack_boxes"):
-            values = getattr(combat, name, ())
-            if isinstance(values, tuple):
-                rectangles.extend(pygame.FRect(value) for value in values if value is not None)
-        anchors = getattr(combat, "attack_anchors", ())
-        if isinstance(anchors, tuple):
-            rectangles.extend(pygame.FRect(anchor[0], anchor[1], 0.0, 0.0) for anchor in anchors)
-        return rectangles[0].unionall(rectangles[1:]) if len(rectangles) > 1 else rectangles[0]
 
     @property
     def surface(self) -> pygame.Surface:
@@ -392,40 +384,6 @@ class WorldUI:
         no symptom until the two sizes differ.
         """
         return self.renderer.surface
-
-    @staticmethod
-    def _display_name(sprite: pygame.sprite.Sprite) -> str:
-        """Header name: the enemy registry type for foes, the class otherwise.
-
-        Every foe shares the ``Enemy`` class, so the class name says nothing —
-        the stored ``enemy_type`` (``"goblin"``, ``"slime"``, ...) does. Other
-        factions keep their class name, and typeless enemies fall back to it.
-        """
-        if WorldUI._faction(sprite) == "enemy":
-            return getattr(sprite, "enemy_type", None) or type(sprite).__name__
-        return type(sprite).__name__
-
-    @staticmethod
-    def _faction(sprite: pygame.sprite.Sprite) -> str | None:
-        return getattr(sprite, "faction", None)
-
-    def _hitbox_color(self, sprite: pygame.sprite.Sprite) -> Color:
-        faction = self._faction(sprite)
-        if faction == "enemy":
-            return Colors.red
-        if faction == "player":
-            return Colors.debug_hitbox
-        return Colors.light_grey
-
-    def _label_color(self, sprite: pygame.sprite.Sprite) -> Color:
-        if getattr(sprite, "state_machine", None) is None:
-            return Colors.yellow  # projectiles
-        faction = self._faction(sprite)
-        if faction == "enemy":
-            return Colors.light_red
-        if faction == "player":
-            return Colors.light_green
-        return Colors.text_muted
 
     @staticmethod
     def _hurtbox_zones(
@@ -554,35 +512,6 @@ class WorldUI:
             width=1,
         )
 
-    def _clamp_annotation(self, rect: pygame.Rect) -> pygame.Rect:
-        """Shift an annotation rect back inside the display (never clipped)."""
-        if rect.right > self.surface.get_width():
-            rect.right = self.surface.get_width()
-        if rect.left < 0:
-            rect.left = 0
-        if rect.top < 0:
-            rect.top = 0
-        return rect
-
-    def _dodge_annotation(self, rect: pygame.Rect, obstacles: Iterable[pygame.Rect]) -> pygame.Rect:
-        """Shift ``rect`` up until it clears every tier drawn below/behind it.
-
-        Each step parks the rect ``ANNOTATION_TIER_GAP`` above the obstacle
-        it hit; a step always moves strictly upward, so the loop ends at
-        the screen edge where the rect is clamped and drawn anyway — a
-        cramped annotation beats a hidden one.
-        """
-        obstacles = list(obstacles)
-        for _ in range(ANNOTATION_MAX_DODGES):
-            hit = next((obstacle for obstacle in obstacles if rect.colliderect(obstacle)), None)
-            if hit is None:
-                break
-            rect.bottom = hit.top - self.metrics.tier_gap
-            if rect.top < 0:
-                rect.top = 0
-                break
-        return self._clamp_annotation(rect)
-
     def _draw_boxes(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
         collider = getattr(sprite, "hitbox", None)
         combat = getattr(sprite, "combat", None)
@@ -613,7 +542,7 @@ class WorldUI:
             annotations.append(header_rect)
         pygame.draw.rect(
             self.surface,
-            self._hitbox_color(sprite),
+            hitbox_color(sprite),
             camera.apply(collider),
             width=self.stroke(),
         )
@@ -1173,10 +1102,10 @@ class WorldUI:
         - flags row (active flags only, no tag — each flag reads on its
           own): last hit, stagger, OTG, gravity, air, ledge, ``|``-separated
         """
-        faction_color = self._label_color(sprite)
+        faction_color = label_color(sprite)
         state_name = state_machine.current_state_name or "None"
         lines: _Segments = [
-            [(f"{self._display_name(sprite)} ", faction_color), (state_name, Colors.off_white)]
+            [(f"{display_name(sprite)} ", faction_color), (state_name, Colors.off_white)]
         ]
         health = getattr(sprite, "health", None)
         max_health = getattr(sprite, "max_health", None)
@@ -1184,7 +1113,7 @@ class WorldUI:
             lines.append(
                 [
                     ("HP ", LABEL_TAG),
-                    (f"{health:.0f}/{max_health:.0f}", self._health_color(health, max_health)),
+                    (f"{health:.0f}/{max_health:.0f}", _health_colour(health, max_health)),
                 ]
             )
 
@@ -1324,7 +1253,12 @@ class WorldUI:
         else:
             anchor_y = int(screen.top) - self.metrics.tier_gap
         chip = pygame.Rect(int(screen.x), int(anchor_y - chip_h), chip_w, chip_h)
-        chip = self._dodge_annotation(chip, obstacles)
+        chip = dodge_annotation(
+            chip,
+            obstacles,
+            tier_gap=self.metrics.tier_gap,
+            screen_width=self.surface.get_width(),
+        )
         panel = pygame.Surface(chip.size, pygame.SRCALPHA)
         pygame.draw.rect(panel, ANNOTATION_CHIP_FILL, panel.get_rect())
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
@@ -1541,7 +1475,7 @@ class WorldUI:
         sprite: pygame.sprite.Sprite, anchor: pygame.Rect | pygame.FRect
     ) -> tuple[int, float, float]:
         """Placement order: the player reads first, then top-to-bottom."""
-        player_first = 0 if WorldUI._faction(sprite) == "player" else 1
+        player_first = 0 if faction(sprite) == "player" else 1
         return (player_first, float(anchor.top), float(anchor.left))
 
     def _label_clearances(
@@ -1764,11 +1698,6 @@ class WorldUI:
     ) -> pygame.Rect | None:
         """Where this sprite's bar sits, or None when it has none."""
         return _health_bar_rect(self.surface, sprite, screen_rect)
-
-    @staticmethod
-    def _health_color(health: float, max_health: float) -> Color:
-        """HP tint by remaining ratio, for the label card's health row."""
-        return _health_colour(health, max_health)
 
     def draw_health_bars(
         self,

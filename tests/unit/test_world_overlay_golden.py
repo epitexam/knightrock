@@ -28,6 +28,7 @@ from pygame.math import Vector2
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.ui_manager import UIManager
+from src.ui.world_overlay_shared import debug_reference
 from src.ui.world_ui import WorldUI
 
 # 1024x768 at zoom 1.0. The golden asserts world-space geometry, so the render
@@ -76,39 +77,54 @@ GOLDEN_PLACED = [
     (468, 175, 104, 53),
 ]
 
-# Every method ``WorldUI`` has today, and the one module each one is headed for.
-# ``__init__`` is the façade's and is left out of the body below. The test that
-# reads this checks it is total and single-assigned, so a method cannot be
-# dropped or claimed twice by a typo in here.
+# Every method ``WorldUI`` had before the split, and the one module each one is
+# headed for. ``__init__`` is the façade's and is left out of the body below.
+# The tests that read this check it is total and single-assigned, and that each
+# name is on the façade or in its own module -- never both, never neither. A
+# method cannot be dropped or double-claimed by a typo in here.
+#
+# ``_health_color`` was in this list and is not any more: it did nothing but
+# call ``world_overlay_bars.health_colour``, and a card that needs an HP tint
+# now calls that directly instead of paying a hop through the façade.
 MANIFEST = {
     "facade": (
         "draw_debug_overlays metrics stroke toggle surface draw_health_bars "
         "_health_bar_rect _has_health_bar"
     ),
     "shared": (
-        "_faction _display_name _hitbox_color _label_color _health_color "
-        "_debug_reference _clamp_annotation _dodge_annotation"
+        "debug_reference display_name faction hitbox_color label_color "
+        "clamp_annotation dodge_annotation"
     ),
     "geo": (
-        "_offensive_boxes _offensive_shapes _offensive_badges _offensive_hit "
-        "_offensive_outline _attack_header_rect _attack_timeline_widths "
-        "_paint_attack_timeline _live_attack_text _timeline_progress _draw_boxes "
-        "_draw_shape _draw_shape_once _draw_offensive_boxes _draw_attack_geometry "
-        "_draw_zone_seal _draw_dashed_rect _dashed_edges _draw_motion_arrow _draw_anchor "
-        "_register_annotations _hurtbox_zones _zone_mults _zone_tags _swept_boxes "
-        "_swept_shapes _attack_anchors _box_moved _in_situ_dot _draw_velocity "
-        "_draw_velocity_arrow _is_parry_flash _is_reaction_push"
+        "offensive_boxes offensive_shapes offensive_badges offensive_hit "
+        "offensive_outline attack_header_rect attack_timeline_widths "
+        "paint_attack_timeline live_attack_text timeline_progress draw_boxes "
+        "draw_shape draw_shape_once draw_offensive_boxes draw_attack_geometry "
+        "draw_zone_seal draw_dashed_rect dashed_edges draw_motion_arrow draw_anchor "
+        "register_annotations hurtbox_zones zone_mults zone_tags swept_boxes "
+        "swept_shapes attack_anchors box_moved in_situ_dot draw_velocity "
+        "draw_velocity_arrow is_parry_flash is_reaction_push"
     ),
     "cards": (
-        "_candidate_slots _place_label _blit_label _draw_labels _label_priority "
-        "_label_clearances _label_request _label_lines _label_segments _entity_segments "
-        "_zone_line _attack_line _status_flag_tokens _reaction_flag _status_flag_strings "
-        "_entity_lines _projectile_line"
+        "candidate_slots place_label blit_label draw_labels label_priority "
+        "label_clearances label_request label_lines label_segments entity_segments "
+        "zone_line attack_line status_flag_tokens reaction_flag status_flag_strings "
+        "entity_lines projectile_line"
     ),
     "panels": (
-        "update_metrics draw_metrics_panel combat_panel note_clash _draw_clash_marker "
-        "stamp_clash_marker _paint_clash_ring"
+        "update_metrics draw_metrics_panel combat_panel note_clash draw_clash_marker "
+        "stamp_clash_marker paint_clash_ring"
     ),
+}
+
+# The module each extracted group is headed for. A group whose module does not
+# exist yet is still sitting on the façade, which is the one state allowed to
+# be transient.
+MODULES = {
+    "shared": "src.ui.world_overlay_shared",
+    "geo": "src.ui.world_overlay_geo",
+    "cards": "src.ui.world_overlay_cards",
+    "panels": "src.ui.world_overlay_panels",
 }
 
 
@@ -253,7 +269,7 @@ def test_health_bar_rects_are_frozen(world_ui: WorldUI, camera: Camera) -> None:
     _drawn(scene, world_ui, camera)
     actual = {}
     for entity in scene:
-        anchor = camera.apply(world_ui._debug_reference(entity))
+        anchor = camera.apply(debug_reference(entity))
         bar = world_ui._health_bar_rect(entity, anchor)
         actual[type(entity).__name__] = None if bar is None else tuple(bar)
     assert actual == GOLDEN_BARS
@@ -328,9 +344,7 @@ def test_the_sink_is_producers_only(world_ui: WorldUI, camera: Camera) -> None:
     assert registered == [rect for rects in GOLDEN_ANNOTATIONS.values() for rect in rects]
 
     goblin = next(entity for entity in scene if type(entity).__name__ == "Goblin")
-    request = world_ui._label_request(
-        goblin, camera.apply(world_ui._debug_reference(goblin)), False, camera
-    )
+    request = world_ui._label_request(goblin, camera.apply(debug_reference(goblin)), False, camera)
     assert request is not None
     before = len(world_ui._annotation_obstacles)
     world_ui._place_label(request[1], request[2], request[3], [], *world_ui.surface.get_size())
@@ -391,21 +405,46 @@ def test_manifest_is_total_and_single_assigned() -> None:
     assert MANIFEST["facade"], "the façade cannot be empty"
 
 
-def test_manifest_covers_world_ui_as_it_stands(world_ui: WorldUI) -> None:
-    """The manifest accounts for the whole current surface of ``WorldUI``.
+def test_manifest_names_live_in_exactly_one_place() -> None:
+    """Each name is on the façade or in its own module -- never both, never neither.
 
-    Once the split is done this becomes the check that nothing was lost: the
-    methods will have moved, but the set of names is the same one, and a name
-    that quietly disappeared shows up here as a diff.
+    This is the check that makes the split provable rather than hopeful. A
+    method still sitting on ``WorldUI`` after its group was extracted shows up
+    as a duplicate; a method lost on the way shows up as a hole, because the
+    union across the façade and the extracted modules has to equal the manifest
+    exactly.
     """
+    import importlib
     import inspect
 
-    owned = {name for group in MANIFEST.values() for name in group.split()}
-    # `metrics` and `surface` are properties, so a plain `isfunction` filter
-    # would quietly drop the two names the façade most needs to keep.
-    present = {
+    on_facade = {
         name
         for name, member in inspect.getmembers(WorldUI)
         if inspect.isfunction(member) or isinstance(member, property)
     }
-    assert present - {"__init__"} == owned
+
+    accounted: set[str] = set()
+    for group, path in MODULES.items():
+        wanted = set(MANIFEST[group].split())
+        # Half of `WorldUI`'s methods are private and half are not, so "is this
+        # name still on the façade" is asked of both spellings.
+        pending = {name for name in wanted if name in on_facade or f"_{name}" in on_facade}
+        try:
+            module = importlib.import_module(path)
+        except ModuleNotFoundError:
+            # Not extracted yet, so every name must still be on the façade.
+            # Anything else means a method went missing between two phases.
+            assert pending == wanted, (
+                f"{group} is neither extracted nor still on the façade: {sorted(wanted - pending)}"
+            )
+            accounted |= wanted
+            continue
+        exported = {name for name in vars(module) if not name.startswith("_")}
+        assert wanted <= exported, f"{path} never got {sorted(wanted - exported)}"
+        assert not pending, f"{sorted(pending)} stayed on WorldUI"
+        accounted |= wanted
+
+    facade = set(MANIFEST["facade"].split())
+    assert facade <= on_facade, f"the façade lost {sorted(facade - on_facade)}"
+    accounted |= facade
+    assert accounted == {name for group in MANIFEST.values() for name in group.split()}

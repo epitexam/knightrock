@@ -92,10 +92,10 @@ def test_the_bars_module_does_not_import_the_debug_overlay() -> None:
 
 
 def test_world_ui_delegates_the_bar_methods_rather_than_reimplementing_them() -> None:
-    """Four names, and each is a call. A copy would rot the moment one moved."""
+    """Three names, and each is a call. A copy would rot the moment one moved."""
     import inspect
 
-    for name in ("_has_health_bar", "_health_bar_rect", "_health_color", "draw_health_bars"):
+    for name in ("_has_health_bar", "_health_bar_rect", "draw_health_bars"):
         body = inspect.getsource(getattr(world_ui.WorldUI, name))
         assert "return _" in body, f"{name} no longer delegates"
         assert body.count("pygame.draw") == 0, f"{name} grew past a delegation"

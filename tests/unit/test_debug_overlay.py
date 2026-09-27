@@ -14,6 +14,7 @@ from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
+from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_ui import (
     HEALTH_BAR_HEIGHT,
     HEALTH_BAR_LABEL_GAP,
@@ -149,9 +150,9 @@ def test_status_flags_are_pipe_separated(world_ui: WorldUI) -> None:
 
 
 def test_hitbox_color_follows_faction(world_ui: WorldUI) -> None:
-    assert world_ui._hitbox_color(_entity(faction="enemy")) == Colors.red
-    assert world_ui._hitbox_color(_entity(faction="player")) == Colors.debug_hitbox
-    assert world_ui._hitbox_color(_entity(faction="neutral")) == Colors.light_grey
+    assert hitbox_color(_entity(faction="enemy")) == Colors.red
+    assert hitbox_color(_entity(faction="player")) == Colors.debug_hitbox
+    assert hitbox_color(_entity(faction="neutral")) == Colors.light_grey
 
 
 def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
@@ -716,7 +717,7 @@ def test_enemy_header_shows_the_registry_type(world_ui: WorldUI) -> None:
 
 
 def test_enemy_without_type_falls_back_to_class_name(world_ui: WorldUI) -> None:
-    assert world_ui._display_name(_entity()) == "Goblin"
+    assert display_name(_entity()) == "Goblin"
 
 
 def test_player_header_ignores_enemy_type(world_ui: WorldUI) -> None:
