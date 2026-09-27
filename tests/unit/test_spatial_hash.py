@@ -6,10 +6,13 @@ QUERY_MARGIN_PX so boundary-resting sprites are found), and moved sprites
 can be re-bucketed with ``update``.
 """
 
+from types import SimpleNamespace
 from typing import cast
 
 import pygame
 
+from src.core.level.level import Level
+from src.core.settings import World
 from src.physics.spatial_hash import (
     QUERY_MARGIN_PX,
     SpatialHash,
@@ -288,3 +291,42 @@ def test_zero_area_box_with_negative_dimensions_never_crashes():
     # Flipped box: left=100, right=80 -> x1 < x0 -> collapses to column of x0
     cells = grid._cells_for_box(pygame.FRect(100, 100, -20, -20))
     assert len(cells) == 1  # both axes collapse to a single cell
+
+
+# -- one cell size for both grids ---------------------------------------------
+#
+# The environment hash buckets terrain and the entity grid buckets combatants.
+# They are queried with the same rectangles, so a cell edge that one of them
+# treats as too far is a collision the other cannot see. The number therefore
+# lives in `settings.World` and both default to it.
+
+
+def test_both_spatial_grids_default_to_the_same_cell_size() -> None:
+    from src.physics.entity_grid import EntityGrid
+
+    environment = SpatialHash()
+    entities = EntityGrid()
+
+    assert environment.cell_size == entities.cell_size
+    assert environment.cell_size == World.HASH_CELL_SIZE
+
+
+def test_a_level_wires_both_grids_to_the_shared_cell_size() -> None:
+    """Not just the defaults: what the level actually builds."""
+    from src.physics.entity_grid import EntityGrid
+    from tests.headless.conftest import make_programmatic_level_data, make_viewport
+
+    level = Level(
+        make_viewport().surface,
+        make_programmatic_level_data(),
+        SimpleNamespace(poll=lambda: None, snapshot=lambda: None, restore_snapshot=lambda _s: None),
+    )
+
+    assert level.spatial_hash.cell_size == World.HASH_CELL_SIZE
+    assert level.gameplay_loop.entity_grid.cell_size == World.HASH_CELL_SIZE
+    assert isinstance(level.gameplay_loop.entity_grid, EntityGrid)
+
+
+def test_the_cell_size_is_two_tiles() -> None:
+    """A 64-unit tile lands in one or two cells, not split four ways."""
+    assert World.HASH_CELL_SIZE == 2 * World.TILE_SIZE

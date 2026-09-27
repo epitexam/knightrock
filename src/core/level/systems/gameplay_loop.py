@@ -35,7 +35,7 @@ from src.entities.entity import Entity
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
-from src.core.settings import CameraShake
+from src.core.settings import CameraShake, World
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
@@ -86,7 +86,7 @@ class GameplayLoop:
         # pass at the start of process_combat_and_separation (positions are
         # up to date there) and shared with every pairing system, turning
         # the legacy O(n²) pair loops into O(n · k) local queries.
-        self.entity_grid: EntityGrid = EntityGrid(cell_size=128)
+        self.entity_grid: EntityGrid = EntityGrid(cell_size=World.HASH_CELL_SIZE)
 
         # World stages, assembled by the level and run in the order below.
         self.platform_system = platform_system

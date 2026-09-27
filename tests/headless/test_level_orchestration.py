@@ -160,3 +160,31 @@ def test_the_grid_is_actually_populated(build_level) -> None:
 
     # The grid indexes exactly the collision sprites it was handed.
     assert len(level.spatial_hash._cells_by_sprite) == len(level.groups.collision_sprites)
+
+
+def test_the_spawner_is_given_its_projectile_system_not_patched_afterwards(
+    build_level,
+) -> None:
+    """Every system is fully wired when it is constructed.
+
+    `SpawnSystem` used to be created before the world build and handed its
+    projectile system by an attribute write a few lines later, which
+    contradicted the "collaborators are injected explicitly" claim the rest of
+    the constructor is built on: an object that is half-configured for the
+    first third of its life can be *used* in that state, and nothing said so.
+    The spawner moved after the projectile system so it could be given one.
+    """
+    level = build_level()
+
+    assert level.spawn_system.projectile_system is level.projectile_system
+
+
+def test_the_spawner_can_fire_on_construction(build_level) -> None:
+    """The consequence of the above: a spawner is never missing its launcher.
+
+    A spawner built without one raises at the moment of use -- deep inside a
+    debug keypress -- rather than at the moment of wiring.
+    """
+    level = build_level()
+
+    assert level.spawn_system.projectile_system is not None

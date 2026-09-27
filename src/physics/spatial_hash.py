@@ -38,6 +38,8 @@ from typing import Protocol
 
 import pygame
 
+from src.core.settings import World
+
 __all__ = [
     "QUERY_MARGIN_PX",
     "SpatialHash",
@@ -96,12 +98,15 @@ class SpatialHash:
         Mapping of cell coordinates to lists of sprites in that cell.
     """
 
-    def __init__(self, cell_size: int = 128):
+    def __init__(self, cell_size: int = World.HASH_CELL_SIZE):
         """Initialize the spatial hash with a cell size.
 
         Args:
-            cell_size: Size of each grid cell in pixels. 128px (2x tile size)
-                works well for 64px tiles.
+            cell_size: Size of each grid cell in world units. Defaults to
+                ``World.HASH_CELL_SIZE``, which the entity grid uses too --
+                they are queried with the same rectangles, so a cell that
+                one of them considers too far is a collision the other
+                cannot see.
         """
         self.cell_size = cell_size
         self.grid: dict[tuple[int, int], list[SpatialHashMember]] = defaultdict(list)

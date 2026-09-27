@@ -33,6 +33,20 @@ class World:
 
     TILE_SIZE = 64
 
+    #: Grid cell edge of both spatial hashes, in world units.
+    #:
+    #: One number, because there are two hashes and they must agree: the
+    #: environment hash the level buckets terrain into, and the entity grid the
+    #: pairing systems bucket combatants into. They are queried with the same
+    #: rectangles, so a mismatch would not be a performance difference but a
+    #: correctness one -- a cell that one of them considers too far away is a
+    #: collision the other one cannot see.
+    #:
+    #: 128 is two tiles: large enough that a 64-unit tile lands in one or two
+    #: cells rather than being split four ways, small enough that a query does
+    #: not drag half the level in with it.
+    HASH_CELL_SIZE = 128
+
 
 class Physics:
     """Physics and movement constants."""

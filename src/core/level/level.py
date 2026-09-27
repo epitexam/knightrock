@@ -32,7 +32,7 @@ from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
-from src.core.settings import Debug
+from src.core.settings import Debug, World
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
@@ -115,10 +115,10 @@ class Level:
         self.rollback = RollbackSystem()
 
         self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
-        # Spatial hash for O(1) collision lookups (PERF-01/02): created before
-        # the spawner so runtime-spawned enemies join the grid too.
-        self.spatial_hash = SpatialHash(cell_size=128)
-        self.spawn_system = SpawnSystem(self.groups, self.spatial_hash)
+        # Spatial hash for O(1) collision lookups (PERF-01/02). Created before
+        # the world build, not before the spawner: what the build needs is the
+        # grid, so that every entity it creates is wired into it from the start.
+        self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
 
         self.world_builder = WorldBuilder(level_data, gameplay_data)
         # The grid is bound *before* the build so every entity comes out of the
@@ -165,7 +165,20 @@ class Level:
             spatial_hash=self.spatial_hash,
             contact_system=self.contact_system,
         )
-        self.spawn_system.projectile_system = self.projectile_system
+        # Assembled after the projectile system so it can be *given* rather
+        # than assigned in afterwards. It used to be created before the world
+        # build and handed its projectile system as an attribute write a few
+        # lines later, which contradicted the "collaborators are injected
+        # explicitly" claim the rest of this constructor is built on: an object
+        # that is half-configured for the first third of its life can be used
+        # in that state, and nothing said so. Nothing needs the spawner
+        # during the build -- it was only ever ordered early because of the
+        # spatial hash it shares, which is created above.
+        self.spawn_system = SpawnSystem(
+            self.groups,
+            self.spatial_hash,
+            projectile_system=self.projectile_system,
+        )
 
         self.gameplay_loop = GameplayLoop(
             platform_system=self.platform_system,

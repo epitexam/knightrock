@@ -49,6 +49,7 @@ from typing import Any, cast
 
 import pygame
 
+from src.core.settings import World
 from src.physics.spatial_hash import SpatialHash, SpatialHashMember
 
 __all__ = ["MIN_GRID_MEMBERS", "EntityGrid", "overlapping_pairs"]
@@ -80,7 +81,7 @@ class EntityGrid:
         which is the same set and cheaper at that size.
     """
 
-    def __init__(self, cell_size: int = 128) -> None:
+    def __init__(self, cell_size: int = World.HASH_CELL_SIZE) -> None:
         self.cell_size = cell_size
         self._hash = SpatialHash(cell_size=cell_size)
         self._members: list[Any] = []
