@@ -120,7 +120,7 @@ re-open the closed ones.
 | P2.5 fatal error path | **fixed** -- traceback logged, target painted, never raises |
 | P2.6 duplicated cell size, late injection | **fixed** -- one constant, spawner wired once |
 | P2.7 split the 1106-line `Entity` | **already done** -- see below |
-| P3.1 split the 2095-line `world_ui.py` | **partly** -- dimensions moved, drawing not split |
+| P3.1 split the 2095-line `world_ui.py` | **in progress** -- dimensions and health bars moved out |
 | P3.2 `Level`'s delegating properties | **one name, not six** -- the rest is the deliberate facade |
 | P3.3 dead sprite type check | **removed** |
 | P3.4 `DISPLAY_SAFETY_CEILING_FPS = 720` | **already correct** -- see below |

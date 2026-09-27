@@ -56,14 +56,17 @@ drawing is buried under four hundred lines of tables no reader of it needs.
 
 What is still in this file
 -------------------------
-The drawing, and the five concerns it interleaves -- debug boxes, label
-cards, velocity arrows, health bars and the screen-space panels. They are
-genuinely interleaved rather than merely adjacent: a label card's position
-depends on the health bar and the attack timeline that were drawn before it,
-and the dodge pass needs to know about both as obstacles. Splitting them
-further means giving each a real collaborator rather than moving methods
-around, which is a design task and not a refactor; see
-``notes/audit_p1_measured.md`` for why this branch did not attempt it blind.
+The debug drawing, in five parts that are being moved out one at a time:
+label cards, debug boxes, velocity arrows, the screen-space panels, and --
+already gone -- the health bars and the dimensions.
+
+The health bars went first and on their own argument rather than their size:
+``Level.draw`` calls them *before* it checks ``DEBUG``, so they are painted
+on every frame of a real game while everything else here is behind ``F1``.
+A production path inside a debug module is the arrangement that decays
+quietly, because it gets reviewed with the debug layer's eye and its tests
+get counted against the debug layer's coverage. See
+:mod:`src.ui.world_overlay_bars`.
 """
 
 import math
@@ -81,7 +84,19 @@ from src.core.settings import Debug
 from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
 from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
-from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
+from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_WARN
+from src.ui.world_overlay_bars import (
+    draw_health_bars as _draw_health_bars,
+)
+from src.ui.world_overlay_bars import (
+    has_health_bar as _has_health_bar,
+)
+from src.ui.world_overlay_bars import (
+    health_bar_rect as _health_bar_rect,
+)
+from src.ui.world_overlay_bars import (
+    health_colour as _health_colour,
+)
 from src.ui.world_overlay_metrics import (  # noqa: F401 - re-exported
     ANNOTATION_CHIP_FILL,
     ANNOTATION_CHIP_PAD,
@@ -411,16 +426,6 @@ class WorldUI:
         if faction == "player":
             return Colors.light_green
         return Colors.text_muted
-
-    @staticmethod
-    def _health_color(health: float, max_health: float) -> Color:
-        """HP tint by remaining ratio: green, then warn orange, then crit red."""
-        ratio = health / max_health if max_health else 0.0
-        if ratio <= 0.25:
-            return TEXT_CRIT
-        if ratio <= 0.5:
-            return TEXT_WARN
-        return TEXT_OK
 
     @staticmethod
     def _hurtbox_zones(
@@ -1539,48 +1544,6 @@ class WorldUI:
         player_first = 0 if WorldUI._faction(sprite) == "player" else 1
         return (player_first, float(anchor.top), float(anchor.left))
 
-    @staticmethod
-    def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether ``draw_health_bars`` will draw a bar for this sprite.
-
-        The player is excluded: its HP is read on the screen HUD (UI-7), a
-        world-space bar above it would be redundant. The gate sits here so
-        the debug label cards stop reserving room for a bar never drawn.
-        """
-        if WorldUI._faction(sprite) == "player":
-            return False
-        if getattr(sprite, "is_dead", False):
-            return False
-        if not getattr(sprite, "max_health", 0):
-            return False
-        return (
-            getattr(sprite, "hitbox", None) is not None or getattr(sprite, "rect", None) is not None
-        )
-
-    def _health_bar_rect(
-        self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect
-    ) -> pygame.Rect | None:
-        """Responsive health bar rect: width follows the sprite, clamped.
-
-        The bar sits ``HEALTH_BAR_ANCHOR_GAP`` above the entity; near the
-        top of the screen (no room above) it flips below the entity so it
-        stays visible instead of clipping. Returns ``None`` for sprites
-        without a bar (dead, no ``max_health``, statics).
-        """
-        if not self._has_health_bar(sprite):
-            return None
-        screen_width = self.surface.get_width()
-        screen_height = self.surface.get_height()
-        bar_width = max(30, min(float(screen_rect.width) * 0.8, 60))
-        bar_x = screen_rect.centerx - bar_width / 2
-        bar_x = min(max(bar_x, 0), max(0, screen_width - bar_width))
-        bar_y = float(screen_rect.top) - HEALTH_BAR_ANCHOR_GAP - HEALTH_BAR_HEIGHT
-        if bar_y < 0:
-            bar_y = float(screen_rect.bottom) + HEALTH_BAR_ANCHOR_GAP
-            if bar_y + HEALTH_BAR_HEIGHT > screen_height:
-                return None
-        return pygame.Rect(int(bar_x), int(bar_y), int(bar_width), HEALTH_BAR_HEIGHT)
-
     def _label_clearances(
         self, sprite: pygame.sprite.Sprite, anchor: pygame.Rect | pygame.FRect
     ) -> tuple[int, int]:
@@ -1778,6 +1741,44 @@ class WorldUI:
             kept.append(slot)
         return kept
 
+    # -- health bars ----------------------------------------------------------
+    #
+    # Delegated to `src/ui/world_overlay_bars.py`, which holds the real
+    # implementation. These four stay because the label code below needs them
+    # to dodge around a bar it never draws (`health_bar_rect` answers "where
+    # is the bar for this sprite"), and the renderer reaches the draw pass
+    # through the overlay port by this name.
+    #
+    # The bars are the one part of this file that is **not** debug-only:
+    # `Level.draw` calls them before it checks `DEBUG`, so they are painted on
+    # every frame of a real game. They are worth not sharing a module with
+    # 1800 lines of F1-layer drawing.
+
+    @staticmethod
+    def _has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
+        """Whether a world-space bar will be drawn for this sprite."""
+        return _has_health_bar(sprite)
+
+    def _health_bar_rect(
+        self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect
+    ) -> pygame.Rect | None:
+        """Where this sprite's bar sits, or None when it has none."""
+        return _health_bar_rect(self.surface, sprite, screen_rect)
+
+    @staticmethod
+    def _health_color(health: float, max_health: float) -> Color:
+        """HP tint by remaining ratio, for the label card's health row."""
+        return _health_colour(health, max_health)
+
+    def draw_health_bars(
+        self,
+        entities: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        screen_rects: dict[int, pygame.Rect] | None = None,
+    ) -> list[pygame.Rect]:
+        """Draw the always-on HP bars; return the rects they occupy."""
+        return _draw_health_bars(self.surface, entities, camera, screen_rects)
+
     def _blit_label(
         self,
         header: list[pygame.Surface],
@@ -1829,58 +1830,3 @@ class WorldUI:
                 self.surface.blit(surface, (cursor_x, cursor_y))
                 cursor_x += surface.get_width()
             cursor_y += row_height + self.metrics.label_line_gap
-
-    def draw_health_bars(
-        self,
-        entities: Iterable[pygame.sprite.Sprite],
-        camera: Camera,
-        screen_rects: dict[int, pygame.Rect] | None = None,
-    ) -> list[pygame.Rect]:
-        """Draw the always-on HP bars; return the rects they occupy.
-
-        ``screen_rects`` maps ``id(sprite)`` to the rect the world pass
-        actually blitted that sprite at. The render interpolates between
-        simulation ticks, so a sprite is drawn partway towards its next
-        position while ``camera.apply`` would place it at the current one.
-        Anchoring the bar to the blitted rect keeps it on the sprite it
-        belongs to instead of trailing half a tick behind it, which showed up
-        as a horizontal stripe of stale bar-coloured pixels.
-
-        The rects are returned because a bar is not always inside its sprite's
-        own rect -- it flips below the entity near the top of the screen, and its
-        minimum width is wider than a narrow sprite -- so anything reasoning
-        about what the bars covered needs them. The presentation does not: the
-        whole target is repainted every frame.
-        """
-        drawn: list[pygame.Rect] = []
-        for entity in entities:
-            max_health = getattr(entity, "max_health", 0)
-            if not max_health:
-                continue
-
-            health = getattr(entity, "health", 0)
-            rect = getattr(entity, "hitbox", None) or getattr(entity, "rect", None)
-            if rect is None or not camera.is_visible(rect):
-                continue
-
-            screen_rect = (screen_rects.get(id(entity)) if screen_rects else None) or camera.apply(
-                rect
-            )
-            background_rect = self._health_bar_rect(entity, screen_rect)
-            if background_rect is None:
-                continue
-            drawn.append(background_rect)
-            pygame.draw.rect(self.surface, (35, 37, 40), background_rect)
-            health_ratio = max(0.0, min(1.0, health / max_health))
-            health_width = background_rect.width * health_ratio
-            color = (
-                TEXT_OK if health_ratio > 0.5 else TEXT_WARN if health_ratio > 0.25 else TEXT_CRIT
-            )
-            if health_width > 0:
-                pygame.draw.rect(
-                    self.surface,
-                    color,
-                    (background_rect.x, background_rect.y, health_width, background_rect.height),
-                )
-            pygame.draw.rect(self.surface, PANEL_BORDER, background_rect, width=1)
-        return drawn
