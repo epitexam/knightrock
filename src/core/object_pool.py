@@ -1,14 +1,15 @@
 """Generic object pool (audit F6.3, Phase 3 #1).
 
-Projectiles, particles and other short-lived objects are created and
-destroyed by the hundreds per second; CPython allocation + GC churn is the
-next bottleneck once entity counts grow.  :class:`ObjectPool` keeps a free
-list so ``acquire`` reuses a dead instance (after an optional ``reset``)
-instead of building a new one, and ``release`` parks instances back.
+Short-lived objects are created and destroyed by the hundreds per second;
+CPython allocation + GC churn is the next bottleneck once entity counts grow.
+:class:`ObjectPool` keeps a free list so ``acquire`` reuses a dead instance
+(after an optional ``reset``) instead of building a new one, and ``release``
+parks instances back.
 
-The pool is deliberately minimal: no threads, no weakrefs, no max-size —
-the gameplay wiring (projectiles, particles) will add its own caps.  It is
-a building block of Phase 3 #1, unused by the simulation yet.
+The pool is deliberately minimal: no threads, no weakrefs, no max-size — the
+gameplay wiring owns its own caps.  :class:`ProjectileSystem
+<src.core.level.systems.projectile_system.ProjectileSystem>` is the current
+user; FX particles are the next candidate.
 """
 
 from __future__ import annotations

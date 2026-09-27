@@ -28,7 +28,6 @@ class GameOverScene(Scene):
         super().__init__(game)
         self.level_id = level_id
         items = (MenuItem("retry", "Retry"), MenuItem("menu", "Back to menu"))
-        self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
         self.view = MenuView()
 

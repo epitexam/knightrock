@@ -31,7 +31,6 @@ class PauseScene(Scene):
             MenuItem("options", "Options"),
             MenuItem("menu", "Back to menu"),
         )
-        self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
         self.view = MenuView()
         self._overlay: pygame.Surface | None = None
