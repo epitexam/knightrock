@@ -857,6 +857,29 @@ class Entity(Sprite):
         """
         return self._reaction.handle_heavy_knockback(knockback, source_center_x)
 
+    def kill(self) -> None:
+        """Leave the sprite groups *and* the collision grid.
+
+        ``pygame.sprite.Sprite.kill`` only leaves the groups, and the
+        environment hash is not a group -- it is handed the level's collidables
+        and queried directly by every entity that moves. So an entity removed
+        through the historical API stayed in the grid: no query could find it
+        (it is gone, so it cannot be a neighbour) and nothing ever dropped it.
+
+        Today that costs nothing, because nothing that dies is in the
+        environment grid: the tiles are static and the spawner-created enemies
+        are never added to it. It is the *shape* of the bug that matters. A
+        grid that keeps a dead entity alive also keeps the bucket pointing at
+        it, and the next entity allocated can be handed the recycled address --
+        at which point ``add`` would see a key it already has and skip the
+        insertion, and the new entity would pass through everything. See
+        :meth:`src.physics.spatial_hash.SpatialHash.add`.
+        """
+        spatial_hash = self.spatial_hash
+        if spatial_hash is not None:
+            spatial_hash.remove(self)
+        super().kill()
+
     def receive_damage(
         self,
         amount: float,

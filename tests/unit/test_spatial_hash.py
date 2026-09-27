@@ -18,6 +18,7 @@ from src.physics.spatial_hash import (
     SpatialHash,
     SpatialHashMember,
 )
+from tests.unit.helpers import make_entity
 
 
 class BoxSprite:
@@ -330,3 +331,87 @@ def test_a_level_wires_both_grids_to_the_shared_cell_size() -> None:
 def test_the_cell_size_is_two_tiles() -> None:
     """A 64-unit tile lands in one or two cells, not split four ways."""
     assert World.HASH_CELL_SIZE == 2 * World.TILE_SIZE
+
+
+# -- the id() key, and what happens when it is recycled -----------------------
+#
+# CPython hands the address of a freed object to the next object allocated, so
+# a dict keyed by `id()` can be holding a key that a brand new sprite will
+# collide with. `add` is idempotent by that key, so the naive implementation
+# silently declines to insert the newcomer -- which then passes through
+# everything. These are the two halves: the key must be checkable, and a
+# sprite that dies must actually leave.
+
+
+def test_a_recycled_id_does_not_silently_swallow_the_newcomer() -> None:
+    """The failure this guards is invisible: no error, just a ghost."""
+    grid = SpatialHash(cell_size=128)
+    gone = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid.add(gone)
+    # Forge the state a recycled id would leave behind: the key present, the
+    # object it was registered for gone.
+    assert id(gone) in grid._cells_by_sprite
+    grid._cells_by_sprite[id(gone)] = (gone, grid._cells_by_sprite[id(gone)][1])
+
+    newcomer = BoxSprite(pygame.FRect(5000, 5000, 64, 64))
+    grid._cells_by_sprite[id(newcomer)] = (gone, ((0, 0),))
+
+    grid.add(newcomer)
+
+    assert newcomer in grid.get_nearby(pygame.FRect(5000, 5000, 64, 64)), (
+        "a newcomer must never be skipped because of a stale key"
+    )
+    assert gone not in grid.get_nearby(pygame.FRect(5000, 5000, 64, 64))
+
+
+def test_removing_a_sprite_whose_id_belongs_to_another_touches_nothing() -> None:
+    """The mirror image: a stale *removal* must not empty someone else's cells."""
+    grid = SpatialHash(cell_size=128)
+    real = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid.add(real)
+    impostor = BoxSprite(pygame.FRect(0, 0, 64, 64))
+    grid._cells_by_sprite[id(impostor)] = (real, grid._cells_by_sprite[id(real)][1])
+
+    grid.remove(impostor)
+
+    assert real in grid.get_nearby(pygame.FRect(0, 0, 64, 64))
+
+
+def test_adding_the_same_sprite_twice_is_still_idempotent() -> None:
+    """The identity check must not turn `add` into a re-bucket on every call."""
+    grid = SpatialHash(cell_size=128)
+    sprite = BoxSprite(pygame.FRect(0, 0, 64, 64))
+
+    grid.add(sprite)
+    grid.add(sprite)
+
+    assert grid.get_nearby(pygame.FRect(0, 0, 64, 64)).count(sprite) == 1
+
+
+def test_a_killed_entity_leaves_the_collision_grid() -> None:
+    """`Sprite.kill` only leaves the groups; the grid is not a group."""
+
+    grid = SpatialHash(cell_size=128)
+    entity = make_entity(pos=(100.0, 100.0), faction="enemy")
+    entity.spatial_hash = grid
+    grid.add(entity)
+
+    entity.kill()
+
+    assert grid.get_nearby(pygame.FRect(100, 100, 40, 40)) == []
+    assert id(entity) not in grid._cells_by_sprite
+
+
+def test_a_dead_entity_does_not_stay_reachable_through_the_entity_grid() -> None:
+    """The grid that *does* hold entities is per-tick, so this is about the
+    boundary: nothing that has died is reachable through a stale bucket."""
+    from src.physics.entity_grid import EntityGrid
+
+    grid = EntityGrid()
+    entity = make_entity(pos=(100.0, 100.0), faction="enemy")
+    grid.rebuild([entity])
+    assert grid.near(entity.hitbox) == [entity]
+
+    grid.rebuild([])
+
+    assert grid.near(entity.hitbox) == []
