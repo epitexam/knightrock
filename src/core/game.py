@@ -529,14 +529,14 @@ class Game:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
-                logger.info(f"Connected controller : {joy.get_name()}")
+                logger.info("Connected controller : %s", joy.get_name())
                 self.input_router.notify_joystick_connected(joy.get_instance_id(), joy)
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED and event.instance_id in self.joysticks:
                 disconnected_joy = self.joysticks[event.instance_id]
-                logger.info(f"Controller disconnected : {disconnected_joy.get_name()}")
+                logger.info("Controller disconnected : %s", disconnected_joy.get_name())
                 self.input_provider.disconnect_joystick(event.instance_id)
                 self.input_router.notify_joystick_removed(event.instance_id)
                 del self.joysticks[event.instance_id]
