@@ -26,6 +26,7 @@ from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
 from src.ui.hud import HUD
+from tests.unit.helpers import make_overlay
 
 pytestmark = pytest.mark.usefixtures("_staleness_display")
 
@@ -77,13 +78,13 @@ def make_world() -> tuple[Renderer, SpriteGroups, Enemy, HUD, Player]:
     assert surface is not None
     camera = Camera(Framing(float(WIDTH), float(HEIGHT)))
     camera.set_world_size(5000, 5000)
-    renderer = Renderer(surface, camera)
+    renderer = Renderer(surface, camera, overlay=make_overlay(surface))
     renderer.background_color = BACKGROUND
     groups = SpriteGroups()
     enemy = Enemy()
     groups.all_sprites.add(enemy)
     groups.entity_sprites.add(enemy)
-    return renderer, groups, enemy, HUD(renderer.ui_manager.renderer), Player()
+    return renderer, groups, enemy, HUD(renderer.overlay.renderer), Player()
 
 
 def run_live(alpha: float, steps: int = 30) -> pygame.Surface:

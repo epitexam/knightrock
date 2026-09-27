@@ -22,6 +22,7 @@ from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import density_for
 from src.core.display.mode import DisplayMode
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
@@ -32,6 +33,7 @@ from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
 from src.data.provider import GameplayData, load_gameplay_data
+from src.ui.ui_manager import UIManager
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,9 @@ class Game:
         self.audio.attach(self.events)
         self._subscribe_notifications()
         self.scene_manager = SceneManager(self)
+        #: The interface drawn over the world, built on the first level.
+        #: See :meth:`world_overlay`.
+        self.ui: UIManager | None = None
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
@@ -187,6 +192,24 @@ class Game:
         """The surface every scene draws into."""
         assert self.presentation is not None, "the display is not initialized"
         return self.presentation.surface
+
+    def world_overlay(self, target: pygame.Surface) -> UIManager:
+        """The interface drawn over the world, built once and kept.
+
+        Owned here rather than by the renderer, for two reasons. The layering
+        one: the application layer is where ``core`` and ``ui`` meet, and
+        ``core`` importing ``ui`` is the dependency
+        :mod:`src.core.rendering.overlay` exists to remove. The practical one:
+        a level transition used to build a second interface and throw the
+        first one away, which threw away every font it had cached, and font
+        scanning is what those caches are for.
+
+        The density is read with the same rule the camera uses -- the target's
+        own, via ``density_for`` -- rather than measured a second way here.
+        """
+        if self.ui is None:
+            self.ui = UIManager(target, density_for(target.get_size(), DEFAULT_FRAMING))
+        return self.ui
 
     def _window_spec(self) -> WindowSpec:
         """The window the settings currently ask for."""

@@ -455,3 +455,65 @@ class UIManager:
     def draw_hud(self, player: Any) -> None:
         """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
         self.hud.draw(player)
+
+    # -- the WorldOverlay port -------------------------------------------------
+    #
+    # `core/rendering/overlay.py` declares what the renderer needs; these are
+    # the implementations. The panel layout moved across with them because the
+    # renderer used to own it, and a port that stopped one call short would have
+    # left `PanelLayout` imported in `core` -- the very dependency the port
+    # exists to remove.
+
+    def draw_debug_panels(
+        self,
+        *,
+        player: Any = None,
+        game: Any = None,
+        debug_stats: dict[str, float] | None = None,
+        **counters: Any,
+    ) -> None:
+        """Draw the screen-side debug panels from the renderer's counters.
+
+        PERFORMANCE is pinned first so the column flow can reserve it and wrap
+        around it; COMBAT counters then lead the flow, so the tall PLAYER
+        STATE / STATS panels can never overdraw them.
+        """
+        self.renderer.interaction.begin_frame()
+        if not self.world_ui.layers.get("panels", True):
+            return
+        layout = PanelLayout(
+            self.renderer.surface.get_width(),
+            self.renderer.surface.get_height(),
+            scale=self.renderer.screen_scale,
+        )
+        self.draw_performance_panel(
+            layout=layout,
+            debug_stats=debug_stats or {},
+            **counters,
+        )
+        if compact_panels():
+            self.draw_compact_panel(player, layout, game)
+            return
+        self.draw_combat_panel(layout)
+        self.draw_state_panel(10, 10, player, layout=layout)
+        self.draw_stats_panel(10, 10, player, layout=layout)
+        if game is not None:
+            self.draw_scene_panel(10, 10, game, layout=layout)
+        self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers)
+        self.draw_legend_panel(10, 10, layout=layout)
+
+    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+        """The always-on combat metrics readout."""
+        self.world_ui.draw_metrics_panel(player=player, hit_stop=hit_stop)
+
+    def note_clash(self, clash: Any) -> None:
+        """Record a clash so the overlay can mark it where it happened."""
+        self.world_ui.note_clash(clash)
+
+    def stamp_clash_marker(self, camera: Camera) -> None:
+        """Draw the clash marker again, over the debug panels."""
+        self.world_ui.stamp_clash_marker(camera)
+
+    def update_metrics(self, metrics: Any) -> None:
+        """Feed the contact pipeline's per-tick counters to the overlay."""
+        self.world_ui.update_metrics(metrics)

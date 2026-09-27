@@ -27,6 +27,7 @@ from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickSystem
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
+from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
@@ -65,6 +66,7 @@ class Level:
         events: EventBus | None = None,
         rollback_enabled: bool = False,
         gameplay_data: GameplayData | None = None,
+        overlay: WorldOverlay | None = None,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -111,7 +113,7 @@ class Level:
         self.rollback_enabled = rollback_enabled
         self.rollback = RollbackSystem()
 
-        self.renderer = Renderer(self.surface, self.camera, level_data.config)
+        self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
         # Spatial hash for O(1) collision lookups (PERF-01/02): created before
         # the spawner so runtime-spawned enemies join the grid too.
         self.spatial_hash = SpatialHash(cell_size=128)
@@ -271,9 +273,7 @@ class Level:
         if Debug.is_enabled():
             renderer = getattr(self, "renderer", None)
             if renderer is not None:
-                renderer.ui_manager.world_ui.update_metrics(
-                    self.gameplay_loop.contact_system.tick_metrics
-                )
+                renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback (Phase 3 #3).
@@ -384,10 +384,8 @@ class Level:
         self.renderer.draw_health_bars(self.groups.entity_sprites)
         for event in self.gameplay_loop.combat_system.guard_events:
             if event.kind == "clash":
-                self.renderer.ui_manager.world_ui.note_clash(
-                    self.gameplay_loop.combat_system.last_clash
-                )
-        self.renderer.ui_manager.world_ui.draw_metrics_panel(
+                self.renderer.overlay.note_clash(self.gameplay_loop.combat_system.last_clash)
+        self.renderer.overlay.draw_metrics_panel(
             player=self.player,
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
         )
@@ -397,7 +395,7 @@ class Level:
 
         # Bars painted over the debug overlays: stamp the clash ring again so
         # a clash never hides behind an HP bar (this stamp spends no TTL).
-        self.renderer.ui_manager.world_ui.stamp_clash_marker(self.renderer.camera)
+        self.renderer.overlay.stamp_clash_marker(self.renderer.camera)
         self.renderer.draw_debug_panels(
             player=self.player,
             fps=fps,

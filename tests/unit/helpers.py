@@ -9,6 +9,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pygame
 from pygame.sprite import Group
@@ -25,6 +26,9 @@ from src.combat.knockback import KnockbackConfig
 from src.core.input.input_state import InputState
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
+
+if TYPE_CHECKING:
+    from src.ui.ui_manager import UIManager
 
 
 def make_phase(
@@ -261,5 +265,19 @@ __all__ = [
     "make_active_attacker",
     "make_attack",
     "make_entity",
+    "make_overlay",
     "make_phase",
 ]
+
+
+def make_overlay(surface: pygame.Surface, density: float = 1.0) -> UIManager:
+    """The real interface, for a test that needs one.
+
+    `Renderer` takes its overlay by injection and defaults to drawing nothing
+    (`src/core/rendering/overlay.py`), so a test that asserts on health bars,
+    the HUD or a debug panel has to say it wants the interface rather than
+    getting it as a side effect of constructing a renderer.
+    """
+    from src.ui.ui_manager import UIManager
+
+    return UIManager(surface, density)

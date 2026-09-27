@@ -29,6 +29,7 @@ from src.ui.world_ui import (
     WorldUI,
     arrow_outline,
 )
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -776,8 +777,8 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers(
     monkeypatch.setenv("DEBUG", "1")
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
-    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
-    scene = GameplayScene(SimpleNamespace(), level_id=0, level=level)
+    level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
+    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is False
@@ -798,8 +799,8 @@ def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
     monkeypatch.delenv("DEBUG", raising=False)
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
-    level = SimpleNamespace(renderer=SimpleNamespace(ui_manager=ui_manager))
-    scene = GameplayScene(SimpleNamespace(), level_id=0, level=level)
+    level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
+    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is True
@@ -916,8 +917,10 @@ def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: C
     monkeypatch.setenv("DEBUG", "1")
     surface = pygame.display.get_surface()
     assert surface is not None
-    renderer = Renderer(surface, camera)
-    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None), clock=None)
+    renderer = Renderer(surface, camera, overlay=make_overlay(surface))
+    game = SimpleNamespace(
+        input_manager=SimpleNamespace(update=lambda: None), clock=None, ui=renderer.overlay
+    )
     level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
     scene = GameplayScene(game, level_id=0, level=level)
 
@@ -934,18 +937,38 @@ def test_debug_panels_can_be_hidden() -> None:
     from src.core.rendering.renderer import Renderer
 
     camera = _Camera(Framing(float(1024), float(768)))
-    renderer = Renderer(pygame.display.get_surface(), camera)
+    renderer = Renderer(
+        pygame.display.get_surface(), camera, overlay=make_overlay(pygame.display.get_surface())
+    )
     surface = pygame.display.get_surface()
     assert surface is not None
 
-    renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    renderer.ui_manager.renderer.interaction.begin_frame()
-    assert renderer.ui_manager.renderer.interaction.panels
+    renderer.draw_debug_panels(
+        player=None,
+        fps=60.0,
+        sprite_count=1,
+        combat_count=1,
+        entity_count=1,
+        collision_count=1,
+        hit_stop=0.0,
+        spawn_cooldown=0.0,
+    )
+    renderer.overlay.renderer.interaction.begin_frame()
+    assert renderer.overlay.renderer.interaction.panels
 
     surface.fill((0, 0, 0))
-    renderer.ui_manager.world_ui.toggle("panels")
-    renderer.draw_debug_panels(None, 60.0, 1, 1, 1, 1, 0.0, 0.0)
-    assert renderer.ui_manager.renderer.interaction.panels == {}
+    renderer.overlay.world_ui.toggle("panels")
+    renderer.draw_debug_panels(
+        player=None,
+        fps=60.0,
+        sprite_count=1,
+        combat_count=1,
+        entity_count=1,
+        collision_count=1,
+        hit_stop=0.0,
+        spawn_cooldown=0.0,
+    )
+    assert renderer.overlay.renderer.interaction.panels == {}
 
 
 def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera: Camera) -> None:

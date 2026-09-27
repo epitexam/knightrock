@@ -246,7 +246,7 @@ def test_with_the_flag_there_is_no_notice_and_the_layers_still_flip(tmp_path, mo
     for _ in range(3):
         game.step()
     scene = game.scene_manager.current
-    world_ui = scene.level.renderer.ui_manager.world_ui
+    world_ui = scene.level.renderer.overlay.world_ui
     before = world_ui.layers["boxes"]
 
     pygame.event.post(

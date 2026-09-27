@@ -9,11 +9,10 @@ import pygame
 from src.core.colors import BG_COLORS, Color, Colors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
+from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
-from src.ui.panel_renderer import PanelLayout, compact_panels
-from src.ui.ui_manager import UIManager
 
 DASH_STRETCH_X = 1.6
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
@@ -64,10 +63,16 @@ class Renderer:
         surface: pygame.Surface,
         camera: Camera,
         config: LevelConfig | None = None,
+        overlay: WorldOverlay | None = None,
     ) -> None:
         self.surface = surface
         self.camera = camera
-        self.ui_manager = UIManager(surface, camera.density)
+        #: The interface drawn over the world, injected rather than built.
+        #: See :mod:`src.core.rendering.overlay` for why the arrow between
+        #: ``core`` and ``ui`` points this way and not the other. Defaults to
+        #: drawing nothing, which is what a renderer built to answer "is this
+        #: tile culled" wants.
+        self.overlay: WorldOverlay = overlay if overlay is not None else NullOverlay()
         self.background_color = self._resolve_background_color(config)
         self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
         self._ghost_timer: float = 0.0
@@ -122,7 +127,7 @@ class Renderer:
         self.camera.set_target(surface)
         # The camera has just re-read the density, so the interface's two scales
         # are derived from it here rather than each keeping its own copy.
-        self.ui_manager.set_surface(surface, self.camera.density)
+        self.overlay.set_surface(surface, self.camera.density)
         self._scaled_cache.clear()
         self._flash_cache.clear()
 
@@ -252,7 +257,7 @@ class Renderer:
         self._draw_flashes(self._collect_flashes(groups))
         if debug_enabled:
             overlays = perf_counter()
-            self.ui_manager.draw_debug_overlays(groups.every_sprite, self.camera, dt)
+            self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
@@ -469,59 +474,16 @@ class Renderer:
         computes them, so they are returned rather than recomputed by a caller
         that wants to reason about what was painted.
         """
-        return self.ui_manager.draw_health_bars(entities, self.camera)
+        return self.overlay.draw_health_bars(entities, self.camera)
 
-    def draw_debug_panels(
-        self,
-        player: Any,
-        fps: float,
-        sprite_count: int,
-        combat_count: int,
-        entity_count: int,
-        collision_count: int,
-        hit_stop: float,
-        spawn_cooldown: float,
-        game: Any = None,
-        frame_time: float = 0.0,
-        cache_size: int | None = None,
-    ) -> None:
+    def draw_debug_panels(self, **counters: Any) -> None:
+        """Ask the overlay to draw the screen-side debug panels.
+
+        Only the *when* lives here -- the renderer owns the frame, so it is the
+        one that knows a frame is being presented and how long the panels took.
+        The *what* is the overlay's, including the panel layout, which is why
+        ``PanelLayout`` is no longer imported by ``core``.
+        """
         started = perf_counter()
-        self.ui_manager.renderer.interaction.begin_frame()
-        if not self.ui_manager.world_ui.layers.get("panels", True):
-            self._record_debug_sample("panels_ms", 0.0)
-            return
-        surface = self.ui_manager.renderer.surface
-        layout = PanelLayout(
-            surface.get_width(),
-            surface.get_height(),
-            scale=self.ui_manager.renderer.screen_scale,
-        )
-        # PERFORMANCE is pinned first so the column flow can reserve it and
-        # wrap around it; COMBAT counters then lead the flow, so the tall
-        # PLAYER STATE / STATS panels can never overdraw them.
-        self.ui_manager.draw_performance_panel(
-            fps=fps,
-            sprite_count=sprite_count,
-            combat_count=combat_count,
-            entity_count=entity_count,
-            collision_count=collision_count,
-            hit_stop=hit_stop,
-            spawn_cooldown=spawn_cooldown,
-            frame_time=frame_time,
-            cache_size=cache_size,
-            layout=layout,
-            debug_stats=self.debug_metrics_snapshot(),
-        )
-        if compact_panels():
-            self.ui_manager.draw_compact_panel(player, layout, game)
-        else:
-            self.ui_manager.draw_combat_panel(layout)
-            self.ui_manager.draw_state_panel(10, 10, player, layout=layout)
-            self.ui_manager.draw_stats_panel(10, 10, player, layout=layout)
-            if game is not None:
-                self.ui_manager.draw_scene_panel(10, 10, game, layout=layout)
-            self.ui_manager.draw_help_panel(
-                10, 10, layout=layout, layers=self.ui_manager.world_ui.layers
-            )
-            self.ui_manager.draw_legend_panel(10, 10, layout=layout)
+        self.overlay.draw_debug_panels(**counters, debug_stats=self.debug_metrics_snapshot())
         self._record_debug_sample("panels_ms", (perf_counter() - started) * 1000.0)

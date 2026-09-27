@@ -12,6 +12,7 @@ from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelLayout
 from src.ui.styles import TEXT_MUTED
 from src.ui.ui_manager import UIManager
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -242,8 +243,10 @@ def test_full_debug_panel_stack_never_overlaps(
     from src.ui.panel_renderer import set_compact_panels
 
     surface = pygame.Surface((1440, 900))
-    renderer = Renderer(surface, _Camera(Framing(float(1440), float(900))))
-    renderer.ui_manager.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
+    renderer = Renderer(
+        surface, _Camera(Framing(float(1440), float(900))), overlay=make_overlay(surface)
+    )
+    renderer.overlay.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     placed: list[pygame.Rect] = []
     original_place = PanelLayout.place
@@ -296,7 +299,9 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
     from src.core.rendering.renderer import Renderer
 
     surface = pygame.Surface((640, 480))
-    renderer = Renderer(surface, _Camera(Framing(float(640), float(480))))
+    renderer = Renderer(
+        surface, _Camera(Framing(float(640), float(480))), overlay=make_overlay(surface)
+    )
     level = SimpleNamespace(
         deaths=0,
         groups=SimpleNamespace(
@@ -323,12 +328,12 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
         game=game,
         frame_time=16.0,
     )
-    renderer.ui_manager.renderer.interaction.begin_frame()
-    panels = renderer.ui_manager.renderer.interaction.panels
+    renderer.overlay.renderer.interaction.begin_frame()
+    panels = renderer.overlay.renderer.interaction.panels
     screen = surface.get_rect()
 
     assert set(panels) == {"performance", "state"}
     assert all(screen.contains(rect) for rect in panels.values())
     assert not panels["performance"].colliderect(panels["state"])
-    assert renderer.ui_manager.compact_panel_focus() == "state"
-    assert renderer.ui_manager.cycle_compact_panel() == "stats"
+    assert renderer.overlay.compact_panel_focus() == "state"
+    assert renderer.overlay.cycle_compact_panel() == "stats"

@@ -14,6 +14,8 @@ import os
 import pygame
 import pytest
 
+from tests.unit.helpers import make_overlay
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
@@ -32,7 +34,10 @@ DENSITIES = (1.0, 1.25, 2176 / 1152, 2.0, 0.5)
 
 def _renderer(density: float) -> Renderer:
     target = Viewport(DEFAULT_FRAMING, _target_size(density)).surface
-    return Renderer(target, Camera.for_target(target))
+    camera = Camera.for_target(target)
+    # The overlay is handed the camera's density, as the game does: the point
+    # of this file is that the two cannot disagree.
+    return Renderer(target, camera, overlay=make_overlay(target, camera.density))
 
 
 def _target_size(density: float) -> tuple[int, int]:
@@ -46,16 +51,16 @@ def _chain(renderer: Renderer) -> list[pygame.Surface]:
     """Every surface the frame is drawn through, in order."""
     return [
         renderer.surface,
-        renderer.ui_manager.renderer.surface,
-        renderer.ui_manager.world_ui.surface,
-        renderer.ui_manager.hud.renderer.surface,
+        renderer.overlay.renderer.surface,
+        renderer.overlay.world_ui.surface,
+        renderer.overlay.hud.renderer.surface,
     ]
 
 
 @pytest.mark.parametrize("density", DENSITIES)
 def test_the_whole_chain_starts_on_the_render_target(density: float) -> None:
     target = Viewport(DEFAULT_FRAMING, _target_size(density)).surface
-    renderer = Renderer(target, Camera(DEFAULT_FRAMING))
+    renderer = Renderer(target, Camera(DEFAULT_FRAMING), overlay=make_overlay(target))
 
     assert all(surface is target for surface in _chain(renderer))
 
@@ -131,7 +136,7 @@ def test_the_debug_overlay_and_the_renderer_agree_on_the_density() -> None:
     """
     for density in DENSITIES:
         renderer = _renderer(density)
-        panel_renderer = renderer.ui_manager.renderer
+        panel_renderer = renderer.overlay.renderer
         # The world scale never drops below one: below it, a world overlay
         # thins towards nothing instead of following the world.
         assert panel_renderer.world_scale == pytest.approx(max(1.0, density))

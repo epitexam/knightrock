@@ -43,6 +43,7 @@ from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.ui.ui_manager import UIManager
 
 
 def _player() -> SimpleNamespace:
@@ -109,7 +110,11 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
     pygame.init()
     pygame.display.set_mode(size)
     surface = pygame.Surface(size)
-    renderer = Renderer(surface, Camera(Framing(float(size[0]), float(size[1]))))
+    renderer = Renderer(
+        surface,
+        Camera(Framing(float(size[0]), float(size[1]))),
+        overlay=UIManager(surface),
+    )
     panel_samples: list[float] = []
     player = _player()
     game = _game()
