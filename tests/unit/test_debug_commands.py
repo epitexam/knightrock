@@ -20,6 +20,7 @@ from src.core.sprite_groups import SpriteGroups
 from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from src.physics.spatial_hash import SpatialHash
+from src.ui.world_overlay_geo import GeoLayer
 from tests.unit.helpers import make_entity
 
 
@@ -244,7 +245,6 @@ def test_a_spawn_without_a_grid_still_works() -> None:
 
 
 def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
-    from src.ui.world_ui import WorldUI
 
     surface = world_ui.surface
     attack_box = pygame.FRect(100, 100, 30, 20)
@@ -276,17 +276,16 @@ def test_swept_ghost_draws_only_when_boxes_moved(world_ui, camera) -> None:
         if surface.get_at((x, y))[:3] == Colors.debug_attack_box
     )
     assert box_pixels > 0
-    assert WorldUI._swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
+    assert GeoLayer.swept_boxes(combat, 1) == (pygame.FRect(100, 100, 30, 20),)
 
 
 def test_swept_ghost_exposes_previous_origin(world_ui, camera) -> None:
-    from src.ui.world_ui import WorldUI
 
     combat = SimpleNamespace(
         attack_boxes=(pygame.FRect(120, 100, 30, 20),),
         swept_attack_boxes=lambda: (pygame.FRect(100, 100, 50, 20),),
     )
-    swept = WorldUI._swept_boxes(combat, 1)
+    swept = GeoLayer.swept_boxes(combat, 1)
     assert swept[0] != combat.attack_boxes[0]
     assert swept[0].width == 50.0
 
@@ -312,9 +311,9 @@ def test_attack_timeline_marks_phase_progress(world_ui, density: float, per_fram
     state = SimpleNamespace(attack_name="jab", frame_counter=2)
     phase = SimpleNamespace(startup_frames=4, active_frames=4, recovery_frames=4)
     assert world_ui.metrics.timeline_px_per_frame == per_frame
-    assert world_ui._timeline_progress(state, "startup", phase) == 2 * per_frame
-    assert world_ui._timeline_progress(state, "active", phase) == (4 + 2) * per_frame
-    assert world_ui._timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * per_frame
+    assert world_ui._geo.timeline_progress(state, "startup", phase) == 2 * per_frame
+    assert world_ui._geo.timeline_progress(state, "active", phase) == (4 + 2) * per_frame
+    assert world_ui._geo.timeline_progress(state, "recovery", phase) == (4 + 4 + 2) * per_frame
 
 
 @pytest.mark.parametrize("density", [1.0, 1.25, 1.8889, 2.0, 3.3333])
@@ -345,17 +344,16 @@ def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
 
 
 def test_live_attack_text_formats_player_state(world_ui) -> None:
-    from src.ui.world_ui import WorldUI
 
     player = SimpleNamespace(
         combat=SimpleNamespace(
             state=SimpleNamespace(attack_name="jab", sub_state="active", frame_counter=3)
         )
     )
-    assert WorldUI._live_attack_text(player) == "jab active f3"
-    assert WorldUI._live_attack_text(None) is None
+    assert GeoLayer.live_attack_text(player) == "jab active f3"
+    assert GeoLayer.live_attack_text(None) is None
     idle = SimpleNamespace(combat=SimpleNamespace(state=SimpleNamespace(attack_name=None)))
-    assert WorldUI._live_attack_text(idle) is None
+    assert GeoLayer.live_attack_text(idle) is None
 
 
 def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:

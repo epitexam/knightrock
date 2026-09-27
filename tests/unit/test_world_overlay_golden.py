@@ -117,14 +117,16 @@ MANIFEST = {
     ),
 }
 
-# The module each extracted group is headed for. A group whose module does not
+# The module each extracted group is headed for, and the class holding it.
+# ``world_overlay_bars`` and ``world_overlay_shared`` are plain function
+# modules; the layers that draw are classes. A group whose module does not
 # exist yet is still sitting on the façade, which is the one state allowed to
 # be transient.
 MODULES = {
-    "shared": "src.ui.world_overlay_shared",
-    "geo": "src.ui.world_overlay_geo",
-    "cards": "src.ui.world_overlay_cards",
-    "panels": "src.ui.world_overlay_panels",
+    "shared": ("src.ui.world_overlay_shared", None),
+    "geo": ("src.ui.world_overlay_geo", "GeoLayer"),
+    "cards": ("src.ui.world_overlay_cards", "CardLayer"),
+    "panels": ("src.ui.world_overlay_panels", "PanelLayer"),
 }
 
 
@@ -281,7 +283,7 @@ def test_annotation_rects_are_frozen(world_ui: WorldUI, camera: Camera) -> None:
     _drawn(scene, world_ui, camera)
     actual = {
         type(entity).__name__: [
-            tuple(rect) for rect in world_ui._annotation_rects.get(id(entity), ())
+            tuple(rect) for rect in world_ui.annotation_rects.get(id(entity), ())
         ]
         for entity in scene
     }
@@ -313,14 +315,14 @@ def test_placement_is_stable_across_frames(world_ui: WorldUI, camera: Camera) ->
     _drawn(scene, world_ui, camera)
     first = {
         type(entity).__name__: [
-            tuple(rect) for rect in world_ui._annotation_rects.get(id(entity), ())
+            tuple(rect) for rect in world_ui.annotation_rects.get(id(entity), ())
         ]
         for entity in scene
     }
     _drawn(scene, world_ui, camera)
     second = {
         type(entity).__name__: [
-            tuple(rect) for rect in world_ui._annotation_rects.get(id(entity), ())
+            tuple(rect) for rect in world_ui.annotation_rects.get(id(entity), ())
         ]
         for entity in scene
     }
@@ -340,15 +342,15 @@ def test_the_sink_is_producers_only(world_ui: WorldUI, camera: Camera) -> None:
     scene = _scene()
     _drawn(scene, world_ui, camera)
 
-    registered = [tuple(rect) for rect in world_ui._annotation_obstacles]
+    registered = [tuple(rect) for rect in world_ui.annotation_obstacles]
     assert registered == [rect for rects in GOLDEN_ANNOTATIONS.values() for rect in rects]
 
     goblin = next(entity for entity in scene if type(entity).__name__ == "Goblin")
     request = world_ui._label_request(goblin, camera.apply(debug_reference(goblin)), False, camera)
     assert request is not None
-    before = len(world_ui._annotation_obstacles)
+    before = len(world_ui.annotation_obstacles)
     world_ui._place_label(request[1], request[2], request[3], [], *world_ui.surface.get_size())
-    assert len(world_ui._annotation_obstacles) == before, "the label pass wrote to the sink"
+    assert len(world_ui.annotation_obstacles) == before, "the label pass wrote to the sink"
 
 
 def test_the_sink_is_drained_every_frame(world_ui: WorldUI, camera: Camera) -> None:
@@ -360,11 +362,11 @@ def test_the_sink_is_drained_every_frame(world_ui: WorldUI, camera: Camera) -> N
     """
     scene = _scene()
     _drawn(scene, world_ui, camera)
-    populated = len(world_ui._annotation_obstacles)
+    populated = len(world_ui.annotation_obstacles)
     _drawn([scene[3]], world_ui, camera)
-    assert len(world_ui._annotation_obstacles) < populated
+    assert len(world_ui.annotation_obstacles) < populated
     _drawn(scene, world_ui, camera)
-    assert len(world_ui._annotation_obstacles) == populated
+    assert len(world_ui.annotation_obstacles) == populated
 
 
 def test_drawing_follows_the_surface_the_renderer_adopts(world_ui: WorldUI, camera: Camera) -> None:
@@ -424,7 +426,7 @@ def test_manifest_names_live_in_exactly_one_place() -> None:
     }
 
     accounted: set[str] = set()
-    for group, path in MODULES.items():
+    for group, (path, layer) in MODULES.items():
         wanted = set(MANIFEST[group].split())
         # Half of `WorldUI`'s methods are private and half are not, so "is this
         # name still on the façade" is asked of both spellings.
@@ -439,7 +441,17 @@ def test_manifest_names_live_in_exactly_one_place() -> None:
             )
             accounted |= wanted
             continue
-        exported = {name for name in vars(module) if not name.startswith("_")}
+        owner = getattr(module, layer) if layer else module
+        exported = set()
+        for name, member in vars(owner).items():
+            if name.startswith("_"):
+                continue
+            # A `@staticmethod` is a descriptor on the class, not a function,
+            # and half of `GeoLayer` is built that way.
+            if isinstance(member, staticmethod):
+                member = member.__func__
+            if inspect.isfunction(member) or isinstance(member, property):
+                exported.add(name)
         assert wanted <= exported, f"{path} never got {sorted(wanted - exported)}"
         assert not pending, f"{sorted(pending)} stayed on WorldUI"
         accounted |= wanted

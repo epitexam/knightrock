@@ -1,11 +1,13 @@
-"""Sprite facts and annotation placement — the vocabulary the other overlay modules share.
+"""The vocabulary the other overlay modules share: sprite facts, annotation placement, frame bookkeeping.
 
 Extracted from ``world_ui.py`` as the first step of the split, and deliberately
-first because it is a leaf: ``world_overlay_geo``, ``_cards`` and ``_panels``
-all need to answer "what is this sprite" and "where may I put this rectangle"
-before they can do anything else. Everything below is either a fact read off a
-sprite or a rectangle adjusted against the display, with no drawing, no
-per-frame state and no dependency on any of the three.
+first because it is a leaf. ``world_overlay_geo``, ``_cards`` and ``_panels``
+all have to answer "what is this sprite" and "where may I put this rectangle"
+before they can do anything else, and all three have to agree on which
+annotations this frame has already claimed. Everything here is either a fact
+read off a sprite, a rectangle adjusted against the display, or the per-frame
+bookkeeping that lets the box pass and the card pass talk without importing
+each other.
 
 **Two unrelated things in one module, on purpose.** The sprite facts (faction,
 name, colours) and the annotation placement (clamp, dodge) have nothing to do
@@ -21,7 +23,7 @@ them as arguments instead of holding a surface. Same trade as the bars made,
 same reason: a module that owns a surface has a lifecycle to maintain at every
 resize, and the caller already has to pass the surface.
 
-``dodge_annotation`` is currently unreachable — the attack header is always
+``dodge_annotation`` is currently unreachable -- the attack header is always
 placed clear of the only obstacle it is ever handed, its own entity's tiers.
 It is kept because it is the documented contract of the placement rule, not
 because a test needs it: neutering it leaves the entire suite green.
@@ -37,6 +39,7 @@ from src.core.colors import Color, Colors
 from src.ui.world_overlay_metrics import ANNOTATION_MAX_DODGES
 
 __all__ = [
+    "AnnotationSink",
     "clamp_annotation",
     "debug_reference",
     "display_name",
@@ -152,3 +155,73 @@ def dodge_annotation(
             rect.top = 0
             break
     return clamp_annotation(rect, screen_width)
+
+
+class AnnotationSink:
+    """The rectangles the box pass has claimed this frame, for the card pass to read.
+
+    The overlay runs in two phases over the same sprite list. The box pass
+    draws a hitbox, a zone seal, an attack header and a row of anchor dots, and
+    each of those occupies screen space. The card pass then places a label per
+    sprite and has to know what to avoid, both to dodge the annotations
+    (``sink.obstacles``) and to reserve the band they occupy
+    (``sink.for_sprite``).
+
+    A one-way channel: the box pass registers, the card pass consults. It is
+    one class rather than two dictionaries passed around because the direction
+    is the invariant worth naming. When these were two attributes on
+    ``WorldUI`` there was nothing stopping a label from writing to the list it
+    was reading, and a card that claimed space the next sprite reads as taken
+    is exactly how a label ends up underneath a health bar with nothing to
+    explain it.
+
+    Owned by the façade and cleared once per frame, so the layers never have to
+    be told when a frame starts.
+    """
+
+    def __init__(self) -> None:
+        self._rects: dict[int, list[pygame.Rect]] = {}
+        self._obstacles: list[pygame.Rect] = []
+
+    def clear(self) -> None:
+        """Drop the previous frame's rectangles.
+
+        Called in place rather than by rebinding, because the layers were
+        handed *this* object: a fresh dict here would leave them writing to an
+        orphan the card pass never reads.
+        """
+        self._rects.clear()
+        self._obstacles.clear()
+
+    def register(self, sprite: pygame.sprite.Sprite, rects: list[pygame.Rect]) -> None:
+        """Record the annotations drawn for ``sprite`` this frame.
+
+        ``id(sprite)`` is the key, and that is deliberate: it is the same key
+        the physics side uses for its spatial hash, and the alternative --
+        keying on the sprite itself -- means the overlay has to be handed the
+        bookkeeping that says a sprite is dead, which is the one thing this
+        pass deliberately does not look at.
+        """
+        if not rects:
+            return
+        self._rects[id(sprite)] = list(rects)
+        self._obstacles.extend(rects)
+
+    def for_sprite(self, sprite: pygame.sprite.Sprite) -> list[pygame.Rect]:
+        """The annotations drawn for ``sprite``, or an empty list."""
+        return self._rects.get(id(sprite), [])
+
+    @property
+    def rects(self) -> dict[int, list[pygame.Rect]]:
+        """Per-sprite annotations, keyed by ``id(sprite)``.
+
+        Exposed for the two card-side readers that want to look at a sprite
+        they already hold. Writing to it would break the one-way contract, so
+        everything that registers goes through :meth:`register`.
+        """
+        return self._rects
+
+    @property
+    def obstacles(self) -> list[pygame.Rect]:
+        """Every annotation rect drawn this frame, in draw order."""
+        return self._obstacles

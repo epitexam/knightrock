@@ -14,6 +14,7 @@ from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
+from src.ui.world_overlay_geo import GeoLayer
 from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_ui import (
     HEALTH_BAR_HEIGHT,
@@ -160,12 +161,12 @@ def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
 ) -> None:
     surface = world_ui.surface
     surface.fill((0, 0, 0))
-    world_ui._draw_shape(
+    world_ui._geo.draw_shape(
         ShapePose(ShapeKind.CIRCLE, (40.0, 40.0), (120.0, 120.0)),
         Colors.debug_attack_box,
         camera,
     )
-    world_ui._draw_anchor((100.0, 100.0), camera)
+    world_ui._geo.draw_anchor((100.0, 100.0), camera)
 
     assert surface.get_at((120, 101))[:3] == Colors.debug_attack_box
     assert surface.get_at((100, 96))[:3] == Colors.debug_anchor
@@ -178,8 +179,8 @@ def test_advanced_shape_debug_exposes_swept_pairs() -> None:
         )
     )
 
-    assert WorldUI._swept_shapes(combat, 1) == combat.swept_attack_shapes
-    assert WorldUI._swept_shapes(SimpleNamespace(), 1) == (None,)
+    assert GeoLayer.swept_shapes(combat, 1) == combat.swept_attack_shapes
+    assert GeoLayer.swept_shapes(SimpleNamespace(), 1) == (None,)
 
 
 def test_projectile_label_shows_flight_data(world_ui: WorldUI) -> None:
@@ -996,7 +997,7 @@ def test_attack_header_merges_name_badges_and_timeline(world_ui: WorldUI, camera
     surface.fill((0, 0, 0))
     world_ui.draw_debug_overlays([entity], camera)
 
-    rects = world_ui._annotation_rects.get(id(entity), ())
+    rects = world_ui.annotation_rects.get(id(entity), ())
     assert rects, "the attack header was not registered as an annotation"
     assert all(not bar.colliderect(rect) for rect in rects)
     header = min(rects, key=lambda rect: rect.top)
@@ -1025,7 +1026,7 @@ def test_zone_shapes_carry_meaning_without_world_text(world_ui: WorldUI, camera:
     world_ui.draw_debug_overlays([entity], camera)
 
     # No zone text joins the annotation stack...
-    assert world_ui._annotation_rects.get(id(entity), ()) == ()
+    assert world_ui.annotation_rects.get(id(entity), ()) == ()
     # ...but the boosted head zone paints its translucent fill + thick outline.
     boosted = camera.apply(pygame.FRect(100, 80, 40, 20))
     assert surface.get_at((int(boosted.centerx), int(boosted.centery)))[:3] != (0, 0, 0)
