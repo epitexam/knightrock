@@ -17,15 +17,25 @@ own layer allows:
   the report a scene returns. Here the producer *can* name its consumer, and it
   still does not, so that a second one (haptics, an on-screen tutorial) is
   added by subscribing rather than by reopening the screens.
+
+Isolation
+---------
+Subscribers cannot take the emitter down with them: :meth:`EventBus.emit`
+gives each handler its own boundary, logs a failure and carries on. The
+reason is in :class:`EventBus` — the emitter is the fixed tick, and the
+subscribers are code the simulation cannot vouch for.
 """
 
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
+
+logger = logging.getLogger(__name__)
 
 EventT = TypeVar("EventT", bound="Event")
 
@@ -97,11 +107,46 @@ GameEvent = LevelStarted | PlayerDied | LevelCompleted | UiFeedback
 Handler = Callable[[GameEvent], None]
 
 
+class SubscriberFailure(NamedTuple):
+    """One subscriber that raised while handling an event."""
+
+    event: GameEvent
+    handler: Handler
+    error: BaseException
+
+
 class EventBus:
-    """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``."""
+    """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``.
+
+    **Subscribers are isolated from each other and from the producer.** A
+    handler that raises is logged and skipped; the remaining handlers still
+    run, and the emitter is not interrupted.
+
+    That is not a stylistic choice, it is the difference between a cosmetic
+    fault and a lost save. ``emit`` is called from inside the fixed tick --
+    ``NotificationSystem`` publishes the player's death and the level
+    completion from there -- and the subscribers are UI, audio, save and
+    logging code that the simulation knows nothing about and cannot defend
+    itself against. Before this boundary, a missing sound file or a full disk
+    raised out of a handler and killed the tick that happened to publish a
+    fact, which is the one tick in which the player was about to be told they
+    had died. And because the notification system marks an event emitted
+    *before* publishing it, the fact would then never be republished: the
+    progression was not merely delayed, it was gone.
+
+    Failures are recorded on :attr:`failures` as well as logged, because a
+    swallowed exception that leaves no trace anywhere is how a subscriber
+    quietly stops working months later.
+    """
 
     def __init__(self) -> None:
         self._subscribers: dict[type[Event], list[Handler]] = {}
+        self._failures: list[SubscriberFailure] = []
+
+    @property
+    def failures(self) -> tuple[SubscriberFailure, ...]:
+        """Subscribers that raised, oldest first. Cleared by :meth:`clear`."""
+        return tuple(self._failures)
 
     def subscribe(self, event_type: type[EventT], handler: Callable[[EventT], None]) -> None:
         """Register ``handler`` for events of exactly ``event_type``.
@@ -126,10 +171,27 @@ class EventBus:
             handlers.remove(handler)  # type: ignore[arg-type]
 
     def emit(self, event: GameEvent) -> None:
-        """Dispatch ``event`` synchronously, in subscription order."""
+        """Dispatch ``event`` synchronously, in subscription order.
+
+        Each handler runs inside its own boundary, so one raising does not
+        cost the others their turn and does not reach the caller. The
+        iteration is over a copy because a handler is allowed to subscribe or
+        unsubscribe -- mutating the list while walking it is the one thing
+        that would make the isolation incomplete.
+        """
         for handler in tuple(self._subscribers.get(type(event), ())):
-            handler(event)
+            try:
+                handler(event)
+            except Exception as error:  # noqa: BLE001 - the boundary is the point
+                self._failures.append(SubscriberFailure(event, handler, error))
+                logger.exception(
+                    "Event subscriber %r failed handling %s; the remaining "
+                    "subscribers and the emitter are unaffected",
+                    handler,
+                    type(event).__name__,
+                )
 
     def clear(self) -> None:
         """Drop every subscription (level teardown, tests)."""
         self._subscribers.clear()
+        self._failures.clear()
