@@ -1259,7 +1259,7 @@ class WorldUI:
             return
         try:
             vx, vy = float(velocity.x), float(velocity.y)
-        except AttributeError, TypeError:
+        except (AttributeError, TypeError):
             return
         if vx * vx + vy * vy < VELOCITY_MIN_SPEED * VELOCITY_MIN_SPEED:
             return
