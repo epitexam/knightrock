@@ -25,7 +25,6 @@ callers, not a relay between its layers.
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 import pygame
@@ -35,8 +34,6 @@ from pygame.math import Vector2
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
-from src.entities.components.reaction import VELOCITY_KINDS, ReactionKind, ReactionStatus
-from src.states.reaction_states import KNOCKBACK_STATE
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER
 from src.ui.world_overlay_bars import health_bar_rect
@@ -51,60 +48,19 @@ from src.ui.world_overlay_metrics import (
     PHASE_OUTLINE_COLORS,
     SWEEP_ARROW_HEAD,
     SWEEP_DISPLAY_MIN_PX,
-    SWEEP_GHOST_WIDTH,
-    VELOCITY_HEAD_MAX,
-    VELOCITY_HEAD_MIN,
-    VELOCITY_HEAD_RATIO,
-    VELOCITY_HEAD_WIDTH_CAP,
-    VELOCITY_HEAD_WIDTH_RATIO,
-    VELOCITY_MIN_LENGTH,
-    VELOCITY_MIN_SPEED,
-    VELOCITY_NECK_WIDTH,
-    VELOCITY_OUTLINE,
-    VELOCITY_OUTLINE_WIDTH,
-    VELOCITY_PREVIEW_S,
-    VELOCITY_TAIL_RADIUS,
-    VELOCITY_TAIL_WIDTH,
     ZONE_FILL_ALPHA,
     MetricsCache,
     WorldOverlayMetrics,
     scaled_world_px,
 )
+from src.ui.world_overlay_shapes import ShapeLayer
 from src.ui.world_overlay_shared import AnnotationSink, dodge_annotation, hitbox_color
+from src.ui.world_overlay_velocity import VelocityLayer
 
 if TYPE_CHECKING:
     from src.combat.frame_data import PhaseDefinition
 
-__all__ = ["GeoLayer", "arrow_outline"]
-
-
-def arrow_outline(
-    start: Vector2,
-    direction: Vector2,
-    length: float,
-    head_length: float,
-    head_half_width: float,
-) -> list[tuple[int, int]]:
-    """Silhouette of a velocity arrow: a tapered shaft plus a triangular head.
-
-    One single seven-point polygon (tail, neck, barb, tip, barb, neck, tail)
-    so the shaft and the head can never leave a seam. ``direction`` must be a
-    unit vector, ``start`` the screen-space pivot and ``length`` the drawn
-    length (already floored to ``VELOCITY_MIN_LENGTH``).
-    """
-    normal = Vector2(-direction.y, direction.x)
-    tip = start + direction * length
-    neck = tip - direction * head_length
-    corners = (
-        start + normal * (VELOCITY_TAIL_WIDTH / 2.0),
-        neck + normal * (VELOCITY_NECK_WIDTH / 2.0),
-        neck + normal * head_half_width,
-        tip,
-        neck - normal * head_half_width,
-        neck - normal * (VELOCITY_NECK_WIDTH / 2.0),
-        start - normal * (VELOCITY_TAIL_WIDTH / 2.0),
-    )
-    return [(round(corner.x), round(corner.y)) for corner in corners]
+__all__ = ["GeoLayer"]
 
 
 class GeoLayer:
@@ -123,6 +79,11 @@ class GeoLayer:
         self.renderer = renderer
         self._metrics = metrics
         self.sink = sink
+        #: Collision poses and dashed outlines. A leaf that knows about shapes
+        #: and nothing else; it never asks the box pass anything.
+        self.shapes = ShapeLayer(renderer)
+        #: Velocity previews, and the two predicates that decide their colour.
+        self.velocity = VelocityLayer(renderer)
 
     @property
     def surface(self) -> pygame.Surface:
@@ -456,78 +417,6 @@ class GeoLayer:
             )
         self.register_annotations(sprite, annotations)
 
-    def draw_shape(self, shape: ShapePose, color: Color, camera: Camera, width: int = 2) -> None:
-        self.draw_shape_once(shape, Colors.debug_shape_outline, camera, width + 2)
-        self.draw_shape_once(shape, color, camera, width)
-
-    def draw_shape_once(
-        self,
-        shape: ShapePose,
-        color: Color,
-        camera: Camera,
-        width: int,
-    ) -> None:
-        center = camera.apply(
-            pygame.FRect(
-                shape.position[0] - shape.size[0] / 2.0,
-                shape.position[1] - shape.size[1] / 2.0,
-                shape.size[0],
-                shape.size[1],
-            )
-        ).center
-        if shape.kind is ShapeKind.CIRCLE:
-            pygame.draw.circle(self.surface, color, center, int(shape.size[0] / 2.0), width)
-            return
-        if shape.kind is ShapeKind.CAPSULE:
-            radians = math.radians(shape.angle)
-            half_length = shape.size[0] / 2.0
-            offset = (
-                math.cos(radians) * half_length,
-                math.sin(radians) * half_length,
-            )
-            start = (round(center[0] - offset[0]), round(center[1] - offset[1]))
-            end = (round(center[0] + offset[0]), round(center[1] + offset[1]))
-            diameter = max(1, int(shape.size[1]))
-            pygame.draw.line(self.surface, color, start, end, diameter)
-            radius = diameter / 2.0
-            pygame.draw.circle(self.surface, color, start, max(1, int(radius)), width)
-            pygame.draw.circle(self.surface, color, end, max(1, int(radius)), width)
-            return
-        if shape.kind is ShapeKind.OBB:
-            radians = math.radians(shape.angle)
-            cosine = math.cos(radians)
-            sine = math.sin(radians)
-            half_width = shape.size[0] / 2.0
-            half_height = shape.size[1] / 2.0
-            points = []
-            for local_x, local_y in (
-                (-half_width, -half_height),
-                (half_width, -half_height),
-                (half_width, half_height),
-                (-half_width, half_height),
-            ):
-                points.append(
-                    (
-                        int(round(center[0] + local_x * cosine - local_y * sine)),
-                        int(round(center[1] + local_x * sine + local_y * cosine)),
-                    )
-                )
-            pygame.draw.polygon(self.surface, color, points, width)
-            return
-        pygame.draw.rect(
-            self.surface,
-            color,
-            camera.apply(
-                pygame.FRect(
-                    shape.position[0] - shape.size[0] / 2.0,
-                    shape.position[1] - shape.size[1] / 2.0,
-                    shape.size[0],
-                    shape.size[1],
-                )
-            ),
-            width=width,
-        )
-
     def draw_offensive_boxes(
         self,
         sprite: pygame.sprite.Sprite,
@@ -587,13 +476,13 @@ class GeoLayer:
     ) -> None:
         advanced = shape is not None and shape.kind is not ShapeKind.AABB
         if advanced and shape is not None:
-            self.draw_dashed_rect(camera.apply(attack_box), Colors.debug_broadphase)
+            self.shapes.draw_dashed_rect(camera.apply(attack_box), Colors.debug_broadphase)
         if swept is not None and swept != attack_box and self.box_moved(swept, attack_box):
-            self.draw_dashed_rect(camera.apply(swept), Colors.debug_sweep)
+            self.shapes.draw_dashed_rect(camera.apply(swept), Colors.debug_sweep)
             self.draw_motion_arrow(swept, attack_box, camera)
         if advanced and swept_shape is not None and swept_shape.previous is not None:
             previous = swept_shape.previous
-            self.draw_shape_once(previous, Colors.debug_sweep, camera, 1)
+            self.shapes.draw_shape_once(previous, Colors.debug_sweep, camera, 1)
             self.draw_motion_arrow(
                 pygame.FRect(
                     previous.position[0] - previous.size[0] / 2.0,
@@ -605,7 +494,7 @@ class GeoLayer:
                 camera,
             )
         if advanced and shape is not None:
-            self.draw_shape(shape, outline, camera)
+            self.shapes.draw_shape(shape, outline, camera)
         else:
             pygame.draw.rect(self.surface, outline, camera.apply(attack_box), width=2)
         if anchor is not None:
@@ -647,31 +536,6 @@ class GeoLayer:
                 self.metrics.seal_width,
             )
             cursor += step
-
-    def draw_dashed_rect(self, screen: pygame.FRect, color: Color) -> None:
-        x, y, width, height = screen.x, screen.y, screen.width, screen.height
-        for start, end in self.dashed_edges(x, y, width, height):
-            pygame.draw.line(self.surface, color, start, end, SWEEP_GHOST_WIDTH)
-
-    @staticmethod
-    def dashed_edges(
-        x: float, y: float, width: float, height: float
-    ) -> tuple[tuple[tuple[float, float], tuple[float, float]], ...]:
-        step = 2 * SWEEP_GHOST_WIDTH + 2
-        edges: list[tuple[tuple[float, float], tuple[float, float]]] = []
-        cursor = x
-        while cursor < x + width:
-            end = min(cursor + SWEEP_GHOST_WIDTH + 2, x + width)
-            edges.append(((cursor, y), (end, y)))
-            edges.append(((cursor, y + height), (end, y + height)))
-            cursor += step
-        cursor = y
-        while cursor < y + height:
-            end = min(cursor + SWEEP_GHOST_WIDTH + 2, y + height)
-            edges.append(((x, cursor), (x, end)))
-            edges.append(((x + width, cursor), (x + width, end)))
-            cursor += step
-        return tuple(edges)
 
     def draw_motion_arrow(self, swept: pygame.FRect, current: pygame.FRect, camera: Camera) -> None:
         start = camera.apply(swept).center
@@ -813,100 +677,3 @@ class GeoLayer:
             pygame.draw.circle(self.surface, Colors.off_white, center, BOX_DOT_CORE_RADIUS)
         side = (BOX_DOT_RADIUS + BOX_DOT_RIM_WIDTH) * 2 + 1
         return pygame.Rect(center[0] - side // 2, center[1] - side // 2, side, side)
-
-    def draw_velocity(self, sprite: pygame.sprite.Sprite, camera: Camera) -> None:
-        velocity = getattr(sprite, "velocity", None)
-        if velocity is None:
-            return
-        try:
-            vx, vy = float(velocity.x), float(velocity.y)
-        except AttributeError, TypeError:
-            return
-        if vx * vx + vy * vy < VELOCITY_MIN_SPEED * VELOCITY_MIN_SPEED:
-            return
-        origin = getattr(sprite, "hitbox", None) or getattr(sprite, "rect", None)
-        if origin is None:
-            return
-        color = Colors.debug_velocity
-        if self.is_parry_flash(sprite):
-            color = Colors.gold
-        elif self.is_reaction_push(sprite):
-            color = Colors.red  # reaction push vector, not locomotion
-        self.draw_velocity_arrow(Vector2(camera.apply(origin).center), Vector2(vx, vy), color)
-
-    def draw_velocity_arrow(self, start: Vector2, velocity: Vector2, color: Color) -> None:
-        """Paint one velocity preview: rim, filled tapered shaft and arrowhead.
-
-        Geometry recap — the tail leaves the entity thinner than the neck, the
-        barbs flare at ``head_length`` from the tip, and the pivot dot marks
-        where the sprite actually is. The dark rim is stroked first, then the
-        colour fill covers its inner half, and an anti-aliased pass smooths the
-        fill boundary on top (debug-only cost: a handful of visible sprites).
-        """
-        delta = velocity * VELOCITY_PREVIEW_S
-        length = delta.length()
-        if length <= 0.0:
-            return
-        direction = delta / length
-        drawn_length = max(length, VELOCITY_MIN_LENGTH)
-        head_length = min(
-            max(drawn_length * VELOCITY_HEAD_RATIO, VELOCITY_HEAD_MIN),
-            VELOCITY_HEAD_MAX,
-            drawn_length,
-        )
-        points = arrow_outline(
-            start,
-            direction,
-            drawn_length,
-            head_length,
-            min(head_length * VELOCITY_HEAD_WIDTH_RATIO, drawn_length * VELOCITY_HEAD_WIDTH_CAP),
-        )
-        pygame.draw.polygon(self.surface, VELOCITY_OUTLINE, points, width=VELOCITY_OUTLINE_WIDTH)
-        pygame.draw.polygon(self.surface, color, points)
-        pygame.gfxdraw.aapolygon(self.surface, points, color)
-
-        pivot = (round(start.x), round(start.y))
-        pygame.draw.circle(
-            self.surface,
-            VELOCITY_OUTLINE,
-            pivot,
-            VELOCITY_TAIL_RADIUS + VELOCITY_OUTLINE_WIDTH // 2,
-        )
-        pygame.draw.circle(self.surface, color, pivot, VELOCITY_TAIL_RADIUS)
-        pygame.gfxdraw.aacircle(self.surface, *pivot, VELOCITY_TAIL_RADIUS, color)
-
-    @staticmethod
-    def is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
-        status = getattr(sprite, "reaction_status", None)
-        if not isinstance(status, ReactionStatus):
-            return False
-        if status.kind is not ReactionKind.PARRIED:
-            return False
-        return float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
-
-    @staticmethod
-    def is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
-        """Whether the vector is a hit reaction's push (red), not locomotion.
-
-        The typed ``ReactionStatus`` cause stays the gate — a bare state name
-        can never colour a vector — but it qualifies through two windows:
-
-        - *fresh cause* (``reaction_age > 0``): the hit just landed, so the
-          vector is the impulse it applied;
-        - *carried by the cause*: the entity is still in ``KNOCKBACK_STATE``
-          with a velocity-kind cause. A launch stays airborne far longer than
-          the ``ReactionMark`` freshness window (up to
-          ``Combat.KNOCKBACK_MAX_DURATION``) and its vector still comes from
-          that knockback — wall bounce, directional influence and friction
-          all rewrite it without re-arming the cause.
-
-        Walking, dashing, an AI chase or the tail of a resolved knockback read
-        as locomotion (yellow).
-        """
-        status = getattr(sprite, "reaction_status", None)
-        if not isinstance(status, ReactionStatus) or status.kind not in VELOCITY_KINDS:
-            return False
-        if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0:
-            return True
-        state_machine = getattr(sprite, "state_machine", None)
-        return getattr(state_machine, "current_state_name", None) == KNOCKBACK_STATE

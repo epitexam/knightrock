@@ -162,7 +162,7 @@ def test_advanced_shape_debug_draws_rimmed_circle_and_anchor(
 ) -> None:
     surface = world_ui.surface
     surface.fill((0, 0, 0))
-    world_ui._geo.draw_shape(
+    world_ui._geo.shapes.draw_shape(
         ShapePose(ShapeKind.CIRCLE, (40.0, 40.0), (120.0, 120.0)),
         Colors.debug_attack_box,
         camera,

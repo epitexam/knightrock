@@ -313,7 +313,7 @@ class WorldUI:
             if self.layers["boxes"]:
                 self._geo.draw_boxes(sprite, camera)
             if self.layers["velocities"]:
-                self._geo.draw_velocity(sprite, camera)
+                self._geo.velocity.draw_velocity(sprite, camera)
             request = self._cards.label_request(sprite, reference, is_static, camera)
             if request is not None:
                 requests.append(request)

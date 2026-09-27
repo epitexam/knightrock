@@ -95,15 +95,16 @@ MANIFEST = {
         "debug_reference display_name faction hitbox_color label_color "
         "clamp_annotation dodge_annotation"
     ),
+    "shapes": "draw_shape draw_shape_once draw_dashed_rect dashed_edges",
+    "velocity": "draw_velocity draw_velocity_arrow is_parry_flash is_reaction_push",
     "geo": (
         "offensive_boxes offensive_shapes offensive_badges offensive_hit "
         "offensive_outline attack_header_rect attack_timeline_widths "
         "paint_attack_timeline live_attack_text timeline_progress draw_boxes "
-        "draw_shape draw_shape_once draw_offensive_boxes draw_attack_geometry "
-        "draw_zone_seal draw_dashed_rect dashed_edges draw_motion_arrow draw_anchor "
+        "draw_offensive_boxes draw_attack_geometry "
+        "draw_zone_seal draw_motion_arrow draw_anchor "
         "register_annotations hurtbox_zones zone_mults zone_tags swept_boxes "
-        "swept_shapes attack_anchors box_moved in_situ_dot draw_velocity "
-        "draw_velocity_arrow is_parry_flash is_reaction_push"
+        "swept_shapes attack_anchors box_moved in_situ_dot"
     ),
     "cards": (
         "candidate_slots place_label blit_label draw_labels label_priority "
@@ -124,6 +125,8 @@ MANIFEST = {
 # be transient.
 MODULES = {
     "shared": ("src.ui.world_overlay_shared", None),
+    "shapes": ("src.ui.world_overlay_shapes", "ShapeLayer"),
+    "velocity": ("src.ui.world_overlay_velocity", "VelocityLayer"),
     "geo": ("src.ui.world_overlay_geo", "GeoLayer"),
     "cards": ("src.ui.world_overlay_cards", "CardLayer"),
     "panels": ("src.ui.world_overlay_panels", "PanelLayer"),
@@ -445,17 +448,23 @@ def test_manifest_names_live_in_exactly_one_place() -> None:
             )
             accounted |= wanted
             continue
-        owner = getattr(module, layer) if layer else module
+        # A group's names may sit on the layer class or beside it as plain
+        # functions: a method that needs no `self` is one, which is why
+        # `dashed_edges` and the two velocity predicates are module-level.
+        scopes = [vars(module)]
+        if layer:
+            scopes.append(vars(getattr(module, layer)))
         exported = set()
-        for name, member in vars(owner).items():
-            if name.startswith("_"):
-                continue
-            # A `@staticmethod` is a descriptor on the class, not a function,
-            # and half of `GeoLayer` is built that way.
-            if isinstance(member, staticmethod):
-                member = member.__func__
-            if inspect.isfunction(member) or isinstance(member, property):
-                exported.add(name)
+        for scope in scopes:
+            for name, member in scope.items():
+                if name.startswith("_"):
+                    continue
+                # A `@staticmethod` is a descriptor on the class, not a
+                # function, and several of these are built that way.
+                if isinstance(member, staticmethod):
+                    member = member.__func__
+                if inspect.isfunction(member) or isinstance(member, property):
+                    exported.add(name)
         assert wanted <= exported, f"{path} never got {sorted(wanted - exported)}"
         assert not pending, f"{sorted(pending)} stayed on WorldUI"
         accounted |= wanted

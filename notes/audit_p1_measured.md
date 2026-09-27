@@ -155,10 +155,20 @@ matter, and the graph is what decided the shape:
 | Module | Lines | Role |
 |---|---|---|
 | `world_overlay_shared` | 227 | sprite facts, annotation placement, the per-frame sink |
-| `world_overlay_geo` | 911 | the producer pass: boxes, zones, sweeps, the attack chip |
+| `world_overlay_geo` | 679 | the producer pass: boxes, zones, sweeps, the attack chip |
 | `world_overlay_cards` | 618 | the consumer pass: one card per sprite, dodging the above |
-| `world_overlay_panels` | 180 | screen furniture: the COMBAT readout, the clash ring |
-| `world_ui.WorldUI` | 377 | reset, walk the sprites, place the cards, stamp the ring |
+| `world_overlay_velocity` | 196 | the vector, its speed floor, and the two predicates tinting it |
+| `world_overlay_panels` | 179 | screen furniture: the COMBAT readout, the clash ring |
+| `world_overlay_shapes` | 146 | the three advanced poses, and the dashed outline |
+| `world_ui.WorldUI` | 368 | reset, walk the sprites, place the cards, stamp the ring |
+
+Two of these are leaves that the audit named and that the first cut did not
+separate: `velocity.py` and the pose painter. `geo` is still over the audit's
+400-line ceiling at 679, and `cards` at 618, and the reason is the same in both
+cases -- what is left is a *pass*, and a pass is one loop body. Getting under
+400 means cutting `draw_boxes` and `place_label` in half, which is a change to
+the functions rather than a move of them, and the golden exists to make such a
+change provable rather than to make it unnecessary.
 
 The split that was asked for -- labels, boxes, panels -- cannot be done in three
 modules without a cycle, and the reason is one method. The attack header chip

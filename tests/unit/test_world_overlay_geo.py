@@ -27,7 +27,6 @@ from types import SimpleNamespace
 
 import pygame
 import pytest
-from pygame.math import Vector2
 
 from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Colors
@@ -37,6 +36,7 @@ from src.ui.panel_renderer import PanelRenderer
 from src.ui.world_overlay_geo import GeoLayer
 from src.ui.world_overlay_metrics import SWEEP_DISPLAY_MIN_PX
 from src.ui.world_ui import WorldUI
+from tests.unit.helpers import lit_pixels, overlay_entity
 
 SIZE = (1024, 768)
 
@@ -67,30 +67,8 @@ def geo(world_ui: WorldUI) -> GeoLayer:
     return world_ui._geo
 
 
-def _entity(name: str = "Goblin", **overrides) -> SimpleNamespace:
-    base = {
-        "hitbox": pygame.FRect(100, 100, 40, 48),
-        "hurtbox": pygame.FRect(98, 98, 44, 52),
-        "hurtboxes": (pygame.FRect(98, 98, 44, 52),),
-        "hurtbox_zone_names": ("",),
-        "hurtbox_mult": (1.0,),
-        "hurtbox_tags": ((),),
-        "velocity": Vector2(0, 0),
-        "faction": "enemy",
-        "health": 75.0,
-        "max_health": 100.0,
-        "state_machine": SimpleNamespace(current_state_name="idle"),
-        "combat": SimpleNamespace(
-            state=SimpleNamespace(attack_name=None, sub_state=None, phase_index=0, frame_counter=0),
-            targets_hit=set(),
-        ),
-    }
-    base.update(overrides)
-    return type(name, (SimpleNamespace,), {})(**base)
-
-
 def _attacking(name: str = "Slime", **combat) -> SimpleNamespace:
-    entity = _entity(name)
+    entity = overlay_entity(name)
     entity.combat.state.attack_name = "claw_swipe"
     entity.combat.state.sub_state = SimpleNamespace(value="active")
     entity.combat.state.frame_counter = 2
@@ -100,16 +78,6 @@ def _attacking(name: str = "Slime", **combat) -> SimpleNamespace:
     for key, value in combat.items():
         setattr(entity.combat, key, value)
     return entity
-
-
-def _lit(surface: pygame.Surface) -> int:
-    """How many pixels are not black. A shape either drew or it did not."""
-    return sum(
-        1
-        for x in range(0, surface.get_width(), 2)
-        for y in range(0, surface.get_height(), 2)
-        if surface.get_at((x, y))[:3] != (0, 0, 0)
-    )
 
 
 # -- rect-only sprites: the hazards, platforms and exits --------------------
@@ -126,10 +94,10 @@ def test_a_rect_only_sprite_is_drawn_as_static_geometry(
     culling asks for a reference first, so an untested branch here is a class
     of sprite that quietly stopped being visible.
     """
-    platform = _entity("Platform", rect=pygame.FRect(200, 400, 120, 16))
+    platform = overlay_entity("Platform", rect=pygame.FRect(200, 400, 120, 16))
     del platform.hitbox  # a platform has no body; the rect is all there is
     geo.draw_boxes(platform, camera)
-    assert _lit(world_ui.surface) > 0, "the platform drew nothing at all"
+    assert lit_pixels(world_ui.surface) > 0, "the platform drew nothing at all"
     assert world_ui.surface.get_at((200, 400))[:3] == tuple(Colors.debug_static), (
         "what was drawn is not the static outline a rect-only sprite gets"
     )
@@ -139,87 +107,14 @@ def test_a_sprite_with_neither_rect_nor_hitbox_draws_nothing(
     world_ui: WorldUI, geo: GeoLayer, camera: Camera
 ) -> None:
     """Nothing to place against, so nothing to draw, and no crash."""
-    ghost = _entity("Ghost")
+    ghost = overlay_entity("Ghost")
     del ghost.hitbox
     ghost.rect = None
     geo.draw_boxes(ghost, camera)
-    assert _lit(world_ui.surface) == 0, "a sprite with no geometry drew something"
+    assert lit_pixels(world_ui.surface) == 0, "a sprite with no geometry drew something"
 
 
 # -- advanced attack poses --------------------------------------------------
-
-
-def test_a_capsule_pose_draws_a_solid_shaft_with_two_caps(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """A capsule is a *filled* line of a given diameter, capped at both ends.
-
-    Asserted on the shaft's middle, which is the only thing that tells a
-    capsule from the rectangle this function falls back to for a pose it does
-    not recognise: the fallback strokes an outline, so its interior stays
-    black. A test that only checked "something was drawn" passes for both, and
-    would keep passing if the capsule branch were deleted outright.
-    """
-    world_ui.surface.fill((0, 0, 0))
-    geo.draw_shape(ShapePose(ShapeKind.CAPSULE, (80.0, 16.0), (300.0, 300.0)), Colors.white, camera)
-    assert any(world_ui.surface.get_at((x, 300))[:3] != (0, 0, 0) for x in range(270, 331)), (
-        "the capsule shaft is not where a horizontal capsule should be"
-    )
-
-    """A 90-degree OBB swaps its axes, which an axis-aligned draw would not.
-
-    ``size`` is the box's own length and height, so turning it a quarter turn
-    has to change which screen axis is long. That is the whole difference
-    between an OBB and a rectangle, and it is the thing that separates this
-    branch from the ``pygame.draw.rect`` fallback used for a pose this function
-    does not recognise -- the fallback builds its rect from ``size`` and ignores
-    the angle, so it draws the same wide shape at 0 and at 90.
-
-    Measured on the drawn pixels' own bounding box rather than on a sampled
-    line, because the shape is stroked and not filled: a line down the middle
-    of it is black whatever the angle.
-    """
-
-    def lit_bounds(angle: float) -> tuple[int, int, int, int]:
-        world_ui.surface.fill((0, 0, 0))
-        geo.draw_shape(
-            ShapePose(ShapeKind.OBB, (100.0, 20.0), (300.0, 300.0), angle=angle),
-            Colors.white,
-            camera,
-        )
-        lit = [
-            (x, y)
-            for x in range(200, 401)
-            for y in range(200, 401)
-            if world_ui.surface.get_at((x, y))[:3] != (0, 0, 0)
-        ]
-        assert lit, "nothing was drawn at all"
-        xs = [x for x, _ in lit]
-        ys = [y for _, y in lit]
-        return min(xs), min(ys), max(xs), max(ys)
-
-    upright = lit_bounds(0.0)
-    turned = lit_bounds(90.0)
-    assert upright[2] - upright[0] > upright[3] - upright[1], "unrotated it should be wide"
-    assert turned[3] - turned[1] > turned[2] - turned[0], (
-        "a quarter-turned box should now be tall, not wide"
-    )
-    # The two spans swap rather than one of them growing.
-    assert turned[2] - turned[0] == pytest.approx(upright[3] - upright[1], abs=2)
-    assert turned[3] - turned[1] == pytest.approx(upright[2] - upright[0], abs=2)
-
-
-def test_dashed_edges_break_a_rectangle_into_segments() -> None:
-    """The ghost outline is dashes with gaps, not a solid rectangle.
-
-    Solid would read as a second live hitbox, which is the exact confusion the
-    ghost exists to avoid.
-    """
-    edges = GeoLayer.dashed_edges(0.0, 0.0, 100.0, 60.0)
-    assert edges, "a rect of that size must produce at least one dash"
-    for (x0, y0), (x1, y1) in edges:
-        assert (x0, y0) != (x1, y1), "a zero-length dash is not a dash"
-        assert x0 == x1 or y0 == y1, "a ghost edge must be axis-aligned"
 
 
 # -- the swept box and the motion arrow -------------------------------------
@@ -276,7 +171,7 @@ def test_a_swept_box_that_moved_is_drawn_as_a_ghost(
         outline=Colors.debug_attack_box,
         camera=camera,
     )
-    assert _lit(world_ui.surface) > 0, "the swept ghost drew nothing"
+    assert lit_pixels(world_ui.surface) > 0, "the swept ghost drew nothing"
     # The trail is behind the live box, so something exists to its left.
     assert any(world_ui.surface.get_at((x, 312))[:3] != (0, 0, 0) for x in range(230, 290)), (
         "nothing was drawn where the swing came from"
@@ -329,7 +224,7 @@ def test_a_motion_arrow_needs_two_different_points(
     world_ui.surface.fill((0, 0, 0))
     box = pygame.FRect(300, 300, 40, 24)
     geo.draw_motion_arrow(box, pygame.FRect(box), camera)
-    assert _lit(world_ui.surface) == 0
+    assert lit_pixels(world_ui.surface) == 0
 
 
 # -- multi-zone hurtboxes ----------------------------------------------------
@@ -349,7 +244,7 @@ def test_a_tagged_hurtbox_zone_gets_a_dashed_seal(
     marks strictly inside the border.
     """
     world_ui.surface.fill((0, 0, 0))
-    entity = _entity(
+    entity = overlay_entity(
         "Ooze",
         hitbox=pygame.FRect(100, 100, 40, 48),
         hurtboxes=(pygame.FRect(100, 100, 40, 48), pygame.FRect(100, 100, 20, 48)),
@@ -377,7 +272,7 @@ def test_an_untagged_zone_gets_no_seal(world_ui: WorldUI, geo: GeoLayer, camera:
     decoration rather than a mark of meaning, and then it would say nothing.
     """
     world_ui.surface.fill((0, 0, 0))
-    entity = _entity(
+    entity = overlay_entity(
         "Ooze",
         hitbox=pygame.FRect(100, 100, 40, 48),
         hurtboxes=(pygame.FRect(100, 100, 40, 48), pygame.FRect(100, 100, 20, 48)),
@@ -410,7 +305,7 @@ def test_a_zone_too_small_to_seal_is_skipped_not_drawn_degenerate(
     metrics = geo.metrics
     tiny = pygame.FRect(100, 100, metrics.zone_boost_outline, metrics.zone_boost_outline)
     geo.draw_zone_seal(camera.apply(tiny), Colors.white)
-    assert _lit(world_ui.surface) == 0
+    assert lit_pixels(world_ui.surface) == 0
 
 
 # -- the attack header timeline ---------------------------------------------
@@ -527,85 +422,10 @@ def test_an_unknown_height_is_printed_as_written() -> None:
 # -- velocity ----------------------------------------------------------------
 
 
-def test_a_velocity_that_is_not_a_vector_is_ignored(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """A tuple, a string, anything without ``.x``: drawn as nothing, not a crash.
-
-    The debug pass reads attributes off whatever the scene hands it, and a
-    sprite whose ``velocity`` is some other shape is exactly the case that
-    turns a debug tool into the reason a frame is lost.
-    """
-    world_ui.surface.fill((0, 0, 0))
-    for velocity in ((3.0, 4.0), "fast", 12):
-        entity = _entity("Thing", velocity=velocity)
-        geo.draw_velocity(entity, camera)
-    assert _lit(world_ui.surface) == 0
-
-
-def test_a_sprite_with_no_box_draws_no_velocity(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """The arrow starts at the body, so a bodyless sprite has nowhere to start."""
-    world_ui.surface.fill((0, 0, 0))
-    entity = _entity("Projectile", velocity=Vector2(300, 0))
-    del entity.hitbox
-    entity.rect = None
-    geo.draw_velocity(entity, camera)
-    assert _lit(world_ui.surface) == 0
-
-
-def test_a_slow_sprite_draws_no_velocity(world_ui: WorldUI, geo: GeoLayer, camera: Camera) -> None:
-    """Below the minimum speed, nothing is drawn at all.
-
-    The threshold is not about the arrow being too small to see -- a slow
-    vector is stretched to the minimum length and would be perfectly visible.
-    It is about a sprite that is barely moving not growing an arrow that claims
-    it is. Nothing in the codebase slows a sprite to exactly zero, so this is
-    the only place the cutoff itself is observable.
-    """
-    world_ui.surface.fill((0, 0, 0))
-    geo.draw_velocity(_entity("Crawler", velocity=Vector2(59.0, 0.0)), camera)
-    assert _lit(world_ui.surface) == 0, "a sprite under the speed floor drew an arrow"
-
-
-def test_a_sprite_over_the_speed_floor_does_draw(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """The positive side of the same threshold, so it is not vacuously green."""
-    world_ui.surface.fill((0, 0, 0))
-    geo.draw_velocity(_entity("Runner", velocity=Vector2(200.0, 0.0)), camera)
-    assert _lit(world_ui.surface) > 0
-
-
-def test_a_zero_velocity_arrow_draws_nothing(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """The arrow method is called directly here, past the speed gate.
-
-    ``draw_velocity`` already refuses a slow vector, so the only way to reach
-    this branch is to call the painter with a zero vector -- and a head drawn
-    on a tail of no length is a dot on the entity.
-    """
-    world_ui.surface.fill((0, 0, 0))
-    geo.draw_velocity_arrow(Vector2(300, 300), Vector2(0, 0), Colors.white)
-    assert _lit(world_ui.surface) == 0
-
-
-def test_a_fast_sprite_gets_a_velocity_arrow(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """The positive case for the branch above, so it is not vacuously green."""
-    world_ui.surface.fill((0, 0, 0))
-    entity = _entity("Runner", velocity=Vector2(400, 0))
-    geo.draw_velocity(entity, camera)
-    assert _lit(world_ui.surface) > 0, "a fast sprite drew no velocity arrow"
-
-
 # -- the header chip, and the poses that reach the fallback -----------------
 
 
-def test_a_header_with_no_bar_sits_above_the_entity(
+def test_a_header_with_no_bar_sits_above_theoverlay_entity(
     world_ui: WorldUI, geo: GeoLayer, camera: Camera
 ) -> None:
     """The player has no world-space bar, so the chip anchors on the body.
@@ -648,29 +468,6 @@ def test_a_header_carries_its_badges(world_ui: WorldUI, geo: GeoLayer, camera: C
     assert world_ui.annotation_rects.get(id(entity)), "the chip was never registered"
 
 
-def test_an_unknown_pose_falls_back_to_a_rectangle(
-    world_ui: WorldUI, geo: GeoLayer, camera: Camera
-) -> None:
-    """A pose this function does not model is still drawn, as a plain box.
-
-    Better a box that is close than nothing: an overlay that silently skips a
-    hitbox is the one failure mode a debug layer cannot have.
-    """
-    world_ui.surface.fill((0, 0, 0))
-    geo.draw_shape(ShapePose(ShapeKind.AABB, (60.0, 30.0), (300.0, 300.0)), Colors.white, camera)
-    lit = [
-        (x, y)
-        for x in range(260, 341)
-        for y in range(275, 326)
-        if world_ui.surface.get_at((x, y))[:3] != (0, 0, 0)
-    ]
-    assert lit, "an axis-aligned pose drew nothing"
-    xs = [x for x, _ in lit]
-    ys = [y for _, y in lit]
-    assert (max(xs) - min(xs)) > 40, "the fallback box is much smaller than the pose"
-    assert (max(ys) - min(ys)) > 20, "the fallback box is much shorter than the pose"
-
-
 def test_a_swept_pose_draws_where_the_swing_came_from(
     world_ui: WorldUI, geo: GeoLayer, camera: Camera
 ) -> None:
@@ -710,8 +507,8 @@ def test_every_layer_off_draws_nothing_at_all(world_ui: WorldUI, camera: Camera)
         world_ui.layers[name] = False
     try:
         world_ui.surface.fill((0, 0, 0))
-        world_ui.draw_debug_overlays([_entity()], camera)
-        assert _lit(world_ui.surface) == 0, "a disabled overlay still drew something"
+        world_ui.draw_debug_overlays([overlay_entity()], camera)
+        assert lit_pixels(world_ui.surface) == 0, "a disabled overlay still drew something"
         assert world_ui.annotation_rects == {}, "a disabled overlay still registered annotations"
     finally:
         for name in world_ui.layers:
