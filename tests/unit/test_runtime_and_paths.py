@@ -15,7 +15,7 @@ from src.core.display.mode import DisplayMode
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
 from src.core.game import Game
-from src.core.level.level_manager import LevelManager
+from src.core.level.level_manager import LevelManager, UnknownLevelError
 from src.core.paths import PROJECT_ROOT, resource_path
 
 
@@ -46,6 +46,41 @@ def test_level_manager_raises_clear_error_for_missing_level() -> None:
         manager.get(99)
 
     assert "Level file not found" in str(exc_info.value)
+
+
+def test_an_unregistered_level_id_is_not_a_bare_key_error() -> None:
+    """A stale id from an old save must say so, not raise ``KeyError: 7``.
+
+    The bare-KeyError version of this failure was a crash at launch with no
+    message at all, on the path that resolves a save file's ``last_level_id``.
+    """
+    manager = LevelManager({0: "assets/data/levels/1.tmx", 3: "assets/data/levels/4.tmx"})
+
+    with pytest.raises(UnknownLevelError) as exc_info:
+        manager.get(7)
+
+    message = str(exc_info.value)
+    assert "7" in message
+    assert "0, 3" in message, "the message must name the ids that do exist"
+
+
+def test_the_two_level_failures_are_distinguishable() -> None:
+    """Unregistered id and missing file are different problems, not one."""
+    manager = LevelManager()
+    manager.register(99, "assets/data/levels/does_not_exist.tmx")
+
+    with pytest.raises(LookupError):
+        manager.get(98)
+    with pytest.raises(FileNotFoundError):
+        manager.get(99)
+
+
+def test_an_empty_registry_still_produces_a_readable_message() -> None:
+    """``known: none`` beats an empty parenthesis nobody can act on."""
+    with pytest.raises(UnknownLevelError) as exc_info:
+        LevelManager().get(0)
+
+    assert "none" in str(exc_info.value)
 
 
 def test_run_handles_initialization_errors_and_always_quits(
