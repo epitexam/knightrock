@@ -12,6 +12,7 @@ from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelLayout
 from src.ui.styles import TEXT_MUTED
 from src.ui.ui_manager import UIManager
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -50,7 +51,7 @@ def _entity(x: float = 100.0, health: float = 75.0) -> SimpleNamespace:
 def _capture_labels(ui: UIManager, monkeypatch: pytest.MonkeyPatch) -> list[pygame.Rect]:
     """Spy on _blit_label and collect the padded rects actually placed."""
     placed: list[pygame.Rect] = []
-    original = type(ui.world_ui)._blit_label
+    original = type(ui.world_ui._cards).blit_label
 
     def spy(
         self: object,
@@ -65,7 +66,7 @@ def _capture_labels(ui: UIManager, monkeypatch: pytest.MonkeyPatch) -> list[pyga
         placed.append(pygame.Rect(background_rect))
         original(self, header, rows, row_height, accent, label_rect, background_rect, screen_width)
 
-    monkeypatch.setattr(type(ui.world_ui), "_blit_label", spy)
+    monkeypatch.setattr(type(ui.world_ui._cards), "blit_label", spy)
     return placed
 
 
@@ -122,12 +123,12 @@ def test_labels_dodge_bars_from_the_previous_frame(
     ui.world_ui.draw_debug_overlays([entity], camera)  # registers the bar
     bar = ui.world_ui._health_bar_rect(entity, camera.apply(entity.hitbox))
     assert bar is not None
-    above_lift, _ = ui.world_ui._label_clearances(entity, camera.apply(entity.hitbox))
-    placed = ui.world_ui._place_label(
+    above_lift, _ = ui.world_ui._cards.label_clearances(entity, camera.apply(entity.hitbox))
+    placed = ui.world_ui._cards.place_label(
         [[("Goblin idle", (255, 255, 255))], [("HP 75/100", (255, 255, 255))]],
         (255, 255, 255),
         camera.apply(entity.hitbox),
-        [*ui.world_ui._previous_bar_obstacles],
+        [*ui.world_ui._cards.previous_bar_obstacles],
         ui.renderer.surface.get_width(),
         ui.renderer.surface.get_height(),
         above_lift=above_lift,
@@ -158,15 +159,21 @@ def test_combat_panel_only_collects_when_debug_is_enabled(
 ) -> None:
     """DEBUG unset: draw_metrics_panel collects nothing; with DEBUG it does."""
     monkeypatch.delenv("DEBUG", raising=False)
-    ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=1, overlaps=1, contacts=1))
-    ui.world_ui.draw_metrics_panel()
-    assert ui.world_ui.combat_panel() is None
+    # Ten ticks, because `update_metrics` only publishes every tenth. With a
+    # single tick the throttle returns first and `metrics_text` is still empty,
+    # so this would pass whether or not the DEBUG guard exists -- which is the
+    # whole thing the assertion is here to check.
+    for _ in range(10):
+        ui.world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=1, overlaps=1, contacts=1))
+    assert ui.world_ui.panels.metrics_text, "the counters never published, nothing to guard"
+    ui.world_ui.panels.draw_metrics_panel()
+    assert ui.world_ui.panels.combat_panel() is None
 
     monkeypatch.setenv("DEBUG", "1")
     for _ in range(10):  # metrics refresh every 10th tick, as in game
-        ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
-    ui.world_ui.draw_metrics_panel()
-    content = ui.world_ui.combat_panel()
+        ui.world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    ui.world_ui.panels.draw_metrics_panel()
+    content = ui.world_ui.panels.combat_panel()
     assert content is not None
     title, lines = content
     assert title == "COMBAT"
@@ -181,7 +188,7 @@ def test_draw_combat_panel_flows_through_the_layout(
     surface = pygame.Surface((640, 480))
     surface.fill((0, 0, 0))
     ui.renderer.surface = surface
-    ui.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
+    ui.world_ui.panels.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     layout = PanelLayout(640, 480)
     height = ui.draw_combat_panel(layout)
@@ -242,8 +249,10 @@ def test_full_debug_panel_stack_never_overlaps(
     from src.ui.panel_renderer import set_compact_panels
 
     surface = pygame.Surface((1440, 900))
-    renderer = Renderer(surface, _Camera(Framing(float(1440), float(900))))
-    renderer.ui_manager.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
+    renderer = Renderer(
+        surface, _Camera(Framing(float(1440), float(900))), overlay=make_overlay(surface)
+    )
+    renderer.overlay.world_ui.panels.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     placed: list[pygame.Rect] = []
     original_place = PanelLayout.place
@@ -275,7 +284,7 @@ def test_full_debug_panel_stack_never_overlaps(
             collision_count=1,
             hit_stop=0.0,
             spawn_cooldown=0.0,
-            game=None,
+            scene_host=None,
             frame_time=16.0,
             cache_size=0,
         )
@@ -296,7 +305,9 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
     from src.core.rendering.renderer import Renderer
 
     surface = pygame.Surface((640, 480))
-    renderer = Renderer(surface, _Camera(Framing(float(640), float(480))))
+    renderer = Renderer(
+        surface, _Camera(Framing(float(640), float(480))), overlay=make_overlay(surface)
+    )
     level = SimpleNamespace(
         deaths=0,
         groups=SimpleNamespace(
@@ -320,15 +331,53 @@ def test_compact_display_uses_focus_selector_without_overlap() -> None:
         collision_count=0,
         hit_stop=0.0,
         spawn_cooldown=0.0,
-        game=game,
+        scene_host=game,
         frame_time=16.0,
     )
-    renderer.ui_manager.renderer.interaction.begin_frame()
-    panels = renderer.ui_manager.renderer.interaction.panels
+    renderer.overlay.renderer.interaction.begin_frame()
+    panels = renderer.overlay.renderer.interaction.panels
     screen = surface.get_rect()
 
     assert set(panels) == {"performance", "state"}
     assert all(screen.contains(rect) for rect in panels.values())
     assert not panels["performance"].colliderect(panels["state"])
-    assert renderer.ui_manager.compact_panel_focus() == "state"
-    assert renderer.ui_manager.cycle_compact_panel() == "stats"
+    assert renderer.overlay.compact_panel_focus() == "state"
+    assert renderer.overlay.cycle_compact_panel() == "stats"
+
+
+def test_a_bar_that_moved_still_dodges_the_card_next_frame(
+    ui: UIManager, camera: Camera, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bar rects of the previous frame are obstacles for this one.
+
+    Bars paint *after* the cards but belong to the same tier stack, so a card
+    placed against where its bar is now has to keep clear of where the bar was.
+    Without that, an entity that walks under the top of the screen -- flipping
+    its bar from above to below -- leaves its card sitting on the bar's old
+    ground, which reads as a placement bug and is not one.
+
+    This is the only test that exercises the *write* of ``previous_bar_obstacles``:
+    the others read it, so dropping the write leaves them green.
+    """
+    placed = _capture_labels(ui, monkeypatch)
+    low = _entity()
+    ui.world_ui.draw_debug_overlays([low], camera)
+    old_bar = ui.world_ui._health_bar_rect(low, camera.apply(low.hitbox))
+    assert old_bar is not None
+    assert old_bar.bottom <= low.hitbox.y, "the bar starts above the entity"
+    first = list(placed)
+    assert first
+
+    # Same entity, now against the top edge: the bar has nowhere above and flips.
+    high = _entity()
+    high.hitbox.y = 4.0
+    placed.clear()
+    ui.world_ui.draw_debug_overlays([high], camera)
+    new_bar = ui.world_ui._health_bar_rect(high, camera.apply(high.hitbox))
+    assert new_bar is not None
+    assert new_bar.top > high.hitbox.y, "the bar flipped below the entity"
+    assert placed, "no card was placed on the second frame"
+
+    assert all(not old_bar.colliderect(pygame.Rect(rect)) for rect in placed), (
+        f"the card landed on where the bar used to be: {old_bar} vs {placed}"
+    )

@@ -73,9 +73,7 @@ def test_a_sprite_the_camera_is_looking_at_survives_the_overlay_cull(offset) -> 
     # way outside it. The first is placed from the *offset*, because that is
     # where the framing is: a fixture that assumed the origin is a fixture that
     # cannot fail.
-    centre = camera.offset + pygame.Vector2(
-        camera.viewport_width / 2, camera.viewport_height / 2
-    )
+    centre = camera.offset + pygame.Vector2(camera.viewport_width / 2, camera.viewport_height / 2)
     inside = pygame.FRect(centre.x, centre.y, 32, 32)
     outside = pygame.FRect(-4000.0, -4000.0, 32, 32)
 
@@ -184,9 +182,7 @@ def test_a_panel_hit_box_is_the_size_of_the_button_it_belongs_to() -> None:
 def _game(tmp_path, monkeypatch, debug: bool) -> Game:
     monkeypatch.setenv("KNIGHTROCK_SAVE_DIR", str(tmp_path / "home"))
     monkeypatch.setenv("DEBUG", "1" if debug else "0")
-    game = Game(
-        save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json"
-    )
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     game._initialize()
     return game
 
@@ -241,9 +237,7 @@ def test_the_notice_is_shown_once_and_then_expires(tmp_path, monkeypatch) -> Non
     assert game.notice_lines == (), "the notice has to go away on its own"
 
 
-def test_with_the_flag_there_is_no_notice_and_the_layers_still_flip(
-    tmp_path, monkeypatch
-) -> None:
+def test_with_the_flag_there_is_no_notice_and_the_layers_still_flip(tmp_path, monkeypatch) -> None:
     """The flag path is unchanged: no nagging, and F1 still toggles."""
     from src.application.scenes.gameplay_scene import GameplayScene
 
@@ -252,7 +246,7 @@ def test_with_the_flag_there_is_no_notice_and_the_layers_still_flip(
     for _ in range(3):
         game.step()
     scene = game.scene_manager.current
-    world_ui = scene.level.renderer.ui_manager.world_ui
+    world_ui = scene.level.renderer.overlay.world_ui
     before = world_ui.layers["boxes"]
 
     pygame.event.post(

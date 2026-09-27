@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import traceback
 from pathlib import Path
 from time import perf_counter
@@ -22,6 +21,7 @@ from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import density_for
 from src.core.display.mode import DisplayMode
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
@@ -32,6 +32,7 @@ from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.settings import Display, Simulation
 from src.data.provider import GameplayData, load_gameplay_data
+from src.ui.ui_manager import UIManager
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,9 @@ class Game:
         self.audio.attach(self.events)
         self._subscribe_notifications()
         self.scene_manager = SceneManager(self)
+        #: The interface drawn over the world, built on the first level.
+        #: See :meth:`world_overlay`.
+        self.ui: UIManager | None = None
         self.running = True
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
@@ -187,6 +191,24 @@ class Game:
         """The surface every scene draws into."""
         assert self.presentation is not None, "the display is not initialized"
         return self.presentation.surface
+
+    def world_overlay(self, target: pygame.Surface) -> UIManager:
+        """The interface drawn over the world, built once and kept.
+
+        Owned here rather than by the renderer, for two reasons. The layering
+        one: the application layer is where ``core`` and ``ui`` meet, and
+        ``core`` importing ``ui`` is the dependency
+        :mod:`src.core.rendering.overlay` exists to remove. The practical one:
+        a level transition used to build a second interface and throw the
+        first one away, which threw away every font it had cached, and font
+        scanning is what those caches are for.
+
+        The density is read with the same rule the camera uses -- the target's
+        own, via ``density_for`` -- rather than measured a second way here.
+        """
+        if self.ui is None:
+            self.ui = UIManager(target, density_for(target.get_size(), DEFAULT_FRAMING))
+        return self.ui
 
     def _window_spec(self) -> WindowSpec:
         """The window the settings currently ask for."""
@@ -357,11 +379,11 @@ class Game:
             logger.exception("Unable to persist the settings")
 
     def apply_bindings(self, bindings: InputBindings) -> None:
-        """Met à jour les bindings sans recréer l'affichage (rebinding en jeu).
+        """Update the bindings without rebuilding the window (in-game rebinding).
 
-        ``apply_settings`` reconstruit la fenêtre (échelle UI, plein écran…) :
-        inacceptable à chaque capture de touche de l'écran Contrôles. Ici on ne
-        persiste que les bindings et on réarme routeur + provider.
+        ``apply_settings`` rebuilds the window (UI scale, fullscreen...), which
+        is unacceptable on every key capture in the controls screen. This
+        persists the bindings and re-arms the router and provider only.
         """
         self.settings = self.settings.with_bindings(bindings)
         self.input_bindings = self.settings.bindings
@@ -529,14 +551,14 @@ class Game:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
                 self.joysticks[joy.get_instance_id()] = joy
-                logger.info(f"Connected controller : {joy.get_name()}")
+                logger.info("Connected controller : %s", joy.get_name())
                 self.input_router.notify_joystick_connected(joy.get_instance_id(), joy)
                 if should_assign:
                     self.input_provider.connect_joystick(joy)
 
             elif event.type == pygame.JOYDEVICEREMOVED and event.instance_id in self.joysticks:
                 disconnected_joy = self.joysticks[event.instance_id]
-                logger.info(f"Controller disconnected : {disconnected_joy.get_name()}")
+                logger.info("Controller disconnected : %s", disconnected_joy.get_name())
                 self.input_provider.disconnect_joystick(event.instance_id)
                 self.input_router.notify_joystick_removed(event.instance_id)
                 del self.joysticks[event.instance_id]
@@ -587,19 +609,63 @@ class Game:
         return event
 
     def _handle_fatal_error(self, error: Exception) -> None:
-        logger.error(f"FATAL ERROR: {error}")
-        surface = self.surface
-        if surface is None:
-            return
+        """Log the failure with its traceback, then try to show it.
 
+        Three things were wrong with this and each had a consequence.
+
+        It logged ``f"FATAL ERROR: {error}"`` at ``error`` level, which is the
+        exception's *message*: a crash with an empty message logged an empty
+        line, and the frame that raised it was not recorded anywhere. It is
+        ``logger.critical`` with the traceback now, and that log is the artifact
+        worth having -- the screen below is a courtesy.
+
+        It drew on ``self.surface``, the window, bypassing the render target
+        and the presentation. So the message appeared at 1:1 on the window
+        whatever the letterbox and the density were, and the next
+        ``present()`` -- had there been one -- would have overwritten it. It
+        paints the target and presents it like any other frame, and falls back
+        to the window only when there is no presentation yet, which is the
+        case where the crash happened before the display was up.
+
+        And it built its own ``SysFont("Arial")``, outside the chain that
+        scales and caches every other glyph in the game, so the one message
+        that matters most was the one drawn at the wrong size on a machine with
+        no Arial. The panel chain is used instead, and if even that fails --
+        a font cache that cannot allocate, a display that has gone away -- the
+        failure is logged and swallowed. Raising out of the handler would
+        replace a reportable crash with an unreportable one.
+        """
+        logger.critical("Fatal error; the game cannot continue", exc_info=error)
         try:
+            self._paint_fatal_error(error)
+        except Exception:  # noqa: BLE001 - this is the last line of defence
+            logger.exception("Could not paint the fatal error screen")
+
+    def _paint_fatal_error(self, error: Exception) -> None:
+        """Put the failure on screen, on whichever surface is still alive."""
+        # An exception with an empty str() would otherwise paint a blank panel.
+        message = f"{type(error).__name__}: {error}".strip(": ")
+        if self.presentation is not None:
+            target = self.presentation.surface
+            self._paint_error_panel(target, message)
+            self.presentation.present()
+            return
+        # Crashed before the display came up: the window is all there is.
+        surface = self.surface
+        if surface is not None:
             surface.fill((0, 0, 0))
-            font = pygame.font.SysFont("Arial", 30)
-            text = font.render(f"FATAL ERROR: {error}", True, (255, 0, 0))
+            text = pygame.font.Font(None, 24).render(message, True, (255, 0, 0))
             surface.blit(text, (10, 10))
             pygame.display.update()
-        except pygame.error:
-            print("Unable to render the fatal error screen", file=sys.stderr)
+
+    def _paint_error_panel(self, target: pygame.Surface, message: str) -> None:
+        """Paint the message with the game's own panel chain."""
+        target.fill((12, 8, 10))
+        if self.ui is None:
+            font = pygame.font.Font(None, 24)
+            target.blit(font.render(message, True, (255, 0, 0)), (10, 10))
+            return
+        self.ui.renderer.draw_panel(10, 10, [message], title="FATAL ERROR")
 
 
 def _elapsed_ms(started: float) -> float:

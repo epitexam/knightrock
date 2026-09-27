@@ -7,8 +7,8 @@ import pygame
 from src.core.input.input_actions import InputAction
 
 type KeyBinding = int | tuple[int, ...]
-# Bouton manette : un index SDL, ou une paire (gauche, droite) pour MOVE_X
-# quand le d-pad est exposé en boutons et pas en hat (pads Xbox/SDL2).
+# Gamepad button: one SDL index, or a (left, right) pair for MOVE_X when the
+# d-pad is exposed as buttons rather than a hat (Xbox/SDL2 pads).
 type PadBinding = int | tuple[int, ...]
 type ActionMap = Mapping[InputAction, KeyBinding]
 type ButtonMap = Mapping[InputAction, PadBinding]

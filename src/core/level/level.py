@@ -2,6 +2,8 @@
 The Level facade: it builds a world and delegates its tick to the systems.
 """
 
+import logging
+from collections.abc import Iterable
 from typing import Any
 
 import pygame
@@ -9,6 +11,7 @@ import pygame
 from src.application.events import EventBus, LevelStarted
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
+from src.core.level.scene_host import SceneHost
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem
@@ -25,14 +28,18 @@ from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.level.systems.tick_system import TickSystem
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
+from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
+from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
-from src.core.settings import Debug
+from src.core.settings import Debug, World
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
+
+logger = logging.getLogger(__name__)
 
 
 class Level:
@@ -60,6 +67,7 @@ class Level:
         events: EventBus | None = None,
         rollback_enabled: bool = False,
         gameplay_data: GameplayData | None = None,
+        overlay: WorldOverlay | None = None,
     ) -> None:
         """
         Initialize the level from parsed TMX data and build the world.
@@ -86,11 +94,11 @@ class Level:
 
         self.groups = SpriteGroups()
 
-        # La caméra ne connaît plus la fenêtre : elle reçoit le cadrage, qui est
-        # une constante en unités monde, et lit son échelle sur la cible de rendu
-        # qu'on lui passe. C'est ce qui fait qu'une résolution ne peut plus
-        # élargir ce que le joueur voit — le viewport est le même sur un portable
-        # 1366x768 et sur un écran 4K.
+        # The camera no longer knows about the window: it is given the framing,
+        # a constant in world units, and reads its scale off the render target
+        # it is handed. That is what stops a resolution from widening what the
+        # player sees -- the viewport is the same on a 1366x768 laptop and on a
+        # 4K screen.
         self.camera = Camera.for_target(surface)
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
@@ -106,11 +114,11 @@ class Level:
         self.rollback_enabled = rollback_enabled
         self.rollback = RollbackSystem()
 
-        self.renderer = Renderer(self.surface, self.camera, level_data.config)
-        # Spatial hash for O(1) collision lookups (PERF-01/02): created before
-        # the spawner so runtime-spawned enemies join the grid too.
-        self.spatial_hash = SpatialHash(cell_size=128)
-        self.spawn_system = SpawnSystem(self.groups, self.spatial_hash)
+        self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
+        # Spatial hash for O(1) collision lookups (PERF-01/02). Created before
+        # the world build, not before the spawner: what the build needs is the
+        # grid, so that every entity it creates is wired into it from the start.
+        self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
 
         self.world_builder = WorldBuilder(level_data, gameplay_data)
         # The grid is bound *before* the build so every entity comes out of the
@@ -119,6 +127,8 @@ class Level:
         # below, so no creation path can end up without one.
         self.world_builder.bind_spatial_hash(self.spatial_hash)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
+
+        self._install_static_culls()
 
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed
@@ -155,7 +165,20 @@ class Level:
             spatial_hash=self.spatial_hash,
             contact_system=self.contact_system,
         )
-        self.spawn_system.projectile_system = self.projectile_system
+        # Assembled after the projectile system so it can be *given* rather
+        # than assigned in afterwards. It used to be created before the world
+        # build and handed its projectile system as an attribute write a few
+        # lines later, which contradicted the "collaborators are injected
+        # explicitly" claim the rest of this constructor is built on: an object
+        # that is half-configured for the first third of its life can be used
+        # in that state, and nothing said so. Nothing needs the spawner
+        # during the build -- it was only ever ordered early because of the
+        # spatial hash it shares, which is created above.
+        self.spawn_system = SpawnSystem(
+            self.groups,
+            self.spatial_hash,
+            projectile_system=self.projectile_system,
+        )
 
         self.gameplay_loop = GameplayLoop(
             platform_system=self.platform_system,
@@ -175,6 +198,65 @@ class Level:
 
         if self.events is not None:
             self.events.emit(LevelStarted(level_id=self.level_id))
+
+    def _install_static_culls(self) -> None:
+        """Hand the renderer a chunked cull for the frozen tile planes.
+
+        The index is only correct if the plane it holds is genuinely frozen.
+        A sprite that moves after being indexed is culled against the
+        rectangle it had when the index was built, which drops it off screen
+        or leaves it behind, and either way it is a wrong frame with no error
+        anywhere. The world builder only ever files tile layers here, but a
+        factory that registered a moving sprite would not be caught by
+        reading that code, so the moving planes are checked instead: if one
+        of them turns up in the frozen plane, the index is not installed and
+        the level draws exactly as it did before.
+        """
+        statics = self.groups.static_sprites
+        if not statics:
+            return
+        static_ids = frozenset(id(sprite) for sprite in statics)
+        if any(id(sprite) in static_ids for plane in self._moving_planes() for sprite in plane):
+            logger.warning(
+                "A moving sprite is registered in the frozen tile plane; the "
+                "chunked cull would judge it against a stale rectangle, so the "
+                "linear cull is kept."
+            )
+            return
+        foreground = TileChunkIndex(self.groups.fg_sprites) if self.groups.fg_sprites else None
+        self.renderer.set_static_planes(TileChunkIndex(statics), foreground)
+
+    def _moving_planes(self) -> tuple[Iterable[Any], ...]:
+        """The sprite groups whose contents move during a session."""
+        groups = self.groups
+        return (
+            groups.entity_sprites,
+            groups.hazard_sprites,
+            groups.moving_platforms,
+            groups.projectile_sprites,
+            groups.exit_sprites,
+            groups.combat_sprites,
+        )
+
+    # -- the facade's read/write surface over the systems' state --------------
+    #
+    # Three delegating properties, and they are here on purpose. The whole
+    # point of the level being a strict facade over its systems (audit F1.2)
+    # is that a scene asks the level a question instead of reaching into
+    # `level.respawn_system`; without these, every consumer would know how the
+    # level is built, and the moment the respawn state moved into a different
+    # system every one of them would change.
+    #
+    # The setters exist for exactly one caller: `load_state`, restoring a
+    # rollback capture. They are not a general write API -- a scene that set
+    # `level.deaths` would be editing the simulation's history, and the
+    # property cannot tell the two apart. Making the restore path explicit
+    # would need a second name for the same three fields, which is a worse
+    # trade than documenting the one that exists.
+    #
+    # There used to be a fourth, `completed`, aliasing `exit_reached`. Two
+    # names for one fact is a question every reader has to answer, and a
+    # subclass overriding one of them would silently not affect the other.
 
     @property
     def respawn_timer(self) -> float:
@@ -200,17 +282,16 @@ class Level:
 
     @property
     def exit_reached(self) -> bool:
-        """True once the player touched the exit, owned by progression."""
+        """True once the player touched the exit, owned by progression.
+
+        The whole "has the player finished this level" question, asked of the
+        simulation rather than of the scene that started it.
+        """
         return self.progression_system.exit_reached
 
     @exit_reached.setter
     def exit_reached(self, value: bool) -> None:
         self.progression_system.exit_reached = value
-
-    @property
-    def completed(self) -> bool:
-        """Return True if the player has reached the level exit flag."""
-        return self.exit_reached
 
     def update(self, delta_time: float) -> None:
         """
@@ -225,9 +306,7 @@ class Level:
         if Debug.is_enabled():
             renderer = getattr(self, "renderer", None)
             if renderer is not None:
-                renderer.ui_manager.world_ui.update_metrics(
-                    self.gameplay_loop.contact_system.tick_metrics
-                )
+                renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback (Phase 3 #3).
@@ -317,7 +396,7 @@ class Level:
     def draw(
         self,
         fps: float,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
         frame_time: float = 0.0,
         alpha: float = 0.0,
     ) -> None:
@@ -326,7 +405,8 @@ class Level:
 
         Args:
             fps: Current frames per second, used for debug display.
-            game: The Game instance (used by the debug SCENE panel).
+            scene_host: Whoever can say which scene is on top, for the
+                debug SCENE panel. None draws the level without it.
             frame_time: Last frame duration in ms (debug PERFORMANCE panel).
             alpha: Position within the pending simulation tick, in [0, 1].
         """
@@ -338,10 +418,8 @@ class Level:
         self.renderer.draw_health_bars(self.groups.entity_sprites)
         for event in self.gameplay_loop.combat_system.guard_events:
             if event.kind == "clash":
-                self.renderer.ui_manager.world_ui.note_clash(
-                    self.gameplay_loop.combat_system.last_clash
-                )
-        self.renderer.ui_manager.world_ui.draw_metrics_panel(
+                self.renderer.overlay.note_clash(self.gameplay_loop.combat_system.last_clash)
+        self.renderer.overlay.draw_metrics_panel(
             player=self.player,
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
         )
@@ -351,16 +429,18 @@ class Level:
 
         # Bars painted over the debug overlays: stamp the clash ring again so
         # a clash never hides behind an HP bar (this stamp spends no TTL).
-        self.renderer.ui_manager.world_ui.stamp_clash_marker(self.renderer.camera)
+        self.renderer.overlay.stamp_clash_marker(self.renderer.camera)
         self.renderer.draw_debug_panels(
             player=self.player,
             fps=fps,
-            sprite_count=len(self.groups.all_sprites),
+            sprite_count=len(self.groups.static_sprites)
+            + len(self.groups.all_sprites)
+            + len(self.groups.fg_sprites),
             combat_count=len(self.groups.combat_sprites),
             entity_count=len(self.groups.entity_sprites),
             collision_count=len(self.groups.collision_sprites),
             hit_stop=self.gameplay_loop.combat_system.hit_stop_timer,
             spawn_cooldown=self.spawn_system.spawn_cooldown_max,
-            game=game,
+            scene_host=scene_host,
             frame_time=frame_time,
         )

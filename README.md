@@ -7,8 +7,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-1511%20passing-brightgreen)](#tests--quality)
-[![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2061%20passing-brightgreen)](#tests--quality)
+[![coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
 ---
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 1511 tests, 90 % instruction / 87 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2061 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -234,10 +234,11 @@ predictable:
   Melee, projectile AABB and moving-hazard geometry use swept collision;
   static hazards and contact damage retain discrete collision. The full list
   is recalled on-screen by the `DEBUG KEYS` panel. `F4` statics is **off by
-  default**: a level carries ~970 terrain tiles whose outline tells you
-  nothing, and they were the largest single item in the frame at 2.8 ms.
-  Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
-  the whole overlay pass from p50 6.0 ms to 4.3 ms.
+  default**: a level carries ~840 terrain tiles whose outline tells you
+  nothing, and drawing them is the most expensive thing the overlay does.
+  Measured on level 0 at 1280×720 with `DEBUG=1`, dropping the layer took
+  the whole overlay pass from 1.98 ms to 0.09 ms — 1.9 ms of a 16.7 ms
+  budget for a picture of the tileset.
 
 ### Frame timings
 
@@ -305,7 +306,8 @@ What follows from that:
   does not fit its destination, so "off by a rounding" is a real defect here and
   not a cosmetic one; fuzzing every framing, density, offset and rect finds no
   gap and no resample;
-- `Camera.is_visible()` culls against the framing rect;
+- `Camera.is_visible()` culls against the framing rect, and the frozen terrain
+  is narrowed to a handful of chunks before it gets there;
 - every frame is a complete repaint of the target, so a stale pixel is not
   possible rather than merely unlikely;
 - a window resize rebuilds the target, re-reads the density and re-lays out the
@@ -389,12 +391,20 @@ Coverage — CI enforces an 80 % instruction threshold (currently **90 %**):
 uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
-Branch coverage is measured separately (currently **87 %**) and is *not*
+Branch coverage is measured separately (currently **76 %**) and is *not*
 compared against the instruction percentage:
 
 ```bash
 uv run pytest --cov=src --cov-branch --cov-report=term-missing
 ```
+
+The figures quoted in the badges, the summary table and the baseline block at
+the end of this section are the output of the two commands above.
+`tests/unit/test_readme_claims.py` re-checks the test count on every run
+(`pytest --collect-only` costs under a second) and checks that the three
+places quoting a coverage pair still agree with each other, so the numbers
+cannot drift apart silently. The mypy file counts come from
+`uv run mypy src main.py tools` and `uv run mypy src`.
 
 Static analysis — every check below is **blocking in CI**:
 
@@ -425,9 +435,9 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 1511 tests passing · 90 % instruction coverage ·
-> 87 % branch coverage · Ruff clean · mypy clean (155 files across
-> `src main.py tools`, the CI command; `mypy src` alone is 152). Tests run headless
+> **Current baseline:** 2061 tests passing · 90 % instruction coverage ·
+> 76 % branch coverage · Ruff clean · mypy clean (156 files across
+> `src main.py tools`, the CI command; `mypy src` alone is 153). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 
@@ -457,9 +467,11 @@ src/
 ├── core/          Bootstrap (game.py), settings, paths, colors, fx
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
-│   ├── rendering/ Camera (fixed framing + a density read off the target) and renderer
+│   ├── rendering/ Camera (fixed framing + a density read off the target), renderer,
+│   │              and the tile chunk index that culls the frozen terrain
 │   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
 │   ├── rollback/  Snapshot ring buffer and deterministic restore
+│   ├── rendering/ Camera, renderer, tile chunk index, world-overlay port
 │                   Asset library and animator (`core/asset_library.py`)
 │                   Audio bus (`core/audio.py`)
 ├── combat/        Frame data, hit resolver, knockback, charge and combo
@@ -469,6 +481,8 @@ src/
 ├── physics/       Collisions, gravity, movement, spatial hash, entity grid
 ├── states/        State machines (player, enemies, shared reactions)
 ├── ui/            Player HUD, panels, world-space debug overlay
+│                 (dimensions in `world_overlay_metrics.py`, health bars in
+│                 `world_overlay_bars.py`)
 └── data/          Strict JSON loaders + in-code fallback values
 data/gameplay/     Tracked JSON gameplay values (attacks, enemies, player, levels)
 assets/            TMX levels and sprites — required at runtime (git-ignored)
@@ -491,6 +505,22 @@ notes/             Refactoring plans, audit reports and open gaps
   a sustained overload can exceed that.
 - `src/core/level/systems/gameplay_loop.py` defines the *order* in which the
   level systems run; each system stays independently testable.
+- The world is drawn from three **planes**, split by one property: whether the
+  sprite moves. The tile layers are built once and never move, so they live in
+  `SpriteGroups.static_sprites` and `fg_sprites` and are culled through
+  `TileChunkIndex`, a chunk grid built once at load; everything that moves is
+  in `all_sprites` and is scanned, which is exact and cheap because it is tens
+  of sprites. The split is what makes the index pay: leaving the tiles in
+  `all_sprites` would force the renderer to walk all ~840 of them every frame
+  just to discover it had already drawn them. Anything that genuinely wants the
+  whole world — the debug overlay, the sprite counter — reads
+  `SpriteGroups.every_sprite` instead of one group, and the tile layers stay in
+  `collision_sprites` as before, so physics is untouched. The index decides
+  which sprites are *worth asking about*; `Camera.is_visible` still decides
+  which are drawn, so a chunk can over-select but never under-select.
+  `tests/unit/test_tile_chunk_index.py` asserts that on the real level, and
+  `render_benchmark.py` measures it: 0.22 ms against 0.28 ms for the scan on
+  level 0, and 0.07 ms against 2.67 ms at 22 000 tiles.
 - `src/application/events.py` is a synchronous, strictly ordered event bus with
   two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`,
   `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no
@@ -511,6 +541,16 @@ notes/             Refactoring plans, audit reports and open gaps
 - Combat is frame-data driven: startup / active / recovery phases feed
   `HitboxManager` and `HitResolver` through the two-pass deterministic
   `CombatSystem`.
+- The interface reaches the world by **injection**, not by import. `Renderer`
+  takes a `WorldOverlay` (`src/core/rendering/overlay.py`) and draws nothing
+  beyond the world without one; `UIManager` implements it, and `Game.world_overlay`
+  builds it once and hands it to the level. So `core` never imports `ui`: the
+  renderer can be built to ask whether a tile is culled without standing up a
+  font cache and a panel layout first, and a level transition no longer throws
+  the previous interface — and every font it had cached — away. `GameplayScene`
+  does name `UIManager` concretely, which is the point: `application` is where
+  the two layers are allowed to meet. `tests/unit/test_layer_boundaries.py`
+  enforces the direction, so the next convenient import does not put it back.
 
 ## Conventions
 

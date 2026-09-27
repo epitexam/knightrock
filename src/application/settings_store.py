@@ -334,5 +334,6 @@ class SettingsStore:
 
 
 def default_settings_path() -> Path:
+    """Where settings live when nothing overrides it."""
     base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"

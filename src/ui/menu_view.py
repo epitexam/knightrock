@@ -25,9 +25,9 @@ class MenuView:
         self._panel_cache: pygame.Surface | None = None
         self._panel_cache_size: tuple[int, int] = (0, 0)
         self._surface_size: tuple[int, int] = (0, 0)
-        # Cache des textes rendus : un .render() par frame et par item
-        # alloue une Surface + déclenche du GC -> micro-freezes à 60fps.
-        # Clé = (font-id, texte, couleur) ; invalidé au changement de sélection.
+        # Rendered-text cache. One .render() per frame per item allocates a
+        # Surface and triggers GC, which shows up as micro-freezes at 60fps.
+        # Keyed by (font id, text, colour); invalidated on selection change.
         self._text_cache: dict[tuple[int, str, tuple[int, int, int]], pygame.Surface] = {}
         self._text_cache_key: tuple[tuple[str, ...], tuple[str, ...], int, float] | None = None
 
@@ -123,9 +123,7 @@ class MenuView:
         footer_surfaces = [self._render_cached(footer_font, text, TEXT_WARN) for text in footers]
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        available_height = max(
-            metrics.px(120), surface.get_height() - top - metrics.margin
-        )
+        available_height = max(metrics.px(120), surface.get_height() - top - metrics.margin)
         # A row is never shorter than the text inside it. Compressing the text is
         # the alternative, and the panel simply grows taller otherwise.
         item_height = max(
@@ -158,7 +156,9 @@ class MenuView:
             + footer_height
         )
         panel_x = (surface.get_width() - panel_width) // 2
-        panel_y = min(top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin))
+        panel_y = min(
+            top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin)
+        )
         panel = self._panel_for(panel_width, panel_height)
         panel.fill((*PANEL_BG[:3], 230))
         pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), metrics.border)
@@ -276,7 +276,7 @@ class MenuView:
         return cached
 
     def _panel_for(self, width: int, height: int) -> pygame.Surface:
-        """Réutilise la surface du panneau au lieu d'en allouer une/frame."""
+        """Reuse the panel surface instead of allocating one per frame."""
         if self._panel_cache is None or self._panel_cache_size != (width, height):
             self._panel_cache = pygame.Surface((width, height), pygame.SRCALPHA)
             self._panel_cache_size = (width, height)
@@ -287,7 +287,7 @@ class MenuView:
         return checked_ui_scale(scale)
 
     def reset_cache(self) -> None:
-        """Vide les fonts/surfaces cachées (changement de display)."""
+        """Drop the cached fonts and surfaces (display changed)."""
         self._fonts.clear()
         self._panel_cache = None
         self._panel_cache_size = (0, 0)

@@ -18,7 +18,7 @@ def test_level_builds_player_and_world(build_level) -> None:
 
     assert player is not None
     assert player.hitbox.top >= 100.0
-    assert level.completed is False
+    assert level.exit_reached is False
     assert level.groups.entity_sprites.has(player)
 
 
@@ -31,7 +31,7 @@ def test_level_update_applies_gravity_and_moves_the_player(build_level) -> None:
 
     assert level.player.hitbox.top > start_top
     assert level.player.velocity.y > 0.0
-    assert level.completed is False
+    assert level.exit_reached is False
 
 
 def test_level_update_detects_exit_touch(build_level) -> None:
@@ -45,7 +45,7 @@ def test_level_update_detects_exit_touch(build_level) -> None:
 
     level.update(1 / 60)
 
-    assert level.completed is True
+    assert level.exit_reached is True
 
 
 def test_level_respawns_the_player_after_death_delay(build_level) -> None:
@@ -160,3 +160,58 @@ def test_the_grid_is_actually_populated(build_level) -> None:
 
     # The grid indexes exactly the collision sprites it was handed.
     assert len(level.spatial_hash._cells_by_sprite) == len(level.groups.collision_sprites)
+
+
+def test_the_spawner_is_given_its_projectile_system_not_patched_afterwards(
+    build_level,
+) -> None:
+    """Every system is fully wired when it is constructed.
+
+    `SpawnSystem` used to be created before the world build and handed its
+    projectile system by an attribute write a few lines later, which
+    contradicted the "collaborators are injected explicitly" claim the rest of
+    the constructor is built on: an object that is half-configured for the
+    first third of its life can be *used* in that state, and nothing said so.
+    The spawner moved after the projectile system so it could be given one.
+    """
+    level = build_level()
+
+    assert level.spawn_system.projectile_system is level.projectile_system
+
+
+def test_the_spawner_can_fire_on_construction(build_level) -> None:
+    """The consequence of the above: a spawner is never missing its launcher.
+
+    A spawner built without one raises at the moment of use -- deep inside a
+    debug keypress -- rather than at the moment of wiring.
+    """
+    level = build_level()
+
+    assert level.spawn_system.projectile_system is not None
+
+
+def test_the_level_answers_one_name_for_the_finished_question(build_level) -> None:
+    """`completed` used to alias `exit_reached`.
+
+    Two names for one fact is a question every reader has to answer, and a
+    subclass overriding one of them would have silently not affected the
+    other. One name, one fact.
+    """
+    level = build_level()
+
+    assert not hasattr(type(level), "completed")
+    assert level.exit_reached is False
+
+
+def test_the_facade_state_is_the_systems_state(build_level) -> None:
+    """The delegations are the boundary, not a copy.
+
+    They exist so a scene asks the level a question instead of reaching into
+    `level.respawn_system`. If the two ever disagree, the facade has stopped
+    being one.
+    """
+    level = build_level()
+
+    assert level.deaths is level.respawn_system.deaths
+    assert level.respawn_timer == level.respawn_system.respawn_timer
+    assert level.exit_reached is level.progression_system.exit_reached

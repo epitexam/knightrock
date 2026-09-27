@@ -74,6 +74,13 @@ class AssetLibrary:
         player animations (graceful degradation when dash assets aren't
         available yet). For other cases, raises FileNotFoundError.
 
+        A fallback is cached under the key that was *asked for* as well as
+        the one it resolved to. The recursion returns the fallback's frames,
+        but the requester's key was never populated, so every subsequent call
+        repeated the ``is_dir()`` that discovered the fallback in the first
+        place -- a stat syscall per call, per animation, per frame, for as
+        long as the game ran.
+
         Parameters
         ----------
         relative_directory : str | Path
@@ -93,11 +100,12 @@ class AssetLibrary:
 
         directory = Path(resource_path(str(relative_directory)))
         if not directory.is_dir():
-            # Graceful fallback: dash -> run for player animations
-            if "player/dash" in str(relative_directory):
-                fallback = str(relative_directory).replace("player/dash", "player/run")
-                return self.frames(fallback)
-            raise FileNotFoundError(f"Animation directory not found: {directory}")
+            fallback = self._fallback_directory(relative_directory)
+            if fallback is None:
+                raise FileNotFoundError(f"Animation directory not found: {directory}")
+            frames = self.frames(fallback)
+            self._frame_cache[key] = frames
+            return frames
 
         def frame_order(path: Path) -> tuple[int, str]:
             """Numbered frames sort numerically ('10' after '2'); names last."""
@@ -113,6 +121,18 @@ class AssetLibrary:
         frames = [self.image(frame_path) for frame_path in frame_paths]
         self._frame_cache[key] = frames
         return frames
+
+    @staticmethod
+    def _fallback_directory(relative_directory: str | Path) -> str | None:
+        """The directory to serve when the requested one is absent, or None.
+
+        Only player animations degrade, and only ``dash`` -> ``run``: a dash
+        that reuses the run frames animates, where a missing frameset for any
+        other animation is a broken asset and should say so.
+        """
+        if "player/dash" in str(relative_directory):
+            return str(relative_directory).replace("player/dash", "player/run")
+        return None
 
     def clear(self) -> None:
         """Drop the whole cache (level transition or memory pressure)."""

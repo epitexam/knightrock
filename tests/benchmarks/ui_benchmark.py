@@ -43,6 +43,7 @@ from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.ui.ui_manager import UIManager
 
 
 def _player() -> SimpleNamespace:
@@ -109,7 +110,17 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
     pygame.init()
     pygame.display.set_mode(size)
     surface = pygame.Surface(size)
-    renderer = Renderer(surface, Camera(Framing(float(size[0]), float(size[1]))))
+    # The renderer no longer builds the interface -- it is handed one, which is
+    # the whole point of the injected overlay. So the manager is held here to
+    # read the text cache off, instead of being reached back through the
+    # renderer as `renderer.ui_manager`, which stopped existing when the
+    # dependency was inverted.
+    ui = UIManager(surface)
+    renderer = Renderer(
+        surface,
+        Camera(Framing(float(size[0]), float(size[1]))),
+        overlay=ui,
+    )
     panel_samples: list[float] = []
     player = _player()
     game = _game()
@@ -124,7 +135,7 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
             collision_count=0,
             hit_stop=0.0,
             spawn_cooldown=0.0,
-            game=game,
+            scene_host=game,
             frame_time=16.0,
         )
         panel_samples.append((perf_counter() - started) * 1000.0)
@@ -133,7 +144,7 @@ def run(size: tuple[int, int], iterations: int) -> dict[str, float]:
         "p95": _percentile(panel_samples, 0.95),
         "p99": _percentile(panel_samples, 0.99),
         "max": max(panel_samples),
-        "cache_entries": float(renderer.ui_manager.renderer.text_cache_stats["entries"]),
+        "cache_entries": float(ui.renderer.text_cache_stats["entries"]),
     }
     result.update(_menu_samples(size, iterations))
     return result

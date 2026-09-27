@@ -11,6 +11,7 @@ from src.core.settings import Input as InputSettings
 
 
 def resolve_move_axis(keyboard_axis: float, analog_axis: float, hat_axis: float) -> float:
+    """Combine the three move sources into one axis. The keyboard axis is zero whenever the control screen has detached MOVE_X, so it can be passed unconditionally."""
     directions = {
         direction
         for direction in (
@@ -182,13 +183,13 @@ class LocalInputProvider(InputProvider):
     ) -> float:
         axis_keys = bindings.get(InputAction.MOVE_X)
         if not isinstance(axis_keys, tuple) or len(axis_keys) != 2:
-            # MOVE_X détachée depuis l'écran Contrôles : axe clavier nul.
+            # MOVE_X detached from the controls screen: no keyboard axis.
             return 0.0
         left_key, right_key = axis_keys
         return float(self._key_value(keys, right_key)) - float(self._key_value(keys, left_key))
 
     def _pad_button_axis_value(self, bindings: ButtonMap) -> float:
-        """D-pad exposé en boutons : paire (gauche, droite) liée à MOVE_X."""
+        """D-pad exposed as buttons: the (left, right) pair bound to MOVE_X."""
         indices = self._pad_indices(bindings, InputAction.MOVE_X)
         if len(indices) != 2:
             return 0.0
@@ -208,7 +209,7 @@ class LocalInputProvider(InputProvider):
     ) -> bool:
         binding = bindings.get(action)
         if binding is None:
-            # Action détachée depuis l'écran Contrôles : jamais active.
+            # Action detached from the controls screen: never active.
             return False
         codes = binding if isinstance(binding, tuple) else (binding,)
         if any(self._key_value(keys, code) for code in codes):
@@ -219,7 +220,7 @@ class LocalInputProvider(InputProvider):
 
     @staticmethod
     def _pad_indices(bindings: ButtonMap, action: InputAction) -> tuple[int, ...]:
-        """Indices SDL liés à ``action`` (1 index, ou la paire de MOVE_X)."""
+        """The SDL indices bound to ``action`` (one index, or MOVE_X's pair)."""
         binding = bindings.get(action)
         if binding is None:
             return ()

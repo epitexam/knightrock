@@ -20,9 +20,9 @@ from src.core.input.input_bindings import (
 
 BINDINGS_FORMAT_VERSION = 1
 
-# Actions dont la liaison se fait par paire (gauche, droite) : le clavier les
-# stocke en tuple, et ``gamepad_buttons`` peut les recevoir en paire de boutons
-# pour les pads qui exposent le d-pad en boutons.
+# Actions bound as a (left, right) pair: the keyboard stores them as a tuple,
+# and ``gamepad_buttons`` can take a pair of buttons for pads that expose their
+# d-pad as buttons.
 _PAIR_ACTIONS = frozenset({InputAction.MOVE_X})
 
 
@@ -65,8 +65,8 @@ def _parse_key_value(value: object, action: InputAction, allow_pair: bool) -> Ke
         if value < 0:
             raise ValueError("key code must be positive")
         if pair_required:
-            # move_x est une paire (gauche, droite) : un entier unique ferait
-            # planter ``InputProvider._calculate_move_axis``.
+            # move_x is a (left, right) pair: a single int would break
+            # ``InputProvider._calculate_move_axis``.
             raise ValueError(f"{action.value} requires a pair of keys")
         return value
     if isinstance(value, list) and all(
@@ -118,11 +118,11 @@ def _int_index(value: object) -> int | None:
 
 
 def _parse_int_map(data: object, allowed: set[InputAction], allow_pair: bool = False) -> ButtonMap:
-    """Parse un index SDL unique, ou la paire (gauche, droite) de MOVE_X.
+    """Parse a single SDL index, or MOVE_X's (left, right) pair.
 
-    ``allow_pair`` n'est ouvert que pour le contexte gameplay : les pads qui
-    exposent le d-pad en boutons (Xbox/SDL2) peuvent ainsi binder le déplacement
-    horizontal sur deux boutons, comme sur clavier.
+    ``allow_pair`` is opened only for the gameplay context, so a pad that
+    exposes its d-pad as buttons (Xbox/SDL2) can bind horizontal movement to two
+    buttons the way the keyboard does.
     """
     if not isinstance(data, dict):
         raise ValueError("integer map must be an object")
@@ -165,6 +165,7 @@ def _parse_combo_map(data: object, allowed: set[InputAction]) -> ComboMap:
 
 
 def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
+    """Serialise back to the on-disk schema, the exact inverse of `bindings_from_dict`."""
     gameplay = bindings.gameplay
     menu = bindings.menu
     return {
@@ -190,16 +191,16 @@ def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
 
 
 def bindings_from_dict(data: object) -> InputBindings:
-    """Valide un fichier de bindings (sous-ensembles libres, contexte respecté).
+    """Validate a bindings file: free-form subsets, context respected.
 
-    Contrat depuis l'écran Contrôles à deux colonnes (audit UI-5) :
+    The contract comes from the two-column controls screen (audit UI-5):
 
-    * chaque clé d'une map doit appartenir au contexte (gameplay ou menu) ;
-    * une map peut être partielle : l'absence d'une action signifie « non
-      liée » (l'``InputProvider`` tolère les trous), ce qui permet de détacher
-      une touche ou un bouton depuis l'UI ;
-    * ``move_x`` reste une paire : de touches au clavier, et de boutons si la
-      section ``gamepad_buttons`` du gameplay la déclare.
+    * every key of a map must belong to its context (gameplay or menu);
+    * a map may be partial -- a missing action means unbound, and
+      ``InputProvider`` tolerates the gaps, which is what lets the UI detach a
+      single key or button;
+    * ``move_x`` stays a pair: two keys on the keyboard, two buttons if the
+      gameplay ``gamepad_buttons`` section declares it.
     """
     if not isinstance(data, dict) or data.get("version") != BINDINGS_FORMAT_VERSION:
         raise ValueError("unsupported bindings schema")
@@ -240,19 +241,17 @@ def bindings_from_dict(data: object) -> InputBindings:
     gameplay_keyboard_combos = _parse_combo_map(gameplay_data["keyboard_combos"], gameplay_actions)
     gameplay_gamepad_combos = _parse_combo_map(gameplay_data["gamepad_combos"], gameplay_actions)
     menu_keyboard = _parse_action_map(menu_data["keyboard"], menu_actions)
-    # Anciens fichiers : la capture d'une flèche a parfois laissé deux
-    # directions de menu sur la même touche. Répare ce conflit sans écraser
-    # les autres remaps personnalisés.
+    # Older files: capturing an arrow sometimes left two menu directions on one
+    # key. Repaired without disturbing the other custom remaps.
     menu_keyboard = _repair_menu_direction_conflicts(menu_keyboard)
     menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)
     menu_axes = cast(AxisMap, _parse_int_map(menu_data["gamepad_axes"], menu_actions))
     if InputAction.UI_BACK not in menu_buttons and InputAction.UI_CANCEL in menu_buttons:
-        # Fichier écrit avant le retour universel (bouton B / clic droit) : le
-        # bouton B était alors lié à ui_cancel. On recopie la liaison vers
-        # ui_back pour que le routeur émette l'action de retour attendue par
-        # les scènes, sans perdre les autres réglages du fichier.
+        # A file written before universal back (B button / right click) bound
+        # that button to ui_cancel. Copy the binding to ui_back so the router
+        # emits the action the scenes expect, keeping the rest of the file.
         menu_buttons = MappingProxyType(
             {**menu_buttons, InputAction.UI_BACK: menu_buttons[InputAction.UI_CANCEL]}
         )
@@ -306,5 +305,6 @@ class BindingsRepository:
 
 
 def default_bindings_path() -> Path:
+    """Where bindings live when nothing overrides it: beside the settings, not in the user config."""
     base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"

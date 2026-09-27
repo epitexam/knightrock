@@ -87,7 +87,7 @@ class ControlsScene(Scene):
         self.model = MenuModel(
             items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
         )
-        self.view = ControlsView(game.ui_scale)
+        self.view: ControlsView = ControlsView(game.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
         self._capture: tuple[int, int] | None = None
         # The pointer's own cell, apart from the selection, for the same reason
@@ -450,8 +450,8 @@ class ControlsScene(Scene):
             self._cancel_capture()
             return
         if capture[1] == KEYBOARD_COLUMN:
-            # Un bouton physique est toujours un binding manette : on bascule
-            # dans la colonne gamepad sans exiger un aller-retour UI.
+            # A physical button is always a gamepad binding: switch columns
+            # without making the player route through the UI first.
             self._capture = (capture[0], GAMEPAD_COLUMN)
             self.selected_column = GAMEPAD_COLUMN
             capture = self._capture

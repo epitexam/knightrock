@@ -60,7 +60,7 @@ def test_corrupted_or_unknown_bindings_fall_back_to_defaults(tmp_path: Path) -> 
 
 
 def test_legacy_file_without_back_button_mirrors_cancel_binding(tmp_path: Path) -> None:
-    """Fichier écrit avant le retour universel : le bouton B devient ui_back."""
+    """A file written before universal back: the B button becomes ui_back."""
     path = tmp_path / "settings.json"
     repository = BindingsRepository(path)
     repository.save(InputBindings())

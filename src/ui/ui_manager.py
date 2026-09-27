@@ -3,6 +3,7 @@ from typing import Any
 
 import pygame
 
+from src.core.level.scene_host import SceneHost
 from src.core.rendering.camera import Camera
 from src.ui.hud import HUD
 from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
@@ -62,7 +63,7 @@ class UIManager:
         self,
         player: Any,
         layout: PanelLayout,
-        game: Any = None,
+        scene_host: SceneHost | None = None,
     ) -> int:
         panel_id = self._compact_panel_focus
         if panel_id == PANEL_COMBAT:
@@ -82,7 +83,7 @@ class UIManager:
         if panel_id == PANEL_STATS:
             return self.draw_stats_panel(10, 10, player, layout, compact=True)
         if panel_id == PANEL_SCENE:
-            return self.draw_scene_panel(10, 10, game, layout, compact=True)
+            return self.draw_scene_panel(10, 10, scene_host, layout, compact=True)
         if panel_id == PANEL_KEYS:
             return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
         return self.draw_legend_panel(10, 10, layout, compact=True)
@@ -127,14 +128,20 @@ class UIManager:
         self,
         x: int,
         y: int,
-        game: Any,
+        scene_host: SceneHost | None,
         layout: PanelLayout | None = None,
         compact: bool = False,
     ) -> int:
-        """Show active scene, current level, deaths and live entity counts."""
+        """Show active scene, current level, deaths and live entity counts.
+
+        Takes a :class:`SceneHost` rather than the application: the panel needs
+        to know which scene is on top and nothing else, and `Any` said nothing
+        even about that. A `None` host draws the panel with "None" for the
+        scene, which is what a level rendered outside the scene stack is.
+        """
         if self.renderer.interaction.is_closed(PANEL_SCENE):
             return 0
-        current = game.scene_manager.current
+        current = None if scene_host is None else scene_host.scene_manager.current
         scene_name = type(current).__name__ if current else "None"
 
         level_id = getattr(current, "level_id", None)
@@ -297,14 +304,14 @@ class UIManager:
     def draw_combat_panel(self, layout: PanelLayout | None = None) -> int:
         """Unified COMBAT counters inside the debug panel flow.
 
-        The lines are collected by :meth:`WorldUI.draw_metrics_panel` (a
+        The lines are collected by ``world_ui.panels.draw_metrics_panel`` (a
         no-op when ``DEBUG`` is off); drawing them through the column flow
         keeps them under the side panels instead of a fixed spot that other
         panels could stack on.
         """
         if self.renderer.interaction.is_closed(PANEL_COMBAT):
             return 0
-        content = self.world_ui.combat_panel()
+        content = self.world_ui.panels.combat_panel()
         if content is None:
             return 0
         title, lines = content
@@ -427,10 +434,15 @@ class UIManager:
 
     def draw_debug_overlays(
         self,
-        all_sprites: pygame.sprite.Group,
+        all_sprites: Iterable[pygame.sprite.Sprite],
         camera: Camera,
         delta_time: float | None = None,
     ) -> None:
+        """Overlay the world-space debug layer.
+
+        Takes any iterable rather than a group: the draw planes are separate
+        groups, and the overlay wants all of them.
+        """
         self.world_ui.draw_debug_overlays(all_sprites, camera, delta_time)
 
     def draw_health_bars(
@@ -450,3 +462,65 @@ class UIManager:
     def draw_hud(self, player: Any) -> None:
         """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
         self.hud.draw(player)
+
+    # -- the WorldOverlay port -------------------------------------------------
+    #
+    # `core/rendering/overlay.py` declares what the renderer needs; these are
+    # the implementations. The panel layout moved across with them because the
+    # renderer used to own it, and a port that stopped one call short would have
+    # left `PanelLayout` imported in `core` -- the very dependency the port
+    # exists to remove.
+
+    def draw_debug_panels(
+        self,
+        *,
+        player: Any = None,
+        scene_host: SceneHost | None = None,
+        debug_stats: dict[str, float] | None = None,
+        **counters: Any,
+    ) -> None:
+        """Draw the screen-side debug panels from the renderer's counters.
+
+        PERFORMANCE is pinned first so the column flow can reserve it and wrap
+        around it; COMBAT counters then lead the flow, so the tall PLAYER
+        STATE / STATS panels can never overdraw them.
+        """
+        self.renderer.interaction.begin_frame()
+        if not self.world_ui.layers.get("panels", True):
+            return
+        layout = PanelLayout(
+            self.renderer.surface.get_width(),
+            self.renderer.surface.get_height(),
+            scale=self.renderer.screen_scale,
+        )
+        self.draw_performance_panel(
+            layout=layout,
+            debug_stats=debug_stats or {},
+            **counters,
+        )
+        if compact_panels():
+            self.draw_compact_panel(player, layout, scene_host)
+            return
+        self.draw_combat_panel(layout)
+        self.draw_state_panel(10, 10, player, layout=layout)
+        self.draw_stats_panel(10, 10, player, layout=layout)
+        if scene_host is not None:
+            self.draw_scene_panel(10, 10, scene_host, layout=layout)
+        self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers)
+        self.draw_legend_panel(10, 10, layout=layout)
+
+    def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
+        """The always-on combat metrics readout."""
+        self.world_ui.panels.draw_metrics_panel(player=player, hit_stop=hit_stop)
+
+    def note_clash(self, clash: Any) -> None:
+        """Record a clash so the overlay can mark it where it happened."""
+        self.world_ui.panels.note_clash(clash)
+
+    def stamp_clash_marker(self, camera: Camera) -> None:
+        """Draw the clash marker again, over the debug panels."""
+        self.world_ui.panels.stamp_clash_marker(camera)
+
+    def update_metrics(self, metrics: Any) -> None:
+        """Feed the contact pipeline's per-tick counters to the overlay."""
+        self.world_ui.panels.update_metrics(metrics)

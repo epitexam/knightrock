@@ -5,6 +5,18 @@ import pygame
 from src.core.display.framing import DEFAULT_FRAMING, Framing
 from src.core.settings import CameraShake
 
+WorldRect = pygame.FRect | pygame.Rect
+"""A world-space rectangle, whole-pixel or fractional.
+
+Both, because the sprites being transformed carry a
+:class:`pygame.Rect` -- ``Sprite.rect`` is an integer one -- while the
+simulation produces :class:`pygame.FRect` from interpolated positions. Every
+method on :class:`Camera` only ever reads ``x``, ``y``, ``width`` and
+``height`` from its argument, so the distinction is not one any of them can
+observe. Naming the union once is what keeps the annotations honest instead
+of forcing every call site to convert a rect it only reads.
+"""
+
 
 def checked_density(density: float) -> float:
     """The pixel density, or refused.
@@ -170,6 +182,19 @@ class Camera:
             self.begin_frame()
 
     @property
+    def viewport(self) -> pygame.FRect:
+        """The world rectangle the frame is looking at.
+
+        Read by the spatial cull, which needs the same rectangle
+        :meth:`is_visible` tests against. Exposed as a property so the frame
+        is resolved through :meth:`begin_frame` like every other consumer,
+        rather than by a caller reaching for ``_viewport``.
+        """
+        self._ensure_frame()
+        assert self._viewport is not None
+        return self._viewport
+
+    @property
     def viewport_width(self) -> float:
         """Visible world width: the framing, which does not depend on the window."""
         return self.framing.width
@@ -226,7 +251,7 @@ class Camera:
         else:
             self.offset.y = -(view_h - self.world_height) / 2.0
 
-    def apply(self, rect: pygame.FRect) -> pygame.FRect:
+    def apply(self, rect: WorldRect) -> pygame.FRect:
         """Map a world rectangle to exact target coordinates.
 
         Fractional on purpose: this is geometry, used for interpolation and for
@@ -242,7 +267,7 @@ class Camera:
             rect.height * density,
         )
 
-    def apply_snapped(self, rect: pygame.FRect) -> pygame.Rect:
+    def apply_snapped(self, rect: WorldRect) -> pygame.Rect:
         """Map a world rectangle to the whole-pixel rect an image is blitted into.
 
         Two rules, and both of them are load-bearing:
@@ -266,8 +291,13 @@ class Camera:
         width, height = self.scaled_size((rect.width, rect.height))
         return pygame.Rect(math.floor(exact.x), math.floor(exact.y), width, height)
 
-    def is_visible(self, rect: pygame.FRect) -> bool:
+    def is_visible(self, rect: WorldRect) -> bool:
         """Check if a world rectangle intersects the framing rect.
+
+        Accepts an integer :class:`pygame.Rect` as well as an
+        :class:`pygame.FRect` because the sprites being culled carry one:
+        ``Sprite.rect`` is either, and the only thing asked of the argument is
+        an intersection.
 
         Args:
             rect: The world-space rectangle to check.

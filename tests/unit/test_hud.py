@@ -24,6 +24,7 @@ from src.ui.hud import (
 )
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -291,19 +292,21 @@ def test_gameplay_scene_draws_the_hud_even_with_debug_off(
 
     monkeypatch.delenv("DEBUG", raising=False)
     surface = _surface(1024, 768)
-    renderer = Renderer(surface, Camera(Framing(float(1024), float(768))))
+    renderer = Renderer(
+        surface, Camera(Framing(float(1024), float(768))), overlay=make_overlay(surface)
+    )
     level = SimpleNamespace(
         renderer=renderer,
         player=_player(health=20.0),
         draw=lambda *args, **kwargs: None,
     )
-    scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
+    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
     scene.draw(pygame.display.get_surface())
 
     # Nothing to declare any more: the next frame erases the whole target, so
     # the only thing that matters is that the gauges reached the pixels.
-    hud_layout = renderer.ui_manager.hud.layout(level.player)
+    hud_layout = renderer.overlay.hud.layout(level.player)
     assert hud_layout is not None
     assert surface.get_at(hud_layout.health_fill.center)[:3] == TEXT_CRIT
 
@@ -317,8 +320,10 @@ def test_gameplay_scene_hud_survives_a_level_without_a_player(
     from src.core.rendering.renderer import Renderer
 
     monkeypatch.delenv("DEBUG", raising=False)
-    renderer = Renderer(_surface(), Camera(Framing(float(1024), float(768))))
+    renderer = Renderer(
+        _surface(), Camera(Framing(float(1024), float(768))), overlay=make_overlay(_surface())
+    )
     level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
-    scene = GameplayScene(SimpleNamespace(clock=None), level_id=0, level=level)
+    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
     assert scene.draw(pygame.display.get_surface()) is None

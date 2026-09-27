@@ -51,7 +51,7 @@ class MenuScene(Scene):
             )
             self.options = ("ENTER: play", "ESC: quit")
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
         self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
         self.confirm_view = MenuView()
         self._confirming = False

@@ -21,6 +21,7 @@ from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
+from tests.unit.helpers import make_overlay
 
 
 @pytest.fixture()
@@ -71,7 +72,10 @@ def make_renderer(density: float = 1.0) -> tuple[Renderer, SpriteGroups]:
     ).surface
     camera = Camera.for_target(surface)
     camera.set_world_size(640, 480)
-    return Renderer(surface, camera), SpriteGroups()
+    # The real interface, because these tests are about the health bars it
+    # draws: a renderer with the default NullOverlay would report no rects,
+    # which is a true answer to a question nobody asked.
+    return Renderer(surface, camera, overlay=make_overlay(surface, camera.density)), SpriteGroups()
 
 
 def test_fx_sprites_do_not_grow_the_magnification_cache() -> None:
@@ -209,10 +213,14 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     declared set and no partial present, so the only thing left to check is
     that a bar actually reaches the pixels.
     """
+    target = make_viewport().surface
     level = Level(
-        make_viewport().surface,
+        target,
         make_programmatic_level_data(),
         mock_input_manager,
+        # The bars come from the injected overlay; a Level built without one
+        # draws the world and no interface, which is the default on purpose.
+        overlay=make_overlay(target, Camera.for_target(target).density),
     )
     level.update(1 / 60)
     enemy = _Sprite((200.0, 200.0), size=40)
@@ -222,7 +230,7 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     enemy.is_dead = False
     level.groups.entity_sprites.add(enemy)
 
-    assert level.draw(60.0, game=None, frame_time=16.0) is None
+    assert level.draw(60.0, scene_host=None, frame_time=16.0) is None
 
     rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
     assert rects, "a damaged enemy must get a bar"

@@ -77,32 +77,34 @@ class SceneManager:
             self.input_dispatcher.dispatch(self.current, event)
 
     def poll_held_repeats(self) -> None:
-        """Forward les repeats joystick (stick tenu sans nouvel event)."""
+        """Forward joystick repeats (stick held with no new event)."""
         if self.current is not None:
             self.input_dispatcher.poll_held_repeats(self.current)
 
     def set_surface(self, surface: pygame.Surface) -> None:
+        """Push a new render target through the whole stack.
+
+        Every scene is told, including the ones below the top: a pause overlay
+        sits above a frozen gameplay scene, and a resize has to reach both or
+        the frozen frame keeps the old geometry. Both the scene and its view
+        implement the hooks, so a scene that has neither is a no-op rather than
+        a silent omission.
+        """
         for scene in self._stack:
-            setter = getattr(scene, "set_surface", None)
-            if callable(setter):
-                setter(surface)
-            view = getattr(scene, "view", None)
-            view_setter = getattr(view, "set_surface", None)
-            if callable(view_setter):
-                view_setter(surface)
-            view_scale = getattr(view, "set_scale", None)
-            if callable(view_scale):
-                view_scale(self.game.ui_scale)
+            scene.set_surface(surface)
+            view = scene.view
+            if view is not None:
+                view.set_surface(surface)
+                view.set_scale(self.game.ui_scale)
 
     def set_ui_scale(self, scale: float) -> None:
+        """Push a new interface scale through the whole stack, for the same
+        reason as :meth:`set_surface`."""
         for scene in self._stack:
-            setter = getattr(scene, "set_ui_scale", None)
-            if callable(setter):
-                setter(scale)
-            view = getattr(scene, "view", None)
-            view_setter = getattr(view, "set_scale", None)
-            if callable(view_setter):
-                view_setter(scale)
+            scene.set_ui_scale(scale)
+            view = scene.view
+            if view is not None:
+                view.set_scale(scale)
 
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""

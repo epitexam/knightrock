@@ -38,7 +38,7 @@ class OptionsScene(Scene):
                 MenuItem("back", "Back"),
             )
         )
-        self.view = MenuView(game.ui_scale)
+        self.view: MenuView = MenuView(game.ui_scale)
 
     def update(self, delta_time: float) -> None:
         return None

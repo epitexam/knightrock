@@ -35,7 +35,7 @@ class VictoryScene(Scene):
                 MenuItem("menu", "Main menu"),
             )
         )
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None
@@ -45,8 +45,8 @@ class VictoryScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         if routed_input.action is InputAction.UI_CANCEL:
-            # Bouton B (manette) = retour menu, comme ESC / clic droit.
-            # (device_removed = manette débranchée : on retourne au menu aussi.)
+            # B button (gamepad) = back to menu, same as ESC / right click.
+            # (device_removed = gamepad unplugged: also returns to the menu.)
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         action, _ = self.model.handle_routed(

@@ -28,9 +28,8 @@ class GameOverScene(Scene):
         super().__init__(game)
         self.level_id = level_id
         items = (MenuItem("retry", "Retry"), MenuItem("menu", "Back to menu"))
-        self.OPTIONS = tuple(item.label for item in items)
         self.model = MenuModel(items)
-        self.view = MenuView()
+        self.view: MenuView = MenuView()
 
     def update(self, delta_time: float) -> None:
         return None
@@ -43,7 +42,7 @@ class GameOverScene(Scene):
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         if routed_input.action is InputAction.UI_BACK:
-            # ESC / bouton B / clic droit : retour direct au menu.
+            # ESC / B button / right click: straight back to the menu.
             self.game.scene_manager.switch(MenuScene(self.game))
             return MenuAction.BACK
         action, _ = self.model.handle_routed(

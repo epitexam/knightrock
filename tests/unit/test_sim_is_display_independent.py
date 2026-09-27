@@ -70,8 +70,11 @@ def _world_checksum(level: Level) -> str:
     parts: list[str] = []
     parts.append(f"tick={level.tick}")
     parts.append(f"camera={round(level.camera.offset.x, 2)},{round(level.camera.offset.y, 2)}")
+    # Every drawable sprite, not just ``all_sprites``: the tile layers live in
+    # their own frozen plane, and a checksum that quietly stopped covering the
+    # terrain would still pass.
     for sprite in sorted(
-        level.groups.all_sprites, key=lambda s: (round(s.rect.x), round(s.rect.y))
+        level.groups.every_sprite, key=lambda s: (round(s.rect.x), round(s.rect.y))
     ):
         parts.append(
             f"{type(sprite).__name__}:{round(sprite.rect.x, 2)},{round(sprite.rect.y, 2)},"
