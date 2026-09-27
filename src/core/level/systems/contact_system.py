@@ -141,9 +141,14 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
     """Per-zone swept rectangles (P2), single legacy box as fallback.
 
-    ``getattr`` only bridges minimal hazard/contact stubs that never
-    implement the zone surface; full combatants expose
-    ``Combatant.swept_hurtboxes`` from the protocol.
+    The ``getattr`` looks redundant next to ``Combatant.swept_hurtboxes``,
+    which the protocol does declare, and the audit read it that way. It is not
+    redundant: the fallback is *behaviour*, not tolerance. A target that has
+    no previous-tick capture -- one that has not been swept since it was
+    placed, or a duck-typed producer's stand-in -- has no swept geometry to
+    offer, and the discrete hurtbox is then the best available answer rather
+    than a wrong one. The protocol says what a combatant *is*; this says what
+    to do when it cannot answer.
     """
     swept = getattr(target, "swept_hurtboxes", None)
     if callable(swept):
@@ -199,7 +204,12 @@ def _eligible(box: OffensiveBox, target: Combatant) -> bool:
 
 
 def _swept_target_box(box: OffensiveBox, target: Combatant) -> pygame.FRect:
-    """Return the target geometry swept only for swept offensive producers."""
+    """Return the target geometry swept only for swept offensive producers.
+
+    Same reasoning as :func:`_target_swept_zones`: a target with no sweep
+    falls back to its discrete geometry, which is a decision about what to
+    draw rather than a duck-typing concession.
+    """
     if box.kind == "projectile":
         swept = getattr(target, "swept_hurtbox", None)
         if callable(swept):
