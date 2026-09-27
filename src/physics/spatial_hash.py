@@ -175,6 +175,16 @@ class SpatialHash:
         self.grid.clear()
         self._cells_by_sprite.clear()
 
+    @property
+    def occupied_cells(self) -> int:
+        """How many cells currently hold at least one sprite.
+
+        Exposed so a caller can tell whether bucketing bought anything. A
+        population spread over one cell is a population the grid cannot prune,
+        and knowing that is cheaper than finding out per query.
+        """
+        return len(self.grid)
+
     def get_nearby(self, hitbox: pygame.Rect | pygame.FRect) -> list[SpatialHashMember]:
         """Return the sprites overlapping the cells covered by ``hitbox``.
 

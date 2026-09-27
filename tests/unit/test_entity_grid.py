@@ -3,7 +3,14 @@
 Tested guarantees:
 - zero false negatives (an overlapping pair is always a candidate);
 - pair order identical to the exhaustive loop (i < j, sorted by index);
-- brute-force ↔ grid equivalence on a seeded deterministic case.
+- brute-force ↔ grid equivalence on a seeded deterministic case;
+- the index is bypassed below ``MIN_GRID_MEMBERS``, which changes the cost
+  and not the answer.
+
+The last one shapes the rest of the file: a query below the threshold returns
+every member, so a test that asserts *pruning* has to use a population large
+enough to be indexed. A two-entity grid is the bypass path, and asserting that
+it prunes would be asserting the behaviour this change removes.
 """
 
 import random
@@ -11,7 +18,7 @@ from types import SimpleNamespace
 
 import pygame
 
-from src.physics.entity_grid import EntityGrid, overlapping_pairs
+from src.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid, overlapping_pairs
 
 
 class GridEntity:
@@ -20,6 +27,16 @@ class GridEntity:
     def __init__(self, index: int, x: float, y: float, size: float = 40.0):
         self.index = index
         self.hitbox = pygame.FRect(x, y, size, size)
+
+
+def spread(count: int, *, step: float = 400.0, start: int = 100) -> list[GridEntity]:
+    """``count`` entities far enough apart to occupy distinct cells.
+
+    One per cell is what makes the index worth taking, so this is the layout
+    the pruning tests need; a stack of entities in one cell is the layout the
+    bypass is for.
+    """
+    return [GridEntity(index, start + index * step, start) for index in range(count)]
 
 
 def brute_force_pairs(entities: list[GridEntity]) -> list[tuple[int, int]]:
@@ -38,13 +55,13 @@ def grid_pairs(entities: list[GridEntity], grid: EntityGrid) -> list[tuple[int, 
 
 def test_rebuild_buckets_every_entity_and_near_finds_them() -> None:
     grid = EntityGrid(cell_size=128)
-    a = GridEntity(0, 0, 0)
-    b = GridEntity(1, 5000, 5000)
-    assert grid.rebuild([a, b]) == 2
+    entities = spread(MIN_GRID_MEMBERS)
+    far = GridEntity(99, 5000, 5000)
+    assert grid.rebuild([*entities, far]) == MIN_GRID_MEMBERS + 1
 
-    near_a = grid.near(a.hitbox)
-    assert a in near_a
-    assert b not in near_a
+    near_first = grid.near(entities[0].hitbox)
+    assert entities[0] in near_first
+    assert far not in near_first
 
 
 def test_member_spanning_cells_is_returned_once() -> None:
@@ -108,22 +125,103 @@ def test_overlapping_pairs_skips_members_outside_the_list() -> None:
 
 def test_clear_empties_the_grid() -> None:
     grid = EntityGrid(cell_size=128)
-    entity = GridEntity(0, 0, 0)
-    grid.rebuild([entity])
+    entities = spread(MIN_GRID_MEMBERS)
+    grid.rebuild(entities)
     grid.clear()
 
-    assert entity not in grid.near(entity.hitbox)
+    assert grid.near(entities[0].hitbox) == []
 
 
 def test_rebuild_after_movement_refreshes_buckets() -> None:
     """Re-bucket after moving: the old cell references nothing anymore."""
     grid = EntityGrid(cell_size=64)
-    entity = GridEntity(0, 0, 0)
-    grid.rebuild([entity])
-    entity.hitbox.topleft = (5000.0, 5000.0)
-    grid.rebuild([entity])
+    entities = spread(MIN_GRID_MEMBERS, step=5000.0)
+    grid.rebuild(entities)
+    entities[0].hitbox.topleft = (5000.0, 5000.0)
+    grid.rebuild(entities)
 
-    assert entity in grid.near(entity.hitbox)
+    assert entities[0] in grid.near(entities[0].hitbox)
     far_query = SimpleNamespace()  # unused: query via a hitbox-shaped FRect
     _ = far_query
+    assert grid.near(pygame.FRect(0, 0, 40, 40)) == []
+
+
+# -- when the index is bypassed ------------------------------------------------
+#
+# Below the threshold, and whenever everything shares a cell, a query answers
+# with every member. That is a superset of what the index would have said, and
+# every caller filters or re-sorts it, so the pairs are unchanged -- which is
+# the property these tests exist to pin.
+
+
+def test_a_small_population_is_not_indexed() -> None:
+    grid = EntityGrid(cell_size=128)
+    entities = spread(MIN_GRID_MEMBERS - 1)
+
+    grid.rebuild(entities)
+
+    assert grid.indexed is False
+    assert grid.near(entities[0].hitbox) == entities
+
+
+def test_a_population_in_one_cell_is_not_indexed() -> None:
+    """The case a count threshold alone misses: many members, one cell, and
+    therefore nothing for the index to prune. A tight melee looks like this."""
+    grid = EntityGrid(cell_size=128)
+    stacked = [GridEntity(index, 0, 0) for index in range(MIN_GRID_MEMBERS * 2)]
+
+    grid.rebuild(stacked)
+
+    assert grid.indexed is False
+    assert len(grid.near(stacked[0].hitbox)) == len(stacked)
+
+
+def test_a_spread_population_large_enough_is_indexed() -> None:
+    grid = EntityGrid(cell_size=128)
+
+    grid.rebuild(spread(MIN_GRID_MEMBERS))
+
+    assert grid.indexed is True
+
+
+def test_the_bypass_and_the_index_agree_on_the_pairs() -> None:
+    """The whole point: same pairs, same order, whichever path answered."""
+    rng = random.Random(7)
+    entities = [GridEntity(index, rng.uniform(0, 900), rng.uniform(0, 900)) for index in range(30)]
+    indexed = EntityGrid(cell_size=128)
+    indexed.rebuild(entities)
+    assert indexed.indexed is True
+
+    bypassed = EntityGrid(cell_size=128)
+    bypassed.rebuild(entities)
+    bypassed.indexed = False  # the same population, forced down the other path
+
+    assert grid_pairs(entities, bypassed) == grid_pairs(entities, indexed)
+    assert grid_pairs(entities, bypassed) == brute_force_pairs(entities)
+
+
+def test_append_near_honours_the_callers_seen_set_on_both_paths() -> None:
+    """The bypass appends by hand, so its dedupe is its own code."""
+    for force_indexed in (True, False):
+        grid = EntityGrid(cell_size=128)
+        entities = spread(MIN_GRID_MEMBERS)
+        grid.rebuild(entities)
+        grid.indexed = force_indexed
+        nearby: list = []
+        seen: set[int] = set()
+
+        grid.append_near(entities[0].hitbox, nearby, seen)
+        grid.append_near(entities[0].hitbox, nearby, seen)
+
+        assert len(nearby) == len({id(member) for member in nearby})
+        assert entities[0] in nearby
+
+
+def test_a_cleared_grid_reports_itself_unindexed() -> None:
+    grid = EntityGrid(cell_size=128)
+    grid.rebuild(spread(MIN_GRID_MEMBERS))
+
+    grid.clear()
+
+    assert grid.indexed is False
     assert grid.near(pygame.FRect(0, 0, 40, 40)) == []

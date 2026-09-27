@@ -372,8 +372,14 @@ class ContactSystem:
         order: dict[int, int],
         entity_grid: EntityGrid | None,
     ) -> list[Combatant]:
-        """Broadphase with caller-owned buffers and stable target order."""
-        if entity_grid is None:
+        """Broadphase with caller-owned buffers and stable target order.
+
+        A grid that decided it was not worth indexing is treated as no grid at
+        all, not as a grid that returns everything. The two are not the same
+        cost: the unfiltered path skips the candidate sort, which at a small
+        roster is the most expensive thing left in here.
+        """
+        if entity_grid is None or not entity_grid.indexed:
             self._candidates_buffer.clear()
             self._candidates_buffer.extend(target for target in targets if _eligible(box, target))
             return self._candidates_buffer

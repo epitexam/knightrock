@@ -21,7 +21,7 @@ from src.core.level.systems.combat_system import CombatSystem
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics as PhysicsSettings
 from src.core.settings import Simulation as SimulationSettings
-from src.physics.entity_grid import EntityGrid
+from src.physics.entity_grid import MIN_GRID_MEMBERS, EntityGrid
 from tests.unit.helpers import entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -205,40 +205,98 @@ class _CountingGrid(EntityGrid):
         return super().near(box)
 
 
+def _parity_pass(use_grid: bool) -> tuple[int, int, int, int]:
+    """One sweep tick, with or without a grid. Returns metrics and queries.
+
+    A two-entity roster, which is below ``MIN_GRID_MEMBERS`` and therefore
+    takes the bypass: the parity this test is about is still a real one,
+    because the bypass has to produce the same candidates and contacts as
+    both the indexed and the no-grid path. :func:`_indexed_parity_pass` is
+    the same check with a roster large enough to be indexed.
+    """
+    definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
+    attacker = entity_at(10.0, faction="A", definition=definition)
+    target = entity_at(20.0, faction="B")
+    attacker.combat.capture_attack_origin()
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)  # ACTIVE f0 : prev seed (10..30)
+    attacker.hitbox.x += 60.0  # lunge < borne MAX : cur (70..90)
+    attacker.combat.sync_attack_box()
+    target.capture_sweep_origin()
+
+    system = CombatSystem()
+    queries = 0
+    if use_grid:
+        grid = _CountingGrid()
+        grid.rebuild([attacker, target])
+        system.process_attacks([attacker, target], grid)
+        queries = grid.queries
+    else:
+        system.process_attacks([attacker, target])
+    return (
+        system.metrics.pairs_tested,
+        system.metrics.overlaps,
+        system.metrics.contacts,
+        queries,
+    )
+
+
 def test_grid_parity_candidates_and_contacts_with_and_without_grid() -> None:
     """(d) Parite grille : candidats + contacts avec/sans `EntityGrid`.
 
-    Deux passes sur des doublons isomorphes (une par mode) : la premiere
+    Deux passes sur des doublures isomorphes (une par mode) : la premiere
     passe enregistre `targets_hit` et applique les degats, elle ne doit
     pas polluer la seconde (sinon la parite mesure un double-hit, pas
-    l elagage).
+    l'elagage).
     """
-    results = []
-    for use_grid in (False, True):
-        definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
-        attacker = entity_at(10.0, faction="A", definition=definition)
-        target = entity_at(20.0, faction="B")
-        attacker.combat.capture_attack_origin()
-        assert attacker.combat.start_attack("test")
-        attacker.combat.update(1 / 60)  # ACTIVE f0 : prev seed (10..30)
-        attacker.hitbox.x += 60.0  # lunge < borne MAX : cur (70..90)
-        attacker.combat.sync_attack_box()
-        target.capture_sweep_origin()
+    without = _parity_pass(False)
+    with_bypass = _parity_pass(True)
 
-        system = CombatSystem()
-        if use_grid:
-            grid = _CountingGrid()
-            grid.rebuild([attacker, target])
-            system.process_attacks([attacker, target], grid)
-            # Non bloquant (D2) : incremente apres elagage, borne seulement.
-            assert grid.queries == len(attacker.combat.swept_attack_boxes)
-        else:
-            system.process_attacks([attacker, target])
-        results.append(
-            (system.metrics.pairs_tested, system.metrics.overlaps, system.metrics.contacts)
-        )
+    assert without[:3] == with_bypass[:3] == (1, 1, 1)
+    assert with_bypass[3] == 0, (
+        "a two-entity roster is below MIN_GRID_MEMBERS, so the grid must not "
+        "be queried at all -- that is the bypass, and it is the cost this "
+        "size is meant to avoid"
+    )
 
-    assert results[0] == results[1] == (1, 1, 1)
+
+def test_an_indexed_grid_parity_also_holds() -> None:
+    """The same parity with a roster large enough to be worth indexing.
+
+    Without this, the bypass could satisfy the parity test on its own and the
+    indexed path would never be compared against anything.
+    """
+    spread = [
+        entity_at(400.0 * index, faction="B" if index % 2 else "A")
+        for index in range(MIN_GRID_MEMBERS)
+    ]
+    definition = attack(phase(size=(20.0, 20.0), offset=(0.0, 0.0)))
+    attacker = entity_at(10.0, faction="A", definition=definition)
+    attacker.combat.capture_attack_origin()
+    assert attacker.combat.start_attack("test")
+    attacker.combat.update(1 / 60)
+    attacker.combat.sync_attack_box()
+    roster = [attacker, *spread]
+    for entity in roster:
+        entity.capture_sweep_origin()
+
+    system = CombatSystem()
+    grid = _CountingGrid()
+    grid.rebuild(roster)
+    system.process_attacks(roster, grid)
+    indexed = (system.metrics.pairs_tested, system.metrics.overlaps, system.metrics.contacts)
+
+    plain = CombatSystem()
+    plain.process_attacks(roster)
+    exhaustive = (plain.metrics.pairs_tested, plain.metrics.overlaps, plain.metrics.contacts)
+
+    assert grid.indexed is True
+    assert grid.queries > 0, "an indexed grid must actually be queried"
+    # Contacts and overlaps must match exactly. `pairs_tested` must *not*:
+    # it counts how many pairs were looked at, and looking at fewer is the
+    # entire reason the index exists.
+    assert indexed[1:] == exhaustive[1:]
+    assert indexed[0] < exhaustive[0], "a populated grid must prune the far pairs"
 
 
 def test_dodge_within_one_tick_stays_hittable() -> None:
