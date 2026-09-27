@@ -182,3 +182,30 @@ make the code *worse*: the flexibility is the feature. What is worth doing is
 what this branch did: fix the places where `Any` was a genuine pass-through
 (`Level.draw`'s `game`, the renderer's `UIManager`) and leave the seams
 alone.
+
+---
+
+## End of branch: measured, base versus this branch
+
+Both trees, same process, same level, medians of unprofiled runs:
+
+| | base | this branch | |
+|---|---|---|---|
+| world draw, 1280×720 | 1.600 ms | 1.434 ms | **−10 %** |
+| `Level.update` | 537.5 µs | 391.1 µs | **−27 %** |
+
+The tick is where the work went, and almost all of it is P1.2: the hazard and
+contact systems were rebuilding a frozen fourteen-field `HitProperties` per
+producer per tick, for producers whose damage never changes.
+
+## The gates
+
+`ruff check` clean · `ruff format --check` clean (it was **red** on the base
+branch) · `C901` clean · `mypy src main.py tools` clean on 160 files ·
+**1946 passed, 4 skipped** · coverage 91 %.
+
+The suite grew from 1813 to 1946, and it grew for a reason: every fix here
+came with a test that fails against the old code, which was checked rather
+than assumed. `test_readme_claims.py` also re-collects the suite on every run
+and fails if the README's test count is wrong, so the number quoted above
+cannot go stale without the suite noticing.
