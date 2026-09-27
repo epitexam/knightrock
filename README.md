@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-1925%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-1928%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 1925 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 1928 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -234,10 +234,11 @@ predictable:
   Melee, projectile AABB and moving-hazard geometry use swept collision;
   static hazards and contact damage retain discrete collision. The full list
   is recalled on-screen by the `DEBUG KEYS` panel. `F4` statics is **off by
-  default**: a level carries ~970 terrain tiles whose outline tells you
-  nothing, and they were the largest single item in the frame at 2.8 ms.
-  Measured on level 0 (972 sprites) with `DEBUG=1`, dropping the layer took
-  the whole overlay pass from p50 6.0 ms to 4.3 ms.
+  default**: a level carries ~840 terrain tiles whose outline tells you
+  nothing, and drawing them is the most expensive thing the overlay does.
+  Measured on level 0 at 1280×720 with `DEBUG=1`, dropping the layer took
+  the whole overlay pass from 1.98 ms to 0.09 ms — 1.9 ms of a 16.7 ms
+  budget for a picture of the tileset.
 
 ### Frame timings
 
@@ -434,7 +435,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 1925 tests passing · 90 % instruction coverage ·
+> **Current baseline:** 1928 tests passing · 90 % instruction coverage ·
 > 76 % branch coverage · Ruff clean · mypy clean (156 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 153). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
