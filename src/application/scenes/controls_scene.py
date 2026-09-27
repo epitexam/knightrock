@@ -151,31 +151,23 @@ class ControlsScene(Scene):
             # it lives here next to the bindings it affects. It is a toggle,
             # not a remappable slot: no cell to capture.
             result.append(self._invert_y_row())
-        result.append(
-            BindingRow(
-                "Reset to defaults",
-                BindingCell("Reset this section"),
-                BindingCell("Keyboard + gamepad"),
-                RowKind.BACK,
-            )
-        )
-        result.append(
-            BindingRow(
-                "Back",
-                BindingCell("Esc / right click"),
-                BindingCell("B / right click"),
-                RowKind.BACK,
-            )
-        )
+        result.append(BindingRow("Reset to defaults", kind=RowKind.OPTION))
+        result.append(BindingRow("Back", kind=RowKind.OPTION))
         return result
 
     def _invert_y_row(self) -> BindingRow:
+        """The toggle, with its state under the column it actually applies to.
+
+        Keyboard and mouse have no Y axis, so the state belongs in the gamepad
+        column: a state printed under "KEYBOARD / MOUSE" reads as a key bound
+        to a switch. The keyboard cell is left empty rather than filled, which
+        is also what tells the panel there is nothing to capture on this row.
+        """
         inverted = self.game.settings.bindings.menu.invert_y
         return BindingRow(
             "Invert stick Y",
-            BindingCell("normal" if not inverted else "inverted"),
-            BindingCell("left stick", muted=True),
-            RowKind.BACK,
+            gamepad=BindingCell("inverted" if inverted else "normal"),
+            kind=RowKind.OPTION,
         )
 
     def _keyboard_cell(self, row: int, spec: RebindSpec) -> BindingCell:

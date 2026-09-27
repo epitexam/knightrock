@@ -112,6 +112,13 @@ DEBUG=1 uv run python main.py
 | Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
 | Back in menus | `1` (`B`) |
 
+A stick is a position, not a press, so the two say different things. A quarter of
+its travel moves one row; **pushing further scrolls** and easing back stops it,
+without stepping backwards. The D-pad has no partial travel to read, so holding
+it scrolls on its own. Both the D-pad and the stick auto-repeat, the keyboard
+included, and only the four directions repeat: a held confirm would open and
+close a menu in a loop.
+
 **In-game screens:** the main menu and the pause screen open **Options**, which
 is a navigation hub — every setting lives in the screen that owns it:
 
@@ -125,7 +132,11 @@ is a navigation hub — every setting lives in the screen that owns it:
   using. The window belongs to the window manager now; the game resizes the
   picture when the player resizes the window.
 - **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
-  inversion) and *Gameplay controls* (key/button rebinding).
+  inversion) and *Gameplay controls* (key/button rebinding). Each screen ends
+  on a separated, greyed block of options — the Y inversion, **Reset to
+  defaults** and **Back**. They are choices rather than slots, so they carry no
+  key: a row that looks like the others and cannot take a binding is a row you
+  press a key on and nothing happens.
 
 Choices are written to `~/.knightrock/settings.json` and apply without
 restarting. Each sub-menu has its own **Reset** that restores exactly what it

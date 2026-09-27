@@ -208,16 +208,19 @@ def test_options_opens_from_menu_and_pause(manager: SceneManager):
 def test_the_hat_and_the_stick_agree_on_which_way_is_up(manager: SceneManager):
     """The D-pad and the stick must not disagree about up.
 
-    They did. SDL reports a hat in screen coordinates, so ``y = +1`` is pushed
-    down, and the router had it the wrong way round -- while the axis path was
-    right. So one physical push moved the menu up and the other moved it down.
+    A hat is a direction and an axis is a measurement, and SDL disagrees about
+    the vertical between them: pygame reports ``(0, 1)`` as **up** -- that is
+    ``SDL_HAT_UP`` -- while a stick pushed up reads *negative*. So the two
+    directions arrive with opposite signs, and a router that treats them alike
+    moves the menu up on the D-pad and down on the stick.
 
-    Nothing caught it because the hat was only ever exercised horizontally, and
-    the old test fired the hat and the stick one after the other and only looked
-    where the selection ended up: both were wrong in the same direction, so the
-    end matched the expectation and the bug was invisible. Each control gets its
-    own assertion here, from a known starting row, because a shared endpoint
-    cannot tell a correct pair from a consistently inverted one.
+    It did, and it had been the other way round before that. Both states passed
+    this suite, because the test fired the hat and the stick one after the other
+    and compared only where the selection landed: a pair of consistent
+    inversions ends in the expected place. So the comparison is kept -- it is
+    the property that matters -- but the convention is pinned explicitly by
+    ``test_the_menu_and_the_game_read_one_hat_the_same_way``, which asks two
+    readers of the same hat for the same direction.
     """
 
     def selection_after(event: pygame.event.Event) -> str:
@@ -229,9 +232,9 @@ def test_the_hat_and_the_stick_agree_on_which_way_is_up(manager: SceneManager):
         assert menu.model.current_item is not None
         return f"{start}->{menu.model.current_item.action}"
 
-    up = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
+    up = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
     stick_up = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=-0.8)
-    down = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
+    down = pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
     stick_down = pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8)
 
     assert selection_after(up) == selection_after(stick_up)
@@ -240,19 +243,18 @@ def test_the_hat_and_the_stick_agree_on_which_way_is_up(manager: SceneManager):
 
 
 def test_the_dpad_needs_only_a_partial_push(manager: SceneManager):
-    """A stick does not have to be flat for the menu to move.
+    """A stick does not have to be pushed a third of the way to move a menu.
 
-    The trigger threshold was 0.5, so anything short of half the stick's travel
-    did nothing. That reads as lag rather than as a stiff stick: you push, the
-    menu stays, you push harder, and then it moves.
+    The trigger threshold was 0.5 and then 0.4, so a partial push did nothing:
+    the menu stayed where it was while the player pushed, then moved all at
+    once, which reads as lag rather than as a stick that has to be pushed hard.
+    A thumb's flick lands around 0.2, so the threshold now answers to that.
     """
     menu = MenuScene(manager.game)
     manager.switch(menu)
     before = menu.model.current_index
 
-    manager.handle_event(
-        pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.45)
-    )
+    manager.handle_event(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.3))
 
     assert menu.model.current_index != before
 
@@ -263,9 +265,11 @@ def test_menu_navigation_supports_stick_and_hat(manager: SceneManager):
     manager.switch(menu)
     start = menu.model.current_index
 
-    # One D-pad press, one stick press: two rows down from where we were.
+    # One D-pad press, one stick press: two rows down from where we were. The
+    # hat carries ``+1`` for up and the stick ``-1``, so both are the same
+    # physical push down the menu.
     manager.handle_event(
-        pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, 1))
+        pygame.event.Event(pygame.JOYHATMOTION, instance_id=0, hat=0, value=(0, -1))
     )
     manager.handle_event(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=0, axis=1, value=0.8))
 
@@ -754,9 +758,7 @@ def test_the_back_row_leaves_the_level_select_with_the_pointer(manager: SceneMan
     rect = scene.view.item_rects[-1]
 
     action = scene.handle_routed(
-        RoutedInput(
-            InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=rect.center
-        )
+        RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=rect.center)
     )
 
     assert action is not None and action.value == "back"
@@ -771,11 +773,7 @@ def test_a_locked_level_still_leaves_the_back_row_reachable(manager: SceneManage
     screen does not advertise.
     """
     scene = _level_select(manager)
-    locked = [
-        index
-        for index, item in enumerate(scene.model.items)
-        if not item.enabled
-    ]
+    locked = [index for index, item in enumerate(scene.model.items) if not item.enabled]
 
     for _ in range(len(scene.model.items) + len(locked)):
         manager.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN))

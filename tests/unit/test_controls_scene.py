@@ -7,6 +7,7 @@ from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
+from src.ui.controls_view import RowKind
 
 
 def _game() -> SimpleNamespace:
@@ -180,8 +181,11 @@ def test_menu_controls_expose_the_stick_y_inversion() -> None:
 
     assert game.settings.bindings.menu.invert_y is True
     row = next(row for row in controls.rows if row.label == "Invert stick Y")
-    assert row.keyboard is not None
-    assert row.keyboard.text == "inverted"
+    # The state is printed under GAMEPAD, because that is the device it applies
+    # to: a state under KEYBOARD / MOUSE reads as a key bound to a switch.
+    assert row.keyboard is None
+    assert row.gamepad is not None
+    assert row.gamepad.text == "inverted"
     assert row.rebindable is False, "it is a toggle, not a remappable slot"
 
     controls.handle_routed(_confirm())
@@ -195,6 +199,41 @@ def test_gameplay_controls_do_not_expose_the_menu_stick_y() -> None:
 
     assert all(row.label != "Invert stick Y" for row in controls.rows)
     assert all(item.action != "invert_y" for item in controls.model.items)
+
+
+def test_the_options_at_the_bottom_are_options_and_not_binding_slots() -> None:
+    """Both controls screens end on a block of choices, not on slots to fill.
+
+    The rows above are keys to assign; the ones below are things to pick --
+    invert the Y axis, reset, go back. They were painted as binding rows, with
+    a key in each column ("Esc / right click", "B / right click"), which is the
+    one thing that cannot be true of them: there is no key to press on "Reset to
+    defaults". A player counts them among the assignments and looks for one.
+
+    So they are ``OPTION`` rows, which the panel sets apart with a gap and greys,
+    and they carry no key at all. The toggle keeps its state, in the column of
+    the device it applies to.
+    """
+    for section in (ControlsScene.MENU_SECTION, ControlsScene.GAMEPLAY_SECTION):
+        rows = ControlsScene(_game(), section).rows
+        kinds = [row.kind for row in rows]
+        options = [index for index, kind in enumerate(kinds) if kind is RowKind.OPTION]
+
+        assert options, f"{section} has no option row"
+        assert options == list(range(options[0], len(rows))), (
+            f"{section}: the options are not the block at the bottom: {[row.label for row in rows]}"
+        )
+        for row in rows[options[0] :]:
+            assert row.rebindable is False
+            assert row.keyboard is None, f"{row.label} shows a keyboard key"
+        for row in rows[: options[0]]:
+            assert row.kind is RowKind.REBIND
+            assert row.keyboard is not None and row.gamepad is not None, row.label
+
+    # The toggle is the one option with a value, and it is the stick's.
+    menu_rows = ControlsScene(_game(), ControlsScene.MENU_SECTION).rows
+    toggle = next(row for row in menu_rows if row.label == "Invert stick Y")
+    assert toggle.gamepad is not None and toggle.gamepad.text == "normal"
 
 
 def test_controls_focus_is_rendered_on_the_footer_rows() -> None:

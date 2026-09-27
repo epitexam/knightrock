@@ -312,18 +312,31 @@ class Input:
     AXIS_DEADZONE = 0.1
     DASH_AXIS_THRESHOLD = 0.5
     #: A stick has to travel this far before a menu moves. It was 0.5, which
-    #: asks for half the stick's full deflection: a partial push did nothing at
-    #: all, and since the menu only moved once the stick was nearly flat, the
-    #: first press read as lag rather than as a stick that had to be pushed
-    #: hard. 0.4 is a normal d-pad-emulation threshold, and it is reachable
-    #: without bottoming the stick out.
-    UI_AXIS_TRIGGER_THRESHOLD = 0.4
-    #: Below this the direction is considered let go. The 0.15 gap to the
+    #: asks for half the stick's full deflection, and then 0.4, which is still a
+    #: third of it. Both read as lag rather than as a stick that has to be
+    #: pushed hard: the menu stays where it is while the player pushes, then
+    #: moves all at once, and a quick flick to 35% -- the travel most of a
+    #: thumb actually makes -- did nothing at all. 0.25 is a quarter of the
+    #: deflection, which is where a console menu starts listening, and it is
+    #: still twice :data:`AXIS_DEADZONE`, so a stick at rest does not drift the
+    #: selection.
+    UI_AXIS_TRIGGER_THRESHOLD = 0.25
+    #: Below this the direction is considered let go. The 0.10 gap to the
     #: trigger is the hysteresis that stops a stick resting near the threshold
-    #: from chattering the selection.
-    UI_AXIS_RELEASE_THRESHOLD = 0.25
-    # Stick tenu : 0.25s avant la 1re répétition puis 1 pas / 80ms.
-    # Au-delà (~0.4/0.1) la navigation paraît "collée" / en retard.
+    #: from chattering the selection -- and it is exactly the band between the
+    #: two, so a stick held at 0.20 neither moves the menu nor counts as held.
+    UI_AXIS_RELEASE_THRESHOLD = 0.15
+    #: A stick has to be pushed *this* far before a held direction repeats. It is
+    #: a second threshold on purpose, and it is the answer to "one push of the
+    #: stick walks the whole menu": a stick is a position, so a hold is not a
+    #: press and there is no key to release. Moving asks for a quarter of the
+    #: travel and repeating asks for most of it, which is the only way the
+    #: player can say "I meant that" -- push harder to scroll, ease back to stop
+    #: (easing back is not a step back: the direction is still held).
+    UI_AXIS_REPEAT_THRESHOLD = 0.7
+    # Stick tenu : 0.22s avant la 1re répétition puis 1 pas / 60ms. Au-delà
+    # (~0.4/0.1) la navigation paraît "collée" / en retard. Le premier pas, lui,
+    # est immédiat : c'est l'événement SDL qui le déclenche, pas ce délai.
     UI_REPEAT_INITIAL_DELAY = 0.22
     UI_REPEAT_INTERVAL = 0.06
     ATTACK_BUFFER_WINDOW = 0.2

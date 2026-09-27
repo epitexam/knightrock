@@ -70,11 +70,12 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
         pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=0, value=0.1)
     )
 
-    # SDL reports a hat in screen coordinates: y=+1 is pushed *down*. This used
-    # to be asserted as UI_UP, which is the bug -- the axis below agrees, and
-    # a D-pad press that moved the menu the other way from the stick was
-    # invisible here because nothing compared the two.
-    assert hat == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=1.0)
+    # A hat is a direction, not a measurement: pygame documents (0, 1) as *up*
+    # (SDL_HAT_UP), the opposite of an axis, where up is negative. The two are
+    # asserted from the same value by
+    # ``test_the_menu_and_the_game_read_one_hat_the_same_way``; this one is the
+    # place that says which way round it is.
+    assert hat == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=1.0)
     assert press == RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.8)
     # Stick tenu : les événements intermédiaires sont filtrés (throttle).
     assert flooded is None
@@ -84,6 +85,131 @@ def test_router_maps_hat_and_axis_with_release_threshold() -> None:
     assert release == RoutedInput(
         InputAction.UI_RIGHT, InputDevice.GAMEPAD, value=0.1, variant="release"
     )
+
+
+class Stick:
+    """A joystick the router can re-read, which is how a hold is measured."""
+
+    def __init__(self, value: float = 0.0) -> None:
+        self.value = value
+
+    def get_axis(self, _axis: int) -> float:
+        return self.value
+
+    def get_hat(self, _hat: int) -> tuple[int, int]:
+        return (0, 0)
+
+
+def _stick_router(stick: Stick, now: list[float]) -> EventRouter:
+    return EventRouter(clock=lambda: now[0], joystick_reader=lambda: {4: stick})
+
+
+def _hold(
+    router: EventRouter, stick: Stick, now: list[float], values: list[float], *, base: float = 0.0
+) -> list[RoutedInput]:
+    """Feed one frame per value: the event, then the repeat poll of that frame.
+
+    ``base`` is the time the first frame happens at, so a test can run a second
+    stretch of frames *after* the first one instead of restarting the clock and
+    travelling backwards through it.
+    """
+    routed: list[RoutedInput] = []
+    for frame, value in enumerate(values):
+        now[0] = base + frame / 60.0
+        stick.value = value
+        press = router.route(
+            pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=1, value=value)
+        )
+        if press is not None:
+            routed.append(press)
+        routed.extend(router.poll_repeats())
+    return routed
+
+
+def test_a_stick_held_at_a_light_deflection_moves_exactly_one_row() -> None:
+    """The band between release and trigger is hysteresis, not a release.
+
+    It was read as a release, so every dip into the band and back out of it
+    announced the direction again. A thumb resting at a third of the travel,
+    with the noise a real stick has, announced itself twelve times in four
+    tenths of a second: one push, the whole menu, several times over.
+
+    The repeat poller never made that mistake -- it keeps the direction in the
+    band -- which is why the two halves of the router disagreed about what
+    "held" meant, and why only the event path had to be fixed to make the pair
+    agree. The values below are the ones that used to fire: 0.28 crosses the
+    trigger, 0.22 falls into the band, 0.30 crosses again.
+    """
+    now = [0.0]
+    stick = Stick()
+    router = _stick_router(stick, now)
+
+    routed = _hold(router, stick, now, [0.0, 0.28, 0.22, 0.30, 0.24, 0.28, 0.0])
+
+    assert [item.variant for item in routed] == [None, "release"]
+    assert routed[0] == RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=0.28)
+
+
+def test_a_light_hold_never_repeats_and_a_committed_one_does() -> None:
+    """A stick is a position, so holding it is not a press.
+
+    The repeat used to be armed by the trigger threshold, so a thumb resting at
+    a third of the travel walked four rows in four tenths of a second -- the
+    whole of a five-row menu, from one touch. Repeating now asks for most of the
+    travel: a light hold moves one row and stays there, and only a deliberate
+    push scrolls.
+    """
+
+    def hold_at(value: float) -> list:
+        stick = Stick()
+        now = [0.0]
+        return _hold(_stick_router(stick, now), stick, now, [0.0] + [value] * 24 + [0.0])
+
+    light = hold_at(InputSettings.UI_AXIS_TRIGGER_THRESHOLD + 0.05)
+    committed = hold_at(0.9)
+
+    assert [item.variant for item in light] == [None, "release"], "a light hold repeated"
+    assert [item.variant for item in committed].count("repeat") >= 2, "a committed hold did not"
+
+
+def test_easing_back_stops_the_repeat_without_stepping_back() -> None:
+    """The stick is a brake, not a toggle.
+
+    Coming off the gas below the repeat threshold stops the scrolling and
+    announces nothing: the direction is still held, so there is no new step to
+    take and no step backwards either.
+    """
+    now = [0.0]
+    stick = Stick()
+    router = _stick_router(stick, now)
+    pushed = _hold(router, stick, now, [0.0] + [0.9] * 20)
+
+    eased = _hold(router, stick, now, [0.4] * 20, base=now[0] + 1 / 60.0)
+
+    assert [item.variant for item in pushed].count("repeat") >= 2, "it never scrolled"
+    assert eased == [], "easing off the gas was not silent"
+
+
+def test_sweeping_the_stick_announces_the_new_direction_once() -> None:
+    """Up to down in one frame is one step, and the band in between is not two.
+
+    The band must not clear the held direction -- that is what made every
+    crossing of the threshold a fresh step -- but a *committed* direction in the
+    other direction still has to be announced, or a fast sweep would be dropped.
+    """
+    now = [0.0]
+    stick = Stick()
+    router = _stick_router(stick, now)
+
+    up = router.route(pygame.event.Event(pygame.JOYAXISMOTION, instance_id=4, axis=1, value=-0.9))
+    through = _hold(router, stick, now, [0.2])
+    down = _hold(router, stick, now, [0.9, 0.9])
+    released = _hold(router, stick, now, [0.0])
+
+    assert up == RoutedInput(InputAction.UI_UP, InputDevice.GAMEPAD, value=-0.9)
+    assert through == [], "a value inside the band announced the other direction"
+    assert down == [RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD, value=0.9)]
+    assert [item.variant for item in released] == ["release"], "the centre is a release"
 
 
 def test_router_uses_inverted_y_and_ui_deadzone_for_xbox() -> None:

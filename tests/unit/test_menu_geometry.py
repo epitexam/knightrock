@@ -410,8 +410,14 @@ def test_the_title_band_is_reserved_in_the_panel_height() -> None:
     view = GridView(1.0)
     view.set_surface(surface)
     view.draw(
-        surface, "VIDEO", "Keyboard and mouse", ("Action", "Binding", "Legacy"), _rows(4),
-        selected_row=0, selected_column=0, top=40,
+        surface,
+        "VIDEO",
+        "Keyboard and mouse",
+        ("Action", "Binding", "Legacy"),
+        _rows(4),
+        selected_row=0,
+        selected_column=0,
+        top=40,
     )
     # Measured on the layout rather than by drawing a titleless grid: a row's
     # cells and the column titles are required to correspond, so a grid with rows
@@ -420,13 +426,73 @@ def test_the_title_band_is_reserved_in_the_panel_height() -> None:
         surface, "Keyboard and mouse", _rows(4), ("Action", "Binding", "Legacy"), 40, ()
     )
     titled = view._last_panel_rect.height
-    _, _, _, _, _, _, _, _ = view._layout(
-        surface, "Keyboard and mouse", _rows(4), (), 40, ()
-    )
+    _, _, _, _, _, _, _, _ = view._layout(surface, "Keyboard and mouse", _rows(4), (), 40, ())
     untitled = view._last_panel_rect.height
 
     band = titled - untitled
     assert band > 0, "the column titles cost no height, so they overlap the rows"
     assert band >= view._fonts[2].get_height(), (
         "the reserved band is smaller than the text it has to hold"
+    )
+
+
+# --------------------------------------------------------------------------
+# 6. The block of options is set apart from the block of values.
+# --------------------------------------------------------------------------
+
+
+def _rows_with_options(count: int) -> list:
+    """``count`` binding rows, then the two options a controls screen ends on."""
+    from src.ui.controls_view import BindingRow, RowKind
+
+    return [
+        *_rows(count),
+        BindingRow("Reset to defaults", kind=RowKind.OPTION).as_grid_row(),
+        BindingRow("Back", kind=RowKind.OPTION).as_grid_row(),
+    ]
+
+
+@pytest.mark.parametrize("size", WINDOWS)
+@pytest.mark.parametrize("scale", SCALES)
+def test_a_block_of_options_is_separated_from_the_values_above_it(size, scale) -> None:
+    """The block of options gets air; the rows around it get none.
+
+    The rows of a mapping screen are two kinds of thing in one table: keys to
+    assign, and options to pick. Packed at the same pitch they read as one
+    list, and "Reset to defaults" reads as a slot waiting for a key.
+
+    Stated as the *air* each boundary gets, not as a pixel count: the list is
+    packed, so a binding row's neighbour is 0px away and a collapsed section
+    gap is invisible -- a test comparing the two pitches would compare two
+    identical numbers and pass on a block nobody can tell from the rest.
+    """
+    view = _grid_drawn(size, scale, _rows_with_options(6))
+    rects = view.row_rects
+    assert len(rects) == 8
+
+    between_values = rects[5].top - rects[4].bottom
+    above_block = rects[6].top - rects[5].bottom
+    inside_block = rects[7].top - rects[6].bottom
+
+    assert above_block > between_values, "the block of options is not set apart at all"
+    assert inside_block == between_values, "the block kept the list's own pitch inside itself"
+
+
+@pytest.mark.parametrize("size", WINDOWS)
+@pytest.mark.parametrize("scale", SCALES)
+def test_the_section_gap_is_reserved_in_the_panel_height(size, scale) -> None:
+    """The panel is as tall as the gap the drawing spends.
+
+    The complement of the separation test, and the failure it would hide: a
+    panel that did not know about the section gap would hold the same rows and
+    the last one would hang out of the bottom border by exactly the gap. The
+    height is not compared against another grid's, because a list that does not
+    fit shrinks its text and the two would no longer be the same picture.
+    """
+    view = _grid_drawn(size, scale, _rows_with_options(6))
+    panel = view._last_panel_rect
+
+    assert panel is not None
+    assert panel.contains(view.row_rects[-1]), (
+        f"the last option row is outside the panel: {view.row_rects[-1]} not in {panel}"
     )

@@ -23,6 +23,11 @@ from src.ui.scale import checked_ui_scale, font_size
 DESIGN_MARGIN = 12
 DESIGN_PADDING = 18
 DESIGN_GAP = 18
+#: The air that opens a new group inside a list -- above the block of options
+#: at the bottom of a mapping screen. Bigger than a gap on purpose: a gap says
+#: "these two are not nested", and this has to say "everything below this is
+#: something else" from across a table.
+DESIGN_SECTION_GAP = 30
 DESIGN_TITLE_GAP = 12
 DESIGN_BORDER = 2
 DESIGN_FOOTER_LINE = 20
@@ -90,6 +95,11 @@ class Metrics:
     def gap(self) -> int:
         """Air between two things that are not nested: columns, panel and list."""
         return self.px(DESIGN_GAP)
+
+    @property
+    def section_gap(self) -> int:
+        """Air that opens a new group inside a list, before its first row."""
+        return self.px(DESIGN_SECTION_GAP)
 
     @property
     def title_gap(self) -> int:
