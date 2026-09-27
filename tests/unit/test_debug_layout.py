@@ -159,15 +159,21 @@ def test_combat_panel_only_collects_when_debug_is_enabled(
 ) -> None:
     """DEBUG unset: draw_metrics_panel collects nothing; with DEBUG it does."""
     monkeypatch.delenv("DEBUG", raising=False)
-    ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=1, overlaps=1, contacts=1))
-    ui.world_ui.draw_metrics_panel()
-    assert ui.world_ui.combat_panel() is None
+    # Ten ticks, because `update_metrics` only publishes every tenth. With a
+    # single tick the throttle returns first and `metrics_text` is still empty,
+    # so this would pass whether or not the DEBUG guard exists -- which is the
+    # whole thing the assertion is here to check.
+    for _ in range(10):
+        ui.world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=1, overlaps=1, contacts=1))
+    assert ui.world_ui.panels.metrics_text, "the counters never published, nothing to guard"
+    ui.world_ui.panels.draw_metrics_panel()
+    assert ui.world_ui.panels.combat_panel() is None
 
     monkeypatch.setenv("DEBUG", "1")
     for _ in range(10):  # metrics refresh every 10th tick, as in game
-        ui.world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
-    ui.world_ui.draw_metrics_panel()
-    content = ui.world_ui.combat_panel()
+        ui.world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    ui.world_ui.panels.draw_metrics_panel()
+    content = ui.world_ui.panels.combat_panel()
     assert content is not None
     title, lines = content
     assert title == "COMBAT"
@@ -182,7 +188,7 @@ def test_draw_combat_panel_flows_through_the_layout(
     surface = pygame.Surface((640, 480))
     surface.fill((0, 0, 0))
     ui.renderer.surface = surface
-    ui.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
+    ui.world_ui.panels.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     layout = PanelLayout(640, 480)
     height = ui.draw_combat_panel(layout)
@@ -246,7 +252,7 @@ def test_full_debug_panel_stack_never_overlaps(
     renderer = Renderer(
         surface, _Camera(Framing(float(1440), float(900))), overlay=make_overlay(surface)
     )
-    renderer.overlay.world_ui.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
+    renderer.overlay.world_ui.panels.combat_panel_lines = [("pairs 2", TEXT_MUTED)]
 
     placed: list[pygame.Rect] = []
     original_place = PanelLayout.place

@@ -304,14 +304,14 @@ class UIManager:
     def draw_combat_panel(self, layout: PanelLayout | None = None) -> int:
         """Unified COMBAT counters inside the debug panel flow.
 
-        The lines are collected by :meth:`WorldUI.draw_metrics_panel` (a
+        The lines are collected by ``world_ui.panels.draw_metrics_panel`` (a
         no-op when ``DEBUG`` is off); drawing them through the column flow
         keeps them under the side panels instead of a fixed spot that other
         panels could stack on.
         """
         if self.renderer.interaction.is_closed(PANEL_COMBAT):
             return 0
-        content = self.world_ui.combat_panel()
+        content = self.world_ui.panels.combat_panel()
         if content is None:
             return 0
         title, lines = content
@@ -511,16 +511,16 @@ class UIManager:
 
     def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:
         """The always-on combat metrics readout."""
-        self.world_ui.draw_metrics_panel(player=player, hit_stop=hit_stop)
+        self.world_ui.panels.draw_metrics_panel(player=player, hit_stop=hit_stop)
 
     def note_clash(self, clash: Any) -> None:
         """Record a clash so the overlay can mark it where it happened."""
-        self.world_ui.note_clash(clash)
+        self.world_ui.panels.note_clash(clash)
 
     def stamp_clash_marker(self, camera: Camera) -> None:
         """Draw the clash marker again, over the debug panels."""
-        self.world_ui.stamp_clash_marker(camera)
+        self.world_ui.panels.stamp_clash_marker(camera)
 
     def update_metrics(self, metrics: Any) -> None:
         """Feed the contact pipeline's per-tick counters to the overlay."""
-        self.world_ui.update_metrics(metrics)
+        self.world_ui.panels.update_metrics(metrics)

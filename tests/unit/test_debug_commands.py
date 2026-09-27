@@ -21,6 +21,7 @@ from src.data.attacks import attack_definition_to_dict, read_attack_definition
 from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from src.physics.spatial_hash import SpatialHash
 from src.ui.world_overlay_geo import GeoLayer
+from src.ui.world_overlay_panels import PanelLayer
 from tests.unit.helpers import make_entity
 
 
@@ -335,12 +336,12 @@ def test_the_overlay_is_never_thinner_than_one_art_pixel(world_ui, density: floa
 
 
 def test_metrics_panel_caches_counters_between_ticks(world_ui) -> None:
-    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
-    world_ui.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
-    assert world_ui.metrics_text == ()
+    world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=3, overlaps=2, contacts=1))
+    assert world_ui.panels.metrics_text == ()
     for _ in range(8):
-        world_ui.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
-    assert world_ui.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
+        world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=9, overlaps=9, contacts=9))
+    assert world_ui.panels.metrics_text == ("pairs 9", "overlaps 9", "contacts 9")
 
 
 def test_live_attack_text_formats_player_state(world_ui) -> None:
@@ -363,29 +364,39 @@ def test_combat_panel_renders_counters_with_live_state(world_ui) -> None:
         )
     )
     for _ in range(10):
-        world_ui.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
-    world_ui.note_clash((10.0, 10.0))
-    world_ui.draw_metrics_panel(player=player, hit_stop=0.05)
-    assert world_ui.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
-    assert world_ui._clash_ttl > 0.0
+        world_ui.panels.update_metrics(SimpleNamespace(pairs_tested=2, overlaps=1, contacts=1))
+    world_ui.panels.note_clash((10.0, 10.0))
+    world_ui.panels.draw_metrics_panel(player=player, hit_stop=0.05)
+    assert world_ui.panels.metrics_text == ("pairs 2", "overlaps 1", "contacts 1")
+    assert world_ui.panels._clash_ttl > 0.0
 
 
 def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
-    world_ui.note_clash((42.0, 7.0))
-    assert world_ui.clash_point == (42.0, 7.0)
-    assert world_ui._clash_ttl > 0.0
-    world_ui.note_clash(None)
-    assert world_ui.clash_point == (42.0, 7.0)
+    world_ui.panels.note_clash((42.0, 7.0))
+    assert world_ui.panels.clash_point == (42.0, 7.0)
+    assert world_ui.panels._clash_ttl > 0.0
+    world_ui.panels.note_clash(None)
+    assert world_ui.panels.clash_point == (42.0, 7.0)
 
 
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
-    from src.ui.world_ui import CLASH_MARKER_LIFETIME, WorldUI
+    from src.ui.world_ui import CLASH_MARKER_LIFETIME, CLASH_TICK_S
 
     surface = world_ui.surface
     surface.fill((0, 0, 0))
-    world_ui.note_clash((120.0, 110.0))
-    assert world_ui._clash_ttl == CLASH_MARKER_LIFETIME
-    world_ui._draw_clash_marker(camera)
+    world_ui.panels.note_clash((120.0, 110.0))
+    assert world_ui.panels._clash_ttl == CLASH_MARKER_LIFETIME
+    world_ui.panels.draw_clash_marker(camera)
+    # The decay has to be observed *between* the start and the expiry: a marker
+    # that jumped straight to zero would satisfy the end-state check below while
+    # being a ring that blinks out in a single frame.
+    assert world_ui.panels._clash_ttl == pytest.approx(CLASH_MARKER_LIFETIME - CLASH_TICK_S), (
+        "one frame must cost one tick, not the whole lifetime"
+    )
+    world_ui.panels.draw_clash_marker(camera, 0.1)
+    assert world_ui.panels._clash_ttl == pytest.approx(CLASH_MARKER_LIFETIME - CLASH_TICK_S - 0.1)
+    world_ui.panels._clash_ttl = CLASH_MARKER_LIFETIME
+    world_ui.panels.draw_clash_marker(camera)
     gold_pixels = sum(
         1
         for x in range(90, 150)
@@ -396,10 +407,10 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
 
     surface.fill((0, 0, 0))
     for _ in range(30):
-        world_ui._draw_clash_marker(camera)
-    assert world_ui._clash_ttl <= 0.0
+        world_ui.panels.draw_clash_marker(camera)
+    assert world_ui.panels._clash_ttl <= 0.0
     surface.fill((0, 0, 0))
-    world_ui._draw_clash_marker(camera)
+    world_ui.panels.draw_clash_marker(camera)
     assert (
         sum(
             1
@@ -409,4 +420,4 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
         )
         == 0
     )
-    assert WorldUI._draw_clash_marker  # bound method still wired in overlays
+    assert PanelLayer.draw_clash_marker  # bound method still wired in overlays
