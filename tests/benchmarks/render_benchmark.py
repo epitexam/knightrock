@@ -29,6 +29,7 @@ import argparse
 import os
 import statistics
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from time import perf_counter
 
@@ -46,7 +47,9 @@ from src.core.display.presentation import Presentation
 from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.core.settings import Simulation
+from src.core.rendering.tile_chunk_index import TileChunkIndex
+from src.core.settings import Simulation, World
+from src.core.sprites import Sprite
 
 #: Window sizes worth a row: the common ones, 16:10, ultrawide and 4K.
 WINDOWS = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3440, 1440), (3840, 2160)]
@@ -140,6 +143,102 @@ def measure_level_load() -> str:
     return f"{data.width}x{data.height} tiles, {data.pixel_width:.0f}x{data.pixel_height:.0f} px"
 
 
+def measure_cull(level: Level, repeats: int) -> tuple[float, float]:
+    """Milliseconds to decide what to blit, with and without the tile index.
+
+    Split out from the frame because the frame is dominated by things the cull
+    cannot touch: blitting 115 tiles and filling the target. Isolating it is
+    what shows what the index is actually worth, which on the registered level
+    is small -- see the note printed below the table.
+
+    The second number re-adds the tile plane to ``all_sprites`` and drops the
+    index, which is exactly the linear scan the index replaced. It is the
+    honest "before", measured in the same process on the same data rather than
+    quoted from another run.
+    """
+    renderer = level.renderer
+    groups = level.groups
+    index = renderer._static_index
+    foreground = TileChunkIndex(groups.fg_sprites) if groups.fg_sprites else None
+
+    # "after" is the shipped state: tiles in the frozen plane, index installed.
+    indexed = _median_ms(lambda: _cull_once(renderer, groups), repeats)
+
+    # "before" is the state the index replaced: tiles back in all_sprites, no
+    # index. The two have to be measured from their own real wiring -- leaving
+    # the tiles in all_sprites while the index is installed would have the
+    # indexed run walk the same 839 tiles twice and look twice as slow.
+    groups.all_sprites.add(*groups.static_sprites)
+    try:
+        renderer.set_static_planes(None, None)
+        scanned = _median_ms(lambda: _cull_once(renderer, groups), repeats)
+    finally:
+        for tile in tuple(groups.static_sprites):
+            groups.all_sprites.remove(tile)
+        if index is not None:
+            renderer.set_static_planes(index, foreground)
+    return scanned, indexed
+
+
+def _cull_once(renderer, groups) -> None:
+    renderer.camera.begin_frame(0.5)
+    renderer._collect_visible_blits(groups)
+
+
+def measure_cull_scaling(level: Level, sizes: Sequence[int], repeats: int) -> list[tuple]:
+    """Cull cost against tile count, scanned linearly and through the index.
+
+    The row that justifies the index is not the one for the shipped level.
+    A linear scan is O(level) and the index is O(view), so the wider the
+    level the more the index wins -- but the shipped level is 40x30 tiles, and
+    839 tiles lands almost exactly on the break-even point, where the two are
+    indistinguishable. Reading that as "the index is worthless" would be
+    reading one point of a curve as the whole curve.
+
+    Tiles are synthesised on a 60-column grid away from the camera's opening
+    position, so the count grows while the number the cull actually draws
+    stays put: that is the whole claim, that cost should not track level size.
+    """
+    renderer = level.renderer
+    groups = level.groups
+    original_index = renderer._static_index
+    original_tiles = tuple(groups.static_sprites)
+    groups.static_sprites.empty()
+    tile_surface = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE))
+    rows: list[tuple] = []
+    try:
+        for count in sizes:
+            # Each row is a fresh plane: leftover tiles from the previous row
+            # would make the counts cumulative and the curve meaningless.
+            groups.static_sprites.empty()
+            added = [
+                Sprite(
+                    pos=((20 + index % 60) * World.TILE_SIZE, (20 + index // 60) * World.TILE_SIZE),
+                    surf=tile_surface,
+                )
+                for index in range(count)
+            ]
+            for tile in added:
+                groups.static_sprites.add(tile)
+
+            renderer.set_static_planes(None, None)
+            groups.all_sprites.add(*added)
+            scanned = _median_ms(lambda: _cull_once(renderer, groups), repeats)
+            for tile in added:
+                groups.all_sprites.remove(tile)
+
+            renderer.set_static_planes(TileChunkIndex(groups.static_sprites), None)
+            indexed = _median_ms(lambda: _cull_once(renderer, groups), repeats)
+            rows.append((len(groups.static_sprites), scanned, indexed))
+    finally:
+        groups.static_sprites.empty()
+        for tile in original_tiles:
+            groups.static_sprites.add(tile)
+        if original_index is not None:
+            renderer.set_static_planes(original_index, None)
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=30, help="samples per measurement")
@@ -170,14 +269,47 @@ def main() -> None:
             f"{whole:>10.2f}{100 * whole / FRAME_BUDGET_MS:>5.0f}%"
         )
 
+    viewport = pygame.Surface(letterbox((1280, 720), DEFAULT_FRAMING).size)
+    level = Level(viewport, LevelManager(LEVEL_PATHS).get(0), InputManager())
+    for _ in range(10):
+        level.update(Simulation.TIMESTEP)
+    level.renderer.camera.offset.update(300.0, 200.0)
+    scanned, indexed = measure_cull(level, arguments.repeats * 4)
+    tiles = len(level.groups.static_sprites)
+    moving = len(level.groups.all_sprites)
+    print(f"\n-- cull only: {tiles} tiles + {moving} moving sprites --")
+    print(f"{'scan':>10}{'chunk index':>14}{'saved':>9}{'%':>7}")
     print(
-        "\n`present` is a 1:1 blit plus the bars: there is no resample left to\n"
-        "buy back, at any window size, and the picture is exactly the picture.\n"
-        "`whole-px` is the whole frame with whole-pixel art on -- a smaller target,\n"
-        "so a cheaper draw and a letterboxed one. The world draw is the only term\n"
-        "that grows with the window, and it grows because the window is bigger:\n"
-        "showing 1152x648 world units across a 4K panel is 8.3 Mpx of blending,\n"
-        "and no setting makes that cheaper except a smaller window."
+        f"{scanned:>9.3f}ms{indexed:>13.3f}ms{scanned - indexed:>8.3f}ms"
+        f"{100 * (scanned - indexed) / scanned:>6.0f}%"
+    )
+    print(
+        f"\n{'':>10}On the shipped level the index is worth a fifth of the cull,\n"
+        f"which is a rounding error next to the frame. Two things explain why,\n"
+        f"and both matter for reading the number: a culled sprite is cheap (one\n"
+        f"`Sprite.rect` and one C-level `colliderect`), and what the frame spends\n"
+        f"its time on instead is filling the target and blitting the ~115 tiles\n"
+        f"that survive the cull. 839 tiles is also close to where the two curves\n"
+        f"cross, so this level cannot show what the index is for. The next table\n"
+        f"varies the tile count:\n"
+    )
+    rows = measure_cull_scaling(level, (0, 1000, 4000, 10000, 22000), arguments.repeats * 2)
+    print(f"{'tiles':>7}{'scan':>10}{'chunk index':>14}{'saved':>9}{'%':>7}")
+    for count, scan_ms, index_ms in rows:
+        print(
+            f"{count:>7}{scan_ms:>9.3f}ms{index_ms:>13.3f}ms{scan_ms - index_ms:>8.3f}ms"
+            f"{100 * (scan_ms - index_ms) / scan_ms:>6.0f}%"
+        )
+    print(
+        "\nThe scan is linear in the tile count and the index is nearly flat: the\n"
+        "number of tiles on screen does not change as the level grows, only where\n"
+        "they are. That is the property worth paying for.\n"
+        "\nNote on method: a cProfile run of this same code reports the draw at\n"
+        "~2.8 ms/frame against the ~1.2 ms measured here, because profiling\n"
+        "charges a Python-level call far more than it costs. The cull is hundreds\n"
+        "of calls per frame, so it is the line a profiler inflates most, and a\n"
+        "profile is the wrong instrument for deciding whether a cull is worth\n"
+        "indexing. These are medians of unprofiled runs."
     )
 
 

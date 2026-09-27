@@ -427,10 +427,15 @@ class UIManager:
 
     def draw_debug_overlays(
         self,
-        all_sprites: pygame.sprite.Group,
+        all_sprites: Iterable[pygame.sprite.Sprite],
         camera: Camera,
         delta_time: float | None = None,
     ) -> None:
+        """Overlay the world-space debug layer.
+
+        Takes any iterable rather than a group: the draw planes are separate
+        groups, and the overlay wants all of them.
+        """
         self.world_ui.draw_debug_overlays(all_sprites, camera, delta_time)
 
     def draw_health_bars(

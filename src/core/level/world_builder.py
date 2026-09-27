@@ -32,18 +32,29 @@ TileList = Sequence[tuple[int, int, pygame.Surface]]
 
 
 def _build_terrain(tiles: TileList, groups: SpriteGroups) -> None:
-    """Create solid terrain sprites from tile layer tiles."""
+    """Create solid terrain sprites from tile layer tiles.
+
+    Terrain goes in ``static_sprites`` (the frozen draw plane) and
+    ``collision_sprites`` (the physics plane), and deliberately not in
+    ``all_sprites``: see :class:`~src.core.sprite_groups.SpriteGroups` for why
+    the draw planes are split.
+    """
     for x, y, surf in tiles:
         Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
             surf=surf,
-            groups=(groups.all_sprites, groups.collision_sprites),
+            groups=(groups.static_sprites, groups.collision_sprites),
         )
 
 
 def _build_decor(tiles: TileList, groups: SpriteGroups, *, foreground: bool) -> None:
-    """Create decorative sprites from tile layer tiles."""
-    target = groups.fg_sprites if foreground else groups.all_sprites
+    """Create decorative sprites from tile layer tiles.
+
+    Foreground decor is its own plane because it draws last; background decor
+    is part of the frozen plane the terrain belongs to, and keeps the Tiled
+    layer order that decides which surface covers which.
+    """
+    target = groups.fg_sprites if foreground else groups.static_sprites
     for x, y, surf in tiles:
         Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
@@ -63,7 +74,7 @@ def _build_one_way_platforms(tiles: TileList, groups: SpriteGroups) -> None:
         sprite = Sprite(
             pos=(x * World.TILE_SIZE, y * World.TILE_SIZE),
             surf=surf,
-            groups=(groups.all_sprites, groups.collision_sprites),
+            groups=(groups.static_sprites, groups.collision_sprites),
         )
         sprite.one_way = True
 

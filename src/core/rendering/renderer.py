@@ -1,5 +1,6 @@
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from itertools import chain
 from time import perf_counter
 from typing import Any, cast
 
@@ -8,6 +9,7 @@ import pygame
 from src.core.colors import BG_COLORS, Color, Colors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
+from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.settings import Afterimage, HitFlash
 from src.core.sprite_groups import SpriteGroups
 from src.ui.panel_renderer import PanelLayout, compact_panels
@@ -81,10 +83,29 @@ class Renderer:
         # ``_scaled_cache`` and holding the source for the same reason.
         self._flash_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: object | None = None
+        #: Chunked culls over the frozen tile planes, or None when the world
+        #: has none to index. Installed by the level after the world is built;
+        #: a renderer that was handed a bare group (every test that draws a
+        #: couple of sprites) keeps the linear scan, which is the same result
+        #: for a plane small enough not to need an index.
+        self._static_index: TileChunkIndex | None = None
+        self._foreground_index: TileChunkIndex | None = None
         self._debug_samples: dict[str, deque[float]] = {
             "world_ui_ms": deque(maxlen=120),
             "panels_ms": deque(maxlen=120),
         }
+
+    def set_static_planes(
+        self, statics: TileChunkIndex | None, foreground: TileChunkIndex | None = None
+    ) -> None:
+        """Adopt chunked culls for the level's frozen tile planes.
+
+        Both indexes are optional and independent: a level with no foreground
+        layer passes nothing for it, and a renderer with neither keeps the
+        linear scan, so nothing about the frame changes either way.
+        """
+        self._static_index = statics
+        self._foreground_index = foreground
 
     def set_surface(self, surface: pygame.Surface) -> None:
         """Adopt a new render target, after the render scale changed.
@@ -231,7 +252,7 @@ class Renderer:
         self._draw_flashes(self._collect_flashes(groups))
         if debug_enabled:
             overlays = perf_counter()
-            self.ui_manager.draw_debug_overlays(groups.all_sprites, self.camera, dt)
+            self.ui_manager.draw_debug_overlays(groups.every_sprite, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
     def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
@@ -252,6 +273,19 @@ class Renderer:
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute target rects for every visible plane.
 
+        One flat loop over the three draw planes, in paint order: the frozen
+        tile plane (through its chunk index, when one is installed), the
+        moving plane, then the foreground decor. With the index this is ~130
+        sprites instead of the ~970 a single scan of the level cost, and the
+        static sprites it skips are *not* walked at all -- which is why the
+        tile layers live in their own group rather than in ``all_sprites``.
+
+        The exact ``is_visible`` test still runs on every candidate. The index
+        is deliberately a conservative superset, so it decides what is worth
+        asking about and never what gets drawn; ``Camera.is_visible`` is
+        inlined here as ``viewport.colliderect`` because at a few hundred calls
+        per frame the extra Python frame is a measurable share of the loop.
+
         The FX plane is deliberately *not* scaled through ``_scaled_image``:
         FX particles rebuild their ``image`` every tick, so each one is a new
         Surface object and each one would add a permanent entry to the scale
@@ -260,19 +294,17 @@ class Renderer:
         short-lived by nature, so they go through ``_scaled_image_once``.
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
-        cached_planes = (*groups.all_sprites, *groups.fg_sprites)
-        for sprite in cached_planes:
-            if self.camera.is_visible(sprite.rect):
-                screen_rect = self._screen_rect(sprite)
-                image = self._scaled_image(sprite.image)
-                # Only a player can be dashing, and a player is an entity, so
-                # this branch is resolved by identity rather than by a
-                # ``getattr`` walk over every tile of the level.
-                if self._dashing_player is not None and sprite is self._dashing_player:
-                    image, screen_rect = dash_frame(image, screen_rect)
-                blits.append((image, screen_rect))
+        static_index = self._static_index
+        foreground_index = self._foreground_index
+        # Resolved once: ``begin_frame`` is idempotent within a frame, and
+        # ``colliderect`` is the same intersection ``Camera.is_visible`` makes.
+        viewport = self.camera.viewport
+        colliderect = viewport.colliderect
+        for sprite in self._draw_planes(groups, static_index, foreground_index, viewport):
+            self._append_cached_blit(blits, sprite, colliderect)
+
         for sprite in groups.fx_sprites:
-            if self.camera.is_visible(sprite.rect):
+            if colliderect(sprite.rect):
                 blits.append(
                     (
                         self._scaled_image_once(sprite.image),
@@ -281,11 +313,51 @@ class Renderer:
                 )
         return blits
 
-    def _screen_rect(self, sprite: pygame.sprite.Sprite) -> pygame.Rect:
+    def _draw_planes(
+        self,
+        groups: SpriteGroups,
+        static_index: TileChunkIndex | None,
+        foreground_index: TileChunkIndex | None,
+        viewport: pygame.FRect,
+    ) -> Iterable[pygame.sprite.Sprite]:
+        """The three draw planes, in paint order, without materialising them.
+
+        A ``chain`` rather than a concatenation because the moving plane is a
+        live group: a list would snapshot it, and a sprite added between the
+        planes being walked and the blit loop running would be drawn at a
+        position that does not match the frame it belongs to.
+        """
+        if static_index is None:
+            return chain(groups.all_sprites, groups.fg_sprites)
+        foreground = (
+            groups.fg_sprites if foreground_index is None else foreground_index.candidates(viewport)
+        )
+        return chain(static_index.candidates(viewport), groups.all_sprites, foreground)
+
+    def _append_cached_blit(
+        self,
+        blits: list[tuple[pygame.Surface, pygame.Rect]],
+        sprite: pygame.sprite.Sprite,
+        colliderect: Callable[[pygame.FRect | pygame.Rect], bool],
+    ) -> None:
+        """Cull one sprite through the scale cache and queue its blit.
+
+        A sprite with no rectangle or no image is skipped: ``pygame`` allows
+        both to be unset, and the cull is asked about every sprite in a plane
+        rather than only the ones a caller vouched for.
+        """
         rect = sprite.rect
-        if rect is None:
-            return pygame.Rect(0, 0, 0, 0)
-        return self.camera.apply_snapped(pygame.FRect(rect))
+        image_source = sprite.image
+        if rect is None or image_source is None or not colliderect(rect):
+            return
+        screen_rect = self.camera.apply_snapped(rect)
+        image = self._scaled_image(image_source)
+        # Only a player can be dashing, and a player is an entity, so this
+        # branch is resolved by identity rather than by a ``getattr`` walk
+        # over every tile of the level.
+        if self._dashing_player is not None and sprite is self._dashing_player:
+            image, screen_rect = dash_frame(image, screen_rect)
+        blits.append((image, screen_rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """White damage-flash overlays for recently hit entities.

@@ -2,6 +2,8 @@
 The Level facade: it builds a world and delegates its tick to the systems.
 """
 
+import logging
+from collections.abc import Iterable
 from typing import Any
 
 import pygame
@@ -26,6 +28,7 @@ from src.core.level.systems.tick_system import TickSystem
 from src.core.level.world_builder import WorldBuilder
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
 from src.core.settings import Debug
 from src.core.sprite_groups import SpriteGroups
@@ -33,6 +36,8 @@ from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
+
+logger = logging.getLogger(__name__)
 
 
 class Level:
@@ -120,6 +125,8 @@ class Level:
         self.world_builder.bind_spatial_hash(self.spatial_hash)
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
+        self._install_static_culls()
+
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed
         # each tick by PlatformSystem).
@@ -175,6 +182,45 @@ class Level:
 
         if self.events is not None:
             self.events.emit(LevelStarted(level_id=self.level_id))
+
+    def _install_static_culls(self) -> None:
+        """Hand the renderer a chunked cull for the frozen tile planes.
+
+        The index is only correct if the plane it holds is genuinely frozen.
+        A sprite that moves after being indexed is culled against the
+        rectangle it had when the index was built, which drops it off screen
+        or leaves it behind, and either way it is a wrong frame with no error
+        anywhere. The world builder only ever files tile layers here, but a
+        factory that registered a moving sprite would not be caught by
+        reading that code, so the moving planes are checked instead: if one
+        of them turns up in the frozen plane, the index is not installed and
+        the level draws exactly as it did before.
+        """
+        statics = self.groups.static_sprites
+        if not statics:
+            return
+        static_ids = frozenset(id(sprite) for sprite in statics)
+        if any(id(sprite) in static_ids for plane in self._moving_planes() for sprite in plane):
+            logger.warning(
+                "A moving sprite is registered in the frozen tile plane; the "
+                "chunked cull would judge it against a stale rectangle, so the "
+                "linear cull is kept."
+            )
+            return
+        foreground = TileChunkIndex(self.groups.fg_sprites) if self.groups.fg_sprites else None
+        self.renderer.set_static_planes(TileChunkIndex(statics), foreground)
+
+    def _moving_planes(self) -> tuple[Iterable[Any], ...]:
+        """The sprite groups whose contents move during a session."""
+        groups = self.groups
+        return (
+            groups.entity_sprites,
+            groups.hazard_sprites,
+            groups.moving_platforms,
+            groups.projectile_sprites,
+            groups.exit_sprites,
+            groups.combat_sprites,
+        )
 
     @property
     def respawn_timer(self) -> float:
@@ -355,7 +401,9 @@ class Level:
         self.renderer.draw_debug_panels(
             player=self.player,
             fps=fps,
-            sprite_count=len(self.groups.all_sprites),
+            sprite_count=len(self.groups.static_sprites)
+            + len(self.groups.all_sprites)
+            + len(self.groups.fg_sprites),
             combat_count=len(self.groups.combat_sprites),
             entity_count=len(self.groups.entity_sprites),
             collision_count=len(self.groups.collision_sprites),
