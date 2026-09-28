@@ -283,8 +283,8 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     than as the state the block earned. Emitted on a cadence they fade in with
     the dizzy state and are gone shortly after it ends.
     """
-    from src.core.fx import DIZZY_STAR_BATCH, DIZZY_STAR_SPAWN_EVERY, DIZZY_STAR_TTL
     from src.core.level.systems.physics_system import PhysicsSystem
+    from src.core.settings import FxDizzy
     from src.core.sprite_groups import SpriteGroups
     from tests.unit.helpers import make_entity
 
@@ -295,21 +295,21 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     system = PhysicsSystem(groups)
 
     for _ in range(4):
-        system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+        system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
     assert len(groups.fx_sprites) == 0, "an idle fighter gets no stars"
 
     entity.state_machine.current_state_name = DIZZY_STATE
-    system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+    system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
 
     stars = [sprite for sprite in groups.fx_sprites if isinstance(sprite, OrbitParticle)]
-    assert len(stars) == DIZZY_STAR_BATCH
-    assert all(star.ttl == pytest.approx(DIZZY_STAR_TTL) for star in stars)
+    assert len(stars) == FxDizzy.STAR_BATCH
+    assert all(star.ttl == pytest.approx(FxDizzy.STAR_TTL) for star in stars)
     assert all(star.velocity.length() == 0.0 for star in stars), "they orbit, they do not fall"
 
     entity.state_machine.current_state_name = "idle"
-    system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+    system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
 
-    assert all(star.ttl == pytest.approx(DIZZY_STAR_TTL) for star in stars), (
+    assert all(star.ttl == pytest.approx(FxDizzy.STAR_TTL) for star in stars), (
         "and no more arrive once the state is over"
     )
 

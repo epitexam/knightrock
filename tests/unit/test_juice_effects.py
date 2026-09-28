@@ -2,6 +2,7 @@
 
 import os
 import random
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pygame
@@ -10,19 +11,26 @@ import pytest
 from src.core.colors import FXColors
 from src.core.display.framing import Framing
 from src.core.fx import (
-    DASH_BURST_COUNT,
-    DASH_WIND_LINES,
+    FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
-    SWEAT_OUTLINE_WIDTH,
     DustParticle,
     StreakParticle,
     SweatParticle,
     dash_direction,
     iter_landing_entities,
     spawn_dash_burst,
+    spawn_dash_shockwave,
     spawn_dash_streak,
+    spawn_dash_trail,
+    spawn_dash_wind,
+    spawn_dizzy_stars,
+    spawn_dizzy_vortex,
+    spawn_guard_arc,
+    spawn_impact_decal,
     spawn_landing_dust,
+    spawn_shatter_arc,
     spawn_sweat_drops,
+    spawners,
 )
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.rendering.camera import Camera
@@ -33,7 +41,8 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, HitFlash, Sweat
+from src.core.settings import Afterimage, Dust, FxDash, HitFlash, Sweat
+from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
 
@@ -45,6 +54,20 @@ def _headless_display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((64, 64))
+
+
+@pytest.fixture(autouse=True)
+def _pinned_fx_rng() -> Iterator[None]:
+    """Fix the draw, because these tests assert on the pixels it produces.
+
+    Several spawners jitter from the FX module's own RNG, so which way a
+    puff lands or how a fragment scatters is a function of how many draws
+    the tests before them happened to make. Left alone that made a test here
+    pass on its own and fail in the full suite -- a result that is evidence
+    of the run's order rather than of the rule it claims to check.
+    """
+    spawners._fx_rng.seed(0xF00D)
+    yield
 
 
 def _floor_tile(top: float = 200.0) -> SimpleNamespace:
@@ -217,8 +240,8 @@ def test_dash_burst_kicks_a_fan_backward_on_start() -> None:
 
     puffs = spawn_dash_burst(group, entity)
 
-    assert len(puffs) == DASH_BURST_COUNT
-    assert len(group) == DASH_BURST_COUNT
+    assert len(puffs) == FxDash.BURST_COUNT
+    assert len(group) == FxDash.BURST_COUNT
     for puff in puffs:
         assert puff.pos.x <= entity.hitbox.centerx
         assert puff.velocity.x < 0.0
@@ -254,7 +277,7 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
 
     # Landing fan plus its ground mark, then the one-shot dash-start burst,
     # the ground ring and the dash trail.
-    assert len(groups.fx_sprites) == Dust.COUNT + 1 + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == Dust.COUNT + 1 + FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
 
 def test_dash_burst_fires_once_per_dash() -> None:
@@ -266,19 +289,25 @@ def test_dash_burst_fires_once_per_dash() -> None:
 
     system._spawn_impact_fx(1 / 60)
     # Burst + ground ring + one trail particle + its wind lines on dash start.
-    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
     # Still dashing: a speed line on top of the trail cadence.
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) >= DASH_BURST_COUNT + 2 + DASH_WIND_LINES + 2
+    assert len(groups.fx_sprites) >= FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES + 2
 
-    # Dash over, then re-dash: the burst fires again.
+    # Dash over, then re-dash: the burst fires again. The first burst has to
+    # be gone first, or the family cap refuses the second one and this would
+    # be a test of the cap wearing this test's name.
     dasher.state_machine = SimpleNamespace(current_state_name="run")
     system._spawn_impact_fx(1 / 60)
-    before = len(groups.fx_sprites)
+    for _ in range(30):
+        for sprite in list(groups.fx_sprites):
+            sprite.update(1 / 60)
+    assert len(groups.fx_sprites) == 0, "the first dash's fx have reaped themselves"
+
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -474,7 +503,7 @@ def test_sweat_beads_read_as_thick_comic_teardrops() -> None:
     # A teardrop, not a dot: the tapered tip makes it taller than wide.
     assert height > width
     # Fat bead: the whole inked sprite is several pixels across.
-    assert width >= 3 * SWEAT_OUTLINE_WIDTH
+    assert width >= 3 * SweatSettings.OUTLINE_WIDTH
     # Comic palette: pale fill, bold ink outline, glossy white glint.
     colors = {tuple(image.get_at((x, y)))[:3] for x in range(width) for y in range(height)}
     assert tuple(FXColors.sweat)[:3] in colors
@@ -570,3 +599,85 @@ def test_dash_only_entities_never_sweat() -> None:
     system.process(1 / 60)
 
     assert len(groups.fx_sprites) == 0
+
+
+def test_every_spawner_declines_an_entity_that_has_no_body() -> None:
+    """FX takes any duck-typed entity, including one mid-removal.
+
+    The spawners read `entity.hitbox` and hand back nothing when it is
+    absent, rather than raising. A projectile, or a fighter being pulled out
+    of the group by a loop that is still holding a reference, is exactly the
+    kind of thing that reaches a spawner -- and a `None` return is the one
+    answer that cannot leave a half-added particle behind.
+    """
+    group = pygame.sprite.Group()
+    bare = SimpleNamespace()
+
+    assert spawn_landing_dust(group, bare) == []
+    assert spawn_impact_decal(group, bare) is None
+    assert spawn_dash_burst(group, bare) == []
+    assert spawn_dash_streak(group, bare) is None
+    assert spawn_dash_wind(group, bare) == []
+    assert spawn_dash_shockwave(group, bare) is None
+    assert spawn_dash_trail(group, bare) is None
+    assert spawn_dizzy_stars(group, bare) == []
+    assert spawn_dizzy_vortex(group, bare) is None
+    assert spawn_sweat_drops(group, bare) == []
+    assert spawn_guard_arc(group, bare) is None
+    assert spawn_shatter_arc(group, bare) is None
+    assert len(group) == 0, "and nothing was added on the way past"
+
+
+def test_a_spawner_whose_family_is_full_declines_rather_than_waiting() -> None:
+    """The cap is per family, so a full star budget must not touch the swirl.
+
+    Stars and the swirl are separate families because they are separate
+    effects. Spending one budget must not silence the other, which is the
+    whole reason the table is keyed per family rather than counted in one
+    pile.
+
+    It also pins the budget as a ceiling rather than a threshold: a call that
+    would take the family past its number is refused whole, so the six stars
+    a spawner adds at a time cannot land on top of a nearly-full budget. That
+    check once read "is there room for one", which let `dizzy_star` reach 12
+    against a budget of 8.
+    """
+    group = pygame.sprite.Group()
+    box = pygame.FRect(100, 100, 40, 48)
+    entity = SimpleNamespace(hitbox=box, velocity=pygame.math.Vector2(0.0, 0.0))
+
+    while spawn_dizzy_stars(group, entity):
+        pass
+    stars = len(group)
+    assert stars <= FX_FAMILY_BUDGETS["dizzy_star"], "and never a particle past it"
+
+    assert spawn_dizzy_stars(group, entity) == [], "the star budget is spent"
+    assert spawn_dizzy_vortex(group, entity) is not None, "but the swirl has its own"
+    assert len(group) == stars + 1, "only the swirl was added"
+
+    # The other two cadenced effects refuse the same way, one particle at a
+    # time, so the check is not special to a batch.
+    swirl = pygame.sprite.Group()
+    while spawn_dizzy_vortex(swirl, entity) is not None:
+        pass
+    assert len(swirl) == FX_FAMILY_BUDGETS["dizzy_vortex"]
+    assert spawn_dizzy_vortex(swirl, entity) is None, "a full swirl budget refuses too"
+
+    drops = pygame.sprite.Group()
+    while spawn_sweat_drops(drops, entity):
+        pass
+    assert len(drops) == FX_FAMILY_BUDGETS["sweat"]
+    assert spawn_sweat_drops(drops, entity) == [], "and so does a full sweat budget"
+
+
+def test_a_family_the_budget_table_has_never_heard_of_is_still_allowed() -> None:
+    """An unknown family is not blocked -- the invariant is what catches it.
+
+    Refusing here would mean a typo in a spawner's family name silently turns
+    its effect off, in the release build, with the cap as the reason. The
+    budget table is checked against the source by `test_fx_invariants`
+    instead, which fails in CI rather than in front of a player.
+    """
+    assert spawners._has_room(pygame.sprite.Group()) is True, "no family named, nothing to check"
+    assert spawners._has_room(pygame.sprite.Group(), "a_family_nobody_declared") is True
+    assert spawners._has_room(pygame.sprite.Group(), "dizzy_star") is True

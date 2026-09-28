@@ -7,6 +7,7 @@ that a big burst cannot starve the effects that have to keep animating.
 
 import math
 import os
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pygame
@@ -22,17 +23,19 @@ from src.core.fx import (
     MAX_FX_SPRITES,
     DustParticle,
     OrbitParticle,
+    ShatterArcParticle,
     ShieldArcParticle,
     spawn_dash_trail,
     spawn_dash_wind,
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
+    spawners,
 )
+from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
-from src.core.rendering.fx_draw import snap
 from src.core.rendering.renderer import Renderer
-from src.core.settings import Dust
+from src.core.settings import Dust, FxDash, FxGuard
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -42,6 +45,20 @@ def _display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((640, 480))
+
+
+@pytest.fixture(autouse=True)
+def _pinned_fx_rng() -> Iterator[None]:
+    """Fix the draw, because these tests assert on the pixels it produces.
+
+    `spawn_shatter_arc` seeds its fragments from the module's own RNG, so
+    which way the pieces scatter is a function of how many draws the tests
+    before it happened to make. Left alone that made a test here pass on its
+    own and fail in the full suite -- a result that is evidence of the run's
+    order rather than of the rule it claims to check.
+    """
+    spawners._fx_rng.seed(0xF00D)
+    yield
 
 
 def _entity(x: float = 100.0, y: float = 100.0, facing: bool = True) -> SimpleNamespace:
@@ -225,6 +242,60 @@ def test_only_the_dizzy_state_produces_stars() -> None:
     assert not any(isinstance(step, OrbitParticle) for step in shatter.steps)
 
 
+def test_the_ring_stands_where_the_block_landed() -> None:
+    """The contact point is what the guard event reports, so it is what we draw.
+
+    Standing the ring in front of the defender was a guess: it put the mark
+    at the middle of the body rather than where the hit was absorbed, and it
+    ignored the one piece of data the combat system had already computed.
+    """
+    entity = _entity(facing=True)
+    contact = (entity.hitbox.right + 6.0, entity.hitbox.centery - 4.0)
+
+    arc = spawn_guard_arc(Group(), entity, contact=contact)
+
+    assert arc is not None
+    assert arc.pos.x == pytest.approx(contact[0])
+    assert arc.pos.y == pytest.approx(contact[1])
+    assert arc.side == 1.0
+
+
+def test_a_back_turned_block_puts_the_ring_where_the_hit_came_from() -> None:
+    """The side comes from the contact, not from which way the guard looks.
+
+    Reading ``facing_right`` opened the ring towards the defender's own
+    facing, so a guard blocking a hit from behind got it on the wrong side of
+    the body -- the one case where the mark contradicted the event.
+    """
+    entity = _entity(facing=True)
+    behind = (entity.hitbox.left - 6.0, entity.hitbox.centery)
+
+    arc = spawn_guard_arc(Group(), entity, contact=behind)
+
+    assert arc is not None
+    assert arc.side == -1.0, "the ring opens away from the body, towards the hit"
+
+
+def test_a_clash_spawns_no_guard_ring() -> None:
+    """Two weapons meeting is not a block, and used to draw one.
+
+    The event branch was an ``else``, so anything the loop did not name --
+    and a clash is what it did not name -- got the block's arc. Unreachable
+    while no attack declares clash data, and a wrong mark the day one does.
+    """
+    from src.core.level.systems.contact_system import GuardEvent
+    from src.core.level.systems.gameplay_loop import GameplayLoop
+
+    entity = _entity()
+    group = Group()
+    loop = GameplayLoop(camera_system=SimpleNamespace(add_trauma=lambda _amount: None))
+
+    for kind in ("clash", "stun"):
+        loop._spawn_fx_for_event(GuardEvent(kind, entity), group)
+
+    assert len(group) == 0
+
+
 def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
     """The failing guard is the same shield on the way out, not a new effect.
 
@@ -237,7 +308,7 @@ def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
 
     assert shatter is not None
     assert len(group) == 1
-    assert type(group.sprites()[0]).__name__ == "ShatterArcParticle"
+    assert isinstance(group.sprites()[0], ShatterArcParticle)
 
 
 def test_the_ring_starts_whole_and_breaks_into_pieces() -> None:
@@ -249,7 +320,7 @@ def test_the_ring_starts_whole_and_breaks_into_pieces() -> None:
     """
     shatter = fx.spawn_shatter_arc(Group(), _entity(facing=True))
     assert shatter is not None
-    radius = snap(fx.SHARD_ARC_RADIUS)
+    radius = snap(FxGuard.SHARD_RADIUS)
 
     def at_ring_radius(step: int) -> int:
         """How many angles still carry a pixel on the ring's own radius."""
@@ -311,7 +382,7 @@ def test_the_pieces_fly_furthest_from_the_side_that_failed() -> None:
             facing_right = math.cos(math.radians(degree)) >= 0
             if (side == "front") != facing_right:
                 continue
-            for radius in range(snap(fx.SHARD_ARC_RADIUS), limit):
+            for radius in range(snap(FxGuard.SHARD_RADIUS), limit):
                 if image.get_at(
                     (
                         snap(centre + radius * math.cos(math.radians(degree))),
@@ -351,7 +422,7 @@ def test_the_wind_lines_are_torn_off_in_front_of_the_dash() -> None:
     entity = _entity(200.0, 200.0)
     lines = spawn_dash_wind(Group(), entity)
 
-    assert len(lines) == fx.DASH_WIND_LINES
+    assert len(lines) == FxDash.WIND_LINES
     for line in lines:
         assert line.pos.x > entity.hitbox.centerx, "ahead of the dasher"
         assert line.velocity.x < 0.0, "and the air it tears off goes backwards"

@@ -7,6 +7,7 @@ import pytest
 from pygame.sprite import Group
 
 from src.core import fx
+from src.core.colors import FXColors
 from src.core.fx import (
     ShieldArcParticle,
     spawn_guard_arc,
@@ -14,6 +15,7 @@ from src.core.fx import (
 )
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.settings import FxGuard
 from src.core.settings import Guard as GuardSettings
 from src.entities.player import Player
 from tests.unit.helpers import InputStub, make_active_attacker
@@ -29,11 +31,11 @@ def test_the_block_arc_fades_and_reaps_itself() -> None:
     assert arc is not None
     group.add(arc)
 
-    arc.update(fx.SHIELD_ARC_TTL / 2.0)
+    arc.update(FxGuard.ARC_TTL / 2.0)
 
     assert arc.alive()
     assert 0 <= (arc.image.get_alpha() if arc.image else 255) < 255
-    arc.update(fx.SHIELD_ARC_TTL)
+    arc.update(FxGuard.ARC_TTL)
 
     assert not arc.alive()
     assert len(group) == 0
@@ -64,7 +66,7 @@ def test_a_perfect_block_is_the_same_ring_in_gold() -> None:
     assert arc is not None
     assert len(group) == 1
     assert arc.parried is True
-    assert arc.body == fx.FXColors.parry_spark
+    assert arc.body == FXColors.parry_spark
 
 
 def test_a_break_spawns_the_broken_ring() -> None:
@@ -78,7 +80,7 @@ def test_a_break_spawns_the_broken_ring() -> None:
     assert shatter is not None
     assert shatter.side == 1.0
     assert len(group) == 1
-    assert len(shatter.steps) == fx.SHATTER_ARC_STEPS
+    assert len(shatter.steps) == FxGuard.SHARD_STEPS
 
 
 def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:

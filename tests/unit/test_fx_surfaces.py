@@ -1,28 +1,31 @@
 """FX particles: which ones may rebuild their surface, and which may not.
 
-`src/core/fx.py` builds a particle's pixels once, at construction. A few of
+`src/core/fx/particles.py` builds a particle's pixels once, at construction. A few of
 them then pick a different surface per frame from a ladder they built
 alongside, and these tests pin which, because the difference is invisible in
 a screenshot and invisible in a frame time, and the mistake is easy to
 reintroduce by "tidying" an update method.
 """
 
+import math
 import os
+from collections.abc import Iterator
 
 import pygame
 import pytest
 
 from src.core.fx import (
-    DASH_TRAIL_TTL,
-    DIZZY_VORTEX_FRAMES,
     DashShockwaveParticle,
     DashTrailParticle,
     DizzyVortexParticle,
     DustParticle,
     OrbitParticle,
     clear_frame_cache,
+    spawners,
     vortex_frames,
 )
+from src.core.fx.particles import FxParticle, ShatterArcParticle
+from src.core.settings import FxDash, FxDizzy
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -31,6 +34,20 @@ def _display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((64, 64))
+
+
+@pytest.fixture(autouse=True)
+def _pinned_fx_rng() -> Iterator[None]:
+    """Fix the draw, because these tests assert on the pixels it produces.
+
+    Several spawners jitter from the FX module's own RNG, so which way a
+    puff lands or how a fragment scatters is a function of how many draws
+    the tests before them happened to make. Left alone that made a test here
+    pass on its own and fail in the full suite -- a result that is evidence
+    of the run's order rather than of the rule it claims to check.
+    """
+    spawners._fx_rng.seed(0xF00D)
+    yield
 
 
 def test_the_dash_trail_surface_is_built_once_and_only_faded() -> None:
@@ -52,11 +69,11 @@ def test_the_dash_trail_surface_is_built_once_and_only_faded() -> None:
 def test_the_trail_fade_matches_the_ttl_curve() -> None:
     """Freezing the surface must not freeze the fade with it."""
     particle = DashTrailParticle((0.0, 0.0), 1.0)
-    particle.max_ttl = DASH_TRAIL_TTL
+    particle.max_ttl = FxDash.TRAIL_TTL
 
-    particle.update(DASH_TRAIL_TTL * 0.5)
+    particle.update(FxDash.TRAIL_TTL * 0.5)
     halfway = particle.image.get_alpha()
-    particle.update(DASH_TRAIL_TTL * 0.25)
+    particle.update(FxDash.TRAIL_TTL * 0.25)
     later = particle.image.get_alpha()
 
     assert 0 < later < halfway < 255
@@ -76,7 +93,7 @@ def test_the_trail_still_follows_its_position() -> None:
 def test_a_trail_still_reaps_at_the_end_of_its_life() -> None:
     particle = DashTrailParticle((0.0, 0.0), 1.0)
 
-    particle.update(DASH_TRAIL_TTL + 1.0)
+    particle.update(FxDash.TRAIL_TTL + 1.0)
 
     assert particle.alive() is False
 
@@ -96,7 +113,7 @@ def test_a_swirl_picks_its_rotation_step_from_a_shared_ladder() -> None:
         particle.update(0.1)
         seen.append(particle.image)
 
-    assert len(frames) == DIZZY_VORTEX_FRAMES
+    assert len(frames) == FxDizzy.VORTEX_FRAMES
     assert len(set(seen)) > 1, "the swirl has to animate"
     assert all(any(step is frame for frame in frames) for step in seen), (
         "and every step it shows has to be one it built once"
@@ -152,3 +169,61 @@ def test_an_orbit_star_keeps_one_surface_and_moves_on_its_position() -> None:
     assert particle.image is original
     assert particle.pos.y != start_y, "the star has to move"
     assert particle.velocity == pygame.math.Vector2(0.0, 0.0), "and not by falling"
+
+
+def test_the_base_particle_cannot_be_drawn_on_its_own() -> None:
+    """`FxParticle` is a contract, not a shape.
+
+    It carries the physics, the fade and the budget plumbing, and refuses to
+    paint. A particle that forgot to override `_paint` would otherwise
+    inherit a surface of `None` and take the first `set_alpha` on it as a
+    crash somewhere further down, rather than here.
+    """
+    with pytest.raises(NotImplementedError):
+        FxParticle((0.0, 0.0), 1.0)
+
+
+def test_the_broken_ring_breaks_further_out_as_it_opens() -> None:
+    """The shatter arc is the one particle that redraws from a prebuilt ladder.
+
+    It has to open rather than fade: a guard that fails should look like the
+    same shield coming apart, which means the fragments travel further as the
+    ring opens. Indexing the fade instead would show the widest frame first
+    and shrink from there -- the failure inflating instead of breaking.
+
+    The ladder's surfaces are all the same size, by design: the span covers
+    the furthest a fragment can ever travel, and each step differs in what
+    is drawn inside it. So the claim is about the drawn extent, not the
+    surface.
+    """
+    shatter = ShatterArcParticle((40.0, 40.0), 1.0, seed=7)
+
+    def extent() -> int:
+        """The furthest radius from the centre that anything is drawn at.
+
+        Polarity matters: the fragments are spread over the whole ring, so
+        probing one ray would find a gap and report the ring as closed.
+        """
+        image = shatter.image
+        middle = image.get_width() / 2.0
+        limit = image.get_width() // 2 - 1
+        furthest = 0
+        for degree in range(0, 360, 2):
+            for radius in range(limit, 0, -1):
+                if image.get_at(
+                    (
+                        round(middle + radius * math.cos(math.radians(degree))),
+                        round(middle + radius * math.sin(math.radians(degree))),
+                    )
+                )[3]:
+                    furthest = max(furthest, radius)
+                    break
+        return furthest
+
+    reaches = []
+    for _ in range(6):
+        reaches.append(extent())
+        shatter.update(1 / 30)
+
+    assert reaches == sorted(reaches), "the fragments only ever travel further"
+    assert reaches[-1] > reaches[0], "and they did travel"

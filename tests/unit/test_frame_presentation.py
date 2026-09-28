@@ -12,9 +12,9 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.core import fx
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.viewport import Viewport
+from src.core.fx import clear_frame_cache, particles
 from src.core.game import Game
 from src.core.level.level import Level
 from src.core.rendering.camera import Camera
@@ -169,15 +169,15 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     library = shared_library()
     library._cache["sentinel"] = pygame.Surface((1, 1), pygame.SRCALPHA)
     library._frame_cache["sentinel"] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
-    fx._frames_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
-    fx._frames_miss = True
+    particles._frames_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
+    particles._frames_miss = True
 
     game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert library._cache == {}
     assert library._frame_cache == {}
-    assert fx._frames_cache is None
-    assert fx._frames_miss is False
+    assert particles._frames_cache is None
+    assert particles._frames_miss is False
 
 
 def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
@@ -196,13 +196,13 @@ def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
 
 def test_fx_frame_cache_forgets_a_missing_asset_tree() -> None:
     """A cleared miss must be retried, or the fallback art never comes back."""
-    fx._frames_cache = None
-    fx._frames_miss = True
+    particles._frames_cache = None
+    particles._frames_miss = True
 
-    fx.clear_frame_cache()
+    clear_frame_cache()
 
-    assert fx._frames_cache is None
-    assert fx._frames_miss is False
+    assert particles._frames_cache is None
+    assert particles._frames_miss is False
 
 
 def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) -> None:
@@ -235,3 +235,27 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
     assert rects, "a damaged enemy must get a bar"
     assert not hasattr(level.renderer, "add_overlay_rects")
+
+
+def test_the_debris_strip_answers_none_on_a_checkout_with_no_assets(
+    monkeypatch,
+) -> None:
+    """A bare clone must not raise once per particle per frame.
+
+    The frames are read through the shared library, which raises when the
+    directory is not there. Callers treat "no frames" as a reason to fall
+    back rather than as an error, but only if the miss is remembered -- an
+    unmemoized miss re-raises on every spawn, and spawning happens every
+    frame.
+    """
+    from src.core.settings import Dust
+
+    clear_frame_cache()
+    monkeypatch.setattr(Dust, "FRAMES_DIR", "assets/graphics/effects/not-a-real-directory")
+
+    assert particles.particle_frames() is None, "a missing tree is not an error"
+    assert particles.particle_frames() is None, "and the miss is remembered"
+
+    clear_frame_cache()
+    monkeypatch.undo()
+    assert particles.particle_frames() is not None, "the real strip still loads"
