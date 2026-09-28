@@ -7,6 +7,7 @@ import pytest
 from pygame.sprite import Group
 
 from src.core import fx
+from src.core.colors import FXColors
 from src.core.fx import (
     ShieldArcParticle,
     spawn_guard_arc,
@@ -65,7 +66,7 @@ def test_a_perfect_block_is_the_same_ring_in_gold() -> None:
     assert arc is not None
     assert len(group) == 1
     assert arc.parried is True
-    assert arc.body == fx.FXColors.parry_spark
+    assert arc.body == FXColors.parry_spark
 
 
 def test_a_break_spawns_the_broken_ring() -> None:

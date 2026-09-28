@@ -8,12 +8,11 @@ notice the next convenient effect that skips one, and they are written the way
 because the interesting case is the module that does not follow the rule,
 not the one that does.
 
-Five of the checks are `xfail(strict=True)`: each is a real violation the
-architecture review found, and each is on a fix list. Strict is the part that
-matters. When a fix makes one of them pass, the marker turns into an
-unexpected pass, the suite goes red, and the marker has to be removed by the
-commit that fixed it. A debt marker that can be left behind is not a debt
-marker.
+The checks that were real violations when the review found them started as
+`xfail(strict=True)`, and each was removed by the commit that fixed it. Strict
+was the part that mattered: when a fix made one pass, the marker turned into
+an unexpected pass, the suite went red, and the marker had to go. A debt
+marker that can be left behind is not a debt marker. There are none left.
 """
 
 from __future__ import annotations
@@ -24,7 +23,19 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FX_MODULE = REPO_ROOT / "src" / "core" / "fx.py"
+FX_PACKAGE = REPO_ROOT / "src" / "core" / "fx"
+FX_MODULE = FX_PACKAGE / "__init__.py"
+SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
+PARTICLES_MODULE = FX_PACKAGE / "particles.py"
+DRAW_MODULE = FX_PACKAGE / "draw.py"
+"""The three modules below the package root, in dependency order.
+
+The rules are split along the same lines the package is: the budgets and the
+particle classes live in one file each, so a check that says "the cap is
+known to one place" and a check that says "every particle declares a family"
+each have a single file to read.
+"""
+FX_MODULES = (DRAW_MODULE, PARTICLES_MODULE, SPAWNERS_MODULE, FX_MODULE)
 SOURCE_ROOTS = ("src", "tests", "tools")
 
 
@@ -37,8 +48,8 @@ def _python_files() -> list[Path]:
     return sorted(found)
 
 
-def _tree() -> ast.Module:
-    return ast.parse(FX_MODULE.read_text(encoding="utf-8"))
+def _tree(path: Path = FX_MODULE) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"))
 
 
 def _names_in_dunder_all(tree: ast.Module) -> set[str]:
@@ -53,24 +64,32 @@ def _names_in_dunder_all(tree: ast.Module) -> set[str]:
 
 
 def _fx_reexports() -> set[str]:
-    """The names a non-FX module reaches FX through, across the whole tree."""
+    """The names a non-FX module reaches FX through, across the whole tree.
+
+    Submodules are not part of this. `from src.core.fx import spawners` is a
+    caller choosing a layer, which the split invited on purpose; it says
+    nothing about whether the package root re-exports anything, and counting
+    it would make the surface check pass on names nobody went through the
+    root to get.
+    """
     reached: set[str] = set()
+    submodules = {path.stem for path in FX_MODULES}
     for path in _python_files():
-        if path == FX_MODULE:
+        if FX_PACKAGE in path.parents:
             continue
         source = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(source):
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
             if node.module.endswith("core.fx"):
-                reached.update(alias.name for alias in node.names)
+                reached.update(alias.name for alias in node.names if alias.name not in submodules)
             elif node.module == "src.core":
                 for alias in node.names:
                     if alias.name == "fx":
                         reached.update(
                             child.attr
                             for child in ast.walk(node)
-                            if isinstance(child, ast.Attribute)
+                            if isinstance(child, ast.Attribute) and child.attr not in submodules
                         )
     return reached
 
@@ -94,11 +113,6 @@ def _called_names(node: ast.AST) -> set[str]:
 # --- 1. __all__ is the surface people actually use -------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="FxParticle, ImpactDecalParticle, facing_side and particle_frames are "
-    "exported and reached by nobody. Cleared when the surface is reconciled.",
-)
 def test_every_exported_name_is_reached_from_outside_the_module() -> None:
     """A public name nothing reaches is a name nobody maintains.
 
@@ -115,11 +129,6 @@ def test_every_exported_name_is_reached_from_outside_the_module() -> None:
 # --- 2. and nothing outside is reached without being declared --------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="physics_system takes twelve undeclared tunables. Most move to "
-    "settings.py when the tuning is gathered; the rest join __all__.",
-)
 def test_every_name_taken_from_fx_is_exported() -> None:
     """An import that works but is not in `__all__` is a name nobody can find.
 
@@ -145,7 +154,9 @@ def test_every_spawner_checks_the_budget_before_adding() -> None:
     the coupling the cap exists to remove.
     """
     unchecked = [
-        spawner.name for spawner in _spawners(_tree()) if "_has_room" not in _called_names(spawner)
+        spawner.name
+        for spawner in _spawners(_tree(SPAWNERS_MODULE))
+        if "_has_room" not in _called_names(spawner)
     ]
     assert not unchecked, f"spawners that add particles with no budget check: {unchecked}"
 
@@ -162,19 +173,10 @@ def test_every_family_is_budgeted() -> None:
     spawner's budget call -- because a spawner asking for a budget that does
     not exist is the same bug wearing a different hat.
     """
-    tree = _tree()
     assigned: set[str] = set()
     asked_for: set[str] = set()
-    for node in ast.walk(tree):
+    for node in ast.walk(_tree(PARTICLES_MODULE)):
         if isinstance(node, ast.Call):
-            if (
-                isinstance(node.func, ast.Name)
-                and node.func.id == "_has_room"
-                and len(node.args) > 1
-                and isinstance(node.args[1], ast.Constant)
-                and isinstance(node.args[1].value, str)
-            ):
-                asked_for.add(node.args[1].value)
             continue
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
@@ -189,9 +191,21 @@ def test_every_family_is_budgeted() -> None:
             if named:
                 assigned.add(literal.value)
 
+    spawner_tree = _tree(SPAWNERS_MODULE)
+    for node in ast.walk(spawner_tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_has_room"
+            and len(node.args) > 1
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
+            asked_for.add(node.args[1].value)
+
     budgets = next(
         node.value
-        for node in tree.body
+        for node in spawner_tree.body
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
@@ -206,6 +220,7 @@ def test_every_family_is_budgeted() -> None:
 
     uncapped = (assigned | asked_for) - known
     assert assigned, "no family found: the walk above is looking for the wrong shape"
+    assert asked_for, "no budget check found: the walk above is looking for the wrong shape"
     assert not uncapped, f"families with no cap: {sorted(uncapped)}"
 
     unused = known - (assigned | asked_for)
@@ -221,15 +236,22 @@ def test_the_particle_cap_is_known_to_one_place() -> None:
 
     Scoped to `src`: a test is supposed to read the cap, since filling a
     group to it is how the cap gets tested at all.
+
+    Two files in the package are exempt. ``spawners.py`` owns it, and the
+    package root re-exports it, which is naming the cap rather than spending
+    it. Everything else in `src` is scanned, including the rest of the
+    package -- a cap checked in `particles.py` would be a second owner.
     """
     offenders: list[str] = []
+    exempt = {"spawners.py", "__init__.py"}
     for path in (REPO_ROOT / "src").rglob("*.py"):
-        if path == FX_MODULE or "__pycache__" in path.parts:
+        in_package = FX_PACKAGE in path.parents
+        if "__pycache__" in path.parts or (in_package and path.name in exempt):
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if "MAX_FX_SPRITES" in line:
                 offenders.append(f"{path.relative_to(REPO_ROOT)}:{number}")
-    assert not offenders, f"the particle cap enforced outside fx.py: {offenders}"
+    assert not offenders, f"the particle cap enforced outside the FX spawners: {offenders}"
 
 
 # --- 4b. tuning lives in settings, not in the module -----------------------
@@ -253,7 +275,7 @@ def test_the_module_declares_no_tuning_of_its_own() -> None:
     """
     allowed = {"MAX_FX_SPRITES", "FX_FAMILY_BUDGETS"}
     offenders: list[str] = []
-    for node in _tree().body:
+    for node in _tree(PARTICLES_MODULE).body + _tree(SPAWNERS_MODULE).body:
         if not isinstance(node, ast.Assign) or len(node.targets) != 1:
             continue
         target = node.targets[0]
@@ -263,7 +285,7 @@ def test_the_module_declares_no_tuning_of_its_own() -> None:
             continue
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, (int, float)):
             offenders.append(target.id)
-    assert not offenders, f"tuning declared in fx.py instead of settings: {offenders}"
+    assert not offenders, f"tuning declared in the FX package instead of settings: {offenders}"
 
 
 def test_the_tuning_classes_are_where_the_module_reads_them() -> None:
@@ -272,9 +294,11 @@ def test_the_tuning_classes_are_where_the_module_reads_them() -> None:
     Guards the other direction from the check above: the numbers have to
     arrive through the classes, not get re-typed beside their old home.
     """
-    source = FX_MODULE.read_text(encoding="utf-8")
+    source = "".join(
+        path.read_text(encoding="utf-8") for path in (PARTICLES_MODULE, SPAWNERS_MODULE)
+    )
     for class_name in ("FxDash", "FxGuard", "FxDizzy", "FxDecal"):
-        assert f"{class_name}." in source, f"{class_name} is not read by fx.py"
+        assert f"{class_name}." in source, f"{class_name} is not read by the FX package"
 
 
 # --- 5. the module never writes simulation state ---------------------------

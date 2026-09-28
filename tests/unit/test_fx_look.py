@@ -30,9 +30,10 @@ from src.core.fx import (
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
+    spawners,
 )
+from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
-from src.core.rendering.fx_draw import snap
 from src.core.rendering.renderer import Renderer
 from src.core.settings import Dust, FxDash, FxGuard
 from src.core.sprite_groups import SpriteGroups
@@ -56,7 +57,7 @@ def _pinned_fx_rng() -> Iterator[None]:
     own and fail in the full suite -- a result that is evidence of the run's
     order rather than of the rule it claims to check.
     """
-    fx._fx_rng.seed(0xF00D)
+    spawners._fx_rng.seed(0xF00D)
     yield
 
 

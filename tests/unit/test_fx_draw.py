@@ -3,7 +3,7 @@
 The whole game is magnified with nearest-neighbour scaling, so a primitive
 that returns half-pixels or a continuous alpha ramp is not a small imprecision
 here: it is a different look from the rest of the game. These tests pin the
-three rules every shape in `src/core/rendering/fx_draw.py` rests on.
+three rules every shape in `src/core/fx/draw.py` rests on.
 """
 
 import math
@@ -12,7 +12,7 @@ import os
 import pygame
 import pytest
 
-from src.core.rendering import fx_draw
+from src.core.fx import draw as fx_draw
 
 
 @pytest.fixture(scope="module", autouse=True)
