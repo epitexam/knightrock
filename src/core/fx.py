@@ -26,7 +26,6 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import pygame
@@ -46,22 +45,22 @@ from src.core.rendering.fx_draw import (
     life_level,
     polygon_bounds,
     snap,
+    spread_step,
     star_shape,
     streak_points,
 )
 from src.core.settings import Dust, Sweat
 
 __all__ = [
-    "BurstSpec",
     "DashShockwaveParticle",
     "DashTrailParticle",
     "DizzyVortexParticle",
     "DustParticle",
     "FxParticle",
+    "ShatterArcParticle",
     "ShieldArcParticle",
     "ImpactDecalParticle",
     "OrbitParticle",
-    "SparkParticle",
     "StreakParticle",
     "SweatParticle",
     "clear_frame_cache",
@@ -69,7 +68,6 @@ __all__ = [
     "facing_side",
     "iter_landing_entities",
     "particle_frames",
-    "spawn_break_burst",
     "spawn_dash_burst",
     "spawn_dash_shockwave",
     "spawn_dash_streak",
@@ -78,16 +76,13 @@ __all__ = [
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
     "spawn_guard_arc",
+    "spawn_shatter_arc",
     "spawn_impact_decal",
     "spawn_landing_dust",
     "spawn_sweat_drops",
     "vortex_frames",
 ]
 
-SPARK_TTL = 0.3
-SPARK_GRAVITY = 900.0
-SPARK_SIZE = 4.0
-BREAK_SPARK_COUNT = 12
 DIZZY_STAR_COUNT = 6
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 DIZZY_STAR_RADIUS = 26.0
@@ -143,6 +138,16 @@ SHIELD_ARC_RADIUS = 18.0
 SHIELD_ARC_TTL = 0.22
 SHIELD_ARC_FLASH = 42.0
 """Half-span, in degrees, of the bright kick along the side that took the hit."""
+SHARD_ARC_RADIUS = 20.0
+SHATTER_ARC_TTL = 0.3
+SHATTER_ARC_STEPS = 3
+SHATTER_ARC_BOLTS = 5
+SHATTER_ARC_BOLT_TEETH = 4
+SHATTER_ARC_GAP = 64.0
+"""Opening of the ring, in degrees, once it has given way."""
+SHATTER_ARC_REACH = 1.6
+SHATTER_ARC_BOLT_SPREAD = 22.0
+"""How far, in degrees, a bolt may wander from the gap's middle."""
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -293,64 +298,6 @@ class StreakParticle(FxParticle):
             FXColors.ink_cool,
             0,
         )
-
-
-class SparkParticle(FxParticle):
-    """A heavy shard thrown out of a broken guard.
-
-    The only thrown particle left in the game. Blocks are a ring and a parry
-    is the same ring in gold, so nothing flies out of a block any more, and a
-    break -- rare, loud, and about a guard that failed -- is the one event
-    that can afford a burst.
-    """
-
-    gravity: ClassVar[float] = SPARK_GRAVITY
-    fade_in: ClassVar[float] = 0.12
-
-    def __init__(
-        self,
-        pos: tuple[float, float] | Vector2,
-        velocity: tuple[float, float] | Vector2,
-        color: Color,
-        ttl: float = SPARK_TTL,
-        size: float = SPARK_SIZE,
-        core: Color | None = None,
-        elongation: float = 1.0,
-        ink: Color = FXColors.ink,
-    ) -> None:
-        self.color = color
-        self.core = core if core is not None else color
-        self.size = float(size)
-        self.elongation = max(1.0, float(elongation))
-        self.ink = ink
-        self.family = "break_burst"
-        super().__init__(pos, ttl)
-        self.velocity = Vector2(velocity)
-
-    def _paint(self) -> pygame.Surface:
-        return self._shard()
-
-    def _shard(self) -> pygame.Surface:
-        """A heavy triangle: three points, a fat waist, inked."""
-        reach = snap(self.size * self.elongation) * 2 + 6
-        surface = pygame.Surface((reach, reach), pygame.SRCALPHA)
-        middle = (reach / 2.0, reach / 2.0)
-        heading = math.atan2(self.velocity.y, self.velocity.x)
-        ink_shape(
-            surface,
-            star_shape(middle, self.size * self.elongation, self.size * 0.62, 3, heading),
-            self.color,
-            self.ink,
-            1,
-        )
-        ink_shape(
-            surface,
-            star_shape(middle, self.size * 0.5, self.size * 0.3, 3, heading),
-            self.core,
-            self.color,
-            0,
-        )
-        return surface
 
 
 class OrbitParticle(FxParticle):
@@ -592,6 +539,118 @@ class ShieldArcParticle(FxParticle):
             2,
         )
         return surface
+
+
+class ShatterArcParticle(FxParticle):
+    """The block's ring breaking apart, with electricity out of the wound.
+
+    The same ring as a blocked hit, and then the failure of it: the stroke
+    opens into a gap on the side that gave way, and bolts of current leap out
+    of that gap through steps, so the two events share a silhouette and only
+    differ in what happens to it. A break used to throw a fan of shards from
+    the middle of the fighter, which said nothing about the guard.
+
+    Three steps, pre-rendered: the arc is a handful of polylines and a break is
+    rare enough that building them per spawn is cheaper than remembering them.
+    """
+
+    fade_in: ClassVar[float] = 0.0
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        side: float,
+        ttl: float = SHATTER_ARC_TTL,
+        seed: int = 0,
+    ) -> None:
+        self.side = 1.0 if side >= 0.0 else -1.0
+        self.family = "shatter_arc"
+        self.steps = [
+            self._shatter(index / (SHATTER_ARC_STEPS - 1), seed)
+            for index in range(SHATTER_ARC_STEPS)
+        ]
+        super().__init__(pos, ttl)
+        self.image = self.steps[0]
+
+    def _bolt(
+        self,
+        surface: pygame.Surface,
+        middle: float,
+        start: float,
+        end: float,
+        reach: float,
+        rng: random.Random,
+        jag: float,
+    ) -> None:
+        """One jagged thread of current, from the gap out to ``reach``.
+
+        Both angles are relative to the side that gave way, so the bolts leave
+        the wound rather than the back of the ring.
+        """
+        facing = 0.0 if self.side >= 0.0 else 180.0
+        inner = SHARD_ARC_RADIUS + 1.0
+        from_x = middle + inner * math.cos(math.radians(facing + start))
+        from_y = middle + inner * math.sin(math.radians(facing + start))
+        from_point = (from_x, from_y)
+        to_x = middle + reach * math.cos(math.radians(facing + end))
+        to_y = middle + reach * math.sin(math.radians(facing + end))
+        delta_x, delta_y = to_x - from_point[0], to_y - from_point[1]
+        length = math.hypot(delta_x, delta_y) or 1.0
+        normal_x, normal_y = -delta_y / length, delta_x / length
+        points = [from_point]
+        for step in range(1, SHATTER_ARC_BOLT_TEETH):
+            along = step / SHATTER_ARC_BOLT_TEETH
+            offset = rng.uniform(-jag, jag) * (1 if step % 2 else -1)
+            points.append(
+                (
+                    from_point[0] + delta_x * along + normal_x * offset,
+                    from_point[1] + delta_y * along + normal_y * offset,
+                )
+            )
+        points.append((to_x, to_y))
+        snapped = [(snap(point[0]), snap(point[1])) for point in points]
+        pygame.draw.lines(surface, FXColors.break_spark, False, snapped, 2)
+        pygame.draw.lines(surface, FXColors.break_core, False, snapped, 1)
+
+    def _shatter(self, progress: float, seed: int) -> pygame.Surface:
+        """The ring at one moment of its failure, ``progress`` from 0 to 1."""
+        radius = snap(SHARD_ARC_RADIUS)
+        reach_limit = snap(radius * SHATTER_ARC_REACH) + 2
+        span = 2 * reach_limit + 4
+        surface = pygame.Surface((span, span), pygame.SRCALPHA)
+        middle = span / 2.0
+        rng = random.Random(seed * 977 + SHATTER_ARC_BOLTS)
+        facing = 0.0 if self.side >= 0.0 else 180.0
+        opening = SHATTER_ARC_GAP * (0.3 + 0.7 * progress)
+        first = facing + opening / 2.0
+        last = facing + 360.0 - opening / 2.0
+        draw_arc_stroke(
+            surface,
+            (snap(middle), snap(middle)),
+            radius,
+            first,
+            last,
+            FXColors.break_spark,
+            1,
+        )
+        reach = radius * SHATTER_ARC_REACH * (0.55 + 0.45 * progress)
+        for _ in range(SHATTER_ARC_BOLTS):
+            self._bolt(
+                surface,
+                middle,
+                rng.uniform(-opening / 2.0, opening / 2.0),
+                rng.uniform(-SHATTER_ARC_BOLT_SPREAD, SHATTER_ARC_BOLT_SPREAD),
+                reach,
+                rng,
+                1.5 + 2.5 * progress,
+            )
+        return surface
+
+    def _paint(self) -> pygame.Surface:
+        return self.steps[0]
+
+    def _integrate(self, delta_time: float) -> None:
+        self.image = self.steps[spread_step(self.life, len(self.steps), 0.7)]
 
 
 class SweatParticle(FxParticle):
@@ -1031,68 +1090,6 @@ def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailPar
     return trail
 
 
-@dataclass(frozen=True)
-class BurstSpec:
-    """The look of an impact burst, as data."""
-
-    colors: tuple[Color, ...]
-    core: Color
-    count: int
-    speed: tuple[float, float]
-    cone: float
-    tilt: float = 0.0
-    size: float = SPARK_SIZE
-    elongation: float = 1.0
-    ttl: float = SPARK_TTL
-    ink: Color = FXColors.ink
-
-
-BREAK_BURST = BurstSpec(
-    colors=(FXColors.break_spark, Colors.orange),
-    core=FXColors.break_core,
-    count=BREAK_SPARK_COUNT,
-    speed=(380.0, 300.0),
-    cone=80.0,
-    size=SPARK_SIZE * 1.5,
-    elongation=1.6,
-    ttl=SPARK_TTL + 0.12,
-    ink=FXColors.ink_warm,
-)
-
-
-def _spawn_burst(
-    fx_group: pygame.sprite.Group,
-    entity: Any,
-    spec: BurstSpec,
-    origin: tuple[float, float] | None = None,
-) -> list[SparkParticle]:
-    """Throw ``spec.count`` sparks in a one-sided cone from the contact point."""
-    if getattr(entity, "hitbox", None) is None or spec.count <= 0:
-        return []
-    if not _has_room(fx_group):
-        return []
-    rng = _puff_rng(entity)
-    facing = 0.0 if facing_side(entity) >= 0.0 else math.pi
-    start = _contact_point(entity, origin)
-    sparks: list[SparkParticle] = []
-    for index in range(spec.count):
-        angle = facing + math.radians(spec.tilt + rng.uniform(-spec.cone, spec.cone))
-        pace = rng.uniform(*spec.speed)
-        spark = SparkParticle(
-            start + Vector2((rng.uniform(-5.0, 5.0), rng.uniform(-8.0, 8.0))),
-            (math.cos(angle) * pace, math.sin(angle) * pace),
-            spec.colors[index % len(spec.colors)],
-            ttl=spec.ttl,
-            size=spec.size * rng.uniform(0.8, 1.2),
-            core=spec.core,
-            elongation=spec.elongation * rng.uniform(0.75, 1.35),
-            ink=spec.ink,
-        )
-        fx_group.add(spark)
-        sparks.append(spark)
-    return sparks
-
-
 def spawn_guard_arc(
     fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
 ) -> ShieldArcParticle | None:
@@ -1116,13 +1113,28 @@ def spawn_guard_arc(
     return arc
 
 
-def spawn_break_burst(
-    fx_group: pygame.sprite.Group,
-    entity: Any,
-    origin: tuple[float, float] | None = None,
-) -> list[SparkParticle]:
-    """The burst when a guard breaks: heavier shards, in the break colour."""
-    return _spawn_burst(fx_group, entity, BREAK_BURST, origin)
+def spawn_shatter_arc(
+    fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
+) -> ShatterArcParticle | None:
+    """The ring breaking, on the side the guard gave way on.
+
+    Stands where the block's ring stands and does the same job with the same
+    silhouette: a guard that failed is the same shield, on the way out.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if not _has_room(fx_group):
+        return None
+    side = facing_side(entity)
+    rng = _puff_rng(entity)
+    shatter = ShatterArcParticle(
+        (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
+        side,
+        seed=rng.randrange(1 << 16),
+    )
+    fx_group.add(shatter)
+    return shatter
 
 
 def spawn_dizzy_stars(

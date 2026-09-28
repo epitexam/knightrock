@@ -5,6 +5,7 @@ reveal: which plane a mark is painted in, where a burst is thrown from, and
 that a big burst cannot starve the effects that have to keep animating.
 """
 
+import math
 import os
 from types import SimpleNamespace
 
@@ -22,7 +23,6 @@ from src.core.fx import (
     DustParticle,
     OrbitParticle,
     ShieldArcParticle,
-    SparkParticle,
     spawn_dash_trail,
     spawn_dash_wind,
     spawn_guard_arc,
@@ -30,6 +30,7 @@ from src.core.fx import (
     spawn_landing_dust,
 )
 from src.core.rendering.camera import Camera
+from src.core.rendering.fx_draw import snap
 from src.core.rendering.renderer import Renderer
 from src.core.settings import Dust
 from src.core.sprite_groups import SpriteGroups
@@ -56,7 +57,7 @@ def test_dust_is_painted_under_the_moving_plane() -> None:
     puff = DustParticle((0.0, 0.0), (0.0, 0.0))
 
     assert puff.behind is True
-    assert SparkParticle((0.0, 0.0), (0.0, 0.0), (255, 255, 255)).behind is False
+    assert ShieldArcParticle((0.0, 0.0), 1.0).behind is False
 
 
 def _make_renderer() -> tuple[Renderer, SpriteGroups]:
@@ -82,7 +83,7 @@ def test_ground_marks_are_queued_before_the_entities_and_sparks_after() -> None:
     walker.image = pygame.Surface((8, 8), pygame.SRCALPHA)
     walker.rect = pygame.Rect(200, 300, 8, 8)
     groups.all_sprites.add(walker)
-    spark = SparkParticle((300.0, 300.0), (10.0, 10.0), (255, 200, 60))
+    spark = fx.spawn_dizzy_stars(groups.fx_sprites, _entity(300.0, 300.0))[0]
     groups.fx_sprites.add(spark)
 
     blits = renderer._collect_visible_blits(groups)
@@ -207,7 +208,6 @@ def test_a_block_spawns_the_ring_and_no_particles() -> None:
     spawn_guard_arc(group, _entity())
 
     assert len(group) == 1
-    assert not any(isinstance(sprite, SparkParticle) for sprite in group)
     assert not any(isinstance(sprite, OrbitParticle) for sprite in group)
 
 
@@ -217,12 +217,73 @@ def test_only_the_dizzy_state_produces_stars() -> None:
     It used to be the guard and parry spark shape too, which put six gold
     stars on screen on every exchange in a fight.
     """
-    entity = _entity()
-    stars = fx.spawn_dizzy_stars(Group(), entity)
-    shards = fx.spawn_break_burst(Group(), entity)
+    stars = fx.spawn_dizzy_stars(Group(), _entity())
+    shatter = fx.spawn_shatter_arc(Group(), _entity())
 
     assert stars and all(isinstance(star, OrbitParticle) for star in stars)
-    assert shards and not any(isinstance(shard, OrbitParticle) for shard in shards)
+    assert shatter is not None
+    assert not any(isinstance(step, OrbitParticle) for step in shatter.steps)
+
+
+def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
+    """The failing guard is the same shield on the way out, not a new effect.
+
+    It used to throw a fan of triangles from the middle of the fighter, which
+    said nothing about the guard at all.
+    """
+    group = Group()
+
+    shatter = fx.spawn_shatter_arc(group, _entity())
+
+    assert shatter is not None
+    assert len(group) == 1
+    assert type(group.sprites()[0]).__name__ == "ShatterArcParticle"
+
+
+def test_the_ring_tears_open_towards_the_side_that_failed() -> None:
+    """The gap is the point of the effect, and it has to be on the hit side.
+
+    A ring that stayed closed while bolts left it would be a ring with
+    sparks on it, which is what this replaced.
+    """
+    right = fx.spawn_shatter_arc(Group(), _entity(facing=True))
+    left = fx.spawn_shatter_arc(Group(), _entity(facing=False))
+    assert right is not None and left is not None
+
+    def gap_angles(shatter, step: int) -> list[float]:
+        """The angles at which the ring's own radius carries no stroke.
+
+        Measured on the band of pixels the ring occupies, so the bolts -- which
+        start one pixel outside it and are drawn in the same colour -- cannot
+        fill a gap that is not there.
+        """
+        image = shatter.steps[step]
+        width, height = image.get_size()
+        centre = width / 2.0
+        radius = fx.SHARD_ARC_RADIUS
+        gaps = []
+        for degree in range(360):
+            angle = math.radians(degree)
+            band = [
+                (
+                    snap(centre + (radius + offset) * math.cos(angle)),
+                    snap(centre + (radius + offset) * math.sin(angle)),
+                )
+                for offset in (-1.0, 0.0, 1.0)
+            ]
+            if not any(image.get_at(point)[:3] == FXColors.break_spark for point in band):
+                gaps.append(degree)
+        return gaps
+
+    opening = gap_angles(right, -1)
+    mirrored = gap_angles(left, -1)
+    early = gap_angles(right, 0)
+
+    assert opening, "the ring has to come apart"
+    assert len(early) < len(opening), "and more of it on the last step than the first"
+    assert min(abs(degree - 0) for degree in opening) < 30, "the gap faces the hit"
+    assert min(abs(degree - 180) for degree in opening) > 120, "and nowhere else"
+    assert min(abs(degree - 180) for degree in mirrored) < 30, "mirrored with the facing"
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:

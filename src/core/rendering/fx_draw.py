@@ -81,7 +81,7 @@ def disc(
 
 def draw_arc_stroke(
     surface: pygame.Surface,
-    at: tuple[int, int],
+    at: tuple[float, float],
     radius: int,
     start: float,
     stop: float,

@@ -8,11 +8,9 @@ from pygame.sprite import Group
 
 from src.core import fx
 from src.core.fx import (
-    OrbitParticle,
     ShieldArcParticle,
-    SparkParticle,
-    spawn_break_burst,
     spawn_guard_arc,
+    spawn_shatter_arc,
 )
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
@@ -25,18 +23,19 @@ def _entity() -> SimpleNamespace:
     return SimpleNamespace(hitbox=pygame.FRect(100, 100, 40, 48))
 
 
-def test_spark_fades_and_reaps_itself() -> None:
+def test_the_block_arc_fades_and_reaps_itself() -> None:
     group = Group()
-    spark = SparkParticle((10.0, 10.0), (100.0, -50.0), (255, 255, 255))
-    group.add(spark)
+    arc = spawn_guard_arc(group, _entity())
+    assert arc is not None
+    group.add(arc)
 
-    spark.update(fx.SPARK_TTL / 2.0)
+    arc.update(fx.SHIELD_ARC_TTL / 2.0)
 
-    assert spark.alive()
-    assert 0 <= (spark.image.get_alpha() if spark.image else 255) < 255
-    spark.update(fx.SPARK_TTL)
+    assert arc.alive()
+    assert 0 <= (arc.image.get_alpha() if arc.image else 255) < 255
+    arc.update(fx.SHIELD_ARC_TTL)
 
-    assert not spark.alive()
+    assert not arc.alive()
     assert len(group) == 0
 
 
@@ -68,24 +67,29 @@ def test_a_perfect_block_is_the_same_ring_in_gold() -> None:
     assert arc.body == fx.FXColors.parry_spark
 
 
-def test_a_break_still_throws_shards() -> None:
-    """A broken guard is a different event and keeps its own burst."""
+def test_a_break_spawns_the_broken_ring() -> None:
+    """The ring coming apart, on the side the guard gave way on."""
     entity = _entity()
+    entity.facing_right = True
+    group = Group()
 
-    assert len(spawn_break_burst(Group(), entity)) == fx.BREAK_SPARK_COUNT
-    assert not any(
-        isinstance(sprite, OrbitParticle) for sprite in spawn_break_burst(Group(), entity)
-    )
+    shatter = spawn_shatter_arc(group, entity)
+
+    assert shatter is not None
+    assert shatter.side == 1.0
+    assert len(group) == 1
+    assert len(shatter.steps) == fx.SHATTER_ARC_STEPS
 
 
 def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
     full = Group()
     for _ in range(fx.MAX_FX_SPRITES):
-        full.add(SparkParticle((0.0, 0.0), (0.0, 0.0), (255, 255, 255)))
+        full.add(ShieldArcParticle((0.0, 0.0), 1.0))
 
     assert spawn_guard_arc(full, _entity()) is None
+    assert spawn_shatter_arc(full, _entity()) is None
     assert spawn_guard_arc(Group(), SimpleNamespace()) is None
-    assert spawn_break_burst(Group(), SimpleNamespace()) == []
+    assert spawn_shatter_arc(Group(), SimpleNamespace()) is None
 
 
 def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:

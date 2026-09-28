@@ -279,14 +279,14 @@ class GameplayLoop:
 
     def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
         from src.core.fx import (  # noqa: PLC0415
-            spawn_break_burst,
             spawn_guard_arc,
+            spawn_shatter_arc,
         )
 
         if event.kind == "parry":
             spawn_guard_arc(fx_group, event.target, parried=True)
         elif event.kind == "break":
-            spawn_break_burst(fx_group, event.target, event.point)
+            spawn_shatter_arc(fx_group, event.target)
         elif event.kind == "stun":
             return
         else:
