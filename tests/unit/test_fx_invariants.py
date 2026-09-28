@@ -18,7 +18,6 @@ marker that can be left behind is not a debt marker. There are none left.
 from __future__ import annotations
 
 import ast
-from functools import cache
 from pathlib import Path
 
 import pytest
@@ -325,12 +324,22 @@ def test_every_fx_setting_is_read_somewhere() -> None:
     assert not unread, f"FX settings nothing reads: {unread}"
 
 
-@cache
 def _settings_read_in_src() -> set[tuple[str, str]]:
-    """Every `Class.name` read on a settings class anywhere in `src`, once.
+    """Every `Class.name` read on a settings class anywhere in `src`.
 
-    Cached because the naive form re-parses the tree once per name, which
-    turned a second-long file into a forty-second one.
+    Scoped to `src` and not the whole tree, so a setting that only a test
+    reads does not count: the question is whether the game uses the knob, and
+    a test asserting on a number is not the game using it.
+
+    Not cached, on purpose. This is called once, from the one test that needs
+    it, and it costs about half a second -- so there is no second call for a
+    cache to serve. It was here while this function re-parsed the tree once
+    per setting name, which is what took the file from two seconds to
+    forty-five; the fix for that was to build the set in one pass, and the
+    decorator was left behind. A cache here would also mean this function's
+    answer could outlive the source it read, which for a check whose whole
+    job is to report on the source is the wrong shape. Re-reading 0.4s of
+    tree per run is the cheap option.
     """
     read: set[tuple[str, str]] = set()
     for path in (REPO_ROOT / "src").rglob("*.py"):
