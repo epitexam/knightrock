@@ -53,7 +53,7 @@ from src.core.rendering.fx_draw import (
     star_shape,
     streak_points,
 )
-from src.core.settings import Dust, Sweat
+from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Sweat
 
 __all__ = [
     "DashShockwaveParticle",
@@ -89,19 +89,14 @@ __all__ = [
     "vortex_frames",
 ]
 
-DIZZY_STAR_COUNT = 6
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
-DIZZY_STAR_RADIUS = 26.0
-DIZZY_STAR_SPEED = 2.4
-DIZZY_STAR_TTL = 1.2
-DIZZY_STAR_SPAWN_EVERY = 0.5
-DIZZY_STAR_BATCH = 2
-DUST_RADIUS = 5.0
-DUST_RISE = -60.0
-DUST_DRAG = 4.0
-DASH_BURST_COUNT = 10
-DASH_WIND_LINES = 2
+"""The palette a star is drawn from, cycling. A colour list rather than one
+colour so a ring of six does not read as six identical marks."""
+
 MAX_FX_SPRITES = 64
+"""The whole plane's ceiling. The per-family table below is what keeps any
+one effect from spending it all."""
+
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "dash_trail": 26,
     "landing_dust": 16,
@@ -128,48 +123,6 @@ Every family a particle declares is in here; ``test_fx_invariants`` reads the
 source to keep it that way, because the key is a string and a typo would
 otherwise mean a particle spending from a budget that does not exist.
 """
-PARTICLE_FRAMES_DIR = "assets/graphics/effects/particle"
-PARTICLE_FRAME_SCALE = 2.0
-STREAK_TTL = 0.22
-STREAK_THICKNESS = 3.0
-WIND_THICKNESS = 2.0
-SWEAT_OUTLINE_WIDTH = 2
-SWEAT_RADIUS = 5.0
-SWEAT_MARGIN = 2
-SWEAT_POP_UP = -110.0
-SWEAT_GRAVITY = 620.0
-SWEAT_SPREAD = 0.12
-DIZZY_VORTEX_TTL = 0.5
-DIZZY_VORTEX_SPAWN_EVERY = 0.12
-DIZZY_VORTEX_RADIUS = 16.0
-DIZZY_VORTEX_FRAMES = 6
-DIZZY_VORTEX_ARMS = 3
-DASH_SHOCKWAVE_RADIUS = 44.0
-DASH_SHOCKWAVE_TTL = 0.18
-DASH_SHOCKWAVE_STEPS = 5
-DASH_TRAIL_LENGTH = 35.0
-DASH_TRAIL_WIDTH = 6.0
-DASH_TRAIL_TTL = 0.15
-DASH_TRAIL_SPAWN_EVERY = 0.015
-DECAL_RADIUS = 22.0
-DECAL_TTL = 0.28
-SHIELD_ARC_RADIUS = 18.0
-SHIELD_ARC_TTL = 0.22
-SHIELD_ARC_FLASH = 42.0
-"""Half-span, in degrees, of the bright kick along the side that took the hit."""
-SHARD_ARC_RADIUS = 20.0
-SHATTER_ARC_TTL = 0.3
-SHATTER_ARC_STEPS = 3
-SHATTER_ARC_PIECES = 18
-SHATTER_ARC_KICK_PIECES = 9
-SHATTER_ARC_SPREAD = 0.3
-"""How far the fragments travel outward, as a share of the ring's radius."""
-SHATTER_ARC_WOUND = 70.0
-"""Angular width, in degrees, of the side the guard gave way on."""
-SHATTER_ARC_WOUND_PUSH = 0.9
-"""Extra travel for the pieces that were on the wound."""
-SHATTER_ARC_SHRINK = 0.3
-"""How much each piece shortens as it flies."""
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -241,8 +194,8 @@ class DustParticle(FxParticle):
     copies once, at construction.
     """
 
-    gravity: ClassVar[float] = DUST_RISE
-    drag: ClassVar[float] = DUST_DRAG
+    gravity: ClassVar[float] = Dust.RISE
+    drag: ClassVar[float] = Dust.DRAG
     fade_in: ClassVar[float] = 0.15
     behind: ClassVar[bool] = True
 
@@ -251,7 +204,7 @@ class DustParticle(FxParticle):
         pos: tuple[float, float] | Vector2,
         velocity: tuple[float, float] | Vector2,
         ttl: float = Dust.TTL,
-        radius: float = DUST_RADIUS,
+        radius: float = Dust.PUFF_RADIUS,
         frames: list[pygame.Surface] | None = None,
     ) -> None:
         self.radius = float(radius)
@@ -261,8 +214,8 @@ class DustParticle(FxParticle):
                 pygame.transform.scale(
                     frame,
                     (
-                        max(1, int(frame.get_width() * PARTICLE_FRAME_SCALE)),
-                        max(1, int(frame.get_height() * PARTICLE_FRAME_SCALE)),
+                        max(1, int(frame.get_width() * Dust.FRAME_SCALE)),
+                        max(1, int(frame.get_height() * Dust.FRAME_SCALE)),
                     ),
                 )
                 for frame in frames
@@ -309,8 +262,8 @@ class StreakParticle(FxParticle):
         pos: tuple[float, float] | Vector2,
         velocity: tuple[float, float] | Vector2,
         length: float = 24.0,
-        ttl: float = STREAK_TTL,
-        thickness: float = STREAK_THICKNESS,
+        ttl: float = FxDash.STREAK_TTL,
+        thickness: float = FxDash.STREAK_THICKNESS,
     ) -> None:
         self.length = float(length)
         self.thickness = float(thickness)
@@ -428,14 +381,14 @@ class DizzyVortexParticle(FxParticle):
 
     fade_in: ClassVar[float] = 0.1
 
-    def __init__(self, pos: tuple[float, float] | Vector2, ttl: float = DIZZY_VORTEX_TTL) -> None:
+    def __init__(self, pos: tuple[float, float] | Vector2, ttl: float = FxDizzy.VORTEX_TTL) -> None:
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
         return vortex_frames()[0]
 
     def _integrate(self, delta_time: float) -> None:
-        self.image = vortex_frames()[life_level(self.life, 0.0, DIZZY_VORTEX_FRAMES)]
+        self.image = vortex_frames()[life_level(self.life, 0.0, FxDizzy.VORTEX_FRAMES)]
 
 
 class DashShockwaveParticle(FxParticle):
@@ -452,7 +405,7 @@ class DashShockwaveParticle(FxParticle):
     def __init__(
         self,
         pos: tuple[float, float] | Vector2,
-        ttl: float = DASH_SHOCKWAVE_TTL,
+        ttl: float = FxDash.SHOCKWAVE_TTL,
     ) -> None:
         self.steps = _shockwave_steps()
         super().__init__(pos, ttl)
@@ -481,10 +434,10 @@ class DashTrailParticle(FxParticle):
         self,
         pos: tuple[float, float] | Vector2,
         direction: float,
-        ttl: float = DASH_TRAIL_TTL,
+        ttl: float = FxDash.TRAIL_TTL,
         curve: float = 6.0,
-        length: float = DASH_TRAIL_LENGTH,
-        width: float = DASH_TRAIL_WIDTH,
+        length: float = FxDash.TRAIL_LENGTH,
+        width: float = FxDash.TRAIL_WIDTH,
     ) -> None:
         self.direction = direction
         self.curve = float(curve)
@@ -521,8 +474,8 @@ class ImpactDecalParticle(FxParticle):
     def __init__(
         self,
         pos: tuple[float, float] | Vector2,
-        ttl: float = DECAL_TTL,
-        width: float = DECAL_RADIUS,
+        ttl: float = FxDecal.TTL,
+        width: float = FxDecal.RADIUS,
     ) -> None:
         self.width = float(width)
         super().__init__(pos, ttl)
@@ -563,7 +516,7 @@ class ShieldArcParticle(FxParticle):
         pos: tuple[float, float] | Vector2,
         side: float,
         parried: bool = False,
-        ttl: float = SHIELD_ARC_TTL,
+        ttl: float = FxGuard.ARC_TTL,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
         self.body = FXColors.parry_spark if parried else FXColors.shield_arc
@@ -578,7 +531,7 @@ class ShieldArcParticle(FxParticle):
         ignores its start and stop angles and closes the loop whatever they
         say -- every set of spans handed to it produced the same full ring.
         """
-        radius = snap(SHIELD_ARC_RADIUS)
+        radius = snap(FxGuard.ARC_RADIUS)
         side = 2 * radius + 4
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
         middle = side / 2.0
@@ -588,8 +541,8 @@ class ShieldArcParticle(FxParticle):
             surface,
             (snap(middle), snap(middle)),
             radius,
-            facing - SHIELD_ARC_FLASH,
-            facing + SHIELD_ARC_FLASH,
+            facing - FxGuard.ARC_FLASH,
+            facing + FxGuard.ARC_FLASH,
             self.kick,
             2,
         )
@@ -617,13 +570,13 @@ class ShatterArcParticle(FxParticle):
         self,
         pos: tuple[float, float] | Vector2,
         side: float,
-        ttl: float = SHATTER_ARC_TTL,
+        ttl: float = FxGuard.SHARD_TTL,
         seed: int = 0,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
         self.steps = [
-            self._shatter(index / (SHATTER_ARC_STEPS - 1), seed)
-            for index in range(SHATTER_ARC_STEPS)
+            self._shatter(index / (FxGuard.SHARD_STEPS - 1), seed)
+            for index in range(FxGuard.SHARD_STEPS)
         ]
         super().__init__(pos, ttl)
         self.image = self.steps[0]
@@ -650,41 +603,41 @@ class ShatterArcParticle(FxParticle):
 
     def _shatter(self, progress: float, seed: int) -> pygame.Surface:
         """The ring at one moment of its failure, ``progress`` from 0 to 1."""
-        radius = snap(SHARD_ARC_RADIUS)
+        radius = snap(FxGuard.SHARD_RADIUS)
         # Radius plus the furthest a piece can travel, or the circle is drawn
         # off the edge of its own surface.
-        reach = snap(radius * (1.0 + SHATTER_ARC_SPREAD * (1.0 + SHATTER_ARC_WOUND_PUSH)))
+        reach = snap(radius * (1.0 + FxGuard.SHARD_SPREAD * (1.0 + FxGuard.SHARD_WOUND_PUSH)))
         span = 2 * (reach + 2)
         surface = pygame.Surface((span, span), pygame.SRCALPHA)
         middle = span / 2.0
-        rng = random.Random(seed * 977 + SHATTER_ARC_PIECES)
+        rng = random.Random(seed * 977 + FxGuard.SHARD_PIECES)
         facing = 0.0 if self.side >= 0.0 else 180.0
-        spread = SHATTER_ARC_SPREAD * progress
+        spread = FxGuard.SHARD_SPREAD * progress
 
-        slot = 360.0 / SHATTER_ARC_PIECES
-        for index in range(SHATTER_ARC_PIECES):
+        slot = 360.0 / FxGuard.SHARD_PIECES
+        for index in range(FxGuard.SHARD_PIECES):
             centre = facing + index * slot + slot / 2.0
-            on_wound = _angle_near(centre, facing, SHATTER_ARC_WOUND)
-            thrown = spread * (1.0 + SHATTER_ARC_WOUND_PUSH * on_wound) * rng.uniform(0.4, 1.0)
+            on_wound = _angle_near(centre, facing, FxGuard.SHARD_WOUND)
+            thrown = spread * (1.0 + FxGuard.SHARD_WOUND_PUSH * on_wound) * rng.uniform(0.4, 1.0)
             self._fragment(
                 surface,
                 middle,
                 centre,
-                slot / 2.0 * (1.0 - SHATTER_ARC_SHRINK * progress),
+                slot / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * progress),
                 radius + radius * thrown,
                 FXColors.break_spark,
             )
 
-        fine = SHIELD_ARC_FLASH
-        piece = fine / SHATTER_ARC_KICK_PIECES
-        for index in range(SHATTER_ARC_KICK_PIECES):
+        fine = FxGuard.ARC_FLASH
+        piece = fine / FxGuard.SHARD_KICK_PIECES
+        for index in range(FxGuard.SHARD_KICK_PIECES):
             centre = facing - fine / 2.0 + piece * (index + 0.5)
-            thrown = spread * (1.0 + SHATTER_ARC_WOUND_PUSH) * rng.uniform(0.6, 1.4)
+            thrown = spread * (1.0 + FxGuard.SHARD_WOUND_PUSH) * rng.uniform(0.6, 1.4)
             self._fragment(
                 surface,
                 middle,
                 centre,
-                piece / 2.0 * (1.0 - SHATTER_ARC_SHRINK * 1.3 * progress),
+                piece / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * 1.3 * progress),
                 radius + radius * thrown,
                 FXColors.break_core,
             )
@@ -718,7 +671,7 @@ class SweatParticle(FxParticle):
     glossed: it has to read as a bead of liquid at gameplay distance.
     """
 
-    gravity: ClassVar[float] = SWEAT_GRAVITY
+    gravity: ClassVar[float] = Sweat.GRAVITY
     fade_in: ClassVar[float] = 0.1
 
     def __init__(
@@ -726,7 +679,7 @@ class SweatParticle(FxParticle):
         pos: tuple[float, float] | Vector2,
         velocity: tuple[float, float] | Vector2,
         ttl: float = Sweat.TTL,
-        radius: float = SWEAT_RADIUS,
+        radius: float = Sweat.RADIUS,
         tint: float = 0.0,
     ) -> None:
         self.radius = float(radius)
@@ -736,8 +689,8 @@ class SweatParticle(FxParticle):
 
     def _paint(self) -> pygame.Surface:
         radius = int(self.radius)
-        outline = SWEAT_OUTLINE_WIDTH
-        margin = SWEAT_MARGIN
+        outline = Sweat.OUTLINE_WIDTH
+        margin = Sweat.MARGIN
         width = 2 * (radius + outline + margin)
         height = radius + 2 * radius + 2 * outline + 2 * margin
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -804,11 +757,11 @@ def _shockwave_steps() -> list[pygame.Surface]:
     if _shockwave_cache:
         return _shockwave_cache
     steps: list[pygame.Surface] = []
-    for index in range(DASH_SHOCKWAVE_STEPS):
-        scale = 0.3 + 0.7 * (index / max(1, DASH_SHOCKWAVE_STEPS - 1))
-        rx = DASH_SHOCKWAVE_RADIUS * scale
+    for index in range(FxDash.SHOCKWAVE_STEPS):
+        scale = 0.3 + 0.7 * (index / max(1, FxDash.SHOCKWAVE_STEPS - 1))
+        rx = FxDash.SHOCKWAVE_RADIUS * scale
         ry = rx * 0.4
-        rim = max(1, round(4 - 3 * (index / max(1, DASH_SHOCKWAVE_STEPS - 1))))
+        rim = max(1, round(4 - 3 * (index / max(1, FxDash.SHOCKWAVE_STEPS - 1))))
         wide = snap(rx) * 2 + rim + 4
         flat = snap(ry) * 2 + rim + 4
         surface = pygame.Surface((wide, flat), pygame.SRCALPHA)
@@ -845,7 +798,7 @@ def particle_frames() -> list[pygame.Surface] | None:
     if _frames_miss:
         return None
     try:
-        _frames_cache = shared_library().frames(PARTICLE_FRAMES_DIR)
+        _frames_cache = shared_library().frames(Dust.FRAMES_DIR)
         return _frames_cache
     except FileNotFoundError:
         _frames_miss = True
@@ -865,15 +818,15 @@ def vortex_frames() -> list[pygame.Surface]:
     global _vortex_cache
     if _vortex_cache:
         return _vortex_cache
-    radius = DIZZY_VORTEX_RADIUS
+    radius = FxDizzy.VORTEX_RADIUS
     side = 2 * (snap(radius) + 4)
     middle = (side / 2.0, side / 2.0)
     frames: list[pygame.Surface] = []
-    for step in range(DIZZY_VORTEX_FRAMES):
-        turn = step * 2.0 * math.pi / DIZZY_VORTEX_FRAMES
+    for step in range(FxDizzy.VORTEX_FRAMES):
+        turn = step * 2.0 * math.pi / FxDizzy.VORTEX_FRAMES
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        for arm in range(DIZZY_VORTEX_ARMS):
-            heading = turn + arm * 2.0 * math.pi / DIZZY_VORTEX_ARMS
+        for arm in range(FxDizzy.VORTEX_ARMS):
+            heading = turn + arm * 2.0 * math.pi / FxDizzy.VORTEX_ARMS
             reach = radius * (0.42 + 0.2 * (arm % 2))
             arm_surface = inked_polygon(
                 streak_points((0, 0), reach, 3.0, heading, reach * 0.4),
@@ -950,7 +903,8 @@ def _has_room(fx_group: pygame.sprite.Group, family: str | None = None) -> bool:
 
 def _landing_strength(impact: float) -> float:
     """How big a landing reads, from the fall speed that caused it."""
-    return min(2.2, max(0.6, float(impact) / (Dust.MIN_FALL_SPEED * 1.6)))
+    low, high = Dust.STRENGTH_RANGE
+    return min(high, max(low, float(impact) / (Dust.MIN_FALL_SPEED * Dust.STRENGTH_PER_FALL)))
 
 
 def spawn_landing_dust(
@@ -974,13 +928,14 @@ def spawn_landing_dust(
     for index in range(Dust.COUNT):
         side = index - (Dust.COUNT - 1) / 2.0
         velocity = (
-            side * 55.0 * strength + rng.uniform(-20.0, 20.0),
-            -abs(rng.uniform(60.0, 160.0)) * strength - (40.0 if index % 2 == 0 else 0.0),
+            side * Dust.SPREAD * strength + rng.uniform(-Dust.SPREAD_JITTER, Dust.SPREAD_JITTER),
+            -abs(rng.uniform(*Dust.RISE_RANGE)) * strength
+            - (Dust.RISE_ALTERNATE if index % 2 == 0 else 0.0),
         )
         puff = DustParticle(
             (hitbox.centerx + side * 4.0, hitbox.bottom - 2.0),
             velocity,
-            radius=DUST_RADIUS * strength + rng.uniform(0.0, 3.0),
+            radius=Dust.PUFF_RADIUS * strength + rng.uniform(0.0, Dust.RADIUS_JITTER),
             frames=frames,
         )
         fx_group.add(puff)
@@ -1001,7 +956,7 @@ def spawn_impact_decal(
         return None
     decal = ImpactDecalParticle(
         (hitbox.centerx, hitbox.bottom - 1.0),
-        width=DECAL_RADIUS * _landing_strength(impact),
+        width=FxDecal.RADIUS * _landing_strength(impact),
     )
     fx_group.add(decal)
     return decal
@@ -1010,7 +965,7 @@ def spawn_impact_decal(
 def spawn_dash_burst(
     fx_group: pygame.sprite.Group,
     entity: Any,
-    count: int = DASH_BURST_COUNT,
+    count: int = FxDash.BURST_COUNT,
 ) -> list[DustParticle]:
     """Kick a fan of dust backward as the dash starts (rising edge only)."""
     hitbox = getattr(entity, "hitbox", None)
@@ -1025,13 +980,13 @@ def spawn_dash_burst(
         puff = DashBurstPuff(
             (
                 hitbox.centerx - direction * hitbox.width / 2.0,
-                hitbox.bottom - 4.0 + spread * 3.0,
+                hitbox.bottom - FxDash.BURST_LIFT + spread * FxDash.BURST_STEP,
             ),
             (
-                -direction * rng.uniform(140.0, 260.0),
-                -abs(rng.uniform(40.0, 140.0)),
+                -direction * rng.uniform(*FxDash.BURST_SPEED),
+                -abs(rng.uniform(*FxDash.BURST_RISE)),
             ),
-            radius=DUST_RADIUS + rng.uniform(0.0, 2.0),
+            radius=Dust.PUFF_RADIUS + rng.uniform(*FxDash.BURST_RADIUS_JITTER),
             frames=frames,
         )
         fx_group.add(puff)
@@ -1051,8 +1006,8 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
             hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
             hitbox.centery + rng.uniform(-hitbox.height / 3.0, hitbox.height / 3.0),
         ),
-        (-direction * rng.uniform(500.0, 800.0), 0.0),
-        length=rng.uniform(18.0, 34.0),
+        (-direction * rng.uniform(*FxDash.STREAK_SPEED), 0.0),
+        length=rng.uniform(*FxDash.STREAK_LENGTH_JITTER),
     )
     fx_group.add(streak)
     return streak
@@ -1073,15 +1028,15 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
     rng = _fx_rng
     pace = abs(float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0))
     lines: list[StreakParticle] = []
-    for _ in range(DASH_WIND_LINES):
+    for _ in range(FxDash.WIND_LINES):
         line = WindLine(
             (
-                hitbox.centerx + direction * hitbox.width * rng.uniform(0.3, 1.2),
+                hitbox.centerx + direction * hitbox.width * rng.uniform(*FxDash.WIND_AHEAD),
                 hitbox.centery + rng.uniform(-hitbox.height / 2.0, hitbox.height / 2.0),
             ),
-            (-direction * (pace + rng.uniform(300.0, 700.0)), 0.0),
-            length=rng.uniform(20.0, 40.0),
-            thickness=WIND_THICKNESS,
+            (-direction * (pace + rng.uniform(*FxDash.WIND_EXTRA_SPEED)), 0.0),
+            length=rng.uniform(*FxDash.WIND_LENGTH_JITTER),
+            thickness=FxDash.WIND_THICKNESS,
         )
         fx_group.add(line)
         lines.append(line)
@@ -1097,7 +1052,7 @@ def spawn_dash_shockwave(
         return None
     shockwave = DashShockwaveParticle(
         (hitbox.centerx, hitbox.bottom - 1.0),
-        ttl=DASH_SHOCKWAVE_TTL,
+        ttl=FxDash.SHOCKWAVE_TTL,
     )
     fx_group.add(shockwave)
     return shockwave
@@ -1123,10 +1078,10 @@ def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailPar
             hitbox.centery + rng.uniform(-hitbox.height / 4.0, hitbox.height / 4.0),
         ),
         direction,
-        ttl=DASH_TRAIL_TTL,
-        curve=rng.uniform(-9.0, 9.0),
-        length=DASH_TRAIL_LENGTH * rng.uniform(0.8, 1.25),
-        width=DASH_TRAIL_WIDTH * rng.uniform(0.8, 1.15),
+        ttl=FxDash.TRAIL_TTL,
+        curve=rng.uniform(-FxDash.TRAIL_CURVE, FxDash.TRAIL_CURVE),
+        length=FxDash.TRAIL_LENGTH * rng.uniform(*FxDash.TRAIL_LENGTH_JITTER),
+        width=FxDash.TRAIL_WIDTH * rng.uniform(*FxDash.TRAIL_WIDTH_JITTER),
     )
     fx_group.add(trail)
     return trail
@@ -1196,8 +1151,8 @@ def spawn_shatter_arc(
 def spawn_dizzy_stars(
     fx_group: pygame.sprite.Group,
     entity: Any,
-    count: int = DIZZY_STAR_COUNT,
-    ttl: float = DIZZY_STAR_TTL,
+    count: int = FxDizzy.STAR_COUNT,
+    ttl: float = FxDizzy.STAR_TTL,
 ) -> list[OrbitParticle]:
     """Stars circling above a dizzy entity's head.
 
@@ -1213,19 +1168,20 @@ def spawn_dizzy_stars(
     if not _has_room(fx_group, "dizzy_star"):
         return []
     rng = _fx_rng
-    center = (hitbox.centerx, hitbox.top - 12.0)
+    base_size, size_jitter = FxDizzy.STAR_SIZE
+    center = (hitbox.centerx, hitbox.top - FxDizzy.STAR_LIFT)
     stars: list[OrbitParticle] = []
     for index in range(count):
         star = OrbitParticle(
             center,
-            radius=DIZZY_STAR_RADIUS * rng.uniform(0.8, 1.15),
-            phase=index * 2.0 * math.pi / count + rng.uniform(0.0, 0.6),
-            speed=DIZZY_STAR_SPEED * rng.choice((-1.0, 1.0)),
+            radius=FxDizzy.STAR_RADIUS * rng.uniform(*FxDizzy.STAR_RADIUS_JITTER),
+            phase=index * 2.0 * math.pi / count + rng.uniform(0.0, FxDizzy.STAR_PHASE_JITTER),
+            speed=FxDizzy.STAR_SPEED * rng.choice((-1.0, 1.0)),
             color=DIZZY_STAR_COLORS[index % len(DIZZY_STAR_COLORS)],
             core=FXColors.star_core,
             ttl=ttl,
-            size=5.0 + rng.uniform(0.0, 1.5),
-            bob=rng.uniform(0.0, 3.0),
+            size=base_size + rng.uniform(0.0, size_jitter),
+            bob=rng.uniform(0.0, FxDizzy.STAR_BOB),
         )
         fx_group.add(star)
         stars.append(star)
@@ -1245,7 +1201,7 @@ def spawn_dizzy_vortex(fx_group: pygame.sprite.Group, entity: Any) -> DizzyVorte
         return None
     vortex = DizzyVortexParticle(
         (hitbox.centerx, hitbox.bottom - 4.0),
-        ttl=DIZZY_VORTEX_TTL,
+        ttl=FxDizzy.VORTEX_TTL,
     )
     fx_group.add(vortex)
     return vortex
@@ -1270,15 +1226,15 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
         drop = SweatParticle(
             (
                 hitbox.centerx
-                + side * hitbox.width * rng.uniform(0.15, 0.5)
-                + rng.uniform(-SWEAT_SPREAD, SWEAT_SPREAD) * hitbox.width,
-                hitbox.top + rng.uniform(2.0, 7.0),
+                + side * hitbox.width * rng.uniform(*Sweat.TEMPLE)
+                + rng.uniform(-Sweat.SPREAD, Sweat.SPREAD) * hitbox.width,
+                hitbox.top + rng.uniform(*Sweat.CROWN),
             ),
             (
-                side * rng.uniform(30.0, 90.0),
-                SWEAT_POP_UP * rng.uniform(0.5, 1.0),
+                side * rng.uniform(*Sweat.KICK_X),
+                Sweat.POP_UP * rng.uniform(*Sweat.POP_JITTER),
             ),
-            tint=rng.uniform(0.0, 0.25),
+            tint=rng.uniform(*Sweat.TINT),
         )
         fx_group.add(drop)
         drops.append(drop)

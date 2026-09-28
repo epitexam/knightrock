@@ -10,10 +10,7 @@ import pytest
 from src.core.colors import FXColors
 from src.core.display.framing import Framing
 from src.core.fx import (
-    DASH_BURST_COUNT,
-    DASH_WIND_LINES,
     MAX_FX_SPRITES,
-    SWEAT_OUTLINE_WIDTH,
     DustParticle,
     StreakParticle,
     SweatParticle,
@@ -33,7 +30,8 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, HitFlash, Sweat
+from src.core.settings import Afterimage, Dust, FxDash, HitFlash, Sweat
+from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
 
@@ -217,8 +215,8 @@ def test_dash_burst_kicks_a_fan_backward_on_start() -> None:
 
     puffs = spawn_dash_burst(group, entity)
 
-    assert len(puffs) == DASH_BURST_COUNT
-    assert len(group) == DASH_BURST_COUNT
+    assert len(puffs) == FxDash.BURST_COUNT
+    assert len(group) == FxDash.BURST_COUNT
     for puff in puffs:
         assert puff.pos.x <= entity.hitbox.centerx
         assert puff.velocity.x < 0.0
@@ -254,7 +252,7 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
 
     # Landing fan plus its ground mark, then the one-shot dash-start burst,
     # the ground ring and the dash trail.
-    assert len(groups.fx_sprites) == Dust.COUNT + 1 + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == Dust.COUNT + 1 + FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
 
 def test_dash_burst_fires_once_per_dash() -> None:
@@ -266,11 +264,11 @@ def test_dash_burst_fires_once_per_dash() -> None:
 
     system._spawn_impact_fx(1 / 60)
     # Burst + ground ring + one trail particle + its wind lines on dash start.
-    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
     # Still dashing: a speed line on top of the trail cadence.
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) >= DASH_BURST_COUNT + 2 + DASH_WIND_LINES + 2
+    assert len(groups.fx_sprites) >= FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES + 2
 
     # Dash over, then re-dash: the burst fires again.
     dasher.state_machine = SimpleNamespace(current_state_name="run")
@@ -278,7 +276,7 @@ def test_dash_burst_fires_once_per_dash() -> None:
     before = len(groups.fx_sprites)
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
+    assert len(groups.fx_sprites) == before + FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -474,7 +472,7 @@ def test_sweat_beads_read_as_thick_comic_teardrops() -> None:
     # A teardrop, not a dot: the tapered tip makes it taller than wide.
     assert height > width
     # Fat bead: the whole inked sprite is several pixels across.
-    assert width >= 3 * SWEAT_OUTLINE_WIDTH
+    assert width >= 3 * SweatSettings.OUTLINE_WIDTH
     # Comic palette: pale fill, bold ink outline, glossy white glint.
     colors = {tuple(image.get_at((x, y)))[:3] for x in range(width) for y in range(height)}
     assert tuple(FXColors.sweat)[:3] in colors

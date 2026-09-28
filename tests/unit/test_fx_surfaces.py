@@ -13,8 +13,6 @@ import pygame
 import pytest
 
 from src.core.fx import (
-    DASH_TRAIL_TTL,
-    DIZZY_VORTEX_FRAMES,
     DashShockwaveParticle,
     DashTrailParticle,
     DizzyVortexParticle,
@@ -23,6 +21,7 @@ from src.core.fx import (
     clear_frame_cache,
     vortex_frames,
 )
+from src.core.settings import FxDash, FxDizzy
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -52,11 +51,11 @@ def test_the_dash_trail_surface_is_built_once_and_only_faded() -> None:
 def test_the_trail_fade_matches_the_ttl_curve() -> None:
     """Freezing the surface must not freeze the fade with it."""
     particle = DashTrailParticle((0.0, 0.0), 1.0)
-    particle.max_ttl = DASH_TRAIL_TTL
+    particle.max_ttl = FxDash.TRAIL_TTL
 
-    particle.update(DASH_TRAIL_TTL * 0.5)
+    particle.update(FxDash.TRAIL_TTL * 0.5)
     halfway = particle.image.get_alpha()
-    particle.update(DASH_TRAIL_TTL * 0.25)
+    particle.update(FxDash.TRAIL_TTL * 0.25)
     later = particle.image.get_alpha()
 
     assert 0 < later < halfway < 255
@@ -76,7 +75,7 @@ def test_the_trail_still_follows_its_position() -> None:
 def test_a_trail_still_reaps_at_the_end_of_its_life() -> None:
     particle = DashTrailParticle((0.0, 0.0), 1.0)
 
-    particle.update(DASH_TRAIL_TTL + 1.0)
+    particle.update(FxDash.TRAIL_TTL + 1.0)
 
     assert particle.alive() is False
 
@@ -96,7 +95,7 @@ def test_a_swirl_picks_its_rotation_step_from_a_shared_ladder() -> None:
         particle.update(0.1)
         seen.append(particle.image)
 
-    assert len(frames) == DIZZY_VORTEX_FRAMES
+    assert len(frames) == FxDizzy.VORTEX_FRAMES
     assert len(set(seen)) > 1, "the swirl has to animate"
     assert all(any(step is frame for frame in frames) for step in seen), (
         "and every step it shows has to be one it built once"

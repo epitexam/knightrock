@@ -223,11 +223,140 @@ class Afterimage:
 
 
 class Dust:
-    """Landing dust puffs and dash streaks (fx sprites, no collision)."""
+    """Landing dust puffs and dash streaks (fx sprites, no collision).
+
+    The three at the top are read by the simulation, not only by the FX:
+    ``MIN_FALL_SPEED`` is the threshold that decides whether a landing is
+    hard enough to throw dust at all, and the tick is what consumes the
+    hint. The rest are the look, and only the FX reads them.
+    """
 
     TTL = 0.4
     COUNT = 6
     MIN_FALL_SPEED = 500.0
+    FRAMES_DIR = "assets/graphics/effects/particle"
+    FRAME_SCALE = 2.0
+    PUFF_RADIUS = 5.0
+    RISE = -60.0
+    DRAG = 4.0
+    FADE_IN = 0.15
+    # Where the fan is thrown from, and how hard. The two rows are the
+    # horizontal spread of one puff and the vertical kick, jittered.
+    SPREAD = 55.0
+    SPREAD_JITTER = 20.0
+    RISE_RANGE = (60.0, 160.0)
+    RISE_ALTERNATE = 40.0
+    RADIUS_JITTER = 3.0
+    STRENGTH_PER_FALL = 1.6
+    STRENGTH_RANGE = (0.6, 2.2)
+
+
+class FxDash:
+    """The dash's own juice: the burst at the start, and what trails it.
+
+    Every one of these is a feel number. ``TRAIL_SPAWN_EVERY`` is also the
+    cadence the wind lines ride, because a wind line and a trail mark are two
+    halves of the same read and they should not drift apart.
+    """
+
+    BURST_COUNT = 10
+    WIND_LINES = 2
+    TRAIL_SPAWN_EVERY = 0.015
+    # The trail comet and the speed line it drags behind it.
+    TRAIL_LENGTH = 35.0
+    TRAIL_WIDTH = 6.0
+    TRAIL_TTL = 0.15
+    TRAIL_CURVE = 9.0
+    TRAIL_LENGTH_JITTER = (0.8, 1.25)
+    TRAIL_WIDTH_JITTER = (0.8, 1.15)
+    TRAIL_FADE_IN = 0.1
+    STREAK_TTL = 0.22
+    STREAK_THICKNESS = 3.0
+    STREAK_LENGTH_JITTER = (18.0, 34.0)
+    STREAK_SPEED = (500.0, 800.0)
+    STREAK_FADE_IN = 0.2
+    WIND_THICKNESS = 2.0
+    WIND_LENGTH_JITTER = (20.0, 40.0)
+    WIND_EXTRA_SPEED = (300.0, 700.0)
+    WIND_AHEAD = (0.3, 1.2)
+    # The ring on the ground at the start of the dash.
+    SHOCKWAVE_RADIUS = 44.0
+    SHOCKWAVE_TTL = 0.18
+    SHOCKWAVE_STEPS = 5
+    SHOCKWAVE_SQUASH = 0.4
+    SHOCKWAVE_RIM = (4, 1)
+    # The backward fan the dash start throws: speed, rise, where it starts.
+    BURST_SPEED = (140.0, 260.0)
+    BURST_RISE = (40.0, 140.0)
+    BURST_STEP = 3.0
+    BURST_LIFT = 4.0
+    BURST_RADIUS_JITTER = (0.0, 2.0)
+
+
+class FxGuard:
+    """The block's ring, and what happens to it when the guard fails.
+
+    A parry is the same arc in gold, so it costs three numbers rather than a
+    second set: the colour is the whole difference.
+    """
+
+    ARC_RADIUS = 18.0
+    ARC_TTL = 0.22
+    ARC_FLASH = 42.0
+    ARC_FADE_IN = 0.08
+    ARC_OFFSET = 0.3
+    # The ring coming apart, on the side the hit landed on.
+    SHARD_RADIUS = 20.0
+    SHARD_TTL = 0.3
+    SHARD_STEPS = 3
+    SHARD_PIECES = 18
+    SHARD_KICK_PIECES = 9
+    SHARD_SPREAD = 0.3
+    SHARD_WOUND = 70.0
+    SHARD_WOUND_PUSH = 0.9
+    SHARD_SHRINK = 0.3
+    SHARD_STEP_OPENS = 0.7
+    SHARD_DRIFT = (0.4, 1.0)
+
+
+class FxDizzy:
+    """Stars circling the head and the swirl at the feet, for the stun.
+
+    Emitted on their own cadences rather than on the parry that caused the
+    stun, so they fade in with the state and are gone shortly after it ends.
+    """
+
+    STAR_COUNT = 6
+    STAR_RADIUS = 26.0
+    STAR_SPEED = 2.4
+    STAR_TTL = 1.2
+    STAR_SPAWN_EVERY = 0.5
+    STAR_BATCH = 2
+    STAR_FADE_IN = 0.08
+    STAR_RADIUS_JITTER = (0.8, 1.15)
+    STAR_PHASE_JITTER = 0.6
+    STAR_SIZE = (5.0, 1.5)
+    STAR_LIFT = 12.0
+    STAR_BOB = 3.0
+    VORTEX_TTL = 0.5
+    VORTEX_SPAWN_EVERY = 0.12
+    VORTEX_RADIUS = 16.0
+    VORTEX_FRAMES = 6
+    VORTEX_ARMS = 3
+    VORTEX_FADE_IN = 0.1
+    VORTEX_ARM_REACH = (0.42, 0.62)
+    VORTEX_ARM_THICKNESS = 3.0
+    VORTEX_ARM_CURVE = 0.4
+
+
+class FxDecal:
+    """The mark a hard landing leaves on the floor."""
+
+    RADIUS = 22.0
+    TTL = 0.28
+    FADE_IN = 0.05
+    SQUASH = 0.3
+    LOBES = ((0.0, 0.0, 1.0), (-0.4, -0.12, 0.6), (0.38, 0.1, 0.5))
 
 
 class Sweat:
@@ -236,6 +365,18 @@ class Sweat:
     TTL = 0.55
     COUNT = 1
     SPAWN_EVERY = 0.22
+    RADIUS = 5.0
+    MARGIN = 2
+    OUTLINE_WIDTH = 2
+    POP_UP = -110.0
+    GRAVITY = 620.0
+    SPREAD = 0.12
+    FADE_IN = 0.1
+    KICK_X = (30.0, 90.0)
+    POP_JITTER = (0.5, 1.0)
+    CROWN = (2.0, 7.0)
+    TEMPLE = (0.15, 0.5)
+    TINT = (0.0, 0.25)
 
 
 class Ledge:

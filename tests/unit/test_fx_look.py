@@ -7,6 +7,7 @@ that a big burst cannot starve the effects that have to keep animating.
 
 import math
 import os
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pygame
@@ -33,7 +34,7 @@ from src.core.fx import (
 from src.core.rendering.camera import Camera
 from src.core.rendering.fx_draw import snap
 from src.core.rendering.renderer import Renderer
-from src.core.settings import Dust
+from src.core.settings import Dust, FxDash, FxGuard
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -43,6 +44,20 @@ def _display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((640, 480))
+
+
+@pytest.fixture(autouse=True)
+def _pinned_fx_rng() -> Iterator[None]:
+    """Fix the draw, because these tests assert on the pixels it produces.
+
+    `spawn_shatter_arc` seeds its fragments from the module's own RNG, so
+    which way the pieces scatter is a function of how many draws the tests
+    before it happened to make. Left alone that made a test here pass on its
+    own and fail in the full suite -- a result that is evidence of the run's
+    order rather than of the rule it claims to check.
+    """
+    fx._fx_rng.seed(0xF00D)
+    yield
 
 
 def _entity(x: float = 100.0, y: float = 100.0, facing: bool = True) -> SimpleNamespace:
@@ -304,7 +319,7 @@ def test_the_ring_starts_whole_and_breaks_into_pieces() -> None:
     """
     shatter = fx.spawn_shatter_arc(Group(), _entity(facing=True))
     assert shatter is not None
-    radius = snap(fx.SHARD_ARC_RADIUS)
+    radius = snap(FxGuard.SHARD_RADIUS)
 
     def at_ring_radius(step: int) -> int:
         """How many angles still carry a pixel on the ring's own radius."""
@@ -366,7 +381,7 @@ def test_the_pieces_fly_furthest_from_the_side_that_failed() -> None:
             facing_right = math.cos(math.radians(degree)) >= 0
             if (side == "front") != facing_right:
                 continue
-            for radius in range(snap(fx.SHARD_ARC_RADIUS), limit):
+            for radius in range(snap(FxGuard.SHARD_RADIUS), limit):
                 if image.get_at(
                     (
                         snap(centre + radius * math.cos(math.radians(degree))),
@@ -406,7 +421,7 @@ def test_the_wind_lines_are_torn_off_in_front_of_the_dash() -> None:
     entity = _entity(200.0, 200.0)
     lines = spawn_dash_wind(Group(), entity)
 
-    assert len(lines) == fx.DASH_WIND_LINES
+    assert len(lines) == FxDash.WIND_LINES
     for line in lines:
         assert line.pos.x > entity.hitbox.centerx, "ahead of the dasher"
         assert line.velocity.x < 0.0, "and the air it tears off goes backwards"

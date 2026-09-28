@@ -232,6 +232,51 @@ def test_the_particle_cap_is_known_to_one_place() -> None:
     assert not offenders, f"the particle cap enforced outside fx.py: {offenders}"
 
 
+# --- 4b. tuning lives in settings, not in the module -----------------------
+
+
+def test_the_module_declares_no_tuning_of_its_own() -> None:
+    """Sizes, speeds and lives belong to `settings`, so they can be read.
+
+    `fx.py` used to hold its own thirty-odd constants and inline the rest.
+    Both hide the same thing: a number you find by reading the function that
+    uses it, named after that function, and which no one can look up when
+    asking how fast the game feels. The budgets stay, because those are the
+    module's contract with the plane and the check above reads them here.
+
+    Reads the tree rather than the namespace so a tuning constant introduced
+    as a float and a tuning constant introduced as an int are both caught.
+
+    Private names are exempt, and only for the flag case: the frame cache
+    keeps a `_frames_miss` sentinel, which is module state rather than
+    something a reader would go looking for in a settings file.
+    """
+    allowed = {"MAX_FX_SPRITES", "FX_FAMILY_BUDGETS"}
+    offenders: list[str] = []
+    for node in _tree().body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id in allowed:
+            continue
+        if target.id.startswith("_"):
+            continue
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, (int, float)):
+            offenders.append(target.id)
+    assert not offenders, f"tuning declared in fx.py instead of settings: {offenders}"
+
+
+def test_the_tuning_classes_are_where_the_module_reads_them() -> None:
+    """A constant moved to `settings` but read nowhere would be a copy.
+
+    Guards the other direction from the check above: the numbers have to
+    arrive through the classes, not get re-typed beside their old home.
+    """
+    source = FX_MODULE.read_text(encoding="utf-8")
+    for class_name in ("FxDash", "FxGuard", "FxDizzy", "FxDecal"):
+        assert f"{class_name}." in source, f"{class_name} is not read by fx.py"
+
+
 # --- 5. the module never writes simulation state ---------------------------
 
 
