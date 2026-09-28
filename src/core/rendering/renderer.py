@@ -42,6 +42,18 @@ def dash_frame(
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
+def _ghost_alpha(ttl: float) -> int:
+    """The opacity a ghost of this remaining life is stamped at.
+
+    A ladder, not a slope: each level holds for an equal share of the ghost's
+    life, so a dashing player leaves a few flat plates rather than a blur.
+    """
+    levels = Afterimage.LEVELS
+    share = Afterimage.TTL / len(levels)
+    remaining = min(len(levels) - 1, int(max(0.0, ttl) / share))
+    return levels[len(levels) - 1 - remaining]
+
+
 class Renderer:
     """Draws the world into the render target.
 
@@ -442,7 +454,7 @@ class Renderer:
         for surface, world_rect, ttl in self._ghosts:
             ttl -= dt
             if ttl > 0.0:
-                surface.set_alpha(int(255 * ttl / Afterimage.TTL))
+                surface.set_alpha(_ghost_alpha(ttl))
                 live.append((surface, world_rect, ttl))
         self._ghosts = live
         if dt > 0.0:
@@ -477,14 +489,18 @@ class Renderer:
             if not self.camera.is_visible(sprite.rect):
                 continue
             ghost = sprite.image.copy()
-            # Speed tint: the trail reads as energy, not a plain snapshot.
-            ghost.fill((170, 220, 255), special_flags=pygame.BLEND_RGB_MULT)
-            # Zoom before the dash stretch: ``dash_frame`` sizes itself from the
-            # image, so a world-sized ghost would stay small on screen. The
-            # stretch is applied once here, at spawn; only the centre is mapped
-            # per frame afterwards, so the trail costs no rescale per tick.
+            # The ghost is lit rather than tinted: multiplied, it keeps the
+            # sprite's own shading and reads as the same fighter a moment ago.
+            ghost.fill(FXColors.speed_ghost, special_flags=pygame.BLEND_RGB_MULT)
+            # Zoomed for the camera, and deliberately *not* run through
+            # ``dash_frame``. The stretch is what the live sprite is doing --
+            # it is a cue for the movement, read while it happens. Stamping a
+            # frozen copy of it turns every afterimage into a lozenge at
+            # 1.6 wide and 0.6 tall, and three of those in a row is a row of
+            # pancakes rather than a trail of the fighter. A manga afterimage
+            # is the character's own shape; the shape is what the player
+            # recognises, so that is what gets copied.
             ghost = self._scaled_image_once(ghost)
-            ghost = dash_frame(ghost, self.camera.apply_snapped(sprite.rect), apply_tint=False)[0]
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))

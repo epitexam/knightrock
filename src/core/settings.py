@@ -215,11 +215,28 @@ class ReactionMark:
 
 
 class Afterimage:
-    """Dash ghost trail (render-only)."""
+    """The dash's entire visual: a few hard-edged copies of the sprite.
 
-    MAX = 14
-    TTL = 0.35
-    SPAWN_EVERY = 0.02
+    Manga afterimages are not a smear. They are a handful of flat silhouettes
+    stamped along the path, each one solid, and they stop. A continuous alpha
+    ramp across fourteen of them reads as motion blur instead, which is the
+    opposite of the panel it is imitating.
+
+    So the count is small, the life is shorter than the dash recharge, and the
+    opacity is a ladder rather than a slope: a ghost holds its first level,
+    steps down twice, and is gone.
+    """
+
+    MAX = 3
+    TTL = 0.16
+    SPAWN_EVERY = 0.03
+    LEVELS = (255, 170, 90)
+    """The opacity ladder, brightest first, walked as the ghost ages.
+
+    A slope between these would be the same as the ramp this replaced, so the
+    steps are deliberate: the eye reads discrete plates of tone, which is what
+    a manga speed line is drawn with.
+    """
 
 
 class Dust:

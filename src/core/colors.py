@@ -96,6 +96,15 @@ class FXColors:
     dust: ClassVar[Color] = (198, 190, 178)
     dust_deep: ClassVar[Color] = (154, 147, 138)
 
+    speed_ghost: ClassVar[Color] = (170, 220, 255)
+    """What the dash afterimages are lit with.
+
+    Multiplied, not added: the ghost keeps the sprite's own shading and reads
+    as the same fighter a moment ago rather than as a glowing shape. It is a
+    different member from ``speed_tint`` because it is a different operation
+    on the same idea -- one lightens the dashing sprite, this one cools the
+    copies behind it.
+    """
     speed_tint: ClassVar[Color] = (100, 200, 255)
     """The dash's speed colour, shared by the sprite and the marks around it.
 

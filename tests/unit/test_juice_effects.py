@@ -34,7 +34,8 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, HitFlash, Sweat
+from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
+from src.core.settings import Afterimage, Dust, HitFlash, Physics, Sweat
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -278,10 +279,36 @@ def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 
     ghost = renderer._ghosts[0][0]
-    # Tinted white, and stretched wide-and-low like the live dash frame.
-    assert ghost.get_at((0, 0)) == pygame.Color(170, 220, 255, 255)
-    assert ghost.get_width() == int(20 * DASH_STRETCH_X)
-    assert ghost.get_height() == int(30 * DASH_STRETCH_Y)
+    assert ghost.get_at((0, 0)) == pygame.Color(*FXColors.speed_ghost, 255)
+
+
+def test_an_afterimage_keeps_the_fighter_s_shape_and_not_the_dash_stretch() -> None:
+    """The stretch is a cue for the movement; a frozen copy of it is a lozenge.
+
+    The ghosts used to be built through `dash_frame`, so every stamp was the
+    sprite at 1.6 wide and 0.6 tall. The live sprite is only ever seen
+    stretched for the few frames it is moving, and the eye reads that as
+    speed. Frozen, the same shape is three pancakes in a row, and it is not
+    the fighter any more.
+
+    So the afterimage is the sprite at its own proportions, and this fails if
+    the stretch is put back into the spawn.
+    """
+    surface = pygame.Surface((64, 64))
+    camera = Camera(Framing(float(64), float(64)))
+    camera.set_world_size(64, 64)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    dasher = _dashing_player()
+    groups.all_sprites.add(dasher)
+    groups.entity_sprites.add(dasher)
+
+    renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
+
+    ghost = renderer._ghosts[0][0]
+    assert (ghost.get_width(), ghost.get_height()) == (20, 30), "the fighter's own shape"
+    assert ghost.get_height() == 30, "not the dash frame's half height"
+    assert ghost.get_width() != int(20 * DASH_STRETCH_X), "nor the dash frame's width"
 
 
 def test_dash_frame_stretches_and_recenters() -> None:
@@ -585,3 +612,32 @@ def test_a_family_the_budget_table_has_never_heard_of_is_still_allowed() -> None
     assert spawners._has_room(pygame.sprite.Group()) is True, "no family named, nothing to check"
     assert spawners._has_room(pygame.sprite.Group(), "a_family_nobody_declared") is True
     assert spawners._has_room(pygame.sprite.Group(), "dizzy_star") is True
+
+
+def test_the_afterimages_step_down_in_plates_rather_than_fading() -> None:
+    """A manga afterimage is a flat stamp, not a ramp, and this holds it there.
+
+    The trail used to be fourteen copies at a continuous alpha over a third of
+    a second, which is motion blur. A manga speed line is a few solid
+    silhouettes that stop. So the opacity walks a fixed ladder, each level
+    holding an equal share of the ghost's life, and the test fails if
+    anything puts a slope back between them.
+    """
+    levels = Afterimage.LEVELS
+    assert len(levels) >= 2, "a single level would be no fade at all"
+    assert levels == tuple(sorted(levels, reverse=True)), "brightest first"
+    assert all(level > 0 for level in levels)
+
+    seen = {renderer_alpha(ttl) for ttl in (0.99, 0.9, 0.7, 0.6, 0.4, 0.3, 0.1, 0.0)}
+    assert seen <= set(levels), f"an opacity outside the ladder: {sorted(seen - set(levels))}"
+    assert len(seen) == len(levels), "every level is reached as a ghost ages"
+
+    # A ramp would produce a different opacity at nearly every age instead.
+    ramp = {int(255 * ttl / Afterimage.TTL) for ttl in (0.99, 0.9, 0.7, 0.6, 0.4, 0.3, 0.1)}
+    assert len(ramp) == 7, "which is what the old fade produced"
+
+
+def test_there_are_only_a_few_afterimages() -> None:
+    """A handful of stamps, not a trail. Fourteen of them reads as a smear."""
+    assert Afterimage.MAX <= 4
+    assert Afterimage.TTL < Physics.DASH_RECHARGE_TIME, "gone before the next dash"
