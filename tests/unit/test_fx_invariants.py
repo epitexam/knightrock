@@ -137,11 +137,6 @@ def test_every_name_taken_from_fx_is_exported() -> None:
 # --- 3. every spawner respects the particle budget -------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="spawn_landing_dust, spawn_dash_burst and spawn_dash_streak rely on "
-    "the caller's guard, which lives in another module.",
-)
 def test_every_spawner_checks_the_budget_before_adding() -> None:
     """The cap is the only thing standing between a burst and a frame spike.
 
@@ -205,6 +200,26 @@ def test_every_family_is_budgeted() -> None:
     uncapped = assigned - known
     assert assigned, "no family found: the walk above is looking for the wrong shape"
     assert not uncapped, f"particles declaring a family with no cap: {sorted(uncapped)}"
+
+
+def test_the_particle_cap_is_known_to_one_place() -> None:
+    """The cap is a property of the module that spends it.
+
+    It was also enforced in `physics_system`, which meant two places to
+    change when it moved and a spawner whose own check had been dropped still
+    looked safe from the caller's side.
+
+    Scoped to `src`: a test is supposed to read the cap, since filling a
+    group to it is how the cap gets tested at all.
+    """
+    offenders: list[str] = []
+    for path in (REPO_ROOT / "src").rglob("*.py"):
+        if path == FX_MODULE or "__pycache__" in path.parts:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "MAX_FX_SPRITES" in line:
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{number}")
+    assert not offenders, f"the particle cap enforced outside fx.py: {offenders}"
 
 
 # --- 5. the module never writes simulation state ---------------------------

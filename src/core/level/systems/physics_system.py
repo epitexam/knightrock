@@ -11,7 +11,6 @@ from src.core.fx import (
     DIZZY_STAR_SPAWN_EVERY,
     DIZZY_STAR_TTL,
     DIZZY_VORTEX_SPAWN_EVERY,
-    MAX_FX_SPRITES,
     spawn_dash_burst,
     spawn_dash_shockwave,
     spawn_dash_streak,
@@ -96,7 +95,8 @@ class PhysicsSystem:
         ``DASH_TRAIL_SPAWN_EVERY`` seconds during dash, and a shockwave
         ring appears on dash start. The landing hint is consumed
         here so a dead-or-frozen entity cannot re-emit it on later ticks;
-        spawning stops past ``MAX_FX_SPRITES`` as a particle-budget guard.
+        every spawner is its own particle-budget guard, so this system
+        never has to know the cap.
         """
         dashing_ids: set[int] = set()
         sweating_ids: set[int] = set()
@@ -121,17 +121,16 @@ class PhysicsSystem:
         dashing = _is_dashing(entity)
         if dashing:
             dashing_ids.add(id(entity))
-        if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-            impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
-            if impact >= Dust.MIN_FALL_SPEED:
-                spawn_landing_dust(self.groups.fx_sprites, entity, impact)
-                spawn_impact_decal(self.groups.fx_sprites, entity, impact)
-            elif dashing:
-                if id(entity) not in self._dashing_ids:
-                    spawn_dash_burst(self.groups.fx_sprites, entity)
-                    spawn_dash_shockwave(self.groups.fx_sprites, entity)
-                else:
-                    spawn_dash_streak(self.groups.fx_sprites, entity)
+        impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+        if impact >= Dust.MIN_FALL_SPEED:
+            spawn_landing_dust(self.groups.fx_sprites, entity, impact)
+            spawn_impact_decal(self.groups.fx_sprites, entity, impact)
+        elif dashing:
+            if id(entity) not in self._dashing_ids:
+                spawn_dash_burst(self.groups.fx_sprites, entity)
+                spawn_dash_shockwave(self.groups.fx_sprites, entity)
+            else:
+                spawn_dash_streak(self.groups.fx_sprites, entity)
         if dashing:
             dash_trail_ids.add(id(entity))
             self._tick_dash_trail(entity, delta_time)
@@ -187,10 +186,7 @@ class PhysicsSystem:
         """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
         timer = self._sweat_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            # The budget guard runs outside the shared impact check so a
-            # full fx group delays drops instead of dropping the cadence.
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                spawn_sweat_drops(self.groups.fx_sprites, entity)
+            spawn_sweat_drops(self.groups.fx_sprites, entity)
             timer = Sweat.SPAWN_EVERY
         self._sweat_timers[id(entity)] = timer
 
@@ -198,8 +194,7 @@ class PhysicsSystem:
         """Emit purple vortex swirls on the ``DIZZY_VORTEX_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                spawn_dizzy_vortex(self.groups.fx_sprites, entity)
+            spawn_dizzy_vortex(self.groups.fx_sprites, entity)
             timer = DIZZY_VORTEX_SPAWN_EVERY
         self._dizzy_timers[id(entity)] = timer
 
@@ -207,8 +202,7 @@ class PhysicsSystem:
         """Emit circling stars on the ``DIZZY_STAR_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_star_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                spawn_dizzy_stars(self.groups.fx_sprites, entity, DIZZY_STAR_BATCH, DIZZY_STAR_TTL)
+            spawn_dizzy_stars(self.groups.fx_sprites, entity, DIZZY_STAR_BATCH, DIZZY_STAR_TTL)
             timer = DIZZY_STAR_SPAWN_EVERY
         self._dizzy_star_timers[id(entity)] = timer
 
@@ -216,8 +210,7 @@ class PhysicsSystem:
         """Emit curved dash trail particles on the ``DASH_TRAIL_SPAWN_EVERY`` cadence."""
         timer = self._dash_trail_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                spawn_dash_trail(self.groups.fx_sprites, entity)
+            spawn_dash_trail(self.groups.fx_sprites, entity)
             timer = DASH_TRAIL_SPAWN_EVERY
         self._dash_trail_timers[id(entity)] = timer
 
@@ -225,7 +218,6 @@ class PhysicsSystem:
         """Emit forward wind lines on the dash trail cadence, ahead of the dash."""
         timer = self._dash_wind_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
-            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
-                spawn_dash_wind(self.groups.fx_sprites, entity)
+            spawn_dash_wind(self.groups.fx_sprites, entity)
             timer = DASH_TRAIL_SPAWN_EVERY
         self._dash_wind_timers[id(entity)] = timer

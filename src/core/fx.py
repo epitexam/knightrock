@@ -930,7 +930,7 @@ def spawn_landing_dust(
     harder than a merely brisk one.
     """
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
+    if hitbox is None or not _has_room(fx_group, "landing_dust"):
         return []
     rng = _fx_rng
     frames = particle_frames()
@@ -980,7 +980,7 @@ def spawn_dash_burst(
 ) -> list[DustParticle]:
     """Kick a fan of dust backward as the dash starts (rising edge only)."""
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or count <= 0:
+    if hitbox is None or count <= 0 or not _has_room(fx_group, "dash_burst"):
         return []
     direction = dash_direction(entity)
     rng = _fx_rng
@@ -1009,7 +1009,7 @@ def spawn_dash_burst(
 def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParticle | None:
     """A speed line trailing the dasher: thin, fast, gone in a blink."""
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
+    if hitbox is None or not _has_room(fx_group, "dash_streak"):
         return None
     direction = dash_direction(entity)
     rng = _fx_rng
