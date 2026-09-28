@@ -13,7 +13,7 @@ import pytest
 from pygame.sprite import Group
 
 from src.core import fx
-from src.core.colors import FXColors
+from src.core.colors import Colors, FXColors
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.viewport import Viewport
 from src.core.fx import (
@@ -133,27 +133,57 @@ def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:
     assert right.image.get_size() == left.image.get_size()
 
 
-def test_the_block_ring_is_a_ring_and_not_an_arc() -> None:
-    """It was drawn with ``pygame.draw.arc``, which closes the ring regardless.
+def test_the_block_ring_is_one_hollow_fine_stroke() -> None:
+    """A hairline ring, and nothing of the inked band it used to be.
 
-    Every start and stop angle produced the same full circle, so the shape
-    this particle has always shown is a ring and the spans were decoration.
-    Drawn as circles, the intent in the code and the pixels finally agree.
+    The rim was a five-pixel comic-panel outline, which at a 40-unit fighter
+    is a heavy drawn shape rather than a flash of light.
     """
     ring = spawn_guard_arc(Group(), _entity())
     assert ring is not None
     image = ring.image
     width, height = image.get_size()
-    middle = width // 2
+    middle_y = height // 2
 
     def lit(x: int) -> bool:
-        return bool(image.get_at((x, middle))[3])
+        return bool(image.get_at((x, middle_y))[3])
 
     lit_columns = [x for x in range(width) if lit(x)]
+    opaque = sum(1 for y in range(height) for x in range(width) if image.get_at((x, y))[3])
 
-    assert lit_columns[0] < middle - 4, "a ring is hollow in the middle"
-    assert lit_columns[-1] > middle + 4
-    assert not lit(middle)
+    assert lit_columns[0] < width // 2 - 4, "a ring is hollow in the middle"
+    assert lit_columns[-1] > width // 2 + 4
+    assert not lit(width // 2)
+    filled = width * height
+    assert opaque < filled // 3, "and it is a stroke, not a filled disc"
+    assert width == height
+
+
+def test_the_bright_kick_only_covers_the_side_the_hit_landed_on() -> None:
+    """The direction is what makes the ring read as a block.
+
+    A plain ring of any colour says something happened; a ring brighter on
+    one side says the guard turned it away.
+    """
+    right = spawn_guard_arc(Group(), _entity(facing=True))
+    left = spawn_guard_arc(Group(), _entity(facing=False))
+    assert right is not None and left is not None
+
+    def kick_columns(image: pygame.Surface) -> set[int]:
+        width, height = image.get_size()
+        return {
+            x
+            for x in range(width)
+            if any(image.get_at((x, y))[:3] == Colors.off_white for y in range(height))
+        }
+
+    forward = kick_columns(right.image)
+    backward = kick_columns(left.image)
+    half = right.image.get_width() / 2
+
+    assert forward and backward, "both sides need a kick to be a kick"
+    assert min(forward) > half, "the kick is on the side the guard faces"
+    assert max(backward) < half
 
 
 def test_a_perfect_block_is_the_same_ring_in_gold() -> None:

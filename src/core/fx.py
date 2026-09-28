@@ -37,6 +37,7 @@ from src.core.rendering.fx_draw import (
     ALPHA_STEPS,
     disc,
     disc_shape,
+    draw_arc_stroke,
     draw_inked_polygon,
     ellipse_ring,
     ink_shape,
@@ -44,7 +45,6 @@ from src.core.rendering.fx_draw import (
     life_alpha,
     life_level,
     polygon_bounds,
-    ring,
     snap,
     star_shape,
     streak_points,
@@ -139,10 +139,10 @@ DASH_TRAIL_TTL = 0.15
 DASH_TRAIL_SPAWN_EVERY = 0.015
 DECAL_RADIUS = 22.0
 DECAL_TTL = 0.28
-SHIELD_ARC_RADIUS = 20.0
+SHIELD_ARC_RADIUS = 18.0
 SHIELD_ARC_TTL = 0.22
-SHIELD_ARC_RIM = 5
-"""Ring thickness in world units; the lit ring sits inside the ink one."""
+SHIELD_ARC_FLASH = 42.0
+"""Half-span, in degrees, of the bright kick along the side that took the hit."""
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -544,12 +544,13 @@ class ImpactDecalParticle(FxParticle):
 
 
 class ShieldArcParticle(FxParticle):
-    """A segmented guard arc on the side the block came from.
+    """The block: one fine ring, brighter where the hit landed.
 
-    The block's whole silhouette: one arc, in front of the guard, facing the
-    attacker. It reads as a shield taking the hit because it has a direction
-    and stays in one place, where a fan of thrown particles reads as an
-    explosion inside the fighter.
+    A hairline rather than an inked band. The rim it used to carry was a
+    comic-panel outline, five pixels of it, and at this size the ring read as
+    a heavy drawn shape with nothing light about it. One thin stroke plus a
+    short brighter kick on the side the block came from says the same thing
+    -- a shield taking a hit, from a direction -- with a fifth of the ink.
     """
 
     fade_in: ClassVar[float] = 0.08
@@ -563,25 +564,33 @@ class ShieldArcParticle(FxParticle):
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
         self.body = FXColors.parry_spark if parried else FXColors.shield_arc
-        self.rim = FXColors.ink_warm if parried else FXColors.shield_ink
+        self.kick = FXColors.parry_core if parried else Colors.off_white
         self.parried = parried
         self.family = "shield_arc"
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
-        """An ink ring and a lit ring inside it, concentric.
+        """A one-pixel ring, and a two-pixel kick over the side that was hit.
 
-        Drawn as circles rather than arcs on purpose: ``pygame.draw.arc``
-        ignores its start and stop angles and closes the ring whatever they
-        say, so the shape this particle has always been is a full circle, and
-        the segmented-arc intent was never in the picture at all.
+        Drawn with ``pygame.draw.circle`` rather than ``draw.arc``, which
+        ignores its start and stop angles and closes the loop whatever they
+        say -- every set of spans handed to it produced the same full ring.
         """
         radius = snap(SHIELD_ARC_RADIUS)
-        side = 2 * radius + SHIELD_ARC_RIM + 2
+        side = 2 * radius + 4
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        middle = (side / 2.0, side / 2.0)
-        ring(surface, self.rim, middle, radius + SHIELD_ARC_RIM / 2, SHIELD_ARC_RIM)
-        ring(surface, self.body, middle, radius, SHIELD_ARC_RIM / 2)
+        middle = side / 2.0
+        pygame.draw.circle(surface, self.body, (snap(middle), snap(middle)), radius, 1)
+        facing = 0.0 if self.side >= 0.0 else 180.0
+        draw_arc_stroke(
+            surface,
+            (snap(middle), snap(middle)),
+            radius,
+            facing - SHIELD_ARC_FLASH,
+            facing + SHIELD_ARC_FLASH,
+            self.kick,
+            2,
+        )
         return surface
 
 

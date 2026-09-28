@@ -25,6 +25,7 @@ __all__ = [
     "alpha_of_level",
     "disc",
     "disc_shape",
+    "draw_arc_stroke",
     "draw_inked_polygon",
     "ellipse_ring",
     "ink_shape",
@@ -76,6 +77,35 @@ def disc(
 ) -> None:
     """A filled disc of whole-pixel radius."""
     pygame.draw.circle(surface, color, _center(at), max(1, snap(radius)))
+
+
+def draw_arc_stroke(
+    surface: pygame.Surface,
+    at: tuple[int, int],
+    radius: int,
+    start: float,
+    stop: float,
+    color: Paint,
+    thickness: int = 1,
+) -> None:
+    """A partial ring between two angles, in degrees.
+
+    ``pygame.draw.arc`` is not usable for this: it ignores both of its angles
+    and closes the loop whatever they say, so every span handed to it comes
+    back as a full circle. A stroke of the circle's own points is the only way
+    to get an arc that actually ends where it was asked to.
+    """
+    if radius < 1 or stop <= start:
+        return
+    points = [
+        (
+            at[0] + snap(radius * math.cos(math.radians(degrees))),
+            at[1] + snap(radius * math.sin(math.radians(degrees))),
+        )
+        for degrees in range(snap(start), snap(stop) + 1)
+    ]
+    if len(points) > 1:
+        pygame.draw.lines(surface, color, False, points, max(1, thickness))
 
 
 def ring(
