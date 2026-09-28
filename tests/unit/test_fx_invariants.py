@@ -153,22 +153,29 @@ def test_every_spawner_checks_the_budget_before_adding() -> None:
 # --- 4. every particle's family is budgeted --------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="six of the eleven families have no cap, and the base class declares "
-    "an empty one, so a particle can spend from a budget that does not exist.",
-)
 def test_every_family_is_budgeted() -> None:
     """A family the table does not know about is a family with no cap.
 
     The per-family budget only works if every family is in it, and the key is
-    a string, so nothing but this check notices one that was missed. The base
-    class's empty default is in the count on purpose: a particle has to name
-    the budget it spends from.
+    a string, so nothing but this check notices one that was missed. It reads
+    both places a family can be named -- a particle's class body and a
+    spawner's budget call -- because a spawner asking for a budget that does
+    not exist is the same bug wearing a different hat.
     """
     tree = _tree()
     assigned: set[str] = set()
+    asked_for: set[str] = set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "_has_room"
+                and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                asked_for.add(node.args[1].value)
+            continue
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         literal = node.value
@@ -197,9 +204,12 @@ def test_every_family_is_budgeted() -> None:
     )
     known = {key.value for key in budgets.keys if isinstance(key, ast.Constant)}
 
-    uncapped = assigned - known
+    uncapped = (assigned | asked_for) - known
     assert assigned, "no family found: the walk above is looking for the wrong shape"
-    assert not uncapped, f"particles declaring a family with no cap: {sorted(uncapped)}"
+    assert not uncapped, f"families with no cap: {sorted(uncapped)}"
+
+    unused = known - (assigned | asked_for)
+    assert not unused, f"caps for families nothing spends from: {sorted(unused)}"
 
 
 def test_the_particle_cap_is_known_to_one_place() -> None:

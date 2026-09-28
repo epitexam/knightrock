@@ -58,6 +58,7 @@ __all__ = [
     "DashShockwaveParticle",
     "DashTrailParticle",
     "DizzyVortexParticle",
+    "DashBurstPuff",
     "DustParticle",
     "FxParticle",
     "ShatterArcParticle",
@@ -65,6 +66,7 @@ __all__ = [
     "ImpactDecalParticle",
     "OrbitParticle",
     "StreakParticle",
+    "WindLine",
     "SweatParticle",
     "clear_frame_cache",
     "dash_direction",
@@ -100,17 +102,30 @@ DASH_BURST_COUNT = 10
 DASH_WIND_LINES = 2
 MAX_FX_SPRITES = 64
 FX_FAMILY_BUDGETS: dict[str, int] = {
-    "dizzy_star": 8,
     "dash_trail": 26,
+    "landing_dust": 16,
+    "dash_burst": 16,
+    "dash_streak": 24,
     "dash_wind": 12,
+    "dash_shockwave": 4,
+    "dizzy_star": 8,
     "dizzy_vortex": 8,
     "impact_decal": 8,
+    "shield_arc": 4,
+    "shatter_arc": 4,
+    "sweat": 6,
 }
 """Per-family caps, on top of :data:`MAX_FX_SPRITES`.
 
-The global cap alone lets a fourteen-spark parry starve the dash trail, so a
-fighter who has just parried stops seeing their own dash. These reserve room
-for the effects that have to keep animating.
+The global cap alone lets one effect starve the others: a parry, a burst and
+a land on the same tick can fill the plane, and the dash trail -- which has
+to keep animating for as long as the dash does -- silently stops. Sizing the
+cadenced effects generously and the one-shot events tightly keeps the plane a
+collection of events instead of one effect filling it.
+
+Every family a particle declares is in here; ``test_fx_invariants`` reads the
+source to keep it that way, because the key is a string and a typo would
+otherwise mean a particle spending from a budget that does not exist.
 """
 PARTICLE_FRAMES_DIR = "assets/graphics/effects/particle"
 PARTICLE_FRAME_SCALE = 2.0
@@ -173,8 +188,9 @@ class FxParticle(pygame.sprite.Sprite):
     alpha_steps: ClassVar[int] = ALPHA_STEPS
     behind: ClassVar[bool] = False
     """Painted under the moving plane, so a fighter is never behind its dust."""
-    family: str = ""
-    """The budget a particle draws against, if any."""
+    family: ClassVar[str]
+    """The budget this particle spends from. No default on purpose: a
+    particle with no family spends from one nobody capped."""
 
     def __init__(self, pos: tuple[float, float] | Vector2, ttl: float) -> None:
         super().__init__()
@@ -214,6 +230,8 @@ class FxParticle(pygame.sprite.Sprite):
 
 
 class DustParticle(FxParticle):
+    family: ClassVar[str] = "landing_dust"
+
     """A fading puff of dust, kicked out of the feet.
 
     With the shipped debris frames the puff cycles through them over its
@@ -273,6 +291,8 @@ class DustParticle(FxParticle):
 
 
 class StreakParticle(FxParticle):
+    family: ClassVar[str] = "dash_streak"
+
     """A speed line: a thin taper lying along the velocity, gone in a blink.
 
     Solid dark ink and no rim, which is the opposite of every other shape
@@ -306,7 +326,30 @@ class StreakParticle(FxParticle):
         )
 
 
+class DashBurstPuff(DustParticle):
+    """The puff a dash throws backward.
+
+    The same shape as a landing dust puff, spent from a different budget: a
+    dash and a landing can happen on the same tick, and one must not spend
+    the room the other needs.
+    """
+
+    family: ClassVar[str] = "dash_burst"
+
+
+class WindLine(StreakParticle):
+    """A speed line torn off ahead of a dash.
+
+    The same shape as a trailing streak, spent from a different budget so a
+    long dash cannot fill the plane with its own wind.
+    """
+
+    family: ClassVar[str] = "dash_wind"
+
+
 class OrbitParticle(FxParticle):
+    family: ClassVar[str] = "dizzy_star"
+
     """A star circling a point, for as long as the stun lasts.
 
     It orbits rather than falls. The dizzy stars used to be ordinary sparks,
@@ -338,7 +381,6 @@ class OrbitParticle(FxParticle):
         self.core = core
         self.size = float(size)
         self.bob = float(bob)
-        self.family = "dizzy_star"
         super().__init__(self._place(0.0), ttl)
 
     def _place(self, age: float) -> Vector2:
@@ -374,6 +416,8 @@ class OrbitParticle(FxParticle):
 
 
 class DizzyVortexParticle(FxParticle):
+    family: ClassVar[str] = "dizzy_vortex"
+
     """A purple swirl at the feet of a dizzy entity.
 
     The swirl is a shared ladder of rotation steps: it used to redraw three
@@ -384,7 +428,6 @@ class DizzyVortexParticle(FxParticle):
     fade_in: ClassVar[float] = 0.1
 
     def __init__(self, pos: tuple[float, float] | Vector2, ttl: float = DIZZY_VORTEX_TTL) -> None:
-        self.family = "dizzy_vortex"
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
@@ -395,6 +438,8 @@ class DizzyVortexParticle(FxParticle):
 
 
 class DashShockwaveParticle(FxParticle):
+    family: ClassVar[str] = "dash_shockwave"
+
     """A ring on the ground at dash start.
 
     The ring is drawn once, at full size, then shown through four pre-scaled
@@ -420,6 +465,8 @@ class DashShockwaveParticle(FxParticle):
 
 
 class DashTrailParticle(FxParticle):
+    family: ClassVar[str] = "dash_trail"
+
     """A curved streak left along the dash path.
 
     Built once, and only faded: the shape is a function of the direction and
@@ -442,7 +489,6 @@ class DashTrailParticle(FxParticle):
         self.curve = float(curve)
         self.length = float(length)
         self.width = float(width)
-        self.family = "dash_trail"
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
@@ -460,6 +506,8 @@ class DashTrailParticle(FxParticle):
 
 
 class ImpactDecalParticle(FxParticle):
+    family: ClassVar[str] = "impact_decal"
+
     """A mark left on the ground where a hard landing happened.
 
     Still, short-lived, and behind the moving plane: the puffs say how hard
@@ -476,7 +524,6 @@ class ImpactDecalParticle(FxParticle):
         width: float = DECAL_RADIUS,
     ) -> None:
         self.width = float(width)
-        self.family = "impact_decal"
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
@@ -497,6 +544,8 @@ class ImpactDecalParticle(FxParticle):
 
 
 class ShieldArcParticle(FxParticle):
+    family: ClassVar[str] = "shield_arc"
+
     """The block: one fine ring, brighter where the hit landed.
 
     A hairline rather than an inked band. The rim it used to carry was a
@@ -519,7 +568,6 @@ class ShieldArcParticle(FxParticle):
         self.body = FXColors.parry_spark if parried else FXColors.shield_arc
         self.kick = FXColors.parry_core if parried else Colors.off_white
         self.parried = parried
-        self.family = "shield_arc"
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
@@ -548,6 +596,8 @@ class ShieldArcParticle(FxParticle):
 
 
 class ShatterArcParticle(FxParticle):
+    family: ClassVar[str] = "shatter_arc"
+
     """The block's ring, coming apart into its own pieces.
 
     Both halves of the blocked-hit silhouette are the same thing failing: the
@@ -570,7 +620,6 @@ class ShatterArcParticle(FxParticle):
         seed: int = 0,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
-        self.family = "shatter_arc"
         self.steps = [
             self._shatter(index / (SHATTER_ARC_STEPS - 1), seed)
             for index in range(SHATTER_ARC_STEPS)
@@ -659,6 +708,8 @@ def _angle_near(angle: float, centre: float, span: float) -> float:
 
 
 class SweatParticle(FxParticle):
+    family: ClassVar[str] = "sweat"
+
     """A comic teardrop popped off the head of an exhausted dasher.
 
     Heavier than dust, so the pop is immediately fought by gravity and the
@@ -679,7 +730,6 @@ class SweatParticle(FxParticle):
     ) -> None:
         self.radius = float(radius)
         self.tint = float(tint)
-        self.family = "sweat"
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
 
@@ -948,7 +998,6 @@ def spawn_landing_dust(
             radius=DUST_RADIUS * strength + rng.uniform(0.0, 3.0),
             frames=frames,
         )
-        puff.family = "landing_dust"
         fx_group.add(puff)
         puffs.append(puff)
     return puffs
@@ -988,7 +1037,7 @@ def spawn_dash_burst(
     puffs: list[DustParticle] = []
     for index in range(count):
         spread = index - (count - 1) / 2.0
-        puff = DustParticle(
+        puff = DashBurstPuff(
             (
                 hitbox.centerx - direction * hitbox.width / 2.0,
                 hitbox.bottom - 4.0 + spread * 3.0,
@@ -1000,7 +1049,6 @@ def spawn_dash_burst(
             radius=DUST_RADIUS + rng.uniform(0.0, 2.0),
             frames=frames,
         )
-        puff.family = "dash_burst"
         fx_group.add(puff)
         puffs.append(puff)
     return puffs
@@ -1021,7 +1069,6 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
         (-direction * rng.uniform(500.0, 800.0), 0.0),
         length=rng.uniform(18.0, 34.0),
     )
-    streak.family = "dash_streak"
     fx_group.add(streak)
     return streak
 
@@ -1042,7 +1089,7 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
     pace = abs(float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0))
     lines: list[StreakParticle] = []
     for _ in range(DASH_WIND_LINES):
-        line = StreakParticle(
+        line = WindLine(
             (
                 hitbox.centerx + direction * hitbox.width * rng.uniform(0.3, 1.2),
                 hitbox.centery + rng.uniform(-hitbox.height / 2.0, hitbox.height / 2.0),
@@ -1051,7 +1098,6 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
             length=rng.uniform(20.0, 40.0),
             thickness=WIND_THICKNESS,
         )
-        line.family = "dash_wind"
         fx_group.add(line)
         lines.append(line)
     return lines
@@ -1062,9 +1108,7 @@ def spawn_dash_shockwave(
 ) -> DashShockwaveParticle | None:
     """A ground ring at the entity's feet on dash start."""
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return None
-    if not _has_room(fx_group):
+    if hitbox is None or not _has_room(fx_group, "dash_shockwave"):
         return None
     shockwave = DashShockwaveParticle(
         (hitbox.centerx, hitbox.bottom - 1.0),
@@ -1114,7 +1158,7 @@ def spawn_guard_arc(
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return None
-    if not _has_room(fx_group):
+    if not _has_room(fx_group, "shield_arc"):
         return None
     side = facing_side(entity)
     arc = ShieldArcParticle(
@@ -1137,7 +1181,7 @@ def spawn_shatter_arc(
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return None
-    if not _has_room(fx_group):
+    if not _has_room(fx_group, "shatter_arc"):
         return None
     side = facing_side(entity)
     rng = _fx_rng
@@ -1218,7 +1262,7 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or Sweat.COUNT <= 0:
         return []
-    if not _has_room(fx_group):
+    if not _has_room(fx_group, "sweat"):
         return []
     rng = _fx_rng
     side = facing_side(entity)
