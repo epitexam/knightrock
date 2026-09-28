@@ -319,13 +319,17 @@ class Combatant(Protocol):
         ...
 
 
-@runtime_checkable
-class GuardingCombatant(Combatant, Protocol):
-    """Extends ``Combatant`` with directional guard capabilities."""
-
-    guard_posture: float
-
-    @property
-    def is_guarding(self) -> bool:
-        """Whether the entity is currently in a guarding state."""
-        ...
+# There is deliberately no guard port.
+#
+# `Player` is the only guarding type, and it serves `guard_posture` (and the
+# rest of its controller state) through the `CONTROLLER_VIEWS` table and
+# `__getattr__`, not as attributes on the instance. A `runtime_checkable`
+# Protocol is checked with `inspect.getattr_static`, which does not follow
+# `__getattr__`, so a `GuardingCombatant` port declared here would be False for
+# `Player` itself -- the one type it exists to describe. It was here, unused
+# and unsatisfiable, until it was deleted.
+#
+# What a guard needs is `guard_posture` and `is_guarding`; `hud.py`,
+# `player_ui.py` and `Player` itself read them, and `Player.is_guarding` is a
+# real property. Declaring them on a Protocol here would state a contract that
+# reads as checkable and is not, which is worse than not stating it.

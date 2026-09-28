@@ -20,14 +20,17 @@ layer's coverage.
 Every dimension is in world units and multiplied by the pixel density exactly
 once, in `WorldOverlayMetrics`. They used to be module constants here,
 interleaved with the drawing, which is the worst of both: a constant that only
-matters to the label placer is invisible while you are reading the box drawer."""
+matters to the label placer is invisible while you are reading the box drawer.
+
+This module re-exports no dimension. It used to: a 61-name `import (...)` from
+`world_overlay_metrics` marked `# noqa: F401`, of which exactly two names had a
+caller in `src` and the rest were read only by the test that asserted the
+re-export existed. Every layer imports the dimensions it uses from
+`world_overlay_metrics` directly, and so does `ui_manager`."""
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
 
 import pygame
-import pygame.gfxdraw
-from pygame.math import Vector2
 
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
@@ -39,117 +42,12 @@ from src.ui.world_overlay_bars import (
 )
 from src.ui.world_overlay_cards import CardLayer, LabelRequest
 from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_metrics import (  # noqa: F401 - re-exported
-    ANNOTATION_CHIP_FILL,
-    ANNOTATION_CHIP_PAD,
-    ANNOTATION_MAX_DODGES,
-    ANNOTATION_TIER_GAP,
-    ATTACK_HEADER_RULE_GAP,
-    ATTACK_HEADER_TEXT_GAP,
-    BOX_DOT_CORE_RADIUS,
-    BOX_DOT_INSET,
-    BOX_DOT_RADIUS,
-    BOX_DOT_RIM,
-    BOX_DOT_RIM_WIDTH,
-    CLASH_MARKER_LIFETIME,
-    CLASH_MARKER_RADIUS,
-    CLASH_TICK_S,
-    COMBAT_PANEL_TITLE,
-    CULL_MARGIN_PX,
-    HEALTH_BAR_ANCHOR_GAP,
-    HEALTH_BAR_HEIGHT,
-    HEALTH_BAR_LABEL_GAP,
-    HIT_HEIGHT_BADGES,
-    LABEL_ANCHOR_GAP,
-    LABEL_BAR_CLEARANCE,
-    LABEL_DIVIDER_BOTTOM,
-    LABEL_DIVIDER_TOP,
-    LABEL_LINE_GAP,
-    LABEL_MAX_NUDGES,
-    LABEL_NUDGE_PX,
-    LABEL_PAD_X,
-    LABEL_PAD_Y,
-    LABEL_SEP,
-    LABEL_TAG,
-    METRICS_TICK_DIVISOR,
-    OVERLAY_LAYERS,
-    PHASE_OUTLINE_COLORS,
-    SWEEP_ARROW_HEAD,
-    SWEEP_DISPLAY_MIN_PX,
-    SWEEP_GHOST_WIDTH,
-    TIMELINE_BAR_HEIGHT,
-    TIMELINE_MAX_WIDTH,
-    TIMELINE_PX_PER_FRAME,
-    VELOCITY_HEAD_MAX,
-    VELOCITY_HEAD_MIN,
-    VELOCITY_HEAD_RATIO,
-    VELOCITY_HEAD_WIDTH_CAP,
-    VELOCITY_HEAD_WIDTH_RATIO,
-    VELOCITY_MIN_LENGTH,
-    VELOCITY_MIN_SPEED,
-    VELOCITY_NECK_WIDTH,
-    VELOCITY_OUTLINE,
-    VELOCITY_OUTLINE_WIDTH,
-    VELOCITY_PREVIEW_S,
-    VELOCITY_TAIL_RADIUS,
-    VELOCITY_TAIL_WIDTH,
-    ZONE_BOOST_OUTLINE_WIDTH,
-    ZONE_FILL_ALPHA,
-    ZONE_OUTLINE_WIDTH,
-    ZONE_SEAL_DASH,
-    ZONE_SEAL_GAP,
-    ZONE_SEAL_WIDTH,
-    MetricsCache,
-    WorldOverlayMetrics,
-)
-from src.ui.world_overlay_metrics import (
-    scaled_world_px as _scaled,
-)
+from src.ui.world_overlay_metrics import OVERLAY_LAYERS, MetricsCache, WorldOverlayMetrics
 from src.ui.world_overlay_panels import PanelLayer
 from src.ui.world_overlay_shared import (
     AnnotationSink,
     debug_reference,
 )
-
-if TYPE_CHECKING:
-    pass
-
-
-#: One label row: ``(text, color)`` tokens laid out left to right.
-
-#: A collected label: sort key, colored rows, faction accent, screen
-#: anchor, clearance above (bar above the entity) and below (bar flipped
-#: under the entity near the top of the screen), and the sprite itself so
-#: the placer can treat its health bar as an obstacle.
-
-
-def arrow_outline(
-    start: Vector2,
-    direction: Vector2,
-    length: float,
-    head_length: float,
-    head_half_width: float,
-) -> list[tuple[int, int]]:
-    """Silhouette of a velocity arrow: a tapered shaft plus a triangular head.
-
-    One single seven-point polygon (tail, neck, barb, tip, barb, neck, tail)
-    so the shaft and the head can never leave a seam. ``direction`` must be a
-    unit vector, ``start`` the screen-space pivot and ``length`` the drawn
-    length (already floored to ``VELOCITY_MIN_LENGTH``).
-    """
-    normal = Vector2(-direction.y, direction.x)
-    tip = start + direction * length
-    neck = tip - direction * head_length
-    corners = (
-        start + normal * (VELOCITY_TAIL_WIDTH / 2.0),
-        neck + normal * (VELOCITY_NECK_WIDTH / 2.0),
-        neck + normal * head_half_width,
-        tip,
-        neck - normal * head_half_width,
-        neck - normal * (VELOCITY_NECK_WIDTH / 2.0),
-        start - normal * (VELOCITY_TAIL_WIDTH / 2.0),
-    )
-    return [(round(corner.x), round(corner.y)) for corner in corners]
 
 
 class WorldUI:
@@ -211,15 +109,6 @@ class WorldUI:
         """
         return self._metrics_cache.current
 
-    def stroke(self, world_px: int = 1) -> int:
-        """An outline of ``world_px`` art pixels, in whole target pixels.
-
-        Floored at 1, so a density below one thins the overlay rather than
-        deleting it: *not drawing the outline* is the one outcome a debug tool
-        must never produce.
-        """
-        return _scaled(world_px, self.renderer.world_scale)
-
     def toggle(self, layer: str) -> bool:
         """Flip an overlay layer, returning its new state."""
         if layer not in self.layers:
@@ -246,7 +135,7 @@ class WorldUI:
         for sprite in all_sprites:
             # Terrain tiles are ~840 of a level's sprites and have no hitbox,
             # no combat state and no velocity, so `is_static` below is the
-            # gate that keeps the overlay cheap: `_debug_reference` builds one
+            # gate that keeps the overlay cheap: `debug_reference` builds one
             # to three FRects per call, and the `statics` toggle skips all of
             # it for them.
             #
@@ -292,18 +181,16 @@ class WorldUI:
     # -- health bars ----------------------------------------------------------
     #
     # Delegated to `src/ui/world_overlay_bars.py`, which holds the real
-    # implementation. Both stay on the facade: the renderer reaches the draw
-    # pass through the overlay port under ``draw_health_bars``, and
-    # ``_health_bar_rect`` answers "where is the bar for this sprite" for the
-    # callers placing cards around one. The gate that decides *whether* a bar
-    # exists is not among them -- that is ``has_health_bar`` inside the bars
-    # module, used by ``draw_health_bars`` itself, and relaying it here would
-    # only have left a dead name on the facade once the cards moved out.
-    #
-    # The bars are the one part of this file that is **not** debug-only:
+    # implementation. `draw_health_bars` stays on the facade because the
+    # renderer reaches the draw pass through the overlay port under that name,
+    # and the bars are the one part of this file that is **not** debug-only:
     # `Level.draw` calls them before it checks `DEBUG`, so they are painted on
     # every frame of a real game. They were worth not sharing a module with
     # 1800 lines of F1-layer drawing.
+    #
+    # `_health_bar_rect` is the one exception to "callers use the bars module
+    # directly": the card placer needs the bar of a sprite it already holds, and
+    # routing that through the facade keeps `surface` in one place.
 
     def _health_bar_rect(
         self, sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect

@@ -19,9 +19,10 @@ from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
-from src.entities.components import MovementComponent, ReactionComponent
+from src.core.settings import EnemyJump, HitFlash, Ledge, Locomotion, Physics
+from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
+    ReactionComponent,
     ReactionStatus,
     compute_knockback_direction,
 )
@@ -180,9 +181,11 @@ class Entity(Sprite):
         self.image.fill(color)
 
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
-        # P2 (axe B): the physical collider is the *pushbox*. ``hitbox`` stays
-        # as a delegating property over the same FRect for one release — no
-        # caller migrated at this tier (checklist P2.5).
+        # P2 (axe B): the physical collider is the pushbox, and `hitbox` is its
+        # public name -- 160-odd call sites, none of them migrated or
+        # scheduled to. `pushbox` survives in the vocabulary of its derived
+        # forms (`swept_pushbox`, the overlay legend) and on the private field,
+        # not as a second attribute.
         self._pushbox = self.rect.inflate(*hitbox_inflate)
         self._pushbox.midbottom = self.rect.midbottom
         self.old_hitbox = self._pushbox.copy()
@@ -437,18 +440,20 @@ class Entity(Sprite):
         self._handle_death()
 
     @property
-    def pushbox(self) -> pygame.FRect:
-        """Physical collider: walls, floors, separation, platform carry (P2)."""
-        return self._pushbox
-
-    @property
     def hitbox(self) -> pygame.FRect:
-        """Legacy alias over the pushbox (P2 migration: no caller migrated)."""
+        """The physical collider: walls, floors, separation, platform carry (P2).
+
+        ``pushbox`` is the name the same FRect had at this tier and is kept for
+        the *derived* forms -- ``swept_pushbox`` and the overlay legend's
+        "blue/red pushbox". The undelayed collider itself is spelled ``hitbox``
+        everywhere in ``src``, and the multi-hurtbox zones are derived from it
+        (see ``sync_rects``).
+        """
         return self._pushbox
 
     @hitbox.setter
     def hitbox(self, value: pygame.FRect) -> None:
-        """Rebind the alias target (test doubles and protocol compat only)."""
+        """Rebind the collider. Test doubles and the combatant protocol only."""
         self._pushbox = value
 
     @property
@@ -613,7 +618,7 @@ class Entity(Sprite):
             self.contact_shape.angle,
         )
 
-    def face_movement(self, threshold: float = 0.1) -> None:
+    def face_movement(self, threshold: float = Locomotion.TURN_DEADZONE) -> None:
         """Orient the entity based on its current movement axis.
 
         Parameters

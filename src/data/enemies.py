@@ -18,7 +18,12 @@ from typing import Any
 
 from src.combat.frame_data import AttackDefinition
 from src.data.attacks import read_attack_definition
-from src.data.errors import GameplayDataError, read_json_object
+from src.data.errors import (
+    GameplayDataError,
+    pair_of_floats,
+    read_json_object,
+    triple_of_ints,
+)
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
@@ -30,24 +35,6 @@ def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
     if key not in mapping:
         raise GameplayDataError(f"{where}: missing required field {key!r}")
     return mapping[key]
-
-
-def _pair_of_floats(value: Any, where: str) -> tuple[float, float]:
-    if not isinstance(value, list) or len(value) != 2:
-        raise GameplayDataError(f"{where}: expected a [x, y] pair, got {value!r}")
-    try:
-        return (float(value[0]), float(value[1]))
-    except (TypeError, ValueError) as exc:
-        raise GameplayDataError(f"{where}: non-numeric pair entry: {value!r}") from exc
-
-
-def _triple_of_ints(value: Any, where: str) -> tuple[int, int, int]:
-    if not isinstance(value, list) or len(value) != 3:
-        raise GameplayDataError(f"{where}: expected a [r, g, b] triple, got {value!r}")
-    try:
-        return (int(value[0]), int(value[1]), int(value[2]))
-    except (TypeError, ValueError) as exc:
-        raise GameplayDataError(f"{where}: non-integer color entry: {value!r}") from exc
 
 
 def _read_animations(raw: Any, where: str) -> dict[str, str]:
@@ -84,16 +71,16 @@ def read_enemy_config(
         raise GameplayDataError(f"{where}: 'attacks' must be a set name or an object")
     try:
         return EnemyConfig(
-            size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
-            color=_triple_of_ints(_required(raw, "color", where), f"{where}.color"),
+            size=pair_of_floats(_required(raw, "size", where), f"{where}.size"),
+            color=triple_of_ints(_required(raw, "color", where), f"{where}.color"),
             health=float(_required(raw, "health", where)),
             attacks=attacks,
             attack_name=raw.get("attack_name"),
             max_health=(float(raw["max_health"]) if raw.get("max_health") is not None else None),
-            hitbox_inflate=_pair_of_floats(
+            hitbox_inflate=pair_of_floats(
                 raw.get("hitbox_inflate", [0.0, 0.0]), f"{where}.hitbox_inflate"
             ),
-            hurtbox_inflate=_pair_of_floats(
+            hurtbox_inflate=pair_of_floats(
                 raw.get("hurtbox_inflate", [0.0, 0.0]), f"{where}.hurtbox_inflate"
             ),
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.

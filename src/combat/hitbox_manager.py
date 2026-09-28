@@ -68,11 +68,6 @@ class HitboxManager:
         return tuple(self._shape_pool)
 
     @property
-    def prev_shapes(self) -> tuple[ShapePose, ...]:
-        """Copies of the advanced shapes captured at the tick boundary."""
-        return tuple(self._prev_shape_pool)
-
-    @property
     def swept_shapes(self) -> tuple[SweptShape, ...]:
         """Advanced shape pairs captured at the boundary and current state."""
         return tuple(

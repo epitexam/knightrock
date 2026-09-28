@@ -30,7 +30,6 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.frame_data import AttackDefinition
@@ -127,14 +126,3 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
         levels = dict(LEVEL_PATHS)
 
     return GameplayData(attack_sets=attack_sets, enemies=enemies, player=player, levels=levels)
-
-
-def describe_gameplay_source(data: GameplayData) -> dict[str, Any]:
-    """Summarize a bundle for the debug scene (counts, not values)."""
-    return {
-        "attack_sets": sorted(data.attack_sets),
-        "attacks": {name: sorted(moves) for name, moves in data.attack_sets.items()},
-        "enemies": sorted(data.enemies),
-        "player_loaded": data.player is not None,
-        "levels": sorted(data.levels),
-    }

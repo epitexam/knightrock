@@ -9,7 +9,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pygame
 from pygame.sprite import Group
@@ -26,6 +26,7 @@ from src.combat.knockback import KnockbackConfig
 from src.core.input.input_state import InputState
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
+from src.ui.world_overlay_cards import CardLayer
 
 if TYPE_CHECKING:
     from src.ui.ui_manager import UIManager
@@ -337,3 +338,44 @@ def lit_pixels(surface: pygame.Surface, step: int = 2) -> int:
         for y in range(0, surface.get_height(), step)
         if surface.get_at((x, y))[:3] != black
     )
+
+
+# -- overlay cards, as text -------------------------------------------------
+#
+# The card layer draws coloured token rows, which is what a player reads. This
+# flattens them so a test can assert on the *content* without caring which token
+# carries which colour. The layer used to ship `label_lines` and `entity_lines`
+# for this: a second copy of the header, the HP value and the attack string,
+# reachable only from here.
+
+# The tests go through `label_segments`, the same entry point the overlay uses,
+# so give a sprite a `state_machine` rather than passing one alongside it.
+
+
+def make_card_layer() -> CardLayer:
+    """A real ``CardLayer`` on the headless display, for tests that need one.
+
+    ``label_segments`` and ``entity_segments`` are instance methods, so a test
+    that only wants to read a card's text still has to stand one up.
+    """
+    from src.ui.panel_renderer import PanelRenderer
+    from src.ui.world_overlay_cards import CardLayer
+    from src.ui.world_overlay_metrics import OVERLAY_LAYERS, MetricsCache
+    from src.ui.world_overlay_shared import AnnotationSink
+
+    surface = pygame.display.get_surface() or pygame.Surface((64, 64))
+    renderer = PanelRenderer(surface)
+    return CardLayer(
+        renderer,
+        MetricsCache(renderer),
+        AnnotationSink(),
+        dict.fromkeys(OVERLAY_LAYERS, True),
+    )
+
+
+def card_rows(card: CardLayer, sprite: Any) -> list[str] | None:
+    """``label_segments`` joined back into the strings a test asserts on."""
+    segments = card.label_segments(sprite)
+    if segments is None:
+        return None
+    return [" ".join(text.strip() for text, _ in row) for row in segments]

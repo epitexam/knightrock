@@ -40,7 +40,6 @@ __all__ = [
     "CLASH_MARKER_RADIUS",
     "CLASH_TICK_S",
     "COMBAT_PANEL_TITLE",
-    "CULL_MARGIN_PX",
     "HEALTH_BAR_ANCHOR_GAP",
     "HEALTH_BAR_HEIGHT",
     "HEALTH_BAR_LABEL_GAP",
@@ -137,9 +136,6 @@ VELOCITY_TAIL_RADIUS = 3
 #: readable. Half the stroke lands inside the shape and is covered by the fill.
 VELOCITY_OUTLINE: Color = (14, 16, 20)
 VELOCITY_OUTLINE_WIDTH = 3
-
-#: World margin around the viewport: sprites grazing the edge still draw.
-CULL_MARGIN_PX = 64.0
 
 #: Horizontal / vertical padding inside a label card (px per side).
 LABEL_PAD_X = 8
@@ -401,12 +397,17 @@ class MetricsCache:
 
     It lives here, as its own object, because three layers now draw with these
     numbers and the earlier arrangement made them reach it through a callable:
-    ``WorldUI.metrics`` is a property, so each layer held a lambda wrapping it,
-    and a draw pass reads ``metrics`` several times per sprite. Measured on a
-    96-entity frame, that one extra frame per read cost about 7 % of the whole
-    overlay pass. Passing the cache itself turns each read into one attribute
-    access and keeps the rebuild rule in exactly one place -- which is also the
-    only way the three layers cannot disagree about when the table went stale.
+    the metrics used to be exposed as ``WorldUI.metrics``, so each layer held a
+    lambda wrapping it, and a draw pass read ``metrics`` several times per
+    sprite. Measured on a 96-entity frame, that one extra frame per read cost
+    about 7 % of the whole overlay pass. Passing the cache itself turns each
+    read into one attribute access and keeps the rebuild rule in exactly one
+    place -- which is also the only way the three layers cannot disagree about
+    when the table went stale.
+
+    ``WorldUI.metrics`` still exists and still returns the same table, for a
+    caller that wants the facade's current one; it is not how the layers get
+    theirs, and it must not become so.
     """
 
     def __init__(self, renderer: object) -> None:

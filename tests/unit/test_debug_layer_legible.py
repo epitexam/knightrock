@@ -111,7 +111,7 @@ def test_the_overlay_is_never_thinner_than_its_art_pixels(density: float) -> Non
     metrics = world_ui.metrics
     scale = world_ui.renderer.world_scale
 
-    assert world_ui.stroke() == max(1, round(scale))
+    assert world_ui._geo.stroke() == max(1, round(scale))
     assert metrics.zone_outline == max(1, round(scale))
     assert metrics.zone_boost_outline == max(1, round(2 * scale))
     # Below one it keeps its design size rather than thinning towards nothing.
@@ -128,7 +128,7 @@ def test_the_world_scale_never_drops_below_one() -> None:
     ``not drawing the outline`` is the one outcome a debug tool must never
     produce, and a plain round at a density of 0.4 produces exactly that.
     """
-    assert WorldUI(_renderer(0.4)).stroke() == 1
+    assert WorldUI(_renderer(0.4))._geo.stroke() == 1
     assert _renderer(0.4).world_scale == 1.0
 
 

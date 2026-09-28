@@ -1,51 +1,14 @@
 """Fixed-tick systems orchestrated by a level (audit F1.2 / F1.6, §4).
 
-Target layout (audit §4): ``core/level/level.py`` is a *facade* that assembles
-the world and hands the per-tick work to :class:`GameplayLoop`, which owns the
-ordered pipeline.  This package hosts:
+``core/level/level.py`` is a *facade* that assembles the world and hands the
+per-tick work to :class:`GameplayLoop`, which owns the ordered pipeline. This
+package holds the stages it sequences: the per-tick world steps (platforms,
+physics, hazards, respawn, progression), the entity-pairing systems (combat,
+separation, contact/hazard damage), the debug spawner and the tick bookkeeping.
 
-- the per-tick world stages (platforms, physics, hazards, respawn, progression);
-- the entity-pairing systems (combat, separation, contact/hazard damage);
-- the debug spawner;
-- :class:`GameplayLoop`, the extended pipeline that sequences everything.
+Nothing is re-exported here. Every consumer imports from the stage's own
+module -- ``level.py`` and ``gameplay_loop.py`` reach each of them directly --
+so a name in this package would be a second spelling of a module attribute
+that has to be found before it can be renamed. It used to re-export all 20 and
+was imported by nobody, including the test that would have covered it.
 """
-
-from src.core.level.systems.camera_system import CameraSystem
-from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
-from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.contact_system import ContactSystem, OffensiveBox, ZoneContact
-from src.core.level.systems.gameplay_loop import GameplayLoop
-from src.core.level.systems.hazard_damage import HazardDamageSystem
-from src.core.level.systems.hazard_system import HazardSystem
-from src.core.level.systems.notification_system import NotificationSystem
-from src.core.level.systems.physics_system import PhysicsSystem
-from src.core.level.systems.platform_system import PlatformSystem
-from src.core.level.systems.progression_system import ProgressionSystem
-from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.level.systems.separation_system import SeparationSystem
-from src.core.level.systems.spawn_system import DEBUG_SPAWNS, SpawnSystem
-from src.core.level.systems.tick_system import TickSystem
-
-__all__ = [
-    "DEBUG_SPAWNS",
-    "CameraSystem",
-    "CombatSystem",
-    "CombatTrace",
-    "ContactDamageSystem",
-    "ContactSystem",
-    "GameplayLoop",
-    "HazardDamageSystem",
-    "HazardSystem",
-    "HitCandidate",
-    "NotificationSystem",
-    "OffensiveBox",
-    "PhysicsSystem",
-    "PlatformSystem",
-    "PlayerRespawnSystem",
-    "ProgressionSystem",
-    "SeparationSystem",
-    "SpawnSystem",
-    "TickSystem",
-    "ZoneContact",
-]

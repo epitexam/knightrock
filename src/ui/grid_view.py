@@ -350,7 +350,6 @@ class GridView:
         )
 
         row_height = self._row_height(item_font, gap)
-        section_gaps = self._section_gap_count(rows)
         height = self._height_of(
             title_font,
             item_font,

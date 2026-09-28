@@ -108,10 +108,6 @@ class ControlsScene(Scene):
         return self._capture is not None
 
     @property
-    def selected_row(self) -> int:
-        return self.model.current_index
-
-    @property
     def rows(self) -> list[BindingRow]:
         """The binding grid, memoised on everything the cells depend on.
 
@@ -121,10 +117,10 @@ class ControlsScene(Scene):
         rebuilt only when one of those changes.
 
         The selection is deliberately **not** an input: which row is focused is
-        drawn by the view from ``selected_row``, and the capture prompt follows
-        the armed row, which ``_build_rows`` passes to each cell. Keying the
-        cache on ``model.current_index`` is what let the prompt leak onto every
-        row of the column.
+        drawn by the view from its ``selected_row`` argument, and the capture
+        prompt follows the armed row, which ``_build_rows`` passes to each
+        cell. Keying the cache on ``model.current_index`` is what let the
+        prompt leak onto every row of the column.
         """
         bindings = self.game.settings.bindings
         if (

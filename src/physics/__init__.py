@@ -1,49 +1,31 @@
-"""Physics helpers for entity movement, collisions and detection."""
+"""Physics helpers for entity movement, collisions and detection.
 
-from .collisions import (
-    get_nearby_sprites,
-    hitbox_collide,
-    resolve_collisions,
-    update_contact_state,
-)
-from .entity_grid import EntityGrid, overlapping_pairs
-from .gravity import apply_entity_gravity
+The physics layer is a real aggregation point -- eight call sites import from
+this package rather than from a leaf module -- so it keeps re-exporting. The
+set is the eight names below and nothing else: the other twelve it used to
+carry (``EntityGrid``, ``overlapping_pairs``, ``apply_entity_gravity``,
+``apply_jump_cut``, ``update_moving_platform``, ``update_contact_state``,
+``hitbox_collide``, ``get_nearby_sprites`` and the spatial-hash types) are
+imported from their own modules by their only consumers.
+"""
+
+from .collisions import resolve_collisions
 from .movement import (
     apply_horizontal_movement,
-    apply_jump_cut,
     apply_moving_platform,
     move_entity,
     resolve_jump,
 )
-from .platforms import update_moving_platform
-from .spatial_hash import (
-    QUERY_MARGIN_PX,
-    RectHashable,
-    SpatialHash,
-    SpatialHashable,
-    SpatialHashMember,
-)
+from .spatial_hash import SpatialHash
 from .velocity import apply_velocity_friction, lerp_velocity
 
 __all__ = [
-    "EntityGrid",
     "SpatialHash",
-    "SpatialHashable",
-    "RectHashable",
-    "SpatialHashMember",
-    "QUERY_MARGIN_PX",
-    "apply_entity_gravity",
     "apply_horizontal_movement",
-    "apply_jump_cut",
     "apply_moving_platform",
     "apply_velocity_friction",
-    "get_nearby_sprites",
-    "hitbox_collide",
     "lerp_velocity",
     "move_entity",
-    "overlapping_pairs",
     "resolve_collisions",
     "resolve_jump",
-    "update_contact_state",
-    "update_moving_platform",
 ]

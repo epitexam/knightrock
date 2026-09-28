@@ -328,7 +328,7 @@ def test_the_overlay_is_never_thinner_than_one_art_pixel(world_ui, density: floa
     units mistake. Below a density of one it must not *shrink* either.
     """
     world_ui.renderer.set_surface(world_ui.renderer.surface, density)
-    assert world_ui.stroke() == max(1, round(density))
+    assert world_ui._geo.stroke() == max(1, round(density))
     assert world_ui.metrics.zone_outline == max(1, round(density))
     assert world_ui.metrics.zone_boost_outline == max(1, round(2 * density))
     assert world_ui.metrics.timeline_bar_height >= 1
@@ -380,7 +380,7 @@ def test_note_clash_keeps_fresh_point_and_ignores_none(world_ui) -> None:
 
 
 def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
-    from src.ui.world_ui import CLASH_MARKER_LIFETIME, CLASH_TICK_S
+    from src.ui.world_overlay_metrics import CLASH_MARKER_LIFETIME, CLASH_TICK_S
 
     surface = world_ui.surface
     surface.fill((0, 0, 0))

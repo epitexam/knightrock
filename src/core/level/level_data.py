@@ -19,7 +19,13 @@ class TileLayerData:
 
 @dataclass
 class ObjectData:
-    """Represents a single object from an object layer."""
+    """Represents a single object from an object layer.
+
+    ``gid`` is the tile id the TMX object refers to, carried straight through
+    from ``pytmx`` and not read: image objects are loaded by path, and nothing
+    in the world builder resolves tiles by gid. It stays so the field is here
+    when something does.
+    """
 
     name: str
     x: float
@@ -42,7 +48,18 @@ class ObjectLayerData:
 
 @dataclass
 class LevelConfig:
-    """Configuration metadata extracted from the special 'Data' layer."""
+    """Configuration metadata extracted from the special 'Data' layer.
+
+    The three limits are parsed from the TMX properties the level files
+    actually carry (every one of them sets all three) and are not read yet:
+    they are shaped for level bounds -- a kill plane at the bottom, a ceiling
+    at the top, a horizon for the background -- which has no consumer yet.
+    Their siblings are all read, which is what makes the absence visible:
+    ``bg`` by the renderer, ``death_border_bottom`` by the respawn system,
+    ``level_unlock`` by the notification system. The data stays because the
+    data is deliberate; a dead field and an abandoned design look identical
+    from here, and only the level files can tell them apart.
+    """
 
     bg: str = ""
     top_limit: float = 0.0

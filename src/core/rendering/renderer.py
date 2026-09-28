@@ -20,10 +20,6 @@ DASH_STRETCH_X = 1.6
 DASH_STRETCH_Y = 0.6
 """Vertical squash paired with the dash stretch (render-only)."""
 
-# Chromatic aberration offset for dashing players (simulated via RGB channel separation)
-DASH_CHROMATIC_ABERRATION_PX = 2.0
-"""Pixel offset for RGB channel separation during dash (render-only)."""
-
 
 def is_player_dashing(sprite: object) -> bool:
     """Whether the sprite is a player currently in its dash state."""
@@ -470,9 +466,11 @@ class Renderer:
         sprite, which reads as a stripe trailing a moving enemy.
 
         The rects used to be handed to the presenter so the next frame's erase
-        would reach them. Nothing needs that any more, but ``world_ui`` already
-        computes them, so they are returned rather than recomputed by a caller
-        that wants to reason about what was painted.
+        would reach them. The whole chain still returns them because
+        ``world_overlay_bars`` computes them anyway, and dropping the return
+        would mean changing a port signature to save nothing. Be aware that
+        ``Level.draw`` discards the result: the only readers today are the
+        tests that assert which rects were painted.
         """
         return self.overlay.draw_health_bars(entities, self.camera)
 
