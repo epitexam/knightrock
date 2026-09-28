@@ -25,7 +25,6 @@ from src.core.colors import Color, Colors, FXColors
 from src.core.fx.particles import (
     DashBurstPuff,
     DashShockwaveParticle,
-    DashTrailParticle,
     DizzyVortexParticle,
     DustParticle,
     ImpactDecalParticle,
@@ -48,7 +47,6 @@ MAX_FX_SPRITES = 64
 one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
-    "dash_trail": 26,
     "landing_dust": 16,
     "dash_burst": 16,
     "dash_streak": 24,
@@ -284,35 +282,6 @@ def spawn_dash_shockwave(
     )
     fx_group.add(shockwave)
     return shockwave
-
-
-def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailParticle | None:
-    """A curved trail particle behind the dasher.
-
-    Curve, length and width are jittered per spawn: the trail used to be one
-    shape stamped ten times a dash, and a regular pattern of identical marks
-    is what a trail reads as when it is not jittered.
-    """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return None
-    if not _has_room(fx_group, "dash_trail"):
-        return None
-    direction = dash_direction(entity)
-    rng = _fx_rng
-    trail = DashTrailParticle(
-        (
-            hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
-            hitbox.centery + rng.uniform(-hitbox.height / 4.0, hitbox.height / 4.0),
-        ),
-        direction,
-        ttl=FxDash.TRAIL_TTL,
-        curve=rng.uniform(-FxDash.TRAIL_CURVE, FxDash.TRAIL_CURVE),
-        length=FxDash.TRAIL_LENGTH * rng.uniform(*FxDash.TRAIL_LENGTH_JITTER),
-        width=FxDash.TRAIL_WIDTH * rng.uniform(*FxDash.TRAIL_WIDTH_JITTER),
-    )
-    fx_group.add(trail)
-    return trail
 
 
 def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:

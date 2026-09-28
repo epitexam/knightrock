@@ -252,24 +252,21 @@ class Dust:
 
 
 class FxDash:
-    """The dash's own juice: the burst at the start, and what trails it.
+    """The dash's own juice: the burst at the start, and what marks the speed.
 
-    Every one of these is a feel number. ``TRAIL_SPAWN_EVERY`` is also the
-    cadence the wind lines ride, because a wind line and a trail mark are two
-    halves of the same read and they should not drift apart.
+    It does not draw the path. The renderer photographs the dashing sprite
+    into fading ghosts, and those are what sit along the path -- carrying the
+    sprite's own stretch and its own cyan. A comet drawn here was the same
+    information a second time, in a colour that matched nothing.
+
+    Every number below is a feel number. ``SPEED_MARK_SPAWN_EVERY`` is the
+    cadence the wind lines ride, so a wind line and a streak do not drift
+    apart.
     """
 
     BURST_COUNT = 10
     WIND_LINES = 2
-    TRAIL_SPAWN_EVERY = 0.015
-    # The trail comet and the speed line it drags behind it.
-    TRAIL_LENGTH = 35.0
-    TRAIL_WIDTH = 6.0
-    TRAIL_TTL = 0.15
-    TRAIL_CURVE = 9.0
-    TRAIL_LENGTH_JITTER = (0.8, 1.25)
-    TRAIL_WIDTH_JITTER = (0.8, 1.15)
-    TRAIL_FADE_IN = 0.1
+    SPEED_MARK_SPAWN_EVERY = 0.015
     STREAK_TTL = 0.22
     STREAK_THICKNESS = 3.0
     STREAK_LENGTH_JITTER = (18.0, 34.0)

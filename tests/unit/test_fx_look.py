@@ -25,7 +25,7 @@ from src.core.fx import (
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
-    spawn_dash_trail,
+    spawn_dash_streak,
     spawn_dash_wind,
     spawn_guard_arc,
     spawn_impact_decal,
@@ -397,14 +397,14 @@ def test_the_pieces_fly_furthest_from_the_side_that_failed() -> None:
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:
-    """A fourteen-spark parry used to starve the dash trail out of existence."""
+    """A fourteen-spark parry used to starve the dash out of existence."""
     group = Group()
     entity = _entity()
-    cap = FX_FAMILY_BUDGETS["dash_trail"]
+    cap = FX_FAMILY_BUDGETS["dash_streak"]
 
-    spawned = [spawn_dash_trail(group, entity) for _ in range(cap + 4)]
+    spawned = [spawn_dash_streak(group, entity) for _ in range(cap + 4)]
 
-    assert sum(1 for trail in spawned if trail is not None) == cap
+    assert sum(1 for streak in spawned if streak is not None) == cap
     assert len(group) == cap
     assert len(group) < MAX_FX_SPRITES, "well under the global cap"
 
@@ -414,7 +414,7 @@ def test_the_global_cap_still_wins_over_the_family_one() -> None:
     for _ in range(MAX_FX_SPRITES):
         group.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
 
-    assert spawn_dash_trail(group, _entity()) is None
+    assert spawn_dash_streak(group, _entity()) is None
     assert spawn_dash_wind(group, _entity()) == []
 
 

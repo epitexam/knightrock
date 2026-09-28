@@ -34,7 +34,6 @@ from __future__ import annotations
 
 from src.core.fx.particles import (
     DashShockwaveParticle,
-    DashTrailParticle,
     DizzyVortexParticle,
     DustParticle,
     OrbitParticle,
@@ -53,7 +52,6 @@ from src.core.fx.spawners import (
     spawn_dash_burst,
     spawn_dash_shockwave,
     spawn_dash_streak,
-    spawn_dash_trail,
     spawn_dash_wind,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
@@ -68,7 +66,6 @@ __all__ = [
     "FX_FAMILY_BUDGETS",
     "MAX_FX_SPRITES",
     "DashShockwaveParticle",
-    "DashTrailParticle",
     "DizzyVortexParticle",
     "DustParticle",
     "ShatterArcParticle",
@@ -82,7 +79,6 @@ __all__ = [
     "spawn_dash_burst",
     "spawn_dash_shockwave",
     "spawn_dash_streak",
-    "spawn_dash_trail",
     "spawn_dash_wind",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",

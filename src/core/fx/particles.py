@@ -33,7 +33,6 @@ from src.core.fx.draw import (
     inked_polygon,
     life_alpha,
     life_level,
-    polygon_bounds,
     snap,
     spread_step,
     star_shape,
@@ -333,47 +332,6 @@ class DashShockwaveParticle(FxParticle):
     def _integrate(self, delta_time: float) -> None:
         spread = 1.0 - (1.0 - self.life) ** 2
         self.image = self.steps[min(int(spread * len(self.steps)), len(self.steps) - 1)]
-
-
-class DashTrailParticle(FxParticle):
-    family: ClassVar[str] = "dash_trail"
-
-    """A curved streak left along the dash path.
-
-    Built once, and only faded: the shape is a function of the direction and
-    three constants fixed at construction, so redrawing it per frame produced
-    the same pixels every time.
-    """
-
-    fade_in: ClassVar[float] = FxDash.TRAIL_FADE_IN
-
-    def __init__(
-        self,
-        pos: tuple[float, float] | Vector2,
-        direction: float,
-        ttl: float = FxDash.TRAIL_TTL,
-        curve: float = 6.0,
-        length: float = FxDash.TRAIL_LENGTH,
-        width: float = FxDash.TRAIL_WIDTH,
-    ) -> None:
-        self.direction = direction
-        self.curve = float(curve)
-        self.length = float(length)
-        self.width = float(width)
-        super().__init__(pos, ttl)
-
-    def _paint(self) -> pygame.Surface:
-        heading = 0.0 if self.direction >= 0.0 else math.pi
-        body = streak_points((0, 0), self.length, self.width, heading, self.curve)
-        core = streak_points(
-            (0, 0), self.length * 0.8, max(1.0, self.width * 0.34), heading, self.curve
-        )
-        left, top, width, height = polygon_bounds([*body, *core])
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        at = (-left, -top)
-        draw_inked_polygon(surface, body, FXColors.trail_ink, FXColors.trail_ink, 0, at=at)
-        draw_inked_polygon(surface, core, FXColors.trail, FXColors.trail, 0, at=at)
-        return surface
 
 
 class ImpactDecalParticle(FxParticle):

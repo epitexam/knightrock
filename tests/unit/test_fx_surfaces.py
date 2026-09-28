@@ -16,10 +16,10 @@ import pytest
 
 from src.core.fx import (
     DashShockwaveParticle,
-    DashTrailParticle,
     DizzyVortexParticle,
     DustParticle,
     OrbitParticle,
+    StreakParticle,
     clear_frame_cache,
     spawners,
     vortex_frames,
@@ -50,50 +50,57 @@ def _pinned_fx_rng() -> Iterator[None]:
     yield
 
 
-def test_the_dash_trail_surface_is_built_once_and_only_faded() -> None:
-    """The comet's shape is fixed, so rebuilding it would redraw identical pixels.
+def test_a_speed_line_surface_is_built_once_and_only_faded() -> None:
+    """A moving mark's shape is fixed, so rebuilding it would redraw the same pixels.
 
-    16 `sin` evaluations and two polygon fills per particle per frame, to
-    produce the same image, so that the alpha could be set on it.
+    This property used to be pinned on the dash comet, which is gone: the
+    ghosts now carry the path and a comet next to them said the same thing in
+    a second colour. It moves onto the speed line, because the claim is about
+    the module and not about one particle -- every mark here builds its
+    surface at construction and then only moves and fades.
     """
-    particle = DashTrailParticle((0.0, 0.0), 1.0)
+    particle = StreakParticle((0.0, 0.0), (400.0, 0.0))
     original = particle.image
 
     for _ in range(8):
         particle.update(1 / 60)
 
-    assert particle.image is original, "the trail must not rebuild its surface"
+    assert particle.image is original, "the mark must not rebuild its surface"
     assert particle.image.get_alpha() < 255, "and it must still fade"
 
 
-def test_the_trail_fade_matches_the_ttl_curve() -> None:
+def test_the_speed_line_fade_matches_its_ttl_curve() -> None:
     """Freezing the surface must not freeze the fade with it."""
-    particle = DashTrailParticle((0.0, 0.0), 1.0)
-    particle.max_ttl = FxDash.TRAIL_TTL
+    particle = StreakParticle((0.0, 0.0), (400.0, 0.0))
+    particle.max_ttl = FxDash.STREAK_TTL
 
-    particle.update(FxDash.TRAIL_TTL * 0.5)
+    particle.update(FxDash.STREAK_TTL * 0.5)
     halfway = particle.image.get_alpha()
-    particle.update(FxDash.TRAIL_TTL * 0.25)
+    particle.update(FxDash.STREAK_TTL * 0.25)
     later = particle.image.get_alpha()
 
     assert 0 < later < halfway < 255
 
 
-def test_the_trail_still_follows_its_position() -> None:
-    """The rect is per-frame even though the surface is not."""
-    particle = DashTrailParticle((0.0, 0.0), 1.0)
+def test_a_speed_line_still_follows_its_position() -> None:
+    """The rect is per-frame even though the surface is not.
+
+    The mark travels, so the claim is not that the position holds still but
+    that the drawn rect is re-cut around wherever the particle now is.
+    """
+    particle = StreakParticle((0.0, 0.0), (400.0, 0.0))
     particle.pos.update(120.0, 40.0)
 
     particle.update(1 / 60)
 
-    assert particle.rect.centerx == 120.0
-    assert particle.rect.centery == 40.0
+    assert (particle.rect.centerx, particle.rect.centery) == pytest.approx(tuple(particle.pos))
+    assert particle.pos.x > 120.0, "and it really did travel"
 
 
-def test_a_trail_still_reaps_at_the_end_of_its_life() -> None:
-    particle = DashTrailParticle((0.0, 0.0), 1.0)
+def test_a_speed_line_still_reaps_at_the_end_of_its_life() -> None:
+    particle = StreakParticle((0.0, 0.0), (400.0, 0.0))
 
-    particle.update(FxDash.TRAIL_TTL + 1.0)
+    particle.update(FxDash.STREAK_TTL + 1.0)
 
     assert particle.alive() is False
 

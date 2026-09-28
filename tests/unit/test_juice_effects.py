@@ -21,7 +21,6 @@ from src.core.fx import (
     spawn_dash_burst,
     spawn_dash_shockwave,
     spawn_dash_streak,
-    spawn_dash_trail,
     spawn_dash_wind,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
@@ -275,9 +274,10 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
 
     system._spawn_impact_fx(1 / 60)
 
-    # Landing fan plus its ground mark, then the one-shot dash-start burst,
-    # the ground ring and the dash trail.
-    assert len(groups.fx_sprites) == Dust.COUNT + 1 + FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
+    # The landing fan and its ground mark, then the dash-start burst, the
+    # ground ring and the first wind lines. Nothing marks the path: that is
+    # the renderer's ghosts now, and they are not FX particles.
+    assert len(groups.fx_sprites) == (Dust.COUNT + 1 + FxDash.BURST_COUNT + 1 + FxDash.WIND_LINES)
 
 
 def test_dash_burst_fires_once_per_dash() -> None:
@@ -288,12 +288,13 @@ def test_dash_burst_fires_once_per_dash() -> None:
     system = PhysicsSystem(groups)
 
     system._spawn_impact_fx(1 / 60)
-    # Burst + ground ring + one trail particle + its wind lines on dash start.
-    assert len(groups.fx_sprites) == FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
+    # Burst + ground ring + the first wind lines, on the starting frame.
+    on_start = FxDash.BURST_COUNT + 1 + FxDash.WIND_LINES
+    assert len(groups.fx_sprites) == on_start
 
-    # Still dashing: a speed line on top of the trail cadence.
+    # Still dashing: a speed line per tick, and the wind lines on their cadence.
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) >= FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES + 2
+    assert len(groups.fx_sprites) >= on_start + 2
 
     # Dash over, then re-dash: the burst fires again. The first burst has to
     # be gone first, or the family cap refuses the second one and this would
@@ -307,7 +308,7 @@ def test_dash_burst_fires_once_per_dash() -> None:
 
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == FxDash.BURST_COUNT + 2 + FxDash.WIND_LINES
+    assert len(groups.fx_sprites) == on_start
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -385,7 +386,7 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
     assert player._animation_name() == "dash"
 
 
-def test_dash_trail_spawns_fast_thin_streaks() -> None:
+def test_a_dash_spawns_one_thin_flat_speed_line() -> None:
     entity = make_entity(pos=(100.0, 100.0))
     entity.velocity.x = 1500.0
     group = pygame.sprite.Group()
@@ -619,7 +620,6 @@ def test_every_spawner_declines_an_entity_that_has_no_body() -> None:
     assert spawn_dash_streak(group, bare) is None
     assert spawn_dash_wind(group, bare) == []
     assert spawn_dash_shockwave(group, bare) is None
-    assert spawn_dash_trail(group, bare) is None
     assert spawn_dizzy_stars(group, bare) == []
     assert spawn_dizzy_vortex(group, bare) is None
     assert spawn_sweat_drops(group, bare) == []
