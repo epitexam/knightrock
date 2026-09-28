@@ -62,7 +62,9 @@ class ReactionStatus:
     kind : ReactionKind
         Which reaction fired (push, launch, stagger, blocked push).
     magnitude : float
-        Full impulse magnitude in px/s (0.0 for stagger).
+        Full impulse magnitude in px/s (0.0 for stagger). Recorded, not read:
+        the overlay colours by ``kind`` alone, and nothing scales a label or a
+        bar by how hard the hit landed.
     direction : float
         Horizontal push direction: 1.0 right, -1.0 left (0.0 for stagger).
 
