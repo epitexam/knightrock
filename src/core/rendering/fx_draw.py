@@ -82,7 +82,7 @@ def disc(
 def draw_arc_stroke(
     surface: pygame.Surface,
     at: tuple[float, float],
-    radius: int,
+    radius: float,
     start: float,
     stop: float,
     color: Paint,
@@ -97,15 +97,25 @@ def draw_arc_stroke(
     """
     if radius < 1 or stop <= start:
         return
+    # One sample per half-degree of arc, not per degree: a fragment of a ring
+    # can be a few degrees wide, and sampling per degree rounds the two ends
+    # onto the same pixel and the fragment disappears.
+    step = 0.5
     points = [
         (
-            at[0] + snap(radius * math.cos(math.radians(degrees))),
-            at[1] + snap(radius * math.sin(math.radians(degrees))),
+            snap(at[0] + radius * math.cos(math.radians(angle))),
+            snap(at[1] + radius * math.sin(math.radians(angle))),
         )
-        for degrees in range(snap(start), snap(stop) + 1)
+        for angle in _frange(start, stop, step)
     ]
     if len(points) > 1:
         pygame.draw.lines(surface, color, False, points, max(1, thickness))
+
+
+def _frange(start: float, stop: float, step: float) -> Iterable[float]:
+    """``start`` to ``stop`` inclusive, on whole samples of ``step``."""
+    count = int(math.floor((stop - start) / step))
+    return (start + index * step for index in range(count + 1))
 
 
 def ring(

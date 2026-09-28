@@ -141,13 +141,16 @@ SHIELD_ARC_FLASH = 42.0
 SHARD_ARC_RADIUS = 20.0
 SHATTER_ARC_TTL = 0.3
 SHATTER_ARC_STEPS = 3
-SHATTER_ARC_BOLTS = 5
-SHATTER_ARC_BOLT_TEETH = 4
-SHATTER_ARC_GAP = 64.0
-"""Opening of the ring, in degrees, once it has given way."""
-SHATTER_ARC_REACH = 1.6
-SHATTER_ARC_BOLT_SPREAD = 22.0
-"""How far, in degrees, a bolt may wander from the gap's middle."""
+SHATTER_ARC_PIECES = 18
+SHATTER_ARC_KICK_PIECES = 9
+SHATTER_ARC_SPREAD = 0.3
+"""How far the fragments travel outward, as a share of the ring's radius."""
+SHATTER_ARC_WOUND = 70.0
+"""Angular width, in degrees, of the side the guard gave way on."""
+SHATTER_ARC_WOUND_PUSH = 0.9
+"""Extra travel for the pieces that were on the wound."""
+SHATTER_ARC_SHRINK = 0.3
+"""How much each piece shortens as it flies."""
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -542,16 +545,16 @@ class ShieldArcParticle(FxParticle):
 
 
 class ShatterArcParticle(FxParticle):
-    """The block's ring breaking apart, with electricity out of the wound.
+    """The block's ring, coming apart into its own pieces.
 
-    The same ring as a blocked hit, and then the failure of it: the stroke
-    opens into a gap on the side that gave way, and bolts of current leap out
-    of that gap through steps, so the two events share a silhouette and only
-    differ in what happens to it. A break used to throw a fan of shards from
-    the middle of the fighter, which said nothing about the guard.
+    Both halves of the blocked-hit silhouette are the same thing failing: the
+    ring is cut into fragments that drift apart, and the bright kick on the hit
+    side is cut into finer ones that travel furthest, because that is the side
+    that gave way. At the first step the circle is whole, so the effect reads
+    as one object breaking rather than as debris that happened to be round.
 
-    Three steps, pre-rendered: the arc is a handful of polylines and a break is
-    rare enough that building them per spawn is cheaper than remembering them.
+    Pre-rendered per spawn, in steps: a break is rare, and the geometry is the
+    expensive part, so paying it once beats rebuilding it every tick.
     """
 
     fade_in: ClassVar[float] = 0.0
@@ -572,77 +575,65 @@ class ShatterArcParticle(FxParticle):
         super().__init__(pos, ttl)
         self.image = self.steps[0]
 
-    def _bolt(
+    def _fragment(
         self,
         surface: pygame.Surface,
         middle: float,
-        start: float,
-        end: float,
-        reach: float,
-        rng: random.Random,
-        jag: float,
+        middle_angle: float,
+        half_span: float,
+        radius: float,
+        color: Color,
     ) -> None:
-        """One jagged thread of current, from the gap out to ``reach``.
-
-        Both angles are relative to the side that gave way, so the bolts leave
-        the wound rather than the back of the ring.
-        """
-        facing = 0.0 if self.side >= 0.0 else 180.0
-        inner = SHARD_ARC_RADIUS + 1.0
-        from_x = middle + inner * math.cos(math.radians(facing + start))
-        from_y = middle + inner * math.sin(math.radians(facing + start))
-        from_point = (from_x, from_y)
-        to_x = middle + reach * math.cos(math.radians(facing + end))
-        to_y = middle + reach * math.sin(math.radians(facing + end))
-        delta_x, delta_y = to_x - from_point[0], to_y - from_point[1]
-        length = math.hypot(delta_x, delta_y) or 1.0
-        normal_x, normal_y = -delta_y / length, delta_x / length
-        points = [from_point]
-        for step in range(1, SHATTER_ARC_BOLT_TEETH):
-            along = step / SHATTER_ARC_BOLT_TEETH
-            offset = rng.uniform(-jag, jag) * (1 if step % 2 else -1)
-            points.append(
-                (
-                    from_point[0] + delta_x * along + normal_x * offset,
-                    from_point[1] + delta_y * along + normal_y * offset,
-                )
-            )
-        points.append((to_x, to_y))
-        snapped = [(snap(point[0]), snap(point[1])) for point in points]
-        pygame.draw.lines(surface, FXColors.break_spark, False, snapped, 2)
-        pygame.draw.lines(surface, FXColors.break_core, False, snapped, 1)
+        """One arc-shaped piece of the ring, at its own radius."""
+        draw_arc_stroke(
+            surface,
+            (middle, middle),
+            radius,
+            middle_angle - half_span,
+            middle_angle + half_span,
+            color,
+            1,
+        )
 
     def _shatter(self, progress: float, seed: int) -> pygame.Surface:
         """The ring at one moment of its failure, ``progress`` from 0 to 1."""
         radius = snap(SHARD_ARC_RADIUS)
-        reach_limit = snap(radius * SHATTER_ARC_REACH) + 2
-        span = 2 * reach_limit + 4
+        # Radius plus the furthest a piece can travel, or the circle is drawn
+        # off the edge of its own surface.
+        reach = snap(radius * (1.0 + SHATTER_ARC_SPREAD * (1.0 + SHATTER_ARC_WOUND_PUSH)))
+        span = 2 * (reach + 2)
         surface = pygame.Surface((span, span), pygame.SRCALPHA)
         middle = span / 2.0
-        rng = random.Random(seed * 977 + SHATTER_ARC_BOLTS)
+        rng = random.Random(seed * 977 + SHATTER_ARC_PIECES)
         facing = 0.0 if self.side >= 0.0 else 180.0
-        opening = SHATTER_ARC_GAP * (0.3 + 0.7 * progress)
-        first = facing + opening / 2.0
-        last = facing + 360.0 - opening / 2.0
-        draw_arc_stroke(
-            surface,
-            (snap(middle), snap(middle)),
-            radius,
-            first,
-            last,
-            FXColors.break_spark,
-            1,
-        )
-        reach = radius * SHATTER_ARC_REACH * (0.55 + 0.45 * progress)
-        for _ in range(SHATTER_ARC_BOLTS):
-            self._bolt(
+        spread = SHATTER_ARC_SPREAD * progress
+
+        slot = 360.0 / SHATTER_ARC_PIECES
+        for index in range(SHATTER_ARC_PIECES):
+            centre = facing + index * slot + slot / 2.0
+            on_wound = _angle_near(centre, facing, SHATTER_ARC_WOUND)
+            thrown = spread * (1.0 + SHATTER_ARC_WOUND_PUSH * on_wound) * rng.uniform(0.4, 1.0)
+            self._fragment(
                 surface,
                 middle,
-                rng.uniform(-opening / 2.0, opening / 2.0),
-                rng.uniform(-SHATTER_ARC_BOLT_SPREAD, SHATTER_ARC_BOLT_SPREAD),
-                reach,
-                rng,
-                1.5 + 2.5 * progress,
+                centre,
+                slot / 2.0 * (1.0 - SHATTER_ARC_SHRINK * progress),
+                radius + radius * thrown,
+                FXColors.break_spark,
+            )
+
+        fine = SHIELD_ARC_FLASH
+        piece = fine / SHATTER_ARC_KICK_PIECES
+        for index in range(SHATTER_ARC_KICK_PIECES):
+            centre = facing - fine / 2.0 + piece * (index + 0.5)
+            thrown = spread * (1.0 + SHATTER_ARC_WOUND_PUSH) * rng.uniform(0.6, 1.4)
+            self._fragment(
+                surface,
+                middle,
+                centre,
+                piece / 2.0 * (1.0 - SHATTER_ARC_SHRINK * 1.3 * progress),
+                radius + radius * thrown,
+                FXColors.break_core,
             )
         return surface
 
@@ -651,6 +642,17 @@ class ShatterArcParticle(FxParticle):
 
     def _integrate(self, delta_time: float) -> None:
         self.image = self.steps[spread_step(self.life, len(self.steps), 0.7)]
+
+
+def _angle_near(angle: float, centre: float, span: float) -> float:
+    """How much of ``span`` an angle sits inside, from 0 (outside) to 1 (dead on).
+
+    Wrapping, because the ring's angles run past 360 and the wound is on
+    whichever side the guard faces.
+    """
+    half = span / 2.0
+    offset = abs(((angle - centre + 180.0) % 360.0) - 180.0)
+    return max(0.0, 1.0 - offset / half)
 
 
 class SweatParticle(FxParticle):

@@ -240,50 +240,89 @@ def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
     assert type(group.sprites()[0]).__name__ == "ShatterArcParticle"
 
 
-def test_the_ring_tears_open_towards_the_side_that_failed() -> None:
-    """The gap is the point of the effect, and it has to be on the hit side.
+def test_the_ring_starts_whole_and_breaks_into_pieces() -> None:
+    """A circle breaking, not debris that happened to be round.
 
-    A ring that stayed closed while bolts left it would be a ring with
-    sparks on it, which is what this replaced.
+    The first step has to carry the ring at its own radius, and the last has
+    to have moved off it: that is the difference between the block's circle
+    failing and a burst of marks near the fighter.
     """
-    right = fx.spawn_shatter_arc(Group(), _entity(facing=True))
-    left = fx.spawn_shatter_arc(Group(), _entity(facing=False))
-    assert right is not None and left is not None
+    shatter = fx.spawn_shatter_arc(Group(), _entity(facing=True))
+    assert shatter is not None
+    radius = snap(fx.SHARD_ARC_RADIUS)
 
-    def gap_angles(shatter, step: int) -> list[float]:
-        """The angles at which the ring's own radius carries no stroke.
-
-        Measured on the band of pixels the ring occupies, so the bolts -- which
-        start one pixel outside it and are drawn in the same colour -- cannot
-        fill a gap that is not there.
-        """
+    def at_ring_radius(step: int) -> int:
+        """How many angles still carry a pixel on the ring's own radius."""
         image = shatter.steps[step]
-        width, height = image.get_size()
-        centre = width / 2.0
-        radius = fx.SHARD_ARC_RADIUS
-        gaps = []
-        for degree in range(360):
-            angle = math.radians(degree)
-            band = [
-                (
-                    snap(centre + (radius + offset) * math.cos(angle)),
-                    snap(centre + (radius + offset) * math.sin(angle)),
-                )
+        centre = image.get_width() / 2.0
+        return sum(
+            1
+            for degree in range(360)
+            if any(
+                image.get_at(
+                    (
+                        snap(centre + (radius + offset) * math.cos(math.radians(degree))),
+                        snap(centre + (radius + offset) * math.sin(math.radians(degree))),
+                    )
+                )[3]
                 for offset in (-1.0, 0.0, 1.0)
-            ]
-            if not any(image.get_at(point)[:3] == FXColors.break_spark for point in band):
-                gaps.append(degree)
-        return gaps
+            )
+        )
 
-    opening = gap_angles(right, -1)
-    mirrored = gap_angles(left, -1)
-    early = gap_angles(right, 0)
+    assert at_ring_radius(0) >= 300, "the first step is still a circle"
+    assert at_ring_radius(-1) < at_ring_radius(0), "and the last has come off it"
 
-    assert opening, "the ring has to come apart"
-    assert len(early) < len(opening), "and more of it on the last step than the first"
-    assert min(abs(degree - 0) for degree in opening) < 30, "the gap faces the hit"
-    assert min(abs(degree - 180) for degree in opening) > 120, "and nowhere else"
-    assert min(abs(degree - 180) for degree in mirrored) < 30, "mirrored with the facing"
+    spread = 0
+    for step in range(len(shatter.steps)):
+        image = shatter.steps[step]
+        centre = image.get_width() / 2.0
+        spread += sum(
+            1
+            for degree in range(0, 360, 3)
+            for offset in range(radius + 1, image.get_width() // 2)
+            if image.get_at(
+                (
+                    snap(centre + offset * math.cos(math.radians(degree))),
+                    snap(centre + offset * math.sin(math.radians(degree))),
+                )
+            )[3]
+        )
+    assert spread > 0, "and the pieces have to leave the ring behind"
+
+
+def test_the_pieces_fly_furthest_from_the_side_that_failed() -> None:
+    """The break radiates from the wound, so the facing side leads.
+
+    Both halves of the silhouette break, but not evenly: the fragments near
+    the side the hit landed on travel further than the ones at the back.
+    """
+    shatter = fx.spawn_shatter_arc(Group(), _entity(facing=True))
+    assert shatter is not None
+    image = shatter.steps[-1]
+    width = image.get_width()
+    centre = width / 2.0
+
+    limit = width // 2 - 1
+
+    def reach(side: str) -> int:
+        """The furthest radius still drawn on that half of the ring."""
+        best = 0
+        for degree in range(360):
+            facing_right = math.cos(math.radians(degree)) >= 0
+            if (side == "front") != facing_right:
+                continue
+            for radius in range(snap(fx.SHARD_ARC_RADIUS), limit):
+                if image.get_at(
+                    (
+                        snap(centre + radius * math.cos(math.radians(degree))),
+                        snap(centre + radius * math.sin(math.radians(degree))),
+                    )
+                )[3]:
+                    best = max(best, radius)
+                    break
+        return best
+
+    assert reach("front") > reach("back"), "the fragments on the hit side have to travel further"
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:
