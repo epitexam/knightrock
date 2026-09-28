@@ -20,12 +20,12 @@ from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DustParticle,
-    GuardFlashParticle,
     OrbitParticle,
+    ShieldArcParticle,
     SparkParticle,
     spawn_dash_trail,
     spawn_dash_wind,
-    spawn_guard_flash,
+    spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
 )
@@ -114,105 +114,85 @@ def test_the_landing_mark_is_wider_for_a_harder_fall() -> None:
     assert hard.behind is True
 
 
-def test_the_guard_wedge_opens_away_from_the_side_the_attack_came_from() -> None:
-    right = spawn_guard_flash(Group(), _entity(facing=True))
-    left = spawn_guard_flash(Group(), _entity(facing=False))
+def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:
+    """A ring off to one side of the fighter reads as a block.
 
-    assert isinstance(right, GuardFlashParticle)
+    A ring in the middle of the body would be a status icon, and a fan of
+    thrown particles would be an explosion: only the offset says the guard
+    took the hit rather than being turned into it.
+    """
+    right = spawn_guard_arc(Group(), _entity(facing=True))
+    left = spawn_guard_arc(Group(), _entity(facing=False))
+
+    assert isinstance(right, ShieldArcParticle)
     assert right is not None and left is not None
     assert right.side == 1.0
     assert left.side == -1.0
     assert right.pos.x > _entity().hitbox.centerx
     assert left.pos.x < _entity().hitbox.centerx
-    assert right.steps[-1].get_width() == left.steps[-1].get_width()
+    assert right.image.get_size() == left.image.get_size()
 
 
-def test_a_break_throws_shards_and_a_block_throws_chips() -> None:
-    """Guard and break differ by silhouette, not only by colour.
+def test_the_block_ring_is_a_ring_and_not_an_arc() -> None:
+    """It was drawn with ``pygame.draw.arc``, which closes the ring regardless.
 
-    Colour alone does not survive a still frame, or a bright background.
+    Every start and stop angle produced the same full circle, so the shape
+    this particle has always shown is a ring and the spans were decoration.
+    Drawn as circles, the intent in the code and the pixels finally agree.
     """
-    entity = _entity()
-    guard = fx.spawn_guard_spark(Group(), entity)
-    broken = fx.spawn_break_burst(Group(), entity)
+    ring = spawn_guard_arc(Group(), _entity())
+    assert ring is not None
+    image = ring.image
+    width, height = image.get_size()
+    middle = width // 2
 
-    assert {spark.shape for spark in guard} == {"chip"}
-    assert {spark.shape for spark in broken} == {"shard"}
-    assert max(spark.size for spark in broken) > max(spark.size for spark in guard)
-    assert {tuple(spark.ink) for spark in broken} == {tuple(FXColors.ink_warm)}
+    def lit(x: int) -> bool:
+        return bool(image.get_at((x, middle))[3])
 
+    lit_columns = [x for x in range(width) if lit(x)]
 
-def test_no_block_spark_is_shaped_like_a_star() -> None:
-    """The stars belong to the dizzy state and to nothing else.
-
-    A four-pointed sparkle thrown out of a block is a star flying out of a
-    block, and a parry is the most repeated event in a fight: the one effect
-    that must not look like the dizzy one is the one on every exchange.
-    """
-    entity = _entity()
-
-    for sparks in (
-        fx.spawn_guard_spark(Group(), entity),
-        fx.spawn_parry_burst(Group(), entity),
-        fx.spawn_break_burst(Group(), entity),
-    ):
-        assert sparks
-        for spark in sparks:
-            assert spark.shape in ("chip", "shard")
-            assert not isinstance(spark, OrbitParticle)
-
-    stars = fx.spawn_dizzy_stars(Group(), entity)
-    assert all(isinstance(star, OrbitParticle) for star in stars)
+    assert lit_columns[0] < middle - 4, "a ring is hollow in the middle"
+    assert lit_columns[-1] > middle + 4
+    assert not lit(middle)
 
 
-def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
-    """The same burst in another colour, to the spark.
-
-    A parry is the most repeated event in a fight, and it used to throw twice
-    the sparks, throw them longer, and wash the whole frame: three times the
-    screen coverage of the thing it is a bigger version of.
-    """
-    parry_spec, block_spec = fx.PARRY_BURST, fx.GUARD_BURST
-    geometry = ("count", "speed", "cone", "tilt", "shape", "size", "elongation")
-
-    for field in geometry:
-        assert getattr(parry_spec, field) == getattr(block_spec, field), (
-            f"a parry must not change the {field} of a block"
-        )
-    assert parry_spec.colors != block_spec.colors
-    assert parry_spec.core != block_spec.core
-
-    entity = _entity()
-    block = fx.spawn_guard_spark(Group(), entity)
-    parried = fx.spawn_parry_burst(Group(), entity)
-
-    assert len(parried) == len(block)
-    assert {spark.shape for spark in parried} == {spark.shape for spark in block}
-    assert FXColors.parry_spark in {tuple(spark.color) for spark in parried}
-    assert FXColors.parry_spark not in {tuple(spark.color) for spark in block}
-
-
-def test_the_parry_wedge_is_the_block_wedge_in_gold() -> None:
-    block = spawn_guard_flash(Group(), _entity())
-    parried = spawn_guard_flash(Group(), _entity(), parried=True)
+def test_a_perfect_block_is_the_same_ring_in_gold() -> None:
+    block = spawn_guard_arc(Group(), _entity())
+    parried = spawn_guard_arc(Group(), _entity(), parried=True)
 
     assert block is not None and parried is not None
-    assert parried.steps[-1].get_size() == block.steps[-1].get_size(), "same wedge, same size"
+    assert parried.image.get_size() == block.image.get_size(), "same ring, same size"
     assert parried.body == FXColors.parry_spark
     assert parried.body != block.body
 
 
-def test_the_guard_wedge_opens_by_stepping_through_prebuilt_sizes() -> None:
-    """A wedge is directional; a redrawn fan is an explosion at the middle."""
-    flash = spawn_guard_flash(Group(), _entity())
-    assert flash is not None
-    first = flash.image
+def test_a_block_spawns_the_ring_and_no_particles() -> None:
+    """No thrown particles on a block at all.
 
-    flash.update(flash.max_ttl * 0.6)
+    They were the last carrier of a star shape into every exchange, and the
+    ring is the whole silhouette.
+    """
+    group = Group()
 
-    assert flash.image is not first
-    assert len({step.get_width() for step in flash.steps}) == len(flash.steps)
-    assert flash.image.get_width() > first.get_width()
+    spawn_guard_arc(group, _entity())
+
+    assert len(group) == 1
+    assert not any(isinstance(sprite, SparkParticle) for sprite in group)
+    assert not any(isinstance(sprite, OrbitParticle) for sprite in group)
+
+
+def test_only_the_dizzy_state_produces_stars() -> None:
+    """The four-pointed star is built in one place, and it is this one.
+
+    It used to be the guard and parry spark shape too, which put six gold
+    stars on screen on every exchange in a fight.
+    """
+    entity = _entity()
+    stars = fx.spawn_dizzy_stars(Group(), entity)
+    shards = fx.spawn_break_burst(Group(), entity)
+
+    assert stars and all(isinstance(star, OrbitParticle) for star in stars)
+    assert shards and not any(isinstance(shard, OrbitParticle) for shard in shards)
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:

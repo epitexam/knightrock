@@ -1,4 +1,4 @@
-"""Guard feedback: spark FX, guard events, parry hit-stop, overlay cues."""
+"""Guard feedback: the block ring, guard events, parry hit-stop, overlay cues."""
 
 from types import SimpleNamespace
 
@@ -8,10 +8,11 @@ from pygame.sprite import Group
 
 from src.core import fx
 from src.core.fx import (
+    OrbitParticle,
+    ShieldArcParticle,
     SparkParticle,
     spawn_break_burst,
-    spawn_guard_spark,
-    spawn_parry_burst,
+    spawn_guard_arc,
 )
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
@@ -39,12 +40,42 @@ def test_spark_fades_and_reaps_itself() -> None:
     assert len(group) == 0
 
 
-def test_guard_spawners_emit_expected_counts() -> None:
+def test_a_block_is_one_ring_and_nothing_else() -> None:
+    """A block is a single arc, not a fan of thrown particles.
+
+    The fan read as an explosion inside the defender, and the particles were
+    the last thing carrying a four-pointed star into every exchange.
+    """
+    entity = _entity()
+    group = Group()
+
+    arc = spawn_guard_arc(group, entity)
+
+    assert isinstance(arc, ShieldArcParticle)
+    assert len(group) == 1
+    assert [type(sprite) for sprite in group] == [ShieldArcParticle]
+
+
+def test_a_perfect_block_is_the_same_ring_in_gold() -> None:
+    entity = _entity()
+    group = Group()
+
+    arc = spawn_guard_arc(group, entity, parried=True)
+
+    assert arc is not None
+    assert len(group) == 1
+    assert arc.parried is True
+    assert arc.body == fx.FXColors.parry_spark
+
+
+def test_a_break_still_throws_shards() -> None:
+    """A broken guard is a different event and keeps its own burst."""
     entity = _entity()
 
-    assert len(spawn_guard_spark(Group(), entity)) == fx.GUARD_SPARK_COUNT
-    assert len(spawn_parry_burst(Group(), entity)) == fx.GUARD_SPARK_COUNT
     assert len(spawn_break_burst(Group(), entity)) == fx.BREAK_SPARK_COUNT
+    assert not any(
+        isinstance(sprite, OrbitParticle) for sprite in spawn_break_burst(Group(), entity)
+    )
 
 
 def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
@@ -52,42 +83,9 @@ def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
     for _ in range(fx.MAX_FX_SPRITES):
         full.add(SparkParticle((0.0, 0.0), (0.0, 0.0), (255, 255, 255)))
 
-    assert spawn_guard_spark(full, _entity()) == []
-    assert spawn_parry_burst(Group(), SimpleNamespace()) == []
+    assert spawn_guard_arc(full, _entity()) is None
+    assert spawn_guard_arc(Group(), SimpleNamespace()) is None
     assert spawn_break_burst(Group(), SimpleNamespace()) == []
-
-
-def test_the_parry_burst_is_thrown_from_the_contact_it_reports() -> None:
-    """One-sided, out of the face the block came from, not out of the middle.
-
-    A cone radiates, so some of it points down; what has to hold is the side.
-    """
-    entity = _entity()
-    entity.facing_right = True
-
-    sparks = spawn_parry_burst(Group(), entity, origin=(150.0, 118.0))
-
-    assert all(abs(spark.pos.x - 150.0) < 8.0 for spark in sparks)
-    assert all(spark.velocity.x > 0.0 for spark in sparks)
-
-
-def test_the_guard_spark_cone_stays_on_the_facing_side() -> None:
-    """What reads as a block is a burst that only comes from one side."""
-    entity = _entity()
-    entity.facing_right = False
-
-    for spark in spawn_guard_spark(Group(), entity):
-        assert spark.velocity.x < 0.0
-
-
-def test_a_block_spawns_its_sparks_at_the_contact_it_reports() -> None:
-    """The point the event carries wins over the defender's own centre."""
-    entity = _entity()
-    entity.facing_right = True
-
-    sparks = spawn_guard_spark(Group(), entity, origin=(150.0, 120.0))
-
-    assert all(abs(spark.pos.x - 150.0) < 8.0 for spark in sparks)
 
 
 def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:
@@ -166,7 +164,7 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the gold wedge"
+    assert len(groups.fx_sprites) == 1, "the gold ring alone"
     assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
     assert loop.combat_system.guard_events == []
 
@@ -180,7 +178,7 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the guard wedge"
+    assert len(groups.fx_sprites) == 1, "the ring alone"
     assert camera.traumas == [pytest.approx(GuardSettings.GUARD_TRAUMA)]
 
 

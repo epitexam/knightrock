@@ -121,6 +121,8 @@ class FXColors:
 
     decal: ClassVar[Color] = (168, 160, 148)
     decal_ink: ClassVar[Color] = (92, 86, 78)
+    shield_arc: ClassVar[Color] = (132, 232, 242)
+    shield_ink: ClassVar[Color] = (18, 74, 96)
 
 
 #: Valid ``LevelConfig.bg`` names: avoids ``getattr(Colors, cfg.bg)``

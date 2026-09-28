@@ -26,8 +26,8 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
-from typing import Any, ClassVar, Literal
+from dataclasses import dataclass
+from typing import Any, ClassVar
 
 import pygame
 from pygame.math import Vector2
@@ -44,8 +44,8 @@ from src.core.rendering.fx_draw import (
     life_alpha,
     life_level,
     polygon_bounds,
+    ring,
     snap,
-    spread_step,
     star_shape,
     streak_points,
 )
@@ -58,7 +58,7 @@ __all__ = [
     "DizzyVortexParticle",
     "DustParticle",
     "FxParticle",
-    "GuardFlashParticle",
+    "ShieldArcParticle",
     "ImpactDecalParticle",
     "OrbitParticle",
     "SparkParticle",
@@ -77,22 +77,16 @@ __all__ = [
     "spawn_dash_wind",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
-    "spawn_guard_flash",
-    "spawn_guard_spark",
+    "spawn_guard_arc",
     "spawn_impact_decal",
     "spawn_landing_dust",
-    "spawn_parry_burst",
     "spawn_sweat_drops",
     "vortex_frames",
 ]
 
-SparkShape = Literal["chip", "shard"]
-"""The silhouettes a thrown spark can have. Neither of them is a star."""
-
 SPARK_TTL = 0.3
 SPARK_GRAVITY = 900.0
 SPARK_SIZE = 4.0
-GUARD_SPARK_COUNT = 6
 BREAK_SPARK_COUNT = 12
 DIZZY_STAR_COUNT = 6
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
@@ -145,10 +139,10 @@ DASH_TRAIL_TTL = 0.15
 DASH_TRAIL_SPAWN_EVERY = 0.015
 DECAL_RADIUS = 22.0
 DECAL_TTL = 0.28
-GUARD_FLASH_REACH = 15.0
-GUARD_FLASH_HALF = 9.0
-GUARD_FLASH_STEPS = (0.45, 0.72, 1.0)
-GUARD_FLASH_TTL = 0.16
+SHIELD_ARC_RADIUS = 20.0
+SHIELD_ARC_TTL = 0.22
+SHIELD_ARC_RIM = 5
+"""Ring thickness in world units; the lit ring sits inside the ink one."""
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -302,14 +296,12 @@ class StreakParticle(FxParticle):
 
 
 class SparkParticle(FxParticle):
-    """A chip of light thrown out of an impact.
+    """A heavy shard thrown out of a broken guard.
 
-    Two silhouettes, and neither of them is a star: a ``chip`` is a short
-    tapered sliver lying along its own velocity, which is what reads as a
-    spark of light, and a ``shard`` is a heavy triangle for something that
-    broke. The stars are the dizzy ones and only the dizzy ones -- a
-    four-pointed sparkle thrown out of a block is a star flying out of a
-    block, and a parry is the most repeated event in a fight.
+    The only thrown particle left in the game. Blocks are a ring and a parry
+    is the same ring in gold, so nothing flies out of a block any more, and a
+    break -- rare, loud, and about a guard that failed -- is the one event
+    that can afford a burst.
     """
 
     gravity: ClassVar[float] = SPARK_GRAVITY
@@ -323,35 +315,20 @@ class SparkParticle(FxParticle):
         ttl: float = SPARK_TTL,
         size: float = SPARK_SIZE,
         core: Color | None = None,
-        shape: SparkShape = "chip",
         elongation: float = 1.0,
         ink: Color = FXColors.ink,
     ) -> None:
         self.color = color
         self.core = core if core is not None else color
         self.size = float(size)
-        self.shape: SparkShape = shape
         self.elongation = max(1.0, float(elongation))
         self.ink = ink
-        self.family = f"burst_{shape}"
+        self.family = "break_burst"
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
 
-    def _chip(self) -> pygame.Surface:
-        """A plain bar, tapering away along the velocity.
-
-        One colour and no rim: a dark outline with a lit core is the same
-        visual grammar as a four-pointed sparkle, and squeezing it into a bar
-        only produced a star seen from the side.
-        """
-        heading = math.atan2(self.velocity.y, self.velocity.x)
-        length = self.size * self.elongation * 2.4
-        thick = max(2.0, self.size * 0.7)
-        points = streak_points((0, 0), length, thick, heading)
-        left, top, width, height = polygon_bounds(points)
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        draw_inked_polygon(surface, points, self.color, self.color, 0, at=(-left, -top))
-        return surface
+    def _paint(self) -> pygame.Surface:
+        return self._shard()
 
     def _shard(self) -> pygame.Surface:
         """A heavy triangle: three points, a fat waist, inked."""
@@ -374,9 +351,6 @@ class SparkParticle(FxParticle):
             0,
         )
         return surface
-
-    def _paint(self) -> pygame.Surface:
-        return self._chip() if self.shape == "chip" else self._shard()
 
 
 class OrbitParticle(FxParticle):
@@ -569,76 +543,46 @@ class ImpactDecalParticle(FxParticle):
         return surface
 
 
-class GuardFlashParticle(FxParticle):
-    """The flare of a block: a wedge opening off the guard's front.
+class ShieldArcParticle(FxParticle):
+    """A segmented guard arc on the side the block came from.
 
-    A solid triangle pointing away from the side the block came from, drawn
-    once at three sizes and stepped through as it opens. It replaces a fan of
-    thrown particles as the block's signature: a wedge is directional, reads
-    as force leaving a shield rather than as an explosion at the middle of a
-    body, and no combination of size, colour and count makes a triangle look
-    like the spinning stars it must not be confused with.
+    The block's whole silhouette: one arc, in front of the guard, facing the
+    attacker. It reads as a shield taking the hit because it has a direction
+    and stays in one place, where a fan of thrown particles reads as an
+    explosion inside the fighter.
     """
 
-    fade_in: ClassVar[float] = 0.0
+    fade_in: ClassVar[float] = 0.08
 
     def __init__(
         self,
         pos: tuple[float, float] | Vector2,
         side: float,
         parried: bool = False,
-        ttl: float = GUARD_FLASH_TTL,
+        ttl: float = SHIELD_ARC_TTL,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
+        self.body = FXColors.parry_spark if parried else FXColors.shield_arc
+        self.rim = FXColors.ink_warm if parried else FXColors.shield_ink
         self.parried = parried
-        self.body = FXColors.parry_spark if parried else FXColors.guard_spark
-        self.core = FXColors.parry_core if parried else FXColors.guard_core
-        self.rim = FXColors.ink if parried else FXColors.ink_cool
-        self.steps = [self._wedge(scale) for scale in GUARD_FLASH_STEPS]
-        self.family = "guard_flash"
+        self.family = "shield_arc"
         super().__init__(pos, ttl)
-        self.image = self.steps[0]
-
-    def _wedge(self, scale: float) -> pygame.Surface:
-        """The wedge at one size: an ink backing, the body, and a lit edge.
-
-        A triangle rather than a burst of marks because a shape with a
-        direction reads as a shield turning the hit away, and a shape without
-        one reads as something exploding inside the fighter. The body is inset
-        on every side so the ink survives as a rim, and the lit edge runs
-        along the leading side so the wedge still reads as opening.
-        """
-        side = self.side
-        reach = GUARD_FLASH_REACH * scale
-        half = GUARD_FLASH_HALF * scale
-        backing = [(0.0, -half), (side * reach, 0.0), (0.0, half)]
-        inset = 1.5
-        body = [
-            (side * inset, -half + inset),
-            (side * (reach - inset * 2.0), 0.0),
-            (side * inset, half - inset),
-        ]
-        edge = [
-            (side * (reach - inset * 3.0), -half * 0.34),
-            (side * (reach - inset * 1.5), 0.0),
-            (side * (reach - inset * 3.0), half * 0.34),
-        ]
-        left, top, width, height = polygon_bounds([*backing, *body, *edge])
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        at = (-left, -top)
-        for points, color in (
-            (backing, self.rim),
-            (body, self.body),
-            (edge, self.core),
-        ):
-            draw_inked_polygon(surface, points, color, color, 0, at=at)
-        return surface
 
     def _paint(self) -> pygame.Surface:
-        return self.steps[0]
+        """An ink ring and a lit ring inside it, concentric.
 
-    def _integrate(self, delta_time: float) -> None:
-        self.image = self.steps[spread_step(self.life, len(self.steps))]
+        Drawn as circles rather than arcs on purpose: ``pygame.draw.arc``
+        ignores its start and stop angles and closes the ring whatever they
+        say, so the shape this particle has always been is a full circle, and
+        the segmented-arc intent was never in the picture at all.
+        """
+        radius = snap(SHIELD_ARC_RADIUS)
+        side = 2 * radius + SHIELD_ARC_RIM + 2
+        surface = pygame.Surface((side, side), pygame.SRCALPHA)
+        middle = (side / 2.0, side / 2.0)
+        ring(surface, self.rim, middle, radius + SHIELD_ARC_RIM / 2, SHIELD_ARC_RIM)
+        ring(surface, self.body, middle, radius, SHIELD_ARC_RIM / 2)
+        return surface
 
 
 class SweatParticle(FxParticle):
@@ -1080,12 +1024,7 @@ def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailPar
 
 @dataclass(frozen=True)
 class BurstSpec:
-    """The look of one impact burst, as data.
-
-    Guard, parry and break differ by silhouette and not only by colour --
-    small tapered chips against heavy triangular shards -- so the three can be
-    told apart at a glance, and in a still frame.
-    """
+    """The look of an impact burst, as data."""
 
     colors: tuple[Color, ...]
     core: Color
@@ -1093,42 +1032,11 @@ class BurstSpec:
     speed: tuple[float, float]
     cone: float
     tilt: float = 0.0
-    shape: SparkShape = "chip"
     size: float = SPARK_SIZE
     elongation: float = 1.0
     ttl: float = SPARK_TTL
     ink: Color = FXColors.ink
 
-
-GUARD_BURST = BurstSpec(
-    colors=(FXColors.guard_spark, FXColors.guard_core),
-    core=FXColors.guard_core,
-    count=GUARD_SPARK_COUNT,
-    speed=(260.0, 220.0),
-    cone=36.0,
-    shape="chip",
-    size=SPARK_SIZE,
-    elongation=1.5,
-    ttl=0.26,
-    ink=FXColors.ink_cool,
-)
-
-PARRY_BURST = replace(
-    GUARD_BURST,
-    colors=(FXColors.parry_spark, Colors.white),
-    core=FXColors.parry_core,
-    ttl=0.28,
-    ink=FXColors.ink_warm,
-)
-"""The guard burst in gold, and nothing else.
-
-A perfect block is a normal block that landed on the right frame, so it gets
-the block's own effect in another colour. It used to get a burst twice the
-size, longer sparks and a wash of light over the whole frame, which is three
-times the screen coverage of the thing it is a bigger version of -- and a
-parry is the most repeated event in a fight, so what reads as impact once
-reads as strobing a hundred times.
-"""
 
 BREAK_BURST = BurstSpec(
     colors=(FXColors.break_spark, Colors.orange),
@@ -1136,7 +1044,6 @@ BREAK_BURST = BurstSpec(
     count=BREAK_SPARK_COUNT,
     speed=(380.0, 300.0),
     cone=80.0,
-    shape="shard",
     size=SPARK_SIZE * 1.5,
     elongation=1.6,
     ttl=SPARK_TTL + 0.12,
@@ -1169,7 +1076,6 @@ def _spawn_burst(
             ttl=spec.ttl,
             size=spec.size * rng.uniform(0.8, 1.2),
             core=spec.core,
-            shape=spec.shape,
             elongation=spec.elongation * rng.uniform(0.75, 1.35),
             ink=spec.ink,
         )
@@ -1178,21 +1084,12 @@ def _spawn_burst(
     return sparks
 
 
-def spawn_guard_spark(
-    fx_group: pygame.sprite.Group,
-    entity: Any,
-    origin: tuple[float, float] | None = None,
-) -> list[SparkParticle]:
-    """The spatter when a guard absorbs a hit: one-sided, so it reads as a block."""
-    return _spawn_burst(fx_group, entity, GUARD_BURST, origin)
-
-
-def spawn_guard_flash(
+def spawn_guard_arc(
     fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
-) -> GuardFlashParticle | None:
-    """The block's flare, opening off the guard's front.
+) -> ShieldArcParticle | None:
+    """The block's arc, in front of the guard and facing the attacker.
 
-    ``parried`` is the only difference a perfect block makes: same wedge, same
+    ``parried`` is the only difference a perfect block makes: same arc, same
     size, gold instead of cyan.
     """
     hitbox = getattr(entity, "hitbox", None)
@@ -1201,18 +1098,13 @@ def spawn_guard_flash(
     if not _has_room(fx_group):
         return None
     side = facing_side(entity)
-    flash = GuardFlashParticle(_contact_point(entity, None), side, parried)
-    fx_group.add(flash)
-    return flash
-
-
-def spawn_parry_burst(
-    fx_group: pygame.sprite.Group,
-    entity: Any,
-    origin: tuple[float, float] | None = None,
-) -> list[SparkParticle]:
-    """The guard burst in gold, thrown from the contact point outward."""
-    return _spawn_burst(fx_group, entity, PARRY_BURST, origin)
+    arc = ShieldArcParticle(
+        (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
+        side,
+        parried,
+    )
+    fx_group.add(arc)
+    return arc
 
 
 def spawn_break_burst(
