@@ -16,8 +16,7 @@ from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
 from src.ui.world_overlay_cards import CardLayer
 from src.ui.world_overlay_geo import GeoLayer
-from src.ui.world_overlay_shared import display_name, hitbox_color
-from src.ui.world_ui import (
+from src.ui.world_overlay_metrics import (
     HEALTH_BAR_HEIGHT,
     HEALTH_BAR_LABEL_GAP,
     LABEL_ANCHOR_GAP,
@@ -29,9 +28,10 @@ from src.ui.world_ui import (
     LABEL_PAD_Y,
     VELOCITY_MIN_LENGTH,
     VELOCITY_OUTLINE,
-    WorldUI,
-    arrow_outline,
 )
+from src.ui.world_overlay_shared import display_name, hitbox_color
+from src.ui.world_overlay_velocity import arrow_outline
+from src.ui.world_ui import WorldUI
 from tests.unit.helpers import make_overlay
 
 

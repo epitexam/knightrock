@@ -9,7 +9,8 @@ from src.ui.hud import HUD
 from src.ui.panel_renderer import PanelLayout, PanelRenderer, compact_panels
 from src.ui.player_ui import PlayerUI
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
-from src.ui.world_ui import COMBAT_PANEL_TITLE, WorldUI
+from src.ui.world_overlay_metrics import COMBAT_PANEL_TITLE
+from src.ui.world_ui import WorldUI
 
 #: Stable ids of the interactive debug panels. They name the ``×``/drag state
 #: kept by :class:`~src.ui.panel_renderer.PanelInteraction`, so a panel keeps
@@ -239,7 +240,7 @@ class UIManager:
         if self.renderer.interaction.is_closed(PANEL_LEGEND):
             return 0
         from src.core.colors import Colors
-        from src.ui.world_ui import PHASE_OUTLINE_COLORS
+        from src.ui.world_overlay_metrics import PHASE_OUTLINE_COLORS
 
         zone_colors = Colors.debug_hurtbox_zones
         lines = [

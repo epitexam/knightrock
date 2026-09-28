@@ -85,7 +85,7 @@ GOLDEN_PLACED = [
 # now calls that directly instead of paying a hop through the facade.
 MANIFEST = {
     "facade": (
-        "draw_debug_overlays metrics stroke toggle surface draw_health_bars "
+        "draw_debug_overlays metrics toggle surface draw_health_bars "
         "_health_bar_rect annotation_rects annotation_obstacles"
     ),
     "shared": (

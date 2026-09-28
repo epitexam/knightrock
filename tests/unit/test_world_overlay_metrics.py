@@ -2,9 +2,9 @@
 
 Extracted from `world_ui.py`, which was 2100 lines because the numbers lived
 in the same file as the drawing. This checks the three things that make the
-extraction safe: that every constant came across, that `world_ui` still hands
-out the same objects (so nothing quietly got a second copy), and the rule the
-tables exist to enforce -- world units, scaled exactly once.
+extraction safe: that every constant came across, that the facade no longer
+re-exports them (so nothing quietly got a second copy), and the rule the tables
+exist to enforce -- world units, scaled exactly once.
 """
 
 import pytest
@@ -92,13 +92,19 @@ def test_the_module_owns_exactly_the_named_dimensions() -> None:
     assert set(metrics_module.__all__) == EXPECTED | {"MetricsCache"}
 
 
-def test_world_ui_re_exports_the_same_objects_not_copies() -> None:
-    """A second copy is a second number, and the two would drift."""
-    for name in EXPECTED - {"WorldOverlayMetrics", "scaled_world_px", "MetricsCache"}:
-        assert getattr(world_ui, name) is getattr(metrics_module, name), name
-    # The scale helper is imported under its old private name for the callers
-    # inside world_ui; the object is the same either way.
-    assert world_ui._scaled is scaled_world_px
+def test_the_facade_does_not_re_export_the_dimensions() -> None:
+    """The layers and `ui_manager` import from here, so a second name is a second number.
+
+    `world_ui` used to re-export all 61 of them under `# noqa: F401`. Two had a
+    caller in `src`; the rest were read by the test that asserted the re-export
+    existed, which is the only thing that made them look used.
+
+    The two it still needs are the ones it uses itself: ``OVERLAY_LAYERS`` to
+    seed ``WorldUI.layers``, and ``WorldOverlayMetrics`` to annotate its own
+    ``metrics`` property.
+    """
+    still_exported = EXPECTED & set(vars(world_ui))
+    assert still_exported == {"OVERLAY_LAYERS", "WorldOverlayMetrics"}
 
 
 def test_every_dimension_is_in_world_units_and_scales_once() -> None:
@@ -129,7 +135,7 @@ def test_a_dimension_never_rounds_away_to_nothing() -> None:
 
 
 def test_the_layer_names_are_the_ones_the_f_keys_toggle() -> None:
-    assert world_ui.OVERLAY_LAYERS == ("boxes", "labels", "velocities", "statics", "panels")
+    assert metrics_module.OVERLAY_LAYERS == ("boxes", "labels", "velocities", "statics", "panels")
 
 
 def test_the_hit_height_badges_are_compact() -> None:

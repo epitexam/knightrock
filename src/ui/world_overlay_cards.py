@@ -38,8 +38,13 @@ from src.ui.world_overlay_metrics import (
 )
 from src.ui.world_overlay_shared import AnnotationSink, display_name, faction, label_color
 
+#: One label row: ``(text, color)`` tokens laid out left to right.
 Segments = list[list[tuple[str, Color]]]
 
+#: A collected label: sort key, colored rows, faction accent, screen
+#: anchor, clearance above (bar above the entity) and below (bar flipped
+#: under the entity near the top of the screen), and the sprite itself so
+#: the placer can treat its health bar as an obstacle.
 LabelRequest = tuple[
     tuple[int, float, float], Segments, Color, pygame.FRect, int, int, pygame.sprite.Sprite
 ]
@@ -52,13 +57,6 @@ def join_flag_tokens(flags: list[tuple[str, Color]]) -> list[tuple[str, Color]]:
         joined.append((" | ", LABEL_SEP))
         joined.append((text, color))
     return joined
-
-
-_Segments = list[list[tuple[str, Color]]]
-
-_LabelRequest = tuple[
-    tuple[int, float, float], _Segments, Color, pygame.FRect, int, int, pygame.sprite.Sprite
-]
 
 
 __all__ = ["CardLayer", "Segments", "LabelRequest", "join_flag_tokens"]
