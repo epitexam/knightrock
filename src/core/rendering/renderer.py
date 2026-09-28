@@ -7,12 +7,11 @@ from typing import Any, cast
 import pygame
 
 from src.core.colors import BG_COLORS, Color, Colors
-from src.core.fx import screen_flash
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash
+from src.core.settings import Afterimage, HitFlash, ParryFlash
 from src.core.sprite_groups import SpriteGroups
 
 DASH_STRETCH_X = 1.6
@@ -81,9 +80,9 @@ class Renderer:
         # from ``id(image)`` alone can be hit by a freed surface whose id was
         # recycled, which would hand back a stale, wrongly sized blit.
         self._scaled_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
-        # White damage-flash silhouettes, keyed by ``id(image)`` like
+        # Flash silhouettes, keyed by ``(id(image), tint)`` like
         # ``_scaled_cache`` and holding the source for the same reason.
-        self._flash_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
+        self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: object | None = None
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
@@ -155,26 +154,26 @@ class Renderer:
         self._scaled_cache[key] = (image, scaled)
         return scaled
 
-    def _white_silhouette(self, image: pygame.Surface) -> pygame.Surface:
-        """A white copy of ``image`` keeping its alpha, memoised per image.
+    def _silhouette(self, image: pygame.Surface, color: Color) -> pygame.Surface:
+        """A copy of ``image`` in ``color``, keeping its alpha, memoised per image.
 
         Building a mask and converting it to a surface costs 6.8us, and a
         flashing entity redraws for the whole 0.1s of its flash, so this was
         the most expensive per-sprite operation on the hit-feedback path. The
-        silhouette only depends on the source image, never on the flash
-        intensity, so it is built once per image and the caller copies it to
-        set its own alpha.
+        silhouette only depends on the source image and the tint, never on the
+        flash intensity, so it is built once and the caller copies it to set
+        its own alpha.
 
         The source is kept in the cached value: an ``id``-keyed dict can be
         handed a freed surface whose id was recycled, which would return a
         silhouette of the wrong size.
         """
-        key = id(image)
+        key = (id(image), color)
         cached = self._flash_cache.get(key)
         if cached is not None:
             return cached[1]
         mask = pygame.mask.from_surface(image)
-        silhouette = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
+        silhouette = mask.to_surface(setcolor=(*color, 255), unsetcolor=(0, 0, 0, 0))
         self._flash_cache[key] = (image, silhouette)
         return silhouette
 
@@ -252,7 +251,6 @@ class Renderer:
             self.surface.blit(surface, screen_rect)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
-        self._draw_screen_flash()
         if debug_enabled:
             overlays = perf_counter()
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
@@ -388,21 +386,33 @@ class Renderer:
         blits.append((image, screen_rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
-        """White damage-flash overlays for recently hit entities.
+        """Tint overlays for entities that just took a hit or just parried.
 
-        Only entities can flash (they are the only ones with a
-        ``flash_timer``), so this walks ``entity_sprites``: scanning
-        ``all_sprites`` cost a ``getattr`` on every tile of the level, ~1000
-        of them, to find at most a handful of flashes.
+        Only entities carry the timers, so this walks ``entity_sprites``:
+        scanning ``all_sprites`` cost a ``getattr`` on every tile of the level,
+        ~1000 of them, to find at most a handful of flashes.
+
+        The parry wash is the same overlay in gold, and it is the whole
+        difference between a block and a perfect one on the character itself:
+        the reaction animation is already shared, so a parry that also threw
+        its own burst and washed the whole frame was three times the screen
+        coverage of the thing it is a bigger version of.
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            timer = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
-            if timer <= 0.0 or not self.camera.is_visible(sprite.rect):
+            hurt = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
+            parried = float(getattr(sprite, "parry_flash_timer", 0.0) or 0.0)
+            if hurt <= 0.0 and parried <= 0.0:
                 continue
-            overlay = self._white_silhouette(sprite.image)
-            overlay = overlay.copy()
-            overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
+            if not self.camera.is_visible(sprite.rect):
+                continue
+            color = Colors.white
+            strength = hurt / HitFlash.DURATION if hurt > 0.0 else 0.0
+            if parried > 0.0:
+                color = Colors.gold
+                strength = max(strength, ParryFlash.ALPHA * min(1.0, parried / ParryFlash.DURATION))
+            overlay = self._silhouette(sprite.image, color).copy()
+            overlay.set_alpha(int(255 * min(1.0, strength)))
             screen_rect = self.camera.apply_snapped(sprite.rect)
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
@@ -413,19 +423,6 @@ class Renderer:
     def _draw_flashes(self, flashes: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
         for overlay, screen_rect in flashes:
             self.surface.blit(overlay, screen_rect)
-
-    def _draw_screen_flash(self) -> None:
-        """Wash the frame with light while a parry's flash is running.
-
-        Drawn last so it covers the world but not the debug overlay, which is
-        a reading tool and must keep working through a visual effect.
-        """
-        alpha = screen_flash.alpha
-        if alpha <= 0:
-            return
-        wash = pygame.Surface(self.surface.get_size(), pygame.SRCALPHA)
-        wash.fill((255, 255, 255, alpha))
-        self.surface.blit(wash, (0, 0))
 
     def _update_afterimages(
         self, groups: SpriteGroups, dt: float

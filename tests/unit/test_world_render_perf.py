@@ -158,8 +158,8 @@ def test_the_flash_silhouette_is_memoised() -> None:
     image = pygame.Surface((16, 16), pygame.SRCALPHA)
     image.fill((255, 0, 0, 255))
 
-    first = renderer._white_silhouette(image)
-    second = renderer._white_silhouette(image)
+    first = renderer._silhouette(image, (255, 255, 255))
+    second = renderer._silhouette(image, (255, 255, 255))
 
     assert first is second
     assert first.get_size() == (16, 16)
@@ -172,7 +172,7 @@ def test_the_flash_alpha_is_per_frame_not_shared() -> None:
     renderer, _ = make_renderer()
     image = pygame.Surface((16, 16), pygame.SRCALPHA)
     image.fill((255, 0, 0, 255))
-    silhouette = renderer._white_silhouette(image)
+    silhouette = renderer._silhouette(image, (255, 255, 255))
 
     tinted = silhouette.copy()
     tinted.set_alpha(64)

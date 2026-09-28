@@ -7,14 +7,17 @@ from typing import Any
 
 from src.core.fx import (
     DASH_TRAIL_SPAWN_EVERY,
+    DIZZY_STAR_BATCH,
+    DIZZY_STAR_SPAWN_EVERY,
+    DIZZY_STAR_TTL,
     DIZZY_VORTEX_SPAWN_EVERY,
     MAX_FX_SPRITES,
-    screen_flash,
     spawn_dash_burst,
     spawn_dash_shockwave,
     spawn_dash_streak,
     spawn_dash_trail,
     spawn_dash_wind,
+    spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_impact_decal,
     spawn_landing_dust,
@@ -64,8 +67,10 @@ class PhysicsSystem:
         self._dashing_ids: set[int] = set()
         # Per-entity sweat emission countdown (droplets every SPAWN_EVERY).
         self._sweat_timers: dict[int, float] = {}
-        # Per-entity dizzy vortex emission countdown.
+        # Per-entity dizzy swirl emission countdown.
         self._dizzy_timers: dict[int, float] = {}
+        # Per-entity dizzy star emission countdown.
+        self._dizzy_star_timers: dict[int, float] = {}
         # Per-entity dash trail and wind line emission countdowns.
         self._dash_trail_timers: dict[int, float] = {}
         self._dash_wind_timers: dict[int, float] = {}
@@ -77,7 +82,6 @@ class PhysicsSystem:
         self.groups.entity_sprites.update(delta_time)
         self._spawn_impact_fx(delta_time)
         self.groups.fx_sprites.update(delta_time)
-        screen_flash.update(delta_time)
 
     def _spawn_impact_fx(self, delta_time: float) -> None:
         """Turn hard landings, dashes, dash penalties, and dizzy state into render-only FX.
@@ -138,6 +142,7 @@ class PhysicsSystem:
         if _is_dizzy(entity):
             dizzy_ids.add(id(entity))
             self._tick_dizzy_vortex(entity, delta_time)
+            self._tick_dizzy_stars(entity, delta_time)
         if hasattr(entity, "landed_impact"):
             entity.landed_impact = 0.0
 
@@ -158,6 +163,11 @@ class PhysicsSystem:
         self._dizzy_timers = {
             entity_id: timer
             for entity_id, timer in self._dizzy_timers.items()
+            if entity_id in dizzy_ids
+        }
+        self._dizzy_star_timers = {
+            entity_id: timer
+            for entity_id, timer in self._dizzy_star_timers.items()
             if entity_id in dizzy_ids
         }
         # Clean up dash trail timers for entities no longer dashing.
@@ -192,6 +202,15 @@ class PhysicsSystem:
                 spawn_dizzy_vortex(self.groups.fx_sprites, entity)
             timer = DIZZY_VORTEX_SPAWN_EVERY
         self._dizzy_timers[id(entity)] = timer
+
+    def _tick_dizzy_stars(self, entity: object, delta_time: float) -> None:
+        """Emit circling stars on the ``DIZZY_STAR_SPAWN_EVERY`` cadence."""
+        timer = self._dizzy_star_timers.get(id(entity), 0.0) - delta_time
+        if timer <= 0.0:
+            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+                spawn_dizzy_stars(self.groups.fx_sprites, entity, DIZZY_STAR_BATCH, DIZZY_STAR_TTL)
+            timer = DIZZY_STAR_SPAWN_EVERY
+        self._dizzy_star_timers[id(entity)] = timer
 
     def _tick_dash_trail(self, entity: object, delta_time: float) -> None:
         """Emit curved dash trail particles on the ``DASH_TRAIL_SPAWN_EVERY`` cadence."""

@@ -279,9 +279,7 @@ class GameplayLoop:
 
     def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
         from src.core.fx import (  # noqa: PLC0415
-            screen_flash,
             spawn_break_burst,
-            spawn_dizzy_stars,
             spawn_guard_arc,
             spawn_guard_spark,
             spawn_parry_burst,
@@ -289,11 +287,11 @@ class GameplayLoop:
 
         if event.kind == "parry":
             spawn_parry_burst(fx_group, event.target, event.point)
-            screen_flash.trigger()
+            spawn_guard_arc(fx_group, event.target, parried=True)
         elif event.kind == "break":
             spawn_break_burst(fx_group, event.target, event.point)
         elif event.kind == "stun":
-            spawn_dizzy_stars(fx_group, event.target)
+            return
         else:
             spawn_guard_spark(fx_group, event.target, event.point)
             spawn_guard_arc(fx_group, event.target)

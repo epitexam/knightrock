@@ -20,7 +20,6 @@ from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DustParticle,
-    ScreenFlash,
     ShieldArcParticle,
     SparkParticle,
     spawn_dash_trail,
@@ -126,20 +125,56 @@ def test_the_guard_arc_faces_the_side_the_attack_came_from() -> None:
     assert left.pos.x < _entity().hitbox.centerx
 
 
-def test_the_three_bursts_are_told_apart_by_their_shape() -> None:
-    """Colour alone does not survive a still frame or a bright background."""
+def test_a_break_throws_shards_and_a_block_throws_sparkles() -> None:
+    """Guard and break differ by silhouette, not only by colour.
+
+    Colour alone does not survive a still frame, or a bright background.
+    """
     entity = _entity()
     guard = fx.spawn_guard_spark(Group(), entity)
-    parry = fx.spawn_parry_burst(Group(), entity)
     broken = fx.spawn_break_burst(Group(), entity)
 
     assert {spark.points for spark in guard} == {4}
     assert {spark.points for spark in broken} == {3}, "a break throws shards"
     assert max(spark.size for spark in broken) > max(spark.size for spark in guard)
-    assert max(spark.elongation for spark in parry) > max(spark.elongation for spark in guard), (
-        "and a parry throws the longest sparks"
-    )
     assert {tuple(spark.ink) for spark in broken} == {tuple(FXColors.ink_warm)}
+
+
+def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
+    """The same burst in another colour, to the spark.
+
+    A parry is the most repeated event in a fight, and it used to throw twice
+    the sparks, throw them longer, and wash the whole frame: three times the
+    screen coverage of the thing it is a bigger version of.
+    """
+    parry_spec, block_spec = fx.PARRY_BURST, fx.GUARD_BURST
+    geometry = ("count", "speed", "cone", "tilt", "points", "size", "elongation")
+
+    for field in geometry:
+        assert getattr(parry_spec, field) == getattr(block_spec, field), (
+            f"a parry must not change the {field} of a block"
+        )
+    assert parry_spec.colors != block_spec.colors
+    assert parry_spec.core != block_spec.core
+
+    entity = _entity()
+    block = fx.spawn_guard_spark(Group(), entity)
+    parried = fx.spawn_parry_burst(Group(), entity)
+
+    assert len(parried) == len(block)
+    assert {spark.points for spark in parried} == {spark.points for spark in block}
+    assert FXColors.parry_spark in {tuple(spark.color) for spark in parried}
+    assert FXColors.parry_spark not in {tuple(spark.color) for spark in block}
+
+
+def test_the_parry_arc_is_the_block_arc_in_gold() -> None:
+    block = spawn_guard_arc(Group(), _entity())
+    parried = spawn_guard_arc(Group(), _entity(), parried=True)
+
+    assert block is not None and parried is not None
+    assert parried.image.get_size() == block.image.get_size(), "same arc, same size"
+    assert parried.body == FXColors.parry_spark
+    assert parried.body != block.body
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:
@@ -172,27 +207,6 @@ def test_the_wind_lines_are_torn_off_in_front_of_the_dash() -> None:
     for line in lines:
         assert line.pos.x > entity.hitbox.centerx, "ahead of the dasher"
         assert line.velocity.x < 0.0, "and the air it tears off goes backwards"
-
-
-def test_the_screen_flash_rises_and_falls_and_clears() -> None:
-    flash = ScreenFlash()
-    flash.trigger(0.5)
-
-    assert 0 < flash.alpha < 255
-    flash.update(fx.SCREEN_FLASH_DURATION + 0.01)
-
-    assert flash.alpha == 0
-    assert flash.strength == 0.0
-
-
-def test_the_screen_flash_is_bounded() -> None:
-    flash = ScreenFlash()
-    flash.trigger(9.0)
-    peak = flash.alpha
-    flash.trigger(-3.0)
-    assert flash.alpha == 0
-    flash.trigger(1.0)
-    assert flash.alpha <= peak
 
 
 def test_the_dizzy_swirl_and_the_stars_do_not_share_a_place() -> None:

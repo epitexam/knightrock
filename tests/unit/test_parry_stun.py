@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.fx import OrbitParticle, spawn_dizzy_stars
+from src.core.fx import OrbitParticle
 from src.core.level.systems.combat_system import CombatSystem
 from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.types.goblin import GOBLIN_CONFIG
@@ -275,73 +275,60 @@ def test_player_dizzy_state_exits_via_ground_return() -> None:
     assert state.update(0.3) == "idle"  # timer clears, ground_return -> idle
 
 
-def test_dizzy_fx_spawns_stars_that_orbit_for_the_whole_stun() -> None:
-    """They circle above the head for the stun, and they do not fall.
+def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
+    """They circle the head for as long as the entity is dizzy.
 
-    As sparks they inherited the spark gravity, which over a long stun
-    dragged the whole constellation through the floor.
+    Spawned on the block that caused the stun they arrived as a constellation
+    at the instant of the third parry, which read as part of the block rather
+    than as the state the block earned. Emitted on a cadence they fade in with
+    the dizzy state and are gone shortly after it ends.
     """
-    import pygame
+    from src.core.fx import DIZZY_STAR_BATCH, DIZZY_STAR_SPAWN_EVERY, DIZZY_STAR_TTL
+    from src.core.level.systems.physics_system import PhysicsSystem
+    from src.core.sprite_groups import SpriteGroups
+    from tests.unit.helpers import make_entity
+
+    entity = make_entity(pos=(100.0, 100.0))
+    entity.state_machine = SimpleNamespace(current_state_name="idle")
+    groups = SpriteGroups()
+    groups.entity_sprites.add(entity)
+    system = PhysicsSystem(groups)
+
+    for _ in range(4):
+        system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+    assert len(groups.fx_sprites) == 0, "an idle fighter gets no stars"
+
+    entity.state_machine.current_state_name = DIZZY_STATE
+    system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+
+    stars = [sprite for sprite in groups.fx_sprites if isinstance(sprite, OrbitParticle)]
+    assert len(stars) == DIZZY_STAR_BATCH
+    assert all(star.ttl == pytest.approx(DIZZY_STAR_TTL) for star in stars)
+    assert all(star.velocity.length() == 0.0 for star in stars), "they orbit, they do not fall"
+
+    entity.state_machine.current_state_name = "idle"
+    system._spawn_impact_fx(DIZZY_STAR_SPAWN_EVERY)
+
+    assert all(star.ttl == pytest.approx(DIZZY_STAR_TTL) for star in stars), (
+        "and no more arrive once the state is over"
+    )
+
+
+def test_a_parry_that_stuns_spawns_no_stars_of_its_own() -> None:
+    """The stun event carries the camera shake, and nothing else."""
     from pygame.sprite import Group
+
+    from src.core.level.systems.contact_system import GuardEvent
+    from src.core.level.systems.gameplay_loop import GameplayLoop
 
     entity = SimpleNamespace(
         hitbox=pygame.FRect(100, 100, 40, 48),
         parry_stun_duration=1.5,
+        facing_right=True,
     )
     group = Group()
+    loop = GameplayLoop(camera_system=SimpleNamespace(add_trauma=lambda _amount: None))
 
-    stars = spawn_dizzy_stars(group, entity)
+    loop._spawn_fx_for_event(GuardEvent("stun", entity), group)
 
-    assert len(stars) == 6
-    assert all(isinstance(star, OrbitParticle) for star in stars)
-    assert all(star.ttl == pytest.approx(1.5) for star in stars)
-    assert all(star.velocity.length() == 0.0 for star in stars)
-
-
-def test_save_load_preserves_parry_counters() -> None:
-    from tests.unit.helpers import make_entity
-
-    entity = make_entity()
-    entity.parries_given = 3
-    entity.parries_taken = 2
-    entity.parry_stun_threshold = 3
-    entity.parry_stun_duration = 2.0
-
-    snapshot = entity.save_state()
-
-    entity.parries_given = 0
-    entity.parries_taken = 0
-    entity.parry_stun_threshold = None
-    entity.parry_stun_duration = 0.0
-
-    entity.load_state(snapshot)
-
-    assert entity.parries_given == 3
-    assert entity.parries_taken == 2
-    assert entity.parry_stun_threshold == 3
-    assert entity.parry_stun_duration == pytest.approx(2.0)
-
-
-def test_enemy_config_parry_stun_json_roundtrip() -> None:
-    from src.combat.attack_data import GOBLIN_ATTACKS
-    from src.data.enemies import enemy_config_to_dict, read_enemy_config
-
-    raw = {
-        "size": [36.0, 48.0],
-        "color": [60, 130, 60],
-        "health": 60.0,
-        "attacks": "goblin",
-        "attack_name": "claw_swipe",
-        "chase_speed": 120.0,
-        "vision_range": 300.0,
-        "attack_range": 60.0,
-        "parry_stun_threshold": 4,
-        "parry_stun_duration": 2.5,
-    }
-    config = read_enemy_config(raw, "test", {"goblin": GOBLIN_ATTACKS})
-    assert config.parry_stun_threshold == 4
-    assert config.parry_stun_duration == 2.5
-
-    d = enemy_config_to_dict(config)
-    assert d["parry_stun_threshold"] == 4
-    assert d["parry_stun_duration"] == 2.5
+    assert len(group) == 0

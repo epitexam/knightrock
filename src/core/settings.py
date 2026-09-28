@@ -191,6 +191,18 @@ class HitFlash:
     DURATION = 0.09
 
 
+class ParryFlash:
+    """Gold wash over a parrying fighter (render-only, never in snapshots).
+
+    The whole difference between a block and a perfect one on the character
+    itself: the reaction animation is already shared, so the parry only
+    needs a colour to say that the timing was right.
+    """
+
+    DURATION = 0.1
+    ALPHA = 0.72
+
+
 class ReactionMark:
     """Freshness window of a hit reaction in the debug overlay (render-only).
 

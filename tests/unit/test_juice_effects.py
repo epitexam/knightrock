@@ -1,6 +1,7 @@
 """Game-feel juice: hit flash, dash afterimages, sweat drops, dust puffs."""
 
 import os
+import random
 from types import SimpleNamespace
 
 import pygame
@@ -445,6 +446,7 @@ def test_sweat_drops_bead_beside_the_head_and_fall() -> None:
     """
     entity = make_entity(pos=(100.0, 100.0))
     entity.facing_right = True
+    entity.rng = random.Random(7)
     group = pygame.sprite.Group()
 
     drops = spawn_sweat_drops(group, entity)

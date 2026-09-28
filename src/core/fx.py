@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, ClassVar
 
 import pygame
@@ -59,7 +59,6 @@ __all__ = [
     "FxParticle",
     "ImpactDecalParticle",
     "OrbitParticle",
-    "ScreenFlash",
     "ShieldArcParticle",
     "SparkParticle",
     "StreakParticle",
@@ -69,7 +68,6 @@ __all__ = [
     "facing_side",
     "iter_landing_entities",
     "particle_frames",
-    "screen_flash",
     "spawn_break_burst",
     "spawn_dash_burst",
     "spawn_dash_shockwave",
@@ -91,12 +89,14 @@ SPARK_TTL = 0.3
 SPARK_GRAVITY = 900.0
 SPARK_SIZE = 4.0
 GUARD_SPARK_COUNT = 6
-PARRY_SPARK_COUNT = 14
 BREAK_SPARK_COUNT = 12
 DIZZY_STAR_COUNT = 6
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 DIZZY_STAR_RADIUS = 26.0
 DIZZY_STAR_SPEED = 2.4
+DIZZY_STAR_TTL = 1.2
+DIZZY_STAR_SPAWN_EVERY = 0.5
+DIZZY_STAR_BATCH = 2
 DUST_RADIUS = 5.0
 DUST_RISE = -60.0
 DUST_DRAG = 4.0
@@ -104,6 +104,7 @@ DASH_BURST_COUNT = 10
 DASH_WIND_LINES = 2
 MAX_FX_SPRITES = 64
 FX_FAMILY_BUDGETS: dict[str, int] = {
+    "dizzy_star": 8,
     "dash_trail": 26,
     "dash_wind": 12,
     "dizzy_vortex": 8,
@@ -142,8 +143,6 @@ DECAL_RADIUS = 22.0
 DECAL_TTL = 0.28
 SHIELD_ARC_RADIUS = 20.0
 SHIELD_ARC_TTL = 0.22
-SCREEN_FLASH_DURATION = 0.09
-SCREEN_FLASH_ALPHA = 0.34
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -557,9 +556,13 @@ class ShieldArcParticle(FxParticle):
         self,
         pos: tuple[float, float] | Vector2,
         side: float,
+        parried: bool = False,
         ttl: float = SHIELD_ARC_TTL,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
+        self.body = FXColors.parry_spark if parried else FXColors.shield_arc
+        self.rim = FXColors.ink_warm if parried else FXColors.shield_ink
+        self.parried = parried
         self.family = "shield_arc"
         super().__init__(pos, ttl)
 
@@ -570,9 +573,9 @@ class ShieldArcParticle(FxParticle):
         facing = 0.0 if self.side >= 0.0 else 180.0
         spans = ((-64.0, -30.0), (-12.0, 12.0), (30.0, 64.0))
         for start, end in spans:
-            pygame.draw.arc(surface, FXColors.shield_ink, box, facing + start, facing + end, 5)
+            pygame.draw.arc(surface, self.rim, box, facing + start, facing + end, 5)
         for start, end in spans:
-            pygame.draw.arc(surface, FXColors.shield_arc, box, facing + start, facing + end, 2)
+            pygame.draw.arc(surface, self.body, box, facing + start, facing + end, 2)
         return surface
 
 
@@ -1048,19 +1051,22 @@ GUARD_BURST = BurstSpec(
     ink=FXColors.ink_cool,
 )
 
-PARRY_BURST = BurstSpec(
+PARRY_BURST = replace(
+    GUARD_BURST,
     colors=(FXColors.parry_spark, Colors.white),
     core=FXColors.parry_core,
-    count=PARRY_SPARK_COUNT,
-    speed=(430.0, 350.0),
-    cone=60.0,
-    tilt=-38.0,
-    points=4,
-    size=SPARK_SIZE * 1.15,
-    elongation=2.2,
-    ttl=SPARK_TTL + 0.06,
+    ttl=0.28,
     ink=FXColors.ink_warm,
 )
+"""The guard burst in gold, and nothing else.
+
+A perfect block is a normal block that landed on the right frame, so it gets
+the block's own effect in another colour. It used to get a burst twice the
+size, longer sparks and a wash of light over the whole frame, which is three
+times the screen coverage of the thing it is a bigger version of -- and a
+parry is the most repeated event in a fight, so what reads as impact once
+reads as strobing a hundred times.
+"""
 
 BREAK_BURST = BurstSpec(
     colors=(FXColors.break_spark, Colors.orange),
@@ -1119,8 +1125,14 @@ def spawn_guard_spark(
     return _spawn_burst(fx_group, entity, GUARD_BURST, origin)
 
 
-def spawn_guard_arc(fx_group: pygame.sprite.Group, entity: Any) -> ShieldArcParticle | None:
-    """The guard arc itself, in front of the guard and facing the attacker."""
+def spawn_guard_arc(
+    fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
+) -> ShieldArcParticle | None:
+    """The guard arc itself, in front of the guard and facing the attacker.
+
+    ``parried`` is the only difference a perfect block makes: same arc, same
+    size, gold instead of cyan.
+    """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return None
@@ -1130,6 +1142,7 @@ def spawn_guard_arc(fx_group: pygame.sprite.Group, entity: Any) -> ShieldArcPart
     arc = ShieldArcParticle(
         (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
         side,
+        parried,
     )
     fx_group.add(arc)
     return arc
@@ -1140,7 +1153,7 @@ def spawn_parry_burst(
     entity: Any,
     origin: tuple[float, float] | None = None,
 ) -> list[SparkParticle]:
-    """The burst on a successful parry, thrown from the contact point outward."""
+    """The guard burst in gold, thrown from the contact point outward."""
     return _spawn_burst(fx_group, entity, PARRY_BURST, origin)
 
 
@@ -1153,26 +1166,37 @@ def spawn_break_burst(
     return _spawn_burst(fx_group, entity, BREAK_BURST, origin)
 
 
-def spawn_dizzy_stars(fx_group: pygame.sprite.Group, entity: Any) -> list[OrbitParticle]:
-    """Stars circling above a dizzy entity's head for the length of the stun."""
+def spawn_dizzy_stars(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    count: int = DIZZY_STAR_COUNT,
+    ttl: float = DIZZY_STAR_TTL,
+) -> list[OrbitParticle]:
+    """Stars circling above a dizzy entity's head.
+
+    Emitted on a cadence for as long as the entity is dizzy, like the swirl
+    at its feet, and not from the parry that caused it. Spawning them on the
+    block put a whole constellation on screen at the instant of the third
+    parry, where it read as part of the block instead of as the state the
+    block earned.
+    """
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
+    if hitbox is None or count <= 0:
         return []
-    if not _has_room(fx_group):
+    if not _has_room(fx_group, "dizzy_star"):
         return []
     rng = _puff_rng(entity)
-    ttl = getattr(entity, "parry_stun_duration", None) or SPARK_TTL
     center = (hitbox.centerx, hitbox.top - 12.0)
     stars: list[OrbitParticle] = []
-    for index in range(DIZZY_STAR_COUNT):
+    for index in range(count):
         star = OrbitParticle(
             center,
             radius=DIZZY_STAR_RADIUS * rng.uniform(0.8, 1.15),
-            phase=index * 2.0 * math.pi / DIZZY_STAR_COUNT,
+            phase=index * 2.0 * math.pi / count + rng.uniform(0.0, 0.6),
             speed=DIZZY_STAR_SPEED * rng.choice((-1.0, 1.0)),
             color=DIZZY_STAR_COLORS[index % len(DIZZY_STAR_COLORS)],
             core=FXColors.star_core,
-            ttl=float(ttl),
+            ttl=ttl,
             size=5.0 + rng.uniform(0.0, 1.5),
             bob=rng.uniform(0.0, 3.0),
         )
@@ -1245,41 +1269,3 @@ def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]
         impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
         if impact >= Dust.MIN_FALL_SPEED:
             yield entity, impact
-
-
-class ScreenFlash:
-    """A wash of light over the whole frame, for the tick a parry lands on.
-
-    Render-only and outside the FX group, because it is measured in screen
-    space and would have to be the size of the viewport to be a sprite. It is
-    triggered from the tick and read by the renderer, which is the same
-    arrangement the white hit flash uses.
-    """
-
-    def __init__(self) -> None:
-        self.timer = 0.0
-        self.strength = 0.0
-
-    def trigger(self, strength: float = 1.0) -> None:
-        self.timer = SCREEN_FLASH_DURATION
-        self.strength = min(1.0, max(0.0, float(strength)))
-
-    def update(self, delta_time: float) -> None:
-        if self.timer <= 0.0:
-            return
-        self.timer = max(0.0, self.timer - delta_time)
-        if self.timer <= 0.0:
-            self.strength = 0.0
-
-    @property
-    def alpha(self) -> int:
-        if self.timer <= 0.0 or SCREEN_FLASH_DURATION <= 0.0:
-            return 0
-        return int(255 * SCREEN_FLASH_ALPHA * self.strength * self.timer / SCREEN_FLASH_DURATION)
-
-    def reset(self) -> None:
-        self.timer = 0.0
-        self.strength = 0.0
-
-
-screen_flash = ScreenFlash()

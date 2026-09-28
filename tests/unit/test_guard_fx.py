@@ -43,7 +43,7 @@ def test_guard_spawners_emit_expected_counts() -> None:
     entity = _entity()
 
     assert len(spawn_guard_spark(Group(), entity)) == fx.GUARD_SPARK_COUNT
-    assert len(spawn_parry_burst(Group(), entity)) == fx.PARRY_SPARK_COUNT
+    assert len(spawn_parry_burst(Group(), entity)) == fx.GUARD_SPARK_COUNT
     assert len(spawn_break_burst(Group(), entity)) == fx.BREAK_SPARK_COUNT
 
 
@@ -57,20 +57,18 @@ def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
     assert spawn_break_burst(Group(), SimpleNamespace()) == []
 
 
-def test_parry_burst_kicks_upward_from_the_contact_point() -> None:
-    """The burst is a one-sided cone thrown from where the block landed.
+def test_the_parry_burst_is_thrown_from_the_contact_it_reports() -> None:
+    """One-sided, out of the face the block came from, not out of the middle.
 
-    A cone radiates, so some of it points down; what has to hold is that it
-    goes out of the face the block came from rather than out of the middle of
-    the defender, and that it is thrown upward on average.
+    A cone radiates, so some of it points down; what has to hold is the side.
     """
     entity = _entity()
     entity.facing_right = True
 
-    sparks = spawn_parry_burst(Group(), entity)
+    sparks = spawn_parry_burst(Group(), entity, origin=(150.0, 118.0))
 
-    assert all(spark.pos.x >= entity.hitbox.centerx for spark in sparks)
-    assert sum(1 for spark in sparks if spark.velocity.y < 0.0) > len(sparks) // 2
+    assert all(abs(spark.pos.x - 150.0) < 8.0 for spark in sparks)
+    assert all(spark.velocity.x > 0.0 for spark in sparks)
 
 
 def test_the_guard_spark_cone_stays_on_the_facing_side() -> None:
@@ -168,10 +166,8 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.PARRY_SPARK_COUNT
+    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the gold arc"
     assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
-    assert fx.screen_flash.alpha > 0, "and the frame has to flash on a parry"
-    fx.screen_flash.reset()
     assert loop.combat_system.guard_events == []
 
 
