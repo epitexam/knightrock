@@ -105,9 +105,9 @@ MANIFEST = {
     ),
     "cards": (
         "candidate_slots place_label blit_label draw_labels label_priority "
-        "label_clearances label_request label_lines label_segments entity_segments "
+        "label_clearances label_request label_segments entity_segments "
         "zone_line attack_line status_flag_tokens reaction_flag status_flag_strings "
-        "entity_lines projectile_line"
+        "projectile_line"
     ),
     "panels": (
         "update_metrics draw_metrics_panel combat_panel note_clash draw_clash_marker "

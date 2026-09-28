@@ -32,7 +32,7 @@ from src.ui.world_overlay_metrics import (
 from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_overlay_velocity import arrow_outline
 from src.ui.world_ui import WorldUI
-from tests.unit.helpers import make_overlay
+from tests.unit.helpers import card_rows, make_overlay
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -91,7 +91,7 @@ def test_idle_entity_gets_header_and_hp_rows(world_ui: WorldUI) -> None:
     assert segments[0] == [("Goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert segments[1][0] == ("HP ", TEXT_MUTED)
     assert segments[1][1][0] == "75/100"
-    assert world_ui._cards.label_lines(_entity()) == ["Goblin idle", "HP 75/100"]
+    assert card_rows(world_ui._cards, _entity()) == ["Goblin idle", "HP 75/100"]
 
 
 def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
@@ -101,7 +101,7 @@ def test_attack_and_flags_get_their_own_rows(world_ui: WorldUI) -> None:
     entity.combat.state.sub_state = SimpleNamespace(value="active")
     entity.combat.state.frame_counter = 3
     segments = world_ui._cards.label_segments(entity)
-    lines = world_ui._cards.label_lines(entity)
+    lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
     assert segments[0] == [("Goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert segments[1][0] == ("HP ", TEXT_MUTED)
@@ -146,7 +146,7 @@ def test_attack_row_splits_name_from_phase_stats(world_ui: WorldUI) -> None:
 
 def test_status_flags_are_pipe_separated(world_ui: WorldUI) -> None:
     entity = _entity(stagger_timer=0.2, otg_timer=0.4)
-    lines = world_ui._cards.label_lines(entity)
+    lines = card_rows(world_ui._cards, entity)
     assert lines is not None
     assert lines[-1] == "STAG 0.20s | OTG 0.40s"
 
@@ -194,17 +194,17 @@ def test_projectile_label_shows_flight_data(world_ui: WorldUI) -> None:
         config=SimpleNamespace(pierce=True),
         targets_hit={"e1"},
     )
-    lines = world_ui._cards.label_lines(shot)
+    lines = card_rows(world_ui._cards, shot)
     assert lines == ["Projectile player (700,-50) 1.9s pierce hits:1"]
 
 
 def test_static_sprite_has_no_label(world_ui: WorldUI) -> None:
     hazard = _named("SpanHazard", rect=pygame.Rect(10, 10, 64, 16))
-    assert world_ui._cards.label_lines(hazard) is None
+    assert card_rows(world_ui._cards, hazard) is None
 
 
 def test_bare_sprite_has_no_label(world_ui: WorldUI) -> None:
-    assert world_ui._cards.label_lines(SimpleNamespace()) is None
+    assert card_rows(world_ui._cards, SimpleNamespace()) is None
 
 
 def test_offscreen_sprites_draw_nothing(world_ui: WorldUI, camera: Camera) -> None:
@@ -452,7 +452,7 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
     )
     entity.reaction_age = 0.2
     segments = world_ui._cards.label_segments(entity)
-    lines = world_ui._cards.label_lines(entity)
+    lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
     assert segments[-1] == [("HIT launch 0.20s", Colors.red)]
     assert lines[-1] == "HIT launch 0.20s"
@@ -463,14 +463,14 @@ def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> No
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
     entity.reaction_age = 0.0
     segments = world_ui._cards.label_segments(entity)
-    lines = world_ui._cards.label_lines(entity)
+    lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
     assert segments[-1] == [("HIT push (old)", Colors.dark_red)]
     assert lines[-1] == "HIT push (old)"
 
 
 def test_entity_without_reaction_has_no_hit_flag(world_ui: WorldUI) -> None:
-    lines = world_ui._cards.label_lines(_entity())
+    lines = card_rows(world_ui._cards, _entity())
     assert lines is not None
     assert all("HIT" not in line for line in lines)
 
@@ -712,7 +712,7 @@ def test_enemy_header_shows_the_registry_type(world_ui: WorldUI) -> None:
     """Foes share one class: the header shows ``enemy_type``, not ``Enemy``."""
     entity = _entity(enemy_type="goblin")
     segments = world_ui._cards.label_segments(entity)
-    lines = world_ui._cards.label_lines(entity)
+    lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
     assert segments[0] == [("goblin ", Colors.light_red), ("idle", Colors.off_white)]
     assert lines[0] == "goblin idle"

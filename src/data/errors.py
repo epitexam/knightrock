@@ -38,3 +38,31 @@ def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[s
             f"{path}: unsupported version {raw.get('version')!r} (expected {expected})"
         )
     return raw
+
+
+# -- shared shape validators ------------------------------------------------
+# A gameplay JSON document is hand-edited, so the shapes that appear in more
+# than one file get one implementation. `player.json` and `enemies.json` both
+# carry `[x, y]` inflates and `[r, g, b]` colors, and both used to have their
+# own byte-identical copy of these two, which is a second place to fix a typo
+# in an error message and a second thing to keep in step with the schema.
+
+
+def pair_of_floats(value: Any, where: str) -> tuple[float, float]:
+    """An ``[x, y]`` pair, or a ``GameplayDataError`` naming the field."""
+    if not isinstance(value, list) or len(value) != 2:
+        raise GameplayDataError(f"{where}: expected a [x, y] pair, got {value!r}")
+    try:
+        return (float(value[0]), float(value[1]))
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: non-numeric pair entry: {value!r}") from exc
+
+
+def triple_of_ints(value: Any, where: str) -> tuple[int, int, int]:
+    """An ``[r, g, b]`` color triple, or a ``GameplayDataError`` naming the field."""
+    if not isinstance(value, list) or len(value) != 3:
+        raise GameplayDataError(f"{where}: expected a [r, g, b] triple, got {value!r}")
+    try:
+        return (int(value[0]), int(value[1]), int(value[2]))
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: non-integer color entry: {value!r}") from exc

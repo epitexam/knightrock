@@ -252,32 +252,6 @@ class CardLayer:
             if rect is not None:
                 placed.append(rect)
 
-    @staticmethod
-    def entity_lines(sprite: pygame.sprite.Sprite, state_machine: Any) -> list[str]:
-        state_name = state_machine.current_state_name or "None"
-        head = f"{type(sprite).__name__} {state_name}"
-        health = getattr(sprite, "health", None)
-        max_health = getattr(sprite, "max_health", None)
-        if health is not None and max_health:
-            head += f" {health:.0f}/{max_health:.0f}"
-        combat = getattr(sprite, "combat", None)
-        attack_state = getattr(combat, "state", None)
-        attack_name = getattr(attack_state, "attack_name", None)
-        detail: list[str] = []
-        if attack_name is not None:
-            sub_state = getattr(attack_state, "sub_state", None)
-            sub_state_name = getattr(sub_state, "value", sub_state)
-            phase_index = getattr(attack_state, "phase_index", 0)
-            frame_counter = getattr(attack_state, "frame_counter", 0)
-            target_count = len(getattr(combat, "targets_hit", ()))
-            detail.append(
-                f"{attack_name} p{phase_index} {sub_state_name}:{frame_counter} hits:{target_count}"
-            )
-        flags = CardLayer.status_flag_strings(sprite)
-        if flags:
-            detail.append(" ".join(flags))
-        return [head, *detail]
-
     def entity_segments(self, sprite: pygame.sprite.Sprite, state_machine: Any) -> Segments:
         """One row per datum, every token paired with its display color.
 
@@ -374,12 +348,6 @@ class CardLayer:
                 ),
             )
         return (max(bar_lift, ann_lift), max(bar_drop, ann_drop))
-
-    def label_lines(self, sprite: pygame.sprite.Sprite) -> list[str] | None:
-        segments = self.label_segments(sprite)
-        if segments is None:
-            return None
-        return [" ".join(text.strip() for text, _ in line) for line in segments]
 
     @staticmethod
     def label_priority(

@@ -14,8 +14,7 @@ from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import EnemyChaseState, EnemyPatrolState, EnemyState
 from src.states.ledge_state import LedgeState
-from src.ui.world_overlay_cards import CardLayer
-from tests.unit.helpers import make_entity
+from tests.unit.helpers import card_rows, make_card_layer, make_entity
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -334,6 +333,7 @@ def test_debug_labels_flag_entities_at_a_ledge() -> None:
         gravity_scale=1.0,
         on_surface={"floor": True},
         is_at_ledge=lambda: True,
+        state_machine=machine,
     )
     safe = SimpleNamespace(
         health=100.0,
@@ -344,7 +344,9 @@ def test_debug_labels_flag_entities_at_a_ledge() -> None:
         gravity_scale=1.0,
         on_surface={"floor": True},
         is_at_ledge=lambda: False,
+        state_machine=machine,
     )
 
-    assert any("LEDGE" in line for line in CardLayer.entity_lines(at_ledge, machine))
-    assert not any("LEDGE" in line for line in CardLayer.entity_lines(safe, machine))
+    cards = make_card_layer()
+    assert any("LEDGE" in row for row in card_rows(cards, at_ledge))
+    assert not any("LEDGE" in row for row in card_rows(cards, safe))

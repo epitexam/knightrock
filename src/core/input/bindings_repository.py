@@ -26,14 +26,13 @@ BINDINGS_FORMAT_VERSION = 1
 _PAIR_ACTIONS = frozenset({InputAction.MOVE_X})
 
 
-def _serialize_action_map(values: ActionMap) -> dict[str, object]:
-    return {
-        action.value: list(value) if isinstance(value, tuple) else value
-        for action, value in values.items()
-    }
+def _serialize_flat_map(values: ActionMap | ButtonMap | AxisMap) -> dict[str, object]:
+    """Key an action map by its enum's value, widening any tuple to a list.
 
-
-def _serialize_int_map(values: ButtonMap | AxisMap) -> dict[str, object]:
+    One implementation for all three: a key map and a button/axis map are the
+    same shape, and the two functions that used to be here differed only in
+    their annotation.
+    """
     return {
         action.value: list(value) if isinstance(value, tuple) else value
         for action, value in values.items()
@@ -171,19 +170,19 @@ def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
     return {
         "version": BINDINGS_FORMAT_VERSION,
         "gameplay": {
-            "keyboard": _serialize_action_map(gameplay.keyboard),
-            "gamepad_buttons": _serialize_int_map(gameplay.gamepad_buttons),
-            "gamepad_axes": _serialize_int_map(gameplay.gamepad_axes),
-            "gamepad_hats": _serialize_int_map(gameplay.gamepad_hats),
+            "keyboard": _serialize_flat_map(gameplay.keyboard),
+            "gamepad_buttons": _serialize_flat_map(gameplay.gamepad_buttons),
+            "gamepad_axes": _serialize_flat_map(gameplay.gamepad_axes),
+            "gamepad_hats": _serialize_flat_map(gameplay.gamepad_hats),
             "keyboard_combos": _serialize_combo_map(gameplay.keyboard_combos),
             "gamepad_combos": _serialize_combo_map(gameplay.gamepad_combos),
         },
         "menu": {
-            "keyboard": _serialize_action_map(menu.keyboard),
-            "mouse_buttons": _serialize_int_map(menu.mouse_buttons),
-            "gamepad_buttons": _serialize_int_map(menu.gamepad_buttons),
-            "gamepad_hats": _serialize_int_map(menu.gamepad_hats),
-            "gamepad_axes": _serialize_int_map(menu.gamepad_axes),
+            "keyboard": _serialize_flat_map(menu.keyboard),
+            "mouse_buttons": _serialize_flat_map(menu.mouse_buttons),
+            "gamepad_buttons": _serialize_flat_map(menu.gamepad_buttons),
+            "gamepad_hats": _serialize_flat_map(menu.gamepad_hats),
+            "gamepad_axes": _serialize_flat_map(menu.gamepad_axes),
             "new_game_key": menu.new_game_key,
             "invert_y": menu.invert_y,
         },

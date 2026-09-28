@@ -17,6 +17,7 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.world_ui import WorldUI
+from tests.unit.helpers import card_rows
 
 SIZE = (1024, 768)
 
@@ -69,7 +70,9 @@ def _entity(name: str = "Goblin", **overrides) -> SimpleNamespace:
 
 
 def _attacking(name: str = "Slime", **state) -> SimpleNamespace:
-    entity = _entity(name)
+    entity = _entity(
+        name, state_machine=SimpleNamespace(current_state_name=state.get("state_name", "idle"))
+    )
     entity.combat.state.attack_name = "claw_swipe"
     entity.combat.state.sub_state = SimpleNamespace(value="active")
     entity.combat.state.phase_index = state.get("phase_index", 1)
@@ -81,7 +84,7 @@ def _attacking(name: str = "Slime", **state) -> SimpleNamespace:
 # -- the attack row ----------------------------------------------------------
 
 
-def test_an_attack_gets_a_row_with_its_phase_and_hits() -> None:
+def test_an_attack_gets_a_row_with_its_phase_and_hits(world_ui) -> None:
     """The card is the only place a swing's numbers are written down.
 
     The world overlay draws the attack box and the header chip, and both of
@@ -90,20 +93,18 @@ def test_an_attack_gets_a_row_with_its_phase_and_hits() -> None:
     place it exists -- and it is the row that answers "why did my attack do
     nothing", which is the question a debug overlay is usually being asked.
     """
-    from src.ui.world_overlay_cards import CardLayer
 
-    row = CardLayer.entity_lines(_attacking(), SimpleNamespace(current_state_name="run"))
-    attack = next(line for line in row if line.startswith("claw_swipe"))
+    row = card_rows(world_ui._cards, _attacking(state_name="run"))
+    attack = next(line for line in row if "claw_swipe" in line)
     assert "p1" in attack, attack
     assert "active:7" in attack, attack
     assert "hits:2" in attack, attack
 
 
-def test_an_idle_sprite_gets_no_attack_row() -> None:
+def test_an_idle_sprite_gets_no_attack_row(world_ui) -> None:
     """No name, no row: a card is not a place to print a null."""
-    from src.ui.world_overlay_cards import CardLayer
 
-    row = CardLayer.entity_lines(_entity(), SimpleNamespace(current_state_name="idle"))
+    row = card_rows(world_ui._cards, _entity())
     assert not any("p0" in line for line in row), row
 
 
