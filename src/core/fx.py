@@ -45,6 +45,7 @@ from src.core.rendering.fx_draw import (
     life_level,
     polygon_bounds,
     snap,
+    spread_step,
     star_shape,
     streak_points,
 )
@@ -57,9 +58,9 @@ __all__ = [
     "DizzyVortexParticle",
     "DustParticle",
     "FxParticle",
+    "GuardFlashParticle",
     "ImpactDecalParticle",
     "OrbitParticle",
-    "ShieldArcParticle",
     "SparkParticle",
     "StreakParticle",
     "SweatParticle",
@@ -76,7 +77,7 @@ __all__ = [
     "spawn_dash_wind",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
-    "spawn_guard_arc",
+    "spawn_guard_flash",
     "spawn_guard_spark",
     "spawn_impact_decal",
     "spawn_landing_dust",
@@ -144,8 +145,10 @@ DASH_TRAIL_TTL = 0.15
 DASH_TRAIL_SPAWN_EVERY = 0.015
 DECAL_RADIUS = 22.0
 DECAL_TTL = 0.28
-SHIELD_ARC_RADIUS = 20.0
-SHIELD_ARC_TTL = 0.22
+GUARD_FLASH_REACH = 15.0
+GUARD_FLASH_HALF = 9.0
+GUARD_FLASH_STEPS = (0.45, 0.72, 1.0)
+GUARD_FLASH_TTL = 0.16
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -335,22 +338,19 @@ class SparkParticle(FxParticle):
         self.velocity = Vector2(velocity)
 
     def _chip(self) -> pygame.Surface:
-        """A dark sliver with a lit core, tapering away along the velocity."""
+        """A plain bar, tapering away along the velocity.
+
+        One colour and no rim: a dark outline with a lit core is the same
+        visual grammar as a four-pointed sparkle, and squeezing it into a bar
+        only produced a star seen from the side.
+        """
         heading = math.atan2(self.velocity.y, self.velocity.x)
-        length = self.size * self.elongation * 2.0
-        thick = max(2.0, self.size * 0.85)
-        body = streak_points((0, 0), length, thick, heading)
-        core = streak_points((0, 0), length * 0.62, max(1.0, thick * 0.42), heading)
-        heart = streak_points((0, 0), length * 0.28, max(1.0, thick * 0.2), heading)
-        left, top, width, height = polygon_bounds([*body, *core, *heart])
+        length = self.size * self.elongation * 2.4
+        thick = max(2.0, self.size * 0.7)
+        points = streak_points((0, 0), length, thick, heading)
+        left, top, width, height = polygon_bounds(points)
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        at = (-left, -top)
-        for points, color in (
-            (body, self.ink),
-            (core, self.color),
-            (heart, self.core),
-        ):
-            draw_inked_polygon(surface, points, color, color, 0, at=at)
+        draw_inked_polygon(surface, points, self.color, self.color, 0, at=(-left, -top))
         return surface
 
     def _shard(self) -> pygame.Surface:
@@ -569,41 +569,76 @@ class ImpactDecalParticle(FxParticle):
         return surface
 
 
-class ShieldArcParticle(FxParticle):
-    """A segmented guard arc on the side the block came from.
+class GuardFlashParticle(FxParticle):
+    """The flare of a block: a wedge opening off the guard's front.
 
-    The guard spark has always been meant to read as one-sided, so it reads as
-    a block rather than a wound. This is that idea given a silhouette of its
-    own, in front of the guard and facing the attacker.
+    A solid triangle pointing away from the side the block came from, drawn
+    once at three sizes and stepped through as it opens. It replaces a fan of
+    thrown particles as the block's signature: a wedge is directional, reads
+    as force leaving a shield rather than as an explosion at the middle of a
+    body, and no combination of size, colour and count makes a triangle look
+    like the spinning stars it must not be confused with.
     """
 
-    fade_in: ClassVar[float] = 0.08
+    fade_in: ClassVar[float] = 0.0
 
     def __init__(
         self,
         pos: tuple[float, float] | Vector2,
         side: float,
         parried: bool = False,
-        ttl: float = SHIELD_ARC_TTL,
+        ttl: float = GUARD_FLASH_TTL,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
-        self.body = FXColors.parry_spark if parried else FXColors.shield_arc
-        self.rim = FXColors.ink_warm if parried else FXColors.shield_ink
         self.parried = parried
-        self.family = "shield_arc"
+        self.body = FXColors.parry_spark if parried else FXColors.guard_spark
+        self.core = FXColors.parry_core if parried else FXColors.guard_core
+        self.rim = FXColors.ink if parried else FXColors.ink_cool
+        self.steps = [self._wedge(scale) for scale in GUARD_FLASH_STEPS]
+        self.family = "guard_flash"
         super().__init__(pos, ttl)
+        self.image = self.steps[0]
+
+    def _wedge(self, scale: float) -> pygame.Surface:
+        """The wedge at one size: an ink backing, the body, and a lit edge.
+
+        A triangle rather than a burst of marks because a shape with a
+        direction reads as a shield turning the hit away, and a shape without
+        one reads as something exploding inside the fighter. The body is inset
+        on every side so the ink survives as a rim, and the lit edge runs
+        along the leading side so the wedge still reads as opening.
+        """
+        side = self.side
+        reach = GUARD_FLASH_REACH * scale
+        half = GUARD_FLASH_HALF * scale
+        backing = [(0.0, -half), (side * reach, 0.0), (0.0, half)]
+        inset = 1.5
+        body = [
+            (side * inset, -half + inset),
+            (side * (reach - inset * 2.0), 0.0),
+            (side * inset, half - inset),
+        ]
+        edge = [
+            (side * (reach - inset * 3.0), -half * 0.34),
+            (side * (reach - inset * 1.5), 0.0),
+            (side * (reach - inset * 3.0), half * 0.34),
+        ]
+        left, top, width, height = polygon_bounds([*backing, *body, *edge])
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        at = (-left, -top)
+        for points, color in (
+            (backing, self.rim),
+            (body, self.body),
+            (edge, self.core),
+        ):
+            draw_inked_polygon(surface, points, color, color, 0, at=at)
+        return surface
 
     def _paint(self) -> pygame.Surface:
-        side = snap(SHIELD_ARC_RADIUS)
-        surface = pygame.Surface((2 * side + 4, 2 * side + 4), pygame.SRCALPHA)
-        box = pygame.Rect(2, 2, 2 * side, 2 * side)
-        facing = 0.0 if self.side >= 0.0 else 180.0
-        spans = ((-64.0, -30.0), (-12.0, 12.0), (30.0, 64.0))
-        for start, end in spans:
-            pygame.draw.arc(surface, self.rim, box, facing + start, facing + end, 5)
-        for start, end in spans:
-            pygame.draw.arc(surface, self.body, box, facing + start, facing + end, 2)
-        return surface
+        return self.steps[0]
+
+    def _integrate(self, delta_time: float) -> None:
+        self.image = self.steps[spread_step(self.life, len(self.steps))]
 
 
 class SweatParticle(FxParticle):
@@ -1152,12 +1187,12 @@ def spawn_guard_spark(
     return _spawn_burst(fx_group, entity, GUARD_BURST, origin)
 
 
-def spawn_guard_arc(
+def spawn_guard_flash(
     fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
-) -> ShieldArcParticle | None:
-    """The guard arc itself, in front of the guard and facing the attacker.
+) -> GuardFlashParticle | None:
+    """The block's flare, opening off the guard's front.
 
-    ``parried`` is the only difference a perfect block makes: same arc, same
+    ``parried`` is the only difference a perfect block makes: same wedge, same
     size, gold instead of cyan.
     """
     hitbox = getattr(entity, "hitbox", None)
@@ -1166,13 +1201,9 @@ def spawn_guard_arc(
     if not _has_room(fx_group):
         return None
     side = facing_side(entity)
-    arc = ShieldArcParticle(
-        (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
-        side,
-        parried,
-    )
-    fx_group.add(arc)
-    return arc
+    flash = GuardFlashParticle(_contact_point(entity, None), side, parried)
+    fx_group.add(flash)
+    return flash
 
 
 def spawn_parry_burst(

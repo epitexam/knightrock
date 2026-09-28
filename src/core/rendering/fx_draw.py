@@ -34,6 +34,7 @@ __all__ = [
     "life_level",
     "ring",
     "snap",
+    "spread_step",
     "star_points",
     "star_shape",
     "streak_points",
@@ -251,7 +252,7 @@ def _offset_polygon(points: list[tuple[int, int]], distance: float) -> list[tupl
 
 
 def polygon_bounds(
-    points: Iterable[tuple[int, int]], at: tuple[float, float] = (0, 0)
+    points: Iterable[tuple[float, float]], at: tuple[float, float] = (0, 0)
 ) -> tuple[int, int, int, int]:
     """The left, top, width and height a set of points needs, with a pixel spare."""
     vertices = [(snap(point[0] + at[0]), snap(point[1] + at[1])) for point in points]
@@ -265,7 +266,7 @@ def polygon_bounds(
 
 def draw_inked_polygon(
     surface: pygame.Surface,
-    points: Iterable[tuple[int, int]],
+    points: Iterable[tuple[float, float]],
     fill: Paint,
     ink: Paint,
     width: int = 1,
@@ -277,6 +278,10 @@ def draw_inked_polygon(
     passes. Two of the same line, one thick and one thin, are how a comet
     gets a lit core; they have to be drawn in the same frame, which is what
     taking a surface and an offset is for.
+
+    A ``width`` of zero draws only the fill, and an ``ink`` equal to the
+    ``fill`` is the same thing done the long way: a shape with no rim, for
+    the effects that must not be read as an outlined comic shape.
     """
     vertices = [(snap(point[0] + at[0]), snap(point[1] + at[1])) for point in points]
     if len(vertices) < 3:
@@ -288,7 +293,7 @@ def draw_inked_polygon(
 
 
 def inked_polygon(
-    points: Iterable[tuple[int, int]],
+    points: Iterable[tuple[float, float]],
     fill: Paint,
     ink: Paint,
     width: int = 1,
@@ -348,6 +353,19 @@ def life_level(life: float, fade_in: float = 0.0, steps: int = ALPHA_STEPS) -> i
 def life_alpha(life: float, fade_in: float = 0.0, steps: int = ALPHA_STEPS) -> int:
     """The alpha a particle at ``life`` should carry, in ``steps`` levels."""
     return alpha_of_level(life_level(life, fade_in, steps), steps)
+
+
+def spread_step(life: float, steps: int, opened_by: float = 0.45) -> int:
+    """The step index of a shape that opens outward over the first of its life.
+
+    Distinct from :func:`life_level`, which is a *fade*: that curve falls
+    from full brightness, so indexing it would start a growing shape at its
+    largest and shrink it, which is the opposite of opening.
+    """
+    if steps < 2 or opened_by <= 0.0:
+        return 0
+    reached = max(0.0, min(1.0, life / opened_by))
+    return min(steps - 1, int(reached * steps))
 
 
 def alpha_of_level(level: int, steps: int = ALPHA_STEPS) -> int:

@@ -166,7 +166,7 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the gold arc"
+    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the gold wedge"
     assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
     assert loop.combat_system.guard_events == []
 
@@ -180,7 +180,7 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the guard arc"
+    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the guard wedge"
     assert camera.traumas == [pytest.approx(GuardSettings.GUARD_TRAUMA)]
 
 

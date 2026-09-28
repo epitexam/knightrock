@@ -20,12 +20,12 @@ from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DustParticle,
+    GuardFlashParticle,
     OrbitParticle,
-    ShieldArcParticle,
     SparkParticle,
     spawn_dash_trail,
     spawn_dash_wind,
-    spawn_guard_arc,
+    spawn_guard_flash,
     spawn_impact_decal,
     spawn_landing_dust,
 )
@@ -114,16 +114,17 @@ def test_the_landing_mark_is_wider_for_a_harder_fall() -> None:
     assert hard.behind is True
 
 
-def test_the_guard_arc_faces_the_side_the_attack_came_from() -> None:
-    right = spawn_guard_arc(Group(), _entity(facing=True))
-    left = spawn_guard_arc(Group(), _entity(facing=False))
+def test_the_guard_wedge_opens_away_from_the_side_the_attack_came_from() -> None:
+    right = spawn_guard_flash(Group(), _entity(facing=True))
+    left = spawn_guard_flash(Group(), _entity(facing=False))
 
-    assert isinstance(right, ShieldArcParticle)
+    assert isinstance(right, GuardFlashParticle)
     assert right is not None and left is not None
     assert right.side == 1.0
     assert left.side == -1.0
     assert right.pos.x > _entity().hitbox.centerx
     assert left.pos.x < _entity().hitbox.centerx
+    assert right.steps[-1].get_width() == left.steps[-1].get_width()
 
 
 def test_a_break_throws_shards_and_a_block_throws_chips() -> None:
@@ -191,14 +192,27 @@ def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
     assert FXColors.parry_spark not in {tuple(spark.color) for spark in block}
 
 
-def test_the_parry_arc_is_the_block_arc_in_gold() -> None:
-    block = spawn_guard_arc(Group(), _entity())
-    parried = spawn_guard_arc(Group(), _entity(), parried=True)
+def test_the_parry_wedge_is_the_block_wedge_in_gold() -> None:
+    block = spawn_guard_flash(Group(), _entity())
+    parried = spawn_guard_flash(Group(), _entity(), parried=True)
 
     assert block is not None and parried is not None
-    assert parried.image.get_size() == block.image.get_size(), "same arc, same size"
+    assert parried.steps[-1].get_size() == block.steps[-1].get_size(), "same wedge, same size"
     assert parried.body == FXColors.parry_spark
     assert parried.body != block.body
+
+
+def test_the_guard_wedge_opens_by_stepping_through_prebuilt_sizes() -> None:
+    """A wedge is directional; a redrawn fan is an explosion at the middle."""
+    flash = spawn_guard_flash(Group(), _entity())
+    assert flash is not None
+    first = flash.image
+
+    flash.update(flash.max_ttl * 0.6)
+
+    assert flash.image is not first
+    assert len({step.get_width() for step in flash.steps}) == len(flash.steps)
+    assert flash.image.get_width() > first.get_width()
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:

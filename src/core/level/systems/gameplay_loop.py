@@ -280,21 +280,21 @@ class GameplayLoop:
     def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
         from src.core.fx import (  # noqa: PLC0415
             spawn_break_burst,
-            spawn_guard_arc,
+            spawn_guard_flash,
             spawn_guard_spark,
             spawn_parry_burst,
         )
 
         if event.kind == "parry":
             spawn_parry_burst(fx_group, event.target, event.point)
-            spawn_guard_arc(fx_group, event.target, parried=True)
+            spawn_guard_flash(fx_group, event.target, parried=True)
         elif event.kind == "break":
             spawn_break_burst(fx_group, event.target, event.point)
         elif event.kind == "stun":
             return
         else:
             spawn_guard_spark(fx_group, event.target, event.point)
-            spawn_guard_arc(fx_group, event.target)
+            spawn_guard_flash(fx_group, event.target)
 
     def process_combat_and_separation(
         self,
