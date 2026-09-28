@@ -109,16 +109,24 @@ def facing_side(entity: Any) -> float:
     return 1.0 if bool(getattr(entity, "facing_right", True)) else -1.0
 
 
-def _has_room(fx_group: pygame.sprite.Group, family: str | None = None) -> bool:
-    """Whether one more particle fits, under the global cap and the family one."""
-    if len(fx_group) >= MAX_FX_SPRITES:
+def _has_room(fx_group: pygame.sprite.Group, family: str | None = None, count: int = 1) -> bool:
+    """Whether ``count`` particles fit, under the global cap and the family one.
+
+    ``count`` rather than one, because a spawner that adds a fan asks once.
+    Checking room for one and then adding six made the table a threshold
+    rather than a cap: `dizzy_star` is budgeted at 8 and reached 12, and
+    `landing_dust` at 16 and reached 18. A number in a table called a budget
+    has to be the number that holds.
+    """
+    if len(fx_group) + count > MAX_FX_SPRITES:
         return False
     if family is None:
         return True
     cap = FX_FAMILY_BUDGETS.get(family)
     if cap is None:
         return True
-    return sum(1 for sprite in fx_group if getattr(sprite, "family", "") == family) < cap
+    spent = sum(1 for sprite in fx_group if getattr(sprite, "family", "") == family)
+    return spent + count <= cap
 
 
 def _landing_strength(impact: float) -> float:
@@ -139,7 +147,7 @@ def spawn_landing_dust(
     harder than a merely brisk one.
     """
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or not _has_room(fx_group, "landing_dust"):
+    if hitbox is None or not _has_room(fx_group, "landing_dust", Dust.COUNT):
         return []
     rng = _fx_rng
     frames = particle_frames()
@@ -189,7 +197,7 @@ def spawn_dash_burst(
 ) -> list[DustParticle]:
     """Kick a fan of dust backward as the dash starts (rising edge only)."""
     hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or count <= 0 or not _has_room(fx_group, "dash_burst"):
+    if hitbox is None or count <= 0 or not _has_room(fx_group, "dash_burst", count):
         return []
     direction = dash_direction(entity)
     rng = _fx_rng
@@ -242,7 +250,7 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return []
-    if not _has_room(fx_group, "dash_wind"):
+    if not _has_room(fx_group, "dash_wind", FxDash.WIND_LINES):
         return []
     direction = dash_direction(entity)
     rng = _fx_rng
@@ -385,7 +393,7 @@ def spawn_dizzy_stars(
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or count <= 0:
         return []
-    if not _has_room(fx_group, "dizzy_star"):
+    if not _has_room(fx_group, "dizzy_star", count):
         return []
     rng = _fx_rng
     base_size, size_jitter = FxDizzy.STAR_SIZE
@@ -437,7 +445,7 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or Sweat.COUNT <= 0:
         return []
-    if not _has_room(fx_group, "sweat"):
+    if not _has_room(fx_group, "sweat", Sweat.COUNT):
         return []
     rng = _fx_rng
     side = facing_side(entity)

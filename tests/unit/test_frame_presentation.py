@@ -235,3 +235,27 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
     assert rects, "a damaged enemy must get a bar"
     assert not hasattr(level.renderer, "add_overlay_rects")
+
+
+def test_the_debris_strip_answers_none_on_a_checkout_with_no_assets(
+    monkeypatch,
+) -> None:
+    """A bare clone must not raise once per particle per frame.
+
+    The frames are read through the shared library, which raises when the
+    directory is not there. Callers treat "no frames" as a reason to fall
+    back rather than as an error, but only if the miss is remembered -- an
+    unmemoized miss re-raises on every spawn, and spawning happens every
+    frame.
+    """
+    from src.core.settings import Dust
+
+    clear_frame_cache()
+    monkeypatch.setattr(Dust, "FRAMES_DIR", "assets/graphics/effects/not-a-real-directory")
+
+    assert particles.particle_frames() is None, "a missing tree is not an error"
+    assert particles.particle_frames() is None, "and the miss is remembered"
+
+    clear_frame_cache()
+    monkeypatch.undo()
+    assert particles.particle_frames() is not None, "the real strip still loads"

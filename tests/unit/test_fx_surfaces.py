@@ -7,6 +7,7 @@ a screenshot and invisible in a frame time, and the mistake is easy to
 reintroduce by "tidying" an update method.
 """
 
+import math
 import os
 from collections.abc import Iterator
 
@@ -23,6 +24,7 @@ from src.core.fx import (
     spawners,
     vortex_frames,
 )
+from src.core.fx.particles import FxParticle, ShatterArcParticle
 from src.core.settings import FxDash, FxDizzy
 
 
@@ -167,3 +169,61 @@ def test_an_orbit_star_keeps_one_surface_and_moves_on_its_position() -> None:
     assert particle.image is original
     assert particle.pos.y != start_y, "the star has to move"
     assert particle.velocity == pygame.math.Vector2(0.0, 0.0), "and not by falling"
+
+
+def test_the_base_particle_cannot_be_drawn_on_its_own() -> None:
+    """`FxParticle` is a contract, not a shape.
+
+    It carries the physics, the fade and the budget plumbing, and refuses to
+    paint. A particle that forgot to override `_paint` would otherwise
+    inherit a surface of `None` and take the first `set_alpha` on it as a
+    crash somewhere further down, rather than here.
+    """
+    with pytest.raises(NotImplementedError):
+        FxParticle((0.0, 0.0), 1.0)
+
+
+def test_the_broken_ring_breaks_further_out_as_it_opens() -> None:
+    """The shatter arc is the one particle that redraws from a prebuilt ladder.
+
+    It has to open rather than fade: a guard that fails should look like the
+    same shield coming apart, which means the fragments travel further as the
+    ring opens. Indexing the fade instead would show the widest frame first
+    and shrink from there -- the failure inflating instead of breaking.
+
+    The ladder's surfaces are all the same size, by design: the span covers
+    the furthest a fragment can ever travel, and each step differs in what
+    is drawn inside it. So the claim is about the drawn extent, not the
+    surface.
+    """
+    shatter = ShatterArcParticle((40.0, 40.0), 1.0, seed=7)
+
+    def extent() -> int:
+        """The furthest radius from the centre that anything is drawn at.
+
+        Polarity matters: the fragments are spread over the whole ring, so
+        probing one ray would find a gap and report the ring as closed.
+        """
+        image = shatter.image
+        middle = image.get_width() / 2.0
+        limit = image.get_width() // 2 - 1
+        furthest = 0
+        for degree in range(0, 360, 2):
+            for radius in range(limit, 0, -1):
+                if image.get_at(
+                    (
+                        round(middle + radius * math.cos(math.radians(degree))),
+                        round(middle + radius * math.sin(math.radians(degree))),
+                    )
+                )[3]:
+                    furthest = max(furthest, radius)
+                    break
+        return furthest
+
+    reaches = []
+    for _ in range(6):
+        reaches.append(extent())
+        shatter.update(1 / 30)
+
+    assert reaches == sorted(reaches), "the fragments only ever travel further"
+    assert reaches[-1] > reaches[0], "and they did travel"

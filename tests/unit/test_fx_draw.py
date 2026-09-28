@@ -161,3 +161,110 @@ def test_alpha_of_a_level_is_a_whole_number_of_steps() -> None:
     assert draw.alpha_of_level(0) == 0
     assert draw.alpha_of_level(draw.ALPHA_STEPS - 1) == 255
     assert draw.life_alpha(0.5, 0.0) == draw.alpha_of_level(draw.life_level(0.5, 0.0))
+
+
+def test_an_opening_shape_starts_at_its_smallest_step_and_grows() -> None:
+    """`spread_step` is not a fade, and the shatter arc depends on the difference.
+
+    `life_level` falls from full brightness, so indexing it with a growing
+    shape would show the widest frame first and shrink from there -- a guard
+    failing by inflating instead of coming apart. This is the curve the
+    broken ring rides, and it had no test at all.
+    """
+    steps = [draw.spread_step(index / 8.0, 5) for index in range(9)]
+
+    assert steps[0] == 0, "it starts closed"
+    assert steps == sorted(steps), "and only ever opens"
+    assert steps[-1] == 4, "reaching the widest frame by the end"
+    assert len(set(steps)) > 1, "a shape that never changes is not opening"
+
+
+def test_opening_outlives_the_fraction_it_was_given() -> None:
+    """Past `opened_by` the shape is as open as it gets, not off the ladder.
+
+    The shatter arc holds its last frame for the rest of its life, so a
+    curve that kept climbing would index past the ladder and raise.
+    """
+    assert draw.spread_step(1.0, 4, opened_by=0.3) == 3
+    assert draw.spread_step(1.0, 4, opened_by=0.3) == draw.spread_step(0.9, 4, opened_by=0.3)
+
+
+def test_a_shape_with_nowhere_to_open_stays_at_its_first_step() -> None:
+    assert draw.spread_step(0.5, 1) == 0, "one step is the only step there is"
+    assert draw.spread_step(0.5, 4, opened_by=0.0) == 0, "and an instant opening never starts"
+
+
+def test_a_stroke_that_would_cover_the_whole_circle_draws_nothing() -> None:
+    """A ring fragment needs both ends. A stroke with none is not a ring.
+
+    `draw.arc` cannot be used for this -- it closes the loop whatever angles
+    it is given -- which is exactly why this returns early rather than
+    drawing the span it was handed: a caller passing a zero-width arc gets
+    nothing, rather than a full circle it did not ask for.
+    """
+    surface = blank((24, 24))
+
+    draw.draw_arc_stroke(surface, (12, 12), 9, 40.0, 40.0, (255, 255, 255), 1)
+    draw.draw_arc_stroke(surface, (12, 12), 9, 10.0, 5.0, (255, 255, 255), 1)
+    draw.draw_arc_stroke(surface, (12, 12), 0, 10.0, 90.0, (255, 255, 255), 1)
+
+    assert surface.get_at((12, 12))[3] == 0, "nothing drawn, not a stray pixel"
+
+
+def test_an_ellipse_smaller_than_a_pixel_draws_nothing() -> None:
+    """Sub-pixel is not a smaller ellipse, it is a dot, and dots read as dirt."""
+    surface = blank((16, 16))
+
+    draw.ellipse_ring(surface, (255, 255, 255), (8, 8), 0.4, 0.4, 1)
+
+    assert all(surface.get_at((x, y))[3] == 0 for x in range(16) for y in range(16)), (
+        "an ellipse that cannot hold a pixel leaves the surface alone"
+    )
+
+
+def test_a_shape_with_fewer_than_three_points_is_not_drawn() -> None:
+    """Two points make a line, and a line has no interior to fill or rim.
+
+    The two entry points refuse it differently, and both refusals matter. The
+    one that draws onto a caller's surface returns and leaves it untouched;
+    the one that cuts its own returns a 1x1 rather than `None`, so a caller
+    reading the size gets a drawable instead of a crash on `get_at`.
+    """
+    surface = blank((16, 16))
+    draw.draw_inked_polygon(surface, [(2, 2), (8, 8)], (200, 200, 200), (0, 0, 0), 1)
+    assert all(surface.get_at((x, y))[3] == 0 for x in range(16) for y in range(16)), (
+        "the caller's surface is left exactly as it was"
+    )
+
+    cut = draw.inked_polygon([(2, 2), (8, 8)], (200, 200, 200), (0, 0, 0), 1)
+    assert cut.get_size() == (1, 1), "a drawable of the smallest size, not a crash"
+
+
+def test_bounds_of_no_points_still_describe_a_drawable() -> None:
+    """`(0, 0, 1, 1)` rather than a zero-size box, which `pygame` rejects."""
+    assert draw.polygon_bounds([]) == (0, 0, 1, 1)
+
+
+def test_a_vertex_with_no_room_to_grow_stays_where_it_is() -> None:
+    """A mitre has to be somewhere to go, and two shapes leave it with nowhere.
+
+    A point whose two neighbours sit on top of it has no edge to take a
+    normal from, and a point that doubles back on itself has two normals
+    pointing opposite ways, which cancel to nothing. Either way there is no
+    direction to grow in, and taking one anyway divides by zero: the result
+    is a nan, and a nan raises the moment it reaches a `pygame` surface.
+    """
+    collapsed = draw._offset_polygon([(4, 4), (4, 4), (4, 4)], 1.0)
+    assert collapsed == [(4, 4), (4, 4), (4, 4)], "no edge, so no offset"
+
+    spike = draw._offset_polygon([(0, 0), (6, 0), (0, 0)], 1.0)
+    assert spike[1] == (6, 0), "two normals that cancel, so no offset either"
+    assert all(draw.snap(coordinate) == coordinate for point in spike for coordinate in point), (
+        "and what does come back is still whole pixels"
+    )
+
+
+def test_one_step_of_alpha_is_opaque_rather_than_a_division_by_zero() -> None:
+    """A single level has no ramp to spread 255 across, so it is simply on."""
+    assert draw.life_level(0.5, 0.0, steps=1) == 0
+    assert draw.alpha_of_level(0, steps=1) == 255
