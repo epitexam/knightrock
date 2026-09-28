@@ -27,7 +27,7 @@ import math
 import random
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 import pygame
 from pygame.math import Vector2
@@ -84,6 +84,9 @@ __all__ = [
     "spawn_sweat_drops",
     "vortex_frames",
 ]
+
+SparkShape = Literal["chip", "shard"]
+"""The silhouettes a thrown spark can have. Neither of them is a star."""
 
 SPARK_TTL = 0.3
 SPARK_GRAVITY = 900.0
@@ -298,10 +301,12 @@ class StreakParticle(FxParticle):
 class SparkParticle(FxParticle):
     """A chip of light thrown out of an impact.
 
-    A sparkle rather than a dot, inked so it stays legible against a bright
-    sky, and stretched along its own velocity so a fan reads as thrown rather
-    than as scattered. ``points`` picks the silhouette: four reads as light,
-    three as a shard of something that broke.
+    Two silhouettes, and neither of them is a star: a ``chip`` is a short
+    tapered sliver lying along its own velocity, which is what reads as a
+    spark of light, and a ``shard`` is a heavy triangle for something that
+    broke. The stars are the dizzy ones and only the dizzy ones -- a
+    four-pointed sparkle thrown out of a block is a star flying out of a
+    block, and a parry is the most repeated event in a fight.
     """
 
     gravity: ClassVar[float] = SPARK_GRAVITY
@@ -315,41 +320,63 @@ class SparkParticle(FxParticle):
         ttl: float = SPARK_TTL,
         size: float = SPARK_SIZE,
         core: Color | None = None,
-        points: int = 4,
+        shape: SparkShape = "chip",
         elongation: float = 1.0,
         ink: Color = FXColors.ink,
     ) -> None:
         self.color = color
         self.core = core if core is not None else color
         self.size = float(size)
-        self.points = points
+        self.shape: SparkShape = shape
         self.elongation = max(1.0, float(elongation))
         self.ink = ink
-        self.family = f"burst_{points}"
+        self.family = f"burst_{shape}"
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
 
-    def _paint(self) -> pygame.Surface:
+    def _chip(self) -> pygame.Surface:
+        """A dark sliver with a lit core, tapering away along the velocity."""
+        heading = math.atan2(self.velocity.y, self.velocity.x)
+        length = self.size * self.elongation * 2.0
+        thick = max(2.0, self.size * 0.85)
+        body = streak_points((0, 0), length, thick, heading)
+        core = streak_points((0, 0), length * 0.62, max(1.0, thick * 0.42), heading)
+        heart = streak_points((0, 0), length * 0.28, max(1.0, thick * 0.2), heading)
+        left, top, width, height = polygon_bounds([*body, *core, *heart])
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        at = (-left, -top)
+        for points, color in (
+            (body, self.ink),
+            (core, self.color),
+            (heart, self.core),
+        ):
+            draw_inked_polygon(surface, points, color, color, 0, at=at)
+        return surface
+
+    def _shard(self) -> pygame.Surface:
+        """A heavy triangle: three points, a fat waist, inked."""
         reach = snap(self.size * self.elongation) * 2 + 6
         surface = pygame.Surface((reach, reach), pygame.SRCALPHA)
         middle = (reach / 2.0, reach / 2.0)
         heading = math.atan2(self.velocity.y, self.velocity.x)
         ink_shape(
             surface,
-            star_shape(middle, self.size * self.elongation, self.size * 0.42, self.points, heading),
+            star_shape(middle, self.size * self.elongation, self.size * 0.62, 3, heading),
             self.color,
             self.ink,
             1,
         )
-        if self.core != self.color:
-            ink_shape(
-                surface,
-                star_shape(middle, self.size * 0.52, self.size * 0.24, self.points, heading),
-                self.core,
-                self.color,
-                0,
-            )
+        ink_shape(
+            surface,
+            star_shape(middle, self.size * 0.5, self.size * 0.3, 3, heading),
+            self.core,
+            self.color,
+            0,
+        )
         return surface
+
+    def _paint(self) -> pygame.Surface:
+        return self._chip() if self.shape == "chip" else self._shard()
 
 
 class OrbitParticle(FxParticle):
@@ -1021,8 +1048,8 @@ class BurstSpec:
     """The look of one impact burst, as data.
 
     Guard, parry and break differ by silhouette and not only by colour --
-    small round chips, long thin sparks, heavy three-pointed shards -- so the
-    three can be told apart at a glance, and in a still frame.
+    small tapered chips against heavy triangular shards -- so the three can be
+    told apart at a glance, and in a still frame.
     """
 
     colors: tuple[Color, ...]
@@ -1031,7 +1058,7 @@ class BurstSpec:
     speed: tuple[float, float]
     cone: float
     tilt: float = 0.0
-    points: int = 4
+    shape: SparkShape = "chip"
     size: float = SPARK_SIZE
     elongation: float = 1.0
     ttl: float = SPARK_TTL
@@ -1044,7 +1071,7 @@ GUARD_BURST = BurstSpec(
     count=GUARD_SPARK_COUNT,
     speed=(260.0, 220.0),
     cone=36.0,
-    points=4,
+    shape="chip",
     size=SPARK_SIZE,
     elongation=1.5,
     ttl=0.26,
@@ -1074,7 +1101,7 @@ BREAK_BURST = BurstSpec(
     count=BREAK_SPARK_COUNT,
     speed=(380.0, 300.0),
     cone=80.0,
-    points=3,
+    shape="shard",
     size=SPARK_SIZE * 1.5,
     elongation=1.6,
     ttl=SPARK_TTL + 0.12,
@@ -1107,7 +1134,7 @@ def _spawn_burst(
             ttl=spec.ttl,
             size=spec.size * rng.uniform(0.8, 1.2),
             core=spec.core,
-            points=spec.points,
+            shape=spec.shape,
             elongation=spec.elongation * rng.uniform(0.75, 1.35),
             ink=spec.ink,
         )

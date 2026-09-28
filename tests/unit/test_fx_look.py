@@ -20,6 +20,7 @@ from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DustParticle,
+    OrbitParticle,
     ShieldArcParticle,
     SparkParticle,
     spawn_dash_trail,
@@ -125,7 +126,7 @@ def test_the_guard_arc_faces_the_side_the_attack_came_from() -> None:
     assert left.pos.x < _entity().hitbox.centerx
 
 
-def test_a_break_throws_shards_and_a_block_throws_sparkles() -> None:
+def test_a_break_throws_shards_and_a_block_throws_chips() -> None:
     """Guard and break differ by silhouette, not only by colour.
 
     Colour alone does not survive a still frame, or a bright background.
@@ -134,10 +135,33 @@ def test_a_break_throws_shards_and_a_block_throws_sparkles() -> None:
     guard = fx.spawn_guard_spark(Group(), entity)
     broken = fx.spawn_break_burst(Group(), entity)
 
-    assert {spark.points for spark in guard} == {4}
-    assert {spark.points for spark in broken} == {3}, "a break throws shards"
+    assert {spark.shape for spark in guard} == {"chip"}
+    assert {spark.shape for spark in broken} == {"shard"}
     assert max(spark.size for spark in broken) > max(spark.size for spark in guard)
     assert {tuple(spark.ink) for spark in broken} == {tuple(FXColors.ink_warm)}
+
+
+def test_no_block_spark_is_shaped_like_a_star() -> None:
+    """The stars belong to the dizzy state and to nothing else.
+
+    A four-pointed sparkle thrown out of a block is a star flying out of a
+    block, and a parry is the most repeated event in a fight: the one effect
+    that must not look like the dizzy one is the one on every exchange.
+    """
+    entity = _entity()
+
+    for sparks in (
+        fx.spawn_guard_spark(Group(), entity),
+        fx.spawn_parry_burst(Group(), entity),
+        fx.spawn_break_burst(Group(), entity),
+    ):
+        assert sparks
+        for spark in sparks:
+            assert spark.shape in ("chip", "shard")
+            assert not isinstance(spark, OrbitParticle)
+
+    stars = fx.spawn_dizzy_stars(Group(), entity)
+    assert all(isinstance(star, OrbitParticle) for star in stars)
 
 
 def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
@@ -148,7 +172,7 @@ def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
     screen coverage of the thing it is a bigger version of.
     """
     parry_spec, block_spec = fx.PARRY_BURST, fx.GUARD_BURST
-    geometry = ("count", "speed", "cone", "tilt", "points", "size", "elongation")
+    geometry = ("count", "speed", "cone", "tilt", "shape", "size", "elongation")
 
     for field in geometry:
         assert getattr(parry_spec, field) == getattr(block_spec, field), (
@@ -162,7 +186,7 @@ def test_a_parry_is_the_block_effect_in_gold_and_nothing_more() -> None:
     parried = fx.spawn_parry_burst(Group(), entity)
 
     assert len(parried) == len(block)
-    assert {spark.points for spark in parried} == {spark.points for spark in block}
+    assert {spark.shape for spark in parried} == {spark.shape for spark in block}
     assert FXColors.parry_spark in {tuple(spark.color) for spark in parried}
     assert FXColors.parry_spark not in {tuple(spark.color) for spark in block}
 
