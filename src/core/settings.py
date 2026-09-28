@@ -284,6 +284,10 @@ class FxDash:
     SHOCKWAVE_TTL = 0.18
     SHOCKWAVE_STEPS = 5
     SHOCKWAVE_SQUASH = 0.4
+    SHOCKWAVE_SCALE = (0.3, 0.7)
+    """How far the first step has spread and how much more each step adds, so
+    the ring starts small and lands at full size on the last step."""
+    SHOCKWAVE_MARGIN = 4
     SHOCKWAVE_RIM = (4, 1)
     """The rim's width from the first step to the last: a shockwave is defined
     by getting lighter as it spreads."""
@@ -306,6 +310,9 @@ class FxGuard:
     ARC_TTL = 0.22
     ARC_FLASH = 42.0
     ARC_FADE_IN = 0.08
+    ARC_FALLBACK_OFFSET = 0.3
+    """Where the ring stands in front of the defender when the caller has no
+    contact point, as a fraction of the body's width."""
     ARC_MARGIN = 4
     ARC_KICK_WIDTH = 2
     # The ring coming apart, on the side the hit landed on.

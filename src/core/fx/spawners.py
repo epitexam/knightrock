@@ -37,7 +37,7 @@ from src.core.fx.particles import (
     WindLine,
     particle_frames,
 )
-from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, Sweat
+from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Sweat
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one
@@ -332,7 +332,8 @@ def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vec
         return None
     if contact is None:
         side = facing_side(entity)
-        return Vector2(hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery), side
+        offset = side * hitbox.width * FxGuard.ARC_FALLBACK_OFFSET
+        return Vector2(hitbox.centerx + offset, hitbox.centery), side
     at = Vector2(contact)
     offset = at.x - hitbox.centerx
     side = 1.0 if offset >= 0.0 else -1.0

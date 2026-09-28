@@ -687,13 +687,14 @@ def _shockwave_steps() -> list[pygame.Surface]:
     steps: list[pygame.Surface] = []
     for index in range(FxDash.SHOCKWAVE_STEPS):
         spread = index / max(1, FxDash.SHOCKWAVE_STEPS - 1)
-        scale = 0.3 + 0.7 * spread
+        first, each = FxDash.SHOCKWAVE_SCALE
+        scale = first + each * spread
         rx = FxDash.SHOCKWAVE_RADIUS * scale
         ry = rx * FxDash.SHOCKWAVE_SQUASH
         thick, thin = FxDash.SHOCKWAVE_RIM
         rim = max(1, round(thick + (thin - thick) * spread))
-        wide = snap(rx) * 2 + rim + 4
-        flat = snap(ry) * 2 + rim + 4
+        wide = snap(rx) * 2 + rim + FxDash.SHOCKWAVE_MARGIN
+        flat = snap(ry) * 2 + rim + FxDash.SHOCKWAVE_MARGIN
         surface = pygame.Surface((wide, flat), pygame.SRCALPHA)
         middle = (wide / 2.0, flat / 2.0)
         ellipse_ring(surface, FXColors.shockwave_ink, middle, rx, ry, rim)
