@@ -222,14 +222,22 @@ class Afterimage:
     ramp across fourteen of them reads as motion blur instead, which is the
     opposite of the panel it is imitating.
 
-    So the count is small, the life is shorter than the dash recharge, and the
-    opacity is a ladder rather than a slope: a ghost holds its first level,
-    steps down twice, and is gone.
+    So the opacity is a ladder rather than a slope: a ghost holds its first
+    level, steps down twice, and is gone. And the count can afford to be more
+    than three, because the stamps are flat silhouettes -- a row of tinted
+    copies of one another blurs into a smear at four, and a row of silhouettes
+    still reads as separate shapes.
+
+    The life is kept shorter than the dash recharge so one dash's trail is
+    gone before the next one starts.
     """
 
-    MAX = 3
-    TTL = 0.16
-    SPAWN_EVERY = 0.03
+    MAX = 6
+    TTL = 0.22
+    SPAWN_EVERY = 0.012
+    """One stamp per frame while the dash runs, which is five for an 80ms
+    dash. Slower than a frame and the trail thins out; faster and the stamps
+    land on top of each other and stop being countable."""
     LEVELS = (255, 170, 90)
     """The opacity ladder, brightest first, walked as the ghost ages.
 

@@ -35,7 +35,7 @@ from src.core.rendering.renderer import (
     is_player_dashing,
 )
 from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
-from src.core.settings import Afterimage, Dust, HitFlash, Physics, Sweat
+from src.core.settings import Afterimage, Dust, HitFlash, Physics, Simulation, Sweat
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -637,7 +637,55 @@ def test_the_afterimages_step_down_in_plates_rather_than_fading() -> None:
     assert len(ramp) == 7, "which is what the old fade produced"
 
 
-def test_there_are_only_a_few_afterimages() -> None:
-    """A handful of stamps, not a trail. Fourteen of them reads as a smear."""
-    assert Afterimage.MAX <= 4
+def test_the_afterimage_count_is_bounded_by_one_dash_not_by_taste() -> None:
+    """The cap exists so a trail cannot stack across dashes, not to keep it short.
+
+    How many stamps look right is a matter of taste and has moved twice. Two
+    things are not: the cap must be able to hold every stamp a single dash
+    lays down, or the trail is truncated mid-dash and the dash looks broken;
+    and one dash's trail must be gone before the next dash can start, or the
+    copies of two dashes pile up in the same place.
+    """
+    # Bounded by the cadence and by the frame: a stamp cannot land twice in
+    # one tick, so a cadence finer than a frame is really a per-frame rate.
+    frame = 1.0 / Simulation.TICK_RATE
+    per_dash = min(Physics.DASH_DURATION / Afterimage.SPAWN_EVERY, Physics.DASH_DURATION / frame)
+    assert per_dash <= Afterimage.MAX, (
+        f"an {Physics.DASH_DURATION * 1000:.0f}ms dash lays {per_dash:.1f} stamps, "
+        f"and the cap is {Afterimage.MAX}"
+    )
     assert Afterimage.TTL < Physics.DASH_RECHARGE_TIME, "gone before the next dash"
+
+
+def test_the_afterimages_are_silhouettes_rather_than_tinted_copies() -> None:
+    """Flat in one colour, which is the style that survives being stacked.
+
+    The sprites are SRCALPHA, so cutting the silhouette and filling it flat is
+    exact. A ghost must carry no trace of the sprite's own colour, and
+    anything the sprite left transparent must stay transparent -- otherwise
+    the stamp is a rectangle, which on this sky is a hole in the picture.
+    """
+    surface = pygame.Surface((64, 64))
+    camera = Camera(Framing(float(64), float(64)))
+    camera.set_world_size(64, 64)
+    renderer = Renderer(surface, camera)
+    groups = SpriteGroups()
+    dasher = _dashing_player()
+    groups.all_sprites.add(dasher)
+    groups.entity_sprites.add(dasher)
+
+    renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
+
+    ghost, world_rect, _ = renderer._ghosts[0]
+    drawn = (ghost.get_width(), ghost.get_height())
+    assert drawn == (dasher.image.get_width(), dasher.image.get_height())
+
+    for y in range(ghost.get_height()):
+        for x in range(ghost.get_width()):
+            pixel = ghost.get_at((x, y))
+            source = dasher.image.get_at((x, y))
+            if source[3] == 0:
+                assert pixel[3] == 0, f"({x},{y}) opaque where the sprite is not"
+            else:
+                assert tuple(pixel[:3]) == tuple(FXColors.speed_ghost), f"({x},{y})"
+                assert pixel[3] == 255

@@ -96,14 +96,15 @@ class FXColors:
     dust: ClassVar[Color] = (198, 190, 178)
     dust_deep: ClassVar[Color] = (154, 147, 138)
 
-    speed_ghost: ClassVar[Color] = (170, 220, 255)
-    """What the dash afterimages are lit with.
+    speed_ghost: ClassVar[Color] = (24, 28, 38)
+    """The dash afterimages are silhouettes in this near-black.
 
-    Multiplied, not added: the ghost keeps the sprite's own shading and reads
-    as the same fighter a moment ago rather than as a glowing shape. It is a
-    different member from ``speed_tint`` because it is a different operation
-    on the same idea -- one lightens the dashing sprite, this one cools the
-    copies behind it.
+    Not a tint: the ghosts are cut from the sprite's alpha and filled flat, so
+    they carry none of its colour. Two reasons. The dashing sprite is washed
+    almost to white by ``speed_tint`` anyway, so a tinted copy of it would be
+    a paler version of a shape that has no colour left. And a manga speed line
+    is drawn as a flat shape in a single tone, which is the one style that
+    survives being drawn six times in a row without the copies merging.
     """
     speed_tint: ClassVar[Color] = (100, 200, 255)
     """The dash's speed colour, shared by the sprite and the marks around it.

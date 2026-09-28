@@ -42,6 +42,25 @@ def dash_frame(
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
+def _silhouette(image: pygame.Surface, colour: Color) -> pygame.Surface:
+    """The shape of ``image``, filled flat in ``colour``.
+
+    Cut from the alpha rather than tinted, so the ghost carries none of the
+    sprite's colour. Two reasons. The dashing sprite is washed almost to white
+    by its own speed tint, so a tinted copy of it would be a paler version of
+    a shape with no colour left to pale. And a flat shape is the only one that
+    stays legible when it is stamped several times in a row: four translucent
+    copies of each other blur into a smear, four silhouettes do not.
+
+    A mask is binary, so soft edges become hard. The art is pixel-hard already
+    and the nearest-neighbour scaling would snap any soft edge to the same
+    boundary, so nothing is lost by it.
+    """
+    return pygame.mask.from_surface(image).to_surface(
+        setcolor=(*colour, 255), unsetcolor=(0, 0, 0, 0)
+    )
+
+
 def _ghost_alpha(ttl: float) -> int:
     """The opacity a ghost of this remaining life is stamped at.
 
@@ -488,19 +507,15 @@ class Renderer:
                 continue
             if not self.camera.is_visible(sprite.rect):
                 continue
-            ghost = sprite.image.copy()
-            # The ghost is lit rather than tinted: multiplied, it keeps the
-            # sprite's own shading and reads as the same fighter a moment ago.
-            ghost.fill(FXColors.speed_ghost, special_flags=pygame.BLEND_RGB_MULT)
             # Zoomed for the camera, and deliberately *not* run through
             # ``dash_frame``. The stretch is what the live sprite is doing --
             # it is a cue for the movement, read while it happens. Stamping a
             # frozen copy of it turns every afterimage into a lozenge at
-            # 1.6 wide and 0.6 tall, and three of those in a row is a row of
+            # 1.6 wide and 0.6 tall, and six of those in a row is a row of
             # pancakes rather than a trail of the fighter. A manga afterimage
             # is the character's own shape; the shape is what the player
             # recognises, so that is what gets copied.
-            ghost = self._scaled_image_once(ghost)
+            ghost = self._scaled_image_once(_silhouette(sprite.image, FXColors.speed_ghost))
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
