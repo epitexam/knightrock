@@ -1,6 +1,6 @@
 """FX particles: which ones may rebuild their surface, and which may not.
 
-`src/core/fx.py` builds a particle's pixels once, at construction. A few of
+`src/core/fx/particles.py` builds a particle's pixels once, at construction. A few of
 them then pick a different surface per frame from a ladder they built
 alongside, and these tests pin which, because the difference is invisible in
 a screenshot and invisible in a frame time, and the mistake is easy to

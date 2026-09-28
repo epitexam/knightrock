@@ -12,7 +12,7 @@ import os
 import pygame
 import pytest
 
-from src.core.fx import draw as fx_draw
+from src.core.fx import draw
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -28,15 +28,15 @@ def blank(size: tuple[int, int]) -> pygame.Surface:
 
 
 def test_snap_rounds_half_up_to_whole_pixels() -> None:
-    assert fx_draw.snap(0.4) == 0
-    assert fx_draw.snap(0.5) == 1
-    assert fx_draw.snap(-0.5) == 0
-    assert fx_draw.snap(2.49) == 2
+    assert draw.snap(0.4) == 0
+    assert draw.snap(0.5) == 1
+    assert draw.snap(-0.5) == 0
+    assert draw.snap(2.49) == 2
 
 
 def test_a_disc_lands_only_on_whole_pixels() -> None:
     surface = blank((17, 17))
-    fx_draw.disc(surface, (255, 255, 255), (8.4, 7.6), 5.2)
+    draw.disc(surface, (255, 255, 255), (8.4, 7.6), 5.2)
 
     xs = [x for x in range(17) for y in range(17) if surface.get_at((x, y))[3]]
     ys = [y for x in range(17) for y in range(17) if surface.get_at((x, y))[3]]
@@ -46,7 +46,7 @@ def test_a_disc_lands_only_on_whole_pixels() -> None:
 
 def test_a_ring_has_a_hole_punched_through_it() -> None:
     surface = blank((21, 21))
-    fx_draw.ring(surface, (255, 255, 255), (10, 10), 9, 2)
+    draw.ring(surface, (255, 255, 255), (10, 10), 9, 2)
 
     assert surface.get_at((10, 10))[3] == 0, "the centre has to be transparent"
     assert surface.get_at((10, 1))[3] == 255, "and the rim has to be solid"
@@ -54,7 +54,7 @@ def test_a_ring_has_a_hole_punched_through_it() -> None:
 
 def test_an_ellipse_ring_is_flat() -> None:
     surface = blank((41, 21))
-    fx_draw.ellipse_ring(surface, (255, 255, 255), (20, 10), 18, 6, 2)
+    draw.ellipse_ring(surface, (255, 255, 255), (20, 10), 18, 6, 2)
 
     lit = [(x, y) for x in range(41) for y in range(21) if surface.get_at((x, y))[3]]
     assert max(x for x, _ in lit) - min(x for x, _ in lit) > 2 * (
@@ -68,7 +68,7 @@ def test_a_star_is_symmetric_about_its_heading() -> None:
     Snapping each vertex on its own can leave a star a pixel lopsided, which
     is exactly the kind of thing that reads as a hand-placed mistake.
     """
-    points = fx_draw.star_points((12, 12), 9, 3, 4, heading=0.0)
+    points = draw.star_points((12, 12), 9, 3, 4, heading=0.0)
 
     xs = [point[0] for point in points]
     ys = [point[1] for point in points]
@@ -78,15 +78,15 @@ def test_a_star_is_symmetric_about_its_heading() -> None:
 
 
 def test_a_star_heading_aims_its_first_point() -> None:
-    right = fx_draw.star_points((20, 20), 9, 3, 4, heading=0.0)
-    left = fx_draw.star_points((20, 20), 9, 3, 4, heading=math.pi)
+    right = draw.star_points((20, 20), 9, 3, 4, heading=0.0)
+    left = draw.star_points((20, 20), 9, 3, 4, heading=math.pi)
 
     assert max(point[0] for point in right) > 20
     assert min(point[0] for point in left) < 20
 
 
 def test_a_streak_tapers_to_its_tip() -> None:
-    points = fx_draw.streak_points((0, 0), 24, 6, 0.0)
+    points = draw.streak_points((0, 0), 24, 6, 0.0)
     xs = [point[0] for point in points]
 
     def thickness_at(x: int) -> int:
@@ -100,8 +100,8 @@ def test_a_streak_tapers_to_its_tip() -> None:
 
 
 def test_an_inked_polygon_is_cut_to_fit_and_keeps_a_rim() -> None:
-    surface = fx_draw.inked_polygon(
-        fx_draw.streak_points((0, 0), 20, 6, 0.0), (200, 220, 255), (20, 40, 80), 1
+    surface = draw.inked_polygon(
+        draw.streak_points((0, 0), 20, 6, 0.0), (200, 220, 255), (20, 40, 80), 1
     )
 
     width, height = surface.get_size()
@@ -123,19 +123,19 @@ def test_the_ink_rim_grows_a_shape_outward_and_never_shrinks_it() -> None:
     Scaling about the centre cannot lengthen a tapered line without also
     fattening its middle, and it turned every speed line into a lozenge.
     """
-    body = fx_draw.streak_points((0, 0), 20, 4, 0.0)
-    grown = fx_draw._offset_polygon(body, 1.0)
+    body = draw.streak_points((0, 0), 20, 4, 0.0)
+    grown = draw._offset_polygon(body, 1.0)
 
     assert len(grown) == len(body)
     assert max(point[1] for point in grown) > max(point[1] for point in body)
     assert min(point[1] for point in grown) < min(point[1] for point in body)
     assert all(
-        fx_draw.snap(point[0]) == point[0] and fx_draw.snap(point[1]) == point[1] for point in grown
+        draw.snap(point[0]) == point[0] and draw.snap(point[1]) == point[1] for point in grown
     )
 
 
 def test_polygon_bounds_leaves_a_pixel_of_spare() -> None:
-    left, top, width, height = fx_draw.polygon_bounds([(4, 6), (10, 6), (10, 12)])
+    left, top, width, height = draw.polygon_bounds([(4, 6), (10, 6), (10, 12)])
 
     assert (left, top) == (3, 5)
     assert (width, height) == (9, 9)
@@ -147,17 +147,17 @@ def test_the_fade_ramps_up_then_falls_in_discrete_steps() -> None:
     A continuous ramp turns into a field of half-transparent pixels once the
     surface is magnified with nearest neighbour, which reads as dirt.
     """
-    levels = [fx_draw.life_level(life / 20.0, 0.2) for life in range(21)]
+    levels = [draw.life_level(life / 20.0, 0.2) for life in range(21)]
 
     assert levels[0] == 0, "a new particle is invisible"
     assert levels[3] > levels[0], "it has to ramp up over the fade-in"
-    assert levels[4] == fx_draw.ALPHA_STEPS - 1, "and be at full brightness by its end"
-    assert levels[10] < fx_draw.ALPHA_STEPS - 1, "then fall away"
+    assert levels[4] == draw.ALPHA_STEPS - 1, "and be at full brightness by its end"
+    assert levels[10] < draw.ALPHA_STEPS - 1, "then fall away"
     assert levels[-1] == 0, "and be gone by the end"
-    assert set(levels).issubset(range(fx_draw.ALPHA_STEPS))
+    assert set(levels).issubset(range(draw.ALPHA_STEPS))
 
 
 def test_alpha_of_a_level_is_a_whole_number_of_steps() -> None:
-    assert fx_draw.alpha_of_level(0) == 0
-    assert fx_draw.alpha_of_level(fx_draw.ALPHA_STEPS - 1) == 255
-    assert fx_draw.life_alpha(0.5, 0.0) == fx_draw.alpha_of_level(fx_draw.life_level(0.5, 0.0))
+    assert draw.alpha_of_level(0) == 0
+    assert draw.alpha_of_level(draw.ALPHA_STEPS - 1) == 255
+    assert draw.life_alpha(0.5, 0.0) == draw.alpha_of_level(draw.life_level(0.5, 0.0))

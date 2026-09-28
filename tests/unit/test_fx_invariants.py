@@ -1,6 +1,6 @@
 """The FX module's invariants, enforced.
 
-`src/core/fx.py` documents its own rules in prose: a spawner checks the
+The FX package documents its own rules in prose: a spawner checks the
 budget, every particle declares a family, `__all__` is the surface, nothing
 here touches simulation state. Prose is a claim. These are the checks that
 notice the next convenient effect that skips one, and they are written the way
