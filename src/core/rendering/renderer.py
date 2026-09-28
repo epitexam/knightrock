@@ -20,10 +20,6 @@ DASH_STRETCH_X = 1.6
 DASH_STRETCH_Y = 0.6
 """Vertical squash paired with the dash stretch (render-only)."""
 
-# Chromatic aberration offset for dashing players (simulated via RGB channel separation)
-DASH_CHROMATIC_ABERRATION_PX = 2.0
-"""Pixel offset for RGB channel separation during dash (render-only)."""
-
 
 def is_player_dashing(sprite: object) -> bool:
     """Whether the sprite is a player currently in its dash state."""

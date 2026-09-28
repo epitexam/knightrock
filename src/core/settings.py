@@ -101,9 +101,6 @@ class Combat:
     INVINCIBILITY_DURATION = 0.18
     HITSTOP_BASE = 0.05
     HITSTOP_DAMAGE_FACTOR = 0.002
-    HURT_DURATION_KNOCKBACK_SCALE = 0.0002
-    STAGGER_DURATION = 0.25
-    PLAYER_STAGGER_DURATION = 0.15
     SUPER_ARMOR_THRESHOLD = 3
     COMBO_WINDOW = 0.5
     CONTACT_DAMAGE_THRESHOLD = 300.0
@@ -423,9 +420,6 @@ class GameFeel:
     # Falling acceleration is multiplied by this while the down action is
     # held (fast fall); 1.0 keeps the legacy single fall curve.
     FAST_FALL_GRAVITY_MULTIPLIER = 1.5
-    # Edge drift range at the apex (px/s) granted by the reduced gravity:
-    # derived as threshold / (1 - 1/divisor); documented in tests.
-    APEX_DRIFT_BUDGET_PX_S = 120.0 / (1.0 - 1.0 / 2.0)
 
 
 class Locomotion:
@@ -477,7 +471,6 @@ class Animation:
     WALK_SLOW_FRAME_DURATION = 0.18
     ATTACK_FRAME_DURATION = 0.07
     HIT_FRAME_DURATION = 0.08
-    HAZARD_FRAME_DURATION = 0.12
 
 
 class Gameplay:

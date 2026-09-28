@@ -40,7 +40,6 @@ __all__ = [
     "CLASH_MARKER_RADIUS",
     "CLASH_TICK_S",
     "COMBAT_PANEL_TITLE",
-    "CULL_MARGIN_PX",
     "HEALTH_BAR_ANCHOR_GAP",
     "HEALTH_BAR_HEIGHT",
     "HEALTH_BAR_LABEL_GAP",
@@ -137,9 +136,6 @@ VELOCITY_TAIL_RADIUS = 3
 #: readable. Half the stroke lands inside the shape and is covered by the fill.
 VELOCITY_OUTLINE: Color = (14, 16, 20)
 VELOCITY_OUTLINE_WIDTH = 3
-
-#: World margin around the viewport: sprites grazing the edge still draw.
-CULL_MARGIN_PX = 64.0
 
 #: Horizontal / vertical padding inside a label card (px per side).
 LABEL_PAD_X = 8

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 import pygame
 
 from src.ui.menu_model import MenuModel
-from src.ui.metrics import DESIGN_VALUE_GAP, Metrics
+from src.ui.metrics import Metrics
 from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale, font_size
 from src.ui.styles import (
     GOLD,
@@ -62,11 +62,6 @@ class MenuView:
             return
         self._surface_size = size
         self.reset_cache()
-
-    #: Gap between the label column and the value column. Kept as a class
-    #: attribute because scenes and tests read it; the value now comes from the
-    #: shared metrics so it grows with the window like every other gap.
-    VALUE_GAP = DESIGN_VALUE_GAP
 
     def draw(
         self,

@@ -19,7 +19,7 @@ from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
+from src.core.settings import EnemyJump, HitFlash, Ledge, Locomotion, Physics
 from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
     ReactionComponent,
@@ -614,7 +614,7 @@ class Entity(Sprite):
             self.contact_shape.angle,
         )
 
-    def face_movement(self, threshold: float = 0.1) -> None:
+    def face_movement(self, threshold: float = Locomotion.TURN_DEADZONE) -> None:
         """Orient the entity based on its current movement axis.
 
         Parameters
