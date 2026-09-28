@@ -22,6 +22,7 @@ from src.core.fx import (
     MAX_FX_SPRITES,
     DustParticle,
     OrbitParticle,
+    ShatterArcParticle,
     ShieldArcParticle,
     spawn_dash_trail,
     spawn_dash_wind,
@@ -237,7 +238,7 @@ def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
 
     assert shatter is not None
     assert len(group) == 1
-    assert type(group.sprites()[0]).__name__ == "ShatterArcParticle"
+    assert isinstance(group.sprites()[0], ShatterArcParticle)
 
 
 def test_the_ring_starts_whole_and_breaks_into_pieces() -> None:
