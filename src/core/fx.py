@@ -2,8 +2,11 @@
 
 Dust lives in ``groups.fx_sprites`` (no collision, no damage): it is
 integrated by :class:`PhysicsSystem`, drawn by :class:`Renderer` like any
-visible sprite, and deliberately excluded from rollback snapshots and
-golden digests -- pure juice, zero simulation impact.
+visible sprite, and excluded from rollback snapshots and golden digests --
+pure juice, zero simulation impact. That last phrase is a claim the module
+now keeps: the randomness here comes from its own stream rather than from an
+entity's, so nothing in this file advances state the simulation owns. See
+``_fx_rng`` and ``tests/unit/test_fx_invariants.py``.
 
 The look, in one sentence: whole pixels, dark ink rims, and alpha that moves
 in discrete steps, because the game is magnified with nearest-neighbour
@@ -850,12 +853,20 @@ def clear_frame_cache() -> None:
     _shockwave_cache = []
 
 
-def _puff_rng(entity: Any) -> random.Random:
-    """The entity's own RNG when it has one, else a throwaway instance."""
-    rng = getattr(entity, "rng", None)
-    if isinstance(rng, random.Random):
-        return rng
-    return random.Random()
+_fx_rng: random.Random = random.Random()
+"""The FX module's own stream, deliberately outside the snapshot.
+
+This used to be ``entity.rng``, which the rollback snapshot captures and
+restores. A render-only effect drawing from it advanced state the simulation
+owns, so the position in the stream became a function of how much juice
+happened to be on screen -- harmless while nothing read the stream, and a
+determinism bug the moment something did.
+
+A private stream costs the one thing the shared RNG was buying: the visuals
+are no longer reproducible across a rollback rewind. That is the right
+trade, because the particles themselves are not restored by a rewind either,
+so the FX plane was already inconsistent afterwards, and no golden hashes it.
+"""
 
 
 def dash_direction(entity: Any) -> float:
@@ -921,7 +932,7 @@ def spawn_landing_dust(
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return []
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     frames = particle_frames()
     strength = _landing_strength(impact)
     puffs: list[DustParticle] = []
@@ -972,7 +983,7 @@ def spawn_dash_burst(
     if hitbox is None or count <= 0:
         return []
     direction = dash_direction(entity)
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     frames = particle_frames()
     puffs: list[DustParticle] = []
     for index in range(count):
@@ -1001,7 +1012,7 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
     if hitbox is None:
         return None
     direction = dash_direction(entity)
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     streak = StreakParticle(
         (
             hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
@@ -1027,7 +1038,7 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
     if not _has_room(fx_group, "dash_wind"):
         return []
     direction = dash_direction(entity)
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     pace = abs(float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0))
     lines: list[StreakParticle] = []
     for _ in range(DASH_WIND_LINES):
@@ -1076,7 +1087,7 @@ def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailPar
     if not _has_room(fx_group, "dash_trail"):
         return None
     direction = dash_direction(entity)
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     trail = DashTrailParticle(
         (
             hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
@@ -1129,7 +1140,7 @@ def spawn_shatter_arc(
     if not _has_room(fx_group):
         return None
     side = facing_side(entity)
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     shatter = ShatterArcParticle(
         (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
         side,
@@ -1158,7 +1169,7 @@ def spawn_dizzy_stars(
         return []
     if not _has_room(fx_group, "dizzy_star"):
         return []
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     center = (hitbox.centerx, hitbox.top - 12.0)
     stars: list[OrbitParticle] = []
     for index in range(count):
@@ -1209,7 +1220,7 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
         return []
     if not _has_room(fx_group):
         return []
-    rng = _puff_rng(entity)
+    rng = _fx_rng
     side = facing_side(entity)
     drops: list[SweatParticle] = []
     for _ in range(Sweat.COUNT):

@@ -240,11 +240,6 @@ def test_the_module_never_writes_an_entity_attribute() -> None:
 # --- 6. and never reads the snapshotted RNG -------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="fx.py draws from entity.rng, whose state the rollback snapshot "
-    "captures, so 'zero simulation impact' is not true of the stream.",
-)
 def test_fx_does_not_draw_from_the_snapshotted_entity_rng() -> None:
     """``entity.rng`` state is captured by the rollback snapshot.
 
