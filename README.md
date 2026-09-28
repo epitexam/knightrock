@@ -567,11 +567,12 @@ notes/             Refactoring plans, audit reports and open gaps
 - **Centralized tuning.** Gameplay constants live in `src/core/settings.py` —
   no magic numbers in the systems. A constant **shared by two modules has
   exactly one home**, and it belongs to the module that acts on it: the HP bar
-  geometry is defined once in `src/ui/world_ui.py`, which draws it, and
-  `src/core/rendering/renderer.py` imports it rather than redefining it. Two
-  copies agree only until someone edits one. UI-only constants
-  (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and renderer
-  internals (`DASH_STRETCH_*`) stay next to their only user.
+  geometry is defined once in `src/ui/world_overlay_metrics.py`, which every
+  layer that draws a bar reads, and it reaches the renderer through the
+  `WorldOverlay` port rather than by `core` importing `ui`. Two copies agree
+  only until someone edits one. UI-only constants (`HUD_PIP_SIZE`,
+  `HEALTH_BAR_*`) stay in their UI module, and renderer internals
+  (`DASH_STRETCH_*`) stay next to their only user.
 - **One table for the interface.** `src/ui/metrics.py` holds every layout
   dimension of the menus as a `DESIGN_*` constant, and `Metrics` is the only
   thing that multiplies one by a scale. A view may not contain a layout

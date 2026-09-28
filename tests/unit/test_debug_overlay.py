@@ -678,8 +678,9 @@ def test_dead_entity_draws_no_health_bar(world_ui: WorldUI, camera: Camera) -> N
 def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera) -> None:
     """UI-7: the player's HP lives on the screen HUD, not above its sprite.
 
-    The gate sits in ``_has_health_bar``, so the bar is neither drawn nor
-    reserved by the debug label cards — and an enemy keeps its bar.
+    The gate sits in ``has_health_bar`` (``src/ui/world_overlay_bars.py``), so
+    the bar is neither drawn nor reserved by the debug label cards — and an
+    enemy keeps its bar.
     """
     player = _entity(faction="player", health=100.0, max_health=100.0)
     anchor = camera.apply(pygame.FRect(100, 100, 40, 48))

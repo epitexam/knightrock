@@ -206,9 +206,11 @@ class AnnotationSink:
     def rects(self) -> dict[int, list[pygame.Rect]]:
         """Per-sprite annotations, keyed by ``id(sprite)``.
 
-        Exposed for the two card-side readers that want to look at a sprite
-        they already hold. Writing to it would break the one-way contract, so
-        everything that registers goes through :meth:`register`.
+        The whole table, for a caller that wants to walk every sprite's
+        annotations rather than one. The card placer looks a sprite up with
+        :meth:`for_sprite`, which is the read that matters per frame. Writing
+        to this would break the one-way contract, so everything that registers
+        goes through :meth:`register`.
         """
         return self._rects
 
