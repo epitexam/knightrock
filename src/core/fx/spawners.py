@@ -36,7 +36,7 @@ from src.core.fx.particles import (
     WindLine,
     particle_frames,
 )
-from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Physics, Sweat
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one
@@ -221,7 +221,14 @@ def spawn_dash_burst(
 
 
 def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParticle | None:
-    """A speed line trailing the dasher: thin, fast, gone in a blink."""
+    """A speed line on the dasher's own heading, faster than the dasher.
+
+    It is born behind the body and travels forward, so it catches up and
+    passes: the mark and the thing it marks separate as the dash continues.
+    Sent backwards it read as a line thrown off by the dash, and at
+    ``STREAK_SPEED``'s old 500-800 px/s it was slower than the 1100 px/s
+    dasher, so it fell away behind instead of passing.
+    """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or not _has_room(fx_group, "dash_streak"):
         return None
@@ -232,7 +239,7 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
             hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
             hitbox.centery + rng.uniform(-hitbox.height / 3.0, hitbox.height / 3.0),
         ),
-        (-direction * rng.uniform(*FxDash.STREAK_SPEED), 0.0),
+        (direction * Physics.DASH_SPEED * rng.uniform(*FxDash.STREAK_SPEED), 0.0),
         length=rng.uniform(*FxDash.STREAK_LENGTH_JITTER),
     )
     fx_group.add(streak)
@@ -240,10 +247,12 @@ def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParti
 
 
 def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakParticle]:
-    """Wind lines torn off ahead of the dasher, on the side it faces.
+    """Wind lines ahead of the dasher, running out ahead of it.
 
-    The trail behind the dasher says where it has been; these say how fast it
-    is going, and they are the only FX in the game that point forwards.
+    The ghosts say where the dash has been and these say where it is going.
+    They are the only FX in the game that point forwards, and they leave in
+    the same direction the dasher is travelling -- the one effect in the set
+    that agrees with the motion instead of trailing it.
     """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
@@ -252,7 +261,6 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
         return []
     direction = dash_direction(entity)
     rng = _fx_rng
-    pace = abs(float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0))
     lines: list[StreakParticle] = []
     for _ in range(FxDash.WIND_LINES):
         line = WindLine(
@@ -260,7 +268,7 @@ def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakPa
                 hitbox.centerx + direction * hitbox.width * rng.uniform(*FxDash.WIND_AHEAD),
                 hitbox.centery + rng.uniform(-hitbox.height / 2.0, hitbox.height / 2.0),
             ),
-            (-direction * (pace + rng.uniform(*FxDash.WIND_EXTRA_SPEED)), 0.0),
+            (direction * Physics.DASH_SPEED * rng.uniform(*FxDash.WIND_SPEED), 0.0),
             length=rng.uniform(*FxDash.WIND_LENGTH_JITTER),
             thickness=FxDash.WIND_THICKNESS,
         )

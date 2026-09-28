@@ -33,6 +33,7 @@ from src.core.fx.draw import (
     inked_polygon,
     life_alpha,
     life_level,
+    polygon_bounds,
     snap,
     spread_step,
     star_shape,
@@ -165,10 +166,16 @@ class StreakParticle(FxParticle):
 
     """A speed line: a thin taper lying along the velocity, gone in a blink.
 
-    Solid dark ink and no rim, which is the opposite of every other shape
-    here. A one-pixel ink rim around a three-pixel line is most of the line,
-    and the result reads as a worm; the level's sky is light, so a dark taper
-    is also the one that carries.
+    Bright, in the dash's own speed colour, with a near-white core. It was
+    the opposite -- a solid dark taper in ``ink_cool`` -- and that was a
+    deliberate exception to this palette's "bright body, dark ink rim" rule,
+    made because a one-pixel rim around a three-pixel line is most of the
+    line. The exception is kept; only the colour is not. The ghosts beside it
+    are already the cyan of the tinted dashing sprite, and a dark line next
+    to them was a second, unrelated idea of what a dash looks like.
+
+    The rule the exception was made for is the one that survives: still no
+    rim, because the line is three pixels wide.
     """
 
     fade_in: ClassVar[float] = FxDash.STREAK_FADE_IN
@@ -188,12 +195,14 @@ class StreakParticle(FxParticle):
 
     def _paint(self) -> pygame.Surface:
         heading = math.atan2(self.velocity.y, self.velocity.x)
-        return inked_polygon(
-            streak_points((0, 0), self.length, self.thickness, heading),
-            FXColors.ink_cool,
-            FXColors.ink_cool,
-            0,
-        )
+        body = streak_points((0, 0), self.length, self.thickness, heading)
+        core = streak_points((0, 0), self.length * 0.8, max(1.0, self.thickness * 0.34), heading)
+        left, top, width, height = polygon_bounds([*body, *core])
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        at = (-left, -top)
+        draw_inked_polygon(surface, body, FXColors.speed, FXColors.speed, 0, at=at)
+        draw_inked_polygon(surface, core, FXColors.speed_core, FXColors.speed_core, 0, at=at)
+        return surface
 
 
 class DashBurstPuff(DustParticle):

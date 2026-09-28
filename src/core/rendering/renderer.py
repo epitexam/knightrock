@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pygame
 
-from src.core.colors import BG_COLORS, Color, Colors
+from src.core.colors import BG_COLORS, Color, Colors, FXColors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
@@ -38,7 +38,7 @@ def dash_frame(
     stretched = pygame.transform.scale(image, (width, height))
     # Add energetic cyan tint to dash frame for speed feel
     if apply_tint:
-        stretched.fill((100, 200, 255), special_flags=pygame.BLEND_RGB_ADD)
+        stretched.fill(FXColors.speed_tint, special_flags=pygame.BLEND_RGB_ADD)
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 

@@ -267,14 +267,19 @@ class FxDash:
     BURST_COUNT = 10
     WIND_LINES = 2
     SPEED_MARK_SPAWN_EVERY = 0.015
+    # The two speed marks. Their velocities are multiples of
+    # ``Physics.DASH_SPEED``, both above 1: a line that moves slower than the
+    # dasher it marks is debris, and one that moves with it is wallpaper.
+    # Written as a ratio so that retuning the dash retunes its marks, and so
+    # that a test can hold them to being faster.
     STREAK_TTL = 0.22
     STREAK_THICKNESS = 3.0
     STREAK_LENGTH_JITTER = (18.0, 34.0)
-    STREAK_SPEED = (500.0, 800.0)
+    STREAK_SPEED = (1.3, 1.9)
     STREAK_FADE_IN = 0.2
     WIND_THICKNESS = 2.0
     WIND_LENGTH_JITTER = (20.0, 40.0)
-    WIND_EXTRA_SPEED = (300.0, 700.0)
+    WIND_SPEED = (1.4, 2.1)
     WIND_AHEAD = (0.3, 1.2)
     # The ring on the ground at the start of the dash.
     SHOCKWAVE_RADIUS = 44.0

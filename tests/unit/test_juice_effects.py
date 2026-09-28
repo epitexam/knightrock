@@ -40,7 +40,7 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, FxDash, HitFlash, Sweat
+from src.core.settings import Afterimage, Dust, FxDash, HitFlash, Physics, Sweat
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -200,8 +200,13 @@ def test_landing_fan_spawns_count_puffs_at_the_feet() -> None:
         assert abs(puff.pos.x - entity.hitbox.centerx) < entity.hitbox.width
 
 
-def test_dash_streak_lies_along_its_own_velocity() -> None:
-    """A speed line has to point where it is going, or it is just a dash."""
+def test_a_dash_streak_runs_forward_along_its_own_velocity() -> None:
+    """A speed line has to point where the dash is going, and outrun it.
+
+    It is born behind the body and overtakes, so the mark and the dasher
+    separate as the dash runs. Sent backwards -- and at the old 500-800 px/s,
+    slower than the 1100 px/s dasher -- it read as something thrown off.
+    """
     entity = make_entity(pos=(100.0, 100.0))
     entity.facing_right = True
     group = pygame.sprite.Group()
@@ -210,8 +215,9 @@ def test_dash_streak_lies_along_its_own_velocity() -> None:
 
     assert streak is not None
     assert len(group) == 1
-    assert streak.pos.x < entity.hitbox.centerx
-    assert streak.velocity.x < 0.0
+    assert streak.pos.x < entity.hitbox.centerx, "born behind the body"
+    assert streak.velocity.x > 0.0, "and travelling the way the dash is going"
+    assert streak.velocity.x > Physics.DASH_SPEED, "faster than the dasher it marks"
     assert streak.image.get_width() > streak.image.get_height() * 3
 
 
@@ -395,7 +401,7 @@ def test_a_dash_spawns_one_thin_flat_speed_line() -> None:
 
     assert isinstance(streak, StreakParticle)
     assert streak.image.get_width() > streak.image.get_height() * 3
-    assert streak.velocity.x < 0.0
+    assert streak.velocity.x > Physics.DASH_SPEED, "the line outruns the dash"
     assert streak.pos.x <= entity.hitbox.centerx
     assert spawn_dash_streak(group, SimpleNamespace()) is None
 
@@ -681,3 +687,32 @@ def test_a_family_the_budget_table_has_never_heard_of_is_still_allowed() -> None
     assert spawners._has_room(pygame.sprite.Group()) is True, "no family named, nothing to check"
     assert spawners._has_room(pygame.sprite.Group(), "a_family_nobody_declared") is True
     assert spawners._has_room(pygame.sprite.Group(), "dizzy_star") is True
+
+
+def test_both_speed_marks_outrun_the_dash_they_mark() -> None:
+    """The one rule that makes a mark read as speed rather than as debris.
+
+    Both the streak and the wind line used to be written in absolute pixels
+    per second -- 500 to 800 for the streak -- while the dasher was doing
+    1100. A line that travels slower than the thing it is marking does not
+    read as fast, it reads as falling behind, and nothing caught it because
+    the numbers were correct as numbers.
+
+    Their velocities are now ratios of `Physics.DASH_SPEED`, and the lower
+    bound of each ratio is above one. This is what holds that: change the
+    dash speed, or either ratio, and this fails rather than the look
+    drifting.
+    """
+    slowest_ratio = min(min(FxDash.STREAK_SPEED), min(FxDash.WIND_SPEED))
+    assert slowest_ratio > 1.0, "a speed mark that outruns nothing"
+
+    entity = make_entity(pos=(100.0, 100.0))
+    entity.facing_right = True
+    group = pygame.sprite.Group()
+
+    marks = [spawn_dash_streak(group, entity)]
+    marks += spawn_dash_wind(group, entity)
+
+    for mark in marks:
+        assert mark is not None
+        assert mark.velocity.x >= Physics.DASH_SPEED * slowest_ratio

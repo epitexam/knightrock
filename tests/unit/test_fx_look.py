@@ -35,7 +35,7 @@ from src.core.fx import (
 from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import Dust, FxDash, FxGuard
+from src.core.settings import Dust, FxDash, FxGuard, Physics
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -418,14 +418,22 @@ def test_the_global_cap_still_wins_over_the_family_one() -> None:
     assert spawn_dash_wind(group, _entity()) == []
 
 
-def test_the_wind_lines_are_torn_off_in_front_of_the_dash() -> None:
+def test_the_wind_lines_run_out_ahead_of_the_dash() -> None:
+    """Born ahead, travelling the same way, and outrunning the dasher.
+
+    These are the only FX in the game that point forwards. They used to be
+    born ahead and travel back, so they swept across the dasher and past it
+    -- the opposite of the one effect that was meant to say where the dash
+    is going.
+    """
     entity = _entity(200.0, 200.0)
     lines = spawn_dash_wind(Group(), entity)
 
     assert len(lines) == FxDash.WIND_LINES
     for line in lines:
-        assert line.pos.x > entity.hitbox.centerx, "ahead of the dasher"
-        assert line.velocity.x < 0.0, "and the air it tears off goes backwards"
+        assert line.pos.x > entity.hitbox.centerx, "born ahead of the dasher"
+        assert line.velocity.x > 0.0, "and leaving in the direction it is going"
+        assert line.velocity.x > Physics.DASH_SPEED, "faster than the dash"
 
 
 def test_the_dizzy_swirl_and_the_stars_do_not_share_a_place() -> None:

@@ -102,6 +102,27 @@ class FXColors:
     shockwave: ClassVar[Color] = (210, 238, 255)
     shockwave_ink: ClassVar[Color] = (40, 82, 128)
 
+    speed_tint: ClassVar[Color] = (100, 200, 255)
+    """The dash's speed colour, shared by the sprite and the marks around it.
+
+    This one member is additive: the renderer adds it to the dashing sprite to
+    brighten it, and the ghosts photograph that result, so every ghost is
+    already this colour. It was a literal in the renderer and nothing else in
+    the repository agreed with it.
+
+    Additive and opaque are not the same colour. Added to a sprite, this
+    lightens it; filled in, the same triple is a saturated cyan that reads as
+    a stain. So the family has an opaque member too, and the marks use that.
+    """
+    speed: ClassVar[Color] = (120, 196, 246)
+    speed_core: ClassVar[Color] = (206, 238, 255)
+    """The speed marks' own body and core.
+
+    Body brighter than ``speed_tint`` would blow out against a light sky, and
+    the core is the near-white this palette uses for anything meant to read as
+    light rather than as matter.
+    """
+
     guard_spark: ClassVar[Color] = (96, 226, 238)
     guard_core: ClassVar[Color] = (226, 250, 255)
     parry_spark: ClassVar[Color] = (255, 206, 64)
