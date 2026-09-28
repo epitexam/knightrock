@@ -114,7 +114,7 @@ def test_positional_calls_stay_backward_compatible(renderer: PanelRenderer) -> N
 
 
 def test_debug_panels_signal_impossible_small_display_placement() -> None:
-    from types import SimpleNamespace  # noqa: PLC0415 - local test double
+    from types import SimpleNamespace
 
     ui = UIManager(pygame.Surface((640, 480)))
     player = SimpleNamespace(
@@ -154,7 +154,7 @@ def test_debug_panels_signal_impossible_small_display_placement() -> None:
         otg_timer=0.0,
     )
     ui.renderer.surface = pygame.Surface((640, 480))
-    from src.ui.panel_renderer import PanelLayout as Layout  # noqa: PLC0415
+    from src.ui.panel_renderer import PanelLayout as Layout
 
     layout = Layout(640, 480)
     with pytest.warns(RuntimeWarning, match="no free slot|cannot fit"):

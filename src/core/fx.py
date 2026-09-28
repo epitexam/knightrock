@@ -34,6 +34,7 @@ from typing import Any, ClassVar
 import pygame
 from pygame.math import Vector2
 
+from src.core.asset_library import shared_library
 from src.core.colors import Color, Colors, FXColors
 from src.core.rendering.fx_draw import (
     ALPHA_STEPS,
@@ -844,8 +845,6 @@ def particle_frames() -> list[pygame.Surface] | None:
     if _frames_miss:
         return None
     try:
-        from src.core.asset_library import shared_library  # noqa: PLC0415 - lazy, headless-safe
-
         _frames_cache = shared_library().frames(PARTICLE_FRAMES_DIR)
         return _frames_cache
     except FileNotFoundError:
@@ -952,20 +951,6 @@ def _has_room(fx_group: pygame.sprite.Group, family: str | None = None) -> bool:
 def _landing_strength(impact: float) -> float:
     """How big a landing reads, from the fall speed that caused it."""
     return min(2.2, max(0.6, float(impact) / (Dust.MIN_FALL_SPEED * 1.6)))
-
-
-def _contact_point(entity: Any, origin: tuple[float, float] | None) -> Vector2:
-    """Where a spark belongs: the contact if there is one, else the leading edge."""
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return Vector2(origin or (0.0, 0.0))
-    if origin is not None:
-        return Vector2(origin)
-    side = facing_side(entity)
-    return Vector2(
-        hitbox.centerx + side * hitbox.width * 0.5,
-        hitbox.centery - hitbox.height * 0.15,
-    )
 
 
 def spawn_landing_dust(
@@ -1147,49 +1132,63 @@ def spawn_dash_trail(fx_group: pygame.sprite.Group, entity: Any) -> DashTrailPar
     return trail
 
 
-def spawn_guard_arc(
-    fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
-) -> ShieldArcParticle | None:
-    """The block's arc, in front of the guard and facing the attacker.
+def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:
+    """Where a guard's ring stands, and which way it opens.
 
-    ``parried`` is the only difference a perfect block makes: same arc, same
-    size, gold instead of cyan.
+    The contact point when the caller knows it, which is the only thing that
+    says where the block actually landed. Without one, the ring goes in front
+    of the defender, on the side they face.
+
+    The side comes from the contact rather than from ``facing_right``, so a
+    fighter blocking a hit that arrived from behind gets the ring on the side
+    the hit came from. It used to open towards the guard's own facing, which
+    put it on the wrong side of the body for every back-turned block.
     """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
         return None
-    if not _has_room(fx_group, "shield_arc"):
+    if contact is None:
+        side = facing_side(entity)
+        return Vector2(hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery), side
+    at = Vector2(contact)
+    offset = at.x - hitbox.centerx
+    side = 1.0 if offset >= 0.0 else -1.0
+    return at, side
+
+
+def spawn_guard_arc(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    parried: bool = False,
+    contact: tuple[float, float] | None = None,
+) -> ShieldArcParticle | None:
+    """The block's arc, at the contact and opening away from the defender.
+
+    ``parried`` is the only difference a perfect block makes: same arc, same
+    size, gold instead of cyan.
+    """
+    stance = _guard_stance(entity, contact)
+    if stance is None or not _has_room(fx_group, "shield_arc"):
         return None
-    side = facing_side(entity)
-    arc = ShieldArcParticle(
-        (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
-        side,
-        parried,
-    )
+    arc = ShieldArcParticle(stance[0], stance[1], parried)
     fx_group.add(arc)
     return arc
 
 
 def spawn_shatter_arc(
-    fx_group: pygame.sprite.Group, entity: Any, parried: bool = False
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    contact: tuple[float, float] | None = None,
 ) -> ShatterArcParticle | None:
     """The ring breaking, on the side the guard gave way on.
 
     Stands where the block's ring stands and does the same job with the same
     silhouette: a guard that failed is the same shield, on the way out.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
+    stance = _guard_stance(entity, contact)
+    if stance is None or not _has_room(fx_group, "shatter_arc"):
         return None
-    if not _has_room(fx_group, "shatter_arc"):
-        return None
-    side = facing_side(entity)
-    rng = _fx_rng
-    shatter = ShatterArcParticle(
-        (hitbox.centerx + side * hitbox.width * 0.3, hitbox.centery),
-        side,
-        seed=rng.randrange(1 << 16),
-    )
+    shatter = ShatterArcParticle(stance[0], stance[1], seed=_fx_rng.randrange(1 << 16))
     fx_group.add(shatter)
     return shatter
 

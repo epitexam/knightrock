@@ -226,6 +226,60 @@ def test_only_the_dizzy_state_produces_stars() -> None:
     assert not any(isinstance(step, OrbitParticle) for step in shatter.steps)
 
 
+def test_the_ring_stands_where_the_block_landed() -> None:
+    """The contact point is what the guard event reports, so it is what we draw.
+
+    Standing the ring in front of the defender was a guess: it put the mark
+    at the middle of the body rather than where the hit was absorbed, and it
+    ignored the one piece of data the combat system had already computed.
+    """
+    entity = _entity(facing=True)
+    contact = (entity.hitbox.right + 6.0, entity.hitbox.centery - 4.0)
+
+    arc = spawn_guard_arc(Group(), entity, contact=contact)
+
+    assert arc is not None
+    assert arc.pos.x == pytest.approx(contact[0])
+    assert arc.pos.y == pytest.approx(contact[1])
+    assert arc.side == 1.0
+
+
+def test_a_back_turned_block_puts_the_ring_where_the_hit_came_from() -> None:
+    """The side comes from the contact, not from which way the guard looks.
+
+    Reading ``facing_right`` opened the ring towards the defender's own
+    facing, so a guard blocking a hit from behind got it on the wrong side of
+    the body -- the one case where the mark contradicted the event.
+    """
+    entity = _entity(facing=True)
+    behind = (entity.hitbox.left - 6.0, entity.hitbox.centery)
+
+    arc = spawn_guard_arc(Group(), entity, contact=behind)
+
+    assert arc is not None
+    assert arc.side == -1.0, "the ring opens away from the body, towards the hit"
+
+
+def test_a_clash_spawns_no_guard_ring() -> None:
+    """Two weapons meeting is not a block, and used to draw one.
+
+    The event branch was an ``else``, so anything the loop did not name --
+    and a clash is what it did not name -- got the block's arc. Unreachable
+    while no attack declares clash data, and a wrong mark the day one does.
+    """
+    from src.core.level.systems.contact_system import GuardEvent
+    from src.core.level.systems.gameplay_loop import GameplayLoop
+
+    entity = _entity()
+    group = Group()
+    loop = GameplayLoop(camera_system=SimpleNamespace(add_trauma=lambda _amount: None))
+
+    for kind in ("clash", "stun"):
+        loop._spawn_fx_for_event(GuardEvent(kind, entity), group)
+
+    assert len(group) == 0
+
+
 def test_a_break_breaks_the_ring_rather_than_throwing_shards() -> None:
     """The failing guard is the same shield on the way out, not a new effect.
 

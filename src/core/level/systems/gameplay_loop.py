@@ -278,19 +278,14 @@ class GameplayLoop:
         return GuardSettings.GUARD_TRAUMA
 
     def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
-        from src.core.fx import (  # noqa: PLC0415
-            spawn_guard_arc,
-            spawn_shatter_arc,
-        )
+        from src.core.fx import spawn_guard_arc, spawn_shatter_arc
 
         if event.kind == "parry":
-            spawn_guard_arc(fx_group, event.target, parried=True)
+            spawn_guard_arc(fx_group, event.target, parried=True, contact=event.point)
         elif event.kind == "break":
-            spawn_shatter_arc(fx_group, event.target)
-        elif event.kind == "stun":
-            return
-        else:
-            spawn_guard_arc(fx_group, event.target)
+            spawn_shatter_arc(fx_group, event.target, contact=event.point)
+        elif event.kind == "guard":
+            spawn_guard_arc(fx_group, event.target, contact=event.point)
 
     def process_combat_and_separation(
         self,

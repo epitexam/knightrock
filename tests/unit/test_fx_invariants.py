@@ -293,11 +293,6 @@ def test_fx_does_not_draw_from_the_snapshotted_entity_rng() -> None:
 # --- 7. no noqa for a rule the project does not enable --------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="two suppressions name PLC0415, and PL is not in ruff's select. A "
-    "noqa for a rule that never runs reads as a reason and checks nothing.",
-)
 def test_no_suppression_for_a_rule_that_is_not_enabled() -> None:
     """A noqa for a rule that is not selected is a comment that looks like a guard.
 
