@@ -28,18 +28,16 @@ from src.core.fx.draw import (
     disc_shape,
     draw_arc_stroke,
     draw_inked_polygon,
-    ellipse_ring,
     ink_shape,
     inked_polygon,
     life_alpha,
     life_level,
-    polygon_bounds,
     snap,
     spread_step,
     star_shape,
     streak_points,
 )
-from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import Dust, FxDecal, FxDizzy, FxGuard, Sweat
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -161,71 +159,6 @@ class DustParticle(FxParticle):
             self.image = self.frames[min(int(self.life * len(self.frames)), len(self.frames) - 1)]
 
 
-class StreakParticle(FxParticle):
-    family: ClassVar[str] = "dash_streak"
-
-    """A speed line: a thin taper lying along the velocity, gone in a blink.
-
-    Bright, in the dash's own speed colour, with a near-white core. It was
-    the opposite -- a solid dark taper in ``ink_cool`` -- and that was a
-    deliberate exception to this palette's "bright body, dark ink rim" rule,
-    made because a one-pixel rim around a three-pixel line is most of the
-    line. The exception is kept; only the colour is not. The ghosts beside it
-    are already the cyan of the tinted dashing sprite, and a dark line next
-    to them was a second, unrelated idea of what a dash looks like.
-
-    The rule the exception was made for is the one that survives: still no
-    rim, because the line is three pixels wide.
-    """
-
-    fade_in: ClassVar[float] = FxDash.STREAK_FADE_IN
-
-    def __init__(
-        self,
-        pos: tuple[float, float] | Vector2,
-        velocity: tuple[float, float] | Vector2,
-        length: float = 24.0,
-        ttl: float = FxDash.STREAK_TTL,
-        thickness: float = FxDash.STREAK_THICKNESS,
-    ) -> None:
-        self.length = float(length)
-        self.thickness = float(thickness)
-        super().__init__(pos, ttl)
-        self.velocity = Vector2(velocity)
-
-    def _paint(self) -> pygame.Surface:
-        heading = math.atan2(self.velocity.y, self.velocity.x)
-        body = streak_points((0, 0), self.length, self.thickness, heading)
-        core = streak_points((0, 0), self.length * 0.8, max(1.0, self.thickness * 0.34), heading)
-        left, top, width, height = polygon_bounds([*body, *core])
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        at = (-left, -top)
-        draw_inked_polygon(surface, body, FXColors.speed, FXColors.speed, 0, at=at)
-        draw_inked_polygon(surface, core, FXColors.speed_core, FXColors.speed_core, 0, at=at)
-        return surface
-
-
-class DashBurstPuff(DustParticle):
-    """The puff a dash throws backward.
-
-    The same shape as a landing dust puff, spent from a different budget: a
-    dash and a landing can happen on the same tick, and one must not spend
-    the room the other needs.
-    """
-
-    family: ClassVar[str] = "dash_burst"
-
-
-class WindLine(StreakParticle):
-    """A speed line torn off ahead of a dash.
-
-    The same shape as a trailing streak, spent from a different budget so a
-    long dash cannot fill the plane with its own wind.
-    """
-
-    family: ClassVar[str] = "dash_wind"
-
-
 class OrbitParticle(FxParticle):
     family: ClassVar[str] = "dizzy_star"
 
@@ -314,33 +247,6 @@ class DizzyVortexParticle(FxParticle):
 
     def _integrate(self, delta_time: float) -> None:
         self.image = vortex_frames()[life_level(self.life, 0.0, FxDizzy.VORTEX_FRAMES)]
-
-
-class DashShockwaveParticle(FxParticle):
-    family: ClassVar[str] = "dash_shockwave"
-
-    """A ring on the ground at dash start.
-
-    The ring is drawn once, at full size, then shown through four pre-scaled
-    steps: growing it meant redrawing it at a new radius every frame, and the
-    ellipse is what makes it read as lying on the floor rather than standing
-    around the character.
-    """
-
-    def __init__(
-        self,
-        pos: tuple[float, float] | Vector2,
-        ttl: float = FxDash.SHOCKWAVE_TTL,
-    ) -> None:
-        self.steps = _shockwave_steps()
-        super().__init__(pos, ttl)
-
-    def _paint(self) -> pygame.Surface:
-        return self.steps[0]
-
-    def _integrate(self, delta_time: float) -> None:
-        spread = 1.0 - (1.0 - self.life) ** 2
-        self.image = self.steps[min(int(spread * len(self.steps)), len(self.steps) - 1)]
 
 
 class ImpactDecalParticle(FxParticle):
@@ -638,47 +544,6 @@ def _shade(color: Color, amount: float) -> Color:
     )
 
 
-_shockwave_cache: list[pygame.Surface] = []
-
-
-def _shockwave_steps() -> list[pygame.Surface]:
-    """The dash ring at five sizes, built once and shared.
-
-    Redrawn per step rather than scaled from one image, so the rim can thin
-    out as the ring grows: scaling a fat ring up makes a heavier ring, and a
-    shockwave is defined by getting lighter as it spreads.
-    """
-    global _shockwave_cache
-    if _shockwave_cache:
-        return _shockwave_cache
-    steps: list[pygame.Surface] = []
-    for index in range(FxDash.SHOCKWAVE_STEPS):
-        spread = index / max(1, FxDash.SHOCKWAVE_STEPS - 1)
-        first, each = FxDash.SHOCKWAVE_SCALE
-        scale = first + each * spread
-        rx = FxDash.SHOCKWAVE_RADIUS * scale
-        ry = rx * FxDash.SHOCKWAVE_SQUASH
-        thick, thin = FxDash.SHOCKWAVE_RIM
-        rim = max(1, round(thick + (thin - thick) * spread))
-        wide = snap(rx) * 2 + rim + FxDash.SHOCKWAVE_MARGIN
-        flat = snap(ry) * 2 + rim + FxDash.SHOCKWAVE_MARGIN
-        surface = pygame.Surface((wide, flat), pygame.SRCALPHA)
-        middle = (wide / 2.0, flat / 2.0)
-        ellipse_ring(surface, FXColors.shockwave_ink, middle, rx, ry, rim)
-        if rim > 1:
-            ellipse_ring(
-                surface,
-                FXColors.shockwave,
-                middle,
-                max(1.0, rx - rim / 2.0),
-                max(0.5, ry - rim / 2.0),
-                max(1, rim - 2),
-            )
-        steps.append(surface)
-    _shockwave_cache = steps
-    return steps
-
-
 _frames_cache: list[pygame.Surface] | None = None
 _frames_miss = False
 _vortex_cache: list[pygame.Surface] = []
@@ -753,8 +618,7 @@ def clear_frame_cache() -> None:
     converted surface, so this cache layer has to be dropped with
     ``AssetLibrary`` or it would keep handing back stale ones.
     """
-    global _frames_cache, _frames_miss, _vortex_cache, _shockwave_cache
+    global _frames_cache, _frames_miss, _vortex_cache
     _frames_cache = None
     _frames_miss = False
     _vortex_cache = []
-    _shockwave_cache = []

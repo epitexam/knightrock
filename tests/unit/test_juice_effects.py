@@ -14,14 +14,8 @@ from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     DustParticle,
-    StreakParticle,
     SweatParticle,
-    dash_direction,
     iter_landing_entities,
-    spawn_dash_burst,
-    spawn_dash_shockwave,
-    spawn_dash_streak,
-    spawn_dash_wind,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_guard_arc,
@@ -40,7 +34,7 @@ from src.core.rendering.renderer import (
     dash_frame,
     is_player_dashing,
 )
-from src.core.settings import Afterimage, Dust, FxDash, HitFlash, Physics, Sweat
+from src.core.settings import Afterimage, Dust, HitFlash, Sweat
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -200,59 +194,6 @@ def test_landing_fan_spawns_count_puffs_at_the_feet() -> None:
         assert abs(puff.pos.x - entity.hitbox.centerx) < entity.hitbox.width
 
 
-def test_a_dash_streak_runs_forward_along_its_own_velocity() -> None:
-    """A speed line has to point where the dash is going, and outrun it.
-
-    It is born behind the body and overtakes, so the mark and the dasher
-    separate as the dash runs. Sent backwards -- and at the old 500-800 px/s,
-    slower than the 1100 px/s dasher -- it read as something thrown off.
-    """
-    entity = make_entity(pos=(100.0, 100.0))
-    entity.facing_right = True
-    group = pygame.sprite.Group()
-
-    streak = spawn_dash_streak(group, entity)
-
-    assert streak is not None
-    assert len(group) == 1
-    assert streak.pos.x < entity.hitbox.centerx, "born behind the body"
-    assert streak.velocity.x > 0.0, "and travelling the way the dash is going"
-    assert streak.velocity.x > Physics.DASH_SPEED, "faster than the dasher it marks"
-    assert streak.image.get_width() > streak.image.get_height() * 3
-
-
-def test_dash_direction_prefers_live_velocity_over_facing() -> None:
-    entity = make_entity(pos=(100.0, 100.0))
-    entity.facing_right = True
-    entity.velocity.x = -800.0
-
-    assert dash_direction(entity) == pytest.approx(-1.0)
-
-    puffs = spawn_dash_burst(pygame.sprite.Group(), entity)
-
-    assert all(puff.pos.x > entity.hitbox.centerx for puff in puffs)
-    assert all(puff.velocity.x > 0.0 for puff in puffs)
-
-    entity.velocity.x = 0.0
-    entity.facing_right = False
-    assert dash_direction(entity) == pytest.approx(-1.0)
-
-
-def test_dash_burst_kicks_a_fan_backward_on_start() -> None:
-    entity = make_entity(pos=(100.0, 100.0))
-    entity.facing_right = True
-    group = pygame.sprite.Group()
-
-    puffs = spawn_dash_burst(group, entity)
-
-    assert len(puffs) == FxDash.BURST_COUNT
-    assert len(group) == FxDash.BURST_COUNT
-    for puff in puffs:
-        assert puff.pos.x <= entity.hitbox.centerx
-        assert puff.velocity.x < 0.0
-    assert spawn_dash_burst(group, SimpleNamespace()) == []
-
-
 def test_hard_landing_records_impact_while_hops_stay_clean() -> None:
     entity = make_entity(pos=(50.0, 155.0), faction="player")
     entity.collision_sprites = [_floor_tile()]
@@ -269,52 +210,41 @@ def test_hard_landing_records_impact_while_hops_stay_clean() -> None:
     assert entity.landed_impact == pytest.approx(0.0)
 
 
-def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
+def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     groups = SpriteGroups()
     lander = make_entity(pos=(50.0, 100.0))
     lander.landed_impact = Dust.MIN_FALL_SPEED + 100.0
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    groups.entity_sprites.add(lander, dasher)
+    groups.entity_sprites.add(lander)
     system = PhysicsSystem(groups)
 
     system._spawn_impact_fx(1 / 60)
 
-    # The landing fan and its ground mark, then the dash-start burst, the
-    # ground ring and the first wind lines. Nothing marks the path: that is
-    # the renderer's ghosts now, and they are not FX particles.
-    assert len(groups.fx_sprites) == (Dust.COUNT + 1 + FxDash.BURST_COUNT + 1 + FxDash.WIND_LINES)
+    assert len(groups.fx_sprites) == Dust.COUNT + 1
 
 
-def test_dash_burst_fires_once_per_dash() -> None:
+def test_a_dash_spawns_no_particles_at_all() -> None:
+    """The dash's whole visual is the renderer's afterimage, and nothing else.
+
+    It used to be five systems on one 80ms event: a backward fan of dust, a
+    ground ring, a speed line every tick, wind lines on a cadence, and a
+    comet. Four of them marked the path the afterimage already photographs,
+    and the frame they produced was a white cloud under a stretched
+    rectangle with a hoop around it.
+
+    So a dashing entity now spends no particle budget at all, and this holds
+    it there. Adding a mark back is a deliberate act against this test, not
+    an accident of a spawner that forgot to ask.
+    """
     groups = SpriteGroups()
     dasher = make_entity(pos=(200.0, 100.0))
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     groups.entity_sprites.add(dasher)
     system = PhysicsSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
-    # Burst + ground ring + the first wind lines, on the starting frame.
-    on_start = FxDash.BURST_COUNT + 1 + FxDash.WIND_LINES
-    assert len(groups.fx_sprites) == on_start
+    for _ in range(6):
+        system._spawn_impact_fx(1 / 60)
 
-    # Still dashing: a speed line per tick, and the wind lines on their cadence.
-    system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) >= on_start + 2
-
-    # Dash over, then re-dash: the burst fires again. The first burst has to
-    # be gone first, or the family cap refuses the second one and this would
-    # be a test of the cap wearing this test's name.
-    dasher.state_machine = SimpleNamespace(current_state_name="run")
-    system._spawn_impact_fx(1 / 60)
-    for _ in range(30):
-        for sprite in list(groups.fx_sprites):
-            sprite.update(1 / 60)
-    assert len(groups.fx_sprites) == 0, "the first dash's fx have reaped themselves"
-
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == on_start
+    assert len(groups.fx_sprites) == 0
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -390,34 +320,6 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
 
     # Now has dedicated dash animation (falls back to run if not available)
     assert player._animation_name() == "dash"
-
-
-def test_a_dash_spawns_one_thin_flat_speed_line() -> None:
-    entity = make_entity(pos=(100.0, 100.0))
-    entity.velocity.x = 1500.0
-    group = pygame.sprite.Group()
-
-    streak = spawn_dash_streak(group, entity)
-
-    assert isinstance(streak, StreakParticle)
-    assert streak.image.get_width() > streak.image.get_height() * 3
-    assert streak.velocity.x > Physics.DASH_SPEED, "the line outruns the dash"
-    assert streak.pos.x <= entity.hitbox.centerx
-    assert spawn_dash_streak(group, SimpleNamespace()) is None
-
-
-def test_streak_slides_back_and_reaps_itself() -> None:
-    group = pygame.sprite.Group()
-    streak = StreakParticle((50.0, 50.0), (-600.0, 0.0), length=24.0)
-    group.add(streak)
-    start_x = streak.pos.x
-
-    streak.update(0.1)
-
-    assert streak.alive()
-    assert streak.pos.x < start_x
-    streak.update(1.0)
-    assert not streak.alive()
 
 
 def test_framed_puffs_shrink_cycle_and_fall_back_to_circles() -> None:
@@ -622,10 +524,6 @@ def test_every_spawner_declines_an_entity_that_has_no_body() -> None:
 
     assert spawn_landing_dust(group, bare) == []
     assert spawn_impact_decal(group, bare) is None
-    assert spawn_dash_burst(group, bare) == []
-    assert spawn_dash_streak(group, bare) is None
-    assert spawn_dash_wind(group, bare) == []
-    assert spawn_dash_shockwave(group, bare) is None
     assert spawn_dizzy_stars(group, bare) == []
     assert spawn_dizzy_vortex(group, bare) is None
     assert spawn_sweat_drops(group, bare) == []
@@ -687,32 +585,3 @@ def test_a_family_the_budget_table_has_never_heard_of_is_still_allowed() -> None
     assert spawners._has_room(pygame.sprite.Group()) is True, "no family named, nothing to check"
     assert spawners._has_room(pygame.sprite.Group(), "a_family_nobody_declared") is True
     assert spawners._has_room(pygame.sprite.Group(), "dizzy_star") is True
-
-
-def test_both_speed_marks_outrun_the_dash_they_mark() -> None:
-    """The one rule that makes a mark read as speed rather than as debris.
-
-    Both the streak and the wind line used to be written in absolute pixels
-    per second -- 500 to 800 for the streak -- while the dasher was doing
-    1100. A line that travels slower than the thing it is marking does not
-    read as fast, it reads as falling behind, and nothing caught it because
-    the numbers were correct as numbers.
-
-    Their velocities are now ratios of `Physics.DASH_SPEED`, and the lower
-    bound of each ratio is above one. This is what holds that: change the
-    dash speed, or either ratio, and this fails rather than the look
-    drifting.
-    """
-    slowest_ratio = min(min(FxDash.STREAK_SPEED), min(FxDash.WIND_SPEED))
-    assert slowest_ratio > 1.0, "a speed mark that outruns nothing"
-
-    entity = make_entity(pos=(100.0, 100.0))
-    entity.facing_right = True
-    group = pygame.sprite.Group()
-
-    marks = [spawn_dash_streak(group, entity)]
-    marks += spawn_dash_wind(group, entity)
-
-    for mark in marks:
-        assert mark is not None
-        assert mark.velocity.x >= Physics.DASH_SPEED * slowest_ratio

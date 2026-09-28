@@ -251,56 +251,6 @@ class Dust:
     STRENGTH_RANGE = (0.6, 2.2)
 
 
-class FxDash:
-    """The dash's own juice: the burst at the start, and what marks the speed.
-
-    It does not draw the path. The renderer photographs the dashing sprite
-    into fading ghosts, and those are what sit along the path -- carrying the
-    sprite's own stretch and its own cyan. A comet drawn here was the same
-    information a second time, in a colour that matched nothing.
-
-    Every number below is a feel number. ``SPEED_MARK_SPAWN_EVERY`` is the
-    cadence the wind lines ride, so a wind line and a streak do not drift
-    apart.
-    """
-
-    BURST_COUNT = 10
-    WIND_LINES = 2
-    SPEED_MARK_SPAWN_EVERY = 0.015
-    # The two speed marks. Their velocities are multiples of
-    # ``Physics.DASH_SPEED``, both above 1: a line that moves slower than the
-    # dasher it marks is debris, and one that moves with it is wallpaper.
-    # Written as a ratio so that retuning the dash retunes its marks, and so
-    # that a test can hold them to being faster.
-    STREAK_TTL = 0.22
-    STREAK_THICKNESS = 3.0
-    STREAK_LENGTH_JITTER = (18.0, 34.0)
-    STREAK_SPEED = (1.3, 1.9)
-    STREAK_FADE_IN = 0.2
-    WIND_THICKNESS = 2.0
-    WIND_LENGTH_JITTER = (20.0, 40.0)
-    WIND_SPEED = (1.4, 2.1)
-    WIND_AHEAD = (0.3, 1.2)
-    # The ring on the ground at the start of the dash.
-    SHOCKWAVE_RADIUS = 44.0
-    SHOCKWAVE_TTL = 0.18
-    SHOCKWAVE_STEPS = 5
-    SHOCKWAVE_SQUASH = 0.4
-    SHOCKWAVE_SCALE = (0.3, 0.7)
-    """How far the first step has spread and how much more each step adds, so
-    the ring starts small and lands at full size on the last step."""
-    SHOCKWAVE_MARGIN = 4
-    SHOCKWAVE_RIM = (4, 1)
-    """The rim's width from the first step to the last: a shockwave is defined
-    by getting lighter as it spreads."""
-    # The backward fan the dash start throws: speed, rise, where it starts.
-    BURST_SPEED = (140.0, 260.0)
-    BURST_RISE = (40.0, 140.0)
-    BURST_STEP = 3.0
-    BURST_LIFT = 4.0
-    BURST_RADIUS_JITTER = (0.0, 2.0)
-
-
 class FxGuard:
     """The block's ring, and what happens to it when the guard fails.
 

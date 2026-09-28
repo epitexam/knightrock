@@ -23,20 +23,16 @@ from pygame.math import Vector2
 
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.particles import (
-    DashBurstPuff,
-    DashShockwaveParticle,
     DizzyVortexParticle,
     DustParticle,
     ImpactDecalParticle,
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
-    StreakParticle,
     SweatParticle,
-    WindLine,
     particle_frames,
 )
-from src.core.settings import Dust, FxDash, FxDecal, FxDizzy, FxGuard, Physics, Sweat
+from src.core.settings import Dust, FxDecal, FxDizzy, FxGuard, Sweat
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one
@@ -48,10 +44,6 @@ one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "landing_dust": 16,
-    "dash_burst": 16,
-    "dash_streak": 24,
-    "dash_wind": 12,
-    "dash_shockwave": 4,
     "dizzy_star": 8,
     "dizzy_vortex": 8,
     "impact_decal": 8,
@@ -61,11 +53,11 @@ FX_FAMILY_BUDGETS: dict[str, int] = {
 }
 """Per-family caps, on top of :data:`MAX_FX_SPRITES`.
 
-The global cap alone lets one effect starve the others: a parry, a burst and
-a land on the same tick can fill the plane, and the dash trail -- which has
-to keep animating for as long as the dash does -- silently stops. Sizing the
-cadenced effects generously and the one-shot events tightly keeps the plane a
-collection of events instead of one effect filling it.
+The global cap alone lets one effect starve the others: a parry and a land on
+the same tick can fill the plane, and a cadenced effect -- the dizzy swirl, the
+stars -- silently stops. Sizing the cadenced effects generously and the
+one-shot events tightly keeps the plane a collection of events instead of one
+effect filling it.
 
 Every family a particle declares is in here; ``test_fx_invariants`` reads the
 source to keep it that way, because the key is a string and a typo would
@@ -87,19 +79,6 @@ are no longer reproducible across a rollback rewind. That is the right
 trade, because the particles themselves are not restored by a rewind either,
 so the FX plane was already inconsistent afterwards, and no golden hashes it.
 """
-
-
-def dash_direction(entity: Any) -> float:
-    """Signed dash direction: live velocity wins, facing is the fallback.
-
-    Velocity is authoritative mid-dash (air dashes, turnarounds); facing only
-    matters on the very first tick, before the dash speed kicks in.
-    """
-    velocity = getattr(entity, "velocity", None)
-    vx = float(getattr(velocity, "x", 0.0) or 0.0)
-    if abs(vx) > 1.0:
-        return 1.0 if vx > 0.0 else -1.0
-    return facing_side(entity)
 
 
 def facing_side(entity: Any) -> float:
@@ -186,110 +165,6 @@ def spawn_impact_decal(
     )
     fx_group.add(decal)
     return decal
-
-
-def spawn_dash_burst(
-    fx_group: pygame.sprite.Group,
-    entity: Any,
-    count: int = FxDash.BURST_COUNT,
-) -> list[DustParticle]:
-    """Kick a fan of dust backward as the dash starts (rising edge only)."""
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or count <= 0 or not _has_room(fx_group, "dash_burst", count):
-        return []
-    direction = dash_direction(entity)
-    rng = _fx_rng
-    frames = particle_frames()
-    puffs: list[DustParticle] = []
-    for index in range(count):
-        spread = index - (count - 1) / 2.0
-        puff = DashBurstPuff(
-            (
-                hitbox.centerx - direction * hitbox.width / 2.0,
-                hitbox.bottom - FxDash.BURST_LIFT + spread * FxDash.BURST_STEP,
-            ),
-            (
-                -direction * rng.uniform(*FxDash.BURST_SPEED),
-                -abs(rng.uniform(*FxDash.BURST_RISE)),
-            ),
-            radius=Dust.PUFF_RADIUS + rng.uniform(*FxDash.BURST_RADIUS_JITTER),
-            frames=frames,
-        )
-        fx_group.add(puff)
-        puffs.append(puff)
-    return puffs
-
-
-def spawn_dash_streak(fx_group: pygame.sprite.Group, entity: Any) -> StreakParticle | None:
-    """A speed line on the dasher's own heading, faster than the dasher.
-
-    It is born behind the body and travels forward, so it catches up and
-    passes: the mark and the thing it marks separate as the dash continues.
-    Sent backwards it read as a line thrown off by the dash, and at
-    ``STREAK_SPEED``'s old 500-800 px/s it was slower than the 1100 px/s
-    dasher, so it fell away behind instead of passing.
-    """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or not _has_room(fx_group, "dash_streak"):
-        return None
-    direction = dash_direction(entity)
-    rng = _fx_rng
-    streak = StreakParticle(
-        (
-            hitbox.centerx - direction * rng.uniform(0.0, hitbox.width / 2.0),
-            hitbox.centery + rng.uniform(-hitbox.height / 3.0, hitbox.height / 3.0),
-        ),
-        (direction * Physics.DASH_SPEED * rng.uniform(*FxDash.STREAK_SPEED), 0.0),
-        length=rng.uniform(*FxDash.STREAK_LENGTH_JITTER),
-    )
-    fx_group.add(streak)
-    return streak
-
-
-def spawn_dash_wind(fx_group: pygame.sprite.Group, entity: Any) -> list[StreakParticle]:
-    """Wind lines ahead of the dasher, running out ahead of it.
-
-    The ghosts say where the dash has been and these say where it is going.
-    They are the only FX in the game that point forwards, and they leave in
-    the same direction the dasher is travelling -- the one effect in the set
-    that agrees with the motion instead of trailing it.
-    """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return []
-    if not _has_room(fx_group, "dash_wind", FxDash.WIND_LINES):
-        return []
-    direction = dash_direction(entity)
-    rng = _fx_rng
-    lines: list[StreakParticle] = []
-    for _ in range(FxDash.WIND_LINES):
-        line = WindLine(
-            (
-                hitbox.centerx + direction * hitbox.width * rng.uniform(*FxDash.WIND_AHEAD),
-                hitbox.centery + rng.uniform(-hitbox.height / 2.0, hitbox.height / 2.0),
-            ),
-            (direction * Physics.DASH_SPEED * rng.uniform(*FxDash.WIND_SPEED), 0.0),
-            length=rng.uniform(*FxDash.WIND_LENGTH_JITTER),
-            thickness=FxDash.WIND_THICKNESS,
-        )
-        fx_group.add(line)
-        lines.append(line)
-    return lines
-
-
-def spawn_dash_shockwave(
-    fx_group: pygame.sprite.Group, entity: Any
-) -> DashShockwaveParticle | None:
-    """A ground ring at the entity's feet on dash start."""
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or not _has_room(fx_group, "dash_shockwave"):
-        return None
-    shockwave = DashShockwaveParticle(
-        (hitbox.centerx, hitbox.bottom - 1.0),
-        ttl=FxDash.SHOCKWAVE_TTL,
-    )
-    fx_group.add(shockwave)
-    return shockwave
 
 
 def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:

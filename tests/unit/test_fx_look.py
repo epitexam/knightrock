@@ -25,8 +25,7 @@ from src.core.fx import (
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
-    spawn_dash_streak,
-    spawn_dash_wind,
+    spawn_dizzy_vortex,
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
@@ -35,7 +34,7 @@ from src.core.fx import (
 from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import Dust, FxDash, FxGuard, Physics
+from src.core.settings import Dust, FxGuard
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -397,16 +396,21 @@ def test_the_pieces_fly_furthest_from_the_side_that_failed() -> None:
 
 
 def test_a_family_cap_holds_even_under_the_global_one() -> None:
-    """A fourteen-spark parry used to starve the dash out of existence."""
+    """A fourteen-spark parry used to starve the rest of the plane out."""
     group = Group()
     entity = _entity()
-    cap = FX_FAMILY_BUDGETS["dash_streak"]
+    cap = FX_FAMILY_BUDGETS["landing_dust"]
 
-    spawned = [spawn_dash_streak(group, entity) for _ in range(cap + 4)]
+    spawned = [spawn_landing_dust(group, entity, Dust.MIN_FALL_SPEED * 2) for _ in range(cap + 4)]
 
-    assert sum(1 for streak in spawned if streak is not None) == cap
-    assert len(group) == cap
+    assert any(spawned), "the effect has to land at all"
+    assert len(group) <= cap, "the cap is a ceiling, not a threshold"
     assert len(group) < MAX_FX_SPRITES, "well under the global cap"
+    assert not spawned[-1], "and by the end the family is refused"
+
+    # The cap holds below the budget, not exactly at it: a fan of
+    # ``Dust.COUNT`` is refused whole rather than half-landed, so the last
+    # accepted call leaves a gap under the number.
 
 
 def test_the_global_cap_still_wins_over_the_family_one() -> None:
@@ -414,26 +418,8 @@ def test_the_global_cap_still_wins_over_the_family_one() -> None:
     for _ in range(MAX_FX_SPRITES):
         group.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
 
-    assert spawn_dash_streak(group, _entity()) is None
-    assert spawn_dash_wind(group, _entity()) == []
-
-
-def test_the_wind_lines_run_out_ahead_of_the_dash() -> None:
-    """Born ahead, travelling the same way, and outrunning the dasher.
-
-    These are the only FX in the game that point forwards. They used to be
-    born ahead and travel back, so they swept across the dasher and past it
-    -- the opposite of the one effect that was meant to say where the dash
-    is going.
-    """
-    entity = _entity(200.0, 200.0)
-    lines = spawn_dash_wind(Group(), entity)
-
-    assert len(lines) == FxDash.WIND_LINES
-    for line in lines:
-        assert line.pos.x > entity.hitbox.centerx, "born ahead of the dasher"
-        assert line.velocity.x > 0.0, "and leaving in the direction it is going"
-        assert line.velocity.x > Physics.DASH_SPEED, "faster than the dash"
+    assert spawn_landing_dust(group, _entity(), Dust.MIN_FALL_SPEED * 2) == []
+    assert spawn_dizzy_vortex(group, _entity()) is None
 
 
 def test_the_dizzy_swirl_and_the_stars_do_not_share_a_place() -> None:

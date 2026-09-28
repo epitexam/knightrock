@@ -91,16 +91,10 @@ class FXColors:
     """
 
     ink: ClassVar[Color] = (26, 22, 32)
-    ink_cool: ClassVar[Color] = (18, 34, 58)
     ink_warm: ClassVar[Color] = (58, 24, 16)
 
     dust: ClassVar[Color] = (198, 190, 178)
     dust_deep: ClassVar[Color] = (154, 147, 138)
-
-    trail: ClassVar[Color] = (176, 214, 255)
-    trail_ink: ClassVar[Color] = (28, 62, 104)
-    shockwave: ClassVar[Color] = (210, 238, 255)
-    shockwave_ink: ClassVar[Color] = (40, 82, 128)
 
     speed_tint: ClassVar[Color] = (100, 200, 255)
     """The dash's speed colour, shared by the sprite and the marks around it.
@@ -112,15 +106,8 @@ class FXColors:
 
     Additive and opaque are not the same colour. Added to a sprite, this
     lightens it; filled in, the same triple is a saturated cyan that reads as
-    a stain. So the family has an opaque member too, and the marks use that.
-    """
-    speed: ClassVar[Color] = (120, 196, 246)
-    speed_core: ClassVar[Color] = (206, 238, 255)
-    """The speed marks' own body and core.
-
-    Body brighter than ``speed_tint`` would blow out against a light sky, and
-    the core is the near-white this palette uses for anything meant to read as
-    light rather than as matter.
+    a stain. So a mark drawn in this colour needs its own opaque member, and
+    the dash has none: the only mark it has is the sprite itself.
     """
 
     guard_spark: ClassVar[Color] = (96, 226, 238)

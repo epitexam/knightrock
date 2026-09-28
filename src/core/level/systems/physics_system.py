@@ -6,27 +6,17 @@ Extracted from ``Level.update`` (audit §4: ``core/level/systems/physics_system`
 from typing import Any
 
 from src.core.fx import (
-    spawn_dash_burst,
-    spawn_dash_shockwave,
-    spawn_dash_streak,
-    spawn_dash_wind,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_impact_decal,
     spawn_landing_dust,
     spawn_sweat_drops,
 )
-from src.core.settings import Dust, FxDash, FxDizzy, Sweat
+from src.core.settings import Dust, FxDizzy, Sweat
 from src.core.sprite_groups import SpriteGroups
 from src.physics.movement import apply_moving_platform
 
 __all__ = ["PhysicsSystem"]
-
-
-def _is_dashing(entity: object) -> bool:
-    """Whether the entity is currently in its dash state (dash streaks)."""
-    state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "dash"
 
 
 def _in_dash_penalty(entity: object) -> bool:
@@ -56,16 +46,12 @@ class PhysicsSystem:
 
     def __init__(self, groups: SpriteGroups) -> None:
         self.groups = groups
-        # Dashers seen on the previous tick (rising-edge burst, once per dash).
-        self._dashing_ids: set[int] = set()
         # Per-entity sweat emission countdown (droplets every SPAWN_EVERY).
         self._sweat_timers: dict[int, float] = {}
         # Per-entity dizzy swirl emission countdown.
         self._dizzy_timers: dict[int, float] = {}
         # Per-entity dizzy star emission countdown.
         self._dizzy_star_timers: dict[int, float] = {}
-        # Per-entity dash trail and wind line emission countdowns.
-        self._dash_wind_timers: dict[int, float] = {}
 
     def process(self, delta_time: float) -> None:
         """Apply the platform carry, then integrate entities and effects."""
@@ -76,52 +62,40 @@ class PhysicsSystem:
         self.groups.fx_sprites.update(delta_time)
 
     def _spawn_impact_fx(self, delta_time: float) -> None:
-        """Turn hard landings, dashes, dash penalties, and dizzy state into render-only FX.
+        """Turn hard landings, dash penalties and dizzy state into render-only FX.
 
         The puffs join ``fx_sprites`` (no collision, never snapshotted):
         landing fans use the fall speed ``Entity`` recorded on the landing
-        tick, dash streaks trail dashing entities one puff per tick, a
-        burst kicks out once when a dash starts, a fully drained dasher
-        sweats droplets every ``Sweat.SPAWN_EVERY`` seconds while its
-        penalty runs, and a dizzy entity spawns purple vortex swirls every
-        ``FxDizzy.VORTEX_SPAWN_EVERY`` seconds. Wind lines spawn every
-        ``FxDash.SPEED_MARK_SPAWN_EVERY`` seconds during a dash, and a
-        shockwave ring appears on dash start. The landing hint is consumed
-        here so a dead-or-frozen entity cannot re-emit it on later ticks;
-        every spawner is its own particle-budget guard, so this system
-        never has to know the cap.
+        tick, a fully drained dasher sweats droplets every
+        ``Sweat.SPAWN_EVERY`` seconds while its penalty runs, and a dizzy
+        entity spawns purple vortex swirls every
+        ``FxDizzy.VORTEX_SPAWN_EVERY`` seconds.
+
+        A dash has no FX here at all. It used to have five systems, and the
+        only one left on now is the renderer's afterimage, which photographs
+        the dashing sprite rather than drawing anything next to it.
+
+        The landing hint is consumed here so a dead-or-frozen entity cannot
+        re-emit it on later ticks; every spawner is its own particle-budget
+        guard, so this system never has to know the cap.
         """
-        dashing_ids: set[int] = set()
         sweating_ids: set[int] = set()
         dizzy_ids: set[int] = set()
         for entity in self.groups.entity_sprites:
-            self._process_entity_fx(entity, delta_time, dashing_ids, sweating_ids, dizzy_ids)
-        self._dashing_ids = dashing_ids
-        self._cleanup_timers(sweating_ids, dizzy_ids, dashing_ids)
+            self._process_entity_fx(entity, delta_time, sweating_ids, dizzy_ids)
+        self._cleanup_timers(sweating_ids, dizzy_ids)
 
     def _process_entity_fx(
         self,
         entity: Any,
         delta_time: float,
-        dashing_ids: set[int],
         sweating_ids: set[int],
         dizzy_ids: set[int],
     ) -> None:
-        dashing = _is_dashing(entity)
-        if dashing:
-            dashing_ids.add(id(entity))
         impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
         if impact >= Dust.MIN_FALL_SPEED:
             spawn_landing_dust(self.groups.fx_sprites, entity, impact)
             spawn_impact_decal(self.groups.fx_sprites, entity, impact)
-        elif dashing:
-            if id(entity) not in self._dashing_ids:
-                spawn_dash_burst(self.groups.fx_sprites, entity)
-                spawn_dash_shockwave(self.groups.fx_sprites, entity)
-            else:
-                spawn_dash_streak(self.groups.fx_sprites, entity)
-        if dashing:
-            self._tick_dash_wind(entity, delta_time)
         if _in_dash_penalty(entity):
             sweating_ids.add(id(entity))
             self._tick_sweat(entity, delta_time)
@@ -132,12 +106,7 @@ class PhysicsSystem:
         if hasattr(entity, "landed_impact"):
             entity.landed_impact = 0.0
 
-    def _cleanup_timers(
-        self,
-        sweating_ids: set[int],
-        dizzy_ids: set[int],
-        dashing_ids: set[int],
-    ) -> None:
+    def _cleanup_timers(self, sweating_ids: set[int], dizzy_ids: set[int]) -> None:
         # Drop timers of entities no longer sweating (or gone) so stale ids
         # cannot leak into a later entity reusing the same memory address.
         self._sweat_timers = {
@@ -155,13 +124,6 @@ class PhysicsSystem:
             entity_id: timer
             for entity_id, timer in self._dizzy_star_timers.items()
             if entity_id in dizzy_ids
-        }
-        # Wind lines are the only dash effect left on a cadence, so they are
-        # the only one whose timers outlive a tick.
-        self._dash_wind_timers = {
-            entity_id: timer
-            for entity_id, timer in self._dash_wind_timers.items()
-            if entity_id in dashing_ids
         }
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:
@@ -187,11 +149,3 @@ class PhysicsSystem:
             spawn_dizzy_stars(self.groups.fx_sprites, entity, FxDizzy.STAR_BATCH, FxDizzy.STAR_TTL)
             timer = FxDizzy.STAR_SPAWN_EVERY
         self._dizzy_star_timers[id(entity)] = timer
-
-    def _tick_dash_wind(self, entity: object, delta_time: float) -> None:
-        """Emit forward wind lines on the dash trail cadence, ahead of the dash."""
-        timer = self._dash_wind_timers.get(id(entity), 0.0) - delta_time
-        if timer <= 0.0:
-            spawn_dash_wind(self.groups.fx_sprites, entity)
-            timer = FxDash.SPEED_MARK_SPAWN_EVERY
-        self._dash_wind_timers[id(entity)] = timer
