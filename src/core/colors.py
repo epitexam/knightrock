@@ -96,15 +96,15 @@ class FXColors:
     dust: ClassVar[Color] = (198, 190, 178)
     dust_deep: ClassVar[Color] = (154, 147, 138)
 
-    speed_ghost: ClassVar[Color] = (24, 28, 38)
-    """The dash afterimages are silhouettes in this near-black.
+    speed_ghost: ClassVar[Color] = (228, 238, 250)
+    """The hue the dash afterimages are knocked back to.
 
-    Not a tint: the ghosts are cut from the sprite's alpha and filled flat, so
-    they carry none of its colour. Two reasons. The dashing sprite is washed
-    almost to white by ``speed_tint`` anyway, so a tinted copy of it would be
-    a paler version of a shape that has no colour left. And a manga speed line
-    is drawn as a flat shape in a single tone, which is the one style that
-    survives being drawn six times in a row without the copies merging.
+    Multiplied over the sprite's own greyscale, so this is close to white and
+    barely darkens: the ghost keeps the character's shading, its outline and
+    its silhouette, and loses only the hue. A near-black fill was the other
+    reading of "noir et blanc" and it was wrong -- a flat fill throws away
+    every one of those, and five of them in a row are five blobs rather than
+    five copies of a fighter.
     """
     speed_tint: ClassVar[Color] = (100, 200, 255)
     """The dash's speed colour, shared by the sprite and the marks around it.

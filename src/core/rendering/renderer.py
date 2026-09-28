@@ -42,23 +42,22 @@ def dash_frame(
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
-def _silhouette(image: pygame.Surface, colour: Color) -> pygame.Surface:
-    """The shape of ``image``, filled flat in ``colour``.
+def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
+    """``image`` with its hue knocked back to one, keeping its shading.
 
-    Cut from the alpha rather than tinted, so the ghost carries none of the
-    sprite's colour. Two reasons. The dashing sprite is washed almost to white
-    by its own speed tint, so a tinted copy of it would be a paler version of
-    a shape with no colour left to pale. And a flat shape is the only one that
-    stays legible when it is stamped several times in a row: four translucent
-    copies of each other blur into a smear, four silhouettes do not.
+    A manga speed line is a monochrome copy of the character: still the
+    character, still lit from the same side, in one tone. So this keeps the
+    luminance and drops the chroma, rather than filling the shape flat -- a
+    flat fill also throws away the outline and the shading, and a row of
+    those is a row of blobs.
 
-    A mask is binary, so soft edges become hard. The art is pixel-hard already
-    and the nearest-neighbour scaling would snap any soft edge to the same
-    boundary, so nothing is lost by it.
+    ``tint`` is multiplied over the result, so a near-white one cools the
+    greyscale without darkening it much, and the ghost sits in the same
+    family as the cyan the dashing sprite is lit with.
     """
-    return pygame.mask.from_surface(image).to_surface(
-        setcolor=(*colour, 255), unsetcolor=(0, 0, 0, 0)
-    )
+    ghost = pygame.transform.grayscale(image.copy())
+    ghost.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
+    return ghost
 
 
 def _ghost_alpha(ttl: float) -> int:
@@ -515,7 +514,7 @@ class Renderer:
             # pancakes rather than a trail of the fighter. A manga afterimage
             # is the character's own shape; the shape is what the player
             # recognises, so that is what gets copied.
-            ghost = self._scaled_image_once(_silhouette(sprite.image, FXColors.speed_ghost))
+            ghost = self._scaled_image_once(_monochrome(sprite.image, FXColors.speed_ghost))
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))

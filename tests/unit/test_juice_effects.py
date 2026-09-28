@@ -123,6 +123,26 @@ def _dashing_player() -> DashSprite:
     return DashSprite(state="dash")
 
 
+def _detailed_dasher() -> DashSprite:
+    """A dashing sprite with real tones and an alpha channel.
+
+    `DashSprite` is a flat white rectangle, which is fine for asserting a
+    ghost's size and useless for asserting anything about its colours: any
+    implementation -- a tint, a flat fill, a greyscale -- lands on the same
+    value for a one-colour source, so the assertion passes for the wrong
+    reason. This one has a dark outline, two body tones and a transparent
+    corner, so "monochrome" and "not a flat fill" are distinguishable.
+    """
+    dasher = DashSprite(state="dash")
+    dasher.image = pygame.Surface((20, 30), pygame.SRCALPHA)
+    dasher.image.fill((200, 60, 40, 255))
+    dasher.image.fill((120, 190, 120, 255), (4, 4, 12, 22))
+    dasher.image.set_at((0, 0), (30, 30, 90, 255))
+    dasher.image.set_at((19, 0), (0, 0, 0, 0))
+    dasher.rect = pygame.FRect(10, 10, 20, 30)
+    return dasher
+
+
 def test_dash_spawns_a_capped_fading_ghost_trail() -> None:
     surface = pygame.Surface((64, 64))
     # zoom=1.0: this test measures the ghost in world-sized pixels.
@@ -279,6 +299,9 @@ def test_afterimage_ghosts_carry_the_speed_tint() -> None:
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 
     ghost = renderer._ghosts[0][0]
+    # A flat white source, so the greyscale leaves it white and the tint
+    # decides the value. The multi-tone case is the other test; this one is
+    # here because it is the arithmetic of the multiply.
     assert ghost.get_at((0, 0)) == pygame.Color(*FXColors.speed_ghost, 255)
 
 
@@ -657,35 +680,55 @@ def test_the_afterimage_count_is_bounded_by_one_dash_not_by_taste() -> None:
     assert Afterimage.TTL < Physics.DASH_RECHARGE_TIME, "gone before the next dash"
 
 
-def test_the_afterimages_are_silhouettes_rather_than_tinted_copies() -> None:
-    """Flat in one colour, which is the style that survives being stacked.
+def test_the_afterimages_are_monochrome_copies_and_not_flat_fills() -> None:
+    """Hue out, shading in, outline in, transparency kept.
 
-    The sprites are SRCALPHA, so cutting the silhouette and filling it flat is
-    exact. A ghost must carry no trace of the sprite's own colour, and
-    anything the sprite left transparent must stay transparent -- otherwise
-    the stamp is a rectangle, which on this sky is a hole in the picture.
+    "Noir et blanc" was implemented once as a flat near-black fill, and that
+    was wrong: it threw away the shading and the outline as well as the hue,
+    so five of them in a row were five blobs. This is the assertion that
+    would have caught it -- a flat fill is one colour, and this sprite is
+    not.
+
+    A dashed ghost also has to stay greyscale. Tinting it would put the hue
+    straight back, and the hue is the only thing that was meant to go.
     """
     surface = pygame.Surface((64, 64))
     camera = Camera(Framing(float(64), float(64)))
     camera.set_world_size(64, 64)
     renderer = Renderer(surface, camera)
     groups = SpriteGroups()
-    dasher = _dashing_player()
+    dasher = _detailed_dasher()
     groups.all_sprites.add(dasher)
     groups.entity_sprites.add(dasher)
 
     renderer.draw(groups, dt=Afterimage.SPAWN_EVERY)
 
-    ghost, world_rect, _ = renderer._ghosts[0]
-    drawn = (ghost.get_width(), ghost.get_height())
-    assert drawn == (dasher.image.get_width(), dasher.image.get_height())
+    ghost, _, _ = renderer._ghosts[0]
+    assert ghost.get_size() == dasher.image.get_size(), "the same shape, not the dash stretch"
 
+    hues: set[tuple[float, float]] = set()
+    tones: set[int] = set()
     for y in range(ghost.get_height()):
         for x in range(ghost.get_width()):
             pixel = ghost.get_at((x, y))
             source = dasher.image.get_at((x, y))
             if source[3] == 0:
                 assert pixel[3] == 0, f"({x},{y}) opaque where the sprite is not"
-            else:
-                assert tuple(pixel[:3]) == tuple(FXColors.speed_ghost), f"({x},{y})"
-                assert pixel[3] == 255
+                continue
+            assert pixel[3] == 255, f"({x},{y}) partly transparent inside the sprite"
+            red, green, blue = pixel[:3]
+            # Monochrome means one hue, not three equal channels: the tint is
+            # multiplied over a greyscale, so the channels differ by a fixed
+            # ratio. Normalising by the brightest channel is what makes that
+            # checkable -- every pixel has to land on the same chromaticity.
+            peak = max(red, green, blue)
+            assert peak > 0, f"({x},{y}) is black"
+            hues.add((round(red / peak, 2), round(green / peak, 2)))
+            tones.add(peak)
+
+    # A tolerance, not equality: an eight-bit ramp in the dark end quantises
+    # unevenly, so two greys 38 and 40 apart in peak land on slightly
+    # different chromaticities. One hue means within a rounding of each other.
+    spread = max(abs(a - b) for a, b in zip(*sorted(hues), strict=True)) if hues else 1.0
+    assert spread <= 0.05, f"more than one hue across the ghost: {sorted(hues)}"
+    assert len(tones) >= 3, f"a flat fill would be one tone, got {len(tones)}: the shading is gone"
