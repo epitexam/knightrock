@@ -183,21 +183,3 @@ class TileChunkIndex:
 
     def __len__(self) -> int:
         return len(self._ordered)
-
-    @property
-    def chunk_count(self) -> int:
-        """How many chunks the plane actually occupies."""
-        return len(self._chunks)
-
-    @property
-    def owned_ids(self) -> frozenset[int]:
-        """The ``id()`` set the draw path skips, for a membership test."""
-        return self._owned_ids
-
-    def stats(self, viewport: pygame.FRect) -> tuple[int, int]:
-        """``(candidates, chunks_touched)`` for a viewport, for benchmarks."""
-        keys = self._viewport_keys(viewport)
-        candidates = len(self._unplaceable)
-        for key in keys:
-            candidates += len(self._chunks.get(key, ()))
-        return candidates, len(keys)
