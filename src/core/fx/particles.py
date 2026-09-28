@@ -113,7 +113,7 @@ class DustParticle(FxParticle):
 
     gravity: ClassVar[float] = Dust.RISE
     drag: ClassVar[float] = Dust.DRAG
-    fade_in: ClassVar[float] = 0.15
+    fade_in: ClassVar[float] = Dust.FADE_IN
     behind: ClassVar[bool] = True
 
     def __init__(
@@ -172,7 +172,7 @@ class StreakParticle(FxParticle):
     is also the one that carries.
     """
 
-    fade_in: ClassVar[float] = 0.2
+    fade_in: ClassVar[float] = FxDash.STREAK_FADE_IN
 
     def __init__(
         self,
@@ -230,7 +230,7 @@ class OrbitParticle(FxParticle):
     reproducible and costs no integration.
     """
 
-    fade_in: ClassVar[float] = 0.08
+    fade_in: ClassVar[float] = FxDizzy.STAR_FADE_IN
 
     def __init__(
         self,
@@ -296,7 +296,7 @@ class DizzyVortexParticle(FxParticle):
     of them on screen at once.
     """
 
-    fade_in: ClassVar[float] = 0.1
+    fade_in: ClassVar[float] = FxDizzy.VORTEX_FADE_IN
 
     def __init__(self, pos: tuple[float, float] | Vector2, ttl: float = FxDizzy.VORTEX_TTL) -> None:
         super().__init__(pos, ttl)
@@ -345,7 +345,7 @@ class DashTrailParticle(FxParticle):
     the same pixels every time.
     """
 
-    fade_in: ClassVar[float] = 0.1
+    fade_in: ClassVar[float] = FxDash.TRAIL_FADE_IN
 
     def __init__(
         self,
@@ -386,7 +386,7 @@ class ImpactDecalParticle(FxParticle):
     """
 
     behind: ClassVar[bool] = True
-    fade_in: ClassVar[float] = 0.05
+    fade_in: ClassVar[float] = FxDecal.FADE_IN
 
     def __init__(
         self,
@@ -398,14 +398,19 @@ class ImpactDecalParticle(FxParticle):
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
-        side = snap(self.width) * 2 + 6
+        side = snap(self.width) * 2 + FxDecal.MARGIN
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
         middle = (side / 2.0, side / 2.0)
-        tongues = ((0.0, 1.0), (2.1, 0.7), (4.2, 0.55))
-        for heading, scale in tongues:
+        for heading, scale in FxDecal.LOBES:
             draw_inked_polygon(
                 surface,
-                streak_points((0, 0), self.width * scale, 5.0, heading, 0.0),
+                streak_points(
+                    (0, 0),
+                    self.width * scale,
+                    FxDecal.THICKNESS,
+                    heading,
+                    FxDecal.CURVE,
+                ),
                 FXColors.decal,
                 FXColors.decal_ink,
                 1,
@@ -426,7 +431,7 @@ class ShieldArcParticle(FxParticle):
     -- a shield taking a hit, from a direction -- with a fifth of the ink.
     """
 
-    fade_in: ClassVar[float] = 0.08
+    fade_in: ClassVar[float] = FxGuard.ARC_FADE_IN
 
     def __init__(
         self,
@@ -449,7 +454,7 @@ class ShieldArcParticle(FxParticle):
         say -- every set of spans handed to it produced the same full ring.
         """
         radius = snap(FxGuard.ARC_RADIUS)
-        side = 2 * radius + 4
+        side = 2 * radius + FxGuard.ARC_MARGIN
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
         middle = side / 2.0
         pygame.draw.circle(surface, self.body, (snap(middle), snap(middle)), radius, 1)
@@ -461,7 +466,7 @@ class ShieldArcParticle(FxParticle):
             facing - FxGuard.ARC_FLASH,
             facing + FxGuard.ARC_FLASH,
             self.kick,
-            2,
+            FxGuard.ARC_KICK_WIDTH,
         )
         return surface
 
@@ -524,7 +529,7 @@ class ShatterArcParticle(FxParticle):
         # Radius plus the furthest a piece can travel, or the circle is drawn
         # off the edge of its own surface.
         reach = snap(radius * (1.0 + FxGuard.SHARD_SPREAD * (1.0 + FxGuard.SHARD_WOUND_PUSH)))
-        span = 2 * (reach + 2)
+        span = 2 * (reach + FxGuard.SHARD_MARGIN)
         surface = pygame.Surface((span, span), pygame.SRCALPHA)
         middle = span / 2.0
         rng = random.Random(seed * 977 + FxGuard.SHARD_PIECES)
@@ -535,7 +540,11 @@ class ShatterArcParticle(FxParticle):
         for index in range(FxGuard.SHARD_PIECES):
             centre = facing + index * slot + slot / 2.0
             on_wound = _angle_near(centre, facing, FxGuard.SHARD_WOUND)
-            thrown = spread * (1.0 + FxGuard.SHARD_WOUND_PUSH * on_wound) * rng.uniform(0.4, 1.0)
+            thrown = (
+                spread
+                * (1.0 + FxGuard.SHARD_WOUND_PUSH * on_wound)
+                * rng.uniform(*FxGuard.SHARD_DRIFT)
+            )
             self._fragment(
                 surface,
                 middle,
@@ -549,7 +558,9 @@ class ShatterArcParticle(FxParticle):
         piece = fine / FxGuard.SHARD_KICK_PIECES
         for index in range(FxGuard.SHARD_KICK_PIECES):
             centre = facing - fine / 2.0 + piece * (index + 0.5)
-            thrown = spread * (1.0 + FxGuard.SHARD_WOUND_PUSH) * rng.uniform(0.6, 1.4)
+            thrown = (
+                spread * (1.0 + FxGuard.SHARD_WOUND_PUSH) * rng.uniform(*FxGuard.SHARD_KICK_DRIFT)
+            )
             self._fragment(
                 surface,
                 middle,
@@ -564,7 +575,7 @@ class ShatterArcParticle(FxParticle):
         return self.steps[0]
 
     def _integrate(self, delta_time: float) -> None:
-        self.image = self.steps[spread_step(self.life, len(self.steps), 0.7)]
+        self.image = self.steps[spread_step(self.life, len(self.steps), FxGuard.SHARD_STEP_OPENS)]
 
 
 def _angle_near(angle: float, centre: float, span: float) -> float:
@@ -589,7 +600,7 @@ class SweatParticle(FxParticle):
     """
 
     gravity: ClassVar[float] = Sweat.GRAVITY
-    fade_in: ClassVar[float] = 0.1
+    fade_in: ClassVar[float] = Sweat.FADE_IN
 
     def __init__(
         self,
@@ -675,10 +686,12 @@ def _shockwave_steps() -> list[pygame.Surface]:
         return _shockwave_cache
     steps: list[pygame.Surface] = []
     for index in range(FxDash.SHOCKWAVE_STEPS):
-        scale = 0.3 + 0.7 * (index / max(1, FxDash.SHOCKWAVE_STEPS - 1))
+        spread = index / max(1, FxDash.SHOCKWAVE_STEPS - 1)
+        scale = 0.3 + 0.7 * spread
         rx = FxDash.SHOCKWAVE_RADIUS * scale
-        ry = rx * 0.4
-        rim = max(1, round(4 - 3 * (index / max(1, FxDash.SHOCKWAVE_STEPS - 1))))
+        ry = rx * FxDash.SHOCKWAVE_SQUASH
+        thick, thin = FxDash.SHOCKWAVE_RIM
+        rim = max(1, round(thick + (thin - thick) * spread))
         wide = snap(rx) * 2 + rim + 4
         flat = snap(ry) * 2 + rim + 4
         surface = pygame.Surface((wide, flat), pygame.SRCALPHA)
@@ -744,9 +757,16 @@ def vortex_frames() -> list[pygame.Surface]:
         surface = pygame.Surface((side, side), pygame.SRCALPHA)
         for arm in range(FxDizzy.VORTEX_ARMS):
             heading = turn + arm * 2.0 * math.pi / FxDizzy.VORTEX_ARMS
-            reach = radius * (0.42 + 0.2 * (arm % 2))
+            short, long = FxDizzy.VORTEX_ARM_REACH
+            reach = radius * (short + (long - short) * (arm % 2))
             arm_surface = inked_polygon(
-                streak_points((0, 0), reach, 3.0, heading, reach * 0.4),
+                streak_points(
+                    (0, 0),
+                    reach,
+                    FxDizzy.VORTEX_ARM_THICKNESS,
+                    heading,
+                    reach * FxDizzy.VORTEX_ARM_CURVE,
+                ),
                 FXColors.vortex,
                 FXColors.vortex_ink,
                 1,

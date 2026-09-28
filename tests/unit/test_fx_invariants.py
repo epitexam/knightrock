@@ -18,6 +18,7 @@ marker that can be left behind is not a debt marker. There are none left.
 from __future__ import annotations
 
 import ast
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,11 @@ FX_MODULE = FX_PACKAGE / "__init__.py"
 SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
 PARTICLES_MODULE = FX_PACKAGE / "particles.py"
 DRAW_MODULE = FX_PACKAGE / "draw.py"
+SETTINGS_MODULE = REPO_ROOT / "src" / "core" / "settings.py"
+FX_TUNING_CLASSES = {"Dust", "Sweat", "FxDash", "FxGuard", "FxDizzy", "FxDecal"}
+"""Where the FX tuning is declared. `Dust` and `Sweat` are here because they
+predate the FX classes and the simulation reads a few of their numbers, so
+they were extended rather than replaced."""
 """The three modules below the package root, in dependency order.
 
 The rules are split along the same lines the package is: the budgets and the
@@ -272,6 +278,12 @@ def test_the_module_declares_no_tuning_of_its_own() -> None:
     Private names are exempt, and only for the flag case: the frame cache
     keeps a `_frames_miss` sentinel, which is module state rather than
     something a reader would go looking for in a settings file.
+
+    Scoped to module level, which is a deliberate limit rather than an
+    oversight. A particle's `ClassVar` body is not scanned, so the rule is
+    "no tuning constants at the top of the file" and not "no tuning numbers
+    anywhere in it". The class bodies are covered from the other side by the
+    check below, which fails when a setting is declared and nothing reads it.
     """
     allowed = {"MAX_FX_SPRITES", "FX_FAMILY_BUDGETS"}
     offenders: list[str] = []
@@ -288,17 +300,68 @@ def test_the_module_declares_no_tuning_of_its_own() -> None:
     assert not offenders, f"tuning declared in the FX package instead of settings: {offenders}"
 
 
-def test_the_tuning_classes_are_where_the_module_reads_them() -> None:
-    """A constant moved to `settings` but read nowhere would be a copy.
+def test_every_fx_setting_is_read_somewhere() -> None:
+    """A setting nothing reads is worse than the literal it replaced.
 
-    Guards the other direction from the check above: the numbers have to
-    arrive through the classes, not get re-typed beside their old home.
+    This is the hole the check above leaves, and it was left open by the
+    commit that wrote it. Eighteen names were lifted out of `particles.py`
+    into `settings.py` while the literals they named stayed where they were,
+    so each of them had two places claiming to be the source and neither
+    being it. Nothing failed, because nothing reads an unused name.
+
+    It is also what catches the class bodies the module-level check cannot
+    see: a proportion left inline in a particle is invisible there, and
+    becomes visible here the moment someone declares it twice.
+
+    Aliased imports are resolved, because the rest of the tree reads these
+    classes as `GuardSettings` and `CombatSettings`; without that every one
+    of them would look unread.
     """
-    source = "".join(
-        path.read_text(encoding="utf-8") for path in (PARTICLES_MODULE, SPAWNERS_MODULE)
+    declared = _fx_setting_names()
+    read = _settings_read_in_src()
+    unread = sorted(
+        f"{class_name}.{name}" for class_name, name in declared if (class_name, name) not in read
     )
-    for class_name in ("FxDash", "FxGuard", "FxDizzy", "FxDecal"):
-        assert f"{class_name}." in source, f"{class_name} is not read by the FX package"
+    assert not unread, f"FX settings nothing reads: {unread}"
+
+
+@cache
+def _settings_read_in_src() -> set[tuple[str, str]]:
+    """Every `Class.name` read on a settings class anywhere in `src`, once.
+
+    Cached because the naive form re-parses the tree once per name, which
+    turned a second-long file into a forty-second one.
+    """
+    read: set[tuple[str, str]] = set()
+    for path in (REPO_ROOT / "src").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        aliases = {
+            alias.asname or alias.name: alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith("settings")
+            for alias in node.names
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                read.add((aliases.get(node.value.id, node.value.id), node.attr))
+    return read
+
+
+def _fx_setting_names() -> list[tuple[str, str]]:
+    """The `(class, name)` pairs the six FX tuning classes declare."""
+    tree = ast.parse(SETTINGS_MODULE.read_text(encoding="utf-8"))
+    pairs: list[tuple[str, str]] = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name in FX_TUNING_CLASSES:
+            for statement in node.body:
+                if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                    continue
+                target = statement.targets[0]
+                if isinstance(target, ast.Name):
+                    pairs.append((node.name, target.id))
+    return pairs
 
 
 # --- 5. the module never writes simulation state ---------------------------

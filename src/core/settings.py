@@ -285,6 +285,8 @@ class FxDash:
     SHOCKWAVE_STEPS = 5
     SHOCKWAVE_SQUASH = 0.4
     SHOCKWAVE_RIM = (4, 1)
+    """The rim's width from the first step to the last: a shockwave is defined
+    by getting lighter as it spreads."""
     # The backward fan the dash start throws: speed, rise, where it starts.
     BURST_SPEED = (140.0, 260.0)
     BURST_RISE = (40.0, 140.0)
@@ -304,7 +306,8 @@ class FxGuard:
     ARC_TTL = 0.22
     ARC_FLASH = 42.0
     ARC_FADE_IN = 0.08
-    ARC_OFFSET = 0.3
+    ARC_MARGIN = 4
+    ARC_KICK_WIDTH = 2
     # The ring coming apart, on the side the hit landed on.
     SHARD_RADIUS = 20.0
     SHARD_TTL = 0.3
@@ -317,6 +320,8 @@ class FxGuard:
     SHARD_SHRINK = 0.3
     SHARD_STEP_OPENS = 0.7
     SHARD_DRIFT = (0.4, 1.0)
+    SHARD_KICK_DRIFT = (0.6, 1.4)
+    SHARD_MARGIN = 2
 
 
 class FxDizzy:
@@ -345,6 +350,8 @@ class FxDizzy:
     VORTEX_ARMS = 3
     VORTEX_FADE_IN = 0.1
     VORTEX_ARM_REACH = (0.42, 0.62)
+    """Alternating arm lengths, as a fraction of the radius, so no two arms
+    tile the same wedge and the swirl still closes a full turn."""
     VORTEX_ARM_THICKNESS = 3.0
     VORTEX_ARM_CURVE = 0.4
 
@@ -355,8 +362,15 @@ class FxDecal:
     RADIUS = 22.0
     TTL = 0.28
     FADE_IN = 0.05
-    SQUASH = 0.3
-    LOBES = ((0.0, 0.0, 1.0), (-0.4, -0.12, 0.6), (0.38, 0.1, 0.5))
+    MARGIN = 6
+    THICKNESS = 5.0
+    CURVE = 0.0
+    LOBES = ((0.0, 1.0), (2.1, 0.7), (4.2, 0.55))
+    """Three tongues fanning off the landing point, as (heading, length).
+
+    A single blob reads as a stain; three at these headings read as the dust
+    that was kicked up on impact.
+    """
 
 
 class Sweat:

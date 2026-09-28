@@ -2,6 +2,7 @@
 
 import os
 import random
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pygame
@@ -20,6 +21,7 @@ from src.core.fx import (
     spawn_dash_streak,
     spawn_landing_dust,
     spawn_sweat_drops,
+    spawners,
 )
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.rendering.camera import Camera
@@ -43,6 +45,20 @@ def _headless_display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((64, 64))
+
+
+@pytest.fixture(autouse=True)
+def _pinned_fx_rng() -> Iterator[None]:
+    """Fix the draw, because these tests assert on the pixels it produces.
+
+    Several spawners jitter from the FX module's own RNG, so which way a
+    puff lands or how a fragment scatters is a function of how many draws
+    the tests before them happened to make. Left alone that made a test here
+    pass on its own and fail in the full suite -- a result that is evidence
+    of the run's order rather than of the rule it claims to check.
+    """
+    spawners._fx_rng.seed(0xF00D)
+    yield
 
 
 def _floor_tile(top: float = 200.0) -> SimpleNamespace:
