@@ -309,7 +309,6 @@ def test_every_metric_is_a_multiple_of_the_scale_and_never_zero(scale) -> None:
         "gap",
         "title_gap",
         "border",
-        "footer_line",
         "row",
         "panel_padding",
         "panel_title_gap",

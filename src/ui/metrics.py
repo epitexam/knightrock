@@ -30,9 +30,7 @@ DESIGN_GAP = 18
 DESIGN_SECTION_GAP = 30
 DESIGN_TITLE_GAP = 12
 DESIGN_BORDER = 2
-DESIGN_FOOTER_LINE = 20
 DESIGN_ROW = 30
-DESIGN_HEAD = 102
 DESIGN_SMALL_TEXT = 18
 DESIGN_ITEM_TEXT = 22
 DESIGN_TITLE_TEXT = 42
@@ -40,11 +38,11 @@ DESIGN_TITLE_TEXT = 42
 #: The option panel is a second family, larger than the grid: a menu is read one
 #: row at a time from further away than a mapping table, and its rows are the
 #: only things a player has to aim at. Same scale, different design sizes.
+#: It carries no text sizes: ``GridView`` is the only view that draws text, and
+#: it takes all three from the grid family at a text scale it chose.
 DESIGN_PANEL_PADDING = 28
 DESIGN_PANEL_TITLE_GAP = 16
 DESIGN_PANEL_ROW = 40
-DESIGN_PANEL_TITLE_TEXT = 48
-DESIGN_PANEL_ITEM_TEXT = 32
 DESIGN_VALUE_GAP = 24
 DESIGN_PANEL_MIN_WIDTH = 240
 
@@ -112,19 +110,9 @@ class Metrics:
         return self.px(DESIGN_BORDER)
 
     @property
-    def footer_line(self) -> int:
-        """One line of hint text under the list."""
-        return self.px(DESIGN_FOOTER_LINE)
-
-    @property
     def row(self) -> int:
         """A comfortable row: one text line plus the padding around it."""
         return self.px(DESIGN_ROW)
-
-    @property
-    def head(self) -> int:
-        """The fixed block above the list: title, subtitle and column headers."""
-        return self.px(DESIGN_HEAD)
 
     # -- the option panel's family -------------------------------------------
 
@@ -139,14 +127,6 @@ class Metrics:
     @property
     def panel_row(self) -> int:
         return self.px(DESIGN_PANEL_ROW)
-
-    @property
-    def panel_title_text(self) -> int:
-        return self.font(DESIGN_PANEL_TITLE_TEXT)
-
-    @property
-    def panel_item_text(self) -> int:
-        return self.font(DESIGN_PANEL_ITEM_TEXT)
 
     @property
     def value_gap(self) -> int:
@@ -165,10 +145,6 @@ class Metrics:
     @property
     def item_text(self) -> int:
         return self.font(DESIGN_ITEM_TEXT)
-
-    @property
-    def small_text(self) -> int:
-        return self.font(DESIGN_SMALL_TEXT)
 
     # -- the same sizes, at a scale a view had to give up -------------------
     # A list that does not fit asks for smaller text rather than taller rows, so
