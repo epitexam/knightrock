@@ -80,6 +80,51 @@ class Colors:
     debug_juggle: ClassVar[Color] = (170, 85, 235)
 
 
+class FXColors:
+    """The FX plane's palette, kept apart from the gameplay colours.
+
+    A particle is judged against the whole frame rather than against the
+    sprite it sits next to, so its colours answer a different question than
+    ``Colors`` does: a bright body, a dark ink rim so it separates from a
+    bright sky, and a near-white core for anything that has to read as light
+    rather than as matter.
+    """
+
+    ink: ClassVar[Color] = (26, 22, 32)
+    ink_cool: ClassVar[Color] = (18, 34, 58)
+    ink_warm: ClassVar[Color] = (58, 24, 16)
+
+    dust: ClassVar[Color] = (198, 190, 178)
+    dust_deep: ClassVar[Color] = (154, 147, 138)
+
+    trail: ClassVar[Color] = (176, 214, 255)
+    trail_ink: ClassVar[Color] = (28, 62, 104)
+    shockwave: ClassVar[Color] = (210, 238, 255)
+    shockwave_ink: ClassVar[Color] = (40, 82, 128)
+
+    guard_spark: ClassVar[Color] = (96, 226, 238)
+    guard_core: ClassVar[Color] = (226, 250, 255)
+    parry_spark: ClassVar[Color] = (255, 206, 64)
+    parry_core: ClassVar[Color] = (255, 252, 236)
+    break_spark: ClassVar[Color] = (244, 96, 72)
+    break_core: ClassVar[Color] = (255, 210, 144)
+
+    star: ClassVar[Color] = (255, 214, 84)
+    star_core: ClassVar[Color] = (255, 250, 224)
+
+    vortex: ClassVar[Color] = (186, 84, 226)
+    vortex_ink: ClassVar[Color] = (54, 18, 72)
+
+    sweat: ClassVar[Color] = (150, 240, 245)
+    sweat_ink: ClassVar[Color] = (20, 60, 90)
+    sweat_shine: ClassVar[Color] = (240, 255, 255)
+
+    decal: ClassVar[Color] = (168, 160, 148)
+    decal_ink: ClassVar[Color] = (92, 86, 78)
+    shield_arc: ClassVar[Color] = (132, 232, 242)
+    shield_ink: ClassVar[Color] = (18, 74, 96)
+
+
 #: Valid ``LevelConfig.bg`` names: avoids ``getattr(Colors, cfg.bg)``
 #: typos by failing closed on unknown values (audit F5.1).
 BG_COLORS: dict[str, Color] = {

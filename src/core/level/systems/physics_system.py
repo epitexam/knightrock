@@ -9,11 +9,14 @@ from src.core.fx import (
     DASH_TRAIL_SPAWN_EVERY,
     DIZZY_VORTEX_SPAWN_EVERY,
     MAX_FX_SPRITES,
+    screen_flash,
     spawn_dash_burst,
     spawn_dash_shockwave,
     spawn_dash_streak,
     spawn_dash_trail,
+    spawn_dash_wind,
     spawn_dizzy_vortex,
+    spawn_impact_decal,
     spawn_landing_dust,
     spawn_sweat_drops,
 )
@@ -63,8 +66,9 @@ class PhysicsSystem:
         self._sweat_timers: dict[int, float] = {}
         # Per-entity dizzy vortex emission countdown.
         self._dizzy_timers: dict[int, float] = {}
-        # Per-entity dash trail emission countdown.
+        # Per-entity dash trail and wind line emission countdowns.
         self._dash_trail_timers: dict[int, float] = {}
+        self._dash_wind_timers: dict[int, float] = {}
 
     def process(self, delta_time: float) -> None:
         """Apply the platform carry, then integrate entities and effects."""
@@ -73,6 +77,7 @@ class PhysicsSystem:
         self.groups.entity_sprites.update(delta_time)
         self._spawn_impact_fx(delta_time)
         self.groups.fx_sprites.update(delta_time)
+        screen_flash.update(delta_time)
 
     def _spawn_impact_fx(self, delta_time: float) -> None:
         """Turn hard landings, dashes, dash penalties, and dizzy state into render-only FX.
@@ -115,17 +120,18 @@ class PhysicsSystem:
         if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
             impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
             if impact >= Dust.MIN_FALL_SPEED:
-                spawn_landing_dust(self.groups.fx_sprites, entity)
+                spawn_landing_dust(self.groups.fx_sprites, entity, impact)
+                spawn_impact_decal(self.groups.fx_sprites, entity, impact)
             elif dashing:
                 if id(entity) not in self._dashing_ids:
                     spawn_dash_burst(self.groups.fx_sprites, entity)
                     spawn_dash_shockwave(self.groups.fx_sprites, entity)
                 else:
                     spawn_dash_streak(self.groups.fx_sprites, entity)
-        # Dash trail particles on a cadence while dashing
         if dashing:
             dash_trail_ids.add(id(entity))
             self._tick_dash_trail(entity, delta_time)
+            self._tick_dash_wind(entity, delta_time)
         if _in_dash_penalty(entity):
             sweating_ids.add(id(entity))
             self._tick_sweat(entity, delta_time)
@@ -160,6 +166,12 @@ class PhysicsSystem:
             for entity_id, timer in self._dash_trail_timers.items()
             if entity_id in dash_trail_ids
         }
+        # Wind lines share the dash cadence, so they share the pruning.
+        self._dash_wind_timers = {
+            entity_id: timer
+            for entity_id, timer in self._dash_wind_timers.items()
+            if entity_id in dash_trail_ids
+        }
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:
         """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
@@ -189,3 +201,12 @@ class PhysicsSystem:
                 spawn_dash_trail(self.groups.fx_sprites, entity)
             timer = DASH_TRAIL_SPAWN_EVERY
         self._dash_trail_timers[id(entity)] = timer
+
+    def _tick_dash_wind(self, entity: object, delta_time: float) -> None:
+        """Emit forward wind lines on the dash trail cadence, ahead of the dash."""
+        timer = self._dash_wind_timers.get(id(entity), 0.0) - delta_time
+        if timer <= 0.0:
+            if len(self.groups.fx_sprites) < MAX_FX_SPRITES:
+                spawn_dash_wind(self.groups.fx_sprites, entity)
+            timer = DASH_TRAIL_SPAWN_EVERY
+        self._dash_wind_timers[id(entity)] = timer

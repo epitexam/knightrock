@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.fx import SparkParticle, spawn_dizzy_stars
+from src.core.fx import OrbitParticle, spawn_dizzy_stars
 from src.core.level.systems.combat_system import CombatSystem
 from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.types.goblin import GOBLIN_CONFIG
@@ -275,7 +275,12 @@ def test_player_dizzy_state_exits_via_ground_return() -> None:
     assert state.update(0.3) == "idle"  # timer clears, ground_return -> idle
 
 
-def test_dizzy_fx_spawns_stars() -> None:
+def test_dizzy_fx_spawns_stars_that_orbit_for_the_whole_stun() -> None:
+    """They circle above the head for the stun, and they do not fall.
+
+    As sparks they inherited the spark gravity, which over a long stun
+    dragged the whole constellation through the floor.
+    """
     import pygame
     from pygame.sprite import Group
 
@@ -287,8 +292,10 @@ def test_dizzy_fx_spawns_stars() -> None:
 
     stars = spawn_dizzy_stars(group, entity)
 
-    assert len(stars) == 12
-    assert all(isinstance(s, SparkParticle) for s in stars)
+    assert len(stars) == 6
+    assert all(isinstance(star, OrbitParticle) for star in stars)
+    assert all(star.ttl == pytest.approx(1.5) for star in stars)
+    assert all(star.velocity.length() == 0.0 for star in stars)
 
 
 def test_save_load_preserves_parry_counters() -> None:

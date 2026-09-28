@@ -104,6 +104,25 @@ class GuardEvent:
 
     kind: str
     target: Combatant
+    point: tuple[float, float] | None = None
+    """Where the block landed, so the FX spawn at the contact and not at the
+    middle of the defender. None when the outcome has no single contact
+    point, as a clash between two attackers does not."""
+
+
+def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] | None:
+    """The middle of the overlap between an attack box and its target.
+
+    Falls back to the target's own centre when the two do not overlap in
+    their stored rectangles, which a swept or moving attack can produce.
+    """
+    hitbox = getattr(target, "hitbox", None)
+    if hitbox is None:
+        return None
+    overlap = box.box.clip(hitbox)
+    if overlap.width <= 0.0 or overlap.height <= 0.0:
+        return (hitbox.centerx, hitbox.centery)
+    return (overlap.centerx, overlap.centery)
 
 
 @dataclass
@@ -439,7 +458,7 @@ class ContactSystem:
             )
         )
         if result.guarded:
-            self._record_guard_event(result, target)
+            self._record_guard_event(result, target, box)
             if result.parried:
                 self._maybe_parry_stun(box.attacker)
         magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
@@ -469,7 +488,7 @@ class ContactSystem:
             result = HitResolver.resolve(attacker=box.attacker, target=target, hit=box.hit)
             if not (result.applied or result.guarded):
                 return
-            self._record_guard_event(result, target)
+            self._record_guard_event(result, target, box)
         else:
             target.receive_damage(
                 amount=box.hit.damage,
@@ -490,7 +509,9 @@ class ContactSystem:
         if box.record_contact is not None:
             box.record_contact(target)
 
-    def _record_guard_event(self, result: DamageResult, target: Combatant) -> None:
+    def _record_guard_event(
+        self, result: DamageResult, target: Combatant, box: OffensiveBox
+    ) -> None:
         """Record guard/parry/break outcomes for event-draining systems."""
         if not result.guarded:
             return
@@ -499,7 +520,7 @@ class ContactSystem:
             kind = "parry"
         elif result.guard_broken:
             kind = "break"
-        self.guard_events.append(GuardEvent(kind, target))
+        self.guard_events.append(GuardEvent(kind, target, _contact_point(box, target)))
 
     def _maybe_parry_stun(self, attacker: Any) -> None:
         """Parry-stun: count the consecutive perfect parries an enemy took."""

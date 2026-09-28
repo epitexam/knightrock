@@ -7,6 +7,7 @@ from typing import Any, cast
 import pygame
 
 from src.core.colors import BG_COLORS, Color, Colors
+from src.core.fx import screen_flash
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
@@ -251,6 +252,7 @@ class Renderer:
             self.surface.blit(surface, screen_rect)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
+        self._draw_screen_flash()
         if debug_enabled:
             overlays = perf_counter()
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
@@ -274,8 +276,8 @@ class Renderer:
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute target rects for every visible plane.
 
-        One flat loop over the three draw planes, in paint order: the frozen
-        tile plane (through its chunk index, when one is installed), the
+        One flat loop over the three sprite draw planes, in paint order: the
+        frozen tile plane (through its chunk index, when one is installed), the
         moving plane, then the foreground decor. With the index this is ~130
         sprites instead of the ~970 a single scan of the level cost, and the
         static sprites it skips are *not* walked at all -- which is why the
@@ -293,6 +295,11 @@ class Renderer:
         cache. Caching them grew the cache by one retained surface per FX
         sprite per tick, for the whole session, with no eviction. They are
         short-lived by nature, so they go through ``_scaled_image_once``.
+
+        They are split by a particle's own ``behind`` flag: ground-level marks
+        go in under the moving plane, so a fighter is never painted over by
+        the dust they kicked up, and everything else stays on top where a
+        spark can be seen.
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
         static_index = self._static_index
@@ -301,39 +308,59 @@ class Renderer:
         # ``colliderect`` is the same intersection ``Camera.is_visible`` makes.
         viewport = self.camera.viewport
         colliderect = viewport.colliderect
-        for sprite in self._draw_planes(groups, static_index, foreground_index, viewport):
-            self._append_cached_blit(blits, sprite, colliderect)
+        behind_fx, front_fx = self._collect_fx_blits(groups, colliderect)
 
-        for sprite in groups.fx_sprites:
-            if colliderect(sprite.rect):
-                blits.append(
-                    (
-                        self._scaled_image_once(sprite.image),
-                        self.camera.apply_snapped(sprite.rect),
-                    )
-                )
+        for sprite in self._static_plane(groups, static_index, viewport):
+            self._append_cached_blit(blits, sprite, colliderect)
+        blits.extend(behind_fx)
+        for sprite in self._sprite_planes(groups, foreground_index, viewport):
+            self._append_cached_blit(blits, sprite, colliderect)
+        blits.extend(front_fx)
         return blits
 
-    def _draw_planes(
+    def _collect_fx_blits(
+        self, groups: SpriteGroups, colliderect: Callable[[pygame.FRect | pygame.Rect], bool]
+    ) -> tuple[list[tuple[pygame.Surface, pygame.Rect]], list[tuple[pygame.Surface, pygame.Rect]]]:
+        """The FX plane, split into the marks that go under the world and the rest."""
+        behind: list[tuple[pygame.Surface, pygame.Rect]] = []
+        front: list[tuple[pygame.Surface, pygame.Rect]] = []
+        for sprite in groups.fx_sprites:
+            rect = sprite.rect
+            image_source = sprite.image
+            if rect is None or image_source is None or not colliderect(rect):
+                continue
+            target = behind if getattr(sprite, "behind", False) else front
+            target.append((self._scaled_image_once(image_source), self.camera.apply_snapped(rect)))
+        return behind, front
+
+    def _static_plane(
         self,
         groups: SpriteGroups,
         static_index: TileChunkIndex | None,
+        viewport: pygame.FRect,
+    ) -> Iterable[pygame.sprite.Sprite]:
+        """The frozen tile plane, through its chunk index when there is one."""
+        if static_index is None:
+            return ()
+        return static_index.candidates(viewport)
+
+    def _sprite_planes(
+        self,
+        groups: SpriteGroups,
         foreground_index: TileChunkIndex | None,
         viewport: pygame.FRect,
     ) -> Iterable[pygame.sprite.Sprite]:
-        """The three draw planes, in paint order, without materialising them.
+        """The moving plane and the foreground decor, in paint order.
 
         A ``chain`` rather than a concatenation because the moving plane is a
         live group: a list would snapshot it, and a sprite added between the
         planes being walked and the blit loop running would be drawn at a
         position that does not match the frame it belongs to.
         """
-        if static_index is None:
-            return chain(groups.all_sprites, groups.fg_sprites)
         foreground = (
             groups.fg_sprites if foreground_index is None else foreground_index.candidates(viewport)
         )
-        return chain(static_index.candidates(viewport), groups.all_sprites, foreground)
+        return chain(groups.all_sprites, foreground)
 
     def _append_cached_blit(
         self,
@@ -386,6 +413,19 @@ class Renderer:
     def _draw_flashes(self, flashes: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
         for overlay, screen_rect in flashes:
             self.surface.blit(overlay, screen_rect)
+
+    def _draw_screen_flash(self) -> None:
+        """Wash the frame with light while a parry's flash is running.
+
+        Drawn last so it covers the world but not the debug overlay, which is
+        a reading tool and must keep working through a visual effect.
+        """
+        alpha = screen_flash.alpha
+        if alpha <= 0:
+            return
+        wash = pygame.Surface(self.surface.get_size(), pygame.SRCALPHA)
+        wash.fill((255, 255, 255, alpha))
+        self.surface.blit(wash, (0, 0))
 
     def _update_afterimages(
         self, groups: SpriteGroups, dt: float

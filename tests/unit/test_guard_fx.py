@@ -57,11 +57,39 @@ def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
     assert spawn_break_burst(Group(), SimpleNamespace()) == []
 
 
-def test_parry_burst_kicks_upward() -> None:
-    entity = _entity()
+def test_parry_burst_kicks_upward_from_the_contact_point() -> None:
+    """The burst is a one-sided cone thrown from where the block landed.
 
-    for spark in spawn_parry_burst(Group(), entity):
-        assert spark.velocity.y < 0.0
+    A cone radiates, so some of it points down; what has to hold is that it
+    goes out of the face the block came from rather than out of the middle of
+    the defender, and that it is thrown upward on average.
+    """
+    entity = _entity()
+    entity.facing_right = True
+
+    sparks = spawn_parry_burst(Group(), entity)
+
+    assert all(spark.pos.x >= entity.hitbox.centerx for spark in sparks)
+    assert sum(1 for spark in sparks if spark.velocity.y < 0.0) > len(sparks) // 2
+
+
+def test_the_guard_spark_cone_stays_on_the_facing_side() -> None:
+    """What reads as a block is a burst that only comes from one side."""
+    entity = _entity()
+    entity.facing_right = False
+
+    for spark in spawn_guard_spark(Group(), entity):
+        assert spark.velocity.x < 0.0
+
+
+def test_a_block_spawns_its_sparks_at_the_contact_it_reports() -> None:
+    """The point the event carries wins over the defender's own centre."""
+    entity = _entity()
+    entity.facing_right = True
+
+    sparks = spawn_guard_spark(Group(), entity, origin=(150.0, 120.0))
+
+    assert all(abs(spark.pos.x - 150.0) < 8.0 for spark in sparks)
 
 
 def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:
@@ -142,6 +170,8 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
 
     assert len(groups.fx_sprites) == fx.PARRY_SPARK_COUNT
     assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
+    assert fx.screen_flash.alpha > 0, "and the frame has to flash on a parry"
+    fx.screen_flash.reset()
     assert loop.combat_system.guard_events == []
 
 
@@ -154,7 +184,7 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
 
     loop._emit_guard_fx(groups, loop.camera_system)
 
-    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT
+    assert len(groups.fx_sprites) == fx.GUARD_SPARK_COUNT + 1, "sparks plus the guard arc"
     assert camera.traumas == [pytest.approx(GuardSettings.GUARD_TRAUMA)]
 
 

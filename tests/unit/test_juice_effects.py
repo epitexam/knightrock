@@ -6,21 +6,19 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.core.colors import FXColors
 from src.core.display.framing import Framing
 from src.core.fx import (
     DASH_BURST_COUNT,
+    DASH_WIND_LINES,
     MAX_FX_SPRITES,
-    SWEAT_COLOR,
-    SWEAT_OUTLINE,
     SWEAT_OUTLINE_WIDTH,
-    SWEAT_SHINE,
     DustParticle,
     StreakParticle,
     SweatParticle,
     dash_direction,
     iter_landing_entities,
     spawn_dash_burst,
-    spawn_dash_dust,
     spawn_dash_streak,
     spawn_landing_dust,
     spawn_sweat_drops,
@@ -179,17 +177,19 @@ def test_landing_fan_spawns_count_puffs_at_the_feet() -> None:
         assert abs(puff.pos.x - entity.hitbox.centerx) < entity.hitbox.width
 
 
-def test_dash_streak_trails_a_single_puff_behind() -> None:
+def test_dash_streak_lies_along_its_own_velocity() -> None:
+    """A speed line has to point where it is going, or it is just a dash."""
     entity = make_entity(pos=(100.0, 100.0))
     entity.facing_right = True
     group = pygame.sprite.Group()
 
-    puff = spawn_dash_dust(group, entity)
+    streak = spawn_dash_streak(group, entity)
 
-    assert puff is not None
+    assert streak is not None
     assert len(group) == 1
-    assert puff.pos.x < entity.hitbox.centerx
-    assert puff.velocity.x < 0.0
+    assert streak.pos.x < entity.hitbox.centerx
+    assert streak.velocity.x < 0.0
+    assert streak.image.get_width() > streak.image.get_height() * 3
 
 
 def test_dash_direction_prefers_live_velocity_over_facing() -> None:
@@ -199,11 +199,10 @@ def test_dash_direction_prefers_live_velocity_over_facing() -> None:
 
     assert dash_direction(entity) == pytest.approx(-1.0)
 
-    puff = spawn_dash_dust(pygame.sprite.Group(), entity)
+    puffs = spawn_dash_burst(pygame.sprite.Group(), entity)
 
-    assert puff is not None
-    assert puff.pos.x > entity.hitbox.centerx
-    assert puff.velocity.x > 0.0
+    assert all(puff.pos.x > entity.hitbox.centerx for puff in puffs)
+    assert all(puff.velocity.x > 0.0 for puff in puffs)
 
     entity.velocity.x = 0.0
     entity.facing_right = False
@@ -252,8 +251,9 @@ def test_physics_spawns_landing_dust_and_dash_streaks() -> None:
 
     system._spawn_impact_fx(1 / 60)
 
-    # Landing fan plus the one-shot dash-start burst + shockwave + dash trail.
-    assert len(groups.fx_sprites) == Dust.COUNT + DASH_BURST_COUNT + 2
+    # Landing fan plus its ground mark, then the one-shot dash-start burst,
+    # the ground ring and the dash trail.
+    assert len(groups.fx_sprites) == Dust.COUNT + 1 + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
 
 
 def test_dash_burst_fires_once_per_dash() -> None:
@@ -264,12 +264,12 @@ def test_dash_burst_fires_once_per_dash() -> None:
     system = PhysicsSystem(groups)
 
     system._spawn_impact_fx(1 / 60)
-    # Burst + shockwave + dash trail on dash start
-    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 2
+    # Burst + ground ring + one trail particle + its wind lines on dash start.
+    assert len(groups.fx_sprites) == DASH_BURST_COUNT + 2 + DASH_WIND_LINES
 
-    # Still dashing: trail puff + dash trail particle
+    # Still dashing: a speed line on top of the trail cadence.
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) >= DASH_BURST_COUNT + 2 + 2
+    assert len(groups.fx_sprites) >= DASH_BURST_COUNT + 2 + DASH_WIND_LINES + 2
 
     # Dash over, then re-dash: the burst fires again.
     dasher.state_machine = SimpleNamespace(current_state_name="run")
@@ -277,7 +277,7 @@ def test_dash_burst_fires_once_per_dash() -> None:
     before = len(groups.fx_sprites)
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT + 2
+    assert len(groups.fx_sprites) == before + DASH_BURST_COUNT + 2 + DASH_WIND_LINES
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
@@ -437,20 +437,25 @@ class PenaltySprite(pygame.sprite.Sprite):
         self.dash = dash
 
 
-def test_sweat_drops_pop_off_the_head_and_fall() -> None:
+def test_sweat_drops_bead_beside_the_head_and_fall() -> None:
+    """They bead off the temple the dasher is facing, not off the middle.
+
+    A drop that comes out of the centre of the crown lands on top of the
+    hair and reads as a hat; one that comes out beside it reads as sweat.
+    """
     entity = make_entity(pos=(100.0, 100.0))
+    entity.facing_right = True
     group = pygame.sprite.Group()
 
     drops = spawn_sweat_drops(group, entity)
 
     assert len(drops) == Sweat.COUNT
     assert all(isinstance(drop, SweatParticle) for drop in drops)
-    # Beading from the top of the hitbox, kicked sideways and briefly up.
     for drop in drops:
-        assert drop.rect.centery <= entity.hitbox.top + 2.0
+        assert drop.rect.centery <= entity.hitbox.top + 12.0
         assert drop.velocity.y < 0.0
-        # Hugging the crown: droplets stay near the hitbox centerline.
-        assert abs(drop.pos.x - entity.hitbox.centerx) <= 0.13 * entity.hitbox.width
+        assert drop.pos.x > entity.hitbox.centerx
+        assert drop.pos.x <= entity.hitbox.right
     # Heavier than dust: gravity turns the pop into a fall.
     drops[0].update(0.2)
     assert drops[0].velocity.y > 0.0
@@ -470,15 +475,15 @@ def test_sweat_beads_read_as_thick_comic_teardrops() -> None:
     assert width >= 3 * SWEAT_OUTLINE_WIDTH
     # Comic palette: pale fill, bold ink outline, glossy white glint.
     colors = {tuple(image.get_at((x, y)))[:3] for x in range(width) for y in range(height)}
-    assert tuple(SWEAT_COLOR)[:3] in colors
-    assert tuple(SWEAT_OUTLINE)[:3] in colors
-    assert tuple(SWEAT_SHINE)[:3] in colors
+    assert tuple(FXColors.sweat)[:3] in colors
+    assert tuple(FXColors.sweat_ink)[:3] in colors
+    assert tuple(FXColors.sweat_shine)[:3] in colors
     # Ink rim under the fill: scanning the center column, the bulb bottoms
     # out on a bold outline row with pale fill sitting just above it.
     column = [tuple(image.get_at((width // 2, y))) for y in range(height)]
     opaque_rows = [y for y, pixel in enumerate(column) if pixel[:3] != (0, 0, 0)]
-    assert column[max(opaque_rows)][:3] == tuple(SWEAT_OUTLINE)[:3]
-    assert column[max(opaque_rows) - 2][:3] == tuple(SWEAT_COLOR)[:3]
+    assert column[max(opaque_rows)][:3] == tuple(FXColors.sweat_ink)[:3]
+    assert column[max(opaque_rows) - 2][:3] == tuple(FXColors.sweat)[:3]
 
 
 def test_sweat_droplet_arcs_then_reaps_itself() -> None:
