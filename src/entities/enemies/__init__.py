@@ -1,12 +1,7 @@
-from src.entities.enemies.configs import ENEMY_CONFIGS
-from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.factory import create_enemy, is_enemy_type
-from src.entities.enemies.schema import EnemyConfig
+"""Enemy construction: the concrete types, their configs and the factory.
 
-__all__ = [
-    "Enemy",
-    "EnemyConfig",
-    "ENEMY_CONFIGS",
-    "create_enemy",
-    "is_enemy_type",
-]
+``Enemy`` is imported by the enemy states and the level, ``EnemyConfig`` /
+``ENEMY_CONFIGS`` by the data layer and the tests, and ``create_enemy`` /
+``is_enemy_type`` by the spawn system -- each from the module that defines it.
+Nothing is re-exported here; the two factory names had no caller at all.
+"""

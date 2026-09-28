@@ -12,36 +12,9 @@ Four objects with four jobs, kept apart on purpose:
 ``Presentation``
     Window and target, and the pointer back. The only place that reconciles
     them, and it does not scale: the picture is blitted 1:1.
+
+Nothing is re-exported. ``game.py``, ``tools/display_acceptance.py`` and two
+tests import the *module* ``detection`` (``from src.core.display import
+detection``) because they want the whole detection pass, not one function; every
+other name is imported from the module that defines it.
 """
-
-from .detection import (
-    auto_display_mode,
-    desktop_refresh_rates,
-    desktop_size,
-    desktop_sizes,
-    initial_window_size,
-)
-from .framing import DEFAULT_FRAMING, Framing
-from .letterbox import density_for, fits_whole_pixel, letterbox
-from .mode import DisplayMode
-from .presentation import Presentation
-from .stage import Stage, WindowSpec
-from .viewport import Viewport
-
-__all__ = [
-    "DEFAULT_FRAMING",
-    "DisplayMode",
-    "Framing",
-    "Presentation",
-    "Stage",
-    "Viewport",
-    "WindowSpec",
-    "auto_display_mode",
-    "desktop_refresh_rates",
-    "desktop_size",
-    "desktop_sizes",
-    "density_for",
-    "fits_whole_pixel",
-    "initial_window_size",
-    "letterbox",
-]

@@ -4,8 +4,10 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.entities.enemies import ENEMY_CONFIGS, Enemy, EnemyConfig
+from src.entities.enemies.configs import ENEMY_CONFIGS
+from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.factory import create_enemy, is_enemy_type
+from src.entities.enemies.schema import EnemyConfig
 
 
 class MockPlayer:
@@ -177,20 +179,23 @@ class TestNoDirectSubclassUsage:
             importlib.import_module("src.entities.enemies.training_dummy")
             raise ImportError("TrainingDummy must not be importable as a class")
 
-    def test_enemy_module_only_exports_factory_functions(self):
-        """Test that enemies module only exports factory-related items."""
+    def test_the_enemies_package_re_exports_nothing(self):
+        """The factory is the only way in, and the package says so by staying empty.
+
+        It used to carry an ``__all__`` naming ``Enemy``, ``EnemyConfig``,
+        ``ENEMY_CONFIGS``, ``create_enemy`` and ``is_enemy_type``. Nobody
+        imported the first three from here, and the last two were already
+        imported from ``factory`` directly, so the block was a second spelling
+        to keep in step -- and it advertised ``create_enemy`` at the package
+        level, right next to the concrete types it exists to be the
+        alternative to. What matters is still that no concrete enemy class is
+        reachable from the package.
+        """
         from src.entities import enemies
 
-        # Check what's in __all__
-        assert "Enemy" in enemies.__all__
-        assert "EnemyConfig" in enemies.__all__
-        assert "ENEMY_CONFIGS" in enemies.__all__
-        assert "create_enemy" in enemies.__all__
-        assert "is_enemy_type" in enemies.__all__
-
-        # These should NOT be in __all__
-        assert "Goblin" not in enemies.__all__
-        assert "TrainingDummy" not in enemies.__all__
+        assert not hasattr(enemies, "__all__")
+        for name in ("Enemy", "EnemyConfig", "ENEMY_CONFIGS", "Goblin", "TrainingDummy"):
+            assert not hasattr(enemies, name), name
 
 
 class TestPassiveEnemyFriction:

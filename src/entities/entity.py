@@ -20,8 +20,9 @@ from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import EnemyJump, HitFlash, Ledge, Physics
-from src.entities.components import MovementComponent, ReactionComponent
+from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
+    ReactionComponent,
     ReactionStatus,
     compute_knockback_direction,
 )
