@@ -13,6 +13,7 @@ from src.core.display.framing import Framing
 from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
+    DashDustParticle,
     DustParticle,
     SweatParticle,
     iter_landing_entities,
@@ -35,7 +36,7 @@ from src.core.rendering.renderer import (
     is_player_dashing,
 )
 from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
-from src.core.settings import Afterimage, Dust, HitFlash, Physics, Simulation, Sweat
+from src.core.settings import Afterimage, DashDust, Dust, HitFlash, Physics, Simulation, Sweat
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -261,18 +262,23 @@ def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     assert len(groups.fx_sprites) == Dust.COUNT + 1
 
 
-def test_a_dash_spawns_no_particles_at_all() -> None:
-    """The dash's whole visual is the renderer's afterimage, and nothing else.
+def test_a_dash_trails_dust_and_nothing_else() -> None:
+    """The dash carries one mark, and this holds it to one.
 
     It used to be five systems on one 80ms event: a backward fan of dust, a
     ground ring, a speed line every tick, wind lines on a cadence, and a
     comet. Four of them marked the path the afterimage already photographs,
-    and the frame they produced was a white cloud under a stretched
-    rectangle with a hoop around it.
+    and the frame they produced was a white cloud under a stretched rectangle
+    with a hoop around it.
 
-    So a dashing entity now spends no particle budget at all, and this holds
-    it there. Adding a mark back is a deliberate act against this test, not
-    an accident of a spawner that forgot to ask.
+    So the strip-out left the dash with no particles at all, which was its own
+    kind of wrong: nothing in the plane said the fighter had displaced
+    anything. A trail is the one mark that says it, and it is the only one
+    allowed back -- a second is a step along the road to the white cloud.
+
+    The count is therefore a burst plus one cadence emission per tick, and
+    the ticks are fewer than the burst: the ribbon is not allowed to weigh as
+    much as the shove that started it.
     """
     groups = SpriteGroups()
     dasher = make_entity(pos=(200.0, 100.0))
@@ -280,10 +286,110 @@ def test_a_dash_spawns_no_particles_at_all() -> None:
     groups.entity_sprites.add(dasher)
     system = PhysicsSystem(groups)
 
-    for _ in range(6):
+    ticks = int(Physics.DASH_DURATION * 60)
+    for _ in range(ticks):
         system._spawn_impact_fx(1 / 60)
 
-    assert len(groups.fx_sprites) == 0
+    trail = [sprite for sprite in groups.fx_sprites if sprite.family == "dash_dust"]
+    assert trail, "a dash leaves a trail"
+    assert all(sprite.family == "dash_dust" for sprite in groups.fx_sprites), (
+        f"and nothing else: {[s.family for s in groups.fx_sprites]}"
+    )
+    assert len(trail) > DashDust.BURST_COUNT, "the ribbon extends past the shove"
+    assert len(trail) <= DashDust.BURST_COUNT + ticks * DashDust.TICK_COUNT, (
+        f"and it is a ribbon, not a wall: {len(trail)} puffs over {ticks} ticks"
+    )
+
+
+def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
+    """The burst is a shove, and a shove repeated is a stutter.
+
+    Without a way to tell one dash from the next, the burst would fire on
+    every tick of the dash and the trail would open with a pile of clouds
+    rather than a shove followed by a ribbon.
+    """
+    groups = SpriteGroups()
+    dasher = make_entity(pos=(200.0, 100.0))
+    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    groups.entity_sprites.add(dasher)
+    system = PhysicsSystem(groups)
+
+    for _ in range(3):
+        system._spawn_impact_fx(1 / 60)
+
+    radii = [sprite.radius for sprite in groups.fx_sprites]
+    assert radii.count(max(radii)) == 1, f"exactly one puff at the burst's size: {radii}"
+
+
+def test_a_second_dash_bursts_again() -> None:
+    """Coming out of the dash has to re-arm it, or a second dash has no shove.
+
+    The trail reads the entity leaving the dash state as the end of one, which
+    is what clears the timer. A fighter with five charges can dash five times
+    in a second, and each one is a separate movement that deserves its own
+    impact.
+    """
+    groups = SpriteGroups()
+    dasher = make_entity(pos=(200.0, 100.0))
+    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    groups.entity_sprites.add(dasher)
+    system = PhysicsSystem(groups)
+
+    system._spawn_impact_fx(1 / 60)
+    first = len(groups.fx_sprites)
+    dasher.state_machine = SimpleNamespace(current_state_name="idle")
+    system._spawn_impact_fx(1 / 60)
+    assert len(groups.fx_sprites) == first, "an idle entity trails nothing"
+    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    system._spawn_impact_fx(1 / 60)
+
+    assert len(groups.fx_sprites) == first + DashDust.BURST_COUNT
+
+
+def test_the_dash_trail_stops_at_the_family_budget() -> None:
+    """The trail cannot spend the plane, or a dash starves a parry.
+
+    It is refused whole rather than half-landed: a ribbon that stops halfway
+    reads as the dash running out of dust, which is not a thing.
+    """
+    groups = SpriteGroups()
+    dasher = make_entity(pos=(200.0, 100.0))
+    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    groups.entity_sprites.add(dasher)
+    cap = FX_FAMILY_BUDGETS["dash_dust"]
+    for _ in range(cap - 1):
+        groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
+    system = PhysicsSystem(groups)
+
+    system._spawn_impact_fx(1 / 60)
+
+    assert len(groups.fx_sprites) == cap - 1, "a burst that does not fit is not half-thrown"
+
+
+def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
+    """A hard landing is the harder event, and the trail yields to it.
+
+    The trail is a cadenced effect and the landing is not, so the budget
+    table is sized to let the one-shot through first. Both fire on the same
+    tick when a fighter lands out of a dash, and the landing is the one the
+    player is reading.
+    """
+    groups = SpriteGroups()
+    dasher = make_entity(pos=(200.0, 100.0))
+    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    dasher.landed_impact = Dust.MIN_FALL_SPEED + 100.0
+    groups.entity_sprites.add(dasher)
+    for _ in range(FX_FAMILY_BUDGETS["dash_dust"]):
+        groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
+    system = PhysicsSystem(groups)
+
+    system._spawn_impact_fx(1 / 60)
+
+    families = [sprite.family for sprite in groups.fx_sprites]
+    assert families.count("landing_dust") == Dust.COUNT, "the landing is not refused"
+    assert families.count("dash_dust") == FX_FAMILY_BUDGETS["dash_dust"], (
+        "and the trail is what gets refused"
+    )
 
 
 def test_fx_spawning_stops_past_the_particle_budget() -> None:
