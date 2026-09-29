@@ -94,6 +94,14 @@ class FXColors:
     ink_warm: ClassVar[Color] = (58, 24, 16)
 
     dust: ClassVar[Color] = (198, 190, 178)
+    dust_lit: ClassVar[Color] = (236, 231, 221)
+    """The lit lobe of an unrimmed dust cloud.
+
+    The plane's third dust tone, and the one the dash trail is built on. It
+    sits in the same warm grey family as ``dust`` rather than being pulled
+    toward white, so a lit lobe reads as the same material catching light
+    instead of as a highlight belonging to a different effect.
+    """
     dust_deep: ClassVar[Color] = (104, 96, 88)
     """The puff's rim.
 

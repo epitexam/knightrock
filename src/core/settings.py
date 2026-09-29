@@ -355,6 +355,157 @@ class Dust:
     """
 
 
+class DashDust:
+    """The dust a dash throws out of the fighter's trailing edge.
+
+    Two emissions rather than one. A burst is thrown on the tick the dash
+    starts, and a small puff follows on a cadence until the dash ends, so the
+    mark is a continuous ribbon along the path instead of one cloud sitting
+    where the fighter used to be. The dash is short -- ``Physics.DASH_DURATION``
+    is 0.08s -- and the fighter is 88px away by the time it ends, so the trail
+    has already been left behind before the first puff reaches its peak.
+
+    Separate from :class:`Dust` because it is a different job. Landing dust
+    answers "how hard was that", is scaled by the fall speed, and lives long
+    enough to be read at the fighter's feet. This answers "that was a burst of
+    movement", ignores the landing entirely, and is thrown backwards.
+
+    Painted without an ink rim, in two tones, on the argument
+    :class:`ShieldArcParticle` makes for the block: at this size a mid-grey
+    outline turns a mark into a drawn shape with nothing light about it, and a
+    single flat tone is a blob. The lit lobe is what separates the mass from
+    the background at one pixel per world unit.
+    """
+
+    SPAWN_EVERY = 0.02
+    """Seconds between the puffs laid along the path.
+
+    Tied to ``Afterimage.SPAWN_EVERY`` (0.012s) closely enough that the two
+    marks read as one movement rather than as a trail with a second, faster
+    trail inside it.
+    """
+    BURST_COUNT = 5
+    """Puffs on the dash's first tick: the shove off the floor."""
+    TICK_COUNT = 2
+    """Puffs on every later tick of the dash, filling in the ribbon.
+
+    Two rather than one because ``SPAWN_EVERY`` is not a divisor of the frame
+    time: a single puff per emission leaves visible gaps along a path the
+    fighter crossed at 1100 px/s.
+    """
+    BURST_TTL = 0.6
+    TICK_TTL = 0.4
+    """How long a puff lives.
+
+    Both outlast the dash itself, which is the point: the trail has to still
+    be evaporating after the fighter has left it, or it reads as debris
+    rather than as the movement that threw it. The burst lingers longest
+    because it is the biggest and was thrown hardest.
+    """
+    BURST_RADIUS = 9.0
+    TICK_RADIUS = 5.5
+    """Puff radius, as shares of the painted cloud.
+
+    The burst is roughly twice a landing puff against a fighter of the same
+    width, because it is the only mark on screen at that instant and it has
+    to carry the whole movement. The ticks are smaller than the burst and
+    comparable to a landing puff, so they extend the ribbon without competing
+    with the shove that started it.
+    """
+    FADE_IN = 0.04
+    """A fifth of the block's, because the trail is late if it eases in.
+
+    The fighter crosses most of the ribbon in the first 0.08s; a slow ramp
+    means the dust is still fading up where he already isn't.
+    """
+    RISE = -40.0
+    DRAG = 2.4
+    """The drift of a puff once it is off the floor.
+
+    Lighter rise and less drag than landing dust, so a trail puff coasts
+    rather than climbing: the fighter is the thing moving here, and dust he
+    is leaving behind should stay where he left it.
+    """
+    THROW = 150.0
+    """How hard the burst is shoved backwards, against the dash direction.
+
+    The only thing that makes the trail read as trailing. Forward, or
+    without a throw, the cloud stays under the fighter and looks like dust he
+    is standing in.
+    """
+    SPREAD = 45.0
+    """Sideways fan, so the burst is a plume and not a single ball."""
+    SPREAD_JITTER = 30.0
+    RISE_JITTER = 25.0
+    BACK_OFFSET = 0.4
+    """Where along the body the trail is laid, as a fraction of its width.
+
+    At the trailing edge rather than the centre, so the puffs are left
+    behind on the way out instead of being carried forward by the fighter
+    for the first frame of the dash.
+    """
+
+    STEPS = 4
+    BUCKETS = (4, 6, 8, 10, 13)
+    """The radii a puff is painted at, smallest first.
+
+    Discrete for the reason the landing ladder is: a continuous radius means
+    a surface per particle, and a dash lays a ribbon of them.
+    """
+    GROWTH = 0.3
+    """How much further the cloud reaches at each step, as a share of the
+    radius it started at. The last step is drawn at ``1 + growth * (steps-1)``.
+
+    Steeper than the landing billow's, because a trail is the one mark in the
+    plane that has to keep reading after the fighter has left it, and a cloud
+    that stays the size it was born leaves the tail looking cut off.
+    """
+    STEP_OPENS = 0.5
+    """The share of the life the trail takes to open over."""
+    LOBES = (
+        (0.0, 0.0, 0.8),
+        (-0.6, 0.12, 0.54),
+        (0.55, -0.08, 0.5),
+        (0.16, -0.5, 0.44),
+        (-0.2, 0.5, 0.4),
+    )
+    """The cloud's discs, as (offset x, offset y, share of the radius).
+
+    A fifth lobe against the landing puff's four, placed low, which thickens
+    the base of the cloud. The trail is a plume off a floor rather than a
+    cloud around a body, so the weight belongs at the bottom.
+    """
+    HIGHLIGHT = 0.3
+    """The lit lobe, as a share of the radius, and its offset.
+
+    ``dust_deep`` is deliberately unused here. The block's rim was removed
+    because a mid-grey outline at this scale reads as a drawn shape, and the
+    landing puff's rim is kept only because it sits on the ground against
+    tiles. A trail is a light mark on open air, so it carries a lit lobe and
+    no rim.
+    """
+    HIGHLIGHT_LIFT = 0.4
+    """How far the lit lobe is lifted toward white off the body colour.
+
+    Higher than the landing puff's lift, for the same reason: two tones is
+    the whole of the separation here, so the gap between them has to be wide
+    enough to survive nearest-neighbour magnification.
+    """
+    SQUASH = 0.55
+    """How flat the first step is, as a share of the puff's own height.
+
+    Dust leaves the ground flat and rounds off as it rises, and the trail is
+    laid on the floor rather than in the air.
+    """
+    TINT = (-0.12, 0.18)
+    """The per-puff body shift, so a ribbon is not a row of identical clouds.
+
+    Narrower and brighter than the landing fan's: the trail is a smaller set
+    of marks read faster, and a wide tone range across it reads as noise
+    rather than as variety.
+    """
+
+
 class FxDecal:
     """The mark a hard landing leaves on the floor."""
 
