@@ -484,13 +484,6 @@ class DashDust:
     tiles. A trail is a light mark on open air, so it carries a lit lobe and
     no rim.
     """
-    HIGHLIGHT_LIFT = 0.4
-    """How far the lit lobe is lifted toward white off the body colour.
-
-    Higher than the landing puff's lift, for the same reason: two tones is
-    the whole of the separation here, so the gap between them has to be wide
-    enough to survive nearest-neighbour magnification.
-    """
     SQUASH = 0.55
     """How flat the first step is, as a share of the puff's own height.
 
@@ -503,6 +496,21 @@ class DashDust:
     Narrower and brighter than the landing fan's: the trail is a smaller set
     of marks read faster, and a wide tone range across it reads as noise
     rather than as variety.
+    """
+    TTL_STAGGER = (0.75, 1.0)
+    """Per-puff life, as a share of the emission's ``BURST_TTL`` or
+    ``TICK_TTL``, spread by how far out the puff sits.
+
+    The outer puffs of a plume are thrown the furthest sideways, so they are
+    the ones that should last. Without the spread the emission dies on a
+    single frame and the trail blinks.
+    """
+    RADIUS_JITTER = 1.5
+    """Per-puff radius, so a burst is not five identical clouds.
+
+    Small on purpose: the burst and the ticks already differ by most of a
+    factor of two, and jitter on top of that reads as noise rather than as
+    a plume with a shape.
     """
 
 

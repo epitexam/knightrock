@@ -43,6 +43,7 @@ or steps through a ladder it built alongside, which is what
 from __future__ import annotations
 
 from src.core.fx.particles import (
+    DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
     OrbitParticle,
@@ -50,6 +51,8 @@ from src.core.fx.particles import (
     ShieldArcParticle,
     SweatParticle,
     clear_frame_cache,
+    dash_frames,
+    dash_tint,
     puff_frames,
     vortex_frames,
 )
@@ -57,6 +60,7 @@ from src.core.fx.spawners import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     iter_landing_entities,
+    spawn_dash_dust,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_guard_arc,
@@ -69,6 +73,7 @@ from src.core.fx.spawners import (
 __all__ = [
     "FX_FAMILY_BUDGETS",
     "MAX_FX_SPRITES",
+    "DashDustParticle",
     "DizzyVortexParticle",
     "DustParticle",
     "ShatterArcParticle",
@@ -76,8 +81,11 @@ __all__ = [
     "OrbitParticle",
     "SweatParticle",
     "clear_frame_cache",
+    "dash_frames",
+    "dash_tint",
     "iter_landing_entities",
     "puff_frames",
+    "spawn_dash_dust",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
     "spawn_guard_arc",

@@ -23,6 +23,7 @@ from pygame.math import Vector2
 
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.particles import (
+    DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
     ImpactDecalParticle,
@@ -30,9 +31,10 @@ from src.core.fx.particles import (
     ShatterArcParticle,
     ShieldArcParticle,
     SweatParticle,
+    dash_tint,
     puff_tint,
 )
-from src.core.settings import Dust, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import DashDust, Dust, FxDecal, FxDizzy, FxGuard, Sweat
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one
@@ -44,6 +46,7 @@ one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "landing_dust": 16,
+    "dash_dust": 12,
     "dizzy_star": 8,
     "dizzy_vortex": 8,
     "impact_decal": 8,
@@ -188,6 +191,78 @@ def spawn_impact_decal(
     )
     fx_group.add(decal)
     return decal
+
+
+def _dash_side(entity: Any) -> float:
+    """Which way the fighter is travelling, as +1 or -1.
+
+    The sign of the velocity rather than the facing, because a dash's
+    direction is resolved in three steps -- the move axis captured when the
+    button went down, then the live input, then the facing -- and only the
+    velocity is the answer to all three. The facing is the fallback for an
+    entity that has a dash state and no velocity to read, which is what a
+    test double is.
+
+    At 1100 px/s the sign is not a close call, so the only case that reaches
+    the fallback is a fighter that is not moving.
+    """
+    speed = float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0)
+    if abs(speed) > 1.0:
+        return 1.0 if speed > 0.0 else -1.0
+    return facing_side(entity)
+
+
+def spawn_dash_dust(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    burst: bool = False,
+) -> list[DashDustParticle]:
+    """Throw dust out of the trailing edge of a dashing fighter.
+
+    ``burst`` is the dash's first emission -- the shove off the floor, wider,
+    longer-lived and thrown harder. The ticks that follow are smaller and
+    exist to fill in the ribbon between it and the fighter.
+
+    Everything is thrown against the direction of travel. That is the whole
+    effect: dust thrown forwards, or not thrown at all, stays under the
+    fighter and reads as dust he is standing in rather than as the movement
+    that displaced it.
+
+    The puffs are laid at the body's trailing edge and fan sideways, so the
+    burst is a plume rising off a floor. Their lives are staggered by how far
+    out each one sits, for the reason the landing fan's are: a fan that shares
+    one TTL dies on one frame and reads as a blink.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = DashDust.BURST_COUNT if burst else DashDust.TICK_COUNT
+    if count <= 0 or not _has_room(fx_group, "dash_dust", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    base_ttl = DashDust.BURST_TTL if burst else DashDust.TICK_TTL
+    base_radius = DashDust.BURST_RADIUS if burst else DashDust.TICK_RADIUS
+    low, high = DashDust.TTL_STAGGER
+    anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
+    puffs: list[DashDustParticle] = []
+    for index in range(count):
+        lateral = (index - (count - 1) / 2.0) / max(1.0, (count - 1) / 2.0)
+        puff = DashDustParticle(
+            (anchor, hitbox.bottom - 2.0),
+            (
+                -side * DashDust.THROW
+                + lateral * DashDust.SPREAD
+                + rng.uniform(-DashDust.SPREAD_JITTER, DashDust.SPREAD_JITTER),
+                -abs(rng.uniform(0.0, DashDust.RISE_JITTER)),
+            ),
+            ttl=base_ttl * (low + (high - low) * abs(lateral)),
+            radius=base_radius + rng.uniform(0.0, DashDust.RADIUS_JITTER),
+            tint=dash_tint(index, count),
+        )
+        fx_group.add(puff)
+        puffs.append(puff)
+    return puffs
 
 
 def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:

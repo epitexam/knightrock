@@ -37,7 +37,7 @@ from src.core.fx.draw import (
     star_shape,
     streak_points,
 )
-from src.core.settings import Dust, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import DashDust, Dust, FxDecal, FxDizzy, FxGuard, Sweat
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -141,6 +141,62 @@ class DustParticle(FxParticle):
     def _integrate(self, delta_time: float) -> None:
         super()._integrate(delta_time)
         self.image = self.ladder[spread_step(self.life, len(self.ladder), Dust.PUFF_STEP_OPENS)]
+
+
+class DashDustParticle(FxParticle):
+    family: ClassVar[str] = "dash_dust"
+
+    """A cloud of dust a dash leaves behind it.
+
+    The dash is the fastest thing in the game -- 1100 px/s for 0.08s -- and
+    until now the only thing marking it was the renderer's afterimages, which
+    photograph the fighter and draw nothing beside it. Nothing in the plane
+    said the fighter had displaced anything.
+
+    So this is the mark the dash was missing, and it is deliberately one
+    thing. The dash once had five systems on the same 80ms event and the frame
+    they produced was a white cloud under a stretched rectangle with a hoop
+    around it; a trail and nothing else is the part of that worth keeping.
+
+    Drawn without an ink rim, in two tones. The block's ring gave up its rim
+    for the same reason this does: a mid-grey outline at one pixel per world
+    unit turns a mark into a drawn shape with nothing light about it, and a
+    single flat tone is a blob. So the separation is carried by a lit lobe set
+    into the cloud, the way the block carries it on the side that was struck.
+
+    Animates by stepping a ladder shared with every puff of the same size and
+    tone, for the same reason the landing dust does and for the same cost: a
+    dash lays a ribbon of these at once, so they have to be references into a
+    table rather than surfaces allocated on the tick.
+    """
+
+    gravity: ClassVar[float] = DashDust.RISE
+    drag: ClassVar[float] = DashDust.DRAG
+    fade_in: ClassVar[float] = DashDust.FADE_IN
+    behind: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        ttl: float = DashDust.TICK_TTL,
+        radius: float = DashDust.TICK_RADIUS,
+        tint: float = 0.0,
+    ) -> None:
+        self.radius = float(radius)
+        self.tint = float(tint)
+        self.ladder = dash_frames(self.radius, self.tint)
+        super().__init__(pos, ttl)
+        self.velocity = Vector2(velocity)
+        self.image = self.ladder[0]
+        self.rect = self.image.get_frect(center=self.pos)
+
+    def _paint(self) -> pygame.Surface:
+        return self.ladder[0]
+
+    def _integrate(self, delta_time: float) -> None:
+        super()._integrate(delta_time)
+        self.image = self.ladder[spread_step(self.life, len(self.ladder), DashDust.STEP_OPENS)]
 
 
 class OrbitParticle(FxParticle):
@@ -547,18 +603,30 @@ def _shade(color: Color, amount: float) -> Color:
 
 
 _puff_cache: dict[tuple[int, float], list[pygame.Surface]] = {}
+_dash_cache: dict[tuple[int, float], list[pygame.Surface]] = {}
 _vortex_cache: list[pygame.Surface] = []
 
 
-def _puff_bucket(radius: float) -> int:
-    """The ladder entry whose radius a puff of ``radius`` should use.
+def _nearest_bucket(radius: float, buckets: tuple[int, ...]) -> int:
+    """The entry of ``buckets`` whose radius is closest to ``radius``.
 
-    The nearest bucket, and never below the smallest: a puff asked for at less
-    than the table's floor still gets the floor, so the ladder has one row per
-    bucket rather than growing a new one per radius anyone asked for.
+    Nearest rather than rounded down, and never below the table's floor: a
+    puff asked for at less than the smallest still gets the smallest, so a
+    ladder has one row per bucket rather than growing a new one per radius
+    anyone asked for.
     """
     reach = max(0.0, float(radius))
-    return min(Dust.PUFF_BUCKETS, key=lambda bucket: abs(bucket - reach))
+    return min(buckets, key=lambda bucket: abs(bucket - reach))
+
+
+def _puff_bucket(radius: float) -> int:
+    """The landing ladder entry whose radius a puff of ``radius`` should use."""
+    return _nearest_bucket(radius, Dust.PUFF_BUCKETS)
+
+
+def _dash_bucket(radius: float) -> int:
+    """The trail ladder entry whose radius a puff of ``radius`` should use."""
+    return _nearest_bucket(radius, DashDust.BUCKETS)
 
 
 def _puff_step(radius: float, step: int, tint: float) -> pygame.Surface:
@@ -649,6 +717,80 @@ def puff_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
     return ladder
 
 
+def _dash_step(radius: float, step: int, tint: float) -> pygame.Surface:
+    """One step of the trail: the cloud at its size for this step.
+
+    The landing puff's step with the ink pass dropped, and its lit lobe taken
+    from the palette instead of lifted off the body. The lobes are the same
+    union and the first step is the same flat, both for the reason they are on
+    the landing: a disc reads as a ball, and dust leaves the ground flat and
+    rounds off as it rises.
+
+    What is different is what separates the cloud from the background. The
+    landing puff answers that with a rim, which is right for a mark sitting on
+    tiles and wrong for one hanging on open air. This answers it with a second
+    tone drawn from the palette, so the gap between the two is a designed
+    number rather than the product of a lift applied to a lift.
+    """
+    opened = 1.0 + DashDust.GROWTH * step
+    reach = radius * opened
+    body = _shade(FXColors.dust, tint)
+    margin = max(1.0, max(abs(x) + share for x, _, share in DashDust.LOBES)) * radius * opened
+    span = 2 * (snap(reach + margin) + 2)
+    surface = pygame.Surface((span, span), pygame.SRCALPHA)
+    middle = span / 2.0
+    squash = 1.0 - (1.0 - DashDust.SQUASH) * max(0.0, 1.0 - step)
+    lobes = tuple(
+        (offset_x * reach, offset_y * reach * squash, share * reach)
+        for offset_x, offset_y, share in DashDust.LOBES
+    )
+    lobe_shape((middle, middle), lobes)(surface, body, 0)
+    disc(
+        surface,
+        _shade(FXColors.dust_lit, tint),
+        (middle - reach * DashDust.HIGHLIGHT, middle - reach * DashDust.HIGHLIGHT * squash),
+        max(1.0, reach * DashDust.HIGHLIGHT),
+    )
+    return surface
+
+
+def dash_tint(index: int, count: int) -> float:
+    """The body tone the trail puff at ``index`` of ``count`` is drawn in.
+
+    Spread across ``DashDust.TINT`` by the emission's own length rather than
+    against a fixed palette. The burst and the ticks are different lengths, so
+    a fixed row would draw a two-puff tick as two adjacent tones -- two
+    near-identical clouds -- and leave the top of the range unused on the
+    burst that is the one mark the whole dash is read from.
+    """
+    low, high = DashDust.TINT
+    if count < 2:
+        return low
+    return low + (high - low) * index / (count - 1)
+
+
+def dash_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
+    """The shared billow of every trail puff of about ``radius``, in one tone.
+
+    The landing ladder's contract, and the reason for it applies twice over
+    here. A dash lays puffs on a cadence rather than in a single fan, so there
+    are more of them alive at once, and a continuous radius would mean a
+    surface per particle -- exactly the allocation ``notes/refacto.md``
+    flags as the plane's main remaining cost. Keyed on the discrete radii in
+    ``DashDust.BUCKETS`` and the discrete tones in ``DashDust.TINT``, and
+    built once per session.
+
+    A display format change invalidates the cache along with everything else.
+    """
+    key = (_dash_bucket(radius), round(tint, 3))
+    cached = _dash_cache.get(key)
+    if cached is not None:
+        return cached
+    ladder = [_dash_step(key[0], step, tint) for step in range(DashDust.STEPS)]
+    _dash_cache[key] = ladder
+    return ladder
+
+
 def vortex_frames() -> list[pygame.Surface]:
     """The shared rotation steps of the dizzy swirl, built once per session.
 
@@ -701,4 +843,5 @@ def clear_frame_cache() -> None:
     """
     global _vortex_cache
     _puff_cache.clear()
+    _dash_cache.clear()
     _vortex_cache = []
