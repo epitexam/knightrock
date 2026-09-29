@@ -203,9 +203,7 @@ def test_a_dash_trail_does_not_paint_a_new_surface_per_puff() -> None:
 def test_two_trail_puffs_of_one_size_and_tone_share_their_ladder() -> None:
     """The share is by value, so the burst and the ticks that match it hold one set."""
     clear_frame_cache()
-    burst = DashDustParticle(
-        (0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS, tint=0.0
-    )
+    burst = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS, tint=0.0)
     tick = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.TICK_RADIUS, tint=0.0)
 
     assert burst.ladder is not tick.ladder, "two sizes, two ladders"

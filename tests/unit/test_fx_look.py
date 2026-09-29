@@ -253,7 +253,7 @@ def test_the_trails_lit_lobe_reads_as_light_rather_than_as_a_shade() -> None:
     separation is the gap between the two tones, and at one pixel per world
     unit a gap that narrow is two greys that read as one.
     """
-    gap = sum(l - b for b, l in zip(FXColors.dust, FXColors.dust_lit, strict=True))
+    gap = sum(light - body for body, light in zip(FXColors.dust, FXColors.dust_lit, strict=True))
     assert gap > 80, f"a lit lobe with no rim behind it has to be a real step: {gap}"
 
 
@@ -276,12 +276,12 @@ def test_the_dash_trail_is_thrown_backwards() -> None:
     assert right and left
     assert all(puff.velocity.x < 0.0 for puff in right), "a dash to the right throws left"
     assert all(puff.velocity.x > 0.0 for puff in left), "and the other way for a dash left"
-    assert all(
-        puff.rect.centerx < dashing_right.hitbox.centerx for puff in right
-    ), "and the burst is laid behind the fighter, not under him"
-    assert all(
-        puff.rect.centerx > dashing_left.hitbox.centerx for puff in left
-    ), "behind a fighter dashing the other way too"
+    assert all(puff.rect.centerx < dashing_right.hitbox.centerx for puff in right), (
+        "and the burst is laid behind the fighter, not under him"
+    )
+    assert all(puff.rect.centerx > dashing_left.hitbox.centerx for puff in left), (
+        "behind a fighter dashing the other way too"
+    )
 
 
 def test_the_dash_trail_follows_the_velocity_and_not_the_facing() -> None:
