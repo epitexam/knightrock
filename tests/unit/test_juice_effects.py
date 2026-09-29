@@ -262,6 +262,19 @@ def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     assert len(groups.fx_sprites) == Dust.COUNT + 1
 
 
+def _dasher(grounded: bool = True) -> object:
+    """A fighter mid-dash, standing on a floor unless asked otherwise.
+
+    Ground is not a detail here: the trail is emitted only over a floor, and
+    a bare ``Entity`` is airborne by default, so a dash test that forgets to
+    ask for ground would be testing that a dash draws nothing.
+    """
+    entity = make_entity(pos=(200.0, 100.0))
+    entity.state_machine = SimpleNamespace(current_state_name="dash")
+    entity.on_surface["floor"] = grounded
+    return entity
+
+
 def test_a_dash_trails_dust_and_nothing_else() -> None:
     """The dash carries one mark, and this holds it to one.
 
@@ -281,9 +294,7 @@ def test_a_dash_trails_dust_and_nothing_else() -> None:
     much as the shove that started it.
     """
     groups = SpriteGroups()
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(_dasher())
     system = PhysicsSystem(groups)
 
     ticks = int(Physics.DASH_DURATION * 60)
@@ -309,9 +320,7 @@ def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
     rather than a shove followed by a ribbon.
     """
     groups = SpriteGroups()
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(_dasher())
     system = PhysicsSystem(groups)
 
     for _ in range(3):
@@ -330,8 +339,7 @@ def test_a_second_dash_bursts_again() -> None:
     impact.
     """
     groups = SpriteGroups()
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    dasher = _dasher()
     groups.entity_sprites.add(dasher)
     system = PhysicsSystem(groups)
 
@@ -353,9 +361,7 @@ def test_the_dash_trail_stops_at_the_family_budget() -> None:
     reads as the dash running out of dust, which is not a thing.
     """
     groups = SpriteGroups()
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    groups.entity_sprites.add(dasher)
+    groups.entity_sprites.add(_dasher())
     cap = FX_FAMILY_BUDGETS["dash_dust"]
     for _ in range(cap - 1):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
@@ -364,6 +370,78 @@ def test_the_dash_trail_stops_at_the_family_budget() -> None:
     system._spawn_impact_fx(1 / 60)
 
     assert len(groups.fx_sprites) == cap - 1, "a burst that does not fit is not half-thrown"
+
+
+def test_a_dash_in_mid_air_trails_nothing() -> None:
+    """Dust needs a floor to come off, and there is a very common dash without one.
+
+    The dash is available in the air, so this is the majority of the dashes
+    a player makes in a platformer and it was the first thing that looked
+    wrong. A plume hanging at the height of a jump reads as the fighter
+    smearing the screen, not as ground he pushed away -- and it is drawn
+    behind him, so it sits against the sky where nothing else in the plane
+    does, at the exact moment the eye is busiest.
+
+    Nothing replaces it. A dash in the air displaces nothing there is dust
+    of, and the effect is only worth having because it means a floor.
+    """
+    groups = SpriteGroups()
+    groups.entity_sprites.add(_dasher(grounded=False))
+    system = PhysicsSystem(groups)
+
+    for _ in range(int(Physics.DASH_DURATION * 60)):
+        system._spawn_impact_fx(1 / 60)
+
+    assert len(groups.fx_sprites) == 0
+
+
+def test_a_dash_that_leaves_the_ground_stops_trail_but_keeps_its_dust() -> None:
+    """A dash that runs off a ledge thins out, it does not vanish.
+
+    What is already in the world is a mark the player has already been
+    shown, and yanking it is worse than the air trail was. So the emission
+    stops and the puffs carry on evaporating where they were laid.
+    """
+    groups = SpriteGroups()
+    dasher = _dasher()
+    groups.entity_sprites.add(dasher)
+    system = PhysicsSystem(groups)
+
+    system._spawn_impact_fx(1 / 60)
+    laid = len(groups.fx_sprites)
+    assert laid
+
+    dasher.on_surface["floor"] = False
+    for _ in range(int(Physics.DASH_DURATION * 60)):
+        system._spawn_impact_fx(1 / 60)
+
+    assert len(groups.fx_sprites) == laid, "no more puffs once there is no floor"
+
+
+def test_a_dash_that_begins_airborne_spends_its_burst_on_landing() -> None:
+    """The shove belongs to the start of the dash, and this one did not have a floor.
+
+    So it is spent without being thrown, and the landing that follows brings
+    its own dust from the fall speed the landing fan already reads. The
+    alternative -- holding the burst until the fighter happens to be over a
+    floor -- puts a second plume on a landing that already has a fan and a
+    ground mark, and puts it there a moment late.
+    """
+    groups = SpriteGroups()
+    dasher = _dasher(grounded=False)
+    groups.entity_sprites.add(dasher)
+    system = PhysicsSystem(groups)
+
+    for _ in range(int(Physics.DASH_DURATION * 60)):
+        system._spawn_impact_fx(1 / 60)
+    assert len(groups.fx_sprites) == 0
+
+    dasher.on_surface["floor"] = True
+    for _ in range(int(Physics.DASH_DURATION * 60)):
+        system._spawn_impact_fx(1 / 60)
+
+    radii = [sprite.radius for sprite in groups.fx_sprites]
+    assert max(radii) < DashDust.BURST_RADIUS, "and the burst was not held back for it"
 
 
 def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
@@ -375,8 +453,7 @@ def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
     player is reading.
     """
     groups = SpriteGroups()
-    dasher = make_entity(pos=(200.0, 100.0))
-    dasher.state_machine = SimpleNamespace(current_state_name="dash")
+    dasher = _dasher()
     dasher.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(dasher)
     for _ in range(FX_FAMILY_BUDGETS["dash_dust"]):

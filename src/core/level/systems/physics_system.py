@@ -43,6 +43,12 @@ def _is_dashing(entity: object) -> bool:
     return getattr(state_machine, "current_state_name", None) == "dash"
 
 
+def _is_grounded(entity: object) -> bool:
+    """Whether the entity is standing on a floor."""
+    surfaces = getattr(entity, "on_surface", None) or {}
+    return bool(surfaces.get("floor", False))
+
+
 class PhysicsSystem:
     """Carry platform riders, then run the entity and effect update passes.
 
@@ -75,10 +81,11 @@ class PhysicsSystem:
 
         The puffs join ``fx_sprites`` (no collision, never snapshotted):
         landing fans use the fall speed ``Entity`` recorded on the landing
-        tick, a dashing entity trails dust off its trailing edge, a fully
-        drained dasher sweats droplets every ``Sweat.SPAWN_EVERY`` seconds
-        while its penalty runs, and a dizzy entity spawns purple vortex swirls
-        every ``FxDizzy.VORTEX_SPAWN_EVERY`` seconds.
+        tick, a dashing entity trails dust off its trailing edge while it has
+        a floor under it, a fully drained dasher sweats droplets every
+        ``Sweat.SPAWN_EVERY`` seconds while its penalty runs, and a dizzy
+        entity spawns purple vortex swirls every
+        ``FxDizzy.VORTEX_SPAWN_EVERY`` seconds.
 
         The dash carries one mark, not five. It once had a backward fan of
         dust, a ground ring, a speed line every tick, wind lines on a cadence
@@ -162,24 +169,32 @@ class PhysicsSystem:
         absence is the signal, and ``_cleanup_timers`` removes it again the
         moment the entity leaves the dash state. That is why the trail costs
         the simulation nothing: no new entity attribute, and no reader of
-        ``PlayerDashState._dash_started_this_frame``, which the gameplay loop
-        already owns for the dash's camera shake.
+        ``PlayerDashState._dash_started_this_frame``, which the gameplay
+        loop already owns for the dash's camera shake.
 
         A dash is 0.08s long, which at 60Hz is five ticks and one burst -- so
         the cadence is what draws the ribbon and the burst is the shove at the
         front of it.
+
+        Only on the floor. Dust needs something to come off, and a trail
+        hanging in open air at the height of a mid-dash jump reads as the
+        fighter smearing the screen rather than as ground he pushed away --
+        and it is drawn over every one of those air dashes, which is where
+        the eye finds it first.
+
+        The burst belongs to the start of the dash, so a dash that began
+        airborne spends it without spending the trail's only shove: the tick
+        still arms the timer, and the landing that follows brings its own
+        dust through the same fall speed the landing fan already reads.
         """
         entity_id = id(entity)
-        timer = self._dash_timers.get(entity_id)
-        if timer is None:
-            spawn_dash_dust(self.groups.fx_sprites, entity, burst=True)
-            self._dash_timers[entity_id] = DashDust.SPAWN_EVERY
-            return
-        timer -= delta_time
-        if timer <= 0.0:
-            spawn_dash_dust(self.groups.fx_sprites, entity)
-            timer = DashDust.SPAWN_EVERY
-        self._dash_timers[entity_id] = timer
+        timer = self._dash_timers.get(entity_id, DashDust.SPAWN_EVERY)
+        first = entity_id not in self._dash_timers
+        if not first:
+            timer -= delta_time
+        if (first or timer <= 0.0) and _is_grounded(entity):
+            spawn_dash_dust(self.groups.fx_sprites, entity, burst=first)
+        self._dash_timers[entity_id] = DashDust.SPAWN_EVERY if timer <= 0.0 else timer
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:
         """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
