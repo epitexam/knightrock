@@ -20,6 +20,15 @@ The look, in one sentence: whole pixels, dark ink rims, and alpha that moves
 in discrete steps, because the game is magnified with nearest-neighbour
 scaling and a soft particle turns to mush at that magnification.
 
+The rim, though, is a rule with an exception rather than the rule itself. The
+block's ring and the dash trail both dropped theirs: a mid-grey outline at
+one pixel per world unit turns a mark into a drawn shape with nothing light
+about it, and both of those are read as light -- a shield taking a hit, and
+the dust a dash throws. The landing dust keeps its rim because it sits on the
+ground against tiles, where the edge is the thing doing the work. Where the
+rim goes, a second tone takes over: a brighter arc on the struck side of the
+ring, a lit lobe set into the cloud.
+
 Which particles rebuild their surface
 -------------------------------------
 A particle that redraws its pixels every frame pays for a drawing, not for an
@@ -33,7 +42,10 @@ under ``assets/graphics``, a tree that is gitignored, so the look already
 differed from one machine to the next and ``radius`` did nothing at all. It is
 painted now, like the rest of the plane, and it opens over its life from a
 shared ladder keyed on size and tone, so a fan of six is six references into
-a table rather than six surfaces allocated on the landing tick.
+a table rather than six surfaces allocated on the landing tick. The dash trail
+is painted the same way and shares the reasoning: a dash lays puffs on a
+cadence rather than in one fan, so there are more of them alive at once and
+the ladder binds harder, not softer.
 
 Everything here builds its surface at construction and then only moves, fades
 or steps through a ladder it built alongside, which is what
