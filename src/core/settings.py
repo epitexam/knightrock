@@ -402,8 +402,8 @@ class DashDust:
     rather than as the movement that threw it. The burst lingers longest
     because it is the biggest and was thrown hardest.
     """
-    BURST_RADIUS = 9.0
-    TICK_RADIUS = 5.5
+    BURST_RADIUS = 12.0
+    TICK_RADIUS = 6.5
     """Puff radius, as shares of the painted cloud.
 
     The burst is roughly twice a landing puff against a fighter of the same
@@ -411,6 +411,10 @@ class DashDust:
     to carry the whole movement. The ticks are smaller than the burst and
     comparable to a landing puff, so they extend the ribbon without competing
     with the shove that started it.
+
+    A burst below about ten does not clear the fighter: the trail is painted
+    under the moving plane, and a cloud narrower than the body it is behind
+    is spent before the fighter has moved past it.
     """
     FADE_IN = 0.04
     """A fifth of the block's, because the trail is late if it eases in.
@@ -418,25 +422,56 @@ class DashDust:
     The fighter crosses most of the ribbon in the first 0.08s; a slow ramp
     means the dust is still fading up where he already isn't.
     """
-    RISE = -40.0
-    DRAG = 2.4
-    """The drift of a puff once it is off the floor.
+    GRAVITY = 120.0
+    """Downward, so a kicked puff rises and comes back down.
 
-    Lighter rise and less drag than landing dust, so a trail puff coasts
-    rather than climbing: the fighter is the thing moving here, and dust he
-    is leaving behind should stay where he left it.
+    The landing puff gets away with an upward ``RISE`` used as its gravity,
+    which accelerates it off the floor for its whole life. A trail cannot: it
+    is a mark that has to stay along the ground the fighter left, and dust
+    that is still climbing half a second later reads as smoke rising off the
+    spot rather than as the trail of someone who went past it.
+    """
+    KICK = (15.0, 90.0)
+    """The height each burst puff is kicked to, as a range rather than a cap.
+
+    A range, so the burst stacks into a plume with lobes at different heights
+    instead of a row of clouds all leaving the floor at the same speed. The
+    top of the range is well past what ``GRAVITY`` recovers in the puff's
+    life, so the tallest of them is still climbing when it dies.
+    """
+    TICK_KICK = 25.0
+    """The height the ribbon's puffs are kicked to, uniformly.
+
+    Low on purpose. A tick is the dust the fighter is leaving at his heels,
+    so it barely leaves the ground -- and uniformly, because the ticks are
+    laid one after another along a line, where a height spread reads as a
+    mess rather than as a ribbon.
     """
     THROW = 150.0
     """How hard the burst is shoved backwards, against the dash direction.
 
-    The only thing that makes the trail read as trailing. Forward, or
-    without a throw, the cloud stays under the fighter and looks like dust he
-    is standing in.
+    The only thing that makes the trail read as trailing. Forward, or without
+    a throw, the cloud stays under the fighter and looks like dust he is
+    standing in.
     """
-    SPREAD = 45.0
-    """Sideways fan, so the burst is a plume and not a single ball."""
+    TICK_THROW = 20.0
+    """How hard the puffs that extend the ribbon are shoved.
+
+    A seventh of the burst's, and the difference between a trail and a clump.
+    A tick is laid where the fighter just was and left there; thrown as hard
+    as the burst it is dragged back into the cloud that started it, and
+    instead of a ribbon along 88px of path there is one mass at the start of
+    it.
+    """
+    SPREAD = 30.0
+    """Sideways fan of the burst, so it is a plume and not a line of clouds.
+
+    Narrower than the landing fan's, because the burst's puffs are twice the
+    size: spread five of them as far as a fan of six small ones and the
+    members of the plume are far enough apart to read as five clouds in a row
+    rather than as one ragged mass.
+    """
     SPREAD_JITTER = 30.0
-    RISE_JITTER = 25.0
     BACK_OFFSET = 0.4
     """Where along the body the trail is laid, as a fraction of its width.
 
@@ -452,7 +487,7 @@ class DashDust:
     Discrete for the reason the landing ladder is: a continuous radius means
     a surface per particle, and a dash lays a ribbon of them.
     """
-    GROWTH = 0.3
+    GROWTH = 0.35
     """How much further the cloud reaches at each step, as a share of the
     radius it started at. The last step is drawn at ``1 + growth * (steps-1)``.
 
@@ -475,8 +510,12 @@ class DashDust:
     the base of the cloud. The trail is a plume off a floor rather than a
     cloud around a body, so the weight belongs at the bottom.
     """
-    HIGHLIGHT = 0.3
+    HIGHLIGHT = 0.26
     """The lit lobe, as a share of the radius, and its offset.
+
+    Below the landing puff's, because the tone behind it is much further away
+    and a patch the same size at this contrast reads as a pearl dropped into
+    the cloud rather than as the side of it that catches the light.
 
     ``dust_deep`` is deliberately unused here. The block's rim was removed
     because a mid-grey outline at this scale reads as a drawn shape, and the

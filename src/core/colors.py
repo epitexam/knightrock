@@ -94,13 +94,18 @@ class FXColors:
     ink_warm: ClassVar[Color] = (58, 24, 16)
 
     dust: ClassVar[Color] = (198, 190, 178)
-    dust_lit: ClassVar[Color] = (236, 231, 221)
+    dust_lit: ClassVar[Color] = (244, 240, 230)
     """The lit lobe of an unrimmed dust cloud.
 
     The plane's third dust tone, and the one the dash trail is built on. It
     sits in the same warm grey family as ``dust`` rather than being pulled
     toward white, so a lit lobe reads as the same material catching light
     instead of as a highlight belonging to a different effect.
+
+    Far enough above ``dust`` to be a step rather than a shade. The landing
+    puff can separate its lit lobe with an 18 unit lift because it has a rim
+    under it; the trail has no rim, so the gap between the two tones is the
+    whole of its separation and a narrow one reads as one grey.
     """
     dust_deep: ClassVar[Color] = (104, 96, 88)
     """The puff's rim.

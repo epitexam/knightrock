@@ -349,6 +349,50 @@ def test_the_dash_trail_evaporates_behind_the_fighter() -> None:
     assert min(puff.ttl for puff in puffs) > 0.3, "the trail outlives the dash"
 
 
+def test_the_trail_puffs_are_laid_along_the_path_and_not_dragged_back() -> None:
+    """The ticks are dust left lying down, not dust still being thrown.
+
+    Throwing the ticks as hard as the burst is the difference between a
+    ribbon along 88px of path and one mass at the start of it: every tick is
+    dragged back into the cloud that threw it, and the trail the player is
+    meant to see the movement leave behind collapses into a single blob
+    sitting on the frame the dash happened.
+    """
+    burst = spawn_dash_dust(Group(), _entity(), burst=True)
+    tick = spawn_dash_dust(Group(), _entity())
+
+    assert DashDust.TICK_THROW < DashDust.THROW / 4, "a tick is laid, not thrown"
+    assert max(puff.velocity.x for puff in tick) > -DashDust.THROW, (
+        "and no tick travels at the burst's speed"
+    )
+    assert max(abs(puff.velocity.x) for puff in burst) > 2 * max(
+        abs(puff.velocity.x) for puff in tick
+    )
+
+
+def test_the_dash_trail_settles_instead_of_climbing_off_the_floor() -> None:
+    """The trail is a mark on the ground the fighter left, not smoke off the spot.
+
+    The landing puff's gravity is a negative ``RISE``, which accelerates it
+    off the floor for its whole life. A trail cannot work that way: still
+    climbing half a second later, the dust reads as a plume hanging where the
+    dash began rather than as the path someone took across it.
+
+    What "settles" means here is bounded rather than returning -- drag stops
+    the velocity long before gravity would bring it down, so the puff rises,
+    turns over and holds. What matters is that the rise has a ceiling.
+    """
+    assert DashDust.GRAVITY > 0.0, "a kicked puff is not propelled upward forever"
+    puff = DashDustParticle((0.0, 0.0), (0.0, -90.0), radius=DashDust.BURST_RADIUS)
+
+    ground = puff.pos.y
+    for _ in range(int(puff.max_ttl * 60)):
+        puff.update(1 / 60)
+
+    risen = ground - puff.pos.y
+    assert 0.0 < risen < 40.0, f"a puff that rises {risen}px is a plume, not a trail"
+
+
 def test_the_dash_trail_fades_up_faster_than_the_block_ring() -> None:
     """The fighter crosses most of the ribbon before a slow ramp would show it.
 

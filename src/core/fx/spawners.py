@@ -46,7 +46,7 @@ one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "landing_dust": 16,
-    "dash_dust": 12,
+    "dash_dust": 16,
     "dizzy_star": 8,
     "dizzy_vortex": 8,
     "impact_decal": 8,
@@ -65,6 +65,12 @@ effect filling it.
 Every family a particle declares is in here; ``test_fx_invariants`` reads the
 source to keep it that way, because the key is a string and a typo would
 otherwise mean a particle spending from a budget that does not exist.
+
+``dash_dust`` is sized with the landing fan rather than with the cadenced
+effects because a dash is over in 0.08s: its burst and its ribbon are both
+spent inside a sixth of a second, so a tight cap would truncate the trail in
+the middle of the movement rather than defer it, which is the one thing a
+trail cannot do.
 """
 
 
@@ -223,15 +229,18 @@ def spawn_dash_dust(
     longer-lived and thrown harder. The ticks that follow are smaller and
     exist to fill in the ribbon between it and the fighter.
 
-    Everything is thrown against the direction of travel. That is the whole
-    effect: dust thrown forwards, or not thrown at all, stays under the
-    fighter and reads as dust he is standing in rather than as the movement
-    that displaced it.
+    Everything in the burst is thrown against the direction of travel, and
+    almost nothing in the ticks is. That asymmetry is the effect: the burst is
+    a shove off the floor, the ticks are the dust left lying along the path,
+    and a tick thrown as hard as the burst is dragged back into the cloud
+    that started it -- one mass at the start of the path instead of a ribbon
+    along all of it.
 
-    The puffs are laid at the body's trailing edge and fan sideways, so the
-    burst is a plume rising off a floor. Their lives are staggered by how far
-    out each one sits, for the reason the landing fan's are: a fan that shares
-    one TTL dies on one frame and reads as a blink.
+    The puffs are laid at the body's trailing edge and fan sideways, and the
+    burst's are kicked to a range of heights so it stacks into a plume. Their
+    lives are staggered by how far out each one sits, for the reason the
+    landing fan's are: a fan that shares one TTL dies on one frame and reads
+    as a blink.
     """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None:
@@ -243,6 +252,7 @@ def spawn_dash_dust(
     side = _dash_side(entity)
     base_ttl = DashDust.BURST_TTL if burst else DashDust.TICK_TTL
     base_radius = DashDust.BURST_RADIUS if burst else DashDust.TICK_RADIUS
+    throw = DashDust.THROW if burst else DashDust.TICK_THROW
     low, high = DashDust.TTL_STAGGER
     anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
     puffs: list[DashDustParticle] = []
@@ -251,10 +261,10 @@ def spawn_dash_dust(
         puff = DashDustParticle(
             (anchor, hitbox.bottom - 2.0),
             (
-                -side * DashDust.THROW
+                -side * throw
                 + lateral * DashDust.SPREAD
                 + rng.uniform(-DashDust.SPREAD_JITTER, DashDust.SPREAD_JITTER),
-                -abs(rng.uniform(0.0, DashDust.RISE_JITTER)),
+                -abs(rng.uniform(*DashDust.KICK) if burst else DashDust.TICK_KICK),
             ),
             ttl=base_ttl * (low + (high - low) * abs(lateral)),
             radius=base_radius + rng.uniform(0.0, DashDust.RADIUS_JITTER),

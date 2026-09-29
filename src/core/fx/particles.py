@@ -170,8 +170,8 @@ class DashDustParticle(FxParticle):
     table rather than surfaces allocated on the tick.
     """
 
-    gravity: ClassVar[float] = DashDust.RISE
-    drag: ClassVar[float] = DashDust.DRAG
+    gravity: ClassVar[float] = DashDust.GRAVITY
+    drag: ClassVar[float] = Dust.DRAG
     fade_in: ClassVar[float] = DashDust.FADE_IN
     behind: ClassVar[bool] = True
 
