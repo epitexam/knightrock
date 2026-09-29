@@ -20,18 +20,18 @@ from typing import ClassVar
 import pygame
 from pygame.math import Vector2
 
-from src.core.asset_library import shared_library
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.draw import (
     ALPHA_STEPS,
     disc,
     disc_shape,
     draw_arc_stroke,
-    draw_inked_polygon,
+    ellipse_ring,
     ink_shape,
     inked_polygon,
     life_alpha,
     life_level,
+    lobe_shape,
     snap,
     spread_step,
     star_shape,
@@ -101,12 +101,17 @@ class FxParticle(pygame.sprite.Sprite):
 class DustParticle(FxParticle):
     family: ClassVar[str] = "landing_dust"
 
-    """A fading puff of dust, kicked out of the feet.
+    """A puff of dust, kicked out of the feet and spreading as it dies.
 
-    With the shipped debris frames the puff cycles through them over its
-    life; without them, as on a bare checkout, it falls back to a plain disc.
-    Cached library frames are never mutated, so each puff scales its own
-    copies once, at construction.
+    The puff used to be a single disc that faded, which read as a ball being
+    switched off, and its size was ignored outright: the shipped debris frames
+    are a fixed 30px scaled by a constant, so a soft landing and a hard one
+    produced byte-identical pixels and only the velocity told them apart.
+
+    It is now a cloud of a few overlapping discs that opens over its life,
+    picked from a ladder shared by every puff of the same size. Six puffs on
+    a landing are six references into a table rather than six painted
+    surfaces, which is what keeps a fan affordable.
     """
 
     gravity: ClassVar[float] = Dust.RISE
@@ -120,43 +125,22 @@ class DustParticle(FxParticle):
         velocity: tuple[float, float] | Vector2,
         ttl: float = Dust.TTL,
         radius: float = Dust.PUFF_RADIUS,
-        frames: list[pygame.Surface] | None = None,
+        tint: float = 0.0,
     ) -> None:
         self.radius = float(radius)
-        self.frames: list[pygame.Surface] | None = None
-        if frames:
-            self.frames = [
-                pygame.transform.scale(
-                    frame,
-                    (
-                        max(1, int(frame.get_width() * Dust.FRAME_SCALE)),
-                        max(1, int(frame.get_height() * Dust.FRAME_SCALE)),
-                    ),
-                )
-                for frame in frames
-            ]
+        self.tint = float(tint)
+        self.ladder = puff_frames(self.radius, self.tint)
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
-        if self.frames:
-            self.image = self.frames[0].copy()
-            self.rect = self.image.get_frect(center=self.pos)
+        self.image = self.ladder[0]
+        self.rect = self.image.get_frect(center=self.pos)
 
     def _paint(self) -> pygame.Surface:
-        side = max(2, int(self.radius * 2.0))
-        surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        ink_shape(
-            surface,
-            disc_shape((side / 2.0, side / 2.0), side / 2.0 - 1.0),
-            FXColors.dust,
-            FXColors.dust_deep,
-            1,
-        )
-        return surface
+        return self.ladder[0]
 
     def _integrate(self, delta_time: float) -> None:
         super()._integrate(delta_time)
-        if self.frames:
-            self.image = self.frames[min(int(self.life * len(self.frames)), len(self.frames) - 1)]
+        self.image = self.ladder[spread_step(self.life, len(self.ladder), Dust.PUFF_STEP_OPENS)]
 
 
 class OrbitParticle(FxParticle):
@@ -252,10 +236,22 @@ class DizzyVortexParticle(FxParticle):
 class ImpactDecalParticle(FxParticle):
     family: ClassVar[str] = "impact_decal"
 
-    """A mark left on the ground where a hard landing happened.
+    """The mark a hard landing leaves on the ground.
 
     Still, short-lived, and behind the moving plane: the puffs say how hard
     the landing was, this says where.
+
+    It used to be three thick tongues at 0, 120 and 240 degrees, which came
+    out as a lopsided comma rather than a mark on a floor -- asymmetric
+    about a vertical that means nothing here, and five pixels thick against a
+    fighter forty wide. It is a flat ring now, opening outward over its first
+    moments: a squashed circle reads as the floor being struck, and it opens
+    the way a real mark does instead of sitting there at one size.
+
+    The ladder is built per spawn rather than shared, because it is scaled by
+    the fall speed and a landing is rare. Sharing it would mean snapping the
+    width to a bucket, and a decal whose width jumped between neighbouring
+    falls would say less than one that is smoothly wrong.
     """
 
     behind: ClassVar[bool] = True
@@ -268,28 +264,34 @@ class ImpactDecalParticle(FxParticle):
         width: float = FxDecal.RADIUS,
     ) -> None:
         self.width = float(width)
+        self.steps = [self._mark(step) for step in range(FxDecal.RING_STEPS)]
         super().__init__(pos, ttl)
+        self.image = self.steps[0]
+        self.rect = self.image.get_frect(center=self.pos)
+
+    def _mark(self, step: int) -> pygame.Surface:
+        """The mark at one moment of opening, ``step`` of ``RING_STEPS``."""
+        reach = self.width * (1.0 + FxDecal.RING_GROWTH * step)
+        # Radius plus the widest it gets, or the last ring is drawn off the
+        # edge of its own surface.
+        span = 2 * (snap(reach) + FxDecal.MARGIN)
+        surface = pygame.Surface((span, span), pygame.SRCALPHA)
+        middle = span / 2.0
+        ellipse_ring(
+            surface,
+            FXColors.decal,
+            (middle, middle),
+            reach,
+            reach * FxDecal.RING_SQUASH,
+            FxDecal.RING_THICKNESS - step,
+        )
+        return surface
 
     def _paint(self) -> pygame.Surface:
-        side = snap(self.width) * 2 + FxDecal.MARGIN
-        surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        middle = (side / 2.0, side / 2.0)
-        for heading, scale in FxDecal.LOBES:
-            draw_inked_polygon(
-                surface,
-                streak_points(
-                    (0, 0),
-                    self.width * scale,
-                    FxDecal.THICKNESS,
-                    heading,
-                    FxDecal.CURVE,
-                ),
-                FXColors.decal,
-                FXColors.decal_ink,
-                1,
-                at=middle,
-            )
-        return surface
+        return self.steps[0]
+
+    def _integrate(self, delta_time: float) -> None:
+        self.image = self.steps[spread_step(self.life, len(self.steps), FxDecal.RING_STEP_OPENS)]
 
 
 class ShieldArcParticle(FxParticle):
@@ -544,28 +546,107 @@ def _shade(color: Color, amount: float) -> Color:
     )
 
 
-_frames_cache: list[pygame.Surface] | None = None
-_frames_miss = False
+_puff_cache: dict[tuple[int, float], list[pygame.Surface]] = {}
 _vortex_cache: list[pygame.Surface] = []
 
 
-def particle_frames() -> list[pygame.Surface] | None:
-    """The shipped debris strip, or None on a bare checkout.
+def _puff_bucket(radius: float) -> int:
+    """The ladder entry whose radius a puff of ``radius`` should use.
 
-    Memoized, and so is the miss: the library caches converted frames, and a
-    checkout with no ``assets/`` tree would otherwise re-raise on every call.
+    The nearest bucket, and never below the smallest: a puff asked for at less
+    than the table's floor still gets the floor, so the ladder has one row per
+    bucket rather than growing a new one per radius anyone asked for.
     """
-    global _frames_cache, _frames_miss
-    if _frames_cache is not None:
-        return _frames_cache
-    if _frames_miss:
-        return None
-    try:
-        _frames_cache = shared_library().frames(Dust.FRAMES_DIR)
-        return _frames_cache
-    except FileNotFoundError:
-        _frames_miss = True
-        return None
+    reach = max(0.0, float(radius))
+    return min(Dust.PUFF_BUCKETS, key=lambda bucket: abs(bucket - reach))
+
+
+def _puff_step(radius: float, step: int, tint: float) -> pygame.Surface:
+    """One step of the billow: the cloud at its size for this step.
+
+    Drawn at the radius it has *become* rather than the one it started at, so
+    the ladder is the growth. The first step is squashed flat because that is
+    the shape dust has while it is still leaving the floor, and the squash
+    relaxes to nothing over the ladder.
+    """
+    opened = 1.0 + Dust.PUFF_GROWTH * step
+    reach = radius * opened
+    body = _shade(FXColors.dust, tint)
+    ink = _shade(FXColors.dust_deep, tint)
+    # The cloud's own reach, plus the rim, plus the lit lobe's offset: the
+    # surface is cut for the widest thing drawn on it, not for the nominal
+    # radius, or the satellites and the rim fall off the edge.
+    margin = max(1.0, max(abs(x) + share for x, _, share in Dust.PUFF_LOBES)) * radius * opened
+    span = 2 * (snap(reach + margin) + 2)
+    surface = pygame.Surface((span, span), pygame.SRCALPHA)
+    middle = span / 2.0
+    squash = 1.0 - (1.0 - Dust.PUFF_SQUASH) * max(0.0, 1.0 - step)
+    lobes = tuple(
+        (offset_x * reach, offset_y * reach * squash, share * reach)
+        for offset_x, offset_y, share in Dust.PUFF_LOBES
+    )
+    ink_shape(surface, lobe_shape((middle, middle), lobes), body, ink, 1)
+    # The lit side, set into the top-left of the cloud. A puff with no light
+    # on it is a hole in the background rather than a mass of dust.
+    disc(
+        surface,
+        _shade(body, Dust.PUFF_CORE_LIFT),
+        (middle - reach * Dust.PUFF_CORE, middle - reach * Dust.PUFF_CORE * squash),
+        max(1.0, reach * Dust.PUFF_CORE),
+    )
+    return surface
+
+
+def puff_tint(index: int) -> float:
+    """The body tone the puff at ``index`` in a fan is drawn in.
+
+    Cycled rather than drawn, because the ladder is keyed on tone as well as
+    radius: a fan of six clouds in six identical greys reads as a stamped
+    pattern, and a row of near-identical tones is what a spot-on-the-eye
+    randomiser would give. Indexed modulo the palette, so the caller can hand
+    it the puff index directly.
+    """
+    tints = _puff_tints()
+    return tints[index % len(tints)]
+
+
+def _puff_tints() -> tuple[float, ...]:
+    """The body shifts a fan is drawn from, evenly across ``Dust.PUFF_TINT``.
+
+    Discrete, one per slot in ``Dust.SIZE_PROFILE``, and keyed into the ladder
+    rather than blended at paint time, so a tone costs a cached row instead of
+    a surface per particle.
+    """
+    low, high = Dust.PUFF_TINT
+    count = max(1, len(Dust.SIZE_PROFILE))
+    if count < 2:
+        return (low,)
+    span = high - low
+    return tuple(low + span * index / (count - 1) for index in range(count))
+
+
+def puff_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
+    """The shared billow of every puff of about ``radius``, in one body tone.
+
+    A puff animates by stepping a ladder rather than by redrawing its cloud,
+    and the ladder is keyed on the discrete radii in ``Dust.PUFF_BUCKETS``
+    and the discrete tones in ``Dust.PUFF_TINT``, built once per session.
+    That is what makes a fan of six affordable: six puffs of similar size and
+    tone are references into the same rows, not six sets of surfaces
+    allocated at the moment of landing.
+
+    A continuous radius would mean a surface per particle, which is the
+    allocation ``notes/refacto.md`` already flags as the FX plane's main
+    remaining cost, and a landing is exactly when six of them happen at once.
+    A display format change invalidates the cache along with everything else.
+    """
+    key = (_puff_bucket(radius), round(tint, 3))
+    cached = _puff_cache.get(key)
+    if cached is not None:
+        return cached
+    ladder = [_puff_step(key[0], step, tint) for step in range(Dust.PUFF_STEPS)]
+    _puff_cache[key] = ladder
+    return ladder
 
 
 def vortex_frames() -> list[pygame.Surface]:
@@ -612,13 +693,12 @@ def vortex_frames() -> list[pygame.Surface]:
 
 
 def clear_frame_cache() -> None:
-    """Forget the memoized frames, the misses, and the procedural ladders.
+    """Forget the memoized ladders, so a new display format repaints them.
 
     A display format change (``pygame.display.set_mode``) invalidates every
     converted surface, so this cache layer has to be dropped with
     ``AssetLibrary`` or it would keep handing back stale ones.
     """
-    global _frames_cache, _frames_miss, _vortex_cache
-    _frames_cache = None
-    _frames_miss = False
+    global _vortex_cache
+    _puff_cache.clear()
     _vortex_cache = []

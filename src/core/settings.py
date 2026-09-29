@@ -248,19 +248,22 @@ class Afterimage:
 
 
 class Dust:
-    """Landing dust puffs and dash streaks (fx sprites, no collision).
+    """Landing dust puffs, thrown out of the feet on a hard landing.
 
     The three at the top are read by the simulation, not only by the FX:
     ``MIN_FALL_SPEED`` is the threshold that decides whether a landing is
     hard enough to throw dust at all, and the tick is what consumes the
     hint. The rest are the look, and only the FX reads them.
+
+    The look is a billow, not a ball. A puff is a cloud of a few overlapping
+    discs that grows and thins over its life, and a landing is a fan of
+    several of them, staggered so the fan dissolves rather than blinking out
+    on one frame.
     """
 
     TTL = 0.4
     COUNT = 6
     MIN_FALL_SPEED = 500.0
-    FRAMES_DIR = "assets/graphics/effects/particle"
-    FRAME_SCALE = 2.0
     PUFF_RADIUS = 5.0
     RISE = -60.0
     DRAG = 4.0
@@ -274,6 +277,99 @@ class Dust:
     RADIUS_JITTER = 3.0
     STRENGTH_PER_FALL = 1.6
     STRENGTH_RANGE = (0.6, 2.2)
+
+    # --- the billow --------------------------------------------------------
+    # A puff used to be a single disc that faded, which read as a ball being
+    # switched off. It now opens: each step is the same cloud at a larger
+    # radius, so the puff spreads as it dies the way kicked dust actually
+    # does. The steps are a shared ladder, one per size, so a fan of six is
+    # six references into a table rather than six painted surfaces.
+    PUFF_STEPS = 4
+    PUFF_BUCKETS = (3, 4, 5, 6, 8, 10, 13)
+    """The radii a puff is painted at, smallest first.
+
+    Discrete on purpose, for the same reason the alpha is: a continuous radius
+    would mean a surface per particle, and a landing can put six on screen at
+    once. Snapping to a bucket means the ladder is built once per session and
+    shared, and the eye reads the small step between two sizes as a puff
+    opening rather than as a jitter in size.
+    """
+    PUFF_GROWTH = 0.2
+    """How much further the cloud reaches at each step, as a share of the
+    radius it started at. The last step is drawn at ``1 + growth * (steps-1)``.
+
+    Kept small on purpose. This is the radius *along the ground*, and a puff
+    thrown out of a forty-wide fighter's feet that ends three times wider than
+    it started is not a billow, it is a cloud that swallowed the character.
+    """
+    PUFF_STEP_OPENS = 0.55
+    """The share of the life the billow takes to open over. The rest of the
+    life is spent drifting and fading, so a puff finishes spread and gone."""
+    PUFF_LOBES = (
+        (0.0, 0.0, 0.82),
+        (-0.58, 0.1, 0.56),
+        (0.52, -0.06, 0.5),
+        (0.14, -0.52, 0.44),
+    )
+    """The cloud's discs, as (offset x, offset y, share of the radius).
+
+    One central disc with three satellites, none of them concentric, so the
+    silhouette is lumpy in every direction. A puff made of concentric discs is
+    just a bigger disc, which is the shape this replaced.
+
+    The satellites are placed so each one clears the central disc by a
+    noticeable margin: an offset no larger than its own radius hides inside
+    the middle lobe, and the union comes out looking like a circle with a
+    dent in it rather than a cloud.
+    """
+    PUFF_CORE = 0.34
+    """The lit lobe, as a share of the radius, and set into the top-left of
+    the cloud. Dust is a mass and needs a light side, or it reads as a hole
+    cut out of the background."""
+    PUFF_CORE_LIFT = 0.3
+    """How far the lit lobe is lifted toward white off the body colour."""
+    PUFF_SQUASH = 0.62
+    """How flat the first step is, as a share of the puff's own height.
+
+    Dust leaves the ground, it does not leave a sphere. A puff that starts
+    wide and low and rounds off as it rises is the read; one that starts round
+    is a ball that happens to be drifting upward.
+    """
+    PUFF_TINT = (-0.18, 0.12)
+    """The per-puff body shift, so a fan is not six identical clouds."""
+    TTL_JITTER = (0.7, 1.0)
+    """Per-puff life, as a share of ``TTL``.
+
+    The fan used to share one TTL and die on the same frame, which read as a
+    blink. Staggered, it dissolves -- the outer puffs, thrown hardest, are the
+    ones that live longest.
+    """
+    SIZE_PROFILE = (0.7, 1.25, 0.9, 1.1, 0.8, 1.0)
+    """A fixed rhythm of sizes around the fan, as shares of the base radius.
+
+    Alternating big and small by index rather than leaving it to the jitter:
+    a symmetric fan of six equal clouds reads as a loading spinner, and the
+    eye is far better at spotting a size pattern than it is at reading a
+    random draw. Indexed by ``index % len`` so the profile wraps if ``COUNT``
+    ever stops matching it.
+    """
+
+
+class FxDecal:
+    """The mark a hard landing leaves on the floor."""
+
+    RADIUS = 22.0
+    TTL = 0.28
+    FADE_IN = 0.05
+    MARGIN = 6
+    RING_STEPS = 3
+    RING_GROWTH = 0.55
+    RING_THICKNESS = 2.0
+    RING_SQUASH = 0.34
+    """How flat the mark sits, as a share of its own width. A circle on the
+    ground reads as a disc floating on it; squashed, it reads as a mark the
+    floor made."""
+    RING_STEP_OPENS = 0.7
 
 
 class FxGuard:
@@ -338,23 +434,6 @@ class FxDizzy:
     tile the same wedge and the swirl still closes a full turn."""
     VORTEX_ARM_THICKNESS = 3.0
     VORTEX_ARM_CURVE = 0.4
-
-
-class FxDecal:
-    """The mark a hard landing leaves on the floor."""
-
-    RADIUS = 22.0
-    TTL = 0.28
-    FADE_IN = 0.05
-    MARGIN = 6
-    THICKNESS = 5.0
-    CURVE = 0.0
-    LOBES = ((0.0, 1.0), (2.1, 0.7), (4.2, 0.55))
-    """Three tongues fanning off the landing point, as (heading, length).
-
-    A single blob reads as a stain; three at these headings read as the dust
-    that was kicked up on impact.
-    """
 
 
 class Sweat:

@@ -30,7 +30,7 @@ from src.core.fx.particles import (
     ShatterArcParticle,
     ShieldArcParticle,
     SweatParticle,
-    particle_frames,
+    puff_tint,
 )
 from src.core.settings import Dust, FxDecal, FxDizzy, FxGuard, Sweat
 
@@ -122,13 +122,19 @@ def spawn_landing_dust(
     The count is fixed and the size is not: a fall several times the threshold
     throws wider, heavier puffs, which is what makes a hard landing read as
     harder than a merely brisk one.
+
+    Three things keep the fan from reading as a spinner. The sizes follow a
+    fixed rhythm rather than six independent draws, the bodies cycle through a
+    few tones so the puffs are not six copies, and the lives are staggered so
+    the fan dissolves instead of vanishing on one frame -- which it did, six
+    identical puffs sharing one TTL and one frame index.
     """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or not _has_room(fx_group, "landing_dust", Dust.COUNT):
         return []
     rng = _fx_rng
-    frames = particle_frames()
     strength = _landing_strength(impact)
+    low, high = Dust.TTL_JITTER
     puffs: list[DustParticle] = []
     for index in range(Dust.COUNT):
         side = index - (Dust.COUNT - 1) / 2.0
@@ -137,15 +143,32 @@ def spawn_landing_dust(
             -abs(rng.uniform(*Dust.RISE_RANGE)) * strength
             - (Dust.RISE_ALTERNATE if index % 2 == 0 else 0.0),
         )
+        # Farther from the middle means thrown harder, so the outer puffs are
+        # also the ones that live longest: the fan opens as it goes.
+        outward = abs(side) / max(1.0, (Dust.COUNT - 1) / 2.0)
         puff = DustParticle(
             (hitbox.centerx + side * 4.0, hitbox.bottom - 2.0),
             velocity,
-            radius=Dust.PUFF_RADIUS * strength + rng.uniform(0.0, Dust.RADIUS_JITTER),
-            frames=frames,
+            ttl=Dust.TTL * (low + (high - low) * outward),
+            radius=Dust.PUFF_RADIUS * strength * _profile(index)
+            + rng.uniform(0.0, Dust.RADIUS_JITTER),
+            tint=puff_tint(index),
         )
         fx_group.add(puff)
         puffs.append(puff)
     return puffs
+
+
+def _profile(index: int) -> float:
+    """The fan's size rhythm at ``index``.
+
+    A fixed profile rather than a draw, because the eye is far better at
+    spotting a size pattern than at reading a random one, and six equal clouds
+    is a loading spinner. Indexed modulo the profile, so it wraps if ``COUNT``
+    ever stops matching it.
+    """
+    profile = Dust.SIZE_PROFILE
+    return profile[index % len(profile)]
 
 
 def spawn_impact_decal(

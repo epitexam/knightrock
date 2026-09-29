@@ -373,6 +373,38 @@ def _fx_setting_names() -> list[tuple[str, str]]:
     return pairs
 
 
+# --- 4c. the FX plane is painted, not loaded -------------------------------
+
+
+def test_the_fx_plane_reads_no_asset_tree() -> None:
+    """Every mark here is drawn in code, so the look is not a property of a checkout.
+
+    The dust was the last particle on shipped art: three anti-aliased PNGs
+    under ``assets/graphics``, a directory ``.gitignore`` excludes. That made
+    the FX plane's appearance depend on whether someone happened to have the
+    tree -- with it, a landing threw soft frames; without it, the same landing
+    threw a flat disc, and nothing failed either way. It also meant the
+    particle's own ``radius`` was ignored, because the frames were a fixed
+    30px scaled by a constant.
+
+    A reference back to the library is how that comes back, so this fails on
+    the import rather than on the behaviour it produces.
+    """
+    offenders: list[str] = []
+    for path in FX_PACKAGE.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and "asset_library" in node.module:
+                offenders.append(f"{path.name}:{node.lineno}")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "shared_library"
+            ):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, f"the FX plane reading art off disk again: {offenders}"
+
+
 # --- 5. the module never writes simulation state ---------------------------
 
 

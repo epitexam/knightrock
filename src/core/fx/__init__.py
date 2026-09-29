@@ -26,8 +26,18 @@ A particle that redraws its pixels every frame pays for a drawing, not for an
 allocation, so the only question is whether its *look* changes. Two of them
 used to, and both stopped: the shockwave is drawn once at full size and shown
 through a few pre-scaled steps, and the dizzy swirl is a shared ladder of
-rotation steps. Everything here builds its surface at construction and then
-only moves or fades, which is what ``tests/unit/test_fx_surfaces.py`` pins.
+rotation steps.
+
+The dust was the last particle still on shipped art -- three anti-aliased PNGs
+under ``assets/graphics``, a tree that is gitignored, so the look already
+differed from one machine to the next and ``radius`` did nothing at all. It is
+painted now, like the rest of the plane, and it opens over its life from a
+shared ladder keyed on size and tone, so a fan of six is six references into
+a table rather than six surfaces allocated on the landing tick.
+
+Everything here builds its surface at construction and then only moves, fades
+or steps through a ladder it built alongside, which is what
+``tests/unit/test_fx_surfaces.py`` pins.
 """
 
 from __future__ import annotations
@@ -40,6 +50,7 @@ from src.core.fx.particles import (
     ShieldArcParticle,
     SweatParticle,
     clear_frame_cache,
+    puff_frames,
     vortex_frames,
 )
 from src.core.fx.spawners import (
@@ -66,6 +77,7 @@ __all__ = [
     "SweatParticle",
     "clear_frame_cache",
     "iter_landing_entities",
+    "puff_frames",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
     "spawn_guard_arc",

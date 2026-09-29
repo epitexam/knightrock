@@ -94,7 +94,15 @@ class FXColors:
     ink_warm: ClassVar[Color] = (58, 24, 16)
 
     dust: ClassVar[Color] = (198, 190, 178)
-    dust_deep: ClassVar[Color] = (154, 147, 138)
+    dust_deep: ClassVar[Color] = (104, 96, 88)
+    """The puff's rim.
+
+    It used to sit 44 units under the body, which at a one-pixel outline is
+    barely a shade: against a bright background the cloud lost its edge and
+    read as a smudge. The rim is the DA's whole reason for inking -- it is
+    what separates a mark from whatever is behind it -- so it is now closer to
+    the ink the rest of the plane uses, and the body carries the tone.
+    """
 
     speed_ghost: ClassVar[Color] = (228, 238, 250)
     """The hue the dash afterimages are knocked back to.

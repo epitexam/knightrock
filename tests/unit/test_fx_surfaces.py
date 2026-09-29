@@ -16,10 +16,14 @@ import pytest
 from src.core.fx import (
     DizzyVortexParticle,
     DustParticle,
+    SweatParticle,
     clear_frame_cache,
+    puff_frames,
+    spawn_landing_dust,
     spawners,
     vortex_frames,
 )
+from src.core.fx import particles as particles
 from src.core.settings import Dust, FxDizzy
 
 
@@ -45,23 +49,96 @@ def _pinned_fx_rng() -> Iterator[None]:
     yield
 
 
-def test_a_dust_puff_surface_is_built_once_and_only_faded() -> None:
-    """A puff's shape is fixed, so rebuilding it would redraw the same pixels.
+def test_a_sweat_drop_surface_is_built_once_and_only_faded() -> None:
+    """A drop's shape is fixed, so rebuilding it would redraw the same pixels.
 
-    This property has moved house twice now: it was pinned on the dash comet,
-    then on the speed line, and both of those are gone. It stays on the dust
-    because the claim is about the module and not about one particle -- every
-    mark here builds its surface at construction and then only moves and
-    fades, and a "tidying" of an update method is the mistake it catches.
+    This property has moved house three times now: it was pinned on the dash
+    comet, then on the speed line, then on the dust, all of which are gone or
+    have become ladders. It stays on sweat because the claim is about the
+    module and not about one particle -- every mark here either builds its
+    surface at construction and then only moves and fades, or steps through a
+    ladder it built alongside, and a "tidying" of an update method is the
+    mistake it catches.
     """
-    particle = DustParticle((0.0, 0.0), (60.0, -20.0))
+    particle = SweatParticle((0.0, 0.0), (60.0, -20.0))
     original = particle.image
 
     for _ in range(8):
         particle.update(1 / 60)
 
-    assert particle.image is original, "the puff must not rebuild its surface"
+    assert particle.image is original, "the drop must not rebuild its surface"
     assert particle.image.get_alpha() < 255, "and it must still fade"
+
+
+def test_a_puff_picks_its_billow_from_a_shared_ladder() -> None:
+    """The puff opens, and every step it opens to is one the session built once.
+
+    The dust is the particle that was rebuilt per particle per frame: it used
+    to scale its own copies of three PNGs at construction and then swap
+    between them, and a landing put six of those on screen at once. It steps a
+    shared ladder now, for the same reason the swirl does.
+    """
+    clear_frame_cache()
+    ladder = puff_frames(Dust.PUFF_RADIUS)
+    particle = DustParticle((0.0, 0.0), (60.0, -20.0))
+    seen = [particle.image]
+
+    for _ in range(4):
+        particle.update(1 / 60)
+        seen.append(particle.image)
+
+    assert len(ladder) == Dust.PUFF_STEPS
+    assert len(set(seen)) > 1, "the puff has to billow"
+    assert all(any(step is frame for frame in ladder) for step in seen), (
+        "and every step it shows has to be one built once"
+    )
+    assert particle.ladder is ladder, "and the ladder is shared, not per puff"
+    clear_frame_cache()
+
+
+def test_a_hard_landing_does_not_paint_a_new_puff_surface() -> None:
+    """A landing is twelve puffs and it must not be twelve sets of surfaces.
+
+    The reason the ladder is keyed on a discrete radius and a discrete tone
+    rather than on whatever the spawner asked for: this is the allocation
+    ``notes/refacto.md`` flags as the FX plane's main remaining cost, and a
+    landing is exactly when a dozen of them happen on the same tick.
+
+    The bound is the grid, not the fan. The radius carries a jitter, so any
+    one landing lands on several buckets and a later one may reach a bucket
+    the first missed -- but the cache can never outgrow the grid, however
+    many landings go through it. That ceiling is the whole reason for
+    snapping: an unbounded cache keyed on a continuous radius is the same
+    allocation as no cache at all.
+    """
+    clear_frame_cache()
+    lander = _lander()
+    for _ in range(12):
+        spawn_landing_dust(pygame.sprite.Group(), lander, Dust.MIN_FALL_SPEED * 2.0)
+
+    grid = len(Dust.PUFF_BUCKETS) * len(Dust.SIZE_PROFILE)
+    assert 0 < len(particles._puff_cache) <= grid, (
+        f"twelve landings painted {len(particles._puff_cache)} ladders, over a grid of {grid}"
+    )
+    clear_frame_cache()
+
+
+def test_two_puffs_of_one_size_and_tone_share_their_ladder() -> None:
+    """The share is by value, so two puffs of a size hold one set of surfaces."""
+    clear_frame_cache()
+    one = DustParticle((0.0, 0.0), (0.0, 0.0), radius=6.0, tint=0.0)
+    two = DustParticle((0.0, 0.0), (0.0, 0.0), radius=6.4, tint=0.0)
+
+    assert one.ladder is two.ladder, "6.0 and 6.4 are the same bucket"
+    assert len(particles._puff_cache) == 1
+    clear_frame_cache()
+
+
+def _lander() -> object:
+    """A stand-in with the one attribute the landing fan reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(hitbox=pygame.FRect(100.0, 100.0, 40, 48))
 
 
 def test_the_puff_fade_matches_its_ttl_curve() -> None:

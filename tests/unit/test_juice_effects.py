@@ -211,8 +211,26 @@ def test_landing_fan_spawns_count_puffs_at_the_feet() -> None:
     assert len(puffs) == Dust.COUNT
     assert len(group) == Dust.COUNT
     for puff in puffs:
-        assert puff.ttl == pytest.approx(Dust.TTL)
+        assert puff.ttl <= Dust.TTL + 1e-9
+        assert puff.ttl >= Dust.TTL * Dust.TTL_JITTER[0] - 1e-9
         assert abs(puff.pos.x - entity.hitbox.centerx) < entity.hitbox.width
+
+
+def test_the_fan_dissolves_instead_of_vanishing_on_one_frame() -> None:
+    """Six puffs sharing one TTL blinked out together, which read as a cut.
+
+    The lives are staggered by how far each puff was thrown, so the fan
+    dissolves from the middle out and the outer puffs -- the ones that carry
+    the landing -- are the last to go.
+    """
+    entity = make_entity(pos=(100.0, 100.0))
+
+    puffs = spawn_landing_dust(pygame.sprite.Group(), entity)
+
+    lives = [puff.ttl for puff in puffs]
+    assert len(set(lives)) > 1, f"the fan has to stagger: {lives}"
+    assert lives[0] > lives[len(lives) // 2], "and the outer puffs live longer"
+    assert max(lives) - min(lives) > 0.0
 
 
 def test_hard_landing_records_impact_while_hops_stay_clean() -> None:
@@ -372,21 +390,31 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
     assert player._animation_name() == "dash"
 
 
-def test_framed_puffs_shrink_cycle_and_fall_back_to_circles() -> None:
-    group = pygame.sprite.Group()
-    frames = [pygame.Surface((10, 10)), pygame.Surface((8, 8)), pygame.Surface((6, 6))]
-    puff = DustParticle((10.0, 10.0), (0.0, 0.0), ttl=0.3, frames=frames)
-    group.add(puff)
-    first_size = puff.image.get_size()
+def test_a_puff_billows_through_its_ladder_and_snaps_its_radius() -> None:
+    """A puff opens as it dies, and its size is one a ladder already holds.
 
-    puff.update(0.2)
+    The old version of this test pinned the shipped debris frames: three
+    fixed 30px PNGs, scaled by a constant, cycled per tick. It failed for a
+    reason the test never noticed -- ``radius`` was ignored entirely on that
+    path, so a puff asked for at 5px and one asked for at 11px came out the
+    same size on screen, and "a hard landing throws heavier puffs" was true
+    of the velocity and nothing else.
+    """
+    group = pygame.sprite.Group()
+    puff = DustParticle((10.0, 10.0), (0.0, 0.0), ttl=0.3)
+    group.add(puff)
+    widths = [puff.image.get_width()]
+
+    for _ in range(2):
+        puff.update(0.1)
+        widths.append(puff.image.get_width())
 
     assert puff.alive()
-    assert puff.image.get_size() != first_size
+    assert widths == sorted(widths), f"the puff has to open, not close: {widths}"
 
-    plain = DustParticle((10.0, 10.0), (0.0, 0.0), radius=5.0)
-    assert plain.image.get_size() == (10, 10)
-    assert plain.frames is None
+    small = DustParticle((10.0, 10.0), (0.0, 0.0), radius=3.0)
+    large = DustParticle((10.0, 10.0), (0.0, 0.0), radius=13.0)
+    assert small.ladder[-1].get_width() < large.ladder[-1].get_width()
 
 
 def test_light_impacts_spawn_no_dust() -> None:

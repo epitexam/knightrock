@@ -131,6 +131,89 @@ def test_the_landing_mark_is_wider_for_a_harder_fall() -> None:
     assert hard.behind is True
 
 
+def test_the_landing_mark_is_flat_on_the_ground_and_opens() -> None:
+    """A mark on a floor is squashed and it widens; a disc floating above it is not.
+
+    It used to be three thick tongues at 0, 120 and 240 degrees, which came
+    out asymmetric about a vertical that means nothing on a floor, and five
+    pixels thick against a fighter forty wide. A flat ring reads as the ground
+    being struck, and opening says how hard.
+
+    Measured on the lit pixels rather than on the surface: the surface is
+    square, because it has to hold the widest step of the ladder, and a
+    square surface says nothing about whether the mark inside it is flat.
+    """
+    decal = spawn_impact_decal(Group(), _entity(200.0, 300.0), Dust.MIN_FALL_SPEED * 2.0)
+    assert decal is not None
+    width, height = _ink_extent(decal.image)
+
+    assert width > height * 2, f"a flat mark, not a disc: {width}x{height}"
+    assert not decal.image.get_at((decal.image.get_width() // 2, decal.image.get_height() // 2))[
+        3
+    ], "and hollow: a mark is the rim the dust pushed out, not a filled blob"
+    assert decal.steps[-1].get_width() > decal.steps[0].get_width(), "and it opens"
+
+
+def _ink_extent(surface: pygame.Surface) -> tuple[int, int]:
+    """The width and height of the lit pixels, not of the surface."""
+    lit = [
+        (x, y)
+        for y in range(surface.get_height())
+        for x in range(surface.get_width())
+        if surface.get_at((x, y))[3]
+    ]
+    xs = [x for x, _ in lit]
+    ys = [y for _, y in lit]
+    return max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+
+
+def test_a_puff_is_a_cloud_and_not_a_ball() -> None:
+    """One disc reads as a ball. The silhouette has to be lumpy to read as dust.
+
+    The lobes are what make it a cloud, and what the ink rim follows, so this
+    is a claim about the outline: a silhouette as wide as it is tall, with
+    nothing pushing out to one side, is the shape the puff had before the
+    lobes existed.
+
+    The first step is squashed, because dust leaves the ground flat and
+    rounds off as it rises, so the claim is on the last step -- the one the
+    player sees as the puff drifts up.
+    """
+    puff = DustParticle((0.0, 0.0), (0.0, 0.0), radius=8.0)
+
+    flat = _ink_extent(puff.ladder[0])
+    open_ = _ink_extent(puff.ladder[-1])
+    assert flat[0] > flat[1], f"a puff leaves the ground flat: {flat}"
+    assert open_[0] > open_[1], f"and stays wider than tall as it opens: {open_}"
+    assert puff.ladder[-1].get_width() > puff.ladder[0].get_width(), "the billow widens"
+
+
+def test_the_puff_rim_actually_separates_it_from_the_background() -> None:
+    """The rim is the DA's reason for inking, so it has to be a real contrast.
+
+    The old one sat 44 units under the body colour. At a one-pixel outline
+    that is barely a shade, and against a bright background the cloud lost its
+    edge and came out as a smudge -- which is the one thing the ink rule
+    exists to prevent.
+    """
+    puff = DustParticle((0.0, 0.0), (0.0, 0.0), radius=8.0)
+    surface = puff.ladder[0]
+
+    tones = {
+        tuple(surface.get_at((x, y))[:3])
+        for y in range(surface.get_height())
+        for x in range(surface.get_width())
+        if surface.get_at((x, y))[3]
+    }
+    rim = tuple(FXColors.dust_deep)
+    body = tuple(FXColors.dust)
+
+    assert rim in tones, "the rim is on the puff"
+    assert body in tones, "and so is the body it separates"
+    gap = sum(b - r for r, b in zip(rim, body, strict=True))
+    assert gap > 80, f"a rim has to read against the body, not tint it: {gap}"
+
+
 def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:
     """A ring off to one side of the fighter reads as a block.
 

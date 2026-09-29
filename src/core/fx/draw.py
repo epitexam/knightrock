@@ -29,6 +29,7 @@ __all__ = [
     "draw_inked_polygon",
     "ellipse_ring",
     "ink_shape",
+    "lobe_shape",
     "polygon_bounds",
     "inked_polygon",
     "life_alpha",
@@ -167,6 +168,31 @@ def disc_shape(
 
     def draw(surface: pygame.Surface, color: Paint, inflate: int) -> None:
         disc(surface, color, at, radius + inflate)
+
+    return draw
+
+
+def lobe_shape(
+    at: tuple[float, float] | pygame.math.Vector2,
+    lobes: tuple[tuple[float, float, float], ...],
+) -> Shape:
+    """Several overlapping discs as one :data:`Shape`.
+
+    A single disc reads as a ball. Dust reads as a cloud because its edge is
+    never one circle, so a puff is drawn as a handful of discs at offsets and
+    the silhouette is their union.
+
+    Union is the point. Because :func:`ink_shape` calls the same shape twice
+    -- once grown, once as it is -- every lobe grows with the rim, and the
+    outline that comes out follows the outside of the whole cloud rather than
+    showing the seams between its parts. Drawing the lobes one at a time with
+    an ink pass each would draw the interior boundaries too, which is what
+    makes a multi-disc silhouette read as a pile of circles.
+    """
+
+    def draw(surface: pygame.Surface, color: Paint, inflate: int) -> None:
+        for offset_x, offset_y, radius in lobes:
+            disc(surface, color, (at[0] + offset_x, at[1] + offset_y), radius + inflate)
 
     return draw
 

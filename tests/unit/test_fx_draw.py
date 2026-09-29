@@ -62,6 +62,27 @@ def test_an_ellipse_ring_is_flat() -> None:
     )
 
 
+def test_lobes_union_into_one_silhouette_rather_than_a_pile() -> None:
+    """The lobes are one shape, so the ink rim has to follow the outside only.
+
+    This is the property that makes a cloud out of several discs. Drawn one at
+    a time with a rim each, the interior boundaries would be inked too and the
+    shape would come out looking like a stack of coins; drawn as a single
+    shape, the rim is the outline of the union and the middle is solid.
+    """
+    surface = blank((41, 41))
+    lobes = ((0.0, 0.0, 8.0), (-7.0, 2.0, 5.0), (6.0, -1.0, 4.0))
+    draw.ink_shape(surface, draw.lobe_shape((20, 20), lobes), (255, 255, 255), (0, 0, 0), 1)
+
+    assert surface.get_at((20, 20))[:3] == (255, 255, 255), "the middle is body, not a seam"
+    assert surface.get_at((0, 0))[3] == 0, "and nothing is drawn where no lobe reaches"
+    lit = [(x, y) for x in range(41) for y in range(41) if surface.get_at((x, y))[3]]
+    xs = [x for x, _ in lit]
+    ys = [y for _, y in lit]
+    # Lumpy: the satellites have to push the outline out past the central disc.
+    assert max(xs) - min(xs) > 16 and max(ys) - min(ys) > 16
+
+
 def test_a_star_is_symmetric_about_its_heading() -> None:
     """A sparkle with four points has to have the same four arms.
 
