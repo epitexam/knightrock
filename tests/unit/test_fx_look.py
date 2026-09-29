@@ -21,10 +21,12 @@ from src.core.display.viewport import Viewport
 from src.core.fx import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
+    DashDustParticle,
     DustParticle,
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
+    spawn_dash_dust,
     spawn_dizzy_vortex,
     spawn_guard_arc,
     spawn_impact_decal,
@@ -34,7 +36,7 @@ from src.core.fx import (
 from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import Dust, FxGuard
+from src.core.settings import DashDust, Dust, FxGuard
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -212,6 +214,150 @@ def test_the_puff_rim_actually_separates_it_from_the_background() -> None:
     assert body in tones, "and so is the body it separates"
     gap = sum(b - r for r, b in zip(rim, body, strict=True))
     assert gap > 80, f"a rim has to read against the body, not tint it: {gap}"
+
+
+def _tones(surface: pygame.Surface) -> set[tuple[int, int, int]]:
+    return {
+        tuple(surface.get_at((x, y))[:3])
+        for y in range(surface.get_height())
+        for x in range(surface.get_width())
+        if surface.get_at((x, y))[3]
+    }
+
+
+def test_the_dash_trail_carries_no_ink_rim() -> None:
+    """The block gave its rim up for the same reason, and so does the trail.
+
+    A mid-grey outline at one pixel per world unit turns a mark into a drawn
+    shape with nothing light about it. The landing puff can afford a rim
+    because it sits on the ground against tiles; the trail hangs on open air,
+    where a rim is a grey outline drawn around a light cloud. So the two tones
+    present are the body and the lit lobe, and ``dust_deep`` is not among
+    them.
+    """
+    puff = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS)
+
+    tones = _tones(puff.ladder[0])
+
+    assert tuple(FXColors.dust_deep) not in tones, "the trail is rimless"
+    assert tuple(FXColors.dust) in tones, "the body is there"
+    assert tuple(FXColors.dust_lit) in tones, "and so is the lit lobe"
+    assert len(tones) == 2, f"two tones is the whole grammar, not {tones}"
+
+
+def test_the_trails_lit_lobe_reads_as_light_rather_than_as_a_shade() -> None:
+    """Two tones only work if the gap between them survives magnification.
+
+    The landing puff lifts its lit lobe off the body by 0.3, an 18 unit
+    difference, and has a rim to help it. The trail has no rim, so the whole
+    separation is the gap between the two tones, and at one pixel per world
+    unit a gap that narrow is two greys that read as one.
+    """
+    gap = sum(l - b for b, l in zip(FXColors.dust, FXColors.dust_lit, strict=True))
+    assert gap > 80, f"a lit lobe with no rim behind it has to be a real step: {gap}"
+
+
+def test_the_dash_trail_is_thrown_backwards() -> None:
+    """The whole effect is this. Forward, or not thrown, it reads as standing in dust.
+
+    A dash crosses about 88px before it ends, so anything left under the
+    fighter by the time the dust is at its peak is already behind him -- but
+    only if it was pushed the other way. The puffs are laid at the trailing
+    edge of the body and every one of them moves against the direction of
+    travel.
+    """
+    dashing_right = _entity(facing=True)
+    dashing_left = _entity(facing=False)
+    dashing_left.velocity = pygame.math.Vector2(-1100.0, 0.0)
+
+    right = spawn_dash_dust(Group(), dashing_right, burst=True)
+    left = spawn_dash_dust(Group(), dashing_left, burst=True)
+
+    assert right and left
+    assert all(puff.velocity.x < 0.0 for puff in right), "a dash to the right throws left"
+    assert all(puff.velocity.x > 0.0 for puff in left), "and the other way for a dash left"
+    assert all(
+        puff.rect.centerx < dashing_right.hitbox.centerx for puff in right
+    ), "and the burst is laid behind the fighter, not under him"
+    assert all(
+        puff.rect.centerx > dashing_left.hitbox.centerx for puff in left
+    ), "behind a fighter dashing the other way too"
+
+
+def test_the_dash_trail_follows_the_velocity_and_not_the_facing() -> None:
+    """A dash resolves its direction in three steps, and only the velocity knows all three.
+
+    It is the move axis captured when the button went down, then the live
+    input, then the facing. A fighter can dash left while facing right, and a
+    trail thrown off the facing would then be thrown along the direction of
+    travel -- which is the opposite of a trail.
+    """
+    entity = _entity(facing=True)
+    entity.velocity = pygame.math.Vector2(-1100.0, 0.0)
+
+    puffs = spawn_dash_dust(Group(), entity, burst=True)
+
+    assert puffs
+    assert all(puff.velocity.x > 0.0 for puff in puffs), "a dash left throws right"
+
+
+def test_the_dash_trail_falls_back_to_the_facing_with_no_velocity() -> None:
+    """An entity in a dash state and standing still is not a real dash, but it happens.
+
+    The spawner takes whatever the caller holds, and an entity that has a dash
+    state and no movement to read would otherwise throw its whole burst in one
+    direction chosen by nothing. The facing is the only answer available, and
+    a wrong trail is better than a dust cloud sprayed sideways.
+    """
+    entity = _entity(facing=False)
+    entity.velocity = pygame.math.Vector2(0.0, 0.0)
+
+    puffs = spawn_dash_dust(Group(), entity, burst=True)
+
+    assert puffs
+    assert all(puff.velocity.x > 0.0 for puff in puffs), "no velocity, so it falls back"
+
+
+def test_the_dash_trail_burst_is_bigger_than_the_puffs_that_extend_it() -> None:
+    """One shove and a ribbon, or nothing reads as an impact at all.
+
+    If the ticks were the size of the burst the trail would be a uniform
+    stripe with no front, and the frame the dash happens on -- the only frame
+    the player is looking at the movement -- would carry no more weight than
+    the ones after it.
+    """
+    burst = spawn_dash_dust(Group(), _entity(), burst=True)
+    tick = spawn_dash_dust(Group(), _entity())
+
+    assert len(burst) == DashDust.BURST_COUNT
+    assert len(tick) == DashDust.TICK_COUNT
+    assert max(puff.radius for puff in burst) > max(puff.radius for puff in tick)
+    assert max(puff.ladder[-1].get_width() for puff in burst) > max(
+        puff.ladder[-1].get_width() for puff in tick
+    ), "and the bigger puff is still growing when it dies"
+
+
+def test_the_dash_trail_evaporates_behind_the_fighter() -> None:
+    """The dust has to still be there after the dash ends, or it is debris.
+
+    A dash is 0.08s and the trail is 0.4s to 0.6s. If the puffs died with the
+    dash they would read as something the fighter scattered rather than as
+    the movement itself, which is the difference the effect exists to make.
+    """
+    puffs = spawn_dash_dust(Group(), _entity(), burst=True)
+
+    assert min(puff.ttl for puff in puffs) > 0.3, "the trail outlives the dash"
+
+
+def test_the_dash_trail_fades_up_faster_than_the_block_ring() -> None:
+    """The fighter crosses most of the ribbon before a slow ramp would show it.
+
+    The block can afford 0.08s because it stands still while the player reads
+    it. The trail cannot: at 1100 px/s the fighter is most of the way down it
+    in the time the ring takes to reach full opacity, so the dust is still
+    fading up where he already is not.
+    """
+    assert DashDust.FADE_IN < FxGuard.ARC_FADE_IN
 
 
 def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:

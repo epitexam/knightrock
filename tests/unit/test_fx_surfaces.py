@@ -14,17 +14,20 @@ import pygame
 import pytest
 
 from src.core.fx import (
+    DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
     SweatParticle,
     clear_frame_cache,
+    dash_frames,
     puff_frames,
+    spawn_dash_dust,
     spawn_landing_dust,
     spawners,
     vortex_frames,
 )
 from src.core.fx import particles as particles
-from src.core.settings import Dust, FxDizzy
+from src.core.settings import DashDust, Dust, FxDizzy
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -139,6 +142,109 @@ def _lander() -> object:
     from types import SimpleNamespace
 
     return SimpleNamespace(hitbox=pygame.FRect(100.0, 100.0, 40, 48))
+
+
+def _dasher() -> object:
+    """A stand-in with the three attributes the dash trail reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        hitbox=pygame.FRect(100.0, 100.0, 40, 48),
+        velocity=pygame.math.Vector2(1100.0, 0.0),
+        facing_right=True,
+    )
+
+
+def test_a_trail_puff_picks_its_billow_from_a_shared_ladder() -> None:
+    """The trail animates the way the landing puff does: by stepping a table.
+
+    Same claim, and it matters more here. A dash lays puffs on a cadence for
+    as long as the fighter is moving, so more of them are alive at once than a
+    landing ever puts out, and the ladder is what keeps a burst and a ribbon
+    from being a set of surfaces allocated on the tick.
+    """
+    clear_frame_cache()
+    ladder = dash_frames(DashDust.BURST_RADIUS)
+    particle = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS)
+
+    seen: list[pygame.Surface] = []
+    for _ in range(int(DashDust.TICK_TTL * 60)):
+        particle.update(1 / 60)
+        seen.append(particle.image)
+
+    assert len(ladder) == DashDust.STEPS
+    assert len(set(seen)) > 1, "the trail has to billow"
+    assert particle.ladder is ladder, "and the ladder is shared, not per puff"
+    clear_frame_cache()
+
+
+def test_a_dash_trail_does_not_paint_a_new_surface_per_puff() -> None:
+    """A ribbon of puffs must stay a bounded number of ladders, however many dashes.
+
+    The radius carries a jitter and the tone is spread across the emission's
+    own length, so any one dash lands on several buckets and a later one may
+    reach a bucket the first missed. What must not happen is a new ladder per
+    particle: the cache can never outgrow the grid of discrete radii and tones
+    however many dashes go through it.
+    """
+    clear_frame_cache()
+    dasher = _dasher()
+    for _ in range(20):
+        spawn_dash_dust(pygame.sprite.Group(), dasher, burst=True)
+        spawn_dash_dust(pygame.sprite.Group(), dasher)
+
+    grid = len(DashDust.BUCKETS) * (DashDust.BURST_COUNT + 1)
+    assert 0 < len(particles._dash_cache) <= grid, (
+        f"twenty dashes painted {len(particles._dash_cache)} ladders, over a grid of {grid}"
+    )
+    clear_frame_cache()
+
+
+def test_two_trail_puffs_of_one_size_and_tone_share_their_ladder() -> None:
+    """The share is by value, so the burst and the ticks that match it hold one set."""
+    clear_frame_cache()
+    burst = DashDustParticle(
+        (0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS, tint=0.0
+    )
+    tick = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.TICK_RADIUS, tint=0.0)
+
+    assert burst.ladder is not tick.ladder, "two sizes, two ladders"
+    assert len(particles._dash_cache) == 2
+    clear_frame_cache()
+
+
+def test_the_trail_tones_are_spread_across_the_emission_and_not_a_fixed_row() -> None:
+    """A two-puff tick and a five-puff burst both have to get a spread of tones.
+
+    Keyed on a fixed palette, the two lengths would draw the tick as two
+    adjacent tones -- two near-identical clouds -- and leave the top of the
+    range unused on the burst, which is the one mark the dash is read from.
+    """
+    from src.core.fx import dash_tint
+
+    tick = [dash_tint(index, DashDust.TICK_COUNT) for index in range(DashDust.TICK_COUNT)]
+    burst = [dash_tint(index, DashDust.BURST_COUNT) for index in range(DashDust.BURST_COUNT)]
+
+    assert tick[0] == DashDust.TINT[0]
+    assert tick[-1] == DashDust.TINT[1], "a tick reaches both ends of the range"
+    assert burst[-1] == DashDust.TINT[1], "and so does the burst"
+    assert len(set(tick)) == len(tick) and len(set(burst)) == len(burst)
+
+
+def test_a_display_format_change_forgets_the_trail_ladders() -> None:
+    """The ladders are memoized surfaces, so a stale one is a stale image.
+
+    ``pygame.display.set_mode`` invalidates every converted surface, so the
+    trail cache has to go with it or the plane keeps handing back pixels that
+    no longer exist in the new format.
+    """
+    clear_frame_cache()
+    DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS)
+    assert particles._dash_cache
+
+    clear_frame_cache()
+
+    assert particles._dash_cache == {}
 
 
 def test_the_puff_fade_matches_its_ttl_curve() -> None:
