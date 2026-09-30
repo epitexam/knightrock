@@ -30,12 +30,14 @@ __all__ = [
     "ellipse_ring",
     "ink_shape",
     "lobe_shape",
+    "lobe_shaded",
     "polygon_bounds",
     "inked_polygon",
     "life_alpha",
     "life_level",
     "ring",
     "snap",
+    "speck",
     "spread_step",
     "star_points",
     "star_shape",
@@ -78,6 +80,31 @@ def disc(
 ) -> None:
     """A filled disc of whole-pixel radius."""
     pygame.draw.circle(surface, color, _center(at), max(1, snap(radius)))
+
+
+def speck(
+    surface: pygame.Surface,
+    color: Paint,
+    at: tuple[float, float] | pygame.math.Vector2,
+    size: int = 1,
+) -> None:
+    """A grain: a square of ``size`` whole pixels.
+
+    A square and not a disc, and that is the whole difference between debris
+    and a sparkle. ``pygame.draw.circle`` at its smallest radius draws a
+    five-pixel cross, which at one pixel per world unit is the shape a
+    four-point star is made of -- a field of those reads as glitter, which is
+    what you want for a parry and not what you want for the dust off a boot.
+    A one-pixel square is the shape grit actually has here, and it is also the
+    only thing that fits: a grain is not given a radius to be honoured in, it
+    is given a count of pixels.
+    """
+    side = max(1, int(size))
+    cx, cy = _center(at)
+    surface.fill(
+        color,
+        pygame.Rect(cx - side // 2, cy - side // 2, side, side),
+    )
 
 
 def draw_arc_stroke(
@@ -188,6 +215,11 @@ def lobe_shape(
     showing the seams between its parts. Drawing the lobes one at a time with
     an ink pass each would draw the interior boundaries too, which is what
     makes a multi-disc silhouette read as a pile of circles.
+
+    ``at`` is an argument rather than a closure over the caller's own centre so
+    that one lobe list can be drawn at several places on the same surface,
+    which is how :func:`lobe_shaded` gets a shadow under a shape and a rim
+    along the top of it out of a single layout.
     """
 
     def draw(surface: pygame.Surface, color: Paint, inflate: int) -> None:
@@ -195,6 +227,55 @@ def lobe_shape(
             disc(surface, color, (at[0] + offset_x, at[1] + offset_y), radius + inflate)
 
     return draw
+
+
+def lobe_shaded(
+    surface: pygame.Surface,
+    at: tuple[float, float] | pygame.math.Vector2,
+    lobes: tuple[tuple[float, float, float], ...],
+    body: Paint,
+    lit: Paint,
+    deep: Paint | None = None,
+    shade: Paint | None = None,
+    rim: int = 1,
+) -> None:
+    """``lobes`` as one cloud, lit from the top left and shaded at the bottom.
+
+    Four passes, all of them the same union moved or grown: it grown by ``rim``
+    in ``deep``, it a pixel down in ``shade``, it a pixel up and left in
+    ``lit``, and it as it is in ``body``. ``deep`` and ``shade`` are separate
+    arguments because they are separate jobs and want separate tones -- the rim
+    is a line drawn round the mark and wants to be dark, the shadow is the
+    mass's own tone falling off and wants to be a step below the body. Sharing
+    one tone between them fills the gaps between the lobes along the bottom
+    into a solid band, and a solid band across the base of a mark is a stripe.
+
+    Leaving both ``None`` is how a mark hanging on open air is drawn: with no
+    tiles behind it there is nothing for an outline to separate from, and a
+    grey edge around a light cloud is a drawn shape with nothing light about
+    it.
+
+    The light pass is the reason this exists. A puff used to carry a *disc* of
+    highlight set into its own top-left corner, and a round patch of light
+    inside a round mass is the oldest convention there is for saying "shiny
+    cartoon thing": it is how a bubble, a pearl and a children's-book cloud are
+    all drawn, and it is the single detail that made the dust read as a drawing
+    for children. The same light spread along a one-pixel rim along the
+    top-left of the whole silhouette says volume instead, and costs one pass
+    over a shape that is already there.
+
+    The offset is a whole pixel and not a parameter, because at one pixel per
+    world unit it is the offset. A two-pixel rim light is a second tone of
+    white, and half a pixel is two alternate shades of body along the same
+    edge -- both of which put the cartoon back.
+    """
+    middle = _center(at)
+    if deep is not None and rim > 0:
+        lobe_shape(middle, lobes)(surface, deep, rim)
+    if shade is not None:
+        lobe_shape((middle[0], middle[1] + 1.0), lobes)(surface, shade, 0)
+    lobe_shape((middle[0] - 1.0, middle[1] - 1.0), lobes)(surface, lit, 0)
+    lobe_shape(middle, lobes)(surface, body, 0)
 
 
 def star_points(

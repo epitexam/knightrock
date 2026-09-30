@@ -36,7 +36,16 @@ from src.core.rendering.renderer import (
     is_player_dashing,
 )
 from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
-from src.core.settings import Afterimage, DashDust, Dust, HitFlash, Physics, Simulation, Sweat
+from src.core.settings import (
+    Afterimage,
+    DashDust,
+    Dust,
+    DustGrain,
+    HitFlash,
+    Physics,
+    Simulation,
+    Sweat,
+)
 from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.helpers import make_entity
@@ -259,7 +268,20 @@ def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
 
     system._spawn_impact_fx(1 / 60)
 
-    assert len(groups.fx_sprites) == Dust.COUNT + 1
+    assert len(_by_family(groups, "landing_dust")) == Dust.COUNT
+    assert len(_by_family(groups, "dust_grain")) == DustGrain.LANDING_COUNT
+    assert len(_by_family(groups, "impact_decal")) == 1
+
+
+def _by_family(groups: SpriteGroups, family: str) -> list[object]:
+    """The sprites in the FX plane that spend from ``family``.
+
+    Written as a filter rather than a count because the dust now arrives in two
+    families at once: a landing is sheets *and* a spray of grains, and half a
+    dozen of these tests are about one of them. Counting the whole plane would
+    make every one of them a test of the other.
+    """
+    return [sprite for sprite in groups.fx_sprites if sprite.family == family]
 
 
 def _dasher(grounded: bool = True) -> object:
@@ -301,15 +323,16 @@ def test_a_dash_trails_dust_and_nothing_else() -> None:
     for _ in range(ticks):
         system._spawn_impact_fx(1 / 60)
 
-    trail = [sprite for sprite in groups.fx_sprites if sprite.family == "dash_dust"]
+    trail = _by_family(groups, "dash_dust")
     assert trail, "a dash leaves a trail"
-    assert all(sprite.family == "dash_dust" for sprite in groups.fx_sprites), (
+    assert all(sprite.family in ("dash_dust", "dust_grain") for sprite in groups.fx_sprites), (
         f"and nothing else: {[s.family for s in groups.fx_sprites]}"
     )
     assert len(trail) > DashDust.BURST_COUNT, "the ribbon extends past the shove"
     assert len(trail) <= DashDust.BURST_COUNT + ticks * DashDust.TICK_COUNT, (
         f"and it is a ribbon, not a wall: {len(trail)} puffs over {ticks} ticks"
     )
+    assert _by_family(groups, "dust_grain"), "and the trail carries grit as well as mass"
 
 
 def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
@@ -326,7 +349,7 @@ def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
     for _ in range(3):
         system._spawn_impact_fx(1 / 60)
 
-    radii = [sprite.radius for sprite in groups.fx_sprites]
+    radii = [sprite.radius for sprite in _by_family(groups, "dash_dust")]
     assert radii.count(max(radii)) == 1, f"exactly one puff at the burst's size: {radii}"
 
 
@@ -344,14 +367,14 @@ def test_a_second_dash_bursts_again() -> None:
     system = PhysicsSystem(groups)
 
     system._spawn_impact_fx(1 / 60)
-    first = len(groups.fx_sprites)
+    first = len(_by_family(groups, "dash_dust"))
     dasher.state_machine = SimpleNamespace(current_state_name="idle")
     system._spawn_impact_fx(1 / 60)
-    assert len(groups.fx_sprites) == first, "an idle entity trails nothing"
+    assert len(_by_family(groups, "dash_dust")) == first, "an idle entity trails nothing"
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
     system._spawn_impact_fx(1 / 60)
 
-    assert len(groups.fx_sprites) == first + DashDust.BURST_COUNT
+    assert len(_by_family(groups, "dash_dust")) == first + DashDust.BURST_COUNT
 
 
 def test_the_dash_trail_stops_at_the_family_budget() -> None:
@@ -369,7 +392,9 @@ def test_the_dash_trail_stops_at_the_family_budget() -> None:
 
     system._spawn_impact_fx(1 / 60)
 
-    assert len(groups.fx_sprites) == cap - 1, "a burst that does not fit is not half-thrown"
+    assert len(_by_family(groups, "dash_dust")) == cap - 1, (
+        "a burst that does not fit is not half-thrown"
+    )
 
 
 def test_a_dash_in_mid_air_trails_nothing() -> None:
@@ -440,7 +465,7 @@ def test_a_dash_that_begins_airborne_spends_its_burst_on_landing() -> None:
     for _ in range(int(Physics.DASH_DURATION * 60)):
         system._spawn_impact_fx(1 / 60)
 
-    radii = [sprite.radius for sprite in groups.fx_sprites]
+    radii = [sprite.radius for sprite in _by_family(groups, "dash_dust")]
     assert max(radii) < DashDust.BURST_RADIUS, "and the burst was not held back for it"
 
 

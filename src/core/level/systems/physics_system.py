@@ -7,10 +7,12 @@ from typing import Any
 
 from src.core.fx import (
     spawn_dash_dust,
+    spawn_dash_grains,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_impact_decal,
     spawn_landing_dust,
+    spawn_landing_grains,
     spawn_sweat_drops,
 )
 from src.core.settings import DashDust, Dust, FxDizzy, Sweat
@@ -117,6 +119,7 @@ class PhysicsSystem:
         impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
         if impact >= Dust.MIN_FALL_SPEED:
             spawn_landing_dust(self.groups.fx_sprites, entity, impact)
+            spawn_landing_grains(self.groups.fx_sprites, entity, impact)
             spawn_impact_decal(self.groups.fx_sprites, entity, impact)
         if _in_dash_penalty(entity):
             sweating_ids.add(id(entity))
@@ -194,6 +197,7 @@ class PhysicsSystem:
             timer -= delta_time
         if (first or timer <= 0.0) and _is_grounded(entity):
             spawn_dash_dust(self.groups.fx_sprites, entity, burst=first)
+            spawn_dash_grains(self.groups.fx_sprites, entity, burst=first)
         self._dash_timers[entity_id] = DashDust.SPAWN_EVERY if timer <= 0.0 else timer
 
     def _tick_sweat(self, entity: object, delta_time: float) -> None:

@@ -31,13 +31,22 @@ from src.core.fx.draw import (
     inked_polygon,
     life_alpha,
     life_level,
-    lobe_shape,
+    lobe_shaded,
     snap,
+    speck,
     spread_step,
     star_shape,
     streak_points,
 )
-from src.core.settings import DashDust, Dust, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import (
+    DashDust,
+    Dust,
+    DustGrain,
+    FxDecal,
+    FxDizzy,
+    FxGuard,
+    Sweat,
+)
 
 
 class FxParticle(pygame.sprite.Sprite):
@@ -55,6 +64,16 @@ class FxParticle(pygame.sprite.Sprite):
     drag: ClassVar[float] = 0.0
     fade_in: ClassVar[float] = 0.0
     alpha_steps: ClassVar[int] = ALPHA_STEPS
+    alpha_ceiling: ClassVar[int] = 255
+    """The most opaque this particle is ever drawn, on a scale of 0 to 255.
+
+    A separate knob from ``alpha_steps`` because a shorter ladder is not a
+    dimmer one. :func:`life_alpha` puts the top of whatever ladder it is given
+    at full opacity, so three steps is three levels ending at 255 -- a coarser
+    fade, not a fainter particle. Dust that has been thrown into the air is a
+    haze, and a haze that reaches 255 is a chip of stone, so the grain family
+    needs a ceiling and the rest of the plane is content with the default.
+    """
     behind: ClassVar[bool] = False
     """Painted under the moving plane, so a fighter is never behind its dust."""
     family: ClassVar[str]
@@ -86,7 +105,9 @@ class FxParticle(pygame.sprite.Sprite):
         self.pos += self.velocity * delta_time
 
     def _fade(self) -> None:
-        self.image.set_alpha(life_alpha(self.life, self.fade_in, self.alpha_steps))
+        self.image.set_alpha(
+            min(self.alpha_ceiling, life_alpha(self.life, self.fade_in, self.alpha_steps))
+        )
 
     def update(self, delta_time: float) -> None:
         self.ttl -= delta_time
@@ -101,17 +122,24 @@ class FxParticle(pygame.sprite.Sprite):
 class DustParticle(FxParticle):
     family: ClassVar[str] = "landing_dust"
 
-    """A puff of dust, kicked out of the feet and spreading as it dies.
+    """A sheet of dust, kicked out of the feet and spreading as it dies.
 
     The puff used to be a single disc that faded, which read as a ball being
     switched off, and its size was ignored outright: the shipped debris frames
     are a fixed 30px scaled by a constant, so a soft landing and a hard one
     produced byte-identical pixels and only the velocity told them apart.
 
-    It is now a cloud of a few overlapping discs that opens over its life,
-    picked from a ladder shared by every puff of the same size. Six puffs on
-    a landing are six references into a table rather than six painted
-    surfaces, which is what keeps a fan affordable.
+    It then became four large overlapping discs with a disc of highlight set
+    into the top left of the lot, which read as a bubble instead: the union of
+    four comparable discs is one smooth convex ellipse whatever you do with
+    them, and a round patch of light inside a round mass is the drawing
+    convention for a shiny cartoon thing. So it is a band of many small lobes
+    with a notched top, one pixel of rim light along the top of all of them
+    and a pixel of shadow underneath.
+
+    It animates by stepping a ladder shared by every puff of the same size,
+    tone and silhouette, so four puffs on a landing are four references into a
+    table rather than four painted surfaces.
     """
 
     gravity: ClassVar[float] = Dust.RISE
@@ -126,10 +154,12 @@ class DustParticle(FxParticle):
         ttl: float = Dust.TTL,
         radius: float = Dust.PUFF_RADIUS,
         tint: float = 0.0,
+        variant: int = 0,
     ) -> None:
         self.radius = float(radius)
         self.tint = float(tint)
-        self.ladder = puff_frames(self.radius, self.tint)
+        self.variant = int(variant)
+        self.ladder = puff_frames(self.radius, self.tint, self.variant)
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
         self.image = self.ladder[0]
@@ -146,7 +176,7 @@ class DustParticle(FxParticle):
 class DashDustParticle(FxParticle):
     family: ClassVar[str] = "dash_dust"
 
-    """A cloud of dust a dash leaves behind it.
+    """A sheet of dust a dash leaves behind it.
 
     The dash is the fastest thing in the game -- 1100 px/s for 0.08s -- and
     until now the only thing marking it was the renderer's afterimages, which
@@ -158,16 +188,17 @@ class DashDustParticle(FxParticle):
     they produced was a white cloud under a stretched rectangle with a hoop
     around it; a trail and nothing else is the part of that worth keeping.
 
-    Drawn without an ink rim, in two tones. The block's ring gave up its rim
-    for the same reason this does: a mid-grey outline at one pixel per world
-    unit turns a mark into a drawn shape with nothing light about it, and a
-    single flat tone is a blob. So the separation is carried by a lit lobe set
-    into the cloud, the way the block carries it on the side that was struck.
+    Drawn without an ink rim and without a shadow, in two tones. The block's
+    ring gave up its rim for the same reason this does: a mid-grey outline at
+    one pixel per world unit turns a mark into a drawn shape with nothing
+    light about it, and a single flat tone is a blob. So the separation is
+    carried by a lit edge along the top of the cloud, the way the block carries
+    it on the side that was struck.
 
-    Animates by stepping a ladder shared with every puff of the same size and
-    tone, for the same reason the landing dust does and for the same cost: a
-    dash lays a ribbon of these at once, so they have to be references into a
-    table rather than surfaces allocated on the tick.
+    Animates by stepping a ladder shared with every puff of the same size, tone
+    and silhouette, for the same reason the landing dust does and for the same
+    cost: a dash lays a ribbon of these at once, so they have to be references
+    into a table rather than surfaces allocated on the tick.
     """
 
     gravity: ClassVar[float] = DashDust.GRAVITY
@@ -182,10 +213,12 @@ class DashDustParticle(FxParticle):
         ttl: float = DashDust.TICK_TTL,
         radius: float = DashDust.TICK_RADIUS,
         tint: float = 0.0,
+        variant: int = 0,
     ) -> None:
         self.radius = float(radius)
         self.tint = float(tint)
-        self.ladder = dash_frames(self.radius, self.tint)
+        self.variant = int(variant)
+        self.ladder = dash_frames(self.radius, self.tint, self.variant)
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
         self.image = self.ladder[0]
@@ -197,6 +230,58 @@ class DashDustParticle(FxParticle):
     def _integrate(self, delta_time: float) -> None:
         super()._integrate(delta_time)
         self.image = self.ladder[spread_step(self.life, len(self.ladder), DashDust.STEP_OPENS)]
+
+
+class GrainParticle(FxParticle):
+    family: ClassVar[str] = "dust_grain"
+
+    """One speck of the spray thrown around a landing or a dash.
+
+    The family that makes the sheets read as dust. A kick off a floor does not
+    throw a handful of clouds and nothing else: it throws a spray of small
+    particles that travel further than the mass does, arrive first, and are
+    gone long before it, and a mark with no spray around it is a puff of smoke
+    however it is shaded.
+
+    Three things separate a grain from a smaller puff, and all three are here.
+    Its surface is a handful of pixels rather than a shape, so it carries no
+    silhouette -- there is nothing at two pixels across for the eye to read as
+    an outline, which is the point: a spray is judged by its distribution and
+    not by any one of its members. It is never opaque, because its alpha
+    ceiling sits well under 255 and dust in the air is a haze, not a chip of
+    stone -- a ceiling rather than a shorter fade ladder, since the top of
+    every ladder is full opacity. And it falls much faster than the mass it
+    came from, having nothing holding it up.
+
+    Painted in its own tiny surface at construction, with no ladder and no
+    cache, which is what :class:`SweatParticle` does and for the same reason:
+    at three pixels square a surface is nine pixels, so sharing one across the
+    session would cost a dictionary lookup to save nothing.
+    """
+
+    gravity: ClassVar[float] = DustGrain.GRAVITY
+    drag: ClassVar[float] = DustGrain.DRAG
+    fade_in: ClassVar[float] = DustGrain.FADE_IN
+    alpha_steps: ClassVar[int] = DustGrain.ALPHA_STEPS
+    alpha_ceiling: ClassVar[int] = DustGrain.MAX_ALPHA
+    behind: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        size: int = 1,
+        tint: float = 0.0,
+    ) -> None:
+        self.size = max(1, int(size))
+        self.tint = float(tint)
+        self.image = self._paint()
+        super().__init__(pos, DustGrain.TTL)
+        self.velocity = Vector2(velocity)
+        self.rect = self.image.get_frect(center=self.pos)
+
+    def _paint(self) -> pygame.Surface:
+        return _grain_surface(self.size, self.tint)
 
 
 class OrbitParticle(FxParticle):
@@ -602,9 +687,43 @@ def _shade(color: Color, amount: float) -> Color:
     )
 
 
-_puff_cache: dict[tuple[int, float], list[pygame.Surface]] = {}
-_dash_cache: dict[tuple[int, float], list[pygame.Surface]] = {}
+def _grain_surface(size: int, tint: float) -> pygame.Surface:
+    """One speck, on a surface cut exactly to it.
+
+    No ink and no rim, on two counts. A rim around a two-pixel square is three
+    pixels of edge and one of mass, so the mark becomes the outline rather than
+    the dust; and the grains are the shadowed debris a kick scatters, so they
+    are drawn off ``dust_grain`` and never lifted above the sheet's own body
+    tone -- a field of highlights is glitter, and glitter is what a parry is
+    for.
+    """
+    side = max(1, int(size))
+    surface = pygame.Surface((side, side), pygame.SRCALPHA)
+    speck(surface, _shade(FXColors.dust_grain, tint), (side // 2, side // 2), side)
+    return surface
+
+
+_SHEET_SEED = 0x5EED
+"""The seed the mote layouts are drawn from.
+
+Its own constant rather than the FX stream's: these layouts are shapes, and
+the ladder hands the same one to every puff of a size for the whole session.
+Drawing them from a live stream would make a fan's members differ between two
+landings, which the eye reads as the game shaking.
+"""
+
+
+_puff_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
+_dash_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
 _vortex_cache: list[pygame.Surface] = []
+_PUFF_MOTES: dict[int, tuple[tuple[float, float, float], ...]] = {}
+_DASH_MOTES: dict[int, tuple[tuple[float, float, float], ...]] = {}
+"""The lobe layouts, memoized per variant.
+
+A layout is a fixed list of shares, so there is one per variant and never more
+-- where the old ladder held a list of four large discs written out in
+settings, and every size bucket re-expressed it.
+"""
 
 
 def _nearest_bucket(radius: float, buckets: tuple[int, ...]) -> int:
@@ -629,53 +748,193 @@ def _dash_bucket(radius: float) -> int:
     return _nearest_bucket(radius, DashDust.BUCKETS)
 
 
-def _puff_step(radius: float, step: int, tint: float) -> pygame.Surface:
-    """One step of the billow: the cloud at its size for this step.
+def _puff_step(radius: float, step: int, tint: float, variant: int) -> pygame.Surface:
+    """One step of the sheet: the cloud at its size for this step.
 
     Drawn at the radius it has *become* rather than the one it started at, so
-    the ladder is the growth. The first step is squashed flat because that is
-    the shape dust has while it is still leaving the floor, and the squash
-    relaxes to nothing over the ladder.
+    the ladder is the growth. The first step is flattened because that is the
+    shape dust has while it is still leaving the floor, and the flatten relaxes
+    to nothing over the ladder.
     """
     opened = 1.0 + Dust.PUFF_GROWTH * step
     reach = radius * opened
-    body = _shade(FXColors.dust, tint)
-    ink = _shade(FXColors.dust_deep, tint)
-    # The cloud's own reach, plus the rim, plus the lit lobe's offset: the
-    # surface is cut for the widest thing drawn on it, not for the nominal
-    # radius, or the satellites and the rim fall off the edge.
-    margin = max(1.0, max(abs(x) + share for x, _, share in Dust.PUFF_LOBES)) * radius * opened
-    span = 2 * (snap(reach + margin) + 2)
-    surface = pygame.Surface((span, span), pygame.SRCALPHA)
-    middle = span / 2.0
     squash = 1.0 - (1.0 - Dust.PUFF_SQUASH) * max(0.0, 1.0 - step)
-    lobes = tuple(
-        (offset_x * reach, offset_y * reach * squash, share * reach)
-        for offset_x, offset_y, share in Dust.PUFF_LOBES
-    )
-    ink_shape(surface, lobe_shape((middle, middle), lobes), body, ink, 1)
-    # The lit side, set into the top-left of the cloud. A puff with no light
-    # on it is a hole in the background rather than a mass of dust.
-    disc(
+    lobes = _scaled(_puff_motes(variant), reach, squash)
+    half_w, half_h = _span(lobes)
+    surface = pygame.Surface((2 * half_w, 2 * half_h), pygame.SRCALPHA)
+    lobe_shaded(
         surface,
-        _shade(body, Dust.PUFF_CORE_LIFT),
-        (middle - reach * Dust.PUFF_CORE, middle - reach * Dust.PUFF_CORE * squash),
-        max(1.0, reach * Dust.PUFF_CORE),
+        (half_w, half_h),
+        lobes,
+        _shade(FXColors.dust, tint),
+        _shade(FXColors.dust_lit, tint),
+        _shade(FXColors.dust_deep, tint),
+        _shade(FXColors.dust_shade, tint),
     )
     return surface
+
+
+def _puff_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
+    """The landing sheet's lobe layout, as shares of a unit radius.
+
+    Cached per variant, because it is the same list scaled once per step of
+    every ladder that uses it, and a layout built from a fresh draw each time
+    would make two puffs of one size and one tone differ for no reason.
+
+    Seeded off the variant rather than off the FX stream on purpose: this is
+    a shape, and a shape that changed between two landings would read as the
+    game jittering. The variant is the only thing allowed to change it, and it
+    is an index off the fan.
+    """
+    cached = _PUFF_MOTES.get(variant)
+    if cached is None:
+        cached = _mote_band(
+            Dust.PUFF_MOTES,
+            Dust.PUFF_BASE_SHARE,
+            Dust.PUFF_TOP_SHARE,
+            Dust.PUFF_MOTE_EVERY,
+            Dust.PUFF_MOTE_SPREAD,
+            Dust.PUFF_MOTE_RISE,
+            Dust.PUFF_MOTE_BASELINE,
+            variant,
+        )
+        _PUFF_MOTES[variant] = cached
+    return cached
+
+
+def _dash_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
+    """The trail sheet's lobe layout, as shares of a unit radius."""
+    cached = _DASH_MOTES.get(variant)
+    if cached is None:
+        cached = _mote_band(
+            DashDust.MOTES,
+            DashDust.BASE_SHARE,
+            DashDust.TOP_SHARE,
+            DashDust.MOTE_EVERY,
+            DashDust.MOTE_SPREAD,
+            DashDust.MOTE_RISE,
+            DashDust.MOTE_BASELINE,
+            variant,
+        )
+        _DASH_MOTES[variant] = cached
+    return cached
+
+
+def _mote_band(
+    count: int,
+    base_share: tuple[float, float],
+    top_share: tuple[float, float],
+    every: int,
+    spread: float,
+    rise: tuple[float, float],
+    baseline: float,
+    variant: int,
+) -> tuple[tuple[float, float, float], ...]:
+    """Lobes laid along a wide, low band, as shares of a unit radius.
+
+    Two strata, and the split between them is the whole shape. The *base* is
+    the lower band: large, close together, and drawn low enough to touch, so it
+    merges into one connected mass. The *fringe* sits above it: smaller, and
+    spread across a range of heights wider than a lobe is tall, so it
+    overlaps the base in places and stands clear of it in others. That
+    alternation is the notch, and the notch is what stops the silhouette being
+    a smooth convex outline -- which is all four of the large discs the puff
+    used to be ever summed up to, whatever they were offset by.
+
+    Drawing both strata from one distribution fails, and not subtly. The height
+    spread that gives the top its notches is the same spread that pulls the
+    bottom lobes out of each other's reach, and the sheet comes out as a row of
+    separate puffs hanging in the air. So the base is given its own, much
+    tighter, band of heights and the fringe is free to scatter.
+
+    Unit-radius shares, so one layout serves every size on the ladder and the
+    shape scales with the puff rather than being re-drawn at each of them.
+
+    ``every`` is a stride and not a draw because a fringe that got its coarse
+    lobes from a coin flip would be a different noise on every variant, and a
+    fan is meant to read as four grains of one kind of dirt.
+    """
+    rng = random.Random(_SHEET_SEED + variant * 1021)
+    base_count = max(1, count // 2 + 1)
+    low, high = rise
+    motes: list[tuple[float, float, float]] = []
+    for index in range(count):
+        along = (index + 0.5) / count
+        # Stratified across the band and then jittered within a slot, so the
+        # sheet is always full width -- a plain draw would leave its ends thin
+        # and make half the puffs in a fan smaller than the rest.
+        x = spread * (2.0 * along - 1.0) + spread * rng.uniform(-0.7, 0.7) / count
+        if index < base_count:
+            share = rng.uniform(*base_share)
+            # A lobe's own thickness, not a share of the rise band: the base
+            # has to be able to touch itself at this spread, and borrowing the
+            # fringe's range is the one number that stops it. It straddles the
+            # band's floor rather than sitting on it, which is what notches the
+            # *bottom* edge too -- the shadow pass fills the gaps between lobes
+            # drawn at one height, so a base band with a single height is a
+            # smooth curve along the floor whichever way its top is cut.
+            lift = rng.uniform(-0.07, 0.18)
+        else:
+            above = index - base_count
+            share = top_share[1] if above % every == 0 else rng.uniform(*top_share)
+            lift = rng.uniform(low, high)
+        # Screen y grows downward, so a lobe sitting above the floor is the
+        # smaller y. Hence the subtraction.
+        motes.append((x, baseline - lift, share))
+    return tuple(motes)
+
+
+def _scaled(
+    lobes: tuple[tuple[float, float, float], ...],
+    reach: float,
+    squash: float,
+) -> tuple[tuple[float, float, float], ...]:
+    """``lobes`` at ``reach``, with their heights multiplied by ``squash``."""
+    return tuple((x * reach, y * reach * squash, size * reach) for x, y, size in lobes)
+
+
+def _span(
+    lobes: tuple[tuple[float, float, float], ...],
+) -> tuple[int, int]:
+    """The half-width and half-height a set of lobes needs, as whole pixels.
+
+    Per axis, because a sheet of dust is about twice as wide as it is tall and
+    a square cut for it wastes most of what it allocates. The cut has to hold
+    the widest lobe on each axis -- its offset plus its own radius -- and a
+    spare pixel for the rim outside the silhouette and the shadow under it.
+
+    Cutting to the nominal radius instead is what the old margins did, and they
+    cut the landing puffs a surface nearly five times the size of the cloud
+    drawn on it.
+    """
+    across = snap(max((abs(x) + size for x, _, size in lobes), default=1.0))
+    down = snap(max((abs(y) + size for _, y, size in lobes), default=1.0))
+    return across + 2, down + 2
 
 
 def puff_tint(index: int) -> float:
     """The body tone the puff at ``index`` in a fan is drawn in.
 
     Cycled rather than drawn, because the ladder is keyed on tone as well as
-    radius: a fan of six clouds in six identical greys reads as a stamped
+    radius: a fan of four sheets in four identical greys reads as a stamped
     pattern, and a row of near-identical tones is what a spot-on-the-eye
     randomiser would give. Indexed modulo the palette, so the caller can hand
     it the puff index directly.
     """
     tints = _puff_tints()
     return tints[index % len(tints)]
+
+
+def puff_variant(index: int) -> int:
+    """The silhouette the puff at ``index`` in a fan is drawn from.
+
+    Offset from the tone's own palette rather than indexed alongside it, so
+    that a tone and a shape can never pair up twice: with the same index for
+    both, a fan of four would walk the diagonals of a four-by-four grid and
+    land on ``(0,0) (1,1) (2,2) (3,3)`` -- four members matching on tone, four
+    matching on shape, and a fan that looks like a diagonal.
+    """
+    return (index + 1) % max(1, Dust.PUFF_VARIANTS)
 
 
 def _puff_tints() -> tuple[float, ...]:
@@ -693,63 +952,57 @@ def _puff_tints() -> tuple[float, ...]:
     return tuple(low + span * index / (count - 1) for index in range(count))
 
 
-def puff_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
+def puff_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pygame.Surface]:
     """The shared billow of every puff of about ``radius``, in one body tone.
 
     A puff animates by stepping a ladder rather than by redrawing its cloud,
-    and the ladder is keyed on the discrete radii in ``Dust.PUFF_BUCKETS``
-    and the discrete tones in ``Dust.PUFF_TINT``, built once per session.
-    That is what makes a fan of six affordable: six puffs of similar size and
-    tone are references into the same rows, not six sets of surfaces
-    allocated at the moment of landing.
+    and the ladder is keyed on the discrete radii in ``Dust.PUFF_BUCKETS``,
+    the discrete tones in ``Dust.PUFF_TINT`` and the discrete silhouettes in
+    ``Dust.PUFF_VARIANTS``, built once per session. That is what makes a fan
+    of four affordable: four puffs of similar size, tone and shape are
+    references into the same rows, not four sets of surfaces allocated at the
+    moment of landing.
 
     A continuous radius would mean a surface per particle, which is the
     allocation ``notes/refacto.md`` already flags as the FX plane's main
-    remaining cost, and a landing is exactly when six of them happen at once.
+    remaining cost, and a landing is exactly when four of them happen at once.
     A display format change invalidates the cache along with everything else.
     """
-    key = (_puff_bucket(radius), round(tint, 3))
+    key = (_puff_bucket(radius), round(tint, 3), variant % max(1, Dust.PUFF_VARIANTS))
     cached = _puff_cache.get(key)
     if cached is not None:
         return cached
-    ladder = [_puff_step(key[0], step, tint) for step in range(Dust.PUFF_STEPS)]
+    ladder = [_puff_step(key[0], step, tint, key[2]) for step in range(Dust.PUFF_STEPS)]
     _puff_cache[key] = ladder
     return ladder
 
 
-def _dash_step(radius: float, step: int, tint: float) -> pygame.Surface:
-    """One step of the trail: the cloud at its size for this step.
+def _dash_step(radius: float, step: int, tint: float, variant: int) -> pygame.Surface:
+    """One step of the trail: the sheet at its size for this step.
 
-    The landing puff's step with the ink pass dropped, and its lit lobe taken
-    from the palette instead of lifted off the body. The lobes are the same
-    union and the first step is the same flat, both for the reason they are on
-    the landing: a disc reads as a ball, and dust leaves the ground flat and
-    rounds off as it rises.
+    The landing sheet's step with the dark side dropped: no rim and no
+    shadow, so it carries the lit edge and the body and nothing else. The block
+    gave its rim up for the same reason and the landing sheet's argument
+    applies unchanged -- the trail hangs on open air, where an outline is a
+    grey edge drawn around a light mark, and where a shadow underneath a
+    puff-less mark is a shape floating over nothing.
 
-    What is different is what separates the cloud from the background. The
-    landing puff answers that with a rim, which is right for a mark sitting on
-    tiles and wrong for one hanging on open air. This answers it with a second
-    tone drawn from the palette, so the gap between the two is a designed
-    number rather than the product of a lift applied to a lift.
+    What is left is the arrangement that does the work: many small lobes rather
+    than a few large ones, so the silhouette is notched, and a one-pixel lit
+    edge along the top of all of them rather than a disc of light inside one.
     """
     opened = 1.0 + DashDust.GROWTH * step
     reach = radius * opened
-    body = _shade(FXColors.dust, tint)
-    margin = max(1.0, max(abs(x) + share for x, _, share in DashDust.LOBES)) * radius * opened
-    span = 2 * (snap(reach + margin) + 2)
-    surface = pygame.Surface((span, span), pygame.SRCALPHA)
-    middle = span / 2.0
     squash = 1.0 - (1.0 - DashDust.SQUASH) * max(0.0, 1.0 - step)
-    lobes = tuple(
-        (offset_x * reach, offset_y * reach * squash, share * reach)
-        for offset_x, offset_y, share in DashDust.LOBES
-    )
-    lobe_shape((middle, middle), lobes)(surface, body, 0)
-    disc(
+    lobes = _scaled(_dash_motes(variant), reach, squash)
+    half_w, half_h = _span(lobes)
+    surface = pygame.Surface((2 * half_w, 2 * half_h), pygame.SRCALPHA)
+    lobe_shaded(
         surface,
+        (half_w, half_h),
+        lobes,
+        _shade(FXColors.dust, tint),
         _shade(FXColors.dust_lit, tint),
-        (middle - reach * DashDust.HIGHLIGHT, middle - reach * DashDust.HIGHLIGHT * squash),
-        max(1.0, reach * DashDust.HIGHLIGHT),
     )
     return surface
 
@@ -769,7 +1022,20 @@ def dash_tint(index: int, count: int) -> float:
     return low + (high - low) * index / (count - 1)
 
 
-def dash_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
+def dash_variant(index: int, count: int) -> int:
+    """The silhouette the trail puff at ``index`` of ``count`` is drawn from.
+
+    A stride, not an offset like the landing fan's, and the difference is
+    deliberate. A dash's ticks are laid one after another along the same 88px
+    of path, and the ribbon is one continuous mark: two ticks drawn from
+    different silhouettes read as two separate events on one movement. Every
+    member of an emission takes its variant from the same head of the palette,
+    so a tick and a burst agree on shape even though they differ in size.
+    """
+    return index % max(1, DashDust.VARIANTS)
+
+
+def dash_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pygame.Surface]:
     """The shared billow of every trail puff of about ``radius``, in one tone.
 
     The landing ladder's contract, and the reason for it applies twice over
@@ -777,16 +1043,16 @@ def dash_frames(radius: float, tint: float = 0.0) -> list[pygame.Surface]:
     are more of them alive at once, and a continuous radius would mean a
     surface per particle -- exactly the allocation ``notes/refacto.md``
     flags as the plane's main remaining cost. Keyed on the discrete radii in
-    ``DashDust.BUCKETS`` and the discrete tones in ``DashDust.TINT``, and
-    built once per session.
+    ``DashDust.BUCKETS``, the discrete tones in ``DashDust.TINT`` and the
+    discrete silhouettes in ``DashDust.VARIANTS``, and built once per session.
 
     A display format change invalidates the cache along with everything else.
     """
-    key = (_dash_bucket(radius), round(tint, 3))
+    key = (_dash_bucket(radius), round(tint, 3), variant % max(1, DashDust.VARIANTS))
     cached = _dash_cache.get(key)
     if cached is not None:
         return cached
-    ladder = [_dash_step(key[0], step, tint) for step in range(DashDust.STEPS)]
+    ladder = [_dash_step(key[0], step, tint, key[2]) for step in range(DashDust.STEPS)]
     _dash_cache[key] = ladder
     return ladder
 
@@ -844,4 +1110,6 @@ def clear_frame_cache() -> None:
     global _vortex_cache
     _puff_cache.clear()
     _dash_cache.clear()
+    _PUFF_MOTES.clear()
+    _DASH_MOTES.clear()
     _vortex_cache = []

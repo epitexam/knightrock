@@ -119,7 +119,7 @@ def test_a_hard_landing_does_not_paint_a_new_puff_surface() -> None:
     for _ in range(12):
         spawn_landing_dust(pygame.sprite.Group(), lander, Dust.MIN_FALL_SPEED * 2.0)
 
-    grid = len(Dust.PUFF_BUCKETS) * len(Dust.SIZE_PROFILE)
+    grid = len(Dust.PUFF_BUCKETS) * len(Dust.SIZE_PROFILE) * Dust.PUFF_VARIANTS
     assert 0 < len(particles._puff_cache) <= grid, (
         f"twelve landings painted {len(particles._puff_cache)} ladders, over a grid of {grid}"
     )
@@ -129,10 +129,10 @@ def test_a_hard_landing_does_not_paint_a_new_puff_surface() -> None:
 def test_two_puffs_of_one_size_and_tone_share_their_ladder() -> None:
     """The share is by value, so two puffs of a size hold one set of surfaces."""
     clear_frame_cache()
-    one = DustParticle((0.0, 0.0), (0.0, 0.0), radius=6.0, tint=0.0)
-    two = DustParticle((0.0, 0.0), (0.0, 0.0), radius=6.4, tint=0.0)
+    one = DustParticle((0.0, 0.0), (0.0, 0.0), radius=5.0, tint=0.0)
+    two = DustParticle((0.0, 0.0), (0.0, 0.0), radius=5.4, tint=0.0)
 
-    assert one.ladder is two.ladder, "6.0 and 6.4 are the same bucket"
+    assert one.ladder is two.ladder, "5.0 and 5.4 are the same bucket"
     assert len(particles._puff_cache) == 1
     clear_frame_cache()
 
@@ -193,7 +193,7 @@ def test_a_dash_trail_does_not_paint_a_new_surface_per_puff() -> None:
         spawn_dash_dust(pygame.sprite.Group(), dasher, burst=True)
         spawn_dash_dust(pygame.sprite.Group(), dasher)
 
-    grid = len(DashDust.BUCKETS) * (DashDust.BURST_COUNT + 1)
+    grid = len(DashDust.BUCKETS) * (DashDust.BURST_COUNT + 1) * DashDust.VARIANTS
     assert 0 < len(particles._dash_cache) <= grid, (
         f"twenty dashes painted {len(particles._dash_cache)} ladders, over a grid of {grid}"
     )

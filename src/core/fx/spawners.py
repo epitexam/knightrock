@@ -26,15 +26,26 @@ from src.core.fx.particles import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    GrainParticle,
     ImpactDecalParticle,
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
     SweatParticle,
     dash_tint,
+    dash_variant,
     puff_tint,
+    puff_variant,
 )
-from src.core.settings import DashDust, Dust, FxDecal, FxDizzy, FxGuard, Sweat
+from src.core.settings import (
+    DashDust,
+    Dust,
+    DustGrain,
+    FxDecal,
+    FxDizzy,
+    FxGuard,
+    Sweat,
+)
 
 DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
 """The palette a star is drawn from, cycling. A colour list rather than one
@@ -46,6 +57,7 @@ one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "landing_dust": 16,
+    "dust_grain": 24,
     "dash_dust": 16,
     "dizzy_star": 8,
     "dizzy_vortex": 8,
@@ -65,6 +77,14 @@ effect filling it.
 Every family a particle declares is in here; ``test_fx_invariants`` reads the
 source to keep it that way, because the key is a string and a typo would
 otherwise mean a particle spending from a budget that does not exist.
+
+``dust_grain`` is the loosest cap in the table, and it is the only family whose
+members are one to three pixels across. That is the trade: a landing spends
+fourteen of them and a dash eight or three, so a hard landing and a dash
+together would overrun the plane on their own. They are worth overrunning it
+with, because a plane full of grit still reads as one landing, where a plane
+full of sheets with a few specks among them reads as a landing with confetti in
+it -- and unlike the sheets, the grains are what the eye reads as motion.
 
 ``dash_dust`` is sized with the landing fan rather than with the cadenced
 effects because a dash is over in 0.08s: its burst and its ribbon are both
@@ -126,17 +146,18 @@ def spawn_landing_dust(
     entity: Any,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> list[DustParticle]:
-    """Fan ``Dust.COUNT`` puffs out of the entity's feet.
+    """Fan ``Dust.COUNT`` sheets out of the entity's feet.
 
     The count is fixed and the size is not: a fall several times the threshold
-    throws wider, heavier puffs, which is what makes a hard landing read as
+    throws wider, heavier sheets, which is what makes a hard landing read as
     harder than a merely brisk one.
 
-    Three things keep the fan from reading as a spinner. The sizes follow a
-    fixed rhythm rather than six independent draws, the bodies cycle through a
-    few tones so the puffs are not six copies, and the lives are staggered so
-    the fan dissolves instead of vanishing on one frame -- which it did, six
-    identical puffs sharing one TTL and one frame index.
+    Four things keep the fan from reading as a spinner or a stamp. The sizes
+    follow a fixed rhythm rather than four independent draws, the bodies cycle
+    through a few tones, the *silhouettes* cycle independently of the tones so
+    that no two members match on either, and the lives are staggered so the fan
+    dissolves instead of vanishing on one frame -- which it did, six identical
+    puffs sharing one TTL and one frame index.
     """
     hitbox = getattr(entity, "hitbox", None)
     if hitbox is None or not _has_room(fx_group, "landing_dust", Dust.COUNT):
@@ -156,16 +177,81 @@ def spawn_landing_dust(
         # also the ones that live longest: the fan opens as it goes.
         outward = abs(side) / max(1.0, (Dust.COUNT - 1) / 2.0)
         puff = DustParticle(
-            (hitbox.centerx + side * 4.0, hitbox.bottom - 2.0),
+            (hitbox.centerx + side * hitbox.width * Dust.FOOT_SPREAD, hitbox.bottom - 2.0),
             velocity,
             ttl=Dust.TTL * (low + (high - low) * outward),
             radius=Dust.PUFF_RADIUS * strength * _profile(index)
             + rng.uniform(0.0, Dust.RADIUS_JITTER),
             tint=puff_tint(index),
+            variant=puff_variant(index),
         )
         fx_group.add(puff)
         puffs.append(puff)
     return puffs
+
+
+def spawn_landing_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    impact: float = Dust.MIN_FALL_SPEED,
+) -> list[GrainParticle]:
+    """Throw the spray of grit around a hard landing.
+
+    The effect the sheets cannot carry on their own. A kick off a floor throws
+    small particles that travel further than the mass does and arrive first,
+    and a landing with no spray around it is a puff of smoke hanging at the
+    fighter's feet however well it is shaded.
+
+    Thrown wide and mostly sideways, because that is where a boot sends the
+    floor: a grain that stayed inside the sheet it came from would be drawn in
+    a near-identical tone at two pixels, underneath a mass of the same thing.
+    A few go backward rather than sideways, which is the throw that made the
+    burst of a dash read as a shove; the rest go nowhere near the fighter,
+    because the plane is painted *under* the moving layer and a grain that
+    crossed his path would be a speck over his own feet.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or not _has_room(fx_group, "dust_grain", DustGrain.LANDING_COUNT):
+        return []
+    rng = _fx_rng
+    side = facing_side(entity)
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    spread = DustGrain.THROW * _landing_strength(impact)
+    grains: list[GrainParticle] = []
+    for index in range(DustGrain.LANDING_COUNT):
+        grains.append(
+            GrainParticle(
+                (
+                    hitbox.centerx
+                    + rng.uniform(-1.0, 1.0) * hitbox.width * DustGrain.SIDE_SPREAD * 0.5,
+                    hitbox.bottom,
+                ),
+                _grain_velocity(rng, side, spread),
+                size=small + round(size_span * index / max(1, DustGrain.LANDING_COUNT - 1)),
+                tint=low + (high - low) * index / max(1, DustGrain.LANDING_COUNT - 1),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
+
+
+def _grain_velocity(rng: random.Random, side: float, spread: float) -> tuple[float, float]:
+    """A grain's launch: mostly sideways off the boot, sometimes backward.
+
+    The two out of the three cases are the sideways ones because a boot throws
+    the floor sideways; the backward one is the dash's shove, and it is a
+    minority so that a landing does not read as a dash. A grain thrown very
+    hard *upward* is deliberately not in here -- see ``DustGrain.GRAVITY``, which
+    has already recovered most of it before the grain has moved two pixels.
+    """
+    backward = rng.random() < DustGrain.BACK_SHARE
+    outward = -side if backward else rng.choice((-1.0, 1.0))
+    return (
+        outward * rng.uniform(DustGrain.THROW * 0.35, spread),
+        -abs(rng.uniform(*DustGrain.RISE)),
+    )
 
 
 def _profile(index: int) -> float:
@@ -254,12 +340,17 @@ def spawn_dash_dust(
     base_radius = DashDust.BURST_RADIUS if burst else DashDust.TICK_RADIUS
     throw = DashDust.THROW if burst else DashDust.TICK_THROW
     low, high = DashDust.TTL_STAGGER
+    # The burst is laid across the body's width, the ticks at its trailing
+    # edge. A plume thrown from the middle of the fighter is under the moving
+    # plane for as long as the dash lasts, and the dash is over in a sixth of
+    # a second -- which is the whole of the burst's readable life.
+    spread = hitbox.width * Dust.FOOT_SPREAD if burst else 0.0
     anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
     puffs: list[DashDustParticle] = []
     for index in range(count):
         lateral = (index - (count - 1) / 2.0) / max(1.0, (count - 1) / 2.0)
         puff = DashDustParticle(
-            (anchor, hitbox.bottom - 2.0),
+            (anchor + lateral * spread, hitbox.bottom - 2.0),
             (
                 -side * throw
                 + lateral * DashDust.SPREAD
@@ -269,10 +360,59 @@ def spawn_dash_dust(
             ttl=base_ttl * (low + (high - low) * abs(lateral)),
             radius=base_radius + rng.uniform(0.0, DashDust.RADIUS_JITTER),
             tint=dash_tint(index, count),
+            variant=dash_variant(index, count),
         )
         fx_group.add(puff)
         puffs.append(puff)
     return puffs
+
+
+def spawn_dash_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    burst: bool = False,
+) -> list[GrainParticle]:
+    """Throw the grit off a dashing fighter's heels.
+
+    Laid along the path rather than fanned, and thrown against the direction of
+    travel rather than sideways, which is the same asymmetry the trail's own
+    puffs are thrown with and for the same reason: a tick's grit is what the
+    fighter left at his heels, and grit left lying on the path is the part of
+    the mark that survives him.
+
+    Few on a tick. The ticks are laid one after another along 88px of path, and
+    a tick that threw as much spray as the burst would fill the whole line of
+    it and bury the ribbon, which is the only thing the dash is marking.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = DustGrain.DASH_BURST_COUNT if burst else DustGrain.DASH_TICK_COUNT
+    if count <= 0 or not _has_room(fx_group, "dust_grain", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    throw = DustGrain.THROW if burst else DustGrain.THROW * 0.4
+    anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    grains: list[GrainParticle] = []
+    for index in range(count):
+        across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
+        grains.append(
+            GrainParticle(
+                (anchor + across, hitbox.bottom),
+                (
+                    -side * rng.uniform(throw * 0.4, throw),
+                    -abs(rng.uniform(*DustGrain.RISE)) * (1.0 if burst else 0.5),
+                ),
+                size=small + round(size_span * (index / max(1, count - 1)) * 0.5),
+                tint=low + (high - low) * rng.random(),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
 
 
 def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:

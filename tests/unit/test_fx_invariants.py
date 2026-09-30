@@ -29,10 +29,20 @@ SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
 PARTICLES_MODULE = FX_PACKAGE / "particles.py"
 DRAW_MODULE = FX_PACKAGE / "draw.py"
 SETTINGS_MODULE = REPO_ROOT / "src" / "core" / "settings.py"
-FX_TUNING_CLASSES = {"Dust", "DashDust", "Sweat", "FxGuard", "FxDizzy", "FxDecal"}
+FX_TUNING_CLASSES = {
+    "Dust",
+    "DustGrain",
+    "DashDust",
+    "Sweat",
+    "FxGuard",
+    "FxDizzy",
+    "FxDecal",
+}
 """Where the FX tuning is declared. `Dust` and `Sweat` are here because they
 predate the FX classes and the simulation reads a few of their numbers, so
-they were extended rather than replaced."""
+they were extended rather than replaced. `DustGrain` is here for the ordinary
+reason: it is a tuning class like the rest, and the check below has to see it
+or its settings go unchecked like the eighteen names it was written to catch."""
 """The three modules below the package root, in dependency order.
 
 The rules are split along the same lines the package is: the budgets and the
