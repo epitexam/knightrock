@@ -260,9 +260,10 @@ class Dust:
     left of every one of them, and the frame it produced was six small shiny
     spheres: the puff's whole silhouette came out as a smooth convex ellipse
     about as wide as the fighter, which is a bubble rather than a kick. So the
-    cloud is now a *low band of small lobes* with an irregular, notched top
-    edge, lit by a one-pixel rim and sitting in its own shadow, and it is
-    about half the width it was.
+    cloud is now a *low band of small parts* -- a connected base and a
+    scattered fringe, most of them chips rather than discs -- with an irregular,
+    notched top edge, lit by a one-pixel rim and sitting in its own shadow, and
+    it is about half the width it was.
 
     The grains that make it read as dust rather than as smoke are a separate
     family, :class:`DustGrain`, thrown around this one.
@@ -369,17 +370,22 @@ class Dust:
     PUFF_STEP_OPENS = 0.55
     """The share of the life the sheet takes to open over. The rest of the
     life is spent drifting and fading, so a puff finishes spread and gone."""
-    PUFF_MOTES = 15
-    """How many lobes the sheet is built from.
+    PUFF_MOTES = 11
+    """How many parts the sheet is built from.
 
-    Many and small, where it was four and large. This is the number the look
-    turns on: four lobes of comparable radius, each overlapping the others, sum
-    to one smooth convex outline, and no amount of offsetting them changes the
-    fact that the result is an ellipse. Eleven lobes at a fraction of the radius
-    leave notches along the top edge and a scatter of shoulders, and notches
-    are the difference between a silhouette and a bubble.
+    Many and small, where it was four and large, but not as many as it was on
+    the way here. Four parts of comparable radius, each overlapping the others,
+    sum to one smooth convex outline and no amount of offsetting them changes
+    the fact that the result is an ellipse. Many small ones leave notches along
+    the top and a scatter of shoulders.
+
+    Eleven rather than fifteen because the count trades against the size, and a
+    part too small to show a side is a speck: at fifteen the chips had shrunk
+    to two pixels and the outline went back to being made of little arcs, which
+    is the thing the chips are there to stop. Fewer and larger is what buys a
+    facet a chance to read as one.
     """
-    PUFF_BASE_SHARE = (0.22, 0.3)
+    PUFF_BASE_SHARE = (0.26, 0.36)
     """The lower band's lobes, as shares of the radius, across a range.
 
     Half the lobes, at the bottom, and the only ones large enough to touch
@@ -388,10 +394,10 @@ class Dust:
     lobes are bigger and closer together than the fringe above them rather than
     drawn from the same distribution. One draw for both was tried and it fails
     badly -- the spread that gives the top edge its notches is the same spread
-    that pulls the bottom lobes out of each other's reach, and the sheet comes
+    that pulls the bottom parts out of each other's reach, and the sheet comes
     out as a row of separate puffs hanging in the air.
     """
-    PUFF_TOP_SHARE = (0.12, 0.19)
+    PUFF_TOP_SHARE = (0.1, 0.16)
     """The fringe's lobes, as shares of the radius, across a range.
 
     Under the base band's smallest, so the top edge is finer than the bottom
@@ -425,12 +431,60 @@ class Dust:
     below, and dust that has been kicked does not hang.
     """
     PUFF_MOTE_EVERY = 3
-    """Every ``n``-th fringe lobe is drawn at the top of ``PUFF_TOP_SHARE``.
+    """Every ``n``-th fringe part is drawn at the top of ``PUFF_TOP_SHARE``.
 
     Grit is not uniform: a few grains are coarse and most are fine, and a fringe
     of identical specks reads as noise rather than as debris. The spacing is a
     stride rather than a draw so that every sheet gets the same few coarse
     lobes -- which is what keeps a fan from being four different noises.
+    """
+    PUFF_CHIP_SHARE = 0.72
+    """The share of the sheet's parts drawn as chips rather than discs.
+
+    This is the number the shape turns on, and it is high because every arc on
+    a silhouette is a bubble however small it is. Fifteen little circles make
+    fifteen small bubbles along the outline, and what the eye reads is the arcs
+    rather than the count -- a cluster of beads is still beads. A mark with a
+    quarter of its outline made of straight runs reads as *stuff*: a flake off a
+    floor, a grain, a chip.
+
+    Not a clean sweep of chips, because that loses the one thing the discs were
+    for. A lobe of one is a rounded shoulder, and shoulders are what stop the
+    silhouette from reading as a shard of glass: too many corners and the mark
+    is a heap of debris, which is a different effect and a louder one.
+    """
+    PUFF_CHIP_SIDES = (4, 6)
+    """How many edges a chip has, as a range.
+
+    Four is a flake, six is a pebble, and both are read as matter at three
+    pixels across. A triangle is not: at that size its apex is a single pixel
+    standing proud of everything else, and a sheet with a fringe of single
+    pixels standing off it reads as sparkle -- which is the parry's job, and
+    the dust got a grain family precisely so it would not have to do it here.
+    """
+    PUFF_CHIP_TURN = 1.0
+    """How far a chip's heading is drawn from, as a share of a full turn.
+
+    At 1.0 two chips land on the same orientation about one time in four, which
+    is enough coincidence to read as a coincidence. Lower it and the chips
+    start agreeing with each other, and past about a third they read as strata
+    rather than as grit -- layered, crystalline, a different material. Worth
+    knowing the dial is there before reaching for it.
+    """
+    PUFF_CHIP_GROW = 1.4
+    """How much bigger a chip is drawn than the disc it replaces, by radius.
+
+    Not a fudge: a regular polygon covers noticeably less than the circle
+    inscribed in the same radius, and the share the chips take is drawn on the
+    same numbers as the discs. A quadrilateral is 0.64 of its disc's area and a
+    hexagon 0.83, so swapping part for part at one radius quietly *thins* the
+    band -- and thinning it is not the same change as squaring it. The sheet
+    stops being a mass and becomes a row of separate specks, which is the one
+    thing the two strata exist to prevent.
+
+    It is the difference between a sheet of dust and a heap of gravel, and it
+    has to be this number rather than a bigger entry in the share ranges,
+    because the two kinds are drawn from the same draw.
     """
     PUFF_SQUASH = 0.72
     """How flat the first step is, as a share of the sheet's own height.
@@ -696,7 +750,7 @@ class DashDust:
     past it -- which is why the burst is still the larger of the two rather
     than merely the first of them.
 
-    Down because the sheet is now a band of small lobes rather than a ball
+    Down because the sheet is now a band of small parts rather than a ball
     with lobes on it: the same nominal reach covers far more of the fighter's
     width than it did, and holding the old numbers would have doubled the mark
     in the only frame where it is the whole movement.
@@ -784,21 +838,21 @@ class DashDust:
     """
     STEP_OPENS = 0.5
     """The share of the life the trail takes to open over."""
-    MOTES = 13
+    MOTES = 11
     """How many lobes the sheet is built from.
 
     More than the landing sheet's, at a smaller radius: at the burst's size the
     lobes are the only thing giving the mark an edge at all, and a rim light
     around four large discs is a rim light around four discs.
     """
-    BASE_SHARE = (0.22, 0.28)
+    BASE_SHARE = (0.24, 0.32)
     """The lower band's lobes, as shares of the radius, across a range.
 
     The landing sheet's arrangement, for the landing sheet's reason: the band
     has to be one connected mass, so these are the lobes large and close
     enough to touch, and the fringe above them is free to scatter.
     """
-    TOP_SHARE = (0.11, 0.17)
+    TOP_SHARE = (0.1, 0.15)
     """The fringe's lobes, as shares of the radius, across a range.
 
     Finer than the landing sheet's, and the reason is the size: a fringe of
@@ -832,6 +886,37 @@ class DashDust:
     """
     MOTE_EVERY = 3
     """Every ``n``-th fringe lobe is drawn at the top of ``TOP_SHARE`` instead."""
+    CHIP_SHARE = 0.78
+    """The share of the trail sheet's lobes drawn as chips rather than discs.
+
+    Higher than the landing sheet's, for the reason the trail is a different
+    mark: it is read as it is left behind, at a distance, along 88px of path,
+    and a silhouette made entirely of arcs holds together at that range where
+    the notches between chips do not. Finer edges read as noise from far off,
+    so the trail leans harder on the parts of the outline that survive being
+    small.
+    """
+    CHIP_SIDES = (4, 6)
+    """How many edges a chip has, as a range.
+
+    The landing sheet's, and for the same reason: a triangle at this radius is
+    a single pixel standing proud, and the trail is the mark that cannot afford
+    a sparkle along its whole length.
+    """
+    CHIP_TURN = 1.0
+    """How far a chip's heading is drawn from, as a share of a full turn.
+
+    A full turn here for the landing sheet's reason, and with more to lose from
+    it: the trail's chips are what keep the ribbon from looking like a row of
+    beads, and agreeing orientations would put the same bead back.
+    """
+    CHIP_GROW = 1.35
+    """How much bigger a chip is drawn than the disc it replaces, by radius.
+
+    The landing sheet's arithmetic, with half a percent less on it because the
+    trail's chips are larger to begin with and the area a polygon is short by
+    grows with the number of sides, not with the radius.
+    """
     SQUASH = 0.66
     """How flat the first step is, as a share of the sheet's own height.
 

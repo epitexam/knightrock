@@ -27,6 +27,7 @@ from src.core.fx import (
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
+    particles,
     spawn_dash_dust,
     spawn_dizzy_vortex,
     spawn_guard_arc,
@@ -279,7 +280,57 @@ def _share(surface: pygame.Surface, tone: Color) -> float:
     return sum(1 for x, y in drawn if surface.get_at((x, y))[:3] == lit) / len(drawn)
 
 
-def test_the_puff_sits_on_a_shadow_rather_than_floating() -> None:
+def test_the_sheet_is_faceted_and_a_disc_built_one_would_not_be() -> None:
+    """The claim, measured on the layout rather than on the primitive.
+
+    A silhouette made of arcs is a cluster of beads however many there are and
+    however small: fifteen little circles make fifteen little bubbles along the
+    outline, and what the eye reads is the arcs rather than the count. A sheet
+    with a quarter of its outline in straight runs reads as *stuff* -- a flake
+    off a floor, a grain -- which is the whole difference between gravel and
+    foam.
+
+    Two things have to hold, and neither is a pixel measurement. There have to
+    be chips in the layout at all, and they have to be *big enough to show a
+    side* at the sizes the fan is actually painted at: a chip three pixels
+    across has an edge, and a chip one pixel across is a speck, which is the
+    grain family's job and a sparkle at that.
+
+    The size is checked as arithmetic on the layout rather than on the pixels,
+    and deliberately so -- pygame fills the top of a radius-twelve disc with a
+    six-pixel flat edge, so a circle is not obviously curved once it is on the
+    grid, and a pixel test here would be measuring the rasteriser.
+    """
+    for variant in range(Dust.PUFF_VARIANTS):
+        discs, chips = particles._puff_motes(variant)
+        assert discs and chips, (
+            f"variant {variant} is one kind of part only: {len(discs)} discs, {len(chips)} chips"
+        )
+        for radius in Dust.PUFF_BUCKETS:
+            reach = radius * (1.0 + Dust.PUFF_GROWTH * (Dust.PUFF_STEPS - 1))
+            widest = max((size * reach for _, _, size, _, _ in chips), default=0.0)
+            assert widest * 2 >= 3.0, (
+                f"a chip at the {radius} bucket is {widest * 2:.1f}px across: "
+                f"below three it is a speck rather than a facet"
+            )
+
+
+def test_a_sheet_is_built_from_both_kinds_of_part() -> None:
+    """A clean sweep of chips is a heap of debris, and a clean sweep of discs is
+    a heap of beads. Neither is dust.
+
+    The discs are there for the rounded shoulders that keep the silhouette from
+    reading as a shard of glass, so the sheet has to keep some of them. Held on
+    the settings rather than on the pixels, because what the pixels depend on is
+    a seeded draw and what the settings promise is that the mix is a decision.
+    """
+    assert 0.0 < Dust.PUFF_CHIP_SHARE < 1.0
+    assert 0.0 < DashDust.CHIP_SHARE < 1.0
+    least = min(Dust.PUFF_CHIP_SIDES[0], DashDust.CHIP_SIDES[0])
+    assert least >= 4, "a triangle at three pixels is a sparkle, not a facet"
+
+
+def test_the_sheet_sits_on_a_shadow_rather_than_floating() -> None:
     """The mass has to be standing on something.
 
     A rim light alone describes a flat shape with one bright edge and no

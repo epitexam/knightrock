@@ -23,6 +23,8 @@ from pygame.math import Vector2
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.draw import (
     ALPHA_STEPS,
+    Shape,
+    ShapeAt,
     disc,
     disc_shape,
     draw_arc_stroke,
@@ -31,7 +33,8 @@ from src.core.fx.draw import (
     inked_polygon,
     life_alpha,
     life_level,
-    lobe_shaded,
+    mote_shape,
+    shape_shaded,
     snap,
     speck,
     spread_step,
@@ -716,8 +719,8 @@ landings, which the eye reads as the game shaking.
 _puff_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
 _dash_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
 _vortex_cache: list[pygame.Surface] = []
-_PUFF_MOTES: dict[int, tuple[tuple[float, float, float], ...]] = {}
-_DASH_MOTES: dict[int, tuple[tuple[float, float, float], ...]] = {}
+_PUFF_MOTES: dict[int, Motes] = {}
+_DASH_MOTES: dict[int, Motes] = {}
 """The lobe layouts, memoized per variant.
 
 A layout is a fixed list of shares, so there is one per variant and never more
@@ -759,13 +762,13 @@ def _puff_step(radius: float, step: int, tint: float, variant: int) -> pygame.Su
     opened = 1.0 + Dust.PUFF_GROWTH * step
     reach = radius * opened
     squash = 1.0 - (1.0 - Dust.PUFF_SQUASH) * max(0.0, 1.0 - step)
-    lobes = _scaled(_puff_motes(variant), reach, squash)
-    half_w, half_h = _span(lobes)
+    motes = _puff_motes(variant)
+    half_w, half_h = _span(motes, reach, squash)
     surface = pygame.Surface((2 * half_w, 2 * half_h), pygame.SRCALPHA)
-    lobe_shaded(
+    shape_shaded(
         surface,
         (half_w, half_h),
-        lobes,
+        _sheet_shape(motes, reach, squash),
         _shade(FXColors.dust, tint),
         _shade(FXColors.dust_lit, tint),
         _shade(FXColors.dust_deep, tint),
@@ -774,7 +777,7 @@ def _puff_step(radius: float, step: int, tint: float, variant: int) -> pygame.Su
     return surface
 
 
-def _puff_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
+def _puff_motes(variant: int) -> Motes:
     """The landing sheet's lobe layout, as shares of a unit radius.
 
     Cached per variant, because it is the same list scaled once per step of
@@ -796,13 +799,17 @@ def _puff_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
             Dust.PUFF_MOTE_SPREAD,
             Dust.PUFF_MOTE_RISE,
             Dust.PUFF_MOTE_BASELINE,
+            Dust.PUFF_CHIP_SHARE,
+            Dust.PUFF_CHIP_SIDES,
+            Dust.PUFF_CHIP_TURN,
+            Dust.PUFF_CHIP_GROW,
             variant,
         )
         _PUFF_MOTES[variant] = cached
     return cached
 
 
-def _dash_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
+def _dash_motes(variant: int) -> Motes:
     """The trail sheet's lobe layout, as shares of a unit radius."""
     cached = _DASH_MOTES.get(variant)
     if cached is None:
@@ -814,6 +821,10 @@ def _dash_motes(variant: int) -> tuple[tuple[float, float, float], ...]:
             DashDust.MOTE_SPREAD,
             DashDust.MOTE_RISE,
             DashDust.MOTE_BASELINE,
+            DashDust.CHIP_SHARE,
+            DashDust.CHIP_SIDES,
+            DashDust.CHIP_TURN,
+            DashDust.CHIP_GROW,
             variant,
         )
         _DASH_MOTES[variant] = cached
@@ -828,18 +839,26 @@ def _mote_band(
     spread: float,
     rise: tuple[float, float],
     baseline: float,
+    chip_share: float,
+    chip_sides: tuple[int, int],
+    chip_turn: float,
+    chip_grow: float,
     variant: int,
-) -> tuple[tuple[float, float, float], ...]:
-    """Lobes laid along a wide, low band, as shares of a unit radius.
+) -> Motes:
+    """The sheet's parts, as shares of a unit radius, split by kind.
 
-    Two strata, and the split between them is the whole shape. The *base* is
+    Returns discs and chips separately because the caller unions them into one
+    shape -- :func:`mote_shape` takes both lists, and the two kinds only differ
+    in how their outline is built, not in where they sit or how big they are.
+
+    Two strata, and the split between them is the whole *mass*. The *base* is
     the lower band: large, close together, and drawn low enough to touch, so it
-    merges into one connected mass. The *fringe* sits above it: smaller, and
-    spread across a range of heights wider than a lobe is tall, so it
-    overlaps the base in places and stands clear of it in others. That
-    alternation is the notch, and the notch is what stops the silhouette being
-    a smooth convex outline -- which is all four of the large discs the puff
-    used to be ever summed up to, whatever they were offset by.
+    merges into one connected form. The *fringe* sits above it: smaller, and
+    spread across a range of heights wider than a lobe is tall, so it overlaps
+    the base in places and stands clear of it in others. That alternation is
+    the notch, and the notch is what stops the silhouette being one smooth
+    convex outline -- which is all four of the large discs the puff used to be
+    ever summed up to, whatever the discs were offset by.
 
     Drawing both strata from one distribution fails, and not subtly. The height
     spread that gives the top its notches is the same spread that pulls the
@@ -847,17 +866,27 @@ def _mote_band(
     separate puffs hanging in the air. So the base is given its own, much
     tighter, band of heights and the fringe is free to scatter.
 
+    Which of the two kinds a lobe is drawn as is the ``chip_share`` draw, and
+    it is the difference between a heap of beads and a heap of gravel. There is
+    no pattern in it -- an every-``n`` stride was tried and reads as corduroy
+    along the bottom -- so it comes off the stream, seeded by the variant like
+    everything else in the layout.
+
+    A chip is then drawn ``chip_grow`` times larger than the disc it replaced,
+    because a polygon covers less than the circle inscribed in the same radius
+    and the share is drawn on the same numbers. Swapping part for part at one
+    radius does not square the band, it thins it.
+
     Unit-radius shares, so one layout serves every size on the ladder and the
     shape scales with the puff rather than being re-drawn at each of them.
-
-    ``every`` is a stride and not a draw because a fringe that got its coarse
-    lobes from a coin flip would be a different noise on every variant, and a
-    fan is meant to read as four grains of one kind of dirt.
     """
     rng = random.Random(_SHEET_SEED + variant * 1021)
     base_count = max(1, count // 2 + 1)
     low, high = rise
-    motes: list[tuple[float, float, float]] = []
+    least, most = chip_sides
+    turn = 2.0 * math.pi * max(0.0, chip_turn)
+    discs: list[tuple[float, float, float]] = []
+    chips: list[tuple[float, float, float, int, float]] = []
     for index in range(count):
         along = (index + 0.5) / count
         # Stratified across the band and then jittered within a slot, so the
@@ -870,7 +899,7 @@ def _mote_band(
             # has to be able to touch itself at this spread, and borrowing the
             # fringe's range is the one number that stops it. It straddles the
             # band's floor rather than sitting on it, which is what notches the
-            # *bottom* edge too -- the shadow pass fills the gaps between lobes
+            # *bottom* edge too -- the shadow pass fills the gaps between parts
             # drawn at one height, so a base band with a single height is a
             # smooth curve along the floor whichever way its top is cut.
             lift = rng.uniform(-0.07, 0.18)
@@ -878,37 +907,89 @@ def _mote_band(
             above = index - base_count
             share = top_share[1] if above % every == 0 else rng.uniform(*top_share)
             lift = rng.uniform(low, high)
-        # Screen y grows downward, so a lobe sitting above the floor is the
+        # Screen y grows downward, so a part sitting above the floor is the
         # smaller y. Hence the subtraction.
-        motes.append((x, baseline - lift, share))
-    return tuple(motes)
+        y = baseline - lift
+        if rng.random() < chip_share:
+            chips.append(
+                (
+                    x,
+                    y,
+                    share * chip_grow,
+                    rng.randint(least, most),
+                    rng.uniform(0.0, turn),
+                )
+            )
+        else:
+            discs.append((x, y, share))
+    return tuple(discs), tuple(chips)
 
 
-def _scaled(
-    lobes: tuple[tuple[float, float, float], ...],
+type Motes = tuple[
+    tuple[tuple[float, float, float], ...],
+    tuple[tuple[float, float, float, int, float], ...],
+]
+"""A sheet's parts in shares of a unit radius: the discs, then the chips.
+
+    The two kinds are kept apart because they are only different ways of
+    building the same outline -- one arc by one arc, one edge by one edge --
+    and nothing about where a part sits or how big it is depends on which it
+    happens to be."""
+
+
+_SHEET_SEED = 0x5EED
+"""The seed the mote layouts are drawn from.
+
+Its own constant rather than the FX stream's: these layouts are shapes, and
+the ladder hands the same one to every puff of a size for the whole session.
+Drawing them from a live stream would make a fan's members differ between two
+landings, which the eye reads as the game shaking.
+"""
+
+
+def _sheet_shape(
+    motes: Motes,
     reach: float,
     squash: float,
-) -> tuple[tuple[float, float, float], ...]:
-    """``lobes`` at ``reach``, with their heights multiplied by ``squash``."""
-    return tuple((x * reach, y * reach * squash, size * reach) for x, y, size in lobes)
+) -> ShapeAt:
+    """The sheet's shape, rebuilt at any centre.
+
+    The scaling happens once, here, rather than inside the four passes
+    :func:`shape_shaded` makes -- so the ladder pays for it per step and not
+    per pass, and so a lobe's radius and its height are multiplied by the same
+    ``reach``, which is what keeps a part circular while the sheet it belongs
+    to is squashed.
+    """
+    discs = tuple((x * reach, y * reach * squash, size * reach) for x, y, size in motes[0])
+    chips = tuple(
+        (x * reach, y * reach * squash, size * reach, sides, heading)
+        for x, y, size, sides, heading in motes[1]
+    )
+
+    def shape_at(centre: tuple[float, float]) -> Shape:
+        return mote_shape(centre, discs, chips)
+
+    return shape_at
 
 
-def _span(
-    lobes: tuple[tuple[float, float, float], ...],
-) -> tuple[int, int]:
-    """The half-width and half-height a set of lobes needs, as whole pixels.
+def _span(motes: Motes, reach: float, squash: float) -> tuple[int, int]:
+    """The half-width and half-height a sheet of parts needs, as whole pixels.
 
     Per axis, because a sheet of dust is about twice as wide as it is tall and
     a square cut for it wastes most of what it allocates. The cut has to hold
-    the widest lobe on each axis -- its offset plus its own radius -- and a
+    the widest part on each axis -- its offset plus its own radius -- and a
     spare pixel for the rim outside the silhouette and the shadow under it.
 
     Cutting to the nominal radius instead is what the old margins did, and they
     cut the landing puffs a surface nearly five times the size of the cloud
     drawn on it.
     """
-    across = snap(max((abs(x) + size for x, _, size in lobes), default=1.0))
-    down = snap(max((abs(y) + size for _, y, size in lobes), default=1.0))
+    parts = [
+        (x * reach, y * reach * squash, size * reach)
+        for x, y, size in (*motes[0], *(part[:3] for part in motes[1]))
+    ]
+    across = snap(max((abs(x) + size for x, _, size in parts), default=1.0))
+    down = snap(max((abs(y) + size for _, y, size in parts), default=1.0))
     return across + 2, down + 2
 
 
@@ -994,13 +1075,13 @@ def _dash_step(radius: float, step: int, tint: float, variant: int) -> pygame.Su
     opened = 1.0 + DashDust.GROWTH * step
     reach = radius * opened
     squash = 1.0 - (1.0 - DashDust.SQUASH) * max(0.0, 1.0 - step)
-    lobes = _scaled(_dash_motes(variant), reach, squash)
-    half_w, half_h = _span(lobes)
+    motes = _dash_motes(variant)
+    half_w, half_h = _span(motes, reach, squash)
     surface = pygame.Surface((2 * half_w, 2 * half_h), pygame.SRCALPHA)
-    lobe_shaded(
+    shape_shaded(
         surface,
         (half_w, half_h),
-        lobes,
+        _sheet_shape(motes, reach, squash),
         _shade(FXColors.dust, tint),
         _shade(FXColors.dust_lit, tint),
     )

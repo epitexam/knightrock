@@ -30,13 +30,15 @@ __all__ = [
     "ellipse_ring",
     "ink_shape",
     "lobe_shape",
-    "lobe_shaded",
     "polygon_bounds",
+    "regular_points",
     "inked_polygon",
     "life_alpha",
     "life_level",
     "ring",
     "snap",
+    "shard_shape",
+    "shape_shaded",
     "speck",
     "spread_step",
     "star_points",
@@ -46,6 +48,11 @@ __all__ = [
 
 type Paint = Color | ColorRGBA
 type Shape = Callable[[pygame.Surface, Paint, int], None]
+type ShapeAt = Callable[[tuple[float, float]], Shape]
+"""Builds a :data:`Shape` at a centre, rather than being one at a fixed place.
+
+    :func:`shape_shaded` draws the same silhouette four times at four
+    different places, so what it needs is the recipe and not the result."""
 """Draws one silhouette in ``color``, grown outward by ``inflate`` pixels.
 
 The grow argument is what makes a single shape serve twice: the ink pass
@@ -229,19 +236,103 @@ def lobe_shape(
     return draw
 
 
-def lobe_shaded(
+def regular_points(
+    at: tuple[float, float] | pygame.math.Vector2,
+    radius: float,
+    sides: int,
+    heading: float = 0.0,
+) -> list[tuple[int, int]]:
+    """The vertices of a regular polygon, as whole pixels.
+
+    ``sides`` counts edges, not corners, and ``heading`` is where the first
+    corner points in radians. Fewer than three is a segment rather than a
+    polygon, so it is clamped rather than left to degenerate.
+    """
+    cx, cy = _center(at)
+    corners = max(3, int(sides))
+    reach = max(1.0, float(radius))
+    turn = 2.0 * math.pi / corners
+    return [
+        (
+            snap(cx + reach * math.cos(heading + index * turn)),
+            snap(cy + reach * math.sin(heading + index * turn)),
+        )
+        for index in range(corners)
+    ]
+
+
+def shard_shape(
+    at: tuple[float, float] | pygame.math.Vector2,
+    shards: tuple[tuple[float, float, float, int, float], ...],
+) -> Shape:
+    """Several small convex chips as one :data:`Shape`.
+
+    A chip is ``(offset x, offset y, radius, sides, heading)`` -- a small
+    polygon, turned. This is the counterpart to :func:`lobe_shape` and the
+    reason a sheet of dust is not made of discs.
+
+    Every arc in a silhouette is a bubble, however small. A mark built from
+    fifteen little circles has fifteen small bubbles along its outline, and
+    what the eye reads is the arcs, not the count -- a cluster of beads is
+    still beads. Straight edges are what break it: a chip drawn at four to six
+    sides and given a heading of its own puts flat runs and corners on the
+    outline, and a silhouette with flat runs on it reads as *stuff* -- a flake
+    of stone, a grain, a chip off a floor -- rather than as a volume.
+
+    The turn matters as much as the sides. Chips all pointing the same way
+    read as strata, which is a different material from random grit, and which
+    of the two is wanted is a decision rather than a detail.
+    """
+    points = regular_points
+
+    def draw(surface: pygame.Surface, color: Paint, inflate: int) -> None:
+        for offset_x, offset_y, radius, sides, heading in shards:
+            pygame.draw.polygon(
+                surface,
+                color,
+                points((at[0] + offset_x, at[1] + offset_y), radius + inflate, sides, heading),
+            )
+
+    return draw
+
+
+def mote_shape(
+    at: tuple[float, float] | pygame.math.Vector2,
+    discs: tuple[tuple[float, float, float], ...],
+    shards: tuple[tuple[float, float, float, int, float], ...],
+) -> Shape:
+    """Discs and chips together as one :data:`Shape`.
+
+    The union is the point, and it is the same argument as
+    :func:`lobe_shape`'s, one level up: :func:`shape_shaded` calls whatever it
+    is given several times, so both kinds of part grow with the rim together
+    and the outline that comes out follows the outside of the whole mark rather
+    than showing where the discs end and the chips begin. A mark where you can
+    see the join is a mark made of two things.
+    """
+    lobes = lobe_shape(at, discs)
+    chips = shard_shape(at, shards)
+
+    def draw(surface: pygame.Surface, color: Paint, inflate: int) -> None:
+        lobes(surface, color, inflate)
+        chips(surface, color, inflate)
+
+    return draw
+
+
+def shape_shaded(
     surface: pygame.Surface,
     at: tuple[float, float] | pygame.math.Vector2,
-    lobes: tuple[tuple[float, float, float], ...],
+    shape_at: ShapeAt,
     body: Paint,
     lit: Paint,
     deep: Paint | None = None,
     shade: Paint | None = None,
     rim: int = 1,
 ) -> None:
-    """``lobes`` as one cloud, lit from the top left and shaded at the bottom.
+    """``shape_at(at)``, lit from the top left and shaded at the bottom.
 
-    Four passes, all of them the same union moved or grown: it grown by ``rim``
+    Four passes, all of them the same shape moved or grown: it grown by ``rim``
     in ``deep``, it a pixel down in ``shade``, it a pixel up and left in
     ``lit``, and it as it is in ``body``. ``deep`` and ``shade`` are separate
     arguments because they are separate jobs and want separate tones -- the rim
@@ -254,6 +345,11 @@ def lobe_shaded(
     tiles behind it there is nothing for an outline to separate from, and a
     grey edge around a light cloud is a drawn shape with nothing light about
     it.
+
+    ``shape_at`` is a factory rather than a shape because every pass is the
+    same silhouette at a different place. That is the whole trick, and it is
+    why the silhouette can be as elaborate as it likes -- four draws of one
+    union, and the light is free.
 
     The light pass is the reason this exists. A puff used to carry a *disc* of
     highlight set into its own top-left corner, and a round patch of light
@@ -269,13 +365,13 @@ def lobe_shaded(
     white, and half a pixel is two alternate shades of body along the same
     edge -- both of which put the cartoon back.
     """
-    middle = _center(at)
+    x, y = _center(at)
     if deep is not None and rim > 0:
-        lobe_shape(middle, lobes)(surface, deep, rim)
+        shape_at((x, y))(surface, deep, rim)
     if shade is not None:
-        lobe_shape((middle[0], middle[1] + 1.0), lobes)(surface, shade, 0)
-    lobe_shape((middle[0] - 1.0, middle[1] - 1.0), lobes)(surface, lit, 0)
-    lobe_shape(middle, lobes)(surface, body, 0)
+        shape_at((x, y + 1.0))(surface, shade, 0)
+    shape_at((x - 1.0, y - 1.0))(surface, lit, 0)
+    shape_at((x, y))(surface, body, 0)
 
 
 def star_points(
