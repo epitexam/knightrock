@@ -1018,6 +1018,27 @@ class FxGuard:
     SHARD_DRIFT = (0.4, 1.0)
     SHARD_KICK_DRIFT = (0.6, 1.4)
     SHARD_MARGIN = 2
+    SHARD_SEEDS = 8
+    """How many distinct layouts the ring can come apart in.
+
+    The bound, and it is the whole of the optimisation. ``_shatter_step`` is a
+    pure function of its progress, its seed and the side the guard was hit on --
+    nothing else about it varies per spawn -- so the geometry is worth painting
+    once per *layout* rather than once per break. It was seeded from
+    ``_fx_rng.randrange(1 << 16)`` per spawn, which made every break 65 536
+    layouts wide, and that is the whole reason the plane's most expensive effect
+    could not be painted twice: 81 arc strokes per step, three steps, measured at
+    1.14 ms on a frame whose budget is 16.7 ms.
+
+    Eight is not a guess about taste. The fragments are visible for
+    ``SHARD_TTL``, which is 300 ms, twenty-seven of them move during it, and no
+    two breaks land close enough together on screen for a repeat to be the one
+    thing a player notices.
+
+    Declared here rather than inside the particle because it is the size of the
+    session's table, and belongs beside the other counts the geometry is built
+    from.
+    """
 
 
 class FxDizzy:

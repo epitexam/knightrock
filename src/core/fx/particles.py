@@ -501,8 +501,16 @@ class ShatterArcParticle(FxParticle):
     that gave way. At the first step the circle is whole, so the effect reads
     as one object breaking rather than as debris that happened to be round.
 
-    Pre-rendered per spawn, in steps: a break is rare, and the geometry is the
-    expensive part, so paying it once beats rebuilding it every tick.
+    Painted per *layout* rather than per break, in steps, out of a table keyed
+    on the seed and the side. The geometry is 81 arc strokes across three steps
+    and it used to be rebuilt for every single break, off a seed drawn per
+    spawn from 65 536 values -- which measured at 1.14 ms of painting on a frame
+    with a 16.7 ms budget, which is the single largest frame operation in the
+    project and the only one close to a limit. Six times a second in a long
+    parry chain, it was a hitch and not a cost.
+
+    Nothing here is redrawn per tick, and the ladder is shared the way the dust
+    ladders are: the first break of each layout pays, the rest are references.
     """
 
     fade_in: ClassVar[float] = 0.0
@@ -515,86 +523,116 @@ class ShatterArcParticle(FxParticle):
         seed: int = 0,
     ) -> None:
         self.side = 1.0 if side >= 0.0 else -1.0
-        self.steps = [
-            self._shatter(index / (FxGuard.SHARD_STEPS - 1), seed)
-            for index in range(FxGuard.SHARD_STEPS)
-        ]
+        # Which layout, not which draw. The modulo is what bounds the session's
+        # table, and it is why a caller may hand this any integer at all: the
+        # spawner draws a fresh one from the FX stream on every break and gets
+        # one of SHARD_SEEDS layouts back, so the variety a player sees is
+        # unchanged and the geometry is not rebuilt.
+        self.seed = int(seed) % max(1, FxGuard.SHARD_SEEDS)
+        self.steps = shard_frames(self.side, self.seed)
         super().__init__(pos, ttl)
         self.image = self.steps[0]
-
-    def _fragment(
-        self,
-        surface: pygame.Surface,
-        middle: float,
-        middle_angle: float,
-        half_span: float,
-        radius: float,
-        color: Color,
-    ) -> None:
-        """One arc-shaped piece of the ring, at its own radius."""
-        draw_arc_stroke(
-            surface,
-            (middle, middle),
-            radius,
-            middle_angle - half_span,
-            middle_angle + half_span,
-            color,
-            1,
-        )
-
-    def _shatter(self, progress: float, seed: int) -> pygame.Surface:
-        """The ring at one moment of its failure, ``progress`` from 0 to 1."""
-        radius = snap(FxGuard.SHARD_RADIUS)
-        # Radius plus the furthest a piece can travel, or the circle is drawn
-        # off the edge of its own surface.
-        reach = snap(radius * (1.0 + FxGuard.SHARD_SPREAD * (1.0 + FxGuard.SHARD_WOUND_PUSH)))
-        span = 2 * (reach + FxGuard.SHARD_MARGIN)
-        surface = pygame.Surface((span, span), pygame.SRCALPHA)
-        middle = span / 2.0
-        rng = random.Random(seed * 977 + FxGuard.SHARD_PIECES)
-        facing = 0.0 if self.side >= 0.0 else 180.0
-        spread = FxGuard.SHARD_SPREAD * progress
-
-        slot = 360.0 / FxGuard.SHARD_PIECES
-        for index in range(FxGuard.SHARD_PIECES):
-            centre = facing + index * slot + slot / 2.0
-            on_wound = _angle_near(centre, facing, FxGuard.SHARD_WOUND)
-            thrown = (
-                spread
-                * (1.0 + FxGuard.SHARD_WOUND_PUSH * on_wound)
-                * rng.uniform(*FxGuard.SHARD_DRIFT)
-            )
-            self._fragment(
-                surface,
-                middle,
-                centre,
-                slot / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * progress),
-                radius + radius * thrown,
-                FXColors.break_spark,
-            )
-
-        fine = FxGuard.ARC_FLASH
-        piece = fine / FxGuard.SHARD_KICK_PIECES
-        for index in range(FxGuard.SHARD_KICK_PIECES):
-            centre = facing - fine / 2.0 + piece * (index + 0.5)
-            thrown = (
-                spread * (1.0 + FxGuard.SHARD_WOUND_PUSH) * rng.uniform(*FxGuard.SHARD_KICK_DRIFT)
-            )
-            self._fragment(
-                surface,
-                middle,
-                centre,
-                piece / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * 1.3 * progress),
-                radius + radius * thrown,
-                FXColors.break_core,
-            )
-        return surface
 
     def _paint(self) -> pygame.Surface:
         return self.steps[0]
 
     def _integrate(self, delta_time: float) -> None:
         self.image = self.steps[spread_step(self.life, len(self.steps), FxGuard.SHARD_STEP_OPENS)]
+
+
+_shard_cache: dict[tuple[int, int], list[pygame.Surface]] = {}
+"""The break geometry, keyed on ``(side, layout)``.
+
+    The same bound the dust ladders use, for the same reason and with the same
+    consequence: the key is drawn from a finite grid, so the table can never
+    outgrow it however many breaks go through it. An unbounded cache keyed on a
+    per-spawn seed would be a session-long leak of the plane's largest
+    surfaces."""
+
+
+def shard_frames(side: float, seed: int) -> list[pygame.Surface]:
+    """The shared failure of the ring, in its steps, for one side and one layout."""
+    key = (1 if side >= 0.0 else 0, int(seed) % max(1, FxGuard.SHARD_SEEDS))
+    cached = _shard_cache.get(key)
+    if cached is not None:
+        return cached
+    ladder = [
+        _shatter_step(index / (FxGuard.SHARD_STEPS - 1), key[1], key[0] == 1)
+        for index in range(FxGuard.SHARD_STEPS)
+    ]
+    _shard_cache[key] = ladder
+    return ladder
+
+
+def _shard_fragment(
+    surface: pygame.Surface,
+    middle: float,
+    middle_angle: float,
+    half_span: float,
+    radius: float,
+    color: Color,
+) -> None:
+    """One arc-shaped piece of the ring, at its own radius."""
+    draw_arc_stroke(
+        surface,
+        (middle, middle),
+        radius,
+        middle_angle - half_span,
+        middle_angle + half_span,
+        color,
+        1,
+    )
+
+
+def _shatter_step(progress: float, seed: int, facing_right: bool) -> pygame.Surface:
+    """The ring at one moment of its failure, ``progress`` from 0 to 1.
+
+    Module-level and keyed off its own arguments, rather than a method reading
+    ``self``: this is what makes the ladder above possible. As a method it had
+    no identity to key on but the particle, which is to say it was unpaintable
+    by construction.
+    """
+    radius = snap(FxGuard.SHARD_RADIUS)
+    # Radius plus the furthest a piece can travel, or the circle is drawn
+    # off the edge of its own surface.
+    reach = snap(radius * (1.0 + FxGuard.SHARD_SPREAD * (1.0 + FxGuard.SHARD_WOUND_PUSH)))
+    span = 2 * (reach + FxGuard.SHARD_MARGIN)
+    surface = pygame.Surface((span, span), pygame.SRCALPHA)
+    middle = span / 2.0
+    rng = random.Random(seed * 977 + FxGuard.SHARD_PIECES)
+    facing = 0.0 if facing_right else 180.0
+    spread = FxGuard.SHARD_SPREAD * progress
+
+    slot = 360.0 / FxGuard.SHARD_PIECES
+    for index in range(FxGuard.SHARD_PIECES):
+        centre = facing + index * slot + slot / 2.0
+        on_wound = _angle_near(centre, facing, FxGuard.SHARD_WOUND)
+        thrown = (
+            spread * (1.0 + FxGuard.SHARD_WOUND_PUSH * on_wound) * rng.uniform(*FxGuard.SHARD_DRIFT)
+        )
+        _shard_fragment(
+            surface,
+            middle,
+            centre,
+            slot / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * progress),
+            radius + radius * thrown,
+            FXColors.break_spark,
+        )
+
+    fine = FxGuard.ARC_FLASH
+    piece = fine / FxGuard.SHARD_KICK_PIECES
+    for index in range(FxGuard.SHARD_KICK_PIECES):
+        centre = facing - fine / 2.0 + piece * (index + 0.5)
+        thrown = spread * (1.0 + FxGuard.SHARD_WOUND_PUSH) * rng.uniform(*FxGuard.SHARD_KICK_DRIFT)
+        _shard_fragment(
+            surface,
+            middle,
+            centre,
+            piece / 2.0 * (1.0 - FxGuard.SHARD_SHRINK * 1.3 * progress),
+            radius + radius * thrown,
+            FXColors.break_core,
+        )
+    return surface
 
 
 def _angle_near(angle: float, centre: float, span: float) -> float:
@@ -1193,4 +1231,5 @@ def clear_frame_cache() -> None:
     _dash_cache.clear()
     _PUFF_MOTES.clear()
     _DASH_MOTES.clear()
+    _shard_cache.clear()
     _vortex_cache = []

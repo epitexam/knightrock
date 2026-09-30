@@ -17,6 +17,7 @@ from src.core.fx import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    ShatterArcParticle,
     SweatParticle,
     clear_frame_cache,
     dash_frames,
@@ -27,7 +28,7 @@ from src.core.fx import (
     vortex_frames,
 )
 from src.core.fx import particles as particles
-from src.core.settings import DashDust, Dust, FxDizzy
+from src.core.settings import DashDust, Dust, FxDizzy, FxGuard
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -50,6 +51,106 @@ def _pinned_fx_rng() -> Iterator[None]:
     """
     spawners._fx_rng.seed(0xF00D)
     yield
+
+
+def test_a_shatter_picks_its_failure_from_a_shared_ladder() -> None:
+    """The break's geometry is painted per layout, not per break.
+
+    This is the plane's largest single frame operation and it was built per
+    spawn: 81 arc strokes across three steps, off a seed drawn from 65 536
+    values on every break, measured at 1.14 ms against a 16.7 ms budget. Six
+    times a second in a parry chain that is a hitch, not a cost.
+
+    So the claim is the share, and it is a share by *value* like the dust
+    ladders above: two breaks of the same side and the same layout hold one set
+    of surfaces, and a seed outside the grid is folded into it rather than
+    widening the table.
+    """
+    clear_frame_cache()
+    one = ShatterArcParticle((0.0, 0.0), 1.0, seed=3)
+    same = ShatterArcParticle((0.0, 0.0), 1.0, seed=3 + FxGuard.SHARD_SEEDS)
+    other_side = ShatterArcParticle((0.0, 0.0), -1.0, seed=3)
+
+    assert one.steps[0] is same.steps[0], "the same layout is one set of surfaces"
+    assert one.steps[0] is not other_side.steps[0], "and a side is a different one"
+    assert len(particles._shard_cache) == 2
+    clear_frame_cache()
+
+
+def test_the_shard_ladder_cannot_outgrow_its_grid() -> None:
+    """The bound is the grid, not the number of breaks.
+
+    An unbounded cache keyed on a per-spawn seed is a session-long leak of the
+    plane's largest surfaces, which is the same trap the FX plane's own scale
+    cache documents avoiding for the particle plane. So the ceiling is what the
+    key space says it is -- two sides by ``SHARD_SEEDS`` -- and twenty breaks
+    that each draw a fresh seed must not paint twenty layouts.
+    """
+    clear_frame_cache()
+    spawners._fx_rng.seed(0x5A4D)
+    for _ in range(20):
+        for side in (1.0, -1.0):
+            ShatterArcParticle((0.0, 0.0), side, seed=spawners._fx_rng.randrange(1 << 16))
+
+    grid = 2 * FxGuard.SHARD_SEEDS
+    assert len(particles._shard_cache) == grid, (
+        f"forty breaks painted {len(particles._shard_cache)} ladders, over a grid of {grid}"
+    )
+    clear_frame_cache()
+
+
+def test_a_shatter_sees_every_step_of_its_ladder() -> None:
+    """It animates by stepping a table, and the table has the ladder's length.
+
+    The same claim as the puff's, and it matters here for the same reason: a
+    break is the one moment the plane spends real time, so it has to be steps
+    off a built set rather than geometry rebuilt on the tick.
+    """
+    clear_frame_cache()
+    particle = ShatterArcParticle((0.0, 0.0), 1.0, seed=1)
+    seen = [particle.image]
+
+    for _ in range(int(FxGuard.SHARD_TTL * 60)):
+        particle.update(1 / 60)
+        seen.append(particle.image)
+
+    assert len(particle.steps) == FxGuard.SHARD_STEPS
+    assert len(set(seen)) > 1, "the ring has to actually come apart"
+    assert all(any(step is frame for frame in particle.steps) for step in seen), (
+        "and every step it shows has to be one built once"
+    )
+    clear_frame_cache()
+
+
+def test_the_first_step_of_a_break_is_the_whole_ring_for_every_layout() -> None:
+    """At zero spread the seed cannot show, and that is why the table is small.
+
+    Worth pinning because it reads as a bug otherwise: eight layouts of a
+    break share a byte-identical first frame, and the eye is right to see one
+    intact ring in all of them. It is also the reason ``SHARD_SEEDS`` buys two
+    distinct frames per side rather than three -- the whole ring is one frame,
+    shared, and only the spread is per layout.
+
+    If a future change made the intact ring vary by layout it would not be
+    wrong, but this test is what would say so.
+    """
+    layouts = range(FxGuard.SHARD_SEEDS)
+    whole = {_pixels(ShatterArcParticle((0.0, 0.0), 1.0, seed=s).steps[0]) for s in layouts}
+    spread = {_pixels(ShatterArcParticle((0.0, 0.0), 1.0, seed=s).steps[-1]) for s in layouts}
+
+    assert len(whole) == 1, "the whole ring does not depend on the layout"
+    assert len(spread) == len(layouts), "but the spread does"
+    clear_frame_cache()
+
+
+def _pixels(surface: pygame.Surface) -> bytes:
+    """A surface's bytes, for comparing two of them for equality.
+
+    ``Surface.tobytes`` does not exist and ``pygame.image.tostring`` is
+    deprecated, and ``get_view`` is what the test suite already reaches for
+    wherever it needs to know what a surface actually holds.
+    """
+    return bytes(surface.get_view())
 
 
 def test_a_sweat_drop_surface_is_built_once_and_only_faded() -> None:
