@@ -436,6 +436,50 @@ def test_a_landing_throws_more_grit_than_it_does_mass() -> None:
     assert grains <= FX_FAMILY_BUDGETS["dust_grain"], "and it fits the family budget"
 
 
+def test_the_trail_plume_turns_over_before_it_fades() -> None:
+    """A mark that is still climbing as it dies is a plume, not a trail.
+
+    A puff kicked at ``v0`` against ``GRAVITY`` turns over after ``v0 /
+    GRAVITY`` seconds, so the top of the kick has to stay under ``GRAVITY *
+    TTL`` or the tallest of the burst is still rising at the moment it fades.
+    Measured rather than argued: at a top of eighty-eight the plume sits
+    twenty-two pixels off the floor and one of the last two puffs alive is
+    still climbing, which reads as smoke off a fire -- the reading these two
+    numbers were pulled down from once already.
+
+    So this is arithmetic rather than taste, which makes it the one number in
+    the trail a later pass cannot quietly raise.
+    """
+    ceiling = DashDust.GRAVITY * DashDust.BURST_TTL
+    assert DashDust.KICK[1] <= ceiling, (
+        f"the burst peaks at {DashDust.KICK[1] / DashDust.GRAVITY:.2f}s and lives "
+        f"{DashDust.BURST_TTL}s: it dies mid-climb"
+    )
+    tick_ceiling = DashDust.GRAVITY * DashDust.TICK_TTL
+    assert tick_ceiling >= DashDust.TICK_KICK, (
+        f"and the tick peaks at {DashDust.TICK_KICK / DashDust.GRAVITY:.2f}s against "
+        f"a {DashDust.TICK_TTL}s life"
+    )
+
+
+def test_the_trail_rides_high_enough_to_be_dust_and_low_enough_to_be_a_trail() -> None:
+    """The other side of the same pair, so the fix above cannot be a no-op.
+
+    A ceiling is only worth having if there is a floor: a kick low enough to
+    turn over cleanly but also low enough to keep the ribbon on the floor
+    satisfies the test above and is the skid this pass was asked to change.
+    The claim is about the peak against the fighter rather than about the
+    numbers, because the numbers are the thing being set.
+    """
+    burst_peak = DashDust.KICK[1] ** 2 / (2.0 * DashDust.GRAVITY)
+    tick_peak = DashDust.TICK_KICK**2 / (2.0 * DashDust.GRAVITY)
+
+    assert tick_peak >= 3.0, f"the ribbon has to leave the floor: {tick_peak:.1f}px"
+    assert burst_peak <= 24.0, (
+        f"and the plume stays under half a fighter's height: {burst_peak:.1f}px"
+    )
+
+
 def test_the_dash_trail_carries_no_ink_rim() -> None:
     """The block gave its rim up for the same reason, and so does the trail.
 

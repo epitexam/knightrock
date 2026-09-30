@@ -770,21 +770,36 @@ class DashDust:
     that is still climbing half a second later reads as smoke rising off the
     spot rather than as the trail of someone who went past it.
     """
-    KICK = (15.0, 60.0)
+    KICK = (25.0, 70.0)
     """The height each burst puff is kicked to, as a range rather than a cap.
 
     A range, so the burst stacks into a plume with lobes at different heights
-    instead of a row of clouds all leaving the floor at the same speed. The
-    top of the range is well past what ``GRAVITY`` recovers in the puff's
-    life, so the tallest of them is still climbing when it dies.
+    instead of a row of clouds all leaving the floor at the same speed.
+
+    The top of the range is not a taste, it is the ceiling: a puff turns over at
+    ``kick / GRAVITY`` seconds, so above ``GRAVITY * BURST_TTL`` -- seventy, on
+    these numbers -- the tallest of them is still climbing when it fades. That
+    was measured rather than argued: at a top of eighty-eight the plume is
+    twenty-two pixels off the floor and one of the last two puffs is still
+    rising as it dies, which reads as smoke off a fire rather than as dust off a
+    floor, and it is the reading this very pair of numbers was pulled down from
+    once already. Seventy puts the turn-over a frame or two before the puff
+    goes, so the arc completes and the plume settles.
     """
-    TICK_KICK = 18.0
+    TICK_KICK = 34.0
     """The height the ribbon's puffs are kicked to, uniformly.
 
-    Low on purpose. A tick is the dust the fighter is leaving at his heels,
-    so it barely leaves the ground -- and uniformly, because the ticks are
-    laid one after another along a line, where a height spread reads as a
-    mess rather than as a ribbon.
+    Nearly double what this was, and the tick's kick is the one number the
+    ribbon is really made of: the burst is a shove the player has already read
+    off the fighter, while the ticks are the marks lying along 88px of path,
+    and it is those that were reading as a skid painted on the floor rather
+    than as dust in the air.
+
+    Uniform rather than a range, because the ticks are laid one after another
+    along a line, where a height spread reads as a mess rather than as a
+    ribbon. Its own ceiling is the tick's, and it is a different one: a tick
+    lives ``TICK_TTL`` against the burst's ``BURST_TTL``, so the same formula
+    caps it at thirty-six.
     """
     THROW = 150.0
     """How hard the burst is shoved backwards, against the dash direction.
