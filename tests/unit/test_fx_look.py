@@ -23,6 +23,7 @@ from src.core.fx import (
     MAX_FX_SPRITES,
     DashDustParticle,
     DustParticle,
+    FootstepDustParticle,
     GrainParticle,
     OrbitParticle,
     ShatterArcParticle,
@@ -30,6 +31,8 @@ from src.core.fx import (
     particles,
     spawn_dash_dust,
     spawn_dizzy_vortex,
+    spawn_footstep_dust,
+    spawn_footstep_grains,
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
@@ -39,8 +42,15 @@ from src.core.fx import (
 from src.core.fx.draw import snap
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import DashDust, Dust, DustGrain, FxGuard
+from src.core.settings import (
+    DashDust,
+    Dust,
+    DustGrain,
+    FootstepDust,
+    FxGuard,
+)
 from src.core.sprite_groups import SpriteGroups
+from src.states.player_states import PlayerState
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -78,6 +88,7 @@ def test_dust_is_painted_under_the_moving_plane() -> None:
     puff = DustParticle((0.0, 0.0), (0.0, 0.0))
 
     assert puff.behind is True
+    assert FootstepDustParticle((0.0, 0.0), (0.0, 0.0)).behind is True
     assert ShieldArcParticle((0.0, 0.0), 1.0).behind is False
 
 
@@ -470,13 +481,34 @@ def test_the_trail_rides_high_enough_to_be_dust_and_low_enough_to_be_a_trail() -
     satisfies the test above and is the skid this pass was asked to change.
     The claim is about the peak against the fighter rather than about the
     numbers, because the numbers are the thing being set.
-    """
-    burst_peak = DashDust.KICK[1] ** 2 / (2.0 * DashDust.GRAVITY)
-    tick_peak = DashDust.TICK_KICK**2 / (2.0 * DashDust.GRAVITY)
 
-    assert tick_peak >= 3.0, f"the ribbon has to leave the floor: {tick_peak:.1f}px"
-    assert burst_peak <= 24.0, (
-        f"and the plume stays under half a fighter's height: {burst_peak:.1f}px"
+    The upper bound is measured against the *drawn sheet* rather than against a
+    constant, which is what lets it move with the ladder instead of being an
+    obstacle. What the player sees at the top of the plume is the centre's peak
+    plus half the sheet's own height at its widest step, and the thing that has
+    to stay true is that this is under the fighter -- a plume taller than he is
+    has come off the floor and become weather.
+
+    It was a flat twenty-four pixels, which is half a fighter's height and no
+    more; the trail was then asked to propagate further upward, and the bound
+    moved with it. Deriving it keeps the next raise honest: growing the sheet
+    now costs against the same ceiling rather than sliding past it.
+    """
+    burst = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BURST_RADIUS)
+    tick = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.TICK_RADIUS)
+    fighter_height = 48.0
+
+    burst_top = DashDust.KICK[1] ** 2 / (2.0 * DashDust.GRAVITY) + burst.ladder[-1].get_height() / 2
+    tick_top = DashDust.TICK_KICK**2 / (2.0 * DashDust.GRAVITY) + tick.ladder[-1].get_height() / 2
+
+    assert tick_top >= 6.0, f"the ribbon has to leave the floor: {tick_top:.1f}px"
+    assert burst_top <= fighter_height, (
+        f"and the plume stays under the fighter it came off: {burst_top:.1f}px "
+        f"against a {fighter_height:.0f}px fighter"
+    )
+    assert burst_top > tick_top, (
+        "the shove throws higher than the path it leaves behind: "
+        f"{burst_top:.1f} against {tick_top:.1f}px"
     )
 
 
@@ -672,6 +704,213 @@ def test_the_dash_trail_fades_up_faster_than_the_block_ring() -> None:
     fading up where he already is not.
     """
     assert DashDust.FADE_IN < FxGuard.ARC_FADE_IN
+
+
+_RUN = FootstepDust.TIER[PlayerState.RUN.value]
+"""The row a footstep spawner is handed when the test only cares about the mark.
+
+Every spawn call in this file passes it, because ``spawn_footstep_dust`` takes
+the tier as a required argument: the emitter resolves the gait and the painter
+does not guess it. The tests below are about where the mark lands and which way
+it is thrown, not about which gait it came from, so they take the run row once
+here rather than repeating it.
+"""
+
+
+def test_a_footstep_carries_no_ink_rim_either() -> None:
+    """Same rule as the trail, and the same argument, at a smaller size.
+
+    The rim is the rule with the exception, not the rule. It is kept only where
+    a mark sits against the tiles and its edge is doing the work -- the landing
+    sheet. A footstep is the trail's substance at two-thirds the size, thrown
+    up off the floor and gone in three tenths of a second, and a mid-grey
+    outline around it would be a grey outline drawn around a light mark.
+
+    At this size the rim would also be most of the mark, which is the other
+    reason it has to go: the two tones have to carry the whole read here.
+    """
+    puff = FootstepDustParticle((0.0, 0.0), (0.0, 0.0))
+
+    tones = _tones(puff.ladder[0])
+
+    assert tuple(FXColors.dust_deep) not in tones, "a footstep is rimless"
+    assert tuple(FXColors.dust_shade) not in tones, "and it has no shadow to stand on"
+    assert len(tones) == 2, f"two tones is the whole grammar, not {tones}"
+
+
+def test_a_footstep_shares_the_trails_ladder_rather_than_building_its_own() -> None:
+    """The busiest mark in the plane cannot afford frames nobody else uses.
+
+    The ladder is keyed on radius bucket, tone and silhouette, and a footstep's
+    radius lands in the same buckets as a dash tick's -- so a ladder of its own
+    would double the frames in the table for a mark that is the same cloud at a
+    smaller size. This is the assertion that the inheritance is doing the work
+    rather than the two classes merely sharing a shape recipe.
+    """
+    for radius in (FootstepDust.RADIUS, DashDust.TICK_RADIUS):
+        step = FootstepDustParticle((0.0, 0.0), (0.0, 0.0), radius=radius, tint=0.1, variant=2)
+        trail = DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=radius, tint=0.1, variant=2)
+        assert all(a is b for a, b in zip(step.ladder, trail.ladder, strict=True)), (
+            f"the same frames at radius {radius}, not two copies"
+        )
+
+
+def test_a_footstep_draws_the_smallest_sheet_the_ladder_holds() -> None:
+    """And there is nothing below it, which is also why its size cannot be a knob.
+
+    The trail's ladder is keyed on the discrete radii in ``DashDust.BUCKETS``,
+    so a request is drawn at the entry nearest it and every radius under the
+    second bucket produces the same pixels. ``FootstepDust.RADIUS`` sits inside
+    the first one: the footstep is the smallest mark the plane can draw.
+
+    That is worth pinning twice over, because the obvious next idea -- scale the
+    mark by ground speed, so ``walk_slow`` throws a smaller step than a run --
+    cannot work at this size. The number would move and the screen would not.
+    What says how fast the fighter is going is the cadence, which is already
+    doing it: the same mark laid tighter and tighter as he speeds up.
+    """
+    edge = (DashDust.BUCKETS[0] + DashDust.BUCKETS[1]) / 2.0 - 0.5
+    widest = FootstepDustParticle((0.0, 0.0), (0.0, 0.0), radius=edge)
+    smallest = FootstepDustParticle((0.0, 0.0), (0.0, 0.0), radius=0.0)
+
+    assert widest.ladder[-1].get_width() == smallest.ladder[-1].get_width(), (
+        "everything under the second bucket is one sheet, so a size knob is invisible"
+    )
+    step = FootstepDustParticle((0.0, 0.0), (0.0, 0.0))
+    bigger = FootstepDustParticle((0.0, 0.0), (0.0, 0.0), radius=DashDust.BUCKETS[1])
+
+    assert step.ladder[-1].get_width() < bigger.ladder[-1].get_width(), (
+        "and the mark grows only at a bucket boundary"
+    )
+
+
+def test_a_footstep_turns_over_before_it_fades() -> None:
+    """A mark that is still climbing as it dies is a plume, not a footstep.
+
+    The same arithmetic as the trail's, and the same reason it is arithmetic:
+    this is the one number a later pass cannot quietly raise. A step is born at
+    the floor and has to be back at it, because it is a mark *on* the ground.
+    """
+    ceiling = FootstepDust.GRAVITY * FootstepDust.TTL
+    assert FootstepDust.KICK[1] <= ceiling, (
+        f"the tallest puff peaks at {FootstepDust.KICK[1] / FootstepDust.GRAVITY:.2f}s and "
+        f"lives {FootstepDust.TTL}s: it dies mid-climb"
+    )
+
+
+def test_a_footstep_leaves_the_floor_barely_at_all() -> None:
+    """The other side of the ceiling above, so lowering it cannot be the whole fix.
+
+    A kick low enough to turn over cleanly and low enough to never leave the
+    floor satisfies the test above and draws nothing. A footstep has to arc
+    two or three pixels to read as thrown rather than pasted.
+    """
+    peak = FootstepDust.KICK[1] ** 2 / (2.0 * FootstepDust.GRAVITY)
+    assert peak >= 1.5, f"the mark has to leave the ground to read as dust: {peak:.2f}px"
+    assert peak < DashDust.TICK_KICK**2 / (2.0 * DashDust.GRAVITY), (
+        "and it stays well under the ribbon's arc: it is a foot, not a shove"
+    )
+
+
+def test_a_footstep_is_laid_behind_the_heel_and_thrown_backwards() -> None:
+    """The whole effect is this, twice: where it is born and which way it goes.
+
+    A mark born under the fighter is painted under him and spends its life
+    invisible; a mark thrown forwards is a mark the fighter is walking into
+    rather than one he left. So the anchor is his trailing edge and every puff
+    moves against the direction of travel.
+    """
+    right = spawn_footstep_dust(Group(), _entity(facing=True), foot=False, tier=_RUN)
+    left_entity = _entity(facing=False)
+    left_entity.velocity = pygame.math.Vector2(-200.0, 0.0)
+    left = spawn_footstep_dust(Group(), left_entity, foot=False, tier=_RUN)
+
+    assert right and left
+    assert all(puff.velocity.x < 0.0 for puff in right), "a step right is thrown left"
+    assert all(puff.velocity.x > 0.0 for puff in left), "and the other way for a step left"
+    assert all(puff.rect.centerx < right[0].pos.x for puff in right), (
+        "and laid behind the heel rather than under him"
+    )
+
+
+def test_a_footstep_follows_the_velocity_and_not_the_facing() -> None:
+    """A fighter turns before it finishes a step, and the mark goes where the feet go.
+
+    Same argument as the trail's: the facing is where the fighter is looking,
+    which a strafe, a knockback and a fighter sliding backwards all make a lie
+    about. Only the velocity is the direction the fighter is travelling.
+    """
+    entity = _entity(facing=True)
+    entity.velocity = pygame.math.Vector2(-200.0, 0.0)
+
+    puffs = spawn_footstep_dust(Group(), entity, foot=False, tier=_RUN)
+
+    assert puffs
+    assert all(puff.velocity.x > 0.0 for puff in puffs), "moving left, thrown right"
+
+
+def test_a_footstep_is_the_trails_own_cloud_at_a_third_of_the_cadence() -> None:
+    """Same sheet as a dash tick, and it is not a problem, because of *when*.
+
+    Both land in the ladder's first bucket, so a footstep is not a smaller mark
+    than the trail's ticks -- it is the same cloud with a different schedule.
+    What separates them on screen is that the dash is one shove and five ticks
+    inside a sixth of a second, and a walk lays the same cloud twelve times a
+    second forever, low and short-lived. The size is the trail's; the reading
+    is not.
+
+    Held as a fact rather than left to be discovered, because the reflex on
+    seeing a footstep the size of a dash tick is to shrink the number, and the
+    number is not what draws it.
+    """
+    tick = DashDustParticle((0.0, 0.0), (0.0, 0.0))
+
+    assert DashDust.BUCKETS[1] > DashDust.TICK_RADIUS, "and the tick is in the same bucket"
+    assert (
+        tick.ladder[-1].get_width()
+        == FootstepDustParticle((0.0, 0.0), (0.0, 0.0)).ladder[-1].get_width()
+    )
+    assert FootstepDust.TTL < DashDust.TICK_TTL, "but the step is gone sooner"
+    assert FootstepDust.KICK[1] < DashDust.TICK_KICK, "and it never leaves the floor"
+
+
+def test_a_footstep_is_the_same_mark_at_every_gait_and_that_is_deliberate() -> None:
+    """The two tiers differ in cadence and spread and in nothing else.
+
+    Size cannot be one of the knobs: the ladder is drawn at the nearest of its
+    discrete radii, so every request under the second bucket is the same sheet
+    (see the test above). Height should not be one either -- a foot is a foot,
+    and a run's landing no higher than a walk's is the same two pixels of floor
+    being disturbed faster.
+
+    So the tiers are the two things the eye reads as *gait* rather than as
+    loudness, and this holds the rest still: the sheet, the kick and the life are
+    one number each for the whole effect, and no tier row may grow a third knob
+    to carry a difference the ladder cannot show.
+    """
+    assert set(FootstepDust.TIER) == {PlayerState.WALK.value, PlayerState.RUN.value}
+    assert set(FootstepDust.SILENT) == {PlayerState.WALK_SLOW.value}
+    for tier in FootstepDust.TIER.values():
+        assert len(tier) == 2, f"a tier row is cadence and spread and nothing else: {tier}"
+        assert tier.step_distance > 0.0
+
+
+def test_a_footstep_spends_the_grit_budget_and_not_its_own() -> None:
+    """The spray is what makes the mark read as dust, and it is the cheaper half.
+
+    A plane already full sheds the grit before it sheds the comb, which is the
+    arrangement ``DustGrain`` sets up for the landing: losing the spray costs
+    the effect a little of its read, losing the mark costs the movement its
+    only trace.
+    """
+    grains = spawn_footstep_grains(Group(), _entity())
+
+    assert grains, "a step carries spray as well as mass"
+    assert {grain.family for grain in grains} == {"dust_grain"}
+    assert len(grains) == FootstepDust.GRAINS
+    assert FX_FAMILY_BUDGETS["footstep_dust"] > FootstepDust.GRAINS, (
+        "and the mark it is puncturing is not the smaller half of the two"
+    )
 
 
 def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:

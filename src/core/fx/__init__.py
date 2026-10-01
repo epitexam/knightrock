@@ -68,7 +68,40 @@ spray around it is a puff of smoke however well it is shaded. Grains are a
 separate family on a separate budget, three pixels square at most and never
 opaque, so a plane that is already full sheds the grit rather than the landing.
 They are the majority of a landing on purpose: the spray is the punctuation and
-the sheet is the sentence.
+the sheet is the sentence. They are the majority of a footstep too, which is the
+only mark here small enough that the sheet alone would not carry the read.
+
+Three marks, and only three
+---------------------------
+The dust in this plane answers three different questions, and the reason there
+are three of them rather than one loud effect is that each of the others was
+missing an answer. A landing asks "how hard was that" and scales itself by the
+fall speed. The dash trail asks "that was a shove", is thrown backwards, and is
+the one mark the plane has for a movement rather than for a landing. The
+footstep asks the question the other two leave open, which is whether the fighter
+is moving at all -- and it was missing for the longest, because a fighter at a
+full run along a floor had nothing in the plane at all: the dash got a trail and
+the most continuous movement in the game displaced nothing on screen.
+
+The footstep is paced by **distance walked** and its cadence is **per ground
+tier**, and the tiers are read by name rather than by speed. That is a
+reversal of the obvious version, and ``FootstepDust``'s docstring gives the
+argument; the short of it is that the state machine has already decided which
+tier a fighter is in, with hysteresis so the decision does not flicker, and
+re-deriving it here would put the flicker back. ``walk_slow`` is then silent
+rather than slow, because that is what the tier means: a fighter shuffling
+under a raised guard is holding still as far as the ground is concerned. So the
+plane now has a spectrum rather than a gap -- nothing under a guard, a slow
+tight comb at a walk, a faster and looser one at a run, and the dash's heavy
+scattered plume above all of it.
+
+A time-paced comb would space the marks by the stride instead of along the
+ground, which puts the slow tiers' marks closer together and reads as
+clustering rather than as walking. A second number then holds every tier's
+cadence under a ceiling, because the run row alone fires twenty-five times a
+second at full speed, and twenty-five marks along a fighter's own path is the
+dash's ribbon again drawn small -- which is the one thing that would stop the
+dash being the fastest thing in the plane that leaves a mark.
 
 Which particles rebuild their surface
 -------------------------------------
@@ -89,7 +122,11 @@ properties of a mark: a fan that varies only those is one shape stamped four
 times at four zoom levels, which is a spinner. The dash trail is painted the
 same way and shares the reasoning: a dash lays puffs on a cadence rather than
 in one fan, so there are more of them alive at once and the ladder binds
-harder, not softer.
+harder, not softer. The footstep does not just share the reasoning, it shares
+the table -- its radius lands in the same bucket as a dash tick's, the first one
+and therefore the smallest there is, so it draws the trail's own cloud -- and it
+is the most frequently spawned mark in the plane, so a ladder of its own would be
+the most expensive one built for no difference at all.
 
 Everything here builds its surface at construction and then only moves, fades
 or steps through a ladder it built alongside, which is what
@@ -102,6 +139,7 @@ from src.core.fx.particles import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    FootstepDustParticle,
     GrainParticle,
     OrbitParticle,
     ShatterArcParticle,
@@ -121,6 +159,8 @@ from src.core.fx.spawners import (
     spawn_dash_grains,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
+    spawn_footstep_dust,
+    spawn_footstep_grains,
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
@@ -135,6 +175,7 @@ __all__ = [
     "DashDustParticle",
     "DizzyVortexParticle",
     "DustParticle",
+    "FootstepDustParticle",
     "GrainParticle",
     "ShatterArcParticle",
     "ShieldArcParticle",
@@ -149,6 +190,8 @@ __all__ = [
     "spawn_dash_grains",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
+    "spawn_footstep_dust",
+    "spawn_footstep_grains",
     "spawn_guard_arc",
     "spawn_shatter_arc",
     "spawn_impact_decal",

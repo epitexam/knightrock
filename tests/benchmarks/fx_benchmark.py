@@ -56,18 +56,21 @@ from src.core.fx import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    FootstepDustParticle,
     GrainParticle,
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
     SweatParticle,
     clear_frame_cache,
+    spawn_footstep_dust,
+    spawn_footstep_grains,
     spawn_landing_dust,
     spawn_landing_grains,
     spawners,
 )
 from src.core.fx import particles as particles
-from src.core.settings import Dust, FxGuard
+from src.core.settings import Dust, FootstepDust, FxGuard
 
 #: The frame this plane has to fit inside, at 60 Hz.
 FRAME_BUDGET_US = 1000.0 / 60.0 * 1000.0
@@ -118,6 +121,21 @@ def _landing() -> pygame.sprite.Group:
     return group
 
 
+def _footstep() -> pygame.sprite.Group:
+    """One footstep: the two sheets and the grit, as the emitter spends them.
+
+    It is in the table next to ``_landing`` because those are the two events
+    that lay a mark and its spray, and the footstep is the one that happens
+    twelve times a second. The per-particle rows above are what the mark costs
+    to build; this is what a step costs.
+    """
+    group = pygame.sprite.Group()
+    subject = _entity()
+    spawn_footstep_dust(group, subject, foot=False, tier=FootstepDust.DEFAULT_TIER)
+    spawn_footstep_grains(group, subject)
+    return group
+
+
 def measure_construction(repeats: int) -> list[dict[str, object]]:
     """Microseconds to construct one particle, per family.
 
@@ -129,6 +147,11 @@ def measure_construction(repeats: int) -> list[dict[str, object]]:
     cases: tuple[tuple[str, object], ...] = (
         ("landing sheet", lambda: DustParticle((0.0, 0.0), (0.0, 0.0), radius=Dust.PUFF_RADIUS)),
         ("dash sheet", lambda: DashDustParticle((0.0, 0.0), (0.0, 0.0), radius=8.0)),
+        (
+            "footstep sheet",
+            lambda: FootstepDustParticle((0.0, 0.0), (0.0, 0.0)),
+        ),
+        ("whole footstep", lambda: _footstep()),
         ("grain", lambda: GrainParticle((0.0, 0.0), (0.0, 0.0), size=2, tint=0.1)),
         (
             "dizzy star",

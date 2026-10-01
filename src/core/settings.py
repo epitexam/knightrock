@@ -3,6 +3,7 @@ Centralized game configuration and constants.
 """
 
 import os
+from typing import NamedTuple
 
 
 class Display:
@@ -564,21 +565,41 @@ class DustGrain:
     the event. Fourteen is under the family's budget alongside four sheets and
     the ground mark, so a hard landing spends what it is allowed to.
     """
-    DASH_BURST_COUNT = 10
-    DASH_TICK_COUNT = 3
+    DASH_BURST_COUNT = 12
+    DASH_TICK_COUNT = 4
     """Grains on the dash's shove, and on the puffs that extend the ribbon.
 
     Few on a tick. The ticks are laid one after another along 88px of path, so
     a tick that threw as much grit as the burst would fill the whole line of it
     and bury the ribbon that is the entire point of the trail.
+
+    Up with the sheets, for the reading that a dash is meant to be the dustiest
+    movement in the plane: the spray is what the eye reads as motion, so adding
+    sheets without adding grit makes a heavier dash that has lost the part that
+    was moving.
+
+    The tick count is where the budget went, not the burst's. A dash asks
+    twelve on its shove and four on each of the two ribbons after it -- twenty,
+    which is why ``dust_grain`` is thirty-four and not the twenty-four it was:
+    the cap has to hold a dash and a landing together, because landing out of a
+    dash fires both on one tick and the landing is the one that wins. Fourteen
+    and twenty are thirty-four. At five ticks it would be thirty-six, which is
+    one over, and one over is the difference between the landing's spray
+    surviving and being refused whole.
     """
-    SIDE_SPREAD = 1.3
+    SIDE_SPREAD = 1.6
     """How far either side of the fighter the spray is laid, in half-widths.
 
     Wider than the sheets' own footprint, and for the same reason they are laid
     across the feet rather than at the middle of them: the plane is painted
     under the moving layer, and every grain thrown from inside a forty-wide
     body is a grain nobody sees.
+
+    Up from 1.3 for the dash's sake, and it is a shared number rather than a
+    dash-only one, so the landing's spray widens with it. That is the cheaper
+    trade: a wider spray on a landing is more grit around a mark the player is
+    already looking at, and the alternative is a third number whose only
+    difference is which event reads it.
     """
     SIZE_RANGE = (1, 3)
     """A grain's side, in whole pixels.
@@ -716,27 +737,62 @@ class DashDust:
     marks read as one movement rather than as a trail with a second, faster
     trail inside it.
     """
-    BURST_COUNT = 5
+    BURST_COUNT = 7
     """Puffs on the dash's first tick: the shove off the floor.
 
     The fan is laid out across the fighter's width for the same reason the
     landing fan's is: the trail is painted under the moving plane, and a
-    plume thrown from the middle of the body spends the dash behind him."""
-    TICK_COUNT = 2
+    plume thrown from the middle of the body spends the dash behind him.
+
+    Up from five, on the reading that the dash should be the dustiest thing in
+    the plane and the gap between it and the trail it replaced was the whole
+    complaint. Then again, from six, when the dash was asked for more volume.
+
+    The burst is capped by the family's budget before the ribbon is, and the
+    ribbon is the part a truncated trail cannot survive, so this is the number
+    that gives way first. Seven plus two ribbons of four is fifteen against the
+    family's twenty.
+    """
+    TICK_COUNT = 4
     """Puffs on every later tick of the dash, filling in the ribbon.
 
     Two rather than one because ``SPAWN_EVERY`` is not a divisor of the frame
     time: a single puff per emission leaves visible gaps along a path the
     fighter crossed at 1100 px/s.
+
+    Three rather than two for the same reason the burst grew, and the tick is
+    where the extra one is worth most: the burst is over in a frame and the
+    ticks are what the player watches evaporate down the path behind him. Then
+    four, for the same asking.
+
+    ``SPAWN_EVERY`` puts four emission slots in ``DASH_DURATION``, so the most a
+    dash can ever spend is a burst and three ribbons -- nineteen puffs at any
+    frame rate above ninety hertz, and fifteen at the sixty this was measured on.
+    Both are inside the family's twenty; see the budget table for why the
+    headroom is one puff rather than five.
     """
-    BURST_TTL = 0.6
-    TICK_TTL = 0.4
+    BURST_TTL = 0.7
+    TICK_TTL = 0.5
     """How long a puff lives.
 
     Both outlast the dash itself, which is the point: the trail has to still
     be evaporating after the fighter has left it, or it reads as debris
     rather than as the movement that threw it. The burst lingers longest
     because it is the biggest and was thrown hardest.
+
+    These are the ceiling on how high the trail can go, and they were raised
+    rather than the kicks left alone. A puff kicked at ``v0`` against
+    ``GRAVITY`` turns over after ``v0 / GRAVITY`` seconds, so the highest a
+    mark may be thrown is ``GRAVITY * TTL`` -- and a trail that is allowed to
+    propagate upward has to be allowed to come back down inside its own life,
+    or it dies mid-climb and reads as smoke off a fire. Raising the kicks past
+    what these allowed is the exact failure ``test_the_trail_plume_turns_over``
+    was written to catch; raising the life is what buys the height honestly.
+
+    So the burst's ceiling went from seventy-two to eighty-four and the tick's
+    from forty-eight to sixty, and the kicks went to eighty and fifty-six under
+    them -- seven pixels of headroom on each, which is the frame or two of
+    settling the turn-over needs before the fade starts.
     """
     BURST_RADIUS = 8.0
     TICK_RADIUS = 5.0
@@ -770,36 +826,54 @@ class DashDust:
     that is still climbing half a second later reads as smoke rising off the
     spot rather than as the trail of someone who went past it.
     """
-    KICK = (25.0, 70.0)
+    KICK = (30.0, 80.0)
     """The height each burst puff is kicked to, as a range rather than a cap.
 
     A range, so the burst stacks into a plume with lobes at different heights
-    instead of a row of clouds all leaving the floor at the same speed.
+    instead of a row of clouds all leaving the floor at the same speed -- and
+    with the dash asked to propagate further upward, the *width* of the range is
+    as much of the answer as its top: a plume whose six lobes all leave at
+    thirty is a flat sheet thrown a long way, while thirty to eighty stacks
+    them over half the fighter's height and reads as volume.
 
     The top of the range is not a taste, it is the ceiling: a puff turns over at
-    ``kick / GRAVITY`` seconds, so above ``GRAVITY * BURST_TTL`` -- seventy, on
-    these numbers -- the tallest of them is still climbing when it fades. That
-    was measured rather than argued: at a top of eighty-eight the plume is
-    twenty-two pixels off the floor and one of the last two puffs is still
-    rising as it dies, which reads as smoke off a fire rather than as dust off a
-    floor, and it is the reading this very pair of numbers was pulled down from
-    once already. Seventy puts the turn-over a frame or two before the puff
-    goes, so the arc completes and the plume settles.
+    ``kick / GRAVITY`` seconds, so it cannot be thrown above ``GRAVITY *
+    BURST_TTL`` -- eighty-four on these numbers -- without the tallest of them
+    still climbing when it fades, which reads as smoke off a fire rather than as
+    dust off a floor. Eighty puts the turn-over at 0.667s against a 0.7s life,
+    so the arc completes and the plume is already coming back down as it goes.
+
+    That top was seventy when the life was 0.6s, and it was pulled down from
+    eighty-eight once before that for dying mid-climb. It is back up to eighty,
+    and the difference is that the life moved rather than the reading changing:
+    at a 0.7s life eighty settles with two frames to spare, where eighty-eight
+    would not have at any life this plane ships. See ``BURST_TTL``.
     """
-    TICK_KICK = 34.0
+    TICK_KICK = 56.0
     """The height the ribbon's puffs are kicked to, uniformly.
 
-    Nearly double what this was, and the tick's kick is the one number the
-    ribbon is really made of: the burst is a shove the player has already read
-    off the fighter, while the ticks are the marks lying along 88px of path,
-    and it is those that were reading as a skid painted on the floor rather
-    than as dust in the air.
+    This is the one number the ribbon is really made of: the burst is a shove the
+    player has already read off the fighter, while the ticks are the marks
+    lying along 88px of path, and it is those that were reading as a skid
+    painted on the floor rather than as dust in the air.
+
+    Up from thirty-four, twice: once to lift the ribbon clear of the tiles it is
+    drawn over, and once more when the trail was asked to propagate further
+    upward. The fighter is at 1100 px/s and the marks are behind him, so a
+    ribbon sitting in the same two pixels of floor for its whole life reads as
+    paint rather than as dust.
+
+    The peak is ``KICK ** 2 / (2 * GRAVITY)``, so fifty-six is a shade under
+    thirteen pixels against the old five and then nine. Still below the burst's
+    twenty-seven, which is the arrangement that reads as one movement: a shove
+    that throws high and a path it leaves lying lower behind.
 
     Uniform rather than a range, because the ticks are laid one after another
     along a line, where a height spread reads as a mess rather than as a
-    ribbon. Its own ceiling is the tick's, and it is a different one: a tick
-    lives ``TICK_TTL`` against the burst's ``BURST_TTL``, so the same formula
-    caps it at thirty-six.
+    ribbon. Its own ceiling is the tick's and it is tighter than the burst's --
+    a tick lives ``TICK_TTL`` against ``BURST_TTL``, so the same formula caps it
+    at sixty. Fifty-six is four under that, which is the frame or two the
+    turn-over needs; see ``test_the_trail_plume_turns_over_before_it_fades``.
     """
     THROW = 150.0
     """How hard the burst is shoved backwards, against the dash direction.
@@ -817,15 +891,30 @@ class DashDust:
     instead of a ribbon along 88px of path there is one mass at the start of
     it.
     """
-    SPREAD = 30.0
+    SPREAD = 40.0
     """Sideways fan of the burst, so it is a plume and not a line of clouds.
 
     Narrower than the landing fan's, because the burst's puffs are twice the
-    size: spread five of them as far as a fan of four small ones and the
-    members of the plume are far enough apart to read as five clouds in a row
-    rather than as one ragged mass.
+    size: spread them as far as a fan of four small ones and the members of the
+    plume are far enough apart to read as separate clouds in a row rather than
+    as one ragged mass.
+
+    Up from thirty, with the counts, because a dash is meant to be the dustiest
+    thing in the plane and this is the number that says how wide. It fans the
+    burst and the ticks both -- the ticks through the same ``lateral`` term --
+    and it is the width the whole trail is laid in, so raising it is what makes
+    a dash read as more scattered than the comb of footsteps behind it rather
+    than merely faster than them.
     """
-    SPREAD_JITTER = 30.0
+    SPREAD_JITTER = 38.0
+    """Random share of ``SPREAD``, per puff.
+
+    Slightly above the share it was at relative to the spread, so a widened
+    trail does not come out as a neat fan: the jitter is what keeps six puffs
+    from reading as six identical marks at six tidy offsets. Deliberately below
+    ``SPREAD`` itself, which is what stops the outermost member from landing
+    further out than the fan says it does.
+    """
     BACK_OFFSET = 0.4
     """Where along the body the trail is laid, as a fraction of its width.
 
@@ -841,15 +930,36 @@ class DashDust:
     Discrete for the reason the landing ladder is: a continuous radius means
     a surface per particle, and a dash lays a ribbon of them.
     """
-    GROWTH = 0.25
+    GROWTH = 0.3
     """How much further the sheet reaches at each step, as a share of the
     radius it started at. The last step is drawn at ``1 + growth * (steps-1)``.
 
     Steeper than the landing sheet's, because a trail is the one mark in the
     plane that has to keep reading after the fighter has left it, and a cloud
-    that stays the size it was born leaves the tail looking cut off. Capped
-    below the ``0.35`` it was, since the base radius came down and the mark
-    should not grow back into the frame the smaller base was chosen to fix.
+    that stays the size it was born leaves the tail looking cut off.
+
+    Up from 0.25 when the dash was asked for more volume, and this is where that
+    came from rather than from a bigger base radius. Two reasons: the ladder is
+    keyed on *discrete* radii, so a larger ``TICK_RADIUS`` would buy one whole
+    bucket step and no more, whereas this is continuous; and the base is shared
+    with the mark at the moment it is born -- the frame the fighter has already
+    dashed past -- so raising it puts a bigger cloud where nobody is looking,
+    while growing it puts the volume at the peak of the puff, which is where the
+    trail is what the player is reading.
+
+    Stopped at 0.30 rather than the 0.40 it was set to first, and the reason is
+    measured rather than felt: the ladder's last step goes from 1.75x the base
+    radius to 1.9x here and to 2.2x there, and because the ladder scales both
+    axes the extra volume arrives as width too. Averaged over five seeds, the
+    plume's top off the floor goes 32.5px at the old setting, 38.6px here and
+    40.6px at 0.40 -- while the trail's span across the screen goes 2.34x the
+    fighter's width, 2.49x and 2.64x. The last two steps of that buy four
+    percent of height for six percent of width.
+
+    It was 0.35 once, pulled down to 0.25 when the base radius came down, and is
+    back between the two. The frame the smaller base was chosen to fix is still
+    safe: the trail is laid at the trailing edge and thrown backwards, so what
+    this widens is a mark the fighter is leaving, not one he is in.
     """
     STEP_OPENS = 0.5
     """The share of the life the trail takes to open over."""
@@ -968,6 +1078,305 @@ class DashDust:
     Small on purpose: the burst and the ticks already differ by most of a
     factor of two, and jitter on top of that reads as noise rather than as a
     plume with a shape.
+    """
+
+
+class FootstepTier(NamedTuple):
+    """One locomotion tier's dust: how far between steps, and how scattered.
+
+    Two numbers and no more, because those are the only two things a footstep
+    has that differ between a walk and a run. The mark's own size cannot carry
+    the difference -- the ladder is drawn at the nearest of its discrete radii,
+    so every request under the second bucket is the same sheet -- and its height
+    should not: a foot is a foot, and a run's lands no higher than a walk's.
+
+    Which leaves cadence and spread, and those two are what the eye reads as
+    gait. A loose comb at a run's pace and a tight one at a walk's is a
+    difference in *how the fighter moves*, which is the claim the effect makes;
+    the same difference in how big the puffs are would only be a difference in
+    how loud they are.
+    """
+
+    step_distance: float
+    """Pixels of ground covered between two steps in this tier.
+
+    Paced by distance rather than by time so the marks come out evenly spaced
+    along the ground. A time-paced comb would space them by the stride instead,
+    which puts the slow tiers' marks closer together on the floor and reads as
+    clustering rather than as walking.
+    """
+    spread: float
+    """This tier's share of ``FootstepDust.SPREAD``.
+
+    A scale rather than a number so the base stays the one place the mark's
+    width is written down and the tiers say how much of it they want. Below one
+    the pair is close to a single mark under the heel, which is what a walking
+    shuffle should look like; above one the two halves of a step separate and
+    the comb stops reading as one line down the middle of a path.
+    """
+
+
+class FootstepDust:
+    """The dust a fighter's feet throw off while it walks, runs or rolls.
+
+    The third dust mark in the plane, and the only one that is neither an event
+    nor a movement: landing dust answers "how hard was that" and the dash trail
+    answers "that was a shove", while this one answers the question the other
+    two leave open, which is whether the fighter is moving at all. Before it,
+    a fighter at full run along a floor left nothing in the plane -- the dash
+    got a trail and a slow walk got nothing, so the one movement that is
+    continuous looked like the one movement that displaces nothing.
+
+    **The cadence is per tier, and the tiers are read by name.** :data:`TIER`
+    holds one row per ground state -- ``walk`` and ``run`` -- and the absence of
+    a row is the instruction, which is how ``walk_slow`` comes to throw nothing
+    at all. That is the reading the effect wants: a fighter shuffling under a
+    raised guard is holding still as far as the ground is concerned, and
+    marking him every stride says he is travelling when he is not.
+
+    Reading the state name rather than the speed reverses the obvious version,
+    and deliberately. ``resolve_locomotion_state`` already makes this decision,
+    with hysteresis so it does not flicker while acceleration crosses a
+    boundary; re-deriving it from ``|velocity.x|`` would duplicate that
+    classifier and put the flicker back -- and at this cadence a flicker is a
+    scuff appearing and vanishing under a fighter who is barely moving. "Silent
+    while ``walk_slow``" is also a claim about what the state *means* rather
+    than a threshold, because a fighter easing out of a run passes through the
+    same speeds without having become a guarded one.
+
+    So :data:`TIER` is keyed on ``PlayerState`` values, and nothing here imports
+    the state machine to prove it. ``test_fx_invariants`` checks every key
+    against the enum instead, which is what keeps a string key from quietly
+    going stale.
+
+    Anything *outside* the table -- an enemy patrolling, say -- gets
+    :data:`DEFAULT_TIER`, which is the run row. Its speed is paced by distance
+    like everyone else's, so a patrolling enemy at a third of its top speed lays
+    a third as many steps and nothing about it is a special case.
+
+    ``MIN_STEP_EVERY`` is the ceiling on all of this, and it is not optional. At
+    ``Physics.PLAYER_SPEED`` the run row alone asks for a step every 0.04s, and
+    twenty-five marks a second along a fighter's own path is the dash's ribbon,
+    drawn small and in the dash's own lane. The floor is what keeps the effect a
+    footstep -- a threshold below which the plane stops spending, not above which
+    it spends more. It is what puts the run's spacing at thirty pixels rather
+    than the fourteen it asks for, and the run is still the fastest comb in the
+    plane at a little under three times the walk's rate.
+
+    The mark sits behind the trailing foot rather than under the body, for the
+    reason ``Dust.FOOT_SPREAD`` gives for the landing fan: this plane is
+    painted *under* the moving layer, so a mark thrown from inside a
+    forty-eight-pixel fighter spends its first third of life invisible behind
+    him. A step is born behind the heel and reads as something he left.
+    """
+
+    TIER: dict[str, FootstepTier] = {
+        "walk": FootstepTier(40.0, 0.6),
+        "run": FootstepTier(14.0, 1.15),
+    }
+    """The ground tiers that mark the floor, keyed on ``PlayerState`` values.
+
+    See :data:`SILENT` for the one that does not, and the class docstring for why
+    the tiers are read by name rather than by speed.
+    """
+    SILENT: frozenset[str] = frozenset({"walk_slow"})
+    """The ground tiers that deliberately leave no dust at all.
+
+    Named rather than left as an absence, because the two cases are different
+    and the difference is the whole reason this effect reads as gait. A tier
+    absent from :data:`TIER` *and* absent from here is not a ground tier -- an
+    enemy patrolling, a test double with no state machine -- and it gets
+    :data:`DEFAULT_TIER` like anything else that is merely moving. Letting
+    "not in the table" mean both things is how an enemy chasing you ends up
+    marking the floor at a walker's cadence.
+
+    ``walk_slow`` is in it for the reason in the class docstring: a fighter
+    shuffling under a raised guard is holding still as far as the ground is
+    concerned, and marking him every stride says he is travelling when he is
+    not. It is also the tier ``Guard.MOVE_MULT`` (0.35) drops to, so it is the
+    one that shows up on every block in the game and the one that must not turn
+    a guard into a running start.
+    """
+    DEFAULT_TIER = FootstepTier(14.0, 1.15)
+    """What a fighter that is not in :data:`TIER` gets: the run row.
+
+    The numbers are repeated rather than referenced so a reader who finds one
+    row does not have to follow a name to find the other. The two have to stay
+    equal, and
+    ``test_the_default_footstep_tier_is_the_run_row`` holds them together.
+    """
+    MIN_STEP_EVERY = 0.085
+    """The shortest interval two steps may have, in seconds.
+
+    The ceiling on the cadence, and the number that keeps a run from turning
+    into a trail. At ``Physics.PLAYER_SPEED`` with the run row's fourteen pixels
+    alone, a fighter asks for a step every 0.04s -- twenty-five a second -- and
+    twenty-five marks along a fighter's own path is the dash's ribbon again,
+    drawn small, which is the one thing that would make the dash stop being the
+    fastest thing in the plane that leaves a mark.
+
+    Eighty-five milliseconds is about twelve steps a second, which is faster
+    than the run sprite sheet changes leg (``Animation.RUN_FRAME_DURATION`` is
+    0.08) -- close enough that the marks land on the leg they belong to
+    without the floor ever being the thing the eye notices. Against the walk
+    row's forty pixels it leaves the run a little under three times the rate,
+    which is the difference the eye actually reads as gait.
+    """
+    MIN_SPEED = 20.0
+    """Below this ground speed, a fighter leaves nothing at all.
+
+    The plane's other FX ignore standing still, and so does this: a mark per
+    frame of the friction settle would be a puff that never stops appearing
+    under a fighter who has already stopped. Above ``Locomotion.
+    STOP_SPEED_PX_S`` (0.5) by a wide margin, so a fighter easing out of a run
+    keeps marking the ground until it has genuinely stopped, rather than
+    stopping dead at the last frame where the difference is invisible.
+    """
+    COUNT = 2
+    """Puffs in one step.
+
+    Two rather than one so the mark has a width the eye can hold as a foot,
+    and the same count as the dash trail's tick for the reason that one has:
+    two small parts side by side read as a scuff, and one reads as a speck the
+    fighter happened to pass over.
+    """
+    RADIUS = 4.0
+    """Per-puff radius, as a share of the painted sheet.
+
+    This is a *request*, not a size: the trail's ladder is keyed on the discrete
+    radii in ``DashDust.BUCKETS`` and drawn at the entry nearest the request, so
+    everything from nothing up to ``BUCKETS[1]`` comes out as the same sheet.
+    Four is inside that first bucket, which is the point of the number -- the
+    footstep draws the smallest mark the plane can draw and there is nothing
+    below it to go to.
+
+    Which also means a size knob cannot be added here: any radius under six
+    produces byte-identical pixels, so a mark scaled by ground speed would move
+    a number and not the screen. The cadence is what says how fast the fighter
+    is going, and it is already doing it: the same mark, laid tighter and
+    tighter as he speeds up.
+    """
+    TTL = 0.3
+    """How long a step lives.
+
+    Shorter than ``DashDust.TICK_TTL`` (0.4) because this is the most frequent
+    mark in the plane and the one with the least claim to being read: a step is
+    punctuation between two positions, and a comb of them only reads as a comb
+    while the fighter is between the ends of it. Held longer they stack up
+    into the low haze that the distance pacing was meant to avoid.
+    """
+    FADE_IN = 0.03
+    """A shade faster than the trail's.
+
+    A step is born behind a fighter who is already leaving it, so the ramp has
+    to beat him off the floor or the mark's whole readable life happens where
+    he is not.
+    """
+    GRAINS = 3
+    """Grit thrown with a step.
+
+    Three rather than the trail tick's, and it is the ``dust_grain`` family
+    either way, so they come out of a budget sized for spray. The spray is
+    what makes a mark read as dust and not as a smudge, and this is the one
+    effect in the plane where the mark is small enough that the sheet alone
+    would carry the read -- a step is two puffs at radius four, which at this
+    magnification is a smudge.
+    """
+    KICK = (14.0, 26.0)
+    """The height each puff is kicked to, as a range.
+
+    Well under ``DashDust.TICK_KICK`` (34) and the same shape as it: a range,
+    so a step is not two clouds leaving the floor at exactly one speed. A foot
+    does not throw dust a third of a fighter's height; the point of the mark is
+    that the ground was disturbed, which reads at a couple of pixels of arc.
+    """
+    THROW = 26.0
+    """How hard a puff is thrown against the direction of travel.
+
+    A fifth of ``DashDust.THROW`` (150) and, like it, always against the
+    direction: a step is the dust the heel pushed backwards, so throwing it
+    forwards would put the mark ahead of the fighter instead of behind him.
+    """
+    SPREAD = 12.0
+    """The sideways spread of the pair at one share, in px/s.
+
+    Narrow, and narrower than ``DashDust.SPREAD`` because the pair is already
+    laid at the heel: a step whose two halves fanned across half the fighter's
+    width would be a landing's worth of motion at a walking pace.
+
+    This is the base the tiers scale, not a fixed width -- a ``walk`` takes 0.65
+    of it and a ``run`` takes 1.2, so the walk's pair is a single mark under the
+    heel while the run's two halves separate. See :class:`FootstepTier`.
+    """
+    BACK_OFFSET = 0.35
+    """Where along the fighter the mark is laid, as a share of his width.
+
+    Behind the trailing edge rather than across the footprint the way
+    ``Dust.FOOT_SPREAD`` lays a landing, because the landing has a fan to spread
+    and a step has a pair: a landing is one event read as a spread, a step is
+    a repeated event read as a comb, and a comb only reads as a comb if the
+    marks come out in the same place along the body every time.
+    """
+    FOOT_ALTERNATE = 0.18
+    """How far either side of the trailing edge each foot lays its step, as a
+    share of his width.
+
+    Alternating the depth between steps is what makes the comb read as two feet
+    rather than as one mark stamped down the middle of a path, and it is free:
+    the parity is the step counter the distance pacing already keeps, so there
+    is no second clock to read.
+
+    Small because the plane is magnified. On a forty-pixel fighter this puts the
+    two lines seven pixels either side of where the trailing edge was -- a
+    fifth of his width, which reads as two feet and no more. A half-width would
+    have the marks striding across the fighter's own silhouette, and the mark is
+    painted *under* it, so most of that would never be seen at all.
+    """
+    GRAVITY = 120.0
+    """Downward, the trail's number and for the trail's reason.
+
+    A step is a mark on the ground, so it has to be back on the ground before it
+    is gone. With ``DashDust.GRAVITY`` the puff's whole arc is a few pixels and
+    it settles inside its own life; the landing sheet's negative-gravity trick
+    would send it drifting up for all three tenths of a second.
+    """
+    DRAG = 4.0
+    """Horizontal drag, ``Dust.DRAG``'s number, and its reason.
+
+    The mark is laid at the heel and thrown backwards; drag is what stops it
+    from becoming a streak travelling along the fighter's own path.
+    """
+    RADIUS_JITTER = 1.0
+    """Per-puff radius, so a step is not two identical puffs.
+
+    Below ``DashDust.RADIUS_JITTER`` (1.5) on a smaller base radius, for the
+    reason the trail cut its own: the two halves of a step are two pixels apart,
+    and half a factor of two of jitter between them reads as two events rather
+    than as one scuff.
+    """
+    TINT = (-0.08, 0.12)
+    """The per-puff body shift, so a comb is not a row of identical sheets.
+
+    Narrower and dimmer than ``DashDust.TINT`` (-0.12, 0.18), and less to make
+    a stand: there are far more steps on screen at once than puffs in a trail,
+    so the tone range is spread over more marks and each step contributes less
+    of the sum.
+    """
+    TONES = 4
+    """How many discrete tones that range is drawn in, and so how many ladders.
+
+    Not decoration: the ladder is keyed on the tone it is handed, rounded to
+    three places, so a *continuously* sampled tone misses the cache on every
+    spawn and paints four surfaces to replace one. This number is the ceiling on
+    that. It was a random draw per puff before, and the cost was not the misses
+    but the misses forever: sixty seconds of running built 383 ladders, and the
+    p95 of the emitter went to 828us -- a fifth of a frame, on one tick, over and
+    over, for as long as the game was open.
+
+    Four because the whole reachable grid is one radius bucket times this times
+    the two silhouettes a two-puff step draws, so the footstep can never exceed
+    eight cached ladders however long it runs. That is the number
+    ``test_a_footstep_cannot_grow_the_ladder_cache`` holds it to.
     """
 
 

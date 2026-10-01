@@ -26,6 +26,7 @@ from src.core.fx.particles import (
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    FootstepDustParticle,
     GrainParticle,
     ImpactDecalParticle,
     OrbitParticle,
@@ -34,6 +35,7 @@ from src.core.fx.particles import (
     SweatParticle,
     dash_tint,
     dash_variant,
+    footstep_tint,
     puff_tint,
     puff_variant,
 )
@@ -41,6 +43,8 @@ from src.core.settings import (
     DashDust,
     Dust,
     DustGrain,
+    FootstepDust,
+    FootstepTier,
     FxDecal,
     FxDizzy,
     FxGuard,
@@ -57,8 +61,9 @@ one effect from spending it all."""
 
 FX_FAMILY_BUDGETS: dict[str, int] = {
     "landing_dust": 16,
-    "dust_grain": 24,
-    "dash_dust": 16,
+    "dust_grain": 34,
+    "dash_dust": 20,
+    "footstep_dust": 12,
     "dizzy_star": 8,
     "dizzy_vortex": 8,
     "impact_decal": 8,
@@ -79,19 +84,44 @@ source to keep it that way, because the key is a string and a typo would
 otherwise mean a particle spending from a budget that does not exist.
 
 ``dust_grain`` is the loosest cap in the table, and it is the only family whose
-members are one to three pixels across. That is the trade: a landing spends
-fourteen of them and a dash eight or three, so a hard landing and a dash
-together would overrun the plane on their own. They are worth overrunning it
-with, because a plane full of grit still reads as one landing, where a plane
-full of sheets with a few specks among them reads as a landing with confetti in
-it -- and unlike the sheets, the grains are what the eye reads as motion.
+    members are one to three pixels across. That is the trade, and thirty-four is
+    the landing's fourteen plus a dash's twenty -- twelve on the shove and four
+    on each of the two ribbons after it -- added together rather than picked:
+    landing out of a dash fires both on one tick, and the landing is the one that
+    wins. They are worth a cap that loose, because a plane full of grit still
+    reads as one landing, where a plane full of sheets with a few specks among
+    them reads as a landing with confetti in it -- and unlike the sheets, the
+    grains are what the eye reads as motion.
 
 ``dash_dust`` is sized with the landing fan rather than with the cadenced
-effects because a dash is over in 0.08s: its burst and its ribbon are both
-spent inside a sixth of a second, so a tight cap would truncate the trail in
-the middle of the movement rather than defer it, which is the one thing a
-trail cannot do.
-"""
+    effects because a dash is over in 0.08s: its burst and its ribbon are both
+    spent inside a sixth of a second, so a tight cap would truncate the trail in
+    the middle of the movement rather than defer it, which is the one thing a
+    trail cannot do.
+
+    Twenty is that arithmetic written down rather than a taste, and the ceiling
+    is the frame rate rather than the one this was tuned on. ``SPAWN_EVERY``
+    (0.02) puts four emission slots in ``DASH_DURATION`` (0.08), so the most a
+    dash can spend is ``BURST_COUNT`` (7) plus three emissions of ``TICK_COUNT``
+    (4) -- nineteen, and never twenty-one. Measured from thirty to two hundred
+    and forty hertz: eleven puffs at 30 and 60, fifteen at 120, nineteen from 90
+    up, where the dash has enough ticks for the cooldown to run to its limit.
+
+    Nineteen against twenty is one puff of headroom and it is on purpose. The
+    alternative is a cap that truncates the ribbon's last puff at some frame rate
+    and not at another, which is the one thing a trail cannot do -- and the count
+    it would need to leave alone to get real margin is ``BURST_COUNT``, which is
+    the number that gives way first.
+
+    ``footstep_dust`` is the busiest mark in the plane -- it is the only one
+    that fires while the fighter is merely walking -- and it is capped on its
+    own for that reason. Sharing the trail's budget would let a fighter at a
+    run starve a dash, and sharing the plane's would let two fighters walking
+    starve a parry; twelve is about three seconds of a full-speed run spent on
+    the floor at once, which is enough for the comb to read as a path and
+    little enough that what it competes with is a landing rather than another
+    fighter's footsteps.
+    """
 
 
 _fx_rng: random.Random = random.Random()
@@ -408,6 +438,151 @@ def spawn_dash_grains(
                     -abs(rng.uniform(*DustGrain.RISE)) * (1.0 if burst else 0.5),
                 ),
                 size=small + round(size_span * (index / max(1, count - 1)) * 0.5),
+                tint=low + (high - low) * rng.random(),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
+
+
+def _step_anchor(entity: Any, side: float, foot: bool) -> float:
+    """Where along the fighter this foot's step is laid, in px.
+
+    Behind the heel, and alternating between two depths so the comb reads as
+    two feet rather than as one mark stamped down the middle of a path. The
+    alternation is free: the parity is the step counter the distance pacing
+    already keeps, so nothing here has to remember which foot it was.
+
+    A step is laid at one depth every time, unlike a landing's fan, which is
+    spread across the footprint. A landing is one event read as a spread and a
+    step is a repeated event read as a comb, and a comb only reads as a comb if
+    the marks come out in the same place along the body every time.
+    """
+    offset = FootstepDust.BACK_OFFSET
+    offset += FootstepDust.FOOT_ALTERNATE if foot else -FootstepDust.FOOT_ALTERNATE
+    hitbox = entity.hitbox
+    return float(hitbox.centerx) - side * float(hitbox.width) * offset
+
+
+def spawn_footstep_dust(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    foot: bool,
+    tier: FootstepTier,
+) -> list[FootstepDustParticle]:
+    """Throw a scuff off one foot of a fighter who is walking.
+
+    Built the way the dash trail is built: laid at the trailing edge, thrown
+    against the direction of travel, dust and grit rather than mass alone. What
+    differs is not the sheet -- ``FootstepDust.RADIUS`` lands in the same ladder
+    bucket as ``DashDust.TICK_RADIUS``, so this draws the trail's own cloud --
+    but everything about *when*: two puffs instead of five, kicked a third as
+    high, laid twelve times a second instead of once, and gone in three tenths
+    of a second. The same cloud on a walk's schedule is a footstep; on the
+    trail's schedule it is the trail.
+
+    The direction is read with the trail's own ``_dash_side``, because it is the
+    same question asked of a slower movement: where is the fighter going, which
+    only the velocity answers. A fighter can strafe, be knocked back, or slide
+    backwards, and in all three the facing is a lie about it.
+
+    The tone is this mark's own narrower range and discrete -- four of them, and
+    which two of the four a step gets is the foot's, so a comb alternates
+    between two pairs rather than repeating one. The silhouette is the trail's
+    palette outright. That is the split between them: the tone is per-footstep
+    and there are far more of those on screen at once than there are trail puffs,
+    so the range is pulled in to keep a long comb from reading as a gradient,
+    while the silhouette is shared because this is the same cloud and a
+    footstep drawn in a different shape from the dash that follows it would read
+    as a different effect.
+
+    Neither is drawn at random. Both are indexed, because the ladder they key
+    into is a cache, and a cache keyed on a random number is not a cache.
+
+    ``tier`` is required, and it scales the pair's sideways spread and nothing
+    else. The gait is read from the caller's row rather than from the fighter
+    here, so the emission does not have to know what a locomotion state is -- a
+    walk's two halves come out close together under the heel and a run's
+    separate.
+
+    Required rather than defaulted because every production caller already has
+    the tier, and a default would be a trap rather than a convenience: a call
+    that forgot it would silently lay a run's spread under a walking fighter and
+    nothing would say so. The one thing this function must never do is guess.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = FootstepDust.COUNT
+    if count <= 0 or not _has_room(fx_group, "footstep_dust", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    anchor = _step_anchor(entity, side, foot)
+    spread = FootstepDust.SPREAD * tier.spread
+    puffs: list[FootstepDustParticle] = []
+    for index in range(count):
+        lateral = (index - (count - 1) / 2.0) / max(1.0, (count - 1) / 2.0)
+        puff = FootstepDustParticle(
+            (anchor, hitbox.bottom - 2.0),
+            (
+                -side * FootstepDust.THROW
+                + lateral * spread
+                + rng.uniform(-spread * 0.5, spread * 0.5),
+                -abs(rng.uniform(*FootstepDust.KICK)),
+            ),
+            ttl=FootstepDust.TTL,
+            radius=FootstepDust.RADIUS + rng.uniform(0.0, FootstepDust.RADIUS_JITTER),
+            tint=footstep_tint(index, foot),
+            variant=dash_variant(index, count),
+        )
+        fx_group.add(puff)
+        puffs.append(puff)
+    return puffs
+
+
+def spawn_footstep_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    foot: bool = False,
+) -> list[GrainParticle]:
+    """Throw the grit off one foot, into the same ``dust_grain`` budget.
+
+    And the reason this effect exists at all is on this side of it. The sheet is
+    the smallest mark the plane can draw -- fourteen pixels across at its
+    brightest, on a forty-eight-pixel fighter -- so a footstep is a small pale
+    smudge at the fighter's heel with a third of a second to be read, and a
+    smudge is what it reads as however well it is shaded. Three grains are what
+    make it dust off a shoe instead, and they are what the eye tracks as the
+    fighter moves, which is the thing the cadence is expressing.
+
+    They spend the loose family's budget rather than their own, and that is
+    right for the reason ``DustGrain`` keeps its own: a plane already full sheds
+    the grit before it sheds the mark, and here the mark is the one the comb
+    is made of.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = FootstepDust.GRAINS
+    if count <= 0 or not _has_room(fx_group, "dust_grain", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    anchor = _step_anchor(entity, side, foot)
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    grains: list[GrainParticle] = []
+    for index in range(count):
+        across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
+        grains.append(
+            GrainParticle(
+                (anchor + across, hitbox.bottom),
+                (
+                    -side * rng.uniform(0.0, FootstepDust.THROW),
+                    -abs(rng.uniform(*DustGrain.RISE)) * 0.4,
+                ),
+                size=small + round(max(0, coarse - small) * index / max(1, count - 1) * 0.5),
                 tint=low + (high - low) * rng.random(),
             )
         )

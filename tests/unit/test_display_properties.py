@@ -30,7 +30,12 @@ import pygame
 import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import density_for, fits_whole_pixel, letterbox
+from src.core.display.letterbox import (
+    already_a_whole_multiple,
+    density_for,
+    fits_whole_pixel,
+    letterbox,
+)
 from src.core.display.presentation import Presentation
 from src.core.display.viewport import Viewport
 from src.core.input.input_manager import InputManager
@@ -410,6 +415,59 @@ def test_whole_pixel_art_keeps_the_framing_exactly(window: tuple[int, int]) -> N
     rect = letterbox(window, DEFAULT_FRAMING, pixel_perfect=True)
     assert rect.width / rect.height == pytest.approx(DEFAULT_FRAMING.aspect, abs=1e-3)
     assert rect.width % round(DEFAULT_FRAMING.width) == 0
+
+
+#: Windows that are already a whole multiple of the framing, so snapping to one
+#: would change nothing. The first three are exact multiples of 1152x648 at this
+#: framing; the rest are the ordinary sizes a player ends up with.
+ALREADY_WHOLE_WINDOWS = [(1152, 648), (2304, 1296), (3456, 1944)]
+
+
+@pytest.mark.parametrize("window", ALREADY_WHOLE_WINDOWS)
+def test_a_window_that_is_already_whole_says_so(window: tuple[int, int]) -> None:
+    """The one class of window where whole-pixel art is honoured by doing nothing.
+
+    ``fits_whole_pixel`` asks whether a whole multiple fits and answers yes here;
+    this asks whether taking it would *do* anything and answers no. Both are true
+    at once, and only the second one tells the player why the picture does not
+    move when they press the row.
+    """
+    assert fits_whole_pixel(window, DEFAULT_FRAMING), "a whole multiple does fit"
+    assert already_a_whole_multiple(window, DEFAULT_FRAMING), "and taking it changes nothing"
+
+
+@pytest.mark.parametrize("window", [(1920, 1080), (2560, 1440), (1440, 810), (1280, 720)])
+def test_a_window_that_is_not_whole_has_work_to_do(window: tuple[int, int]) -> None:
+    """The complement, and the direction that matters: snapping must *change* it.
+
+    Asserted against ``letterbox`` directly rather than against a table of
+    expected sizes, because the claim is the one the row depends on -- if this
+    ever said "already whole" for a window that is not, the row would tell the
+    player there is nothing to do when there plainly was.
+    """
+    assert not already_a_whole_multiple(window, DEFAULT_FRAMING), (
+        f"{window} is not a whole multiple of the framing"
+    )
+    assert (
+        letterbox(window, DEFAULT_FRAMING).size
+        != letterbox(window, DEFAULT_FRAMING, pixel_perfect=True).size
+    )
+
+
+def test_a_window_too_small_for_one_is_not_reported_as_already_whole() -> None:
+    """The two refusals are different and must not collapse into one.
+
+    Below the framing there is no whole multiple to take, so ``letterbox`` hands
+    back the fitted rectangle unchanged -- the same rectangle
+    ``already_a_whole_multiple`` compares against. Without the check below, a
+    window too small for the art would be indistinguishable from a window that is
+    already exactly sized, and the row would say "already whole" on a window
+    where the right answer is "too small".
+    """
+    assert not fits_whole_pixel((800, 600), DEFAULT_FRAMING)
+    assert not already_a_whole_multiple((800, 600), DEFAULT_FRAMING), (
+        "it is a refusal, not a job already done"
+    )
 
 
 # --------------------------------------------------------------------------

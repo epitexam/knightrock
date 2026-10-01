@@ -45,6 +45,7 @@ from src.core.settings import (
     DashDust,
     Dust,
     DustGrain,
+    FootstepDust,
     FxDecal,
     FxDizzy,
     FxGuard,
@@ -163,10 +164,12 @@ class DustParticle(FxParticle):
         self.tint = float(tint)
         self.variant = int(variant)
         self.ladder = puff_frames(self.radius, self.tint, self.variant)
+        # No image or rect after the super().__init__: ``_paint`` returns
+        # ``ladder[0]``, which is what the base put on the sprite and sized the
+        # rect from. Setting it again re-fetched the same surface and built a
+        # second rect off it, per puff, on the hottest emitter in the plane.
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
-        self.image = self.ladder[0]
-        self.rect = self.image.get_frect(center=self.pos)
 
     def _paint(self) -> pygame.Surface:
         return self.ladder[0]
@@ -222,10 +225,10 @@ class DashDustParticle(FxParticle):
         self.tint = float(tint)
         self.variant = int(variant)
         self.ladder = dash_frames(self.radius, self.tint, self.variant)
+        # As with the landing sheet: the base paints ``ladder[0]`` and sizes the
+        # rect from it, so there is nothing to set afterwards.
         super().__init__(pos, ttl)
         self.velocity = Vector2(velocity)
-        self.image = self.ladder[0]
-        self.rect = self.image.get_frect(center=self.pos)
 
     def _paint(self) -> pygame.Surface:
         return self.ladder[0]
@@ -233,6 +236,61 @@ class DashDustParticle(FxParticle):
     def _integrate(self, delta_time: float) -> None:
         super()._integrate(delta_time)
         self.image = self.ladder[spread_step(self.life, len(self.ladder), DashDust.STEP_OPENS)]
+
+
+class FootstepDustParticle(DashDustParticle):
+    family: ClassVar[str] = "footstep_dust"
+
+    """A puff off one foot, for a fighter who is merely walking.
+
+    The plane's third dust mark, and the only one that is neither an event nor a
+    movement: the landing answers "how hard was that" and the trail answers
+    "that was a shove". This one answers the question the other two leave open,
+    which is whether the fighter is moving at all -- before it, a fighter at
+    full run along a floor left nothing behind him, so the most continuous
+    movement in the game was the one that displaced nothing on screen.
+
+    It is the trail's particle, not a smaller one. Same ladder, same two tones,
+    same absent rim, same downward gravity, and the rim is absent for the same
+    reason the trail's is: this is dust hanging in the air being read as light,
+    and a mid-grey outline at one pixel per world unit turns it into a drawn
+    shape with nothing light about it. The landing sheet keeps its rim because
+    it sits on the tiles, where the edge does the work; a footstep's puff does
+    not sit on anything, it is thrown up off the floor and it is gone.
+
+    What it borrows and what it does not is worth being explicit about, because
+    the inheritance is the whole of the difference. Inherited: gravity, drag,
+    the ladder and ``behind``. Not inherited: the family, which is why this
+    exists as a class rather than a flag, and the fade-in, which is a shade
+    quicker because a step is born behind a fighter who is already leaving it.
+
+    A subclass rather than a second ladder on purpose. The sheet geometry is
+    keyed on size, tone and silhouette, and a footstep's radius lands in the
+    same bucket as a dash tick's -- in the first one, which is the smallest
+    there is -- so the two share the frames the first one built. Painting a
+    second set would double the table for a mark that is not merely similar to
+    the trail's but is the same cloud, on a different schedule.
+
+    That is also why there is no radius knob on ``FootstepDust``: the ladder is
+    drawn at the nearest of its discrete sizes, so every request under the
+    second bucket produces identical pixels and a mark scaled by ground speed
+    would move a number and not the screen.
+    """
+
+    fade_in: ClassVar[float] = FootstepDust.FADE_IN
+    gravity: ClassVar[float] = FootstepDust.GRAVITY
+    drag: ClassVar[float] = FootstepDust.DRAG
+
+    def __init__(
+        self,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        ttl: float = FootstepDust.TTL,
+        radius: float = FootstepDust.RADIUS,
+        tint: float = 0.0,
+        variant: int = 0,
+    ) -> None:
+        super().__init__(pos, velocity, ttl=ttl, radius=radius, tint=tint, variant=variant)
 
 
 class GrainParticle(FxParticle):
@@ -278,10 +336,16 @@ class GrainParticle(FxParticle):
     ) -> None:
         self.size = max(1, int(size))
         self.tint = float(tint)
-        self.image = self._paint()
+        # No ``self.image = self._paint()`` here. `FxParticle.__init__` paints,
+        # and it was painting a second time: this class set the image, then
+        # handed the same arguments straight back and let the base do it again.
+        # Two surfaces of one to three pixels, allocated and thrown away for
+        # every grain, and the grains are the most numerous particle in the
+        # plane -- a landing spends fourteen and a walk spends three every tenth
+        # of a second. It was invisible from here, because the second surface is
+        # byte-identical and nobody looks at which of the two they got.
         super().__init__(pos, DustGrain.TTL)
         self.velocity = Vector2(velocity)
-        self.rect = self.image.get_frect(center=self.pos)
 
     def _paint(self) -> pygame.Surface:
         return _grain_surface(self.size, self.tint)
@@ -756,6 +820,7 @@ landings, which the eye reads as the game shaking.
 
 _puff_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
 _dash_cache: dict[tuple[int, float, int], list[pygame.Surface]] = {}
+
 _vortex_cache: list[pygame.Surface] = []
 _PUFF_MOTES: dict[int, Motes] = {}
 _DASH_MOTES: dict[int, Motes] = {}
@@ -1139,6 +1204,47 @@ def dash_tint(index: int, count: int) -> float:
     if count < 2:
         return low
     return low + (high - low) * index / (count - 1)
+
+
+def footstep_tint(index: int, foot: bool) -> float:
+    """The body tone for one half of one footstep.
+
+    Discrete, drawn from :func:`_footstep_tints`, because the ladder is keyed on
+    the tone it is handed, rounded to three places, so a *continuously* sampled
+    tone misses the cache on every spawn and paints four surfaces to replace one.
+    See ``FootstepDust.TONES`` for what that cost before it was fixed.
+
+    Indexed by the within-step slot *and* by which foot laid it, which is what
+    keeps a comb from being a row of identical marks. ``index`` alone would hand
+    every step in the game the same two tones -- the same pair repeated for as
+    long as the player holds a direction -- and the foot alternates for free,
+    since the emitter is already carrying which one this is. Two feet against
+    four tones is two pairs, swapping as the steps alternate.
+    """
+    tones = _footstep_tints()
+    offset = 0 if foot else len(tones) // 2
+    return tones[(index + offset) % len(tones)]
+
+
+def _footstep_tints() -> tuple[float, ...]:
+    """The body shifts a footstep is drawn from, across ``FootstepDust.TINT``.
+
+    The landing fan's own builder, for the same reason it is discrete: a tone
+    costs a cached row instead of a surface per particle.
+
+    Built per call rather than memoized, which is what its two neighbours do and
+    what the saving is worth: this is four pieces of arithmetic, twenty times a
+    second, and a memo over it measured at nineteen microseconds per second --
+    nothing against the ladder it exists to feed. It would also have been the
+    only mutable piece of module state in the file, and a stale one would
+    quietly ignore a changed ``FootstepDust.TINT``.
+    """
+    low, high = FootstepDust.TINT
+    count = max(1, FootstepDust.TONES)
+    if count < 2:
+        return (low,)
+    span = high - low
+    return tuple(low + span * i / (count - 1) for i in range(count))
 
 
 def dash_variant(index: int, count: int) -> int:
