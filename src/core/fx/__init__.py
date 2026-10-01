@@ -20,6 +20,89 @@ The look, in one sentence: whole pixels, dark ink rims, and alpha that moves
 in discrete steps, because the game is magnified with nearest-neighbour
 scaling and a soft particle turns to mush at that magnification.
 
+The rim, though, is a rule with an exception rather than the rule itself. The
+block's ring and the dash trail both dropped theirs: a mid-grey outline at
+one pixel per world unit turns a mark into a drawn shape with nothing light
+about it, and both of those are read as light -- a shield taking a hit, and
+the dust a dash throws. The landing dust keeps its rim because it sits on the
+ground against tiles, where the edge is the thing doing the work. Where the
+rim goes, a second tone takes over: a brighter arc on the struck side of the
+ring, and a lit rim along the top of the cloud.
+
+Dust is grit, and grit has no silhouette
+----------------------------------------
+The dust is the one effect in the plane that was rebuilt for its look rather
+than its behaviour, and it took three passes to get there. It began as a
+single disc that faded, which read as a ball being switched off, and became
+four large overlapping discs with a disc of highlight set into the top left of
+the lot -- which read as a bubble, because the union of four discs of
+comparable radius is one smooth convex oval whatever you offset them by, and
+because a round patch of light inside a round mass is how a bubble, a pearl
+and a children's-book cloud are all drawn. Neither of those is fixable by
+making the outline lumpier; the second is not about the outline at all.
+
+So the cloud is a band of small parts -- a connected lower one and a scattered
+fringe above it, because a single height distribution pulls the lower parts out
+of each other's reach and the sheet falls apart into separate puffs hanging in
+the air. It is lit by a one-pixel rim laid along the top left of the whole
+silhouette rather than by a patch of light inside it, and that rim cannot
+contain a two-by-two square: it is the shape drawn one pixel up and to the left
+and then overdrawn by itself, so the same pixel cannot be both covered and
+uncovered. ``test_fx_draw`` asserts that arithmetic, and it is what stops the
+disc of highlight coming back as a matter of taste.
+
+And most of the parts are chips rather than discs, which took a second pass
+once the first two were done. Every arc on a silhouette is a bubble however
+small it is: fifteen little circles make fifteen little bubbles along the
+outline, and what the eye reads is the arcs rather than the count, so a
+"granular" sheet of discs is still a cluster of beads. Straight runs are what
+break it. A chip is four to six sides with a heading of its own, drawn about
+40 % larger than the disc it replaces because a polygon covers appreciably less
+than the circle inscribed in the same radius -- and that is the difference
+between a sheet of dust and a heap of gravel, since swapping part for part at
+one radius thins the band rather than squaring it.
+
+The other half is :class:`DustGrain`. A kick off a floor throws small particles
+that travel further than the mass does and arrive first, and a mark with no
+spray around it is a puff of smoke however well it is shaded. Grains are a
+separate family on a separate budget, three pixels square at most and never
+opaque, so a plane that is already full sheds the grit rather than the landing.
+They are the majority of a landing on purpose: the spray is the punctuation and
+the sheet is the sentence. They are the majority of a footstep too, which is the
+only mark here small enough that the sheet alone would not carry the read.
+
+Three marks, and only three
+---------------------------
+The dust in this plane answers three different questions, and the reason there
+are three of them rather than one loud effect is that each of the others was
+missing an answer. A landing asks "how hard was that" and scales itself by the
+fall speed. The dash trail asks "that was a shove", is thrown backwards, and is
+the one mark the plane has for a movement rather than for a landing. The
+footstep asks the question the other two leave open, which is whether the fighter
+is moving at all -- and it was missing for the longest, because a fighter at a
+full run along a floor had nothing in the plane at all: the dash got a trail and
+the most continuous movement in the game displaced nothing on screen.
+
+The footstep is paced by **distance walked** and its cadence is **per ground
+tier**, and the tiers are read by name rather than by speed. That is a
+reversal of the obvious version, and ``FootstepDust``'s docstring gives the
+argument; the short of it is that the state machine has already decided which
+tier a fighter is in, with hysteresis so the decision does not flicker, and
+re-deriving it here would put the flicker back. ``walk_slow`` is then silent
+rather than slow, because that is what the tier means: a fighter shuffling
+under a raised guard is holding still as far as the ground is concerned. So the
+plane now has a spectrum rather than a gap -- nothing under a guard, a slow
+tight comb at a walk, a faster and looser one at a run, and the dash's heavy
+scattered plume above all of it.
+
+A time-paced comb would space the marks by the stride instead of along the
+ground, which puts the slow tiers' marks closer together and reads as
+clustering rather than as walking. A second number then holds every tier's
+cadence under a ceiling, because the run row alone fires twenty-five times a
+second at full speed, and twenty-five marks along a fighter's own path is the
+dash's ribbon again drawn small -- which is the one thing that would stop the
+dash being the fastest thing in the plane that leaves a mark.
+
 Which particles rebuild their surface
 -------------------------------------
 A particle that redraws its pixels every frame pays for a drawing, not for an
@@ -32,8 +115,18 @@ The dust was the last particle still on shipped art -- three anti-aliased PNGs
 under ``assets/graphics``, a tree that is gitignored, so the look already
 differed from one machine to the next and ``radius`` did nothing at all. It is
 painted now, like the rest of the plane, and it opens over its life from a
-shared ladder keyed on size and tone, so a fan of six is six references into
-a table rather than six surfaces allocated on the landing tick.
+shared ladder keyed on size, tone *and silhouette*, so a fan of four is four
+references into a table rather than four surfaces allocated on the landing
+tick. The silhouette is part of that key because tone and size are both global
+properties of a mark: a fan that varies only those is one shape stamped four
+times at four zoom levels, which is a spinner. The dash trail is painted the
+same way and shares the reasoning: a dash lays puffs on a cadence rather than
+in one fan, so there are more of them alive at once and the ladder binds
+harder, not softer. The footstep does not just share the reasoning, it shares
+the table -- its radius lands in the same bucket as a dash tick's, the first one
+and therefore the smallest there is, so it draws the trail's own cloud -- and it
+is the most frequently spawned mark in the plane, so a ladder of its own would be
+the most expensive one built for no difference at all.
 
 Everything here builds its surface at construction and then only moves, fades
 or steps through a ladder it built alongside, which is what
@@ -43,13 +136,18 @@ or steps through a ladder it built alongside, which is what
 from __future__ import annotations
 
 from src.core.fx.particles import (
+    DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
+    FootstepDustParticle,
+    GrainParticle,
     OrbitParticle,
     ShatterArcParticle,
     ShieldArcParticle,
     SweatParticle,
     clear_frame_cache,
+    dash_frames,
+    dash_tint,
     puff_frames,
     vortex_frames,
 )
@@ -57,11 +155,16 @@ from src.core.fx.spawners import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     iter_landing_entities,
+    spawn_dash_dust,
+    spawn_dash_grains,
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
+    spawn_footstep_dust,
+    spawn_footstep_grains,
     spawn_guard_arc,
     spawn_impact_decal,
     spawn_landing_dust,
+    spawn_landing_grains,
     spawn_shatter_arc,
     spawn_sweat_drops,
 )
@@ -69,21 +172,31 @@ from src.core.fx.spawners import (
 __all__ = [
     "FX_FAMILY_BUDGETS",
     "MAX_FX_SPRITES",
+    "DashDustParticle",
     "DizzyVortexParticle",
     "DustParticle",
+    "FootstepDustParticle",
+    "GrainParticle",
     "ShatterArcParticle",
     "ShieldArcParticle",
     "OrbitParticle",
     "SweatParticle",
     "clear_frame_cache",
+    "dash_frames",
+    "dash_tint",
     "iter_landing_entities",
     "puff_frames",
+    "spawn_dash_dust",
+    "spawn_dash_grains",
     "spawn_dizzy_stars",
     "spawn_dizzy_vortex",
+    "spawn_footstep_dust",
+    "spawn_footstep_grains",
     "spawn_guard_arc",
     "spawn_shatter_arc",
     "spawn_impact_decal",
     "spawn_landing_dust",
+    "spawn_landing_grains",
     "spawn_sweat_drops",
     "vortex_frames",
 ]

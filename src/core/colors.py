@@ -93,15 +93,66 @@ class FXColors:
     ink: ClassVar[Color] = (26, 22, 32)
     ink_warm: ClassVar[Color] = (58, 24, 16)
 
-    dust: ClassVar[Color] = (198, 190, 178)
-    dust_deep: ClassVar[Color] = (104, 96, 88)
-    """The puff's rim.
+    dust: ClassVar[Color] = (184, 179, 170)
+    """The mass of a dust cloud.
+
+    A shade under the near-white this used to be, and cooler. At 198 the puffs
+    read as the brightest thing in the plane and pulled the eye off the
+    fighter standing in them, which is the one thing a landing dust has no
+    business doing. A puff is a register against the tiles, not a light source.
+    """
+    dust_lit: ClassVar[Color] = (238, 234, 226)
+    """The lit edge of a dust cloud.
+
+    This is an *edge* now, not a lobe. It used to be a disc of this colour set
+    into the top-left of the cloud, and a round patch of light inside a round
+    mass is the oldest convention in children's illustration -- it is how a
+    bubble, a pearl and a cartoon cloud are all drawn, and it is the single
+    thing that made the puffs read as drawn-for-children rather than as a
+    material. The light is now one pixel of rim, laid along the top-left of
+    the whole silhouette, which is how a volume is described without an
+    ellipse of pure white sitting on it.
+    """
+    dust_deep: ClassVar[Color] = (74, 69, 63)
+    """The dark side of a dust cloud: its ink rim and its underbelly.
 
     It used to sit 44 units under the body, which at a one-pixel outline is
-    barely a shade: against a bright background the cloud lost its edge and
-    read as a smudge. The rim is the DA's whole reason for inking -- it is
-    what separates a mark from whatever is behind it -- so it is now closer to
-    the ink the rest of the plane uses, and the body carries the tone.
+    barely a shade -- against a bright background the cloud lost its edge and
+    read as a smudge. It is now close to the ink the rest of the plane uses,
+    which is both the fix for that smudge and the reason the puff stopped
+    looking soft: a 110-unit step at one pixel is an edge, where a 44-unit one
+    is a stain.
+
+    It carries two jobs rather than one. A grown pass puts it a pixel outside
+    the silhouette, where it separates the mark from the tiles behind it, and
+    a second pass puts it a pixel *inside* and below, where it is the shadow
+    the mass sits in. One tone doing both is what keeps the puff at three
+    tones; four would be a stripe pattern at this scale.
+    """
+    dust_shade: ClassVar[Color] = (128, 122, 113)
+    """The shadow the landing sheet sits in, a shade under its own body.
+
+    Separate from ``dust_deep`` because the rim and the shadow are different
+    jobs, and painting both in the dark tone made the sheet read as a
+    hamburger. A one-pixel rim outside the silhouette is an edge, and an edge
+    wants to be dark; the shadow *under* the mass wants to be a step below the
+    body, because it is the body's own tone falling off rather than a line
+    drawn round it. Sharing the tone filled the gaps between the lobes along
+    the bottom into a solid three-pixel band, and a solid band across the base
+    of a mark is a stripe.
+
+    It is the one tone in the plane that is neither a line nor a light, and it
+    is what makes the sheet sit on the floor instead of float over it.
+    """
+    dust_grain: ClassVar[Color] = (126, 120, 111)
+    """A loose speck thrown out of a cloud.
+
+    Between the body and the dark side, and never lighter than the body: grains
+    are the shadowed debris a kick scatters, and a spec field of highlights
+    reads as glitter. The landing puff and the dash trail used to carry
+    nothing but themselves, which is why they read as one solid mass -- a
+    silhouette of dust thrown at a floor has loose matter around it, and this
+    is the tone that matter is drawn in.
     """
 
     speed_ghost: ClassVar[Color] = (228, 238, 250)

@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from src.core.settings import Locomotion
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FX_PACKAGE = REPO_ROOT / "src" / "core" / "fx"
 FX_MODULE = FX_PACKAGE / "__init__.py"
@@ -29,12 +31,22 @@ SPAWNERS_MODULE = FX_PACKAGE / "spawners.py"
 PARTICLES_MODULE = FX_PACKAGE / "particles.py"
 DRAW_MODULE = FX_PACKAGE / "draw.py"
 SETTINGS_MODULE = REPO_ROOT / "src" / "core" / "settings.py"
-FX_TUNING_CLASSES = {"Dust", "Sweat", "FxGuard", "FxDizzy", "FxDecal"}
+FX_TUNING_CLASSES = {
+    "Dust",
+    "DustGrain",
+    "DashDust",
+    "FootstepDust",
+    "Sweat",
+    "FxGuard",
+    "FxDizzy",
+    "FxDecal",
+}
 """Where the FX tuning is declared. `Dust` and `Sweat` are here because they
 predate the FX classes and the simulation reads a few of their numbers, so
-they were extended rather than replaced."""
+they were extended rather than replaced. `DustGrain` is here for the ordinary
+reason: it is a tuning class like the rest, and the check below has to see it
+or its settings go unchecked like the eighteen names it was written to catch."""
 """The three modules below the package root, in dependency order.
-
 The rules are split along the same lines the package is: the budgets and the
 particle classes live in one file each, so a check that says "the cap is
 known to one place" and a check that says "every particle declares a family"
@@ -371,6 +383,103 @@ def _fx_setting_names() -> list[tuple[str, str]]:
                 if isinstance(target, ast.Name):
                     pairs.append((node.name, target.id))
     return pairs
+
+
+def test_every_footstep_tier_is_a_player_state_and_nothing_else() -> None:
+    """The footstep table is keyed on strings, and the enum is what they mean.
+
+    ``FootstepDust.TIER`` is a plain dict of ``str`` to row because ``settings``
+    sits below the state machine and cannot import it -- the thresholds it holds
+    are the ones ``player_states`` reads, so the dependency only points down. The
+    cost is that a key is a string, and a string that drifts from the enum is a
+    tier that quietly stopped being asked for: no error, no dust, and nothing in
+    the game to say why.
+
+    So it is checked here instead, from the other side. Two directions, because
+    they fail differently: a key that is not a state is dead weight, and a state
+    that is not a key is either an oversight or a decision -- and the decision is
+    ``walk_slow``, which is silent on purpose, so the assertion names it rather
+    than banning it.
+    """
+    from src.core.settings import FootstepDust
+    from src.states.player_states import PlayerState
+
+    states = {state.value for state in PlayerState}
+    keys = set(FootstepDust.TIER)
+
+    unknown = keys - states
+    assert not unknown, f"footstep tiers that are not player states: {sorted(unknown)}"
+
+    # Only the ground tiers are in question. The rest of the enum is standing,
+    # jumping or being hit, and none of those is a footstep's business -- the
+    # emitter gates on a floor and a ground speed, so ``idle`` marks nothing for
+    # the same reason ``fall`` does.
+    ground = {PlayerState.WALK_SLOW.value, PlayerState.WALK.value, PlayerState.RUN.value}
+    silent = {PlayerState.WALK_SLOW.value}
+    assert ground - keys == silent, (
+        "every ground tier marks the floor but walk_slow, which is silent on "
+        f"purpose; unaccounted for: {sorted(ground - keys - silent)}"
+    )
+
+
+def test_the_default_footstep_tier_is_the_run_row() -> None:
+    """The row an untiered fighter gets is duplicated, and duplication rots.
+
+    ``DEFAULT_TIER`` is a second copy of the run row rather than a reference, so
+    that a reader who finds one row does not have to follow a name to find the
+    other. What that buys is only worth anything while the two are equal, and
+    the failure is silent: an enemy patrolling would start marking the floor at
+    a walk's cadence with nobody to say so.
+
+    Compared by value on both fields, because a row that matched on one and not
+    the other would be a worse bug than either.
+    """
+    from src.core.settings import FootstepDust
+    from src.states.player_states import PlayerState
+
+    assert FootstepDust.TIER[PlayerState.RUN.value] == FootstepDust.DEFAULT_TIER, (
+        "an entity outside the table marks the floor at a run's cadence"
+    )
+
+
+def test_the_walk_and_run_combs_are_far_enough_apart_to_read_as_gaits() -> None:
+    """The table is only doing its job if the two rows disagree on both knobs.
+
+    One knob at a time is not enough to read: a run that is merely faster looks
+    like a walk played back. And the cadence gap has to survive the
+    ``MIN_STEP_EVERY`` ceiling, which is the number that would quietly flatten
+    the two rows back together -- so the check is against the rate each row
+    actually gets at ``Physics.PLAYER_SPEED``, not against the numbers as
+    written.
+
+    The floor on the walk's rate is what keeps this from being a spacing check:
+    too far apart and the walk is not marking the floor at all, which is the
+    ``walk_slow`` behaviour wearing the wrong state's name.
+    """
+    from src.core.settings import FootstepDust, Physics
+    from src.states.player_states import PlayerState
+
+    walk = FootstepDust.TIER[PlayerState.WALK.value]
+    run = FootstepDust.TIER[PlayerState.RUN.value]
+
+    assert walk.spread < 1.0 < run.spread, (
+        f"a walk is tighter than one share of SPREAD and a run looser: {walk.spread}, {run.spread}"
+    )
+    assert walk.step_distance > run.step_distance * 2, (
+        f"and the run's comb is much the tighter: {walk.step_distance} against {run.step_distance}"
+    )
+
+    def rate(tier: object, speed: float) -> float:
+        spacing = max(tier.step_distance, speed * FootstepDust.MIN_STEP_EVERY)
+        return speed / spacing
+
+    walk_speed = Physics.PLAYER_SPEED * Locomotion.WALK_SLOW_PROMOTE
+    slow_rate = rate(walk, walk_speed)
+    fast_rate = rate(run, Physics.PLAYER_SPEED)
+    assert 3.0 < slow_rate < 8.0, f"a walk still marks the floor: {slow_rate:.1f} steps/s"
+    assert fast_rate > slow_rate * 2, (
+        f"and the run reads as a different gait: {fast_rate:.1f} against {slow_rate:.1f} steps/s"
+    )
 
 
 # --- 4c. the FX plane is painted, not loaded -------------------------------

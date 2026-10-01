@@ -278,3 +278,91 @@ def test_contact_damage_skips_hurt_and_invincible_targets() -> None:
     ContactDamageSystem().process(Group(c, d))
 
     assert d.damage_taken == 0.0
+
+
+class _CountingTarget(_TargetStub):
+    """A target that reports how often its swept geometry was rebuilt.
+
+    The rectangle a target is tested against is a function of the producer and
+    the target, so thirty-five hazard boxes must ask for it once. The rebuild
+    is a fresh ``swept_box`` over two rects, and on the shipped level it was
+    happening thirty-five times a tick for a value that can change at most
+    once.
+    """
+
+    def __init__(self, box: pygame.FRect, faction: str = "player") -> None:
+        super().__init__(box, faction)
+        self.swept_pushbox_calls = 0
+        self.pushbox = box.copy()
+
+    def swept_pushbox(self) -> pygame.FRect:
+        self.swept_pushbox_calls += 1
+        return self.pushbox
+
+
+def test_a_target_swept_box_is_built_once_per_kind_not_once_per_box() -> None:
+    """The whole of the change, counted rather than timed.
+
+    Structural, because a timing budget flakes on a shared runner: thirty-five
+    hazard boxes and one target must produce *one* build, and a second producer
+    of a different kind gets its own, because a projectile is tested against
+    the swept hurtbox and a hazard against the swept pushbox.
+    """
+    engine = ContactSystem()
+    # The target is out of every hazard's reach on purpose: this is the frame
+    # the optimisation is for, and a frame where something is hit flushes the
+    # cache on purpose -- which is what the next test pins.
+    target = _CountingTarget(pygame.FRect(5000, 600, 40, 40), "player")
+    hazards = [_HazardStub(pygame.FRect(x, 600, 64, 64), damage=5.0) for x in range(0, 35 * 70, 70)]
+
+    HazardDamageSystem(contact_system=engine).process([target], hazards)
+
+    assert len(hazards) == 35
+    assert target.damage_taken == 0.0, "nothing is in range, so nothing lands"
+    assert target.swept_pushbox_calls == 1, (
+        f"thirty-five boxes rebuilt one target's swept box {target.swept_pushbox_calls} times"
+    )
+
+
+def test_a_contact_flushes_the_cached_geometry_before_the_next_box() -> None:
+    """A cache that outlives the thing it cached is a stale hit.
+
+    Nothing in the resolve loop writes a target's geometry today -- knockback
+    goes to ``velocity``, and the movement system spends that on the next tick
+    -- so this is belt and braces for a producer that grows a side effect. What
+    it pins is that the flush is wired to the contact, not merely intended: the
+    second box must be tested against a rebuilt rectangle.
+    """
+    engine = ContactSystem()
+    target = _CountingTarget(pygame.FRect(10, 10, 40, 40), "player")
+    near = _HazardStub(pygame.FRect(10, 10, 64, 64), damage=5.0)
+    far = _HazardStub(pygame.FRect(600, 10, 64, 64), damage=5.0)
+
+    HazardDamageSystem(contact_system=engine).process([target], [near, far])
+
+    assert target.damage_taken == 5.0, "the near hazard lands"
+    assert target.swept_pushbox_calls == 2, (
+        "and the contact flushed the cache, so the second box rebuilt it: "
+        f"{target.swept_pushbox_calls} builds"
+    )
+
+
+def test_the_cached_geometry_is_the_rectangle_the_box_asks_for() -> None:
+    """Not a copy, and not an approximation: the same rectangle, per kind.
+
+    This is the equivalence the caching rests on, and it is worth stating as an
+    assertion rather than as an argument: the buffer has to return what
+    :func:`_swept_target_box` would have built, or the narrowphase is testing
+    boxes against something else.
+    """
+    from src.core.level.systems.contact_system import _swept_target_box
+
+    engine = ContactSystem()
+    target = _CountingTarget(pygame.FRect(10, 10, 40, 40), "player")
+    boxes = HazardDamageSystem(contact_system=engine).produce_boxes(
+        [target], [_HazardStub(pygame.FRect(10, 10, 64, 64), damage=1.0)]
+    )
+
+    engine._target_geometry.reset()
+    for box in boxes:
+        assert engine._target_geometry.for_box(box, target) == _swept_target_box(box, target)
