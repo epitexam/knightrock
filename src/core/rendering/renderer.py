@@ -6,12 +6,12 @@ from typing import Any, cast
 
 import pygame
 
-from src.core.colors import BG_COLORS, Color, Colors
+from src.core.colors import BG_COLORS, Color, Colors, FXColors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash
+from src.core.settings import Afterimage, HitFlash, ParryFlash
 from src.core.sprite_groups import SpriteGroups
 
 DASH_STRETCH_X = 1.6
@@ -38,8 +38,38 @@ def dash_frame(
     stretched = pygame.transform.scale(image, (width, height))
     # Add energetic cyan tint to dash frame for speed feel
     if apply_tint:
-        stretched.fill((100, 200, 255), special_flags=pygame.BLEND_RGB_ADD)
+        stretched.fill(FXColors.speed_tint, special_flags=pygame.BLEND_RGB_ADD)
     return stretched, stretched.get_rect(center=screen_rect.center)
+
+
+def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
+    """``image`` with its hue knocked back to one, keeping its shading.
+
+    A manga speed line is a monochrome copy of the character: still the
+    character, still lit from the same side, in one tone. So this keeps the
+    luminance and drops the chroma, rather than filling the shape flat -- a
+    flat fill also throws away the outline and the shading, and a row of
+    those is a row of blobs.
+
+    ``tint`` is multiplied over the result, so a near-white one cools the
+    greyscale without darkening it much, and the ghost sits in the same
+    family as the cyan the dashing sprite is lit with.
+    """
+    ghost = pygame.transform.grayscale(image.copy())
+    ghost.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
+    return ghost
+
+
+def _ghost_alpha(ttl: float) -> int:
+    """The opacity a ghost of this remaining life is stamped at.
+
+    A ladder, not a slope: each level holds for an equal share of the ghost's
+    life, so a dashing player leaves a few flat plates rather than a blur.
+    """
+    levels = Afterimage.LEVELS
+    share = Afterimage.TTL / len(levels)
+    remaining = min(len(levels) - 1, int(max(0.0, ttl) / share))
+    return levels[len(levels) - 1 - remaining]
 
 
 class Renderer:
@@ -80,9 +110,9 @@ class Renderer:
         # from ``id(image)`` alone can be hit by a freed surface whose id was
         # recycled, which would hand back a stale, wrongly sized blit.
         self._scaled_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
-        # White damage-flash silhouettes, keyed by ``id(image)`` like
+        # Flash silhouettes, keyed by ``(id(image), tint)`` like
         # ``_scaled_cache`` and holding the source for the same reason.
-        self._flash_cache: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
+        self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: object | None = None
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
@@ -154,26 +184,26 @@ class Renderer:
         self._scaled_cache[key] = (image, scaled)
         return scaled
 
-    def _white_silhouette(self, image: pygame.Surface) -> pygame.Surface:
-        """A white copy of ``image`` keeping its alpha, memoised per image.
+    def _silhouette(self, image: pygame.Surface, color: Color) -> pygame.Surface:
+        """A copy of ``image`` in ``color``, keeping its alpha, memoised per image.
 
         Building a mask and converting it to a surface costs 6.8us, and a
         flashing entity redraws for the whole 0.1s of its flash, so this was
         the most expensive per-sprite operation on the hit-feedback path. The
-        silhouette only depends on the source image, never on the flash
-        intensity, so it is built once per image and the caller copies it to
-        set its own alpha.
+        silhouette only depends on the source image and the tint, never on the
+        flash intensity, so it is built once and the caller copies it to set
+        its own alpha.
 
         The source is kept in the cached value: an ``id``-keyed dict can be
         handed a freed surface whose id was recycled, which would return a
         silhouette of the wrong size.
         """
-        key = id(image)
+        key = (id(image), color)
         cached = self._flash_cache.get(key)
         if cached is not None:
             return cached[1]
         mask = pygame.mask.from_surface(image)
-        silhouette = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
+        silhouette = mask.to_surface(setcolor=(*color, 255), unsetcolor=(0, 0, 0, 0))
         self._flash_cache[key] = (image, silhouette)
         return silhouette
 
@@ -274,8 +304,8 @@ class Renderer:
     ) -> list[tuple[pygame.Surface, pygame.Rect]]:
         """Camera-cull and compute target rects for every visible plane.
 
-        One flat loop over the three draw planes, in paint order: the frozen
-        tile plane (through its chunk index, when one is installed), the
+        One flat loop over the three sprite draw planes, in paint order: the
+        frozen tile plane (through its chunk index, when one is installed), the
         moving plane, then the foreground decor. With the index this is ~130
         sprites instead of the ~970 a single scan of the level cost, and the
         static sprites it skips are *not* walked at all -- which is why the
@@ -293,6 +323,11 @@ class Renderer:
         cache. Caching them grew the cache by one retained surface per FX
         sprite per tick, for the whole session, with no eviction. They are
         short-lived by nature, so they go through ``_scaled_image_once``.
+
+        They are split by a particle's own ``behind`` flag: ground-level marks
+        go in under the moving plane, so a fighter is never painted over by
+        the dust they kicked up, and everything else stays on top where a
+        spark can be seen.
         """
         blits: list[tuple[pygame.Surface, pygame.Rect]] = []
         static_index = self._static_index
@@ -301,39 +336,59 @@ class Renderer:
         # ``colliderect`` is the same intersection ``Camera.is_visible`` makes.
         viewport = self.camera.viewport
         colliderect = viewport.colliderect
-        for sprite in self._draw_planes(groups, static_index, foreground_index, viewport):
-            self._append_cached_blit(blits, sprite, colliderect)
+        behind_fx, front_fx = self._collect_fx_blits(groups, colliderect)
 
-        for sprite in groups.fx_sprites:
-            if colliderect(sprite.rect):
-                blits.append(
-                    (
-                        self._scaled_image_once(sprite.image),
-                        self.camera.apply_snapped(sprite.rect),
-                    )
-                )
+        for sprite in self._static_plane(groups, static_index, viewport):
+            self._append_cached_blit(blits, sprite, colliderect)
+        blits.extend(behind_fx)
+        for sprite in self._sprite_planes(groups, foreground_index, viewport):
+            self._append_cached_blit(blits, sprite, colliderect)
+        blits.extend(front_fx)
         return blits
 
-    def _draw_planes(
+    def _collect_fx_blits(
+        self, groups: SpriteGroups, colliderect: Callable[[pygame.FRect | pygame.Rect], bool]
+    ) -> tuple[list[tuple[pygame.Surface, pygame.Rect]], list[tuple[pygame.Surface, pygame.Rect]]]:
+        """The FX plane, split into the marks that go under the world and the rest."""
+        behind: list[tuple[pygame.Surface, pygame.Rect]] = []
+        front: list[tuple[pygame.Surface, pygame.Rect]] = []
+        for sprite in groups.fx_sprites:
+            rect = sprite.rect
+            image_source = sprite.image
+            if rect is None or image_source is None or not colliderect(rect):
+                continue
+            target = behind if getattr(sprite, "behind", False) else front
+            target.append((self._scaled_image_once(image_source), self.camera.apply_snapped(rect)))
+        return behind, front
+
+    def _static_plane(
         self,
         groups: SpriteGroups,
         static_index: TileChunkIndex | None,
+        viewport: pygame.FRect,
+    ) -> Iterable[pygame.sprite.Sprite]:
+        """The frozen tile plane, through its chunk index when there is one."""
+        if static_index is None:
+            return ()
+        return static_index.candidates(viewport)
+
+    def _sprite_planes(
+        self,
+        groups: SpriteGroups,
         foreground_index: TileChunkIndex | None,
         viewport: pygame.FRect,
     ) -> Iterable[pygame.sprite.Sprite]:
-        """The three draw planes, in paint order, without materialising them.
+        """The moving plane and the foreground decor, in paint order.
 
         A ``chain`` rather than a concatenation because the moving plane is a
         live group: a list would snapshot it, and a sprite added between the
         planes being walked and the blit loop running would be drawn at a
         position that does not match the frame it belongs to.
         """
-        if static_index is None:
-            return chain(groups.all_sprites, groups.fg_sprites)
         foreground = (
             groups.fg_sprites if foreground_index is None else foreground_index.candidates(viewport)
         )
-        return chain(static_index.candidates(viewport), groups.all_sprites, foreground)
+        return chain(groups.all_sprites, foreground)
 
     def _append_cached_blit(
         self,
@@ -361,21 +416,33 @@ class Renderer:
         blits.append((image, screen_rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
-        """White damage-flash overlays for recently hit entities.
+        """Tint overlays for entities that just took a hit or just parried.
 
-        Only entities can flash (they are the only ones with a
-        ``flash_timer``), so this walks ``entity_sprites``: scanning
-        ``all_sprites`` cost a ``getattr`` on every tile of the level, ~1000
-        of them, to find at most a handful of flashes.
+        Only entities carry the timers, so this walks ``entity_sprites``:
+        scanning ``all_sprites`` cost a ``getattr`` on every tile of the level,
+        ~1000 of them, to find at most a handful of flashes.
+
+        The parry wash is the same overlay in gold, and it is the whole
+        difference between a block and a perfect one on the character itself:
+        the reaction animation is already shared, so a parry that also threw
+        its own burst and washed the whole frame was three times the screen
+        coverage of the thing it is a bigger version of.
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            timer = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
-            if timer <= 0.0 or not self.camera.is_visible(sprite.rect):
+            hurt = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
+            parried = float(getattr(sprite, "parry_flash_timer", 0.0) or 0.0)
+            if hurt <= 0.0 and parried <= 0.0:
                 continue
-            overlay = self._white_silhouette(sprite.image)
-            overlay = overlay.copy()
-            overlay.set_alpha(int(255 * min(1.0, timer / HitFlash.DURATION)))
+            if not self.camera.is_visible(sprite.rect):
+                continue
+            color = Colors.white
+            strength = hurt / HitFlash.DURATION if hurt > 0.0 else 0.0
+            if parried > 0.0:
+                color = Colors.gold
+                strength = max(strength, ParryFlash.ALPHA * min(1.0, parried / ParryFlash.DURATION))
+            overlay = self._silhouette(sprite.image, color).copy()
+            overlay.set_alpha(int(255 * min(1.0, strength)))
             screen_rect = self.camera.apply_snapped(sprite.rect)
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
@@ -405,7 +472,7 @@ class Renderer:
         for surface, world_rect, ttl in self._ghosts:
             ttl -= dt
             if ttl > 0.0:
-                surface.set_alpha(int(255 * ttl / Afterimage.TTL))
+                surface.set_alpha(_ghost_alpha(ttl))
                 live.append((surface, world_rect, ttl))
         self._ghosts = live
         if dt > 0.0:
@@ -439,15 +506,15 @@ class Renderer:
                 continue
             if not self.camera.is_visible(sprite.rect):
                 continue
-            ghost = sprite.image.copy()
-            # Speed tint: the trail reads as energy, not a plain snapshot.
-            ghost.fill((170, 220, 255), special_flags=pygame.BLEND_RGB_MULT)
-            # Zoom before the dash stretch: ``dash_frame`` sizes itself from the
-            # image, so a world-sized ghost would stay small on screen. The
-            # stretch is applied once here, at spawn; only the centre is mapped
-            # per frame afterwards, so the trail costs no rescale per tick.
-            ghost = self._scaled_image_once(ghost)
-            ghost = dash_frame(ghost, self.camera.apply_snapped(sprite.rect), apply_tint=False)[0]
+            # Zoomed for the camera, and deliberately *not* run through
+            # ``dash_frame``. The stretch is what the live sprite is doing --
+            # it is a cue for the movement, read while it happens. Stamping a
+            # frozen copy of it turns every afterimage into a lozenge at
+            # 1.6 wide and 0.6 tall, and six of those in a row is a row of
+            # pancakes rather than a trail of the fighter. A manga afterimage
+            # is the character's own shape; the shape is what the player
+            # recognises, so that is what gets copied.
+            ghost = self._scaled_image_once(_monochrome(sprite.image, FXColors.speed_ghost))
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))

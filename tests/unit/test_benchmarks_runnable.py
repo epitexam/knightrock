@@ -39,6 +39,14 @@ def test_contact_benchmark_runs() -> None:
     assert out.strip(), "the contact benchmark printed nothing"
 
 
+def test_fx_benchmark_runs() -> None:
+    out = _run("fx_benchmark.py", ["--repeats", "2", "--breaks", "2"])
+    assert "median_us" in out, out[-400:]
+    # A benchmark that reported no ladder growth would mean the grid bound is
+    # gone, which no timing on this line would reveal.
+    assert '"grid_bound"' in out
+
+
 def test_render_benchmark_runs() -> None:
     out = _run("render_benchmark.py", ["--repeats", "2", "--window", "320", "240"])
     assert "ms" in out or "p50" in out
@@ -52,7 +60,10 @@ def test_ui_benchmark_runs() -> None:
     assert "cache_entries=0." not in out
 
 
-@pytest.mark.parametrize("name", ["contact_benchmark.py", "render_benchmark.py", "ui_benchmark.py"])
+@pytest.mark.parametrize(
+    "name",
+    ["contact_benchmark.py", "fx_benchmark.py", "render_benchmark.py", "ui_benchmark.py"],
+)
 def test_every_benchmark_is_reachable(name: str) -> None:
     """Each file is a script someone can actually invoke by path."""
     path = BENCHMARKS / name

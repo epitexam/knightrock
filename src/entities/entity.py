@@ -251,6 +251,8 @@ class Entity(Sprite):
         self.otg_timer: float = 0.0
         # Render-only damage flash (never snapshotted, never in goldens).
         self.flash_timer: float = 0.0
+        # Render-only gold wash for a parry (same exclusions as the flash).
+        self.parry_flash_timer: float = 0.0
         # Render-only freshness of the last hit reaction (armed by
         # ReactionComponent, decayed in ``update``); never snapshotted.
         self.reaction_age: float = 0.0
@@ -1033,6 +1035,8 @@ class Entity(Sprite):
         self.vitals.tick_timers(delta_time)
         if self.flash_timer > 0.0:
             self.flash_timer = max(0.0, self.flash_timer - delta_time)
+        if self.parry_flash_timer > 0.0:
+            self.parry_flash_timer = max(0.0, self.parry_flash_timer - delta_time)
         if self.reaction_age > 0.0:
             self.reaction_age = max(0.0, self.reaction_age - delta_time)
 

@@ -1,0 +1,758 @@
+"""Deciding whether a particle is allowed, and putting it in the plane.
+
+Every spawner here does the same three things in the same order: read the
+entity it is decorating, ask the budget whether this family can still spend,
+and add exactly one particle. The order is the point. A spawner that adds
+first and checks afterwards has already spent what it was not allowed to.
+
+The budgets and the plane-wide cap are declared here rather than in
+``particles`` because they are the module's contract with the plane: the
+invariant tests read them from this file, and a particle has no business
+knowing how many of its siblings are allowed to exist.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from collections.abc import Iterable
+from typing import Any
+
+import pygame
+from pygame.math import Vector2
+
+from src.core.colors import Color, Colors, FXColors
+from src.core.fx.particles import (
+    DashDustParticle,
+    DizzyVortexParticle,
+    DustParticle,
+    FootstepDustParticle,
+    GrainParticle,
+    ImpactDecalParticle,
+    OrbitParticle,
+    ShatterArcParticle,
+    ShieldArcParticle,
+    SweatParticle,
+    dash_tint,
+    dash_variant,
+    footstep_tint,
+    puff_tint,
+    puff_variant,
+)
+from src.core.settings import (
+    DashDust,
+    Dust,
+    DustGrain,
+    FootstepDust,
+    FootstepTier,
+    FxDecal,
+    FxDizzy,
+    FxGuard,
+    Sweat,
+)
+
+DIZZY_STAR_COLORS: tuple[Color, ...] = (FXColors.star, FXColors.star_core, Colors.gold)
+"""The palette a star is drawn from, cycling. A colour list rather than one
+colour so a ring of six does not read as six identical marks."""
+
+MAX_FX_SPRITES = 64
+"""The whole plane's ceiling. The per-family table below is what keeps any
+one effect from spending it all."""
+
+FX_FAMILY_BUDGETS: dict[str, int] = {
+    "landing_dust": 16,
+    "dust_grain": 34,
+    "dash_dust": 20,
+    "footstep_dust": 12,
+    "dizzy_star": 8,
+    "dizzy_vortex": 8,
+    "impact_decal": 8,
+    "shield_arc": 4,
+    "shatter_arc": 4,
+    "sweat": 6,
+}
+"""Per-family caps, on top of :data:`MAX_FX_SPRITES`.
+
+The global cap alone lets one effect starve the others: a parry and a land on
+the same tick can fill the plane, and a cadenced effect -- the dizzy swirl, the
+stars -- silently stops. Sizing the cadenced effects generously and the
+one-shot events tightly keeps the plane a collection of events instead of one
+effect filling it.
+
+Every family a particle declares is in here; ``test_fx_invariants`` reads the
+source to keep it that way, because the key is a string and a typo would
+otherwise mean a particle spending from a budget that does not exist.
+
+``dust_grain`` is the loosest cap in the table, and it is the only family whose
+    members are one to three pixels across. That is the trade, and thirty-four is
+    the landing's fourteen plus a dash's twenty -- twelve on the shove and four
+    on each of the two ribbons after it -- added together rather than picked:
+    landing out of a dash fires both on one tick, and the landing is the one that
+    wins. They are worth a cap that loose, because a plane full of grit still
+    reads as one landing, where a plane full of sheets with a few specks among
+    them reads as a landing with confetti in it -- and unlike the sheets, the
+    grains are what the eye reads as motion.
+
+``dash_dust`` is sized with the landing fan rather than with the cadenced
+    effects because a dash is over in 0.08s: its burst and its ribbon are both
+    spent inside a sixth of a second, so a tight cap would truncate the trail in
+    the middle of the movement rather than defer it, which is the one thing a
+    trail cannot do.
+
+    Twenty is that arithmetic written down rather than a taste, and the ceiling
+    is the frame rate rather than the one this was tuned on. ``SPAWN_EVERY``
+    (0.02) puts four emission slots in ``DASH_DURATION`` (0.08), so the most a
+    dash can spend is ``BURST_COUNT`` (7) plus three emissions of ``TICK_COUNT``
+    (4) -- nineteen, and never twenty-one. Measured from thirty to two hundred
+    and forty hertz: eleven puffs at 30 and 60, fifteen at 120, nineteen from 90
+    up, where the dash has enough ticks for the cooldown to run to its limit.
+
+    Nineteen against twenty is one puff of headroom and it is on purpose. The
+    alternative is a cap that truncates the ribbon's last puff at some frame rate
+    and not at another, which is the one thing a trail cannot do -- and the count
+    it would need to leave alone to get real margin is ``BURST_COUNT``, which is
+    the number that gives way first.
+
+    ``footstep_dust`` is the busiest mark in the plane -- it is the only one
+    that fires while the fighter is merely walking -- and it is capped on its
+    own for that reason. Sharing the trail's budget would let a fighter at a
+    run starve a dash, and sharing the plane's would let two fighters walking
+    starve a parry; twelve is about three seconds of a full-speed run spent on
+    the floor at once, which is enough for the comb to read as a path and
+    little enough that what it competes with is a landing rather than another
+    fighter's footsteps.
+    """
+
+
+_fx_rng: random.Random = random.Random()
+"""The FX module's own stream, deliberately outside the snapshot.
+
+This used to be ``entity.rng``, which the rollback snapshot captures and
+restores. A render-only effect drawing from it advanced state the simulation
+owns, so the position in the stream became a function of how much juice
+happened to be on screen -- harmless while nothing read the stream, and a
+determinism bug the moment something did.
+
+A private stream costs the one thing the shared RNG was buying: the visuals
+are no longer reproducible across a rollback rewind. That is the right
+trade, because the particles themselves are not restored by a rewind either,
+so the FX plane was already inconsistent afterwards, and no golden hashes it.
+"""
+
+
+def facing_side(entity: Any) -> float:
+    """+1 when the entity faces right, -1 when it faces left."""
+    return 1.0 if bool(getattr(entity, "facing_right", True)) else -1.0
+
+
+def _has_room(fx_group: pygame.sprite.Group, family: str | None = None, count: int = 1) -> bool:
+    """Whether ``count`` particles fit, under the global cap and the family one.
+
+    ``count`` rather than one, because a spawner that adds a fan asks once.
+    Checking room for one and then adding six made the table a threshold
+    rather than a cap: `dizzy_star` is budgeted at 8 and reached 12, and
+    `landing_dust` at 16 and reached 18. A number in a table called a budget
+    has to be the number that holds.
+    """
+    if len(fx_group) + count > MAX_FX_SPRITES:
+        return False
+    if family is None:
+        return True
+    cap = FX_FAMILY_BUDGETS.get(family)
+    if cap is None:
+        return True
+    spent = sum(1 for sprite in fx_group if getattr(sprite, "family", "") == family)
+    return spent + count <= cap
+
+
+def _landing_strength(impact: float) -> float:
+    """How big a landing reads, from the fall speed that caused it."""
+    low, high = Dust.STRENGTH_RANGE
+    return min(high, max(low, float(impact) / (Dust.MIN_FALL_SPEED * Dust.STRENGTH_PER_FALL)))
+
+
+def spawn_landing_dust(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    impact: float = Dust.MIN_FALL_SPEED,
+) -> list[DustParticle]:
+    """Fan ``Dust.COUNT`` sheets out of the entity's feet.
+
+    The count is fixed and the size is not: a fall several times the threshold
+    throws wider, heavier sheets, which is what makes a hard landing read as
+    harder than a merely brisk one.
+
+    Four things keep the fan from reading as a spinner or a stamp. The sizes
+    follow a fixed rhythm rather than four independent draws, the bodies cycle
+    through a few tones, the *silhouettes* cycle independently of the tones so
+    that no two members match on either, and the lives are staggered so the fan
+    dissolves instead of vanishing on one frame -- which it did, six identical
+    puffs sharing one TTL and one frame index.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or not _has_room(fx_group, "landing_dust", Dust.COUNT):
+        return []
+    rng = _fx_rng
+    strength = _landing_strength(impact)
+    low, high = Dust.TTL_JITTER
+    puffs: list[DustParticle] = []
+    for index in range(Dust.COUNT):
+        side = index - (Dust.COUNT - 1) / 2.0
+        velocity = (
+            side * Dust.SPREAD * strength + rng.uniform(-Dust.SPREAD_JITTER, Dust.SPREAD_JITTER),
+            -abs(rng.uniform(*Dust.RISE_RANGE)) * strength
+            - (Dust.RISE_ALTERNATE if index % 2 == 0 else 0.0),
+        )
+        # Farther from the middle means thrown harder, so the outer puffs are
+        # also the ones that live longest: the fan opens as it goes.
+        outward = abs(side) / max(1.0, (Dust.COUNT - 1) / 2.0)
+        puff = DustParticle(
+            (hitbox.centerx + side * hitbox.width * Dust.FOOT_SPREAD, hitbox.bottom - 2.0),
+            velocity,
+            ttl=Dust.TTL * (low + (high - low) * outward),
+            radius=Dust.PUFF_RADIUS * strength * _profile(index)
+            + rng.uniform(0.0, Dust.RADIUS_JITTER),
+            tint=puff_tint(index),
+            variant=puff_variant(index),
+        )
+        fx_group.add(puff)
+        puffs.append(puff)
+    return puffs
+
+
+def spawn_landing_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    impact: float = Dust.MIN_FALL_SPEED,
+) -> list[GrainParticle]:
+    """Throw the spray of grit around a hard landing.
+
+    The effect the sheets cannot carry on their own. A kick off a floor throws
+    small particles that travel further than the mass does and arrive first,
+    and a landing with no spray around it is a puff of smoke hanging at the
+    fighter's feet however well it is shaded.
+
+    Thrown wide and mostly sideways, because that is where a boot sends the
+    floor: a grain that stayed inside the sheet it came from would be drawn in
+    a near-identical tone at two pixels, underneath a mass of the same thing.
+    A few go backward rather than sideways, which is the throw that made the
+    burst of a dash read as a shove; the rest go nowhere near the fighter,
+    because the plane is painted *under* the moving layer and a grain that
+    crossed his path would be a speck over his own feet.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or not _has_room(fx_group, "dust_grain", DustGrain.LANDING_COUNT):
+        return []
+    rng = _fx_rng
+    side = facing_side(entity)
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    spread = DustGrain.THROW * _landing_strength(impact)
+    grains: list[GrainParticle] = []
+    for index in range(DustGrain.LANDING_COUNT):
+        grains.append(
+            GrainParticle(
+                (
+                    hitbox.centerx
+                    + rng.uniform(-1.0, 1.0) * hitbox.width * DustGrain.SIDE_SPREAD * 0.5,
+                    hitbox.bottom,
+                ),
+                _grain_velocity(rng, side, spread),
+                size=small + round(size_span * index / max(1, DustGrain.LANDING_COUNT - 1)),
+                tint=low + (high - low) * index / max(1, DustGrain.LANDING_COUNT - 1),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
+
+
+def _grain_velocity(rng: random.Random, side: float, spread: float) -> tuple[float, float]:
+    """A grain's launch: mostly sideways off the boot, sometimes backward.
+
+    The two out of the three cases are the sideways ones because a boot throws
+    the floor sideways; the backward one is the dash's shove, and it is a
+    minority so that a landing does not read as a dash. A grain thrown very
+    hard *upward* is deliberately not in here -- see ``DustGrain.GRAVITY``, which
+    has already recovered most of it before the grain has moved two pixels.
+    """
+    backward = rng.random() < DustGrain.BACK_SHARE
+    outward = -side if backward else rng.choice((-1.0, 1.0))
+    return (
+        outward * rng.uniform(DustGrain.THROW * 0.35, spread),
+        -abs(rng.uniform(*DustGrain.RISE)),
+    )
+
+
+def _profile(index: int) -> float:
+    """The fan's size rhythm at ``index``.
+
+    A fixed profile rather than a draw, because the eye is far better at
+    spotting a size pattern than at reading a random one, and six equal clouds
+    is a loading spinner. Indexed modulo the profile, so it wraps if ``COUNT``
+    ever stops matching it.
+    """
+    profile = Dust.SIZE_PROFILE
+    return profile[index % len(profile)]
+
+
+def spawn_impact_decal(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    impact: float = Dust.MIN_FALL_SPEED,
+) -> ImpactDecalParticle | None:
+    """A ground mark under a hard landing, scaled by the fall speed."""
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if not _has_room(fx_group, "impact_decal"):
+        return None
+    decal = ImpactDecalParticle(
+        (hitbox.centerx, hitbox.bottom - 1.0),
+        width=FxDecal.RADIUS * _landing_strength(impact),
+    )
+    fx_group.add(decal)
+    return decal
+
+
+def _dash_side(entity: Any) -> float:
+    """Which way the fighter is travelling, as +1 or -1.
+
+    The sign of the velocity rather than the facing, because a dash's
+    direction is resolved in three steps -- the move axis captured when the
+    button went down, then the live input, then the facing -- and only the
+    velocity is the answer to all three. The facing is the fallback for an
+    entity that has a dash state and no velocity to read, which is what a
+    test double is.
+
+    At 1100 px/s the sign is not a close call, so the only case that reaches
+    the fallback is a fighter that is not moving.
+    """
+    speed = float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0)
+    if abs(speed) > 1.0:
+        return 1.0 if speed > 0.0 else -1.0
+    return facing_side(entity)
+
+
+def spawn_dash_dust(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    burst: bool = False,
+) -> list[DashDustParticle]:
+    """Throw dust out of the trailing edge of a dashing fighter.
+
+    ``burst`` is the dash's first emission -- the shove off the floor, wider,
+    longer-lived and thrown harder. The ticks that follow are smaller and
+    exist to fill in the ribbon between it and the fighter.
+
+    Everything in the burst is thrown against the direction of travel, and
+    almost nothing in the ticks is. That asymmetry is the effect: the burst is
+    a shove off the floor, the ticks are the dust left lying along the path,
+    and a tick thrown as hard as the burst is dragged back into the cloud
+    that started it -- one mass at the start of the path instead of a ribbon
+    along all of it.
+
+    The puffs are laid at the body's trailing edge and fan sideways, and the
+    burst's are kicked to a range of heights so it stacks into a plume. Their
+    lives are staggered by how far out each one sits, for the reason the
+    landing fan's are: a fan that shares one TTL dies on one frame and reads
+    as a blink.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = DashDust.BURST_COUNT if burst else DashDust.TICK_COUNT
+    if count <= 0 or not _has_room(fx_group, "dash_dust", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    base_ttl = DashDust.BURST_TTL if burst else DashDust.TICK_TTL
+    base_radius = DashDust.BURST_RADIUS if burst else DashDust.TICK_RADIUS
+    throw = DashDust.THROW if burst else DashDust.TICK_THROW
+    low, high = DashDust.TTL_STAGGER
+    # The burst is laid across the body's width, the ticks at its trailing
+    # edge. A plume thrown from the middle of the fighter is under the moving
+    # plane for as long as the dash lasts, and the dash is over in a sixth of
+    # a second -- which is the whole of the burst's readable life.
+    spread = hitbox.width * Dust.FOOT_SPREAD if burst else 0.0
+    anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
+    puffs: list[DashDustParticle] = []
+    for index in range(count):
+        lateral = (index - (count - 1) / 2.0) / max(1.0, (count - 1) / 2.0)
+        puff = DashDustParticle(
+            (anchor + lateral * spread, hitbox.bottom - 2.0),
+            (
+                -side * throw
+                + lateral * DashDust.SPREAD
+                + rng.uniform(-DashDust.SPREAD_JITTER, DashDust.SPREAD_JITTER),
+                -abs(rng.uniform(*DashDust.KICK) if burst else DashDust.TICK_KICK),
+            ),
+            ttl=base_ttl * (low + (high - low) * abs(lateral)),
+            radius=base_radius + rng.uniform(0.0, DashDust.RADIUS_JITTER),
+            tint=dash_tint(index, count),
+            variant=dash_variant(index, count),
+        )
+        fx_group.add(puff)
+        puffs.append(puff)
+    return puffs
+
+
+def spawn_dash_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    burst: bool = False,
+) -> list[GrainParticle]:
+    """Throw the grit off a dashing fighter's heels.
+
+    Laid along the path rather than fanned, and thrown against the direction of
+    travel rather than sideways, which is the same asymmetry the trail's own
+    puffs are thrown with and for the same reason: a tick's grit is what the
+    fighter left at his heels, and grit left lying on the path is the part of
+    the mark that survives him.
+
+    Few on a tick. The ticks are laid one after another along 88px of path, and
+    a tick that threw as much spray as the burst would fill the whole line of
+    it and bury the ribbon, which is the only thing the dash is marking.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = DustGrain.DASH_BURST_COUNT if burst else DustGrain.DASH_TICK_COUNT
+    if count <= 0 or not _has_room(fx_group, "dust_grain", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    throw = DustGrain.THROW if burst else DustGrain.THROW * 0.4
+    anchor = hitbox.centerx - side * hitbox.width * DashDust.BACK_OFFSET
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    size_span = max(0, coarse - small) * DustGrain.SIZE_MIX
+    grains: list[GrainParticle] = []
+    for index in range(count):
+        across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
+        grains.append(
+            GrainParticle(
+                (anchor + across, hitbox.bottom),
+                (
+                    -side * rng.uniform(throw * 0.4, throw),
+                    -abs(rng.uniform(*DustGrain.RISE)) * (1.0 if burst else 0.5),
+                ),
+                size=small + round(size_span * (index / max(1, count - 1)) * 0.5),
+                tint=low + (high - low) * rng.random(),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
+
+
+def _step_anchor(entity: Any, side: float, foot: bool) -> float:
+    """Where along the fighter this foot's step is laid, in px.
+
+    Behind the heel, and alternating between two depths so the comb reads as
+    two feet rather than as one mark stamped down the middle of a path. The
+    alternation is free: the parity is the step counter the distance pacing
+    already keeps, so nothing here has to remember which foot it was.
+
+    A step is laid at one depth every time, unlike a landing's fan, which is
+    spread across the footprint. A landing is one event read as a spread and a
+    step is a repeated event read as a comb, and a comb only reads as a comb if
+    the marks come out in the same place along the body every time.
+    """
+    offset = FootstepDust.BACK_OFFSET
+    offset += FootstepDust.FOOT_ALTERNATE if foot else -FootstepDust.FOOT_ALTERNATE
+    hitbox = entity.hitbox
+    return float(hitbox.centerx) - side * float(hitbox.width) * offset
+
+
+def spawn_footstep_dust(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    foot: bool,
+    tier: FootstepTier,
+) -> list[FootstepDustParticle]:
+    """Throw a scuff off one foot of a fighter who is walking.
+
+    Built the way the dash trail is built: laid at the trailing edge, thrown
+    against the direction of travel, dust and grit rather than mass alone. What
+    differs is not the sheet -- ``FootstepDust.RADIUS`` lands in the same ladder
+    bucket as ``DashDust.TICK_RADIUS``, so this draws the trail's own cloud --
+    but everything about *when*: two puffs instead of five, kicked a third as
+    high, laid twelve times a second instead of once, and gone in three tenths
+    of a second. The same cloud on a walk's schedule is a footstep; on the
+    trail's schedule it is the trail.
+
+    The direction is read with the trail's own ``_dash_side``, because it is the
+    same question asked of a slower movement: where is the fighter going, which
+    only the velocity answers. A fighter can strafe, be knocked back, or slide
+    backwards, and in all three the facing is a lie about it.
+
+    The tone is this mark's own narrower range and discrete -- four of them, and
+    which two of the four a step gets is the foot's, so a comb alternates
+    between two pairs rather than repeating one. The silhouette is the trail's
+    palette outright. That is the split between them: the tone is per-footstep
+    and there are far more of those on screen at once than there are trail puffs,
+    so the range is pulled in to keep a long comb from reading as a gradient,
+    while the silhouette is shared because this is the same cloud and a
+    footstep drawn in a different shape from the dash that follows it would read
+    as a different effect.
+
+    Neither is drawn at random. Both are indexed, because the ladder they key
+    into is a cache, and a cache keyed on a random number is not a cache.
+
+    ``tier`` is required, and it scales the pair's sideways spread and nothing
+    else. The gait is read from the caller's row rather than from the fighter
+    here, so the emission does not have to know what a locomotion state is -- a
+    walk's two halves come out close together under the heel and a run's
+    separate.
+
+    Required rather than defaulted because every production caller already has
+    the tier, and a default would be a trap rather than a convenience: a call
+    that forgot it would silently lay a run's spread under a walking fighter and
+    nothing would say so. The one thing this function must never do is guess.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = FootstepDust.COUNT
+    if count <= 0 or not _has_room(fx_group, "footstep_dust", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    anchor = _step_anchor(entity, side, foot)
+    spread = FootstepDust.SPREAD * tier.spread
+    puffs: list[FootstepDustParticle] = []
+    for index in range(count):
+        lateral = (index - (count - 1) / 2.0) / max(1.0, (count - 1) / 2.0)
+        puff = FootstepDustParticle(
+            (anchor, hitbox.bottom - 2.0),
+            (
+                -side * FootstepDust.THROW
+                + lateral * spread
+                + rng.uniform(-spread * 0.5, spread * 0.5),
+                -abs(rng.uniform(*FootstepDust.KICK)),
+            ),
+            ttl=FootstepDust.TTL,
+            radius=FootstepDust.RADIUS + rng.uniform(0.0, FootstepDust.RADIUS_JITTER),
+            tint=footstep_tint(index, foot),
+            variant=dash_variant(index, count),
+        )
+        fx_group.add(puff)
+        puffs.append(puff)
+    return puffs
+
+
+def spawn_footstep_grains(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    foot: bool = False,
+) -> list[GrainParticle]:
+    """Throw the grit off one foot, into the same ``dust_grain`` budget.
+
+    And the reason this effect exists at all is on this side of it. The sheet is
+    the smallest mark the plane can draw -- fourteen pixels across at its
+    brightest, on a forty-eight-pixel fighter -- so a footstep is a small pale
+    smudge at the fighter's heel with a third of a second to be read, and a
+    smudge is what it reads as however well it is shaded. Three grains are what
+    make it dust off a shoe instead, and they are what the eye tracks as the
+    fighter moves, which is the thing the cadence is expressing.
+
+    They spend the loose family's budget rather than their own, and that is
+    right for the reason ``DustGrain`` keeps its own: a plane already full sheds
+    the grit before it sheds the mark, and here the mark is the one the comb
+    is made of.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return []
+    count = FootstepDust.GRAINS
+    if count <= 0 or not _has_room(fx_group, "dust_grain", count):
+        return []
+    rng = _fx_rng
+    side = _dash_side(entity)
+    anchor = _step_anchor(entity, side, foot)
+    low, high = DustGrain.TONE_MIX
+    small, coarse = DustGrain.SIZE_RANGE
+    grains: list[GrainParticle] = []
+    for index in range(count):
+        across = hitbox.width * DustGrain.SIDE_SPREAD * 0.5 * rng.uniform(-1.0, 1.0)
+        grains.append(
+            GrainParticle(
+                (anchor + across, hitbox.bottom),
+                (
+                    -side * rng.uniform(0.0, FootstepDust.THROW),
+                    -abs(rng.uniform(*DustGrain.RISE)) * 0.4,
+                ),
+                size=small + round(max(0, coarse - small) * index / max(1, count - 1) * 0.5),
+                tint=low + (high - low) * rng.random(),
+            )
+        )
+        fx_group.add(grains[-1])
+    return grains
+
+
+def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:
+    """Where a guard's ring stands, and which way it opens.
+
+    The contact point when the caller knows it, which is the only thing that
+    says where the block actually landed. Without one, the ring goes in front
+    of the defender, on the side they face.
+
+    The side comes from the contact rather than from ``facing_right``, so a
+    fighter blocking a hit that arrived from behind gets the ring on the side
+    the hit came from. It used to open towards the guard's own facing, which
+    put it on the wrong side of the body for every back-turned block.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if contact is None:
+        side = facing_side(entity)
+        offset = side * hitbox.width * FxGuard.ARC_FALLBACK_OFFSET
+        return Vector2(hitbox.centerx + offset, hitbox.centery), side
+    at = Vector2(contact)
+    offset = at.x - hitbox.centerx
+    side = 1.0 if offset >= 0.0 else -1.0
+    return at, side
+
+
+def spawn_guard_arc(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    parried: bool = False,
+    contact: tuple[float, float] | None = None,
+) -> ShieldArcParticle | None:
+    """The block's arc, at the contact and opening away from the defender.
+
+    ``parried`` is the only difference a perfect block makes: same arc, same
+    size, gold instead of cyan.
+    """
+    stance = _guard_stance(entity, contact)
+    if stance is None or not _has_room(fx_group, "shield_arc"):
+        return None
+    arc = ShieldArcParticle(stance[0], stance[1], parried)
+    fx_group.add(arc)
+    return arc
+
+
+def spawn_shatter_arc(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    contact: tuple[float, float] | None = None,
+) -> ShatterArcParticle | None:
+    """The ring breaking, on the side the guard gave way on.
+
+    Stands where the block's ring stands and does the same job with the same
+    silhouette: a guard that failed is the same shield, on the way out.
+    """
+    stance = _guard_stance(entity, contact)
+    if stance is None or not _has_room(fx_group, "shatter_arc"):
+        return None
+    shatter = ShatterArcParticle(stance[0], stance[1], seed=_fx_rng.randrange(1 << 16))
+    fx_group.add(shatter)
+    return shatter
+
+
+def spawn_dizzy_stars(
+    fx_group: pygame.sprite.Group,
+    entity: Any,
+    count: int = FxDizzy.STAR_COUNT,
+    ttl: float = FxDizzy.STAR_TTL,
+) -> list[OrbitParticle]:
+    """Stars circling above a dizzy entity's head.
+
+    Emitted on a cadence for as long as the entity is dizzy, like the swirl
+    at its feet, and not from the parry that caused it. Spawning them on the
+    block put a whole constellation on screen at the instant of the third
+    parry, where it read as part of the block instead of as the state the
+    block earned.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or count <= 0:
+        return []
+    if not _has_room(fx_group, "dizzy_star", count):
+        return []
+    rng = _fx_rng
+    base_size, size_jitter = FxDizzy.STAR_SIZE
+    center = (hitbox.centerx, hitbox.top - FxDizzy.STAR_LIFT)
+    stars: list[OrbitParticle] = []
+    for index in range(count):
+        star = OrbitParticle(
+            center,
+            radius=FxDizzy.STAR_RADIUS * rng.uniform(*FxDizzy.STAR_RADIUS_JITTER),
+            phase=index * 2.0 * math.pi / count + rng.uniform(0.0, FxDizzy.STAR_PHASE_JITTER),
+            speed=FxDizzy.STAR_SPEED * rng.choice((-1.0, 1.0)),
+            color=DIZZY_STAR_COLORS[index % len(DIZZY_STAR_COLORS)],
+            core=FXColors.star_core,
+            ttl=ttl,
+            size=base_size + rng.uniform(0.0, size_jitter),
+            bob=rng.uniform(0.0, FxDizzy.STAR_BOB),
+        )
+        fx_group.add(star)
+        stars.append(star)
+    return stars
+
+
+def spawn_dizzy_vortex(fx_group: pygame.sprite.Group, entity: Any) -> DizzyVortexParticle | None:
+    """A purple swirl at the feet of a dizzy entity.
+
+    At the feet rather than over the head, because the head already has the
+    circling stars on it and the two were drawn on top of each other.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None:
+        return None
+    if not _has_room(fx_group, "dizzy_vortex"):
+        return None
+    vortex = DizzyVortexParticle(
+        (hitbox.centerx, hitbox.bottom - 4.0),
+        ttl=FxDizzy.VORTEX_TTL,
+    )
+    fx_group.add(vortex)
+    return vortex
+
+
+def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:
+    """Pop ``Sweat.COUNT`` comic teardrops off the side of the head.
+
+    Emitted while the entity sits out its dash penalty: each fat teardrop
+    beads beside the crown, kicked sideways and briefly up before gravity
+    drags it down.
+    """
+    hitbox = getattr(entity, "hitbox", None)
+    if hitbox is None or Sweat.COUNT <= 0:
+        return []
+    if not _has_room(fx_group, "sweat", Sweat.COUNT):
+        return []
+    rng = _fx_rng
+    side = facing_side(entity)
+    drops: list[SweatParticle] = []
+    for _ in range(Sweat.COUNT):
+        drop = SweatParticle(
+            (
+                hitbox.centerx
+                + side * hitbox.width * rng.uniform(*Sweat.TEMPLE)
+                + rng.uniform(-Sweat.SPREAD, Sweat.SPREAD) * hitbox.width,
+                hitbox.top + rng.uniform(*Sweat.CROWN),
+            ),
+            (
+                side * rng.uniform(*Sweat.KICK_X),
+                Sweat.POP_UP * rng.uniform(*Sweat.POP_JITTER),
+            ),
+            tint=rng.uniform(*Sweat.TINT),
+        )
+        fx_group.add(drop)
+        drops.append(drop)
+    return drops
+
+
+def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:
+    """Yield ``(entity, impact)`` for entities that just landed hard.
+
+    ``Entity.update`` records the pre-move fall speed into ``landed_impact`` on
+    the landing tick and zeroes it otherwise; this filters on
+    ``Dust.MIN_FALL_SPEED`` so light hops stay clean.
+    """
+    for entity in entities:
+        impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+        if impact >= Dust.MIN_FALL_SPEED:
+            yield entity, impact

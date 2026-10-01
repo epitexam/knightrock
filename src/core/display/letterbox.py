@@ -88,6 +88,38 @@ def fits_whole_pixel(window: tuple[int, int], framing: Framing = DEFAULT_FRAMING
     return min(window[0] / framing.width, window[1] / framing.height) >= 1.0
 
 
+def already_a_whole_multiple(window: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> bool:
+    """Whether the window is *already* sized to a whole multiple of the framing.
+
+    ``fits_whole_pixel`` asks whether a whole multiple fits; this asks whether the
+    window already is one. They disagree on exactly one class of window, and it
+    is the class that reads as a broken row: a window already sized to a whole
+    multiple, where :func:`letterbox` returns the same rectangle with the flag on
+    and off.
+
+    There the setting is honoured and the picture is unchanged, which is correct
+    -- there was nothing to snap to -- but the player pressing the row gets no
+    picture at all, and a row that flips its label while the screen sits still is
+    indistinguishable from a dead one.
+
+    Rarer than the other case: only exact multiples of the framing, so a
+    1152x648 or 2304x1296 window at the shipped framing, and a borderless desktop
+    that happens to be exactly 2x.
+
+    The ``fits_whole_pixel`` guard is not decoration, and it is what this function
+    got wrong first. Without it, a window too small to hold a whole multiple
+    also returns the same rectangle -- :func:`letterbox` hands the fitted one back
+    unchanged -- so the comparison alone reports a window with no whole multiple
+    in it as "already one". That is the other refusal, and the two have to stay
+    distinguishable: a caller that checked this alone would tell a player with a
+    window too small for the art that there is nothing left to do.
+    """
+    return (
+        fits_whole_pixel(window, framing)
+        and letterbox(window, framing).size == letterbox(window, framing, pixel_perfect=True).size
+    )
+
+
 def density_for(size: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> float:
     """Target pixels per world unit, read off a target of ``size``.
 

@@ -14,7 +14,7 @@ from src.core.asset_library import shared_library
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
-from src.core.settings import HitFlash, Physics
+from src.core.settings import HitFlash, ParryFlash, Physics
 from src.entities.controller_view import ControllerView
 from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
@@ -306,6 +306,7 @@ class Player(ControllerView, Entity):
         if outcome == "parry":
             self.parries_given += 1
             self._reaction.note_guard_push(_kb, source_center_x, parried=True)
+            self.parry_flash_timer = ParryFlash.DURATION
             return DamageResult(guarded=True, parried=True)
         direction = compute_knockback_direction(
             self.hitbox.centerx, source_center_x, self.facing_right
@@ -349,7 +350,7 @@ class Player(ControllerView, Entity):
                     self._reaction.note_guard_push(
                         knockback or NULL_KNOCKBACK, source_center_x, parried=True
                     )
-                    self.flash_timer = HitFlash.DURATION
+                    self.parry_flash_timer = ParryFlash.DURATION
                     return DamageResult(guarded=True, parried=True)
 
             if self.is_guarding and self._faces_source(source_center_x):

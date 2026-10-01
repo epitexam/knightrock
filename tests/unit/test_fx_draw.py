@@ -1,0 +1,495 @@
+"""The FX drawing primitives: whole pixels, symmetry, and a stepped fade.
+
+The whole game is magnified with nearest-neighbour scaling, so a primitive
+that returns half-pixels or a continuous alpha ramp is not a small imprecision
+here: it is a different look from the rest of the game. These tests pin the
+three rules every shape in `src/core/fx/draw.py` rests on.
+"""
+
+import math
+import os
+
+import pygame
+import pytest
+
+from src.core.fx import draw
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _display() -> None:
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    pygame.init()
+    pygame.display.set_mode((64, 64))
+
+
+def blank(size: tuple[int, int]) -> pygame.Surface:
+    return pygame.Surface(size, pygame.SRCALPHA)
+
+
+def test_snap_rounds_half_up_to_whole_pixels() -> None:
+    assert draw.snap(0.4) == 0
+    assert draw.snap(0.5) == 1
+    assert draw.snap(-0.5) == 0
+    assert draw.snap(2.49) == 2
+
+
+def test_a_disc_lands_only_on_whole_pixels() -> None:
+    surface = blank((17, 17))
+    draw.disc(surface, (255, 255, 255), (8.4, 7.6), 5.2)
+
+    xs = [x for x in range(17) for y in range(17) if surface.get_at((x, y))[3]]
+    ys = [y for x in range(17) for y in range(17) if surface.get_at((x, y))[3]]
+    assert (min(xs), max(xs)) == (3, 12), "radius 5, snapped, about the rounded centre"
+    assert (min(ys), max(ys)) == (3, 12)
+
+
+def test_a_ring_has_a_hole_punched_through_it() -> None:
+    surface = blank((21, 21))
+    draw.ring(surface, (255, 255, 255), (10, 10), 9, 2)
+
+    assert surface.get_at((10, 10))[3] == 0, "the centre has to be transparent"
+    assert surface.get_at((10, 1))[3] == 255, "and the rim has to be solid"
+
+
+def test_an_ellipse_ring_is_flat() -> None:
+    surface = blank((41, 21))
+    draw.ellipse_ring(surface, (255, 255, 255), (20, 10), 18, 6, 2)
+
+    lit = [(x, y) for x in range(41) for y in range(21) if surface.get_at((x, y))[3]]
+    assert max(x for x, _ in lit) - min(x for x, _ in lit) > 2 * (
+        max(y for _, y in lit) - min(y for _, y in lit)
+    )
+
+
+def test_lobes_union_into_one_silhouette_rather_than_a_pile() -> None:
+    """The lobes are one shape, so the ink rim has to follow the outside only.
+
+    This is the property that makes a cloud out of several discs. Drawn one at
+    a time with a rim each, the interior boundaries would be inked too and the
+    shape would come out looking like a stack of coins; drawn as a single
+    shape, the rim is the outline of the union and the middle is solid.
+    """
+    surface = blank((41, 41))
+    lobes = ((0.0, 0.0, 8.0), (-7.0, 2.0, 5.0), (6.0, -1.0, 4.0))
+    draw.ink_shape(surface, draw.lobe_shape((20, 20), lobes), (255, 255, 255), (0, 0, 0), 1)
+
+    assert surface.get_at((20, 20))[:3] == (255, 255, 255), "the middle is body, not a seam"
+    assert surface.get_at((0, 0))[3] == 0, "and nothing is drawn where no lobe reaches"
+    lit = [(x, y) for x in range(41) for y in range(41) if surface.get_at((x, y))[3]]
+    xs = [x for x, _ in lit]
+    ys = [y for _, y in lit]
+    # Lumpy: the satellites have to push the outline out past the central disc.
+    assert max(xs) - min(xs) > 16 and max(ys) - min(ys) > 16
+
+
+def test_a_shaded_shape_never_shows_a_square_of_light() -> None:
+    """The rim light is one pixel thick, and that is arithmetic, not restraint.
+
+    ``shape_shaded`` draws the shape a pixel up and to the left in the lit tone
+    and then overdraws it with itself in the body. So a lit pixel at (x, y)
+    needs the shape at (x+1, y+1) and the shape *absent* at (x, y) -- and a
+    two-by-two block of lit would need the shape present at (x+1, y+1) and
+    absent from the same pixel at the same time. It cannot be drawn.
+
+    Held here as well as in the look tests because the property belongs to the
+    primitive: this is the check that a future puff cannot put a disc of
+    highlight back by reaching for ``disc`` instead of ``shape_shaded``, and
+    the one that would have caught the original.
+    """
+    surface = blank((41, 41))
+    discs = ((0.0, 0.0, 8.0), (-7.0, 2.0, 5.0), (6.0, -1.0, 4.0))
+    chips = ((4.0, -6.0, 4.0, 5, 0.4), (-9.0, -3.0, 3.0, 4, 1.1))
+
+    draw.shape_shaded(
+        surface, (20, 20), _at(discs, chips), body=(180, 176, 168), lit=(238, 234, 226)
+    )
+
+    lit = (238, 234, 226)
+    for y in range(40):
+        for x in range(40):
+            block = [surface.get_at((x + dx, y + dy))[:3] == lit for dx in (0, 1) for dy in (0, 1)]
+            assert not all(block), f"a 2x2 of light at ({x}, {y}): that is a disc of highlight"
+    assert any(surface.get_at((x, y))[:3] == lit for x in range(41) for y in range(41)), (
+        "and there is a rim for the assertion above to be about"
+    )
+
+
+def test_a_shaded_shape_puts_its_shadow_under_and_not_round() -> None:
+    """The rim is outside the silhouette; the shadow is inside it.
+
+    Same tone for both filled the gaps between the lobes along the bottom into
+    a solid band, and a solid band across the base of a mark is a stripe. So
+    they are separate arguments, the shadow lands a pixel below the shape with
+    none of the rim's outward growth, and the lit rim lands a pixel *above* it
+    and therefore wins the top-left corner.
+
+    That last part is the arrangement rather than an accident of the offsets:
+    the lit pass is drawn after the rim, so the side the light comes from is
+    separated from the background by light and the side it does not come from
+    is separated by ink. A rim that showed on both sides would mean the mark
+    has no light direction at all, which is the other way to read as a sticker.
+    """
+    surface = blank((41, 41))
+    body, lit, deep, shade = (180, 176, 168), (238, 234, 226), (74, 69, 63), (128, 122, 113)
+
+    draw.shape_shaded(
+        surface,
+        (20, 20),
+        _at(((0.0, 0.0, 8.0),), ()),
+        body=body,
+        lit=lit,
+        deep=deep,
+        shade=shade,
+    )
+
+    def rows(tone: tuple[int, int, int]) -> list[int]:
+        return [y for y in range(41) if any(surface.get_at((x, y))[:3] == tone for x in range(41))]
+
+    found = {tone: rows(tone) for tone in (body, lit, deep, shade)}
+    assert all(found.values()), f"all four passes have to be visible: {found}"
+    assert min(rows(lit)) == min(rows(body)) - 1, "the lit rim is one pixel above the mass"
+    assert min(rows(deep)) == min(rows(body)) - 1, "and level with the light on that side"
+    assert max(rows(shade)) == max(rows(body)) + 1, "the shadow is one pixel below it"
+    assert max(rows(shade)) > max(rows(deep)), (
+        "and the lowest thing on the mark is its own shade: the light comes from "
+        "above, so the ink has already been painted over down there"
+    )
+
+
+def test_a_shape_can_go_without_a_rim_or_a_shadow() -> None:
+    """Two tones is the whole grammar for a mark hanging on open air.
+
+    A mark on tiles has something behind it to separate from and something to
+    stand on. The dash trail has neither, so ``deep=None`` and ``shade=None``
+    drop both passes and leave the body and the lit rim -- which is what the
+    rimless rule in the package notes actually means, and it is cheaper to state
+    as a missing argument than as a second function.
+    """
+    surface = blank((41, 41))
+    body, lit = (180, 176, 168), (238, 234, 226)
+
+    draw.shape_shaded(surface, (20, 20), _at(((0.0, 0.0, 8.0),), ()), body=body, lit=lit)
+
+    tones = {
+        surface.get_at((x, y))[:3]
+        for x in range(41)
+        for y in range(41)
+        if surface.get_at((x, y))[3]
+    }
+    assert tones == {body, lit}
+
+
+def test_a_speck_is_a_square_and_never_a_cross() -> None:
+    """A grain is debris; ``disc`` at its smallest radius is a sparkle.
+
+    ``pygame.draw.circle`` with a radius of one draws a five-pixel cross, and a
+    field of crosses at one pixel per world unit is the shape a four-point star
+    is built from -- so grains drawn as discs read as glitter, which is the
+    parry's job and not the dust's. A one-pixel square is what grit has here,
+    and it is also the only thing that fits: a grain is given a count of pixels,
+    not a radius to be honoured in.
+    """
+    surface = blank((9, 9))
+    draw.speck(surface, (200, 200, 200), (4, 4), 3)
+
+    lit = [(x, y) for x in range(9) for y in range(9) if surface.get_at((x, y))[3]]
+    assert lit == [(x, y) for x in range(3, 6) for y in range(3, 6)], (
+        f"a solid square of whole pixels, not a cross: {lit}"
+    )
+
+
+def test_a_speck_is_cut_to_the_pixels_it_was_asked_for() -> None:
+    """Three across, and the surface is three across.
+
+    A speck's whole cost is its surface, and a grain that carried a padded one
+    would still be blitted every frame by the renderer -- at four times the
+    pixels for a mark whose entire content is a single square.
+    """
+    for size in range(1, 4):
+        surface = blank((9, 9))
+        draw.speck(surface, (200, 200, 200), (4, 4), size)
+        assert (
+            sum(1 for x in range(9) for y in range(9) if surface.get_at((x, y))[3]) == size * size
+        ), f"a {size}-pixel grain is {size} by {size}"
+
+
+_CHIPS = ((4.0, -6.0, 4.0, 5, 0.4), (-9.0, -3.0, 3.0, 4, 1.1), (8.0, 5.0, 3.0, 6, 2.7))
+"""Some chips: ``(offset x, offset y, radius, sides, heading)``."""
+
+
+def _at(
+    discs: tuple[tuple[float, float, float], ...],
+    chips: tuple[tuple[float, float, float, int, float], ...],
+) -> draw.ShapeAt:
+    """The factory :func:`draw.shape_shaded` takes, over a fixed set of parts.
+
+    Written once because every test that uses the four passes wants the same
+    argument, and a test that builds its own would be a test of the test's
+    layout rather than of the shading.
+    """
+    return lambda centre: draw.mote_shape(centre, discs, chips)
+
+
+def test_a_chip_and_a_disc_of_one_radius_are_drawn_differently() -> None:
+    """The primitive's only promise: the outline is not the same curve.
+
+    Deliberately a weak claim. At pixel scale a *rasterised* circle has flat
+    runs on it -- pygame fills the top of a radius-twelve disc with a six-pixel
+    edge -- so "a chip has straight sides and a disc does not" is not a
+    statement about pixels and cannot be tested as one. What can be tested is
+    that the two are genuinely different outlines at the same radius, and that
+    the chip is the one with a vertex at its heading, which is the thing a
+    caller can actually aim.
+
+    Whether the difference is *visible* is the sheet's business, and that is
+    measured in ``test_fx_look`` on a painted sheet rather than here.
+    """
+    chip = blank((41, 41))
+    disc = blank((41, 41))
+    draw.shard_shape((20, 20), ((0.0, 0.0, 9.0, 5, 0.3),))(chip, (255, 255, 255), 0)
+    draw.disc(disc, (255, 255, 255), (20, 20), 9.0)
+
+    def pixels(surface: pygame.Surface) -> set[tuple[int, int]]:
+        return {(x, y) for x in range(41) for y in range(41) if surface.get_at((x, y))[3]}
+
+    drawn, rounded = pixels(chip), pixels(disc)
+    assert drawn != rounded, "a five-sided chip is not a circle at the same radius"
+    assert 0 < len(drawn - rounded) < len(drawn) * 0.5, (
+        "and it is a chip rather than a fatter circle: it adds some of the disc's "
+        f"area and misses some of it ({len(drawn - rounded)} out, {len(rounded - drawn)} in)"
+    )
+
+
+def test_a_chip_takes_its_own_heading() -> None:
+    """Two chips of the same size and sides have to differ.
+
+    A chip whose turn is fixed is a rotated version of the same chip, and a
+    sheet of those reads as strata rather than as grit -- which is the reason
+    ``PUFF_CHIP_TURN`` exists and the reason it is worth a test.
+    """
+    upright = draw.regular_points((20, 20), 8.0, 4, 0.0)
+    turned = draw.regular_points((20, 20), 8.0, 4, 0.7)
+
+    assert len(upright) == len(turned) == 4
+    assert upright != turned
+    assert all(len({p[0] for p in points}) > 1 for points in (upright, turned))
+    assert math.dist(upright[0], turned[0]) > 2, "and the turn has to move the corner"
+
+
+def test_regular_points_refuses_to_degenerate() -> None:
+    """Fewer than three edges is a segment, and a segment draws nothing.
+
+    Clamped rather than left to fall over, so a mistyped side count is a
+    triangle rather than an exception from inside a paint call.
+    """
+    assert len(draw.regular_points((10, 10), 4.0, 1)) == 3
+    assert len(draw.regular_points((10, 10), 4.0, 2)) == 3
+
+
+def test_a_star_is_symmetric_about_its_heading() -> None:
+    """A sparkle with four points has to have the same four arms.
+
+    Snapping each vertex on its own can leave a star a pixel lopsided, which
+    is exactly the kind of thing that reads as a hand-placed mistake.
+    """
+    points = draw.star_points((12, 12), 9, 3, 4, heading=0.0)
+
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    assert min(xs) == 24 - max(xs), "left and right arms must match"
+    assert min(ys) == 24 - max(ys), "top and bottom arms must match"
+    assert len(set(points)) == 8
+
+
+def test_a_star_heading_aims_its_first_point() -> None:
+    right = draw.star_points((20, 20), 9, 3, 4, heading=0.0)
+    left = draw.star_points((20, 20), 9, 3, 4, heading=math.pi)
+
+    assert max(point[0] for point in right) > 20
+    assert min(point[0] for point in left) < 20
+
+
+def test_a_streak_tapers_to_its_tip() -> None:
+    points = draw.streak_points((0, 0), 24, 6, 0.0)
+    xs = [point[0] for point in points]
+
+    def thickness_at(x: int) -> int:
+        rows = [point[1] for point in points if point[0] == x]
+        return max(rows) - min(rows)
+
+    assert min(xs) == -24, "the tip sits a full length back from the anchor"
+    assert thickness_at(0) == 6, "the anchor end is the full width"
+    assert thickness_at(0) > thickness_at(-15), "and it narrows along the way"
+    assert thickness_at(-24) == 0, "down to a point at the tip"
+
+
+def test_an_inked_polygon_is_cut_to_fit_and_keeps_a_rim() -> None:
+    surface = draw.inked_polygon(
+        draw.streak_points((0, 0), 20, 6, 0.0), (200, 220, 255), (20, 40, 80), 1
+    )
+
+    width, height = surface.get_size()
+    edges = [surface.get_at((x, y))[3] for x in range(width) for y in (0, height - 1)]
+    edges += [surface.get_at((x, y))[3] for y in range(height) for x in (0, width - 1)]
+    assert set(edges) == {0}, "a pixel of spare all round, and no more"
+    colours = {
+        tuple(surface.get_at((x, y)))[:3]
+        for x in range(surface.get_width())
+        for y in range(surface.get_height())
+    }
+    assert (20, 40, 80) in colours, "the ink pass must be visible"
+    assert (200, 220, 255) in colours, "and the fill must be too"
+
+
+def test_the_ink_rim_grows_a_shape_outward_and_never_shrinks_it() -> None:
+    """The mitre offset, not a scale about the centre.
+
+    Scaling about the centre cannot lengthen a tapered line without also
+    fattening its middle, and it turned every speed line into a lozenge.
+    """
+    body = draw.streak_points((0, 0), 20, 4, 0.0)
+    grown = draw._offset_polygon(body, 1.0)
+
+    assert len(grown) == len(body)
+    assert max(point[1] for point in grown) > max(point[1] for point in body)
+    assert min(point[1] for point in grown) < min(point[1] for point in body)
+    assert all(
+        draw.snap(point[0]) == point[0] and draw.snap(point[1]) == point[1] for point in grown
+    )
+
+
+def test_polygon_bounds_leaves_a_pixel_of_spare() -> None:
+    left, top, width, height = draw.polygon_bounds([(4, 6), (10, 6), (10, 12)])
+
+    assert (left, top) == (3, 5)
+    assert (width, height) == (9, 9)
+
+
+def test_the_fade_ramps_up_then_falls_in_discrete_steps() -> None:
+    """Discrete levels, and a fade-in, or a particle pops into existence.
+
+    A continuous ramp turns into a field of half-transparent pixels once the
+    surface is magnified with nearest neighbour, which reads as dirt.
+    """
+    levels = [draw.life_level(life / 20.0, 0.2) for life in range(21)]
+
+    assert levels[0] == 0, "a new particle is invisible"
+    assert levels[3] > levels[0], "it has to ramp up over the fade-in"
+    assert levels[4] == draw.ALPHA_STEPS - 1, "and be at full brightness by its end"
+    assert levels[10] < draw.ALPHA_STEPS - 1, "then fall away"
+    assert levels[-1] == 0, "and be gone by the end"
+    assert set(levels).issubset(range(draw.ALPHA_STEPS))
+
+
+def test_alpha_of_a_level_is_a_whole_number_of_steps() -> None:
+    assert draw.alpha_of_level(0) == 0
+    assert draw.alpha_of_level(draw.ALPHA_STEPS - 1) == 255
+    assert draw.life_alpha(0.5, 0.0) == draw.alpha_of_level(draw.life_level(0.5, 0.0))
+
+
+def test_an_opening_shape_starts_at_its_smallest_step_and_grows() -> None:
+    """`spread_step` is not a fade, and the shatter arc depends on the difference.
+
+    `life_level` falls from full brightness, so indexing it with a growing
+    shape would show the widest frame first and shrink from there -- a guard
+    failing by inflating instead of coming apart. This is the curve the
+    broken ring rides, and it had no test at all.
+    """
+    steps = [draw.spread_step(index / 8.0, 5) for index in range(9)]
+
+    assert steps[0] == 0, "it starts closed"
+    assert steps == sorted(steps), "and only ever opens"
+    assert steps[-1] == 4, "reaching the widest frame by the end"
+    assert len(set(steps)) > 1, "a shape that never changes is not opening"
+
+
+def test_opening_outlives_the_fraction_it_was_given() -> None:
+    """Past `opened_by` the shape is as open as it gets, not off the ladder.
+
+    The shatter arc holds its last frame for the rest of its life, so a
+    curve that kept climbing would index past the ladder and raise.
+    """
+    assert draw.spread_step(1.0, 4, opened_by=0.3) == 3
+    assert draw.spread_step(1.0, 4, opened_by=0.3) == draw.spread_step(0.9, 4, opened_by=0.3)
+
+
+def test_a_shape_with_nowhere_to_open_stays_at_its_first_step() -> None:
+    assert draw.spread_step(0.5, 1) == 0, "one step is the only step there is"
+    assert draw.spread_step(0.5, 4, opened_by=0.0) == 0, "and an instant opening never starts"
+
+
+def test_a_stroke_that_would_cover_the_whole_circle_draws_nothing() -> None:
+    """A ring fragment needs both ends. A stroke with none is not a ring.
+
+    `draw.arc` cannot be used for this -- it closes the loop whatever angles
+    it is given -- which is exactly why this returns early rather than
+    drawing the span it was handed: a caller passing a zero-width arc gets
+    nothing, rather than a full circle it did not ask for.
+    """
+    surface = blank((24, 24))
+
+    draw.draw_arc_stroke(surface, (12, 12), 9, 40.0, 40.0, (255, 255, 255), 1)
+    draw.draw_arc_stroke(surface, (12, 12), 9, 10.0, 5.0, (255, 255, 255), 1)
+    draw.draw_arc_stroke(surface, (12, 12), 0, 10.0, 90.0, (255, 255, 255), 1)
+
+    assert surface.get_at((12, 12))[3] == 0, "nothing drawn, not a stray pixel"
+
+
+def test_an_ellipse_smaller_than_a_pixel_draws_nothing() -> None:
+    """Sub-pixel is not a smaller ellipse, it is a dot, and dots read as dirt."""
+    surface = blank((16, 16))
+
+    draw.ellipse_ring(surface, (255, 255, 255), (8, 8), 0.4, 0.4, 1)
+
+    assert all(surface.get_at((x, y))[3] == 0 for x in range(16) for y in range(16)), (
+        "an ellipse that cannot hold a pixel leaves the surface alone"
+    )
+
+
+def test_a_shape_with_fewer_than_three_points_is_not_drawn() -> None:
+    """Two points make a line, and a line has no interior to fill or rim.
+
+    The two entry points refuse it differently, and both refusals matter. The
+    one that draws onto a caller's surface returns and leaves it untouched;
+    the one that cuts its own returns a 1x1 rather than `None`, so a caller
+    reading the size gets a drawable instead of a crash on `get_at`.
+    """
+    surface = blank((16, 16))
+    draw.draw_inked_polygon(surface, [(2, 2), (8, 8)], (200, 200, 200), (0, 0, 0), 1)
+    assert all(surface.get_at((x, y))[3] == 0 for x in range(16) for y in range(16)), (
+        "the caller's surface is left exactly as it was"
+    )
+
+    cut = draw.inked_polygon([(2, 2), (8, 8)], (200, 200, 200), (0, 0, 0), 1)
+    assert cut.get_size() == (1, 1), "a drawable of the smallest size, not a crash"
+
+
+def test_bounds_of_no_points_still_describe_a_drawable() -> None:
+    """`(0, 0, 1, 1)` rather than a zero-size box, which `pygame` rejects."""
+    assert draw.polygon_bounds([]) == (0, 0, 1, 1)
+
+
+def test_a_vertex_with_no_room_to_grow_stays_where_it_is() -> None:
+    """A mitre has to be somewhere to go, and two shapes leave it with nowhere.
+
+    A point whose two neighbours sit on top of it has no edge to take a
+    normal from, and a point that doubles back on itself has two normals
+    pointing opposite ways, which cancel to nothing. Either way there is no
+    direction to grow in, and taking one anyway divides by zero: the result
+    is a nan, and a nan raises the moment it reaches a `pygame` surface.
+    """
+    collapsed = draw._offset_polygon([(4, 4), (4, 4), (4, 4)], 1.0)
+    assert collapsed == [(4, 4), (4, 4), (4, 4)], "no edge, so no offset"
+
+    spike = draw._offset_polygon([(0, 0), (6, 0), (0, 0)], 1.0)
+    assert spike[1] == (6, 0), "two normals that cancel, so no offset either"
+    assert all(draw.snap(coordinate) == coordinate for point in spike for coordinate in point), (
+        "and what does come back is still whole pixels"
+    )
+
+
+def test_one_step_of_alpha_is_opaque_rather_than_a_division_by_zero() -> None:
+    """A single level has no ramp to spread 255 across, so it is simply on."""
+    assert draw.life_level(0.5, 0.0, steps=1) == 0
+    assert draw.alpha_of_level(0, steps=1) == 255

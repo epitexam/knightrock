@@ -23,7 +23,11 @@ from src.application.scene import Scene
 from src.application.settings_store import FRAME_LIMITS, UI_SCALES, UserSettings
 from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import fits_whole_pixel, letterbox
+from src.core.display.letterbox import (
+    already_a_whole_multiple,
+    fits_whole_pixel,
+    letterbox,
+)
 from src.core.display.mode import DisplayMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
@@ -131,19 +135,43 @@ class VideoScene(Scene):
         return f"{rect.width}x{rect.height} at {rect.width / DEFAULT_FRAMING.width:.2f}x{bars}"
 
     def _pixel_perfect_label(self) -> str:
-        """The whole-pixel row, which has to be able to say "not here"."""
-        if not fits_whole_pixel(self._window_size(), DEFAULT_FRAMING):
+        """The whole-pixel row, which has to be able to say "not here" twice.
+
+        Two different windows where the setting is honoured and the picture does
+        not move: one too small to hold a whole multiple at all, and one already
+        sized to one. The first is a refusal and says so; the second is the row
+        working perfectly and has nothing to do, which without saying so reads as
+        a dead row -- the label flips while the screen sits still, which is what
+        a dead row looks like.
+
+        The order is load-bearing rather than incidental: the two branches ask
+        the same question in opposite directions and the refusal is the one that
+        has to win, or a window too small for the art would be told there is
+        nothing left to do.
+        """
+        size = self._window_size()
+        if not fits_whole_pixel(size, DEFAULT_FRAMING):
             return "off (window too small)"
+        if self.game.settings.pixel_perfect and already_a_whole_multiple(size, DEFAULT_FRAMING):
+            return "on (already whole)"
         return self._on_off(self.game.settings.pixel_perfect)
 
     def _vsync_label(self) -> str:
         rate = self._screen_refresh_rate()
         suffix = f" {rate} Hz screen" if rate else ""
         if self.game.settings.vsync and not self._vsync_is_active():
-            # The driver did not honour the request. Saying so is the whole
-            # point of checking: the setting looks alive either way, and the
-            # only symptom otherwise is a frame rate that never settles.
-            return f"off (unavailable){suffix}"
+            # The driver did not honour the request, and saying so is the whole
+            # point of checking: the setting looks alive either way, and the only
+            # symptom otherwise is a frame rate that never settles.
+            #
+            # What it must not do is answer "off". The player asked for on, the
+            # player pressed something that visibly did land, and a row that
+            # reads "off" after an "on" press is a row that reads as broken --
+            # which is the same symptom the sentence was supposed to prevent, and
+            # the exact reason these two rows were reported as dead. So the
+            # setting is reported first and the driver's refusal is the caveat
+            # on it, not the headline in place of it.
+            return f"on (not honoured){suffix}"
         return f"{self._on_off(self.game.settings.vsync)}{suffix}"
 
     def _frame_limit_label(self) -> str:
@@ -289,7 +317,21 @@ class VideoScene(Scene):
         # flip. Setting it instead made the row answer half the time, which is
         # the same as a row that reads as dead -- and the two together are what
         # made the screen look broken rather than merely terse.
-        value = not getattr(self.game.settings, name) if click else action is InputAction.UI_RIGHT
+        #
+        # **Confirm is a click.** It is the same discrete gesture with no
+        # direction, which makes it the case above and not the one below, and it
+        # used to be handled as ← anyway: it fell through to the same
+        # `action is UI_RIGHT` test, so every confirm set the row *off* and none
+        # could ever be turned on. Whole-pixel art and VSync were the two rows
+        # it hit, and with a gamepad -- where confirm is how you press a button,
+        # not how you step a value -- both were dead in the only direction a
+        # player would try. Arrow keys worked, so the rows looked alive to a
+        # test written with arrow keys and dead to a player holding one.
+        current = getattr(self.game.settings, name)
+        if click or action is InputAction.UI_CONFIRM:
+            value = not current
+        else:
+            value = action is InputAction.UI_RIGHT
         self._apply(self.game.settings.with_video(**{name: value}))
 
     def _cycle_frame_limit(self, action: InputAction) -> None:

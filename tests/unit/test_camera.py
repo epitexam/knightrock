@@ -21,10 +21,12 @@ import random
 import pygame
 import pytest
 
+from src.core.colors import Color, Colors
 from src.core.display.framing import DEFAULT_FRAMING, Framing
 from src.core.display.viewport import Viewport
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
+from src.core.settings import ParryFlash
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -491,3 +493,56 @@ def test_a_flashing_entity_is_collected_without_touching_the_scale_cache() -> No
 
     assert renderer._collect_flashes(groups)
     assert not renderer._scaled_cache, "a transient surface must not be cached"
+
+
+def _tint_of(overlay: pygame.Surface) -> Color:
+    """The colour of the first opaque pixel of a silhouette overlay."""
+    width, height = overlay.get_size()
+    for y in range(height):
+        for x in range(width):
+            red, green, blue, alpha = overlay.get_at((x, y))
+            if alpha:
+                return (red, green, blue)
+    return (0, 0, 0)
+
+
+def test_a_parry_washes_the_fighter_gold_and_not_white() -> None:
+    """The whole visual difference between a block and a perfect one.
+
+    The reaction animation is already shared, so the parry only needs a
+    colour to say the timing was right.
+    """
+    groups = SpriteGroups()
+    entity = _FlashingEntity()
+    entity.image.fill((120, 120, 120))
+    entity.flash_timer = 0.0
+    entity.parry_flash_timer = ParryFlash.DURATION
+    groups.entity_sprites.add(entity)
+    renderer = _renderer(1.0)
+    renderer.camera.begin_frame(1.0)
+
+    flashes = renderer._collect_flashes(groups)
+
+    assert len(flashes) == 1
+    overlay, _ = flashes[0]
+    assert _tint_of(overlay) == Colors.gold
+    assert overlay.get_alpha() <= 255 * ParryFlash.ALPHA
+    assert not renderer._scaled_cache
+
+
+def test_a_parry_on_top_of_a_hit_reads_as_the_hit_it_is() -> None:
+    """Both timers running: the damage flash is the brighter of the two."""
+    groups = SpriteGroups()
+    entity = _FlashingEntity()
+    entity.image.fill((120, 120, 120))
+    entity.parry_flash_timer = ParryFlash.DURATION
+    groups.entity_sprites.add(entity)
+    renderer = _renderer(1.0)
+    renderer.camera.begin_frame(1.0)
+
+    flashes = renderer._collect_flashes(groups)
+
+    assert len(flashes) == 1
+    overlay, _ = flashes[0]
+    assert _tint_of(overlay) == Colors.gold
+    assert overlay.get_alpha() > 255 * ParryFlash.ALPHA * 0.9

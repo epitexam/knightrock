@@ -12,9 +12,9 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.core import fx
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.viewport import Viewport
+from src.core.fx import particles
 from src.core.game import Game
 from src.core.level.level import Level
 from src.core.rendering.camera import Camera
@@ -169,15 +169,15 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     library = shared_library()
     library._cache["sentinel"] = pygame.Surface((1, 1), pygame.SRCALPHA)
     library._frame_cache["sentinel"] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
-    fx._frames_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
-    fx._frames_miss = True
+    particles._puff_cache[(3, 0.0)] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
+    particles._vortex_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
 
     game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert library._cache == {}
     assert library._frame_cache == {}
-    assert fx._frames_cache is None
-    assert fx._frames_miss is False
+    assert particles._puff_cache == {}
+    assert particles._vortex_cache == []
 
 
 def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
@@ -192,17 +192,6 @@ def test_a_ui_scale_change_keeps_the_converted_art(game_runtime) -> None:
     game.apply_settings(replace(game.settings, ui_scale=1.2))
 
     assert "sentinel" in library._cache
-
-
-def test_fx_frame_cache_forgets_a_missing_asset_tree() -> None:
-    """A cleared miss must be retried, or the fallback art never comes back."""
-    fx._frames_cache = None
-    fx._frames_miss = True
-
-    fx.clear_frame_cache()
-
-    assert fx._frames_cache is None
-    assert fx._frames_miss is False
 
 
 def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) -> None:
@@ -235,3 +224,23 @@ def test_level_draw_paints_the_health_bars_over_the_world(mock_input_manager) ->
     rects = level.renderer.draw_health_bars(level.groups.entity_sprites)
     assert rects, "a damaged enemy must get a bar"
     assert not hasattr(level.renderer, "add_overlay_rects")
+
+
+def test_the_fx_ladders_are_dropped_when_the_display_format_changes(game_runtime) -> None:
+    """The procedural ladders are surfaces too, so the format change takes them.
+
+    They used not to need it: the puffs read three PNGs through the asset
+    library, which ``AssetLibrary`` drops for us. Painted here, they are
+    cached surfaces of our own and nothing else would clear them.
+    """
+    from src.core.display.mode import DisplayMode
+
+    game = game_runtime
+    game.initialize_display()
+    particles._puff_cache[(3, 0.0)] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
+    particles._vortex_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
+
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+
+    assert particles._puff_cache == {}
+    assert particles._vortex_cache == []

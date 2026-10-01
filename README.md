@@ -7,8 +7,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2061%20passing-brightgreen)](#tests--quality)
-[![coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2240%20passing-brightgreen)](#tests--quality)
+[![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
 ---
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2061 tests, 90 % instruction / 76 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2240 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -251,7 +251,9 @@ of the time.
 
 The `PERFORMANCE` panel under `DEBUG=1` carries what is still worth reading:
 frame rate, frame time, the overlay and panel cost, sprite counts and the text
-cache. Frame timing in general is `uv run pytest tests/benchmarks/ui_benchmark.py`.
+cache. Frame timing in general is `uv run python tests/benchmarks/ui_benchmark.py`; the
+FX plane has its own in `tests/benchmarks/fx_benchmark.py`, which reports what
+one particle costs to build rather than what a frame costs to draw.
 
 ## Framing: how much of the world is visible
 
@@ -435,9 +437,9 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2061 tests passing · 90 % instruction coverage ·
-> 76 % branch coverage · Ruff clean · mypy clean (156 files across
-> `src main.py tools`, the CI command; `mypy src` alone is 153). Tests run headless
+> **Current baseline:** 2240 tests passing · 93 % instruction coverage ·
+> 85 % branch coverage · Ruff clean · mypy clean (168 files across
+> `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
 > they need no display.
 

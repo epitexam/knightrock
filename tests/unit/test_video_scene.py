@@ -9,6 +9,15 @@ These tests click, the way a pointer does -- at the rectangle the view actually
 drew -- rather than calling the cyclers directly, so a row that is unreachable
 by mouse cannot pass by having a working key binding.
 
+It was a click-only file for a while, and that is why the two yes/no rows shipped
+with a dead key. ``_cycle_bool`` tested ``action is UI_RIGHT`` and treated every
+other input as "the left key", so confirm -- the way a gamepad presses anything
+-- set a boolean to off and could never set it to on. Every test here pressed a
+mouse, so the whole file was green and both rows were unusable to a player
+holding a controller. The keyboard section below is the other half of the same
+claim, and the generic row test is the one that notices when a key is missing
+from either half.
+
 The screen has one row fewer than it had, and the one that went is the reason
 this file is short: there is no resolution any more. What replaced it is a
 read-out of the window, which no pointer and no key can change.
@@ -221,3 +230,255 @@ def test_whole_pixel_art_is_unavailable_on_a_window_too_small_for_one() -> None:
     item = scene.model.items[_row(scene, "pixel_perfect")]
     assert not item.enabled
     assert "too small" in item.value
+
+
+# --- the keyboard half ------------------------------------------------------
+
+
+def _press(scene: VideoScene, action: InputAction) -> None:
+    """Send one key to the row the selection is on."""
+    scene.handle_routed(RoutedInput(action, InputDevice.KEYBOARD))
+
+
+def _starting_settings(action: str, key: InputAction) -> UserSettings:
+    """The settings to press ``key`` on ``action`` from, so the press must show.
+
+    Only the yes/no rows need this, and only for one key. A boolean row
+    *assigns* on the arrows rather than toggling, on purpose, so ← on a row that
+    already reads off correctly does nothing at all -- and "correctly nothing"
+    is indistinguishable from "the key is missing" if you only look at the value
+    afterwards. Starting ← from on, and → and confirm from off, gives every case
+    a state the key has to move.
+
+    The list rows ignore all of it: both directions always step, so any starting
+    value works and they take the default.
+    """
+    if action not in BOOLEAN_ROWS:
+        return _drawn().game.settings
+    start_on = key is InputAction.UI_LEFT
+    return _drawn().game.settings.with_video(**{action: start_on})
+
+
+@pytest.mark.parametrize("action", VideoScene.CYCLING_ROWS)
+@pytest.mark.parametrize("key", [InputAction.UI_LEFT, InputAction.UI_RIGHT, InputAction.UI_CONFIRM])
+def test_every_value_row_answers_every_key(action: str, key: InputAction) -> None:
+    """No value row may be reachable by one input and dead to another.
+
+    This is the test that would have caught the bug this section exists for, and
+    it is deliberately generic rather than per-row: a per-row test for each of
+    three keys is three tests per row and a fourth row nobody adds one for. The
+    claim is the same shape as ``test_every_row_does_something`` on the click
+    side -- every row is covered, or the set of rows is not the one we think.
+
+    The rows that are not value rows are absent on purpose. ``reset`` and
+    ``back`` act on confirm and must do nothing on a direction, and ``info`` is
+    a read-out; ``test_every_row_does_something`` already owns those.
+    """
+    scene = _drawn()
+    scene.game.settings = _starting_settings(action, key)
+    _focus(scene, _row(scene, action))
+    before = scene.game.settings
+
+    _press(scene, key)
+
+    assert scene.game.settings != before, (
+        f"{action!r} does not answer {key.value}: the key is missing from the row"
+    )
+
+
+@pytest.mark.parametrize("action", sorted(BOOLEAN_ROWS))
+def test_a_confirm_toggles_a_boolean_row(action: str) -> None:
+    """Confirm is a click: one discrete press with no direction to read a value from.
+
+    It used to be handled as the left key, which set the row off every time --
+    so a yes/no row could be turned off but never on, and only by the two inputs
+    that do have a direction. With a gamepad, where confirm is how you press a
+    button, that is the whole row.
+    """
+    scene = _drawn()
+    index = _row(scene, action)
+
+    _focus(scene, index)
+    _press(scene, InputAction.UI_CONFIRM)
+    after_first = getattr(scene.game.settings, action)
+
+    _press(scene, InputAction.UI_CONFIRM)
+    after_second = getattr(scene.game.settings, action)
+
+    assert after_first is not _drawn().game.settings.__getattribute__(action), (
+        f"the first confirm changed nothing on {action!r}"
+    )
+    assert after_first is not after_second, "and the second one did not put it back"
+
+
+@pytest.mark.parametrize("action", sorted(BOOLEAN_ROWS))
+def test_a_direction_still_sets_a_boolean_row(action: str) -> None:
+    """← and → assign, and that asymmetry is on purpose.
+
+    Worth pinning because it looks like the bug above. Toggling would make ← and
+    → behave identically, which reads as one of the two being broken -- so the
+    arrows assign and only the directionless presses toggle. A future pass that
+    "unified" them would be undoing a decision, not fixing one.
+    """
+    on = _drawn()
+    _focus(on, _row(on, action))
+    _press(on, InputAction.UI_LEFT)
+
+    off = _drawn()
+    _focus(off, _row(off, action))
+    _press(off, InputAction.UI_RIGHT)
+
+    assert getattr(on.game.settings, action) is False, "← from on goes off, not back to on"
+    assert getattr(off.game.settings, action) is True, "and → from off goes on"
+
+
+@pytest.mark.parametrize("action", sorted(LIST_ROWS))
+def test_a_confirm_steps_a_list_row_like_the_right_key(action: str) -> None:
+    """The confirm fix must not have touched the rows that were already fine.
+
+    A list has an order, so confirm advances it -- which is the same answer → was
+    already giving, and is why confirm was a toggle only for the rows that have
+    no order to step through.
+    """
+    by_confirm = _drawn()
+    _focus(by_confirm, _row(by_confirm, action))
+    _press(by_confirm, InputAction.UI_CONFIRM)
+
+    by_right = _drawn()
+    _focus(by_right, _row(by_right, action))
+    _press(by_right, InputAction.UI_RIGHT)
+
+    assert by_confirm.game.settings == by_right.game.settings
+
+
+def test_the_window_read_out_can_never_be_focused() -> None:
+    """The reachable half of the guard: the selection skips it, going down and up.
+
+    Two independent things keep a confirm off that row -- ``move`` refuses to
+    land on a disabled one and ``set_items`` snaps to the nearest enabled -- so
+    a press can never arrive there from the keyboard or the pointer. Asserted by
+    walking the whole list in both directions rather than by construction,
+    because the claim is about the selection and not about the guard.
+    """
+    scene = _drawn()
+    index = _row(scene, "info")
+    assert not scene.model.items[index].enabled, "it is the disabled row we are guarding"
+
+    for _ in range(len(scene.model.items) * 2):
+        scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+        assert scene.model.current_item is not None
+        assert scene.model.current_item.action != "info"
+        scene.handle_routed(RoutedInput(InputAction.UI_UP, InputDevice.KEYBOARD))
+        assert scene.model.current_item is not None
+        assert scene.model.current_item.action != "info"
+
+
+def test_a_confirm_on_a_disabled_row_is_swallowed() -> None:
+    """The guard itself, for the focus state the selection cannot produce.
+
+    ``_handle_row_value_navigation`` returns early on a disabled row rather than
+    letting the press through, and the reason is in its docstring: the menu model
+    answers an action on a disabled row by activating the nearest *enabled* one,
+    so a confirm that reached it would change the display mode from a row that
+    only reports the window.
+
+    So the focus has to be put there by hand -- ``_current`` is the only way, and
+    reaching into it is the point rather than a shortcut, because the state is
+    unreachable and that is precisely the state the guard is for. The test above
+    covers the half a player can reach; this one covers the half they cannot.
+    """
+    scene = _drawn()
+    index = _row(scene, "info")
+    scene.model._current = index
+    before = scene.game.settings
+
+    assert scene._handle_row_value_navigation(
+        RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)
+    ), "the guard claims the press"
+
+    assert scene.game.settings == before, "and the display mode is untouched"
+
+
+# --- the two rows that were reported dead -----------------------------------
+
+
+def test_the_vsync_row_reports_the_setting_when_the_driver_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The row must answer the setting, with the driver's refusal as the caveat.
+
+    It read ``off (unavailable)`` -- which answers "off" to a player who had just
+    pressed something that did land, and is the same "the row is dead" symptom
+    the confirm bug produced by a second route. Saying the driver refused is
+    worth keeping; replacing the setting with the driver's opinion is not.
+    """
+    game = _game()
+    game.settings = game.settings.with_video(vsync=True)
+    scene = VideoScene(game)
+    monkeypatch.setattr(VideoScene, "_vsync_is_active", staticmethod(lambda: False))
+
+    label = scene._vsync_label()
+
+    assert label.startswith("on"), f"the setting is on and the row says {label!r}"
+    assert "not honoured" in label, "and still says the driver refused it"
+
+
+def test_the_vsync_row_carries_no_caveat_when_it_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing was refused, because nothing was asked for.
+
+    The caveat is a note about a request the driver ignored. On an off row there
+    is no request, and a row that always carries the parenthetical stops reading
+    it as a warning at all.
+    """
+    game = _game()
+    game.settings = game.settings.with_video(vsync=False)
+    scene = VideoScene(game)
+    monkeypatch.setattr(VideoScene, "_vsync_is_active", staticmethod(lambda: False))
+
+    label = scene._vsync_label()
+
+    assert label.startswith("off")
+    assert "not honoured" not in label, f"but there was no request to ignore: {label!r}"
+
+
+def test_whole_pixel_art_says_when_there_is_nothing_to_snap() -> None:
+    """A window already sized to a whole multiple honours the setting by doing nothing.
+
+    The picture is right either way -- there was nothing to snap to -- but a row
+    whose label flips while the screen sits still is indistinguishable from a
+    dead one, which is the report this fixes. ``1152x648`` is the framing and so
+    exactly one multiple of it.
+    """
+    game = _game()
+    game.settings = game.settings.with_video(pixel_perfect=True)
+    game.presentation.window_size = (1152, 648)
+    game.stage = SimpleNamespace(size=(1152, 648))
+    scene = VideoScene(game)
+
+    item = scene.model.items[_row(scene, "pixel_perfect")]
+
+    assert item.enabled, "the row is usable; it just has nothing to do"
+    assert "already whole" in item.value, f"and says so: {item.value!r}"
+
+
+def test_whole_pixel_art_still_plainly_reports_on_when_there_is_work_to_do() -> None:
+    """The new caveat must not swallow the ordinary case.
+
+    ``1152x648`` fits a whole multiple and is one; ``2304x1296`` is two. Neither
+    is a multiple, so both rows should read a plain on and the picture should
+    move -- and if the caveat were computed wrongly, this is the row that would
+    start claiming there was nothing to do when there plainly was.
+    """
+    for window in ((1920, 1080), (2560, 1440)):
+        game = _game()
+        game.settings = game.settings.with_video(pixel_perfect=True)
+        game.presentation.window_size = window
+        game.stage = SimpleNamespace(size=window)
+        scene = VideoScene(game)
+
+        item = scene.model.items[_row(scene, "pixel_perfect")]
+
+        assert item.value.startswith("on"), f"{window}: {item.value!r}"
+        assert "already whole" not in item.value, f"{window} has work to do: {item.value!r}"
