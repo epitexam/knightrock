@@ -31,7 +31,7 @@ from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
-from src.entities.attack_moves import move_for_button
+from src.entities.attack_moves import BUTTON_MOVES, move_for_button
 from src.entities.player import Player
 
 TICK = 1 / 60
@@ -139,6 +139,63 @@ def test_the_aerial_on_each_button_is_the_answer_to_its_grounded_counterpart() -
     # Forward reach is measured from the sprite, so the aerial's box sits
     # further out than the neutral one's rather than merely being longer.
     assert reaches.phases[0].hitbox_offset[0] > neutral.phases[0].hitbox_offset[0]
+
+
+def test_the_ground_height_is_kept_unless_the_direction_of_the_move_is_the_point() -> None:
+    """The guard height of a grounded counterpart is inherited, with one exception.
+
+    ``air_rise`` shipped as ``"high"`` while the ``uppercut`` it answers was
+    ``"mid"``, and that is not a subtlety: ``("high", True)`` is False in
+    ``Guard.HEIGHT_BLOCK``, so the aerial rose *hit crouching targets* while the
+    grounded launcher could not touch them. Same button, same gesture, opposite
+    answer to the same defensive input -- and nothing in the suite noticed,
+    because every other parallel between the two columns was checked and this one
+    was not.
+
+    ``air_sweep`` is the exception, and it is an exception rather than an
+    oversight: a dive descends onto a crouched target, so ``"overhead"`` is the
+    height that makes it land. Asserting a blanket rule would have thrown that
+    away; asserting nothing let ``air_rise`` drift. So the rule is the rule plus
+    the one name it does not apply to, which is a statement that can be read and
+    has to be changed on purpose.
+    """
+    grounded_height = {
+        action: PLAYER_ATTACKS[moves[Stance.GROUND]].phases[0].hit.height
+        for action, moves in BUTTON_MOVES.items()
+        if Stance.GROUND in moves
+    }
+
+    diverging = {
+        action.value: PLAYER_ATTACKS[moves[Stance.AIR]].phases[0].hit.height
+        for action, moves in BUTTON_MOVES.items()
+        if Stance.GROUND in moves
+        and Stance.AIR in moves
+        and PLAYER_ATTACKS[moves[Stance.AIR]].phases[0].hit.height != grounded_height[action]
+    }
+
+    assert diverging == {InputAction.ATTACK_2.value: "overhead"}
+
+
+@pytest.mark.parametrize("height", ["mid", "low", "high", "overhead"])
+def test_only_two_of_the_four_heights_reach_a_crouching_target(height: str) -> None:
+    """Why ``overhead`` is load-bearing for the dive, read off the table.
+
+    A dive whose height let a crouching target block it would not punish one,
+    and the reason it is ``"overhead"`` rather than ``"low"`` is that
+    ``("low", True)`` is True in ``Guard.HEIGHT_BLOCK`` -- ``low`` is blocked by
+    crouching and *not* by standing, which is the opposite of what a descending
+    attack wants. Exactly two of the four heights get past a crouching guard, so
+    the choice was between them and not a matter of taste.
+
+    Read from ``Guard`` rather than restated, so a change to that table is
+    caught here instead of silently turning the dive into a move a crouching
+    fighter blocks on sight.
+    """
+    from src.core.settings import Guard as GuardSettings
+
+    reaches_crouching = not GuardSettings.HEIGHT_BLOCK.get((height, True), True)
+
+    assert reaches_crouching is (height in ("high", "overhead"))
 
 
 def test_an_aerial_move_is_refused_on_the_floor_and_the_neutral_one_in_the_air() -> None:

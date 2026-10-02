@@ -1360,7 +1360,7 @@
               "unblockable": false,
               "priority": 0,
               "clash": "trade",
-              "height": "high",
+              "height": "mid",
               "hit_level": "heavy",
               "block_mask": "any",
               "tags": []
