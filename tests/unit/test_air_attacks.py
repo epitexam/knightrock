@@ -419,3 +419,31 @@ def test_the_impulse_does_not_fire_from_the_ground() -> None:
 
     assert player.velocity.y >= rest
     assert not player.combat.is_attacking, "a ground-only move ran from the floor"
+
+
+def test_only_the_designated_move_pokes_a_downed_enemy() -> None:
+    """OTG is scarce by construction, and the dive was quietly making it common.
+
+    A hurt enemy that lands is invulnerable for ``OTG_INVULN_DURATION`` (0.5s)
+    to every move without ``otg_allowed`` -- so the flag is what a knockdown buys
+    you, and one move owning it is what makes that window worth planning around.
+    ``otg_slam`` owns it and pays for it: 1.2s of cooldown and a walk across the
+    room to the downed enemy.
+
+    The dive cost 0.6s and no positioning at all, since being airborne above
+    someone who just fell is exactly the situation it is thrown in. That is a
+    two-times-more-available OTG for free, which erodes the scarcity without
+    anyone having decided to erode it. So the dive keeps the identity that does
+    not need the flag -- ``height: "overhead"`` punishes the crouch, the
+    downward knockback drops them -- and OTG stays singular.
+    """
+    from src.combat.attack_data import GOBLIN_ATTACKS, SLIME_ATTACKS
+
+    carriers = {
+        name
+        for table in (PLAYER_ATTACKS, GOBLIN_ATTACKS, SLIME_ATTACKS)
+        for name, attack in table.items()
+        if any(phase.hit.otg_allowed for phase in attack.phases)
+    }
+
+    assert carriers == {"otg_slam"}

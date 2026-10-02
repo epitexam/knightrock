@@ -1417,7 +1417,7 @@
               "super_armor_break": false,
               "is_finisher": false,
               "juggle_gravity_mult": 1.0,
-              "otg_allowed": true,
+              "otg_allowed": false,
               "unblockable": false,
               "priority": 0,
               "clash": "trade",
