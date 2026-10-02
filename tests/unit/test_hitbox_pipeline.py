@@ -466,17 +466,47 @@ def test_golden_claw_swipe_phase_transitions() -> None:
     assert frames[-1] == ("idle", 0, None)
 
 
+def _crouched_attacker(attacks: dict):
+    """A player holding Down, for the survey's crouch-only moves.
+
+    Only a player has a crouch posture, so a bare entity cannot stand in for
+    one: it resolves to GROUND or AIR from floor contact and has no way to be
+    asked for CROUCH.
+    """
+    from src.entities.player import Player
+    from src.entities.player_config import PlayerConfig
+    from tests.unit.helpers import InputStub
+
+    player = Player(
+        pos=(0.0, 0.0),
+        groups=Group(),
+        collision_sprites=Group(),
+        moving_platforms=[],
+        input_manager=InputStub(),
+        config=PlayerConfig(attacks=dict(attacks)),
+    )
+    player.faction = "A"
+    player.on_surface["floor"] = True
+    player.crouch._wanted = True
+    return player
+
+
 def _lethal_jumps(attacks: dict, name: str) -> list[float]:
     """Deplacements de centre vus par la detection (vers un tick ACTIVE).
 
     Ne retient que les arrives en ACTIVE : seul ce sous-etat est teste par
     `_attacker_ready`, donc seuls ces sauts peuvent changer un contact en P1.
     """
-    # Launched from the posture the move is legal in: `stances` restricts what
-    # each move can be thrown from, and `air_attack` is now AIR-only.
+    # Launched from a posture the move declares it can be thrown from: the
+    # posture is part of the move now, not a state name, so a survey over every
+    # move has to supply one. AIR flips floor contact off; CROUCH needs a real
+    # player, since only a player owns a crouch.
     stance = next(iter(attacks[name].stances))
-    owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
-    owner.on_surface["floor"] = stance is Stance.GROUND
+    if stance is Stance.CROUCH:
+        owner = _crouched_attacker(attacks)
+    else:
+        owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
+        owner.on_surface["floor"] = stance is Stance.GROUND
     assert owner.combat.start_attack(name), f"{name} from {stance}"
     jumps: list[float] = []
     prev: tuple[float, float] | None = None

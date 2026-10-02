@@ -76,6 +76,66 @@ PLAYER_ATTACKS: dict[MoveId, AttackDefinition] = {
         charge_move_multiplier=0.4,
         attack_move_multiplier=0.15,
     ),
+    # ── Crouch ────────────────────────────────────────────────────────────────
+    # The posture's own moves. Without them, forbidding the standing ones from a
+    # crouch would leave Down+attack doing nothing at all -- strictly worse than
+    # before, since the player traded a whole button for a smaller hurtbox.
+    move_id("crouch_slash"): AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=3,
+                active_frames=4,
+                recovery_frames=2,
+                hitbox_size=(42.0, 18.0),
+                # Low and forward of centre: the box has to reach a fighter's
+                # legs from a collider that is itself 40% shorter, and a height
+                # of "low" is what makes a crouched guard block it.
+                hitbox_offset=(26.0, 14.0),
+                hit=HitProperties(
+                    damage=6,
+                    knockback=KnockbackConfig(power=(120.0, -20.0)),
+                    damage_type=DamageType.SLASH,
+                    stagger=0.1,
+                    height="low",
+                ),
+                cancel_into=(move_id("crouch_sweep"), move_id("light_attack")),
+            ),
+        ),
+        cooldown=0.28,
+        stances=(Stance.CROUCH,),
+        lock_direction=True,
+        # A crouching fighter shuffles at CROUCH_SPEED_MULT already; the extra
+        # slowdown here is the swing's own weight, kept above zero so the move
+        # still has a step to it.
+        attack_move_multiplier=0.7,
+    ),
+    move_id("crouch_sweep"): AttackDefinition(
+        phases=(
+            PhaseDefinition(
+                startup_frames=5,
+                active_frames=5,
+                recovery_frames=7,
+                hitbox_size=(64.0, 22.0),
+                hitbox_offset=(34.0, 10.0),
+                hit=HitProperties(
+                    damage=9,
+                    knockback=KnockbackConfig(power=(240.0, -140.0)),
+                    damage_type=DamageType.BLUNT,
+                    stagger=0.2,
+                    height="low",
+                ),
+            ),
+        ),
+        cooldown=0.65,
+        stances=(Stance.CROUCH,),
+        lock_direction=True,
+        # The way out of the posture: a knockdown that resets the combo, so a
+        # crouch chain cannot run into the ground moves without spending a
+        # beat. Uncancellable, so it is a real commitment rather than another
+        # link in a chain.
+        combo_reset=True,
+        attack_move_multiplier=0.4,
+    ),
     move_id("uppercut"): AttackDefinition(
         phases=(
             PhaseDefinition(

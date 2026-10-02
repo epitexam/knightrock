@@ -12,7 +12,7 @@ import os
 import pygame
 import pytest
 
-from src.combat.attack_data import move_id
+from src.combat.attack_data import PLAYER_ATTACKS, move_id
 from src.combat.frame_data import Stance
 from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
@@ -242,6 +242,60 @@ def test_a_low_attack_is_blocked_by_a_crouched_guard() -> None:
 
     assert outcome == "guard"
     assert player.guard.posture < posture
+
+
+def test_the_crouch_moves_are_thrown_from_the_crouch_and_nothing_else() -> None:
+    """Each crouch move is legal from CROUCH and refused from every other posture.
+
+    This is the other half of the restriction: forbidding the standing moves
+    from a crouch is only half an answer, and without a crouch move of its own
+    Down+attack would do nothing at all -- a worse trade than before, where the
+    player at least got a standing swing.
+    """
+    input_manager = InputManager()
+    player = _player(input_manager)
+
+    _run(player, input_manager, frames=20, down=True)
+    assert player.stance is Stance.CROUCH
+    for name in ("crouch_slash", "crouch_sweep"):
+        player.combat._cooldowns.clear()
+        assert player.combat.start_attack(move_id(name)) is Refusal.NONE, name
+        player.combat.state.end()
+
+    _run(player, input_manager, frames=20)  # release Down
+    assert player.stance is Stance.GROUND
+    for name in ("crouch_slash", "crouch_sweep"):
+        player.combat._cooldowns.clear()
+        assert player.combat.start_attack(move_id(name)) is Refusal.STANCE, name
+
+
+def test_the_crouch_moves_hit_low() -> None:
+    """``height="low"`` is what makes the crouch worth anything defensively.
+
+    It is the first attack in the shipped data to set the field at all --
+    everything else is implicitly ``mid``, so the low row of
+    ``Guard.HEIGHT_BLOCK`` was unreachable in play until now.
+    """
+    for name in ("crouch_slash", "crouch_sweep"):
+        definition = PLAYER_ATTACKS[name]
+        assert definition.stances == (Stance.CROUCH,), name
+        assert definition.phases[0].hit.height == "low", name
+
+
+def test_the_crouch_sweep_is_the_way_out_and_the_slash_is_not() -> None:
+    """One link in, one commitment out.
+
+    ``crouch_slash`` chains into both the sweep and the standing light -- the
+    cheap link. ``crouch_sweep`` chains into nothing and resets the combo, so
+    leaving the posture costs a beat rather than being free.
+    """
+    slash = PLAYER_ATTACKS["crouch_slash"].phases[0]
+    sweep = PLAYER_ATTACKS["crouch_sweep"].phases[0]
+
+    assert set(slash.cancel_into) == {move_id("crouch_sweep"), move_id("light_attack")}
+    assert sweep.cancel_into == ()
+    assert PLAYER_ATTACKS["crouch_sweep"].combo_reset is True
+    assert PLAYER_ATTACKS["crouch_slash"].combo_reset is False
 
 
 # --- Height ----------------------------------------------------------------
