@@ -207,7 +207,16 @@ class Game:
         own, via ``density_for`` -- rather than measured a second way here.
         """
         if self.ui is None:
-            self.ui = UIManager(target, density_for(target.get_size(), DEFAULT_FRAMING))
+            self.ui = UIManager(
+                target,
+                density_for(target.get_size(), DEFAULT_FRAMING),
+                # The panel scale is a constructor argument, not a call after:
+                # this is the first time the overlay exists, so anything applied
+                # earlier found nothing to apply itself to. That is why a saved
+                # preference used to come back as the right number in the menu
+                # and the wrong size on screen.
+                self.settings.panel_scale,
+            )
         return self.ui
 
     def _window_spec(self) -> WindowSpec:

@@ -448,3 +448,68 @@ def test_applying_the_panel_scale_does_not_rebuild_the_window(tmp_path: Path) ->
 
     assert set_mode.call_count == 0
     assert overlay.renderer.panel_scale == pytest.approx(0.4)
+
+
+def test_a_saved_panel_scale_is_the_size_drawn_on_the_first_launch(tmp_path: Path) -> None:
+    """The bug this setting shipped with, as a runtime property.
+
+    The overlay is built lazily, on the first frame that needs it -- well after
+    the settings file has been read. So a preference applied only from
+    ``apply_settings`` reaches an overlay that does not exist yet, and the panels
+    come up at the default however the file is written: the variable right in the
+    menu, the drawing wrong on screen. Everything above this test passes with
+    that broken, because the value really does survive the relaunch -- it just
+    never arrives.
+
+    Asserted on the drawn size against the saved one, for every rung, because a
+    partial fix -- say honouring it only for the values below 1.0 -- would show
+    up as a row that passes here.
+    """
+    from src.application.settings_store import PANEL_SCALES
+
+    for saved in PANEL_SCALES:
+        payload = UserSettings().to_dict()
+        payload["ui"] = {"scale": 1.0, "panel_scale": saved}
+        (tmp_path / "settings.json").write_text(json.dumps(payload), encoding="utf-8")
+
+        game, _ = _runtime(tmp_path)
+        overlay = game.world_overlay(game.presentation.surface)
+
+        assert game.settings.panel_scale == saved
+        assert overlay.renderer.panel_scale == pytest.approx(saved), (
+            f"saved {saved}, drawn {overlay.renderer.screen_scale}"
+        )
+
+
+def test_the_overlay_built_after_a_live_change_keeps_that_change(tmp_path: Path) -> None:
+    """The other order, which is the same bug seen from the other side.
+
+    Changing the setting while no overlay exists yet, then building one, must not
+    bring the default back. It is the same defect -- a preference pushed to an
+    object that did not exist -- and it is what a developer hits by changing the
+    setting from the menu before ever entering a level.
+    """
+    game, _ = _runtime(tmp_path)
+    assert game.ui is None, "the fixture is supposed to start with no overlay"
+
+    game.apply_settings(game.settings.with_video(panel_scale=0.4))
+    overlay = game.world_overlay(game.presentation.surface)
+
+    assert overlay.renderer.panel_scale == pytest.approx(0.4)
+
+
+def test_a_panel_scale_that_is_not_positive_is_refused_at_construction_too(
+    tmp_path: Path,
+) -> None:
+    """Constructor and setter share one check, so they cannot drift.
+
+    A value accepted when the overlay is built and refused when the player cycles
+    it is a setting that works on the first run and fails on the second, which is
+    harder to read than either behaviour alone.
+    """
+    from src.ui.panel_renderer import PanelRenderer
+
+    with pytest.raises(ValueError, match="panel scale must be positive"):
+        PanelRenderer(pygame.Surface((640, 480)), panel_scale=0.0)
+    with pytest.raises(ValueError, match="panel scale must be positive"):
+        PanelRenderer(pygame.Surface((640, 480)), panel_scale=-1.0)

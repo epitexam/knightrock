@@ -386,6 +386,19 @@ def set_compact_panels(compact: bool) -> None:
     _compact_panels = compact
 
 
+def _checked_panel_scale(scale: float) -> float:
+    """A panel scale, or a refusal.
+
+    Shared by the constructor and :meth:`PanelRenderer.set_panel_scale` so the two
+    cannot drift: a value accepted when the overlay is built and refused when the
+    player cycles it would be a setting that fails on the second run and not the
+    first.
+    """
+    if not scale > 0.0:
+        raise ValueError(f"panel scale must be positive, got {scale}")
+    return float(scale)
+
+
 class PanelRenderer:
     """Render debug panels and cache fonts.
 
@@ -409,6 +422,7 @@ class PanelRenderer:
         surface: pygame.Surface,
         *,
         density: float = 1.0,
+        panel_scale: float = 1.0,
         text_cache_capacity: int = 256,
     ) -> None:
         self.surface = surface
@@ -423,7 +437,7 @@ class PanelRenderer:
         self._density = density
         #: The player's panel-scale preference, kept apart from the density for
         #: the same reason: the two are multiplied together and must be separable.
-        self._panel_scale = 1.0
+        self._panel_scale = _checked_panel_scale(panel_scale)
         self._screen_scale = screen_scale(density) * self._panel_scale
         self._build_fonts()
 
@@ -484,12 +498,10 @@ class PanelRenderer:
         stop being readable and the correct answer at that point is the compact
         layout, which drops rows rather than shrinking them.
         """
-        if not scale > 0.0:
-            raise ValueError(f"panel scale must be positive, got {scale}")
-        self._panel_scale = float(scale)
-        self._adopt_screen_scale(screen_scale(self._density) * self._panel_scale)
+        self._panel_scale = _checked_panel_scale(scale)
+        self._apply_screen_scale(screen_scale(self._density) * self._panel_scale)
 
-    def _adopt_screen_scale(self, screen: float) -> None:
+    def _apply_screen_scale(self, screen: float) -> None:
         """Rebuild everything that follows from the screen scale, if it moved.
 
         The fonts, both caches and the interaction's copy of the scale are all
@@ -553,7 +565,7 @@ class PanelRenderer:
         """
         self.surface = surface
         self._density = density
-        self._adopt_screen_scale(screen_scale(density) * self._panel_scale)
+        self._apply_screen_scale(screen_scale(density) * self._panel_scale)
         world = world_scale(density)
         if world != self._world_scale:
             self._world_scale = world

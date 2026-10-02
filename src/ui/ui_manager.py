@@ -27,14 +27,27 @@ PANEL_LEGEND = "legend"
 class UIManager:
     """Facade pattern for the user interface."""
 
-    def __init__(self, surface: pygame.Surface, density: float = 1.0) -> None:
+    def __init__(
+        self,
+        surface: pygame.Surface,
+        density: float = 1.0,
+        panel_scale: float = 1.0,
+    ) -> None:
         #: ``density`` is the render target's pixel density, read off the camera
         #: by the renderer. It is a constructor argument rather than something
         #: set later because the first frame is drawn with it: a panel built at
         #: the design size and scaled on the next window change is a frame of
         #: unreadable text, and the first frame is the one the developer is
         #: looking at.
-        self.renderer = PanelRenderer(surface, density=density)
+        #:
+        #: ``panel_scale`` is here for the same reason and for one more. The
+        #: overlay is built *lazily* -- on the first frame that needs it -- which
+        #: is long after the settings file has been read. So a preference applied
+        #: only from ``apply_settings`` reaches an overlay that does not exist
+        #: yet, and the panels come up at the default however the file is
+        #: written: the variable right, the drawing wrong. Passing it here means
+        #: the object is correct the moment it exists.
+        self.renderer = PanelRenderer(surface, density=density, panel_scale=panel_scale)
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
         self.hud = HUD(self.renderer)
