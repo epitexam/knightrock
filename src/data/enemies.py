@@ -17,7 +17,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.attacks import read_attack_definition
 from src.data.errors import (
     GameplayDataError,
@@ -53,21 +53,21 @@ def _read_animations(raw: Any, where: str) -> dict[str, str]:
 def read_enemy_config(
     raw: Any,
     where: str,
-    attack_sets: dict[str, dict[str, AttackDefinition]],
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> EnemyConfig:
     """Parse one enemy block into :class:`EnemyConfig`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: enemy must be an object, got {raw!r}")
     reject_unknown(raw, frozenset(field.name for field in fields(EnemyConfig)), where)
     raw_attacks = _required(raw, "attacks", where)
-    attacks: dict[str, AttackDefinition]
+    attacks: dict[MoveId, AttackDefinition]
     if isinstance(raw_attacks, str):
         if raw_attacks not in attack_sets:
             raise GameplayDataError(f"{where}: unknown attack set {raw_attacks!r}")
-        attacks = dict(attack_sets[raw_attacks])
+        attacks = dict(attack_sets[MoveId(raw_attacks)])
     elif isinstance(raw_attacks, dict):
         attacks = {
-            name: read_attack_definition(definition, f"{where}.attacks.{name}")
+            MoveId(name): read_attack_definition(definition, f"{where}.attacks.{name}")
             for name, definition in raw_attacks.items()
         }
     else:
@@ -123,7 +123,7 @@ def read_enemy_config(
 
 def read_enemies_file(
     path: str | Path,
-    attack_sets: dict[str, dict[str, AttackDefinition]],
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> dict[str, EnemyConfig]:
     """Load every enemy type from an ``enemies.json`` file."""
     raw = read_json_object(path, ENEMIES_VERSION)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class ChargeSnapshot:
 
     is_charging: bool = False
     charge_timer: float = 0.0
-    attack_name: str | None = None
+    attack_name: MoveId | None = None
 
 
 class ChargeHandler:
@@ -27,7 +27,7 @@ class ChargeHandler:
 
     Parameters
     ----------
-    attacks : dict[str, AttackDefinition]
+    attacks : dict[MoveId, AttackDefinition]
         Shared reference to the attack registry (same instance as the
         one owned by ``CombatComponent``).
 
@@ -39,11 +39,11 @@ class ChargeHandler:
         Seconds elapsed since the charge started.
     """
 
-    def __init__(self, attacks: dict[str, AttackDefinition]) -> None:
-        self._attacks: dict[str, AttackDefinition] = attacks
+    def __init__(self, attacks: dict[MoveId, AttackDefinition]) -> None:
+        self._attacks: dict[MoveId, AttackDefinition] = attacks
         self.is_charging: bool = False
         self.charge_timer: float = 0.0
-        self._attack_name: str | None = None
+        self._attack_name: MoveId | None = None
 
     @property
     def attack_name(self) -> str | None:
@@ -68,7 +68,7 @@ class ChargeHandler:
             return 1.0
         return self._attacks[self._attack_name].charge_move_multiplier
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Begin charging an attack.
 
         Parameters
@@ -108,7 +108,7 @@ class ChargeHandler:
         max_time = self._attacks[self._attack_name].max_charge_time
         self.charge_timer = min(self.charge_timer + delta_time, max_time)
 
-    def release_charge(self) -> tuple[str, float] | None:
+    def release_charge(self) -> tuple[MoveId, float] | None:
         """Release the charge and return the attack name and multiplier.
 
         The damage multiplier scales linearly from 1.0 (no charge) to

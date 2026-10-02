@@ -26,6 +26,7 @@ from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
     HitboxKeyframe,
+    MoveId,
     PhaseDefinition,
 )
 from src.data.errors import GameplayDataError
@@ -127,7 +128,7 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
             )
 
 
-def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
+def validate_attacks(attacks: Mapping[MoveId, AttackDefinition]) -> None:
     """Validate a whole attack table, including cross-attack cancels.
 
     Raises
@@ -138,7 +139,7 @@ def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
     """
     names = set(attacks)
     for name, definition in attacks.items():
-        unknown: set[str] = set()
+        unknown: set[MoveId] = set()
         for phase in definition.phases:
             unknown.update(set(phase.cancel_into) - names)
         if unknown:
@@ -148,14 +149,14 @@ def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
         _validate_attack(name, definition)
 
 
-def load_attacks(combat: CombatComponent, attacks: Mapping[str, AttackDefinition]) -> None:
+def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:
     """Validate then register a mapping of attack definitions.
 
     Parameters
     ----------
     combat : CombatComponent
         The combat component to populate.
-    attacks : Mapping[str, AttackDefinition]
+    attacks : Mapping[MoveId, AttackDefinition]
         A dictionary-like object mapping attack names to their definitions.
 
     Raises

@@ -5,13 +5,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from src.combat.attack_data import PLAYER_ATTACKS
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.core.colors import Colors
 from src.core.settings import Combat, Guard, Physics
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
-def _default_attacks() -> dict[str, AttackDefinition]:
+def _default_attacks() -> dict[MoveId, AttackDefinition]:
     """Return default attacks dictionary."""
     return dict(PLAYER_ATTACKS)
 
@@ -32,7 +32,7 @@ class PlayerConfig:
         Maximum health cap.
     hitbox_inflate : tuple[float, float]
         (x, y) inflation for the hitbox relative to the rect.
-    attacks : Mapping[str, AttackDefinition]
+    attacks : Mapping[MoveId, AttackDefinition]
         Dictionary of attack definitions.
     speed : float
         Base movement speed.
@@ -92,7 +92,7 @@ class PlayerConfig:
     max_health: float = 100.0
     hitbox_inflate: tuple[float, float] = (-8.0, 0.0)
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0)
-    attacks: Mapping[str, AttackDefinition] = field(default_factory=_default_attacks)
+    attacks: Mapping[MoveId, AttackDefinition] = field(default_factory=_default_attacks)
     speed: float = Physics.PLAYER_SPEED
     floor_control: float = Physics.FLOOR_CONTROL
     air_control: float = Physics.AIR_CONTROL

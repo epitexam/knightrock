@@ -2,8 +2,10 @@
 
 import pygame
 
+from src.core.input.input_actions import InputAction
 from src.core.level.systems.spawn_system import SpawnSystem
 from src.core.sprite_groups import SpriteGroups
+from src.entities.player_input import ATTACK_BUTTONS
 
 
 def _system() -> SpawnSystem:
@@ -33,14 +35,19 @@ def test_debug_ready_and_arm_roundtrip() -> None:
 
 
 def test_attack_priority_special_first() -> None:
-    import inspect
+    """A tick can only start one attack, so the button order is the contract.
 
-    from src.entities.player_input import PlayerInputHandler
-
-    text = inspect.getsource(PlayerInputHandler._handle_attack_request)
-    special = text.index("special_attack")
-    light = text.index("light_attack")
-    heavy = text.index("heavy_attack")
-    uppercut = text.index("uppercut")
-    dash = text.index("dash_attack")
-    assert special < light < heavy < uppercut < dash
+    Asserted against ``ATTACK_BUTTONS`` rather than by scraping the source of
+    ``_handle_attack_request``: the previous version read the order out of the
+    method's text, which broke on any reformat and asserted nothing about
+    behaviour -- it passed if the branches were ordered one way and merely
+    happened to *mention* the moves in that order. The declared list is what the
+    method iterates, so this is now the actual claim.
+    """
+    assert ATTACK_BUTTONS == (
+        InputAction.SPECIAL_ATTACK,
+        InputAction.ATTACK_1,
+        InputAction.ATTACK_2,
+        InputAction.ATTACK_3,
+        InputAction.ATTACK_4,
+    )

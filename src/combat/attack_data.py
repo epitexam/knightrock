@@ -11,13 +11,25 @@ from src.combat.frame_data import (
     HitboxKeyframe,
     HitboxSpec,
     HitProperties,
+    MoveId,
     PhaseDefinition,
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
 
-PLAYER_ATTACKS = {
-    "light_attack": AttackDefinition(
+
+def move_id(name: str) -> MoveId:
+    """Name a move, so the tables below say which string is an identity.
+
+    Reads as a call rather than a cast because a bare ``MoveId("x")`` at every
+    ``cancel_into`` drowns the tables in punctuation, and the whole point of the
+    alias is that it is used often enough to be worth naming.
+    """
+    return MoveId(name)
+
+
+PLAYER_ATTACKS: dict[MoveId, AttackDefinition] = {
+    move_id("light_attack"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=3,
@@ -31,14 +43,14 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.1,
                 ),
-                cancel_into=("heavy_attack", "uppercut", "dash_attack"),
+                cancel_into=(move_id("heavy_attack"), move_id("uppercut"), move_id("dash_attack")),
             ),
         ),
         cooldown=0.30,
         lock_direction=True,
         attack_move_multiplier=0.5,
     ),
-    "heavy_attack": AttackDefinition(
+    move_id("heavy_attack"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=8,
@@ -63,7 +75,7 @@ PLAYER_ATTACKS = {
         charge_move_multiplier=0.4,
         attack_move_multiplier=0.15,
     ),
-    "uppercut": AttackDefinition(
+    move_id("uppercut"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=5,
@@ -85,7 +97,7 @@ PLAYER_ATTACKS = {
         combo_reset=True,
         attack_move_multiplier=0.2,
     ),
-    "dash_attack": AttackDefinition(
+    move_id("dash_attack"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=1,
@@ -100,7 +112,7 @@ PLAYER_ATTACKS = {
                     stagger=0.25,
                     super_armor_break=True,
                 ),
-                cancel_into=("light_attack", "heavy_attack", "uppercut"),
+                cancel_into=(move_id("light_attack"), move_id("heavy_attack"), move_id("uppercut")),
             ),
         ),
         cooldown=0.50,
@@ -108,7 +120,7 @@ PLAYER_ATTACKS = {
         lunge_speed_multiplier=1.0,
         attack_move_multiplier=0.7,
     ),
-    "air_attack": AttackDefinition(
+    move_id("air_attack"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=3,
@@ -122,7 +134,7 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.1,
                 ),
-                cancel_into=("light_attack",),
+                cancel_into=(move_id("light_attack"),),
             ),
         ),
         cooldown=0.35,
@@ -130,7 +142,7 @@ PLAYER_ATTACKS = {
         attack_move_multiplier=0.6,
     ),
     # ── Phase 5 showcase (reachable with the debug keys 1-4) ──
-    "twin_fangs": AttackDefinition(
+    move_id("twin_fangs"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=4,
@@ -145,14 +157,14 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.15,
                 ),
-                cancel_into=("light_attack", "heavy_attack"),
+                cancel_into=(move_id("light_attack"), move_id("heavy_attack")),
             ),
         ),
         cooldown=0.50,
         lock_direction=True,
         attack_move_multiplier=0.5,
     ),
-    "sweeping_arc": AttackDefinition(
+    move_id("sweeping_arc"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=6,
@@ -171,14 +183,14 @@ PLAYER_ATTACKS = {
                     damage_type=DamageType.SLASH,
                     stagger=0.2,
                 ),
-                cancel_into=("light_attack",),
+                cancel_into=(move_id("light_attack"),),
             ),
         ),
         cooldown=0.70,
         lock_direction=True,
         attack_move_multiplier=0.4,
     ),
-    "sky_launcher": AttackDefinition(
+    move_id("sky_launcher"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=7,
@@ -201,7 +213,7 @@ PLAYER_ATTACKS = {
         combo_reset=False,
         attack_move_multiplier=0.2,
     ),
-    "otg_slam": AttackDefinition(
+    move_id("otg_slam"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=9,
@@ -224,7 +236,7 @@ PLAYER_ATTACKS = {
         combo_reset=True,
         attack_move_multiplier=0.15,
     ),
-    "special_attack": AttackDefinition(
+    move_id("special_attack"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=6,
@@ -308,7 +320,7 @@ PLAYER_ATTACKS = {
         lunge_speed_multiplier=0.0,
         attack_move_multiplier=0.1,
     ),
-    "p5_shapes": AttackDefinition(
+    move_id("p5_shapes"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=1,
@@ -375,7 +387,7 @@ PLAYER_ATTACKS = {
         lock_direction=True,
         combo_reset=True,
     ),
-    "circle_burst": AttackDefinition(
+    move_id("circle_burst"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=2,
@@ -405,8 +417,8 @@ PLAYER_ATTACKS = {
     ),
 }
 
-GOBLIN_ATTACKS = {
-    "claw_swipe": AttackDefinition(
+GOBLIN_ATTACKS: dict[MoveId, AttackDefinition] = {
+    move_id("claw_swipe"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=4,
@@ -441,8 +453,8 @@ GOBLIN_ATTACKS = {
     ),
 }
 
-SLIME_ATTACKS = {
-    "body_slam": AttackDefinition(
+SLIME_ATTACKS: dict[MoveId, AttackDefinition] = {
+    move_id("body_slam"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=6,

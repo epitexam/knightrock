@@ -11,6 +11,7 @@ reference frame rate.
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import NewType
 
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
@@ -22,6 +23,21 @@ FRAME_RATE: int = 60
 All frame counts in PhaseDefinition are expressed at this rate.
 The AttackStateMachine converts frame counts to real time using
 1 / FRAME_RATE as the fixed timestep.
+"""
+
+MoveId = NewType("MoveId", str)
+"""The name of one attack, as the key it is stored under everywhere.
+
+A ``NewType``, not an ``Enum``: attacks come from ``data/gameplay/*.json`` and
+are meant to be authorable there, so the set of valid names cannot be closed at
+import time or every new move would be a code change. What this buys is the
+typing, so a name flowing from the input layer into the attack tables cannot be
+passed off as an arbitrary string by accident.
+
+It costs nothing at runtime and enforces nothing. A typo is still a ``str``, and
+the places a misspelled name actually hurts are loud already -- an unknown key
+in a data file raises, and ``start_attack`` refuses an unregistered move rather
+than starting nothing.
 """
 
 
@@ -384,7 +400,7 @@ class PhaseDefinition:
     extra_hitboxes: tuple[HitboxSpec, ...] = ()
     hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
-    cancel_into: tuple[str, ...] = ()
+    cancel_into: tuple[MoveId, ...] = ()
 
     def __post_init__(self) -> None:
         if self.startup_frames < 0 or self.recovery_frames < 0:

@@ -14,6 +14,7 @@ from src.combat.attack_loading import load_attacks
 from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCombatComponent
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
@@ -130,7 +131,7 @@ class Entity(Sprite):
         faction: str = "neutral",
         spawn_pos: Sequence[float] | Vector2 | None = None,
         combat: CombatComponent | None = None,
-        attacks: Mapping[str, Any] | None = None,
+        attacks: Mapping[MoveId, AttackDefinition] | None = None,
         hurt_duration: float | None = None,
         invincibility_duration: float = 0.0,
         rng: random.Random | None = None,
@@ -165,7 +166,7 @@ class Entity(Sprite):
             Respawn position; defaults to `pos`.
         combat : CombatComponent | None
             Optional custom combat component; otherwise NullCombatComponent.
-        attacks : Mapping[str, Any] | None
+        attacks : Mapping[MoveId, AttackDefinition] | None
             Dictionary of attack definitions to load into the combat component.
         hurt_duration : float | None
             Duration of the hurt state. Defaults to standard combat settings.

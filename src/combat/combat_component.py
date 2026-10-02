@@ -19,7 +19,7 @@ from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
 from src.combat.combatant_protocol import Combatant
 from src.combat.combo_tracker import ComboTracker
 from src.combat.determinism import GeometryDesyncError, geometry_checksum
-from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
+from src.combat.frame_data import AttackDefinition, MoveId, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
 from src.combat.shapes import ShapePose, SweptShape
 
@@ -49,7 +49,7 @@ class CombatSnapshot:
     hurt_timer: float
     combo_count: int
     combo_timer: float
-    cooldowns: dict[str, float]
+    cooldowns: dict[MoveId, float]
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
     combo_armed: bool = False
@@ -93,8 +93,8 @@ class CombatComponent:
         hurt_duration: float,
     ) -> None:
         self._entity: Combatant = entity
-        self._attacks: dict[str, AttackDefinition] = {}
-        self._cooldowns: dict[str, float] = {}
+        self._attacks: dict[MoveId, AttackDefinition] = {}
+        self._cooldowns: dict[MoveId, float] = {}
 
         self.state: AttackStateMachine = AttackStateMachine(self._attacks)
         self.hitbox: HitboxManager = HitboxManager(entity)
@@ -105,12 +105,12 @@ class CombatComponent:
         self._hurt_timer: float = 0.0
         self._hurt_duration: float = hurt_duration
 
-    def add_attack(self, name: str, definition: AttackDefinition) -> None:
+    def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """Register a new attack definition.
 
         Parameters
         ----------
-        name : str
+        name : MoveId
             Unique name identifying the attack (e.g. "light_attack").
         definition : AttackDefinition
             The immutable frame data and properties of the attack.
@@ -190,7 +190,7 @@ class CombatComponent:
         self._hurt_timer = max(0.0, value)
 
     @property
-    def cooldowns(self) -> dict[str, float]:
+    def cooldowns(self) -> dict[MoveId, float]:
         """Active cooldowns for all registered attacks."""
         return dict(self._cooldowns)
 
@@ -229,7 +229,7 @@ class CombatComponent:
 
     def start_attack(
         self,
-        name: str,
+        name: MoveId,
         charge_multiplier: float = 1.0,
     ) -> bool:
         """Attempt to start a new attack sequence.
@@ -239,7 +239,7 @@ class CombatComponent:
 
         Parameters
         ----------
-        name : str
+        name : MoveId
             Name of the attack to start.
         charge_multiplier : float
             Damage multiplier from a released charge (default 1.0).
@@ -280,7 +280,7 @@ class CombatComponent:
 
         return True
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Begin charging an attack.
 
         Parameters
@@ -507,7 +507,7 @@ class NullCombatComponent:
         return 1.0
 
     @property
-    def cooldowns(self) -> dict[str, float]:
+    def cooldowns(self) -> dict[MoveId, float]:
         """Always returns an empty dict."""
         return {}
 
@@ -530,18 +530,18 @@ class NullCombatComponent:
         """No-op."""
         del airborne
 
-    def add_attack(self, name: str, definition: AttackDefinition) -> None:
+    def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """No-op."""
 
     def start_attack(
         self,
-        name: str,
+        name: MoveId,
         charge_multiplier: float = 1.0,
     ) -> bool:
         """Always returns ``False``."""
         return False
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Always returns ``False``."""
         return False
 

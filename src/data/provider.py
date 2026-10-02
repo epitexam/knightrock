@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.core.paths import resource_path
 from src.data.attacks import ATTACKS_FILENAME, read_attacks_file
 from src.data.enemies import ENEMIES_FILENAME, read_enemies_file
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 DATA_ROOT = "data"
 GAMEPLAY_SUBDIR = "gameplay"
 
-BUILTIN_ATTACK_SETS: dict[str, dict[str, AttackDefinition]] = {
+BUILTIN_ATTACK_SETS: dict[str, dict[MoveId, AttackDefinition]] = {
     "player": PLAYER_ATTACKS,
     "goblin": GOBLIN_ATTACKS,
     "slime": SLIME_ATTACKS,
@@ -60,7 +60,7 @@ BUILTIN_ATTACK_SETS: dict[str, dict[str, AttackDefinition]] = {
 class GameplayData:
     """Every gameplay value group in one immutable bundle."""
 
-    attack_sets: Mapping[str, dict[str, AttackDefinition]] = field(default_factory=dict)
+    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]] = field(default_factory=dict)
     enemies: Mapping[str, EnemyConfig] = field(default_factory=dict)
     player: PlayerConfig | None = None
     levels: Mapping[int, str] = field(default_factory=dict)
@@ -74,7 +74,7 @@ def gameplay_data_root() -> Path:
 
 
 def _fallback_enemy_configs(
-    attack_sets: Mapping[str, dict[str, AttackDefinition]],
+    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]],
 ) -> dict[str, EnemyConfig]:
     """Rebuild the historical enemy table (mirror of ``configs.py``)."""
     from src.entities.enemies.types.dummy import DUMMY_CONFIG
@@ -93,7 +93,7 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
     """Load every gameplay JSON file, falling back per missing file."""
     directory = Path(root) if root is not None else gameplay_data_root()
 
-    attack_sets: dict[str, dict[str, AttackDefinition]] = dict(BUILTIN_ATTACK_SETS)
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]] = dict(BUILTIN_ATTACK_SETS)
     attacks_path = directory / ATTACKS_FILENAME
     if attacks_path.exists():
         attack_sets = read_attacks_file(attacks_path)

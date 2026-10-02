@@ -8,6 +8,7 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
+from src.combat.frame_data import MoveId
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
@@ -180,12 +181,12 @@ class Player(ControllerView, Entity):
         return self.state_machine.current_state_name == PlayerState.GUARD
 
     @property
-    def _buffered_attack_name(self) -> str | None:
+    def _buffered_attack_name(self) -> MoveId | None:
         """Attack buffered when a start request was refused (combos)."""
         return self.input_handler.buffered_attack_name
 
     @_buffered_attack_name.setter
-    def _buffered_attack_name(self, value: str | None) -> None:
+    def _buffered_attack_name(self, value: MoveId | None) -> None:
         self.input_handler.buffered_attack_name = value
 
     def can_attack(self) -> bool:
