@@ -72,8 +72,21 @@ def _player(input_manager: InputManager | None = None) -> Player:
     return player
 
 
-def _hold(player: Player, manager: InputManager, *, frames: int, **held: bool) -> None:
-    actions = frozenset(action for action, down in held.items() if down)
+def _hold(player: Player, manager: InputManager, *held: InputAction, frames: int = 1) -> None:
+    """Tick the fighter with ``held`` pressed, as a real input frame would.
+
+    The actions are a varargs of :class:`InputAction`, not a ``**kwargs``. The
+    kwargs version read as the obvious thing to write -- ``down=True``,
+    ``JUMP=True`` -- and put the *string* into the ``frozenset``, which
+    ``InputState.__post_init__`` then rejects with "only accepts gameplay
+    actions": a message naming a rule the caller never heard of, several frames
+    away from the call that broke it. Nothing caught it because no test here
+    passed an action to it, so the whole parameter was dead.
+
+    A varargs of the members themselves cannot be misread that way, and the
+    signature says what it wants instead of implying it.
+    """
+    actions = frozenset(held)
     for _ in range(frames):
         manager.apply_remote_state(InputState(held_actions=actions))
         player.update(TICK)
@@ -582,3 +595,41 @@ def test_a_rise_cannot_be_chained_so_it_needs_no_claim_on_the_midair_jump() -> N
             f"{name} spends {time_to_apex:.3f}s rising but only {cooldown}s before it "
             "can be thrown again, so two impulses overlap and the climb is unbounded"
         )
+
+
+def test_the_harness_actually_holds_what_it_is_told() -> None:
+    """The helper's action parameter was dead, and this is what killed it.
+
+    ``_hold`` took ``**held`` and put the attribute *names* into the frozenset, so
+    ``JUMP=True`` handed ``InputState`` the string ``"JUMP"`` and was rejected
+    with a message about gameplay actions. No test in the file passed an action
+    to it, so the parameter was never exercised and nothing caught it -- a
+    helper that only ever ran its default path, one call away from a
+    baffling error.
+
+    So this drives a real jump through it. If the harness stops holding what it
+    is given, every test in the file is measuring a fighter nobody is pressing
+    anything on, and this is the one that says so.
+    """
+    manager = InputManager()
+    player = _player(manager)
+    assert player.on_surface["floor"]
+
+    _hold(player, manager, InputAction.JUMP, frames=6)
+
+    assert not player.on_surface["floor"], "holding jump never left the ground"
+    assert player.velocity.y < 0.0, "and the fighter is not rising"
+
+
+def test_the_harness_reports_a_bad_action_at_the_call_rather_than_deeper_in() -> None:
+    """A varargs of members can still be handed a string by mistake.
+
+    Worth keeping because the failure is now immediate and local: the type error
+    belongs to the line that made it, not to an ``InputState`` construction three
+    frames into a loop the caller did not write.
+    """
+    manager = InputManager()
+    player = _player(manager)
+
+    with pytest.raises(ValueError, match="gameplay actions"):
+        _hold(player, manager, "JUMP", frames=1)  # type: ignore[arg-type]
