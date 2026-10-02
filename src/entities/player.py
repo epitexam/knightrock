@@ -16,6 +16,7 @@ from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import HitFlash, ParryFlash, Physics
 from src.entities.controller_view import ControllerView
+from src.entities.crouch_posture import CrouchPosture
 from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
@@ -152,6 +153,7 @@ class Player(ControllerView, Entity):
         self.jump = JumpController(config)
         self.guard = GuardController(config)
         self.dash = DashController(config, original_hitbox_width=self.hitbox.width)
+        self.crouch = CrouchPosture()
 
         self.moving_platforms = moving_platforms
 
@@ -221,6 +223,18 @@ class Player(ControllerView, Entity):
         self.jump.update(delta_time, self.on_surface["floor"])
         self.guard.update(delta_time, is_guarding)
         self.dash.update(delta_time)
+        self.crouch.update(self, delta_time, self._wants_crouch())
+
+    def _wants_crouch(self) -> bool:
+        """Whether the crouch is being held this tick.
+
+        Reads the same two conditions the crouch state's own gate does -- Down
+        held, feet on the floor -- but on the fighter rather than in the state,
+        so the blend keeps running through an attack or a guard out of the
+        posture. Airborne it is False so releasing the button in mid-air stands
+        the fighter up for the landing rather than leaving them stuck small.
+        """
+        return bool(self.down_held) and bool(self.on_surface.get("floor", False))
 
     def _animation_name(self) -> str | None:
         """Map the current player state to its sprite-sheet animation."""
@@ -231,6 +245,13 @@ class Player(ControllerView, Entity):
             return "air_attack" if not self.on_surface["floor"] else "attack"
         if state in (PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER):
             return "hit"
+        if state == PlayerState.CROUCH:
+            return "crouch"
+        # A crouch held into an attack or a guard is still a crouch visually:
+        # the fighter went down, swung or blocked from down there, and the
+        # sprite has to say so rather than snapping to the standing attack.
+        if self.crouch.is_crouched and state not in (PlayerState.JUMP, PlayerState.FALL):
+            return "crouch"
         mapping: dict[str, str] = {
             PlayerState.IDLE: "idle",
             PlayerState.WALK_SLOW: "walk_slow",
@@ -291,7 +312,10 @@ class Player(ControllerView, Entity):
     ) -> DamageResult:
         _kb = knockback if knockback is not None else NULL_KNOCKBACK
         in_air = not self.on_surface["floor"]
-        crouching = self.state_machine.current_state_name == PlayerState.CROUCH
+        # Read off the posture, not the state name: a fighter who guards while
+        # holding Down is in ``GUARD``, and reading the state there would report
+        # them standing and send every low attack straight through their guard.
+        crouching = self.crouch.is_crouched
         outcome, chip, was_parry = self.guard.take_hit(
             amount,
             in_air,
@@ -379,10 +403,18 @@ class Player(ControllerView, Entity):
             "jump": self.jump.save_state(),
             "guard": self.guard.save_state(),
             "dash": self.dash.save_state(),
+            "crouch": self.crouch.save_state(),
             "buffered_attack_name": self.input_handler.buffered_attack_name,
             "left_held": self.left_held,
             "right_held": self.right_held,
             "guard_held": self.guard_held,
+            # The crouch and fast-fall reads are part of the tick's input state,
+            # like the three above them. Leaving them out meant a rollback
+            # restored a fighter mid-posture with ``down_held`` back at its
+            # pre-crouch value, so the crouch state and the input that drives it
+            # disagreed on the very next tick.
+            "down_held": self.down_held,
+            "fast_fall": self.fast_fall,
         }
         return snapshot
 
@@ -392,7 +424,10 @@ class Player(ControllerView, Entity):
         self.jump.load_state(extra["jump"])
         self.guard.load_state(extra["guard"])
         self.dash.load_state(extra["dash"])
+        self.crouch.restore(extra["crouch"])
         self.input_handler.buffered_attack_name = extra["buffered_attack_name"]
         self.left_held = extra["left_held"]
         self.right_held = extra["right_held"]
         self.guard_held = extra["guard_held"]
+        self.down_held = extra["down_held"]
+        self.fast_fall = extra["fast_fall"]

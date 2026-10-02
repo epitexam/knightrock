@@ -20,6 +20,9 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
         AnimationSpec("fall", "assets/graphics/player/fall", AnimationSettings.FRAME_DURATION),
         AnimationSpec("wall", "assets/graphics/player/wall", AnimationSettings.FRAME_DURATION),
         AnimationSpec(
+            "crouch", "assets/graphics/player/crouch", AnimationSettings.WALK_SLOW_FRAME_DURATION
+        ),
+        AnimationSpec(
             "dash", "assets/graphics/player/dash", AnimationSettings.RUN_FRAME_DURATION, loop=False
         ),
         AnimationSpec(
@@ -45,4 +48,11 @@ States without dedicated art (guard, charge, stagger) keep playing
 the previous animation: :meth:`Player._animation_name` returns None for
 them.  The animator is attached in ``Player.__init__`` so the hundred
 shipped artworks are actually rendered (audit F4.1, Phase 2 #1).
+
+``crouch`` resolves to a directory that is not in the tree yet, and
+:meth:`Animator.play` treats an unresolvable spec as a no-op, so the
+posture falls back to the animation it interrupted until the frames land.
+The alternative -- omitting the spec -- costs the mapping instead: the state
+would keep playing a *standing* run cycle mid-shuffle, animating a walk the
+fighter is no longer performing.
 """

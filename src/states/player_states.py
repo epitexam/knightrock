@@ -232,51 +232,50 @@ class PlayerChargeState(PlayerBaseState):
 
 
 class PlayerCrouchState(PlayerBaseState):
+    """Hold-to-crouch: a low, shuffling ground posture that can still fight.
+
+    The collider height is *not* owned here. It belongs to
+    :class:`~src.entities.crouch_posture.CrouchPosture`, which the player ticks
+    every frame, so the blend runs through this state, through an attack out of
+    it, and through a guard out of it alike. A height owned by the state could
+    only be eased while the state was active, which meant every interrupt --
+    attacking, guarding, dashing -- snapped it back to full in one tick.
+
+    Leaving is gated on the collider having finished standing back up, so a
+    release under a low ceiling -- where the blend stops at the headroom and
+    never arrives -- holds the posture instead of leaving it half-risen.
+
+    Movement is a slow shuffle, not a stop: the fighter keeps whatever
+    horizontal speed they carried in and accelerates from there under a
+    ``CROUCH_SPEED_MULT`` axis. Zeroing the velocity on entry (the old
+    behaviour) meant a fighter at full run lost every pixel of momentum the
+    instant they pressed Down and had to re-accelerate from nothing on the way
+    out. ``_crouch_return`` reads the held direction so the shuffle resumes into
+    the right locomotion tier instead of dropping to idle.
+    """
+
     def __init__(self, entity: Any):
         super().__init__(entity, tags=["crouch", "busy"])
-        self._stood_height: float = 0.0
-
-    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        self.entity.velocity.x = 0
-        self._stood_height = self.entity.hitbox.height
-        bottom = self.entity.hitbox.bottom
-        self.entity.hitbox.height = self._stood_height * Physics.CROUCH_HEIGHT_FACTOR
-        self.entity.hitbox.bottom = bottom
-        self.entity.sync_rects()
 
     def update(self, delta_time: float) -> str | None:
+        saved_axis = self.entity.move_axis
+        self.entity.move_axis = saved_axis * Physics.CROUCH_SPEED_MULT
+        self.entity.apply_horizontal_movement(delta_time)
+        self.entity.move_axis = saved_axis
         self.entity.handle_jump()
         if self.entity.velocity.y < 0:
             return "jump"
         if not self.entity.on_surface["floor"]:
             return "fall"
-        if not _wants_crouch(self.entity):
-            if self._can_stand():
-                return self.ground_return()
-            return None
+        if not _wants_crouch(self.entity) and _is_fully_stood(self.entity):
+            return self._crouch_return()
         return None
 
-    def exit(self, next_state: str | None = None) -> None:
-        if self._stood_height <= 0:
-            return
-        bottom = self.entity.hitbox.bottom
-        self.entity.hitbox.height = self._stood_height
-        self.entity.hitbox.bottom = bottom
-        self.entity.handle_collisions("horizontal")
-        self.entity.sync_rects()
-        self._stood_height = 0.0
-
-    def _can_stand(self) -> bool:
-        if self._stood_height <= 0:
-            return True
-        probe = self.entity.hitbox.copy()
-        probe.height = self._stood_height
-        probe.bottom = self.entity.hitbox.bottom
-        for sprite in self.entity.collision_sprites:
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
-            if box is not None and probe.colliderect(box):
-                return False
-        return True
+    def _crouch_return(self) -> str:
+        """Ground return that resumes into locomotion when a direction is held."""
+        if self.entity.left_held or self.entity.right_held:
+            return resolve_locomotion_state(self.entity)
+        return "idle"
 
 
 class PlayerAttackState(PlayerBaseState):
@@ -513,7 +512,6 @@ class PlayerState(str, Enum):
 ATTACK_FORBIDDEN_STATES = {
     PlayerState.WALL_SLIDE,
     PlayerState.GUARD,
-    PlayerState.CROUCH,
     PlayerState.HURT,
     PlayerState.DASH,
     PlayerState.STAGGER,
@@ -556,8 +554,12 @@ def _can_guard(player: Any) -> bool:
     if not (player.guard_held and player.guard.can_use()):
         return False
     current = player.state_machine.current_state_name
-    if current == PlayerState.CROUCH:
-        return False
+    # ``CROUCH`` is deliberately absent: crouch-guard is a posture, not a
+    # different move. It used to be refused outright, which both ate the press
+    # (no buffer, unlike the attack path) and left the whole low/overhead half of
+    # ``Guard.HEIGHT_BLOCK`` unreachable in play. ``Player.receive_damage``
+    # reads the crouch flag off the state, so guarding from crouch resolves
+    # those rows.
     # Allow guard cancel from dash after cancel window
     if current == PlayerState.DASH:
         return dash_cancel_open(player)
@@ -601,6 +603,15 @@ def _wants_crouch(player: Any) -> bool:
     return down and grounded
 
 
+def _is_fully_stood(player: Any) -> bool:
+    """Whether the crouch blend has finished standing the fighter back up.
+
+    Never true under a low ceiling, which is the point: the posture is left once
+    there is room to leave it, not on the tick the button came up.
+    """
+    return bool(getattr(getattr(player, "crouch", None), "is_fully_stood", True))
+
+
 def _can_crouch(player: Any) -> bool:
     """Whether the player may crouch from the state they are in.
 
@@ -622,7 +633,7 @@ def _can_crouch(player: Any) -> bool:
 
 
 def configure_player_state_machine(player: Any) -> None:
-    """Build the 16-state player machine (moved from Player, audit F1.1)."""
+    """Build the 17-state player machine (moved from Player, audit F1.1)."""
     sm = StateMachine(player)
     player.state_machine = sm
     sm.add_state(PlayerState.IDLE, PlayerIdleState(player))

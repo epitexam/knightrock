@@ -117,7 +117,7 @@ class LocalInputProvider(InputProvider):
             for index in hat_indices:
                 self._current_joy_hats[index] = self._joystick.get_hat(index)
 
-        down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN)
+        down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN, latch=False)
         if not down_held:
             down_held = self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_DOWN)
         if not down_held:
@@ -130,6 +130,10 @@ class LocalInputProvider(InputProvider):
             down_held = hat[1] < 0
 
         held = {
+            # ``MOVE_DOWN`` is the crouch on the ground and the fast fall in the
+            # air: two postures, not presses. It is read with ``latch=False``
+            # above so a tap shorter than a poll cannot arrive as a one-tick
+            # hold and flicker the posture.
             InputAction.MOVE_DOWN: down_held,
             InputAction.GUARD: self._key_held(keys, gameplay.keyboard, InputAction.GUARD)
             or self._button_held(gameplay.gamepad_buttons, InputAction.GUARD),
@@ -205,8 +209,21 @@ class LocalInputProvider(InputProvider):
         return keys[key]
 
     def _key_held(
-        self, keys: Sequence[bool] | Mapping[int, bool], bindings: ActionMap, action: InputAction
+        self,
+        keys: Sequence[bool] | Mapping[int, bool],
+        bindings: ActionMap,
+        action: InputAction,
+        latch: bool = True,
     ) -> bool:
+        """Whether ``action``'s key is down, optionally ignoring the edge latch.
+
+        ``latch=False`` is for the hold-only actions. The latch exists so a tap
+        shorter than a poll is still seen, which is the right trade for an
+        edge-triggered action like an attack -- but wrong for a posture: a
+        one-tick crouch squashes the hurtbox, marks the fighter ``busy``, and
+        re-derives every zone before restoring it, so a graze of the key reads
+        as a stutter rather than a press that was too short.
+        """
         binding = bindings.get(action)
         if binding is None:
             # Action detached from the controls screen: never active.
@@ -214,6 +231,8 @@ class LocalInputProvider(InputProvider):
         codes = binding if isinstance(binding, tuple) else (binding,)
         if any(self._key_value(keys, code) for code in codes):
             return True
+        if not latch:
+            return False
         # A tap shorter than the poll interval is already back up in the
         # snapshot, so the latched KEYDOWN is the only trace it left.
         return bool(self._latched_keys.intersection(codes))
