@@ -10,6 +10,7 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.combat.refusal import Refusal
 from src.core.level.systems.combat_system import CombatSystem
 from src.entities.player import Player
 from src.entities.player_config import PlayerConfig
@@ -58,7 +59,11 @@ def test_combat_system_consumes_guarded_contact_once() -> None:
 def test_buffered_attack_restarts_the_attack_state() -> None:
     combat = SimpleNamespace(
         is_attacking=False,
-        start_attack=Mock(return_value=True),
+        # The consumption re-asks whether the move can start *now*, so the stub
+        # answers in the new vocabulary. The old one cleared the buffered name
+        # and fired whatever it had stored, which is what let a press buffered
+        # before the fighter stood up land after it.
+        start_attack=Mock(return_value=Refusal.NONE),
         state=SimpleNamespace(current_attack_def=None, end=Mock()),
     )
     state_machine = SimpleNamespace(consume_input=Mock(return_value=True))

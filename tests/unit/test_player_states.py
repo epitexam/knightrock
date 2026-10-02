@@ -7,7 +7,6 @@ import pytest
 
 from src.core.settings import Locomotion, Physics
 from src.states.player_states import (
-    ATTACK_FORBIDDEN_STATES,
     PlayerState,
     _can_attack_interrupt,
     _can_dash,
@@ -223,24 +222,34 @@ def test_can_attack_interrupt_false_when_not_attacking() -> None:
     assert _can_attack_interrupt(entity) is False
 
 
-# --- ATTACK_FORBIDDEN_STATES ---
+# --- what replaced ATTACK_FORBIDDEN_STATES ---
 
 
-def test_attack_forbidden_states_contains_expected_members() -> None:
-    assert PlayerState.WALL_SLIDE in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.GUARD in ATTACK_FORBIDDEN_STATES
-    # ``CROUCH`` used to be here, which made crouching cost the player their
-    # entire offence for as long as the button was held: the press was dropped
-    # rather than buffered, so there was no crouch attack to reach for either.
-    assert PlayerState.CROUCH not in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.HURT in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.DASH in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.STAGGER in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.KNOCKBACK in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.IDLE not in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.WALK_SLOW not in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.WALK not in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.RUN not in ATTACK_FORBIDDEN_STATES
+def test_the_attack_interrupt_only_asks_whether_an_attack_is_running() -> None:
+    """The forbidden-state list is gone, and with it the second answer.
+
+    ``ATTACK_FORBIDDEN_STATES`` was a hand-kept list of states beside three
+    other lists, and the four disagreed: the docstring here argued against a
+    ``DASH`` ban the code had already removed, ``can_attack`` and this function
+    had different preconditions, and ``CHARGE`` was allowed by the list and
+    refused by a gate nobody counted. Posture, cooldown and cancellation are all
+    ``start_attack``'s call now; what is left here is the one question the
+    combat component cannot answer -- is there an attack running to cancel out
+    of?
+    """
+    running = SimpleNamespace(
+        combat=SimpleNamespace(is_attacking=True),
+        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE.value),
+        dash=_dash_stub(),
+    )
+    assert _can_attack_interrupt(running) is True
+
+    idle = SimpleNamespace(
+        combat=SimpleNamespace(is_attacking=False),
+        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE.value),
+        dash=_dash_stub(),
+    )
+    assert _can_attack_interrupt(idle) is False
 
 
 # --- configure_player_state_machine ---

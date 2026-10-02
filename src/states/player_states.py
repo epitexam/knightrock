@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Any
 
+from src.combat.refusal import Refusal
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
@@ -306,7 +307,13 @@ class PlayerAttackState(PlayerBaseState):
             if self.entity.state_machine.consume_input("attack"):
                 attack_name = self.entity._buffered_attack_name
                 self.entity._buffered_attack_name = None
-                if attack_name and self.entity.combat.start_attack(attack_name):
+                # Re-asked at *consumption*, not trusted from when it was
+                # buffered. A press buffered during a sweep and consumed after
+                # the fighter stood up has to be refused for the wrong posture,
+                # which is what ``start_attack`` answers -- and what the old
+                # code could not, since it cleared the name and fired whatever
+                # it had stored.
+                if attack_name and self.entity.combat.start_attack(attack_name) is Refusal.NONE:
                     return ("attack", {"force": True})
 
             return self.ground_return()
@@ -509,18 +516,6 @@ class PlayerState(str, Enum):
     DIZZY = "dizzy"
 
 
-ATTACK_FORBIDDEN_STATES = {
-    PlayerState.WALL_SLIDE,
-    PlayerState.GUARD,
-    PlayerState.HURT,
-    PlayerState.DASH,
-    PlayerState.STAGGER,
-    PlayerState.KNOCKBACK,
-    PlayerState.DIZZY,
-}
-"""Set of states where initiating an attack is forbidden."""
-
-
 def dash_cancel_open(player: Any) -> bool:
     """Whether a dash has run long enough to be cancelled (attack/guard).
 
@@ -531,7 +526,7 @@ def dash_cancel_open(player: Any) -> bool:
     window is crossed. With the shipped ``0.0`` window every dash frame but the
     first accepts a cancel; any positive value is a deliberate commitment.
 
-    Single source of truth for the cancel window: ``Player.can_attack`` and
+    Single source of truth for the cancel window: ``Player.may_attack_now`` and
     the state-machine interrupts (``_can_guard`` / ``_can_attack_interrupt``)
     all read it, so the input gate and the transition can never disagree.
     """
@@ -579,39 +574,36 @@ def _can_guard(player: Any) -> bool:
 def _can_attack_interrupt(player: Any) -> bool:
     """Check if the player can currently interrupt to attack.
 
-    ``Player.can_attack()`` is deliberately *not* a precondition. It used to
-    be, and that made this function's own ``DASH`` branch unreachable dead
-    code: ``DASH`` is in the forbidden set, so the input gate returned False and
-    swallowed the press before an attack could ever be cancelled into a dash.
-    The dash window is now the only thing gating that cancel, read through
-    :func:`dash_cancel_open` -- the same helper the input gate reads, so the
-    two cannot disagree about the window itself.
+    ``Player.may_attack_now()`` is deliberately *not* a precondition, and
+    ``start_attack`` is where the decision belongs now. This interrupt has a job
+    the combat component cannot do: it has to know that an attack is *running*,
+    because it replaces the ``ATTACK`` state. Without that test a press refused
+    further down -- on cooldown, in the wrong posture -- would drop the fighter
+    into an attack state with nothing running.
 
-    The test below still covers every forbidden state, and adds two things the
-    input gate knows nothing about. An attack has to actually be *running*:
-    this interrupt *replaces* the ``ATTACK`` state, so without that precondition
-    a press refused further down ``start_attack`` -- a cooldown, an unknown
-    move -- would drop the fighter into an attack state with nothing running.
-    And the dash coyote window opens the cancel on frames where the dash has
-    already ended.
+    The dash branch is here for the same reason it was once dead code: a dash
+    has to be cancellable into an attack, which is a question about the *state*
+    rather than about the move.
 
-    That coyote bypass is the one place where this and ``Player.can_attack``
-    answer differently for the same fighter: the input gate knows only the dash
-    *cancel* window, not the coyote one. It is deliberate (a guard or attack
-    pressed just after a dash should still connect) but it does mean the input
-    gate and this transition are not interchangeable, which is worth knowing
-    before either is edited.
+    The coyote bypass opens the cancel on frames where the dash has already
+    ended. It is the one place this and ``Player.may_attack_now`` answer
+    differently for the same fighter, and it is deliberate: a press just after a
+    dash should still connect.
     """
     if not player.combat.is_attacking:
         return False
     current = player.state_machine.current_state_name
-    # Allow attack cancel from dash after cancel window
+    # A dash has to be cancellable into an attack; the window is the commitment.
     if current == PlayerState.DASH:
         return dash_cancel_open(player)
-    # Allow attack during dash coyote window
+    # The coyote window survives the dash for a few frames, and a press inside
+    # it should still connect.
     if bool(player.dash.in_coyote()):
         return True
-    return current not in ATTACK_FORBIDDEN_STATES
+    # Everything else is ``start_attack``'s call: cooldowns, cancellations, the
+    # fighter's posture and whether they are hurt. Only the transition itself is
+    # answered here.
+    return True
 
 
 def _wants_crouch(player: Any) -> bool:

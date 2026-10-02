@@ -30,7 +30,6 @@ from src.entities.player_input import PlayerInputHandler
 from src.physics import resolve_jump
 from src.physics.spatial_hash import SpatialHash
 from src.states.player_states import (
-    ATTACK_FORBIDDEN_STATES,
     PlayerState,
     configure_player_state_machine,
     dash_cancel_open,
@@ -189,19 +188,23 @@ class Player(ControllerView, Entity):
     def _buffered_attack_name(self, value: MoveId | None) -> None:
         self.input_handler.buffered_attack_name = value
 
-    def can_attack(self) -> bool:
-        """Return True if an attack can be started from the current state.
+    def may_attack_now(self) -> bool:
+        """Whether an attack press is worth reading at all this tick.
 
-        ``DASH`` is a special case: it is navigable, not forbidden. An attack
-        cancels a dash once ``Physics.DASH_CANCEL_WINDOW`` has elapsed — the
-        same rule the ``ATTACK`` interrupt reads through
-        :func:`~src.states.player_states.dash_cancel_open`, so the input gate
-        and the state transition can never disagree.
+        Narrower than it was. The old gate consulted
+        ``ATTACK_FORBIDDEN_STATES`` -- a list of states maintained by hand
+        beside three other lists, which is where the contradictions came from.
+        What is left is the one question that is not about the move at all:
+        whether the fighter is still committed to a dash.
+
+        Posture, cooldown, cancellation and the reaction states are all answered
+        by ``CombatComponent.start_attack``, which is the only place that knows
+        them. A gate in front of it is a second answer to the same question.
         """
         current = self.state_machine.current_state_name
         if current == PlayerState.DASH:
             return dash_cancel_open(self)
-        return current not in ATTACK_FORBIDDEN_STATES
+        return True
 
     def is_wall_sliding(self) -> bool:
         """Return True when sliding down a wall."""
