@@ -149,10 +149,16 @@ class PlayerUI:
                 # One dash line, not two. Both were constants of the same ability
                 # and STATE printed a third field of it, so the dash was the only
                 # subject in the debug view spread over three lines in two panels.
+                #
+                # Kept to two rows deliberately. Merged into one it is 54
+                # characters, which made STATS the widest panel in the stack, and
+                # the column flow packs the whole set into 1440x900 -- widening
+                # the widest one is what pushes the last panel out of the display
+                # entirely. Charges and speed stay together; the two timers drop
+                # to a second row that is only as wide as the first.
                 f"Dash   {player.dash_charges}/{player.max_dash_charges}"
-                f"  spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s"
-                f"  pen {player.dash_penalty_timer:.2f}s"
-                f"  regen {player.dash_recharge_timer:.2f}s",
+                f"  spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s",
+                f"      pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
                 f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
                 f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",
             ]

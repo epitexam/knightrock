@@ -228,11 +228,16 @@ def test_stats_prints_the_dash_constants_on_one_line() -> None:
     quoting can pass without testing anything.
     """
     lines = PlayerUI._stats_lines(_make_full_player(), None, compact=False)
-    dash = [line for line in lines if line.startswith("Dash")]
+    dash = [line for line in lines if line.startswith("Dash") or line.startswith("      pen")]
 
-    assert len(dash) == 1, dash
+    assert len(dash) == 2, dash
     for field in ("dur", "spd", "pen", "regen"):
-        assert field in dash[0]
+        assert field in "\n".join(dash)
+
+    # The widest line in the panel decides how wide the panel is, and the column
+    # flow packs the whole debug set into 1440x900. A single 54-character dash
+    # row made STATS the widest panel and pushed the last one off the display.
+    assert max(len(line) for line in lines) <= 46, max(lines, key=len)
 
 
 class _RecordingRenderer:

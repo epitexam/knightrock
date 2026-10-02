@@ -7,6 +7,7 @@ import pygame
 import pytest
 
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.combat.frame_data import Stance
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
@@ -51,10 +52,18 @@ def _motion(pos: tuple[int, int]) -> pygame.event.Event:
     return pygame.event.Event(pygame.MOUSEMOTION, pos=pos, rel=(0, 0), buttons=(1, 0, 0))
 
 
-def _draw_help(ui: UIManager, size: tuple[int, int]) -> PanelLayout:
-    """Draw the DEBUG KEYS panel through the flow and settle the frame."""
+def _draw_help(ui: UIManager, size: tuple[int, int], *, with_player: bool = False) -> PanelLayout:
+    """Draw the DEBUG KEYS panel through the flow and settle the frame.
+
+    ``with_player`` adds the live attack-button block, which is what a real frame
+    draws -- ``draw_debug_panels`` always passes the player -- so the geometry
+    these tests measure is the geometry the game produces. Without it the panel
+    is a different size and a drag test would be asserting against a shape no
+    frame ever had.
+    """
     layout = PanelLayout(*size)
-    ui.draw_help_panel(10, 10, layout=layout, layers={})
+    player = _player() if with_player else None
+    ui.draw_help_panel(10, 10, layout=layout, layers={}, player=player)
     _frame(ui)
     return layout
 
@@ -196,12 +205,17 @@ def test_drag_and_drop_moves_a_panel_out_of_the_flow() -> None:
     """Dropping a panel stores its position; it is redrawn exactly there."""
     size = (1024, 768)
     ui = UIManager(pygame.Surface(size))
-    _draw_help(ui, size)
+    _draw_help(ui, size, with_player=True)
     rect = ui.renderer.interaction.panels[ui_ids.PANEL_KEYS]
 
     start = rect.topleft
     assert ui.handle_panel_event(_mousedown(start)) is True
-    target = (640, 300)  # roomy enough for the tall DEBUG KEYS panel
+    # Inside the display *for the panel as drawn*. The drop is clamped to the
+    # surface, so a fixed x=640 stopped being where it was asked to go once the
+    # live attack block made the panel wider than the space to the right edge --
+    # the clamp was working, and the test was asserting a pre-clamp position.
+    target = (size[0] - rect.width - 20, 300)
+    assert target[0] + rect.width <= size[0], "the target does not fit the surface"
     assert ui.handle_panel_event(_motion(target)) is True
     assert ui.handle_panel_event(_mouseup(target)) is True
     assert ui.renderer.interaction.drag_id is None
@@ -380,4 +394,9 @@ def _player() -> SimpleNamespace:
         stagger_timer=0.0,
         invincibility_timer=0.0,
         otg_timer=0.0,
+        # The DEBUG KEYS panel reads both when a player is passed to it. Absent
+        # before, its live block was simply never exercised here and the panel
+        # under test was three rows smaller than any frame the game draws.
+        stance=Stance.GROUND,
+        combat=SimpleNamespace(cooldowns={}),
     )

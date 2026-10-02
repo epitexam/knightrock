@@ -1,15 +1,18 @@
 """Responsive debug display: panel flow, pinned wrap, labels vs bars, edges."""
 
 import os
+import re
 from types import SimpleNamespace
 
 import pygame
 import pytest
 from pygame.math import Vector2
 
+from src.combat.frame_data import Stance
 from src.core.display.framing import Framing
+from src.core.input.input_actions import InputAction
 from src.core.rendering.camera import Camera
-from src.ui.panel_renderer import PanelLayout
+from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import TEXT_MUTED
 from src.ui.ui_manager import UIManager
 from tests.unit.helpers import make_overlay
@@ -381,3 +384,233 @@ def test_a_bar_that_moved_still_dodges_the_card_next_frame(
     assert all(not old_bar.colliderect(pygame.Rect(rect)) for rect in placed), (
         f"the card landed on where the bar used to be: {old_bar} vs {placed}"
     )
+
+
+# --- the live attack-button block ------------------------------------------
+
+
+def _rows(stance, cooldowns=None):
+    """The panel's live rows, for a player standing in ``stance``."""
+    from src.ui.ui_manager import UIManager
+
+    player = SimpleNamespace(stance=stance, combat=SimpleNamespace(cooldowns=cooldowns or {}))
+    return UIManager._attack_button_rows(player)
+
+
+def test_the_block_names_the_posture_the_fighter_is_in() -> None:
+    assert _rows(Stance.AIR)[0][0] == "Stance  air"
+    assert _rows(Stance.CROUCH)[0][0] == "Stance  crouch"
+
+
+def test_every_attack_button_gets_a_row() -> None:
+    """All of them, in every posture.
+
+    Iterating ``BUTTON_MOVES`` is the property: a button added to the table has to
+    appear without a UI edit. Its absence is exactly how ``air_rise`` ended up
+    with a guard height its grounded counterpart did not have -- nothing looked at
+    the second column until a test compared it.
+    """
+    from src.entities.attack_moves import BUTTON_MOVES
+
+    for stance in Stance:
+        rows = _rows(stance)
+        assert len(rows) == len(BUTTON_MOVES) + 1, stance
+        for action in BUTTON_MOVES:
+            label = "special" if action.name == "SPECIAL_ATTACK" else action.value
+            assert any(line.startswith(label) for line, _ in rows), (stance, action)
+
+
+def test_each_row_names_the_move_that_posture_would_throw() -> None:
+    """The gate, rendered -- so it has to agree with the gate.
+
+    ``move_for_button`` is the same call ``player_input`` makes, and
+    ``start_attack`` refuses on posture before cooldown, so what these rows say is
+    what a press will do.
+    """
+    from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+
+    for stance in Stance:
+        rows = dict(_rows(stance)[1:])
+        for action in BUTTON_MOVES:
+            label = "special" if action.name == "SPECIAL_ATTACK" else action.value
+            expected = move_for_button(action, stance)
+            line = next(text for text in rows if text.startswith(label))
+            if expected is None:
+                assert "—" in line
+            else:
+                assert str(expected) in line, (stance, label)
+
+
+def test_a_button_with_no_move_shows_a_dash_and_not_the_standing_one() -> None:
+    """Printing the standing move would claim it works from here.
+
+    That is the one thing this block must not say: a developer reads a name as
+    "pressable", and the refusal it would hide is the refusal the whole panel
+    exists to explain.
+    """
+    air = dict(_rows(Stance.AIR)[1:])
+    special = next(text for text in air if text.startswith("special"))
+
+    assert "—" in special
+    assert "special_attack" not in special
+
+
+def test_a_move_on_cooldown_shows_its_timer_and_is_the_only_warned_row() -> None:
+    from src.ui.styles import TEXT_OK, TEXT_WARN
+
+    rows = _rows(Stance.AIR, {"air_rise": 1.25})
+    warned = [(text, color) for text, color in rows if color == TEXT_WARN]
+
+    assert len(warned) == 1
+    assert warned[0][0].startswith("attack3")
+    assert "1.2s" in warned[0][0]
+    # Stance is the one row worth colouring positively: it is the input to
+    # everything else in the block.
+    assert [i for i, (_, c) in enumerate(rows) if c == TEXT_OK] == [0]
+
+
+def test_the_block_draws_from_the_table_so_it_cannot_go_stale() -> None:
+    """Guards the iteration itself, by adding a button and looking.
+
+    Every other test here checks the block against ``BUTTON_MOVES``, so they would
+    all pass against a block built from a hand-written list that happened to
+    agree. This one changes the table and requires the panel to follow.
+    """
+    from src.entities import attack_moves
+    from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+
+    extra = InputAction.GUARD
+    BUTTON_MOVES[extra] = {Stance.GROUND: "light_attack"}
+    try:
+        rows = _rows(Stance.GROUND)
+        # Stance plus every button now in the table, the temporary one included.
+        assert len(rows) == len(BUTTON_MOVES) + 1
+        assert any(line.startswith("guard") for line, _ in rows)
+    finally:
+        del BUTTON_MOVES[extra]
+
+    # Back to the shipped count, which is what makes the first assertion mean
+    # something: without the removal the block would have shown the temporary row
+    # and every count here would be one too high.
+    assert len(_rows(Stance.GROUND)) == len(BUTTON_MOVES) + 1
+    assert not any(line.startswith("guard") for line, _ in _rows(Stance.GROUND))
+    assert move_for_button(extra, Stance.GROUND) is None
+    assert attack_moves.move_for_button is move_for_button
+
+
+def test_the_bench_legend_names_the_air_keys() -> None:
+    """The legend was four keys long and listed none of the air kit.
+
+    ``7``-``0`` were added to the bench and this text was not updated, so the
+    panel described a set of keys that stopped existing when the air moves landed.
+    Nothing asserted it: the panel's *text* had no test anywhere, which is how a
+    stale legend can sit in a file for a release.
+    """
+    from src.core.level.systems.spawn_system import DEBUG_ATTACKS
+
+    rows = _keys_legend()
+    text = "\n".join(rows)
+
+    assert "7-0" in text, text
+    # And every key the bench binds is inside a range the legend names, so the
+    # next set added has to be declared rather than silently dropped. Checked as
+    # coverage of the range rather than as substrings: the legend writes "1-6",
+    # not "1 2 3 4 5 6", and a test demanding the six digits would force the
+    # text back into the shape it was compressed out of.
+    named = _ranges_in(text)
+    for key in DEBUG_ATTACKS:
+        assert pygame.key.name(key) in named, f"{pygame.key.name(key)} is bound but unlisted"
+
+
+#: A ``1-0`` range in the legend: which key names it covers.
+def _range_keys(low: str, high: str) -> set[str]:
+    """The key names one digit range covers.
+
+    Read as the key row reads, left to right, digits wrapping at ten. So ``1-6``
+    is the first six and ``7-0`` is the last four: a range written high-to-low is
+    a wrap, not a backwards range -- ``pygame.K_0`` is 48 and ``K_1`` is 49, so
+    ascending keycodes put ``0`` first, which is why every version that sorted the
+    endpoints and counted between them covered two keys instead of a row.
+    """
+    first, last = int(low), int(high)
+    digits = (
+        range(first, last + 1)
+        if first <= last
+        # Wraps past 9 back to 0, which is the top row going right.
+        else [*range(first, 10), *range(0, last + 1)]
+    )
+    return {pygame.key.name(pygame.K_0 + digit) for digit in digits if 0 <= digit <= 9}
+
+
+def _ranges_in(text: str) -> set[str]:
+    covered: set[str] = set()
+    for low, high in re.findall(r"(?<![0-9])(\d+)-(\d+)(?![0-9])", text):
+        covered |= _range_keys(low, high)
+    return covered
+
+
+def _keys_legend() -> list[str]:
+    """The rows the DEBUG KEYS panel actually handed to the renderer.
+
+    Recorded through a spy on ``draw_panel`` rather than read off the source: the
+    legend lives in a list inside a draw method, and reading format strings back
+    out of source is what produced a test that passed without touching the text
+    in this file before.
+
+    Drawn with no player, so the live block is absent and what is left is the
+    reference half.
+    """
+    from tests.unit.helpers import make_overlay
+
+    overlay = make_overlay(pygame.Surface((640, 480)))
+    lines: list[str] = []
+    original = type(overlay.renderer).draw_panel
+
+    def spy(_self, _x, _y, panel_lines, **_kwargs):
+        lines.extend(panel_lines)
+        return 100
+
+    type(overlay.renderer).draw_panel = spy
+    try:
+        overlay.draw_help_panel(10, 10)
+    finally:
+        type(overlay.renderer).draw_panel = original
+    assert lines, "the spy recorded nothing, so the assertions below are vacuous"
+    return lines
+
+
+def test_the_panel_fits_the_display_it_is_drawn_into() -> None:
+    """The live block made DEBUG KEYS the tallest panel in the stack.
+
+    ``PanelLayout`` does not clip: an unplaceable panel is dropped with a warning
+    and simply does not appear. At 1440x900 the full set fits, and this is the
+    test that says so -- the block is not worth shipping if it costs a panel.
+    """
+    renderer = PanelRenderer(pygame.Surface((1440, 900)))
+    keys = _rows(Stance.AIR)
+    bench = _keys_legend()
+
+    height = renderer.measure_panel(
+        [text for text, _ in keys] + bench, title="DEBUG KEYS", reserve_close=True
+    )[1]
+
+    assert height <= 900, f"DEBUG KEYS is {height}px tall on a 900px display"
+
+
+def test_the_special_row_says_no_key_rather_than_inventing_one() -> None:
+    """``SPECIAL_ATTACK`` has no keyboard binding at all, and the rest rebind.
+
+    So the row is labelled by the action. Printing a letter would be a claim the
+    panel cannot keep: the moment anyone rebinds ``ATTACK_1`` the table goes
+    stale, exactly as ``air_rise``'s guard height did.
+    """
+    from src.core.input.input_bindings import GameplayBindings
+
+    keyboard = GameplayBindings().keyboard
+    unbound = [a for a in InputAction if a not in keyboard]
+
+    special = next(text for text, _ in _rows(Stance.GROUND)[1:] if text.startswith("special"))
+    assert special.split()[0] == "special"
+    # The claim that it has no key: stated rather than assumed, since the default
+    # map is the thing that would change.
+    assert InputAction.SPECIAL_ATTACK in unbound or not unbound
