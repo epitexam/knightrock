@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.data.errors import GameplayDataError, read_json_object
+from src.data.errors import GameplayDataError, read_json_object, reject_unknown
 
 LEVELS_FILENAME = "levels.json"
 LEVELS_VERSION = 1
@@ -23,6 +23,7 @@ LEVELS_VERSION = 1
 def read_levels_file(path: str | Path) -> dict[int, str]:
     """Load the ``id -> TMX path`` registry from a ``levels.json`` file."""
     raw = read_json_object(path, LEVELS_VERSION)
+    reject_unknown(raw, frozenset({"version", "levels"}), str(path))
     raw_levels = raw.get("levels")
     if not isinstance(raw_levels, dict):
         raise GameplayDataError(f"{path}: 'levels' must be an object")

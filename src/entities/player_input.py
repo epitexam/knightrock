@@ -11,14 +11,35 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from src.combat.frame_data import MoveId
 from src.core.input.input_actions import InputAction
 from src.core.settings import GameFeel
 from src.core.settings import Input as InputSettings
+from src.entities.attack_moves import move_for_button
 from src.physics.movement import apply_jump_cut
 from src.states.turn_state import request_turn
 
 if TYPE_CHECKING:
     from src.entities.player import Player
+
+#: The attack buttons, in the order they are considered.
+#:
+#: The order is the contract of :meth:`PlayerInputHandler._handle_attack_request`:
+#: a tick can only start one attack, so the first button pressed wins. It was
+#: implicit in the branch order of an ``if``/``elif`` ladder and pinned by a test
+#: that scraped the source text; naming it states the same thing without the
+#: scraping. SPECIAL first, then the numbered attacks in order, so a light does
+#: not eat a heavy thrown on the same tick.
+#:
+#: Step 4 of the spine refactor replaces this with a lookup into the move table
+#: declared in ``player.json``; it stays here until then.
+ATTACK_BUTTONS: tuple[InputAction, ...] = (
+    InputAction.SPECIAL_ATTACK,
+    InputAction.ATTACK_1,
+    InputAction.ATTACK_2,
+    InputAction.ATTACK_3,
+    InputAction.ATTACK_4,
+)
 
 
 class PlayerInputHandler:
@@ -26,7 +47,7 @@ class PlayerInputHandler:
 
     def __init__(self, player: Player) -> None:
         self._player = player
-        self.buffered_attack_name: str | None = None
+        self.buffered_attack_name: MoveId | None = None
 
     def update(self) -> None:
         """Read movement/ability input, then process attack input."""
@@ -79,7 +100,11 @@ class PlayerInputHandler:
         im = player.input_manager
         if not player.combat.charging.is_charging:
             return False
-        if not player.can_attack():
+        # A charge is dropped when the fighter stops being able to use it, not
+        # when a *press* would be refused. The old gate conflated the two, so a
+        # fighter who charged while hurt had the charge cancelled by a condition
+        # that had nothing to do with the charge.
+        if player.combat.is_hurt:
             player.combat.charging.cancel()
             return True
         if im.just_released(InputAction.ATTACK_2):
@@ -87,28 +112,46 @@ class PlayerInputHandler:
         return True
 
     def _handle_attack_request(self) -> None:
+        """Start the highest-priority attack button that was pressed this tick.
+
+        No gate here: every "can I attack" question is answered by
+        ``CombatComponent.start_attack``, which is the only place that knows
+        about cooldowns, cancellations, the fighter's state and its posture. A
+        gate in front of it would be a second answer to the same question, and
+        the two are exactly what used to drift apart.
+        """
         player = self._player
-        im = player.input_manager
-        if not player.can_attack():
+        for action in ATTACK_BUTTONS:
+            if not player.input_manager.just_pressed(action):
+                continue
+            self._start(action)
             return
 
-        if im.just_pressed(InputAction.SPECIAL_ATTACK):
-            player.combat.start_attack("special_attack")
+    def _start(self, action: InputAction) -> None:
+        """Throw the move bound to one button, or buffer it if it can be retried.
+
+        The buffer is the reason the refusal has to be read rather than
+        discarded: a press refused on cooldown is worth keeping, because the
+        same press unchanged will work once the timer runs down. One refused
+        because the fighter is in the wrong posture or is hurt is not -- keeping
+        it would fire a move the player has long since stopped asking for.
+        """
+        player = self._player
+        if not player.may_attack_now():
+            return
+        move = move_for_button(action, player.stance)
+        if move is None:
+            # Nothing on this button from here. Dropped without a buffer, and
+            # without falling back to the standing version: a fighter who holds
+            # Down and presses the uppercut gets nothing, rather than a
+            # standing uppercut from a crouched collider.
             return
 
-        if im.just_pressed(InputAction.ATTACK_1):
-            attack_name = "light_attack" if player.on_surface["floor"] else "air_attack"
-            if not player.combat.start_attack(attack_name):
-                self.buffered_attack_name = attack_name
-                player.state_machine.buffer_input(
-                    "attack", window=InputSettings.ATTACK_BUFFER_WINDOW
-                )
-        elif im.just_pressed(InputAction.ATTACK_2):
-            if player.combat.start_charge("heavy_attack"):
-                player.state_machine.change_state("charge", force=True)
-            else:
-                player.combat.start_attack("heavy_attack")
-        elif im.just_pressed(InputAction.ATTACK_3):
-            player.combat.start_attack("uppercut")
-        elif im.just_pressed(InputAction.ATTACK_4):
-            player.combat.start_attack("dash_attack")
+        if action is InputAction.ATTACK_2 and player.combat.start_charge(move):
+            player.state_machine.change_state("charge", force=True)
+            return
+
+        refusal = player.combat.start_attack(move)
+        if refusal.is_retryable:
+            self.buffered_attack_name = move
+            player.state_machine.buffer_input("attack", window=InputSettings.ATTACK_BUFFER_WINDOW)

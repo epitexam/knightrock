@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2337%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2431%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2337 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2431 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -493,7 +493,7 @@ runtime model.
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
 | `enemies.json` | Enemy configs, referencing attack sets by name or inlining them. |
-| `player.json` | Player overrides plus the attack-name list. |
+| `player.json` | Player overrides plus the name of the attack set to use. |
 | `levels.json` | Level id to TMX path mapping. |
 
 Loading is **strict**: unknown keys, missing fields, bad versions and unknown
@@ -570,7 +570,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2337 tests passing · 93 % instruction coverage ·
+> **Current baseline:** 2431 tests passing · 93 % instruction coverage ·
 > 85 % branch coverage · Ruff clean · mypy clean (168 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so

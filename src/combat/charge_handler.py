@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class ChargeSnapshot:
 
     is_charging: bool = False
     charge_timer: float = 0.0
-    attack_name: str | None = None
+    attack_name: MoveId | None = None
 
 
 class ChargeHandler:
@@ -27,7 +27,7 @@ class ChargeHandler:
 
     Parameters
     ----------
-    attacks : dict[str, AttackDefinition]
+    attacks : dict[MoveId, AttackDefinition]
         Shared reference to the attack registry (same instance as the
         one owned by ``CombatComponent``).
 
@@ -39,11 +39,11 @@ class ChargeHandler:
         Seconds elapsed since the charge started.
     """
 
-    def __init__(self, attacks: dict[str, AttackDefinition]) -> None:
-        self._attacks: dict[str, AttackDefinition] = attacks
+    def __init__(self, attacks: dict[MoveId, AttackDefinition]) -> None:
+        self._attacks: dict[MoveId, AttackDefinition] = attacks
         self.is_charging: bool = False
         self.charge_timer: float = 0.0
-        self._attack_name: str | None = None
+        self._attack_name: MoveId | None = None
 
     @property
     def attack_name(self) -> str | None:
@@ -68,7 +68,7 @@ class ChargeHandler:
             return 1.0
         return self._attacks[self._attack_name].charge_move_multiplier
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Begin charging an attack.
 
         Parameters
@@ -108,27 +108,53 @@ class ChargeHandler:
         max_time = self._attacks[self._attack_name].max_charge_time
         self.charge_timer = min(self.charge_timer + delta_time, max_time)
 
-    def release_charge(self) -> tuple[str, float] | None:
+    def release_charge(self) -> tuple[MoveId, float] | None:
         """Release the charge and return the attack name and multiplier.
 
         The damage multiplier scales linearly from 1.0 (no charge) to
         2.0 (full charge at ``max_charge_time``).
 
+        Destructive, and therefore not what
+        ``CombatComponent.release_charge`` uses: it has to be able to put the
+        charge back when the attack it names turns out not to start. Kept for
+        callers that genuinely want the charge spent either way.
+
         Returns
         -------
-        tuple[str, float] | None
+        tuple[MoveId, float] | None
             A ``(attack_name, multiplier)`` tuple, or ``None`` if not
             currently charging.
         """
+        result = self.pending_release()
+        if result is not None:
+            self._reset()
+        return result
+
+    def pending_release(self) -> tuple[MoveId, float] | None:
+        """What releasing would produce, without ending the charge.
+
+        Split from :meth:`release_charge` so the caller can ask the combat
+        component whether the attack will actually start, and only then drop the
+        charge. Releasing destructively and *then* asking loses the charge and
+        the multiplier whenever the start is refused.
+        """
         if not self.is_charging or self._attack_name is None:
             return None
-
         name = self._attack_name
         max_time = max(self._attacks[name].max_charge_time, 0.001)
-        multiplier = 1.0 + (self.charge_timer / max_time)
+        return (name, 1.0 + (self.charge_timer / max_time))
 
-        self._reset()
-        return (name, multiplier)
+    def restore_pending(self, name: MoveId, multiplier: float) -> None:
+        """Put back a charge whose release did not produce an attack.
+
+        The multiplier is inverted through the same linear curve
+        :meth:`pending_release` used, so a released-then-refused charge resumes
+        at exactly the time it had reached rather than at a rounded value.
+        """
+        self.is_charging = True
+        self._attack_name = name
+        max_time = max(self._attacks[name].max_charge_time, 0.001)
+        self.charge_timer = max(0.0, min((multiplier - 1.0) * max_time, max_time))
 
     def cancel(self) -> None:
         """Cancel the current charge without releasing (e.g. on hit-stun)."""

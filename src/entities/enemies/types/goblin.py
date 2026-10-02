@@ -1,4 +1,4 @@
-from src.combat.attack_data import GOBLIN_ATTACKS
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
@@ -16,11 +16,23 @@ GOBLIN_HURTBOX_ZONES = (
     ),
 )
 
+
+def _shipped_goblin_attacks() -> dict[MoveId, AttackDefinition]:
+    """The shipped table for this enemy, read from the data file.
+
+    Read lazily so importing this module does not read ``attacks.json``: the
+    loader imports the enemy schemas, which import this.
+    """
+    from src.combat.attack_data import GOBLIN_ATTACKS
+
+    return dict(GOBLIN_ATTACKS)
+
+
 GOBLIN_CONFIG = EnemyConfig(
     size=(36.0, 48.0),
     color=(60, 130, 60),
     health=60.0,
-    attacks=GOBLIN_ATTACKS,
+    attacks=_shipped_goblin_attacks(),
     attack_name="claw_swipe",
     hurtbox_zones=GOBLIN_HURTBOX_ZONES,
     chase_speed=120.0,

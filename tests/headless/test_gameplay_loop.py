@@ -2,9 +2,13 @@
 
 from types import SimpleNamespace
 
+import pygame
 import pytest
 
 from src.core.level.systems.gameplay_loop import GameplayLoop
+from tests.unit.helpers import activate, entity_at
+from tests.unit.helpers import make_attack as attack
+from tests.unit.helpers import make_phase as phase
 
 
 def test_hit_stop_suspends_simulation_for_its_duration() -> None:
@@ -86,8 +90,9 @@ class SeparationStub:
     def __init__(self) -> None:
         self.ran = False
 
-    def process(self, entity_sprites) -> None:
+    def process(self, entity_sprites) -> list:
         self.ran = True
+        return []
 
 
 def _noop_stage(name: str, calls: list[str]):
@@ -165,7 +170,11 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         tick_system=_noop_tick_stage("tick", calls),
     )
     loop.separation_system = SimpleNamespace(
-        process=lambda sprites, grid=None: calls.append("separation")
+        # Returns the entities it displaced; the loop re-syncs the attack boxes
+        # of exactly those. An empty list is what a tick with nobody overlapping
+        # reports, and it is what makes the ordering assertion below about stage
+        # order rather than about how many fighters happened to be adjacent.
+        process=lambda sprites, grid=None: (calls.append("separation"), [])[1]
     )
     loop.combat_system = SimpleNamespace(
         in_hit_stop=False,
@@ -269,3 +278,76 @@ def test_update_without_the_world_stages_fails_fast() -> None:
         loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
 
     assert calls == []
+
+
+def _box_positions(entity) -> tuple[tuple[float, float], ...]:
+    """Where the live attack boxes are, as values.
+
+    ``HitboxManager`` owns a pool and repositions those very ``FRect`` objects
+    rather than building new ones, so ``attack_boxes`` returns the same
+    instances every call. Comparing two of those tuples compares an object to
+    itself and is true whatever happened -- the assertion has to copy the
+    numbers out.
+    """
+    return tuple((box.centerx, box.centery) for box in entity.combat.attack_boxes)
+
+
+def test_a_fighter_pushed_by_separation_gets_its_attack_box_moved_with_it() -> None:
+    """The saving narrows the re-sync to the displaced; this is what it must not
+    cost.
+
+    A fighter mid-swing is positioned by ``Entity.update``, then separation
+    pushes its hitbox sideways. The attack box is derived from that hitbox and
+    ``sync_rects`` does not know it exists, so without a re-sync the swing would
+    be tested against the place the fighter *was*. That is a hit that lands on
+    empty air, or misses one that should have connected -- either way, a hitbox
+    that disagrees with the sprite above it by exactly the push distance.
+    """
+    loop = GameplayLoop.combat_only()
+    swing = attack(phase(startup=1, active=30, recovery=1, size=(40.0, 20.0), offset=(30.0, 0.0)))
+    attacker = entity_at(0.0, faction="player", definition=swing)
+    blocker = entity_at(20.0, faction="enemy")
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(attacker, blocker),
+        combat_sprites=pygame.sprite.Group(attacker),
+    )
+
+    activate(attacker)
+    before = _box_positions(attacker)
+    assert before, "the fixture is not actually swinging"
+
+    loop.process_combat_and_separation(1 / 60, groups.combat_sprites, groups.entity_sprites)
+
+    after = _box_positions(attacker)
+    assert attacker.hitbox.x != pytest.approx(0.0), "separation did not move anyone"
+    assert after != before, "the attack box stayed where the fighter used to be"
+    assert after[0][0] == pytest.approx(attacker.hitbox.centerx + swing.phases[0].hitbox_offset[0])
+
+
+def test_a_fighter_nobody_pushed_ends_the_tick_where_it_started() -> None:
+    """The bystander case, stated as what it can actually observe.
+
+    Being spared the re-sync and being re-synced redundantly produce the same
+    box, because positioning is pure and idempotent -- so this test cannot
+    distinguish them, and does not pretend to. Reinstating the unconditional
+    loop would leave it green, as it would leave every test in this file green.
+    The saving is a measurement, not an assertion; what is asserted here is
+    that narrowing the re-sync did not quietly move a fighter nobody touched,
+    which is the failure a "sync the pair instead of the entity" implementation
+    would make.
+    """
+    loop = GameplayLoop.combat_only()
+    swing = attack(phase(startup=1, active=30, recovery=1, size=(40.0, 20.0), offset=(30.0, 0.0)))
+    attacker = entity_at(0.0, faction="player", definition=swing)
+    groups = SimpleNamespace(
+        entity_sprites=pygame.sprite.Group(attacker),
+        combat_sprites=pygame.sprite.Group(attacker),
+    )
+
+    activate(attacker)
+    before = _box_positions(attacker)
+    assert before, "the fixture is not actually swinging"
+
+    loop.process_combat_and_separation(1 / 60, groups.combat_sprites, groups.entity_sprites)
+
+    assert _box_positions(attacker) == before

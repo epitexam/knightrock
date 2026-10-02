@@ -14,14 +14,16 @@ spelled as a string because JSON has no infinity literal.
 from __future__ import annotations
 
 import math
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.errors import (
     GameplayDataError,
     pair_of_floats,
     read_json_object,
+    reject_unknown,
     triple_of_ints,
 )
 from src.entities.hurtbox_zones import read_hurtbox_zones
@@ -29,6 +31,19 @@ from src.entities.player_config import PlayerConfig
 
 PLAYER_FILENAME = "player.json"
 PLAYER_VERSION = 1
+
+
+def _player_override_keys() -> frozenset[str]:
+    """Every key ``player.json``'s block may carry.
+
+    Derived from :class:`PlayerConfig`'s fields rather than written out: the
+    block is an override layer, so it spells ``attack_set`` where the dataclass
+    has ``attacks`` and skips nothing else. Listed by hand it would drift the
+    moment a tuning field was added to ``PlayerConfig``, and the drift would be
+    invisible -- an unknown key used to be ignored, so the new field would
+    simply never be overridable, with nothing to say so.
+    """
+    return frozenset(field.name for field in fields(PlayerConfig)) - {"attacks"} | {"attack_set"}
 
 
 def _read_wall_jumps(value: Any, where: str) -> int | float:
@@ -47,18 +62,23 @@ def _read_wall_jumps(value: Any, where: str) -> int | float:
 def read_player_config(
     raw: Any,
     where: str,
-    attack_sets: dict[str, dict[str, AttackDefinition]],
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> PlayerConfig:
     """Merge a ``player`` JSON block over ``PlayerConfig()`` defaults."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: player must be an object, got {raw!r}")
+    # Not the dataclass's field names: this block is an *override* layer over
+    # ``PlayerConfig()``, so it spells a few of them differently and omits the
+    # derived ones (the attack table is reached through ``attack_set``). The
+    # allowed set is therefore the reader's own, listed once.
+    reject_unknown(raw, _player_override_keys(), where)
     base = PlayerConfig()
     raw_attacks = raw.get("attack_set")
-    attacks: dict[str, AttackDefinition] | None = None
+    attacks: dict[MoveId, AttackDefinition] | None = None
     if raw_attacks is not None:
         if not isinstance(raw_attacks, str) or raw_attacks not in attack_sets:
             raise GameplayDataError(f"{where}: unknown attack set {raw_attacks!r}")
-        attacks = dict(attack_sets[raw_attacks])
+        attacks = dict(attack_sets[MoveId(raw_attacks)])
     try:
         return PlayerConfig(
             size=pair_of_floats(raw.get("size", list(base.size)), f"{where}.size"),
@@ -118,8 +138,9 @@ def read_player_config(
 
 
 def read_player_file(
-    path: str | Path, attack_sets: dict[str, dict[str, AttackDefinition]]
+    path: str | Path, attack_sets: dict[str, dict[MoveId, AttackDefinition]]
 ) -> PlayerConfig:
     """Load the player config block from a ``player.json`` file."""
     raw = read_json_object(path, PLAYER_VERSION)
+    reject_unknown(raw, frozenset({"version", "player"}), str(path))
     return read_player_config(raw.get("player", {}), str(path), attack_sets)

@@ -6,8 +6,8 @@ from typing import Any, ClassVar
 import pygame
 from pygame.sprite import Group
 
-from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
+from src.combat.frame_data import MoveId, Stance
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
@@ -29,7 +29,6 @@ from src.entities.player_input import PlayerInputHandler
 from src.physics import resolve_jump
 from src.physics.spatial_hash import SpatialHash
 from src.states.player_states import (
-    ATTACK_FORBIDDEN_STATES,
     PlayerState,
     configure_player_state_machine,
     dash_cancel_open,
@@ -119,8 +118,14 @@ class Player(ControllerView, Entity):
         attacks = None
         if hasattr(config, "attacks") and config.attacks:
             attacks = dict(config.attacks)
-        elif PLAYER_ATTACKS:
-            attacks = PLAYER_ATTACKS
+        else:
+            # No config carried attacks: take the shipped table. Imported here
+            # rather than at module scope for the same reason as
+            # ``player_config._default_attacks`` -- reading the data file during
+            # import would run the loader before the classes it imports exist.
+            from src.combat.attack_data import PLAYER_ATTACKS
+
+            attacks = dict(PLAYER_ATTACKS)
 
         super().__init__(
             pos,
@@ -180,27 +185,31 @@ class Player(ControllerView, Entity):
         return self.state_machine.current_state_name == PlayerState.GUARD
 
     @property
-    def _buffered_attack_name(self) -> str | None:
+    def _buffered_attack_name(self) -> MoveId | None:
         """Attack buffered when a start request was refused (combos)."""
         return self.input_handler.buffered_attack_name
 
     @_buffered_attack_name.setter
-    def _buffered_attack_name(self, value: str | None) -> None:
+    def _buffered_attack_name(self, value: MoveId | None) -> None:
         self.input_handler.buffered_attack_name = value
 
-    def can_attack(self) -> bool:
-        """Return True if an attack can be started from the current state.
+    def may_attack_now(self) -> bool:
+        """Whether an attack press is worth reading at all this tick.
 
-        ``DASH`` is a special case: it is navigable, not forbidden. An attack
-        cancels a dash once ``Physics.DASH_CANCEL_WINDOW`` has elapsed — the
-        same rule the ``ATTACK`` interrupt reads through
-        :func:`~src.states.player_states.dash_cancel_open`, so the input gate
-        and the state transition can never disagree.
+        Narrower than it was. The old gate consulted
+        ``ATTACK_FORBIDDEN_STATES`` -- a list of states maintained by hand
+        beside three other lists, which is where the contradictions came from.
+        What is left is the one question that is not about the move at all:
+        whether the fighter is still committed to a dash.
+
+        Posture, cooldown, cancellation and the reaction states are all answered
+        by ``CombatComponent.start_attack``, which is the only place that knows
+        them. A gate in front of it is a second answer to the same question.
         """
         current = self.state_machine.current_state_name
         if current == PlayerState.DASH:
             return dash_cancel_open(self)
-        return current not in ATTACK_FORBIDDEN_STATES
+        return True
 
     def is_wall_sliding(self) -> bool:
         """Return True when sliding down a wall."""
@@ -209,6 +218,28 @@ class Player(ControllerView, Entity):
         return (
             not self.on_surface["floor"] and (on_left_wall or on_right_wall) and self.velocity.y > 0
         )
+
+    @property
+    def stance(self) -> Stance:
+        """The posture the fighter is in, which decides which moves are live.
+
+        Most specific first, because the postures overlap: sliding a wall is
+        also airborne, and the crouch requires a floor. Order is
+        ``WALL`` -> ``AIR`` -> ``CROUCH`` -> ``GROUND``.
+
+        This is the only place the resolution is written. It is asked per attack
+        press rather than decided per state, which is the point: ``crouch`` is a
+        property of the fighter's geometry, not of a state name, so a fighter
+        who crouches and then attacks is still crouched -- which is also what
+        makes the low half of ``Guard.HEIGHT_BLOCK`` resolve for a crouch-guard.
+        """
+        if self.is_wall_sliding():
+            return Stance.WALL
+        if not self.on_surface["floor"]:
+            return Stance.AIR
+        if self.crouch.is_crouched:
+            return Stance.CROUCH
+        return Stance.GROUND
 
     def _on_floor_contact(self) -> None:
         """Reset midair and wall jumps when landing."""
@@ -242,7 +273,7 @@ class Player(ControllerView, Entity):
         if state is None:
             return None
         if state == PlayerState.ATTACK:
-            return "air_attack" if not self.on_surface["floor"] else "attack"
+            return self._attack_animation()
         if state in (PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER):
             return "hit"
         if state == PlayerState.CROUCH:
@@ -263,6 +294,22 @@ class Player(ControllerView, Entity):
             PlayerState.WALL_SLIDE: "wall",
         }
         return mapping.get(state)
+
+    def _attack_animation(self) -> str:
+        """The clip the running move asks for.
+
+        Read off the definition rather than decided here, so a move can have art
+        of its own. It used to be ``"air_attack" if not on the floor else
+        "attack"`` -- one branch, one entry per case, and no way to add a third
+        without editing this. The fallback order matters more than the read: a
+        move with no art yet plays the airborne clip in the air and the standing
+        one on the floor, exactly as before, and only a move that names a clip
+        changes what is drawn.
+        """
+        definition = self.combat.current_attack_def
+        if definition is not None:
+            return definition.animation
+        return "air_attack" if not self.on_surface["floor"] else "attack"
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""

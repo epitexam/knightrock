@@ -39,7 +39,11 @@ def _enemy(config=GOBLIN_CONFIG, player=None) -> Enemy:
         config=config,
     )
     enemy.facing_right = False
-    enemy.combat.start_attack(enemy.attack_name)
+    # Grounded, so the goblin's ground-only move is startable. The postures a
+    # move is legal from are declared on the move now, and a fresh entity is
+    # airborne until something says otherwise.
+    enemy.on_surface["floor"] = True
+    assert enemy.combat.start_attack(enemy.attack_name)
     for _ in range(6):
         enemy.combat.update(1 / 60)
     enemy.combat.sync_attack_box()
@@ -58,7 +62,10 @@ def _make_attacker(config=GOBLIN_CONFIG, player=None) -> Enemy:
         config=config,
     )
     attacker.facing_right = False  # Face left towards player at x=100
-    attacker.combat.start_attack(attacker.attack_name)
+    # Grounded: a fresh entity is airborne, and the moves these tests drive are
+    # ground-only now that ``stances`` says so.
+    attacker.on_surface["floor"] = True
+    assert attacker.combat.start_attack(attacker.attack_name)
     # Advance past startup frames
     for _ in range(5):
         attacker.combat.update(1 / 60)
@@ -77,7 +84,8 @@ def _reset_attacker(attacker: Enemy) -> None:
     attacker.combat.state.end()
     # Clear cooldown for testing
     attacker.combat._cooldowns.clear()
-    attacker.combat.start_attack(attacker.attack_name)
+    attacker.on_surface["floor"] = True
+    assert attacker.combat.start_attack(attacker.attack_name)
     # Advance past startup frames (4 startup + 1 to enter active)
     for _ in range(6):
         attacker.combat.update(1 / 60)

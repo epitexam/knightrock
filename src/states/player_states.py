@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Any
 
+from src.combat.refusal import Refusal
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
@@ -286,12 +287,39 @@ class PlayerAttackState(PlayerBaseState):
         super().__init__(entity, tags=["attack", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and apply forward momentum if grounded."""
+        """Enter the state and apply forward momentum if grounded.
+
+        Off the ground the horizontal lunge is skipped -- a fighter who lunges
+        on the ground overshoots the target -- and the vertical impulse takes its
+        place. ``vertical_lunge`` is a multiple of ``jump_height``, signed so
+        positive rises, matching the jump itself.
+
+        The impulse is a *floor* on the fighter's momentum in the direction it
+        pushes, never a replacement for it. Overwriting would mean that pressing
+        the rising aerial a frame after a full jump replaces ``-jump_height``
+        with ``-0.62 * jump_height``: the attack would make the fighter rise
+        more slowly than the jump that put them in the air, which is the one
+        thing a follow-up should never do. So a rise takes
+        ``min(current, -lunge)`` and a dive ``max(current, +lunge)``. A fighter
+        already going up faster than the move lifts keeps the arc they earned,
+        and a fighter already falling faster than the dive drops keeps it.
+
+        The horizontal momentum an airborne fighter keeps is not set here but
+        read every frame from ``attack_move_multiplier``, so a move that wants
+        to carry forward sets that instead and inherits whatever horizontal
+        velocity the fighter arrived with.
+        """
+        attack = self.entity.combat.state.current_attack_def
         if self.entity.on_surface["floor"]:
-            attack = self.entity.combat.state.current_attack_def
             multiplier = attack.lunge_speed_multiplier if attack else 0.35
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * multiplier
+        elif attack is not None and attack.vertical_lunge:
+            impulse = -self.entity.jump_height * attack.vertical_lunge
+            if impulse < 0.0:
+                self.entity.velocity.y = min(self.entity.velocity.y, impulse)
+            else:
+                self.entity.velocity.y = max(self.entity.velocity.y, impulse)
 
     def exit(self, next_state: str | None = None) -> None:
         """Cancel the attack unless this state is restarting a buffered one."""
@@ -306,7 +334,13 @@ class PlayerAttackState(PlayerBaseState):
             if self.entity.state_machine.consume_input("attack"):
                 attack_name = self.entity._buffered_attack_name
                 self.entity._buffered_attack_name = None
-                if attack_name and self.entity.combat.start_attack(attack_name):
+                # Re-asked at *consumption*, not trusted from when it was
+                # buffered. A press buffered during a sweep and consumed after
+                # the fighter stood up has to be refused for the wrong posture,
+                # which is what ``start_attack`` answers -- and what the old
+                # code could not, since it cleared the name and fired whatever
+                # it had stored.
+                if attack_name and self.entity.combat.start_attack(attack_name) is Refusal.NONE:
                     return ("attack", {"force": True})
 
             return self.ground_return()
@@ -509,18 +543,6 @@ class PlayerState(str, Enum):
     DIZZY = "dizzy"
 
 
-ATTACK_FORBIDDEN_STATES = {
-    PlayerState.WALL_SLIDE,
-    PlayerState.GUARD,
-    PlayerState.HURT,
-    PlayerState.DASH,
-    PlayerState.STAGGER,
-    PlayerState.KNOCKBACK,
-    PlayerState.DIZZY,
-}
-"""Set of states where initiating an attack is forbidden."""
-
-
 def dash_cancel_open(player: Any) -> bool:
     """Whether a dash has run long enough to be cancelled (attack/guard).
 
@@ -531,7 +553,7 @@ def dash_cancel_open(player: Any) -> bool:
     window is crossed. With the shipped ``0.0`` window every dash frame but the
     first accepts a cancel; any positive value is a deliberate commitment.
 
-    Single source of truth for the cancel window: ``Player.can_attack`` and
+    Single source of truth for the cancel window: ``Player.may_attack_now`` and
     the state-machine interrupts (``_can_guard`` / ``_can_attack_interrupt``)
     all read it, so the input gate and the transition can never disagree.
     """
@@ -579,22 +601,36 @@ def _can_guard(player: Any) -> bool:
 def _can_attack_interrupt(player: Any) -> bool:
     """Check if the player can currently interrupt to attack.
 
-    ``Player.can_attack()`` is deliberately *not* a precondition: it forbids
-    ``DASH`` outright, which used to make the dash branch below unreachable
-    (pressing an attack mid-dash was swallowed). The state test that follows
-    already covers every forbidden state, so the dash window stays the only
-    thing that gates a dash cancel.
+    ``Player.may_attack_now()`` is deliberately *not* a precondition, and
+    ``start_attack`` is where the decision belongs now. This interrupt has a job
+    the combat component cannot do: it has to know that an attack is *running*,
+    because it replaces the ``ATTACK`` state. Without that test a press refused
+    further down -- on cooldown, in the wrong posture -- would drop the fighter
+    into an attack state with nothing running.
+
+    The dash branch is here for the same reason it was once dead code: a dash
+    has to be cancellable into an attack, which is a question about the *state*
+    rather than about the move.
+
+    The coyote bypass opens the cancel on frames where the dash has already
+    ended. It is the one place this and ``Player.may_attack_now`` answer
+    differently for the same fighter, and it is deliberate: a press just after a
+    dash should still connect.
     """
     if not player.combat.is_attacking:
         return False
     current = player.state_machine.current_state_name
-    # Allow attack cancel from dash after cancel window
+    # A dash has to be cancellable into an attack; the window is the commitment.
     if current == PlayerState.DASH:
         return dash_cancel_open(player)
-    # Allow attack during dash coyote window
+    # The coyote window survives the dash for a few frames, and a press inside
+    # it should still connect.
     if bool(player.dash.in_coyote()):
         return True
-    return current not in ATTACK_FORBIDDEN_STATES
+    # Everything else is ``start_attack``'s call: cooldowns, cancellations, the
+    # fighter's posture and whether they are hurt. Only the transition itself is
+    # answered here.
+    return True
 
 
 def _wants_crouch(player: Any) -> bool:

@@ -84,6 +84,77 @@ def test_separation_pushes_overlapping_entities_apart():
     assert a.velocity.x == 0.0 and b.velocity.x == 0.0
 
 
+def test_separation_reports_exactly_the_entities_it_displaced():
+    """The gameplay loop re-syncs the attack boxes of what this returns.
+
+    An attack box is positioned from the hitbox, and ``sync_rects`` does not
+    know about it -- so a fighter pushed here has to have its box repaired
+    before ``process_attacks`` reads it. The loop used to repair every
+    combatant every tick to cover this; narrowing it to the return value is
+    only safe while the return value is honest about who moved.
+
+    Both halves are asserted. Returning too many costs the saving; returning
+    too few is the bug that matters, and it is a fighter whose swing is drawn
+    one frame behind where its owner actually is.
+    """
+    a, b, bystander = (
+        PairEntity(0, "player", speed=0.0),
+        PairEntity(20, "enemy", speed=0.0),
+        PairEntity(400, "enemy", speed=0.0),
+    )
+
+    moved = SeparationSystem().process(pygame.sprite.Group(a, b, bystander))
+
+    assert sorted(id(e) for e in moved) == sorted([id(a), id(b)])
+    assert bystander not in moved, "a fighter nobody touched was reported as moved"
+
+
+def test_separation_reports_nobody_when_nobody_overlaps():
+    """The common tick, and the one the whole saving rests on.
+
+    Standing near somebody is not overlapping somebody: the grid offers
+    candidates, and the hitbox test is what rejects them. A system that reported
+    its candidates instead of its displacements would make this non-empty and
+    put the cost straight back where it started.
+    """
+    a, b = PairEntity(0, "player", speed=0.0), PairEntity(200, "enemy", speed=0.0)
+
+    assert SeparationSystem().process(pygame.sprite.Group(a, b)) == []
+
+
+def test_separation_reports_one_entity_when_only_one_is_pushable():
+    """The asymmetric case, where the immovable one must not be listed.
+
+    A wall-like entity is `pushable=False` and absorbs the whole displacement.
+    Reporting it anyway would re-sync an attack box that did not move, which
+    is the harmless half -- but reporting *only* it would skip the one that
+    did, so the pair is checked in both directions.
+    """
+    a, b = PairEntity(0, "player", speed=0.0), PairEntity(20, "enemy", speed=0.0)
+    b.pushable = False
+    before_x, before_y = b.hitbox.x, b.hitbox.y
+
+    moved = SeparationSystem().process(pygame.sprite.Group(a, b))
+
+    assert moved == [a]
+    assert (b.hitbox.x, b.hitbox.y) == (before_x, before_y)
+
+
+def test_separation_reports_each_entity_once_however_many_pairs_moved_it():
+    """One entity in a crowd is pushed once per pair; it is synced once.
+
+    The list is deduplicated, so a fighter boxed in by three enemies does not
+    get its attack box positioned three times -- which is the same cost the
+    unconditional loop used to pay, reintroduced for the crowded case.
+    """
+    middle = PairEntity(100, "enemy", speed=0.0)
+    crowd = [PairEntity(100 + offset, "enemy", speed=0.0) for offset in (-25, 25, 60)]
+
+    moved = SeparationSystem().process(pygame.sprite.Group(middle, *crowd))
+
+    assert moved.count(middle) == 1
+
+
 # -- the per-entity box cache -------------------------------------------------
 #
 # Same contract as the hazard cache, and the same reasons: the contact hit

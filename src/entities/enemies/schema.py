@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
@@ -12,7 +12,7 @@ class EnemyConfig:
     size: Sequence[float]
     color: Sequence[int]
     health: float
-    attacks: Mapping[str, AttackDefinition]
+    attacks: Mapping[MoveId, AttackDefinition]
     attack_name: str | None = None
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)

@@ -6,17 +6,17 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.attacks import write_attacks_file
 
 
 def export_attack(
-    attack_sets: Mapping[str, Mapping[str, AttackDefinition]],
-    attack_name: str,
+    attack_sets: Mapping[str, Mapping[MoveId, AttackDefinition]],
+    attack_name: MoveId,
     destination: str | Path | None = None,
 ) -> Path:
     """Export one attack by name without modifying runtime data files."""
-    matches: dict[str, dict[str, AttackDefinition]] = {}
+    matches: dict[str, dict[MoveId, AttackDefinition]] = {}
     for set_name, attacks in attack_sets.items():
         if attack_name in attacks:
             matches[set_name] = {attack_name: attacks[attack_name]}

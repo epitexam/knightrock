@@ -19,8 +19,9 @@ from src.combat.charge_handler import ChargeHandler, ChargeSnapshot
 from src.combat.combatant_protocol import Combatant
 from src.combat.combo_tracker import ComboTracker
 from src.combat.determinism import GeometryDesyncError, geometry_checksum
-from src.combat.frame_data import AttackDefinition, PhaseDefinition, PhaseState
+from src.combat.frame_data import AttackDefinition, MoveId, PhaseDefinition, PhaseState
 from src.combat.hitbox_manager import HitboxManager
+from src.combat.refusal import Refusal
 from src.combat.shapes import ShapePose, SweptShape
 
 
@@ -49,7 +50,7 @@ class CombatSnapshot:
     hurt_timer: float
     combo_count: int
     combo_timer: float
-    cooldowns: dict[str, float]
+    cooldowns: dict[MoveId, float]
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
     combo_armed: bool = False
@@ -93,8 +94,8 @@ class CombatComponent:
         hurt_duration: float,
     ) -> None:
         self._entity: Combatant = entity
-        self._attacks: dict[str, AttackDefinition] = {}
-        self._cooldowns: dict[str, float] = {}
+        self._attacks: dict[MoveId, AttackDefinition] = {}
+        self._cooldowns: dict[MoveId, float] = {}
 
         self.state: AttackStateMachine = AttackStateMachine(self._attacks)
         self.hitbox: HitboxManager = HitboxManager(entity)
@@ -105,12 +106,12 @@ class CombatComponent:
         self._hurt_timer: float = 0.0
         self._hurt_duration: float = hurt_duration
 
-    def add_attack(self, name: str, definition: AttackDefinition) -> None:
+    def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """Register a new attack definition.
 
         Parameters
         ----------
-        name : str
+        name : MoveId
             Unique name identifying the attack (e.g. "light_attack").
         definition : AttackDefinition
             The immutable frame data and properties of the attack.
@@ -118,10 +119,28 @@ class CombatComponent:
         self._attacks[name] = definition
         self._cooldowns[name] = 0.0
 
+    def has_attack(self, name: MoveId) -> bool:
+        """Whether ``name`` is registered.
+
+        For callers holding a name from somewhere else -- the button table, the
+        debug bench -- where a typo is indistinguishable from a refusal.
+        ``start_attack`` answers ``False`` for both.
+        """
+        return name in self._attacks
+
     @property
     def is_attacking(self) -> bool:
         """Whether an attack sequence is currently in progress."""
         return self.state.is_attacking
+
+    @property
+    def current_attack_def(self) -> AttackDefinition | None:
+        """The definition of the move running right now, or ``None``.
+
+        Read by the renderer to learn which sprite clip the move wants, which is
+        why it is on the component rather than reached into from the player.
+        """
+        return self.state.current_attack_def
 
     @property
     def attack_box(self) -> pygame.FRect | None:
@@ -190,7 +209,7 @@ class CombatComponent:
         self._hurt_timer = max(0.0, value)
 
     @property
-    def cooldowns(self) -> dict[str, float]:
+    def cooldowns(self) -> dict[MoveId, float]:
         """Active cooldowns for all registered attacks."""
         return dict(self._cooldowns)
 
@@ -229,45 +248,64 @@ class CombatComponent:
 
     def start_attack(
         self,
-        name: str,
+        name: MoveId,
         charge_multiplier: float = 1.0,
-    ) -> bool:
+    ) -> Refusal:
         """Attempt to start a new attack sequence.
 
         Facing direction is resolved deterministically inside the update loop
         via the state machine, so it is not passed as a parameter here.
 
+        This is the single place an attack can be refused, so every path is
+        covered by it: input, the input buffer, a charge release, the debug
+        hotkeys and the enemy AI all come through here. A check placed nearer any
+        one of them would be a check the others do not have -- which is how
+        `uppercut` came to be throwable mid-air, and how `crouch` came to allow
+        every move in the table.
+
         Parameters
         ----------
-        name : str
+        name : MoveId
             Name of the attack to start.
         charge_multiplier : float
             Damage multiplier from a released charge (default 1.0).
 
         Returns
         -------
-        bool
-            ``True`` if the attack started successfully.
+        Refusal
+            ``Refusal.NONE`` when the attack started. The value is truthy only
+            in that case, so ``if combat.start_attack(x):`` still reads as
+            "did it start" -- but a caller that needs to know *why* a press was
+            dropped can act on it. See :class:`~src.combat.refusal.Refusal` for
+            which refusals are worth retrying.
         """
-        if self.is_hurt or self.charging.is_charging:
-            return False
+        if self.is_hurt:
+            return Refusal.BUSY
+        if self.charging.is_charging:
+            return Refusal.CHARGING
 
-        if name not in self._attacks:
-            return False
+        definition = self._attacks.get(name)
+        if definition is None:
+            return Refusal.UNKNOWN
+
+        # Posture before cooldown: a move the fighter cannot throw right now is
+        # not "on cooldown", and telling a buffer otherwise would have it hold a
+        # press that will still be impossible once the timer runs down.
+        if self._entity.stance not in definition.stances:
+            return Refusal.STANCE
 
         if self._cooldowns.get(name, 0.0) > 0:
-            return False
+            return Refusal.COOLDOWN
 
         if self.state.is_attacking:
             if self.state.can_cancel_into(name):
                 self.state.end()
             else:
-                return False
+                return Refusal.NO_CANCEL
 
         if not self.state.start(name, charge_multiplier):
-            return False
+            return Refusal.BUSY
 
-        definition = self._attacks[name]
         self._cooldowns[name] = definition.cooldown
         self.combo.on_attack_started(definition.combo_reset)
 
@@ -278,14 +316,14 @@ class CombatComponent:
         self.sync_attack_box()
         self.hitbox.capture_origin()
 
-        return True
+        return Refusal.NONE
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Begin charging an attack.
 
         Parameters
         ----------
-        name : str
+        name : MoveId
             Name of the attack to charge.
 
         Returns
@@ -297,20 +335,37 @@ class CombatComponent:
             return False
         return self.charging.start_charge(name)
 
-    def release_charge(self) -> bool:
+    def release_charge(self) -> Refusal:
         """Release the current charge and execute the attack.
 
+        Transactional in the way a charge release has to be. The handler used to
+        be reset *before* ``start_attack`` ran, so a release refused on cooldown
+        destroyed the charge and its multiplier and produced nothing -- the
+        player held a button for a second and the game showed no sign of it. The
+        charge is now restored unless the attack actually starts.
+
+        Parameters
+        ----------
         Returns
         -------
-        bool
-            ``True`` if the charge was released and the attack started.
+        Refusal
+            ``Refusal.NONE`` if the attack started. ``Refusal.CHARGING`` if
+            there was no charge to release.
         """
-        result = self.charging.release_charge()
-        if result is None:
-            return False
+        pending = self.charging.pending_release()
+        if pending is None:
+            return Refusal.CHARGING
 
-        name, multiplier = result
-        return self.start_attack(name, multiplier)
+        name, multiplier = pending
+        # The handler is cleared first because ``start_attack`` refuses outright
+        # while a charge is in progress -- releasing has to make room before it
+        # can be asked. A refusal therefore puts the charge back, which is what
+        # makes the release a transaction rather than a destruction.
+        self.charging.cancel()
+        refusal = self.start_attack(name, multiplier)
+        if refusal is not Refusal.NONE:
+            self.charging.restore_pending(name, multiplier)
+        return refusal
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """React to being hit.
@@ -507,7 +562,7 @@ class NullCombatComponent:
         return 1.0
 
     @property
-    def cooldowns(self) -> dict[str, float]:
+    def cooldowns(self) -> dict[MoveId, float]:
         """Always returns an empty dict."""
         return {}
 
@@ -530,18 +585,28 @@ class NullCombatComponent:
         """No-op."""
         del airborne
 
-    def add_attack(self, name: str, definition: AttackDefinition) -> None:
+    def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """No-op."""
+
+    def has_attack(self, name: MoveId) -> bool:
+        """Always ``False``: nothing is ever registered."""
+        del name
+        return False
+
+    @property
+    def current_attack_def(self) -> AttackDefinition | None:
+        """Always ``None``: no move is ever running."""
+        return None
 
     def start_attack(
         self,
-        name: str,
+        name: MoveId,
         charge_multiplier: float = 1.0,
-    ) -> bool:
-        """Always returns ``False``."""
-        return False
+    ) -> Refusal:
+        """Always refuses: this entity has no attacks registered."""
+        return Refusal.UNKNOWN
 
-    def start_charge(self, name: str) -> bool:
+    def start_charge(self, name: MoveId) -> bool:
         """Always returns ``False``."""
         return False
 
