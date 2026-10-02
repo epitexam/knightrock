@@ -9,6 +9,7 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
+from src.core.settings import Turn
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.schema import EnemyConfig
@@ -46,6 +47,11 @@ def _jumper_stub(*, wall: bool = False, above: bool = False) -> SimpleNamespace:
         can_see_player=Mock(return_value=True),
         is_at_ledge=Mock(return_value=False),
         apply_horizontal_movement=Mock(),
+        # The pivot is available to every fighter but off unless the entity
+        # opts in, and these stubs are fighters that do not.
+        turn_enabled=False,
+        turn_delay_s=Turn.DELAY_S,
+        turn_min_speed_px_s=Turn.MIN_SPEED_PX_S,
         state_machine=SimpleNamespace(change_state=Mock()),
     )
 

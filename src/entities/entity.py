@@ -19,7 +19,15 @@ from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import EnemyJump, HitFlash, Ledge, Locomotion, Physics
+from src.core.settings import (
+    EnemyJump,
+    HitFlash,
+    Ledge,
+    Locomotion,
+    Physics,
+    Turn,
+    resolve_turn_profile,
+)
 from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
     ReactionComponent,
@@ -32,6 +40,7 @@ from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
+from src.states.turn_state import FACING_LOCKED
 
 # Deterministic entity identifier source (ARCH-08).  A sequential counter
 # yields identical IDs for identically-ordered simulations, which keeps
@@ -260,6 +269,19 @@ class Entity(Sprite):
         # landing tick (PhysicsSystem turns hard landings into dust puffs).
         # Never snapshotted, never in goldens.
         self.landed_impact: float = 0.0
+        # Render-only pivot hint: how much of the turn hold is left, 1 at the
+        # start and 0 when the facing lands. Written by ``PlayerTurnState`` and
+        # read by the renderer to slide and lean the frame. 0.0 whenever the
+        # fighter is not pivoting.
+        #
+        # Declared here, like ``flash_timer`` and ``landed_impact``, rather than
+        # on the state: the renderer must not have to reach into the state
+        # machine to ask a sprite how it wants to be drawn, and the alternative
+        # -- the renderer inspecting ``current_state_name`` and then the state
+        # object's own fields -- puts a per-sprite state lookup in the draw
+        # loop. It is render-only and so never snapshotted; the hold that
+        # decides it is not, being part of the turn state.
+        self.turn_ratio: float = 0.0
         # Parry-stun counters (reset on rollback/load, consecutive logic).
         self.parries_given: int = 0
         self.parries_taken: int = 0
@@ -273,6 +295,34 @@ class Entity(Sprite):
 
         self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
+
+        # Turn-around pivot, off by default. A fighter takes it -- the facing
+        # hold *and* the plant that goes with it -- only if it opts in here.
+        #
+        # The four knobs mirror :data:`settings.Turn` rather than reading it,
+        # for the reason ``floor_control`` is an attribute and not a constant:
+        # a goblin and a boss should not turn like each other, and the only
+        # way to say that is for each class to pick its own numbers where it
+        # already picks its speed and control. ``settings.Turn`` is the default,
+        # not the authority.
+        #
+        # ``apply_horizontal_movement`` is shared by every fighter, so the
+        # brake is too -- which is exactly why the flag gates the brake and not
+        # only the hold. Gating the hold alone would leave the plant running on
+        # enemies: they would stop and push differently without ever being
+        # turned around, which is a movement change nobody asked for.
+        self.turn_profile: str = "default"
+        self.turn_enabled: bool = False
+        self.turn_delay_s: float = Turn.DELAY_S
+        self.turn_brake_control: float = Turn.BRAKE_CONTROL
+        self.turn_plant_px_s: float = Turn.PLANT_PX_S
+        self.turn_min_speed_px_s: float = Turn.MIN_SPEED_PX_S
+        # The two drawing numbers live here rather than in the settings block
+        # for the same reason as the rest: a lean that reads for the player can
+        # read wrong for a heavy enemy, and the renderer is handed a sprite, not
+        # a settings class.
+        self.turn_lead_px: float = Turn.LEAD_PX
+        self.turn_skew_px: float = Turn.SKEW_PX
 
         self.moving_platforms: Iterable[Any] = []
         self.vitals = Vitals(
@@ -620,14 +670,48 @@ class Entity(Sprite):
             self.contact_shape.angle,
         )
 
+    def apply_turn_profile(self, name: str | None = None) -> None:
+        """Adopt the named pivot profile, resolving its inheritance chain.
+
+        The one call that turns a group or a sub-group into per-fighter
+        numbers. A fighter class names the group it belongs to in its own
+        constructor -- ``"player"``, ``"enemy"`` -- and a type inside a group
+        names a sub-group that layers onto it, so "the enemies take it, except
+        the slimes" is two lines in :data:`settings.PROFILES` and nothing here
+        at all.
+
+        Called from the constructor rather than lazily, because the brake reads
+        its rate on the first tick of a reversal: a fighter that resolved its
+        profile when it first reversed would be handled one way while running
+        right and another while turning, which is the kind of difference that
+        only shows up under pressure.
+
+        Anything assigned to a ``turn_*`` attribute after this call wins, so a
+        class can still say a number outright -- that is the layer above the
+        named profiles, and the reason they are partial.
+        """
+        resolved = resolve_turn_profile(self.turn_profile if name is None else name)
+        self.turn_profile = self.turn_profile if name is None else name
+        self.turn_enabled = bool(resolved.enabled)
+        self.turn_delay_s = float(resolved.delay_s or 0.0)
+        self.turn_brake_control = float(resolved.brake_control or 0.0)
+        self.turn_plant_px_s = float(resolved.plant_px_s or 0.0)
+        self.turn_min_speed_px_s = float(resolved.min_speed_px_s or 0.0)
+        self.turn_lead_px = float(resolved.lead_px or 0.0)
+        self.turn_skew_px = float(resolved.skew_px or 0.0)
+
     def face_movement(self, threshold: float = Locomotion.TURN_DEADZONE) -> None:
         """Orient the entity based on its current movement axis.
 
-        Parameters
-        ----------
-        threshold : float
-            The minimum axis magnitude to trigger a direction change.
+        Silent while the state machine says the mirror is held. That tag is how
+        a state keeps a facing it has not finished applying: the pivot enters
+        with the axis already opposite the facing, and without this the very
+        next tick would mirror the sprite and cancel the hold it just asked
+        for. Asked as a tag rather than by state name so this base class needs
+        to know nothing about the player's states.
         """
+        if self.state_machine.has_tag(FACING_LOCKED):
+            return
         if self.move_axis > threshold:
             self.facing_right = True
         elif self.move_axis < -threshold:

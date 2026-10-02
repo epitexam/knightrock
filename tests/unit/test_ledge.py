@@ -9,7 +9,7 @@ import pygame
 import pytest
 from pygame.math import Vector2
 
-from src.core.settings import Ledge
+from src.core.settings import Ledge, Turn
 from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import EnemyChaseState, EnemyPatrolState, EnemyState
@@ -172,6 +172,11 @@ def _patrol_stub(*, at_ledge: bool) -> SimpleNamespace:
         can_see_player=Mock(return_value=False),
         is_at_ledge=Mock(return_value=at_ledge),
         apply_horizontal_movement=Mock(),
+        # The pivot is available to every fighter but off unless the entity
+        # opts in, and these stubs are fighters that do not.
+        turn_enabled=False,
+        turn_delay_s=Turn.DELAY_S,
+        turn_min_speed_px_s=Turn.MIN_SPEED_PX_S,
         state_machine=SimpleNamespace(change_state=Mock()),
     )
 
@@ -234,6 +239,11 @@ def _chase_stub(*, at_ledge: bool) -> SimpleNamespace:
         can_see_player=Mock(return_value=True),
         is_at_ledge=Mock(return_value=at_ledge),
         apply_horizontal_movement=Mock(),
+        # The pivot is available to every fighter but off unless the entity
+        # opts in, and these stubs are fighters that do not.
+        turn_enabled=False,
+        turn_delay_s=Turn.DELAY_S,
+        turn_min_speed_px_s=Turn.MIN_SPEED_PX_S,
         state_machine=SimpleNamespace(change_state=Mock()),
     )
 

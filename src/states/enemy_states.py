@@ -3,13 +3,14 @@
 from enum import Enum
 from typing import Any
 
-from src.core.settings import AI, EnemyJump
+from src.core.settings import AI, EnemyJump, Turn
 from src.states.reaction_states import (
     HurtState,
     KnockbackState,
     StaggerState,
 )
 from src.states.state_machine import State
+from src.states.turn_state import TurnState, request_turn
 
 
 class EnemyState(str, Enum):
@@ -21,6 +22,7 @@ class EnemyState(str, Enum):
     IDLE = "idle"
     PATROL = "patrol"
     CHASE = "chase"
+    TURN = Turn.STATE
     ATTACK = "attack"
     CHARGE = "charge"
     HURT = "hurt"
@@ -28,6 +30,41 @@ class EnemyState(str, Enum):
     STAGGER = "stagger"
     DIZZY = "dizzy"
     LEDGE = "ledge"
+
+
+class EnemyTurnState(TurnState):
+    """An enemy's pivot: the shared hold with an enemy's way back.
+
+    Registered like every other enemy state, so the pivot is *available* to
+    every fighter; whether an enemy takes it is ``turn_enabled`` on the entity,
+    and that is off by default. Availability and activation are separate
+    questions and this answers only the first.
+
+    Two of the three answers the shared body asks are the default ones, which
+    is the interesting part:
+
+    * it does not need the ``facing_locked`` tag to hold the mirror, because
+      unlike the player an enemy writes its facing from inside its own state.
+      In ``EnemyTurnState`` that code is not running, so nothing writes the
+      facing and it stays put.
+    * it has no air states at all -- there is no ``fall`` to be sent to -- so
+      losing the floor simply resumes, exactly as if the hold had run out.
+
+    The third answer is the only one that is really the enemy's: it goes back
+    to chasing or patrolling depending on the player, which is a decision about
+    the world and not about speed.
+    """
+
+    def resume_state(self) -> str:
+        """Back to what the enemy was doing, which depends on the player.
+
+        Re-derived rather than restored: the hold is six frames and the player
+        can cross the whole arena in that time, so resuming into a chase that is
+        no longer a chase would be worse than asking.
+        """
+        if self.entity.can_see_player():
+            return EnemyState.CHASE
+        return EnemyState.PATROL
 
 
 class EnemyIdleState(State):
@@ -64,6 +101,13 @@ class EnemyPatrolState(State):
         self.entity.move_axis = self.direction
         if self.entity.is_at_ledge():
             self.entity.state_machine.change_state(EnemyState.LEDGE)
+            return None
+        # A patrol reversal -- the enemy reaching the end of its beat -- is the
+        # one enemy pivot that reads well: the fighter is already turning, and
+        # nothing about it announces the change. Asked here because this is
+        # where the axis is chosen, and the pivot has to be considered before
+        # the facing is written.
+        if request_turn(self.entity):
             return None
         self.entity.apply_horizontal_movement(delta_time)
 
@@ -112,6 +156,13 @@ class EnemyChaseState(State):
             self.entity.move_axis = 0.0
         else:
             self.entity.move_axis = 1.0 if player_center > enemy_center else -1.0
+            # The player crossing to the other side of the enemy is a reversal
+            # exactly as a stick reversal is for the player, and it is asked
+            # before the facing is written below -- otherwise this line undoes
+            # it on the same tick, which is the bug the whole pivot exists to
+            # not have.
+            if request_turn(self.entity):
+                return None
             self.entity.facing_right = self.entity.move_axis > 0
 
         jumped = self._try_jump(delta_time)

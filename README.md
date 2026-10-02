@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2240%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2309%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2240 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2309 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -335,6 +335,136 @@ legacy, assist-free behaviour:
 | `APEX_GRAVITY_DIVISOR` | Reduced gravity at the jump apex for a longer hang time. |
 | `FAST_FALL_GRAVITY_MULTIPLIER` | Extra fall acceleration while the down key is held. |
 
+## The ground pivot (`turn`)
+
+Reversing on the ground used to mirror the sprite on the same frame the axis
+flipped, so a pivot read as a teleport. The velocity curve was never the
+problem — it always took about a third of a second to cross zero. The picture
+refused to show any of it.
+
+`turn` is a **state**, not a delayed facing write. That is the whole design: a
+delay is a value every interrupter has to be told to undo, and each of them has
+to know the rule exists. A state is entered and exited, so an attack, a dash or
+a jump taken mid-pivot leaves through `PlayerTurnState.exit` — which is where
+the facing is finally committed. "An attack inside the pivot still comes out
+where the player is pointing" is not a special case anyone has to remember.
+
+| Constant | Effect |
+|---|---|
+| `DELAY_S` | How long the pivot holds — eight frames, the length of the plant. `0` never enters the state: the mirror is instant, as before. |
+| `MIN_SPEED_PX_S` | Below this the fighter is not travelling, so the flip is immediate and no state is entered. |
+| `BRAKE_CONTROL` / `PLANT_PX_S` | Ground braking on a reversal: bleed toward **zero** at this rate, then push once under this speed. |
+| `LEAD_PX` | Render-only trailing offset of the body, shrinking to zero as the facing lands. |
+| `SKEW_PX` | Shears the frame so the feet stay planted and the top of the body leans over. **This one carries the effect** — the lean is what says "weight", and it has no ceiling the way the slide does. |
+| `STEP_DISTANCE_PX` / `SPREAD` | The pivot's row in `FootstepDust.TIER` — the footstep comb is distance-paced, and a fighter turning on the spot covers none. |
+
+### Per-group, per-type, and available to everyone
+
+The pivot is registered in **every** fighter's state machine, under one shared
+name (`Turn.STATE`). Availability is global; activation is yours, and it is
+decided by **group and sub-group** rather than one entity at a time.
+
+Groups and sub-groups are named profiles in `settings.PROFILES`, layered on each
+other by inheritance. Every field is optional, and a field a layer leaves out
+is inherited — so a group that only wants to switch the pivot on does not have
+to restate the delay, the brake and the lean to say so.
+
+| Layer | Where it is named | Ships as |
+|---|---|---|
+| defaults | `settings.Turn` | off |
+| group (one per faction) | `PROFILES["player" / "enemy" / "neutral"]` | only the player is on |
+| sub-group (one per enemy type) | `EnemyConfig.turn_profile`, i.e. `"turn_profile"` in `enemies.json` | `null` — takes the group |
+| the entity | an attribute set in code | wins over all of the above |
+
+```python
+# src/core/settings.py — all the enemies take it...
+PROFILES["enemy"] = TurnProfile(inherits="default", enabled=True)
+# ...except this one, which plants more slowly and leans further.
+PROFILES["enemy_goblin"] = TurnProfile(inherits="enemy", brake_control=12.0, skew_px=28.0)
+PROFILES["enemy_slime"] = TurnProfile(inherits="enemy", enabled=False)
+```
+
+```json
+// data/gameplay/enemies.json — which sub-group each type belongs to
+{ "goblin": { "turn_profile": "enemy_goblin" } }
+```
+
+Which is exactly *"all the enemies except the slimes"*: one entry switched on
+for the faction, one switched off for the type, and one string in the type's
+config. Nothing in the simulation, the state machine or the renderer knows a
+group exists — an entity adopts a name and is done.
+
+Two decisions worth knowing:
+
+- **An unknown profile name is the defaults, not a crash.** A typo in a data
+  file gives a fighter the shipped behaviour and a game that still starts.
+  Likewise a profile that inherits from itself stops at the cycle and keeps the
+  most specific values rather than hanging at import.
+- **The drawing numbers travel with the profile.** `turn_lead_px` and
+  `turn_skew_px` live on the entity, not in `settings.Turn`, because the
+  renderer is handed a sprite. Leaving them in the settings block would make a
+  group look tunable while the lean quietly ignored it.
+
+The brake is gated by the same switch as the facing hold, and has to be: the
+movement call is shared by every fighter, so gating only the hold would leave
+the plant running on enemies — they would stop and push differently while never
+being turned around.
+
+The per-fighter attributes the resolution writes are `turn_enabled`,
+`turn_delay_s`, `turn_brake_control`, `turn_plant_px_s`, `turn_min_speed_px_s`,
+`turn_lead_px` and `turn_skew_px`. Assigning one of them in code overrides
+whatever the profile said, which is the layer above the named ones.
+
+### Why braking and accelerating are separate
+
+A single exponential ease toward the target is symmetric by construction: the
+same rate bleeds speed off on the way to a stop as it does on the way back up
+to a run. That is right for one and wrong for the other. Coasting to a halt
+should follow the same curve as accelerating out of it. A *reversal* is not
+that — and a symmetric curve never plants, it crosses zero without dwelling.
+At `FLOOR_CONTROL` a full run crossed in **1.6 frames**, so the deceleration
+existed and was never seen. "It turns instantly" means not that nothing happens
+but that what happens is over before the eye has it.
+
+So a reversal brakes toward zero at `BRAKE_CONTROL` and pushes out of the plant
+at `PLANT_PX_S`. A full run bleeds through 251 → 180 → 129 → 92 → 66 → 47 → 34
+→ 24 px/s in eight frames, and `DELAY_S` is those eight — so the fighter spends
+the hold visibly shedding speed and arrives at the facing flip standing still.
+
+Aiming at zero rather than at the new direction is the part that matters. The
+rate only decides how fast the bleed is; aiming at the target makes the
+velocity curve through the crossing at *any* rate, so the plant never happens.
+Airborne is untouched — a mid-air reversal is a jump turn, and the tighter air
+curve is what makes an air dash feel like an air dash.
+
+**What carries the effect is the lean, not the slide.** Two numbers, measured
+on the shipped sprite at `PLAYER_SPEED`:
+
+| | pixels | in something the eye reads | verdict |
+|---|---|---|---|
+| `LEAD_PX` 22 → **32** | half the sprite's width | 3.7 → **5.5** frames of travel | clear, and near the ceiling |
+| `SKEW_PX` 8 → **20** | top of a 56px sprite | 7.7° → **20°** | the weak number, now not |
+
+The slide has a hard ceiling: past roughly the sprite's own width the fighter
+stops looking like a fighter sliding along and starts looking like a fighter
+pasted next to one. The lean has no such ceiling, because a lean cannot detach
+from anything — and at 8 px it was a **7.7 degree** tilt, which is under the
+threshold at which the eye registers a change of pose at all. That is why
+raising it paid far more than raising the slide would have.
+
+Two details worth knowing about the state:
+
+- **The hold is installed from the input side.** `PlayerInputHandler` reads
+  input in `_pre_update`, which runs *before* the state machine, so a decision
+  taken from a state's own `update` would be a frame too late to stop the
+  mirror it is meant to delay. `request_turn()` is asked instead of
+  `face_movement()`, and the state keeps the mirror frozen with the
+  `facing_locked` tag.
+- **The pivot carries the tier it interrupted.** The hold spans the frames where
+  the velocity sweeps through `run`/`walk`/`walk_slow`, so resuming from it with
+  the live state name would drop `resolve_locomotion_state`'s hysteresis and
+  flicker the tier boundaries at the fastest moment.
+
 ## Knockback & hit feedback
 
 Tuned through `Combat` and `CameraShake` in `src/core/settings.py`:
@@ -437,7 +567,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2240 tests passing · 93 % instruction coverage ·
+> **Current baseline:** 2309 tests passing · 93 % instruction coverage ·
 > 85 % branch coverage · Ruff clean · mypy clean (168 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so

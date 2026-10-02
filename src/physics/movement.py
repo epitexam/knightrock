@@ -38,6 +38,9 @@ class HorizontalMovementEntity(Protocol):
     floor_control: float
     air_control: float
     on_surface: dict[str, bool]
+    turn_enabled: bool
+    turn_brake_control: float
+    turn_plant_px_s: float
 
     @property
     def combat(self) -> MovementCombat: ...
@@ -161,7 +164,32 @@ class PlatformRider(Protocol):
 
 
 def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: float) -> None:
-    """Apply horizontal movement with acceleration and damping."""
+    """Apply horizontal movement with acceleration, braking and damping.
+
+    Acceleration and braking are separate rates, and they have to be.
+
+    A single exponential ease toward the target is symmetric by construction:
+    the same ``control`` bleeds speed off on the way to a stop as it does on the
+    way back up to a run. That is the right shape for one of the two and the
+    wrong shape for the other. Coasting to a halt should follow the same curve
+    as accelerating out of it -- it is the same movement seen from the other
+    end. A *reversal* is not that. It is the fighter putting his weight down
+    and changing his mind, and a symmetric curve crosses zero without ever
+    dwelling there: at ``FLOOR_CONTROL`` a full run crosses in under two
+    frames, which is over before the eye has it, so a pivot reads as a teleport
+    no matter what the sprite is doing.
+
+    So a reversal brakes toward zero at :data:`settings.Turn.BRAKE_CONTROL` --
+    a higher rate than the acceleration, and aimed at zero rather than at the
+    new direction -- and the ordinary acceleration takes over once the fighter
+    is slow enough to be planted (:data:`settings.Turn.PLANT_PX_S`). The
+    reversal becomes stop-then-push, which is both what it looks like and the
+    only version of it that survives being watched.
+
+    Airborne, unchanged. A mid-air reversal is a jump turn, it already reads on
+    the arc, and the tighter air curve is what makes an air dash feel like an
+    air dash.
+    """
     if isinstance(entity, WallJumpLock) and entity.wall_jump_lock_timer > 0:
         elapsed = entity.wall_jump_lock_duration - entity.wall_jump_lock_timer
         entity.wall_jump_lock_timer -= delta_time
@@ -183,12 +211,48 @@ def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: floa
         entity.velocity.x = 0.0
         return
 
-    control = entity.floor_control if entity.on_surface["floor"] else entity.air_control
-    alpha = 1.0 - math.exp(-control * delta_time)
-    entity.velocity.x = entity.velocity.x + (target_speed - entity.velocity.x) * alpha
+    grounded = entity.on_surface["floor"]
+    if grounded and _braking(entity, target_speed):
+        # Aimed at zero on purpose: easing toward the new direction would
+        # curve through the crossing instead of stopping at it.
+        alpha = 1.0 - math.exp(-entity.turn_brake_control * delta_time)
+        entity.velocity.x += (0 - entity.velocity.x) * alpha
+    else:
+        control = entity.floor_control if grounded else entity.air_control
+        alpha = 1.0 - math.exp(-control * delta_time)
+        entity.velocity.x = entity.velocity.x + (target_speed - entity.velocity.x) * alpha
 
     if abs(entity.velocity.x) < VELOCITY_EPSILON:
         entity.velocity.x = 0.0
+
+
+def _braking(entity: HorizontalMovementEntity, target_speed: float) -> bool:
+    """Whether this tick is the brake half of this fighter's reversal.
+
+    Four conditions, and the first is the one that decides who is in scope.
+
+    ``turn_enabled`` gates the brake along with the facing hold it belongs to.
+    This function is reached by every fighter in the game -- the movement call
+    is shared -- so a fighter that has not opted into the pivot must not be
+    given half of it either. It would plant and push differently while never
+    being turned around, which reads as an unrelated and unexplainable change
+    of handling: the enemy feels heavier and there is nothing on screen saying
+    why.
+
+    The rest are as before: the rate is off (0 restores the single curve), the
+    input must oppose the velocity, the target must be a direction rather than
+    a coast to a stop, and the fighter must have momentum to bleed.
+    """
+    if not entity.turn_enabled:
+        return False
+    if entity.turn_brake_control <= 0.0:
+        return False
+    velocity = entity.velocity.x
+    if abs(velocity) < entity.turn_plant_px_s:
+        return False
+    if target_speed == 0.0:
+        return False
+    return (target_speed > 0.0) != (velocity > 0.0)
 
 
 def resolve_jump(entity: JumpEntity) -> None:

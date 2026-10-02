@@ -11,7 +11,7 @@ from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash, ParryFlash
+from src.core.settings import Afterimage, HitFlash, ParryFlash, Turn
 from src.core.sprite_groups import SpriteGroups
 
 DASH_STRETCH_X = 1.6
@@ -40,6 +40,185 @@ def dash_frame(
     if apply_tint:
         stretched.fill(FXColors.speed_tint, special_flags=pygame.BLEND_RGB_ADD)
     return stretched, stretched.get_rect(center=screen_rect.center)
+
+
+def turn_offset_px(sprite: object) -> float:
+    """The trailing draw offset a pivoting fighter gets, in pixels.
+
+    Read off ``turn_ratio``, which :class:`PlayerTurnState` publishes and
+    clears: the ratio is the hold's own countdown, so the offset reaches zero
+    on the same tick the facing lands and the flip has nothing left to correct.
+
+    Signed against **the held facing**, which is the direction the fighter is
+    travelling *away* from and so the one its feet are already going. Reading it
+    off the live ``velocity.x`` instead looks equivalent and is not: the pivot
+    is precisely the window in which that velocity crosses zero, so the sign
+    would flip mid-hold and the sprite would jump the width of the effect in a
+    single frame at the crossing. The held facing does not move for the whole
+    hold -- the tag is what holds it, and it changes on the same tick the ratio
+    goes to zero -- so this is stable exactly as long as it is drawn.
+
+    Trailing rather than leading for the same reason: the sprite still shows
+    the old face, so an offset towards where it is going would slide it off the
+    mark in the direction its own feet are already travelling, which is the one
+    direction the eye is not reading.
+    """
+    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    if ratio <= 0.0:
+        return 0.0
+    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
+    lead = float(getattr(sprite, "turn_lead_px", Turn.LEAD_PX) or 0.0)
+    return travel * lead * ratio
+
+
+def turn_skew_px(sprite: object) -> float:
+    """The lean a pivoting fighter gets, in pixels at the top of the sprite.
+
+    Signed like :func:`turn_offset_px`, and for the same stability reason, so
+    the figure is dragged as one piece: the body goes over *and* the top of it
+    leads further than the feet do.
+    """
+    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    if ratio <= 0.0:
+        return 0.0
+    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
+    skew = float(getattr(sprite, "turn_skew_px", Turn.SKEW_PX) or 0.0)
+    return travel * skew * ratio
+
+
+def turn_frame(
+    image: pygame.Surface,
+    screen_rect: pygame.Rect,
+    offset_px: float,
+    skew_px: float = 0.0,
+) -> tuple[pygame.Surface, pygame.Rect]:
+    """Slide and lean a pivot frame, keeping its height and its feet in place.
+
+    Two effects, because one was not enough. The offset slides the whole body
+    sideways; the skew leans it. A lean is a shear -- each row shifted in
+    proportion to how high it is -- so the feet stay exactly where they were
+    and only the top of the sprite goes over. A pivot is a fighter pivoting on
+    planted feet, and a plain horizontal slide has no way to say that: a slide
+    reads as the sprite being misplaced, a lean reads as the body being thrown.
+
+    The rect is rebuilt from the sheared surface rather than merely moved. The
+    shear returns something ``abs(skew)`` wider, and ``blit`` crops to the
+    rect, so a rect left at the source width would eat the feet -- the one part
+    of the fighter that has to stay put.
+    """
+    offset = int(round(offset_px))
+    skew = _quantize_skew(int(round(skew_px)))
+    if skew == 0:
+        return image, screen_rect.move(offset, 0)
+
+    sheared = _sheared(image, skew)
+    moved = screen_rect.move(offset + min(0, skew), 0)
+    moved.width = sheared.get_width()
+    moved.height = sheared.get_height()
+    return sheared, moved
+
+
+#: ``(id(source), skew) -> sheared``, so a pivot shears each frame once per
+#: distinct lean rather than once per draw. Sized off the sources in play: a
+#: fighter pivoting touches a handful of animation frames per hold.
+_SHEAR_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+_SHEAR_CACHE_MAX = 64
+
+
+#: The lean is rounded to a multiple of this many pixels before shearing.
+#:
+#: Not a feel knob -- it belongs here rather than in ``settings.Turn`` because
+#: it is a rendering-resolution decision, not a game-feel one. The shear is
+#: rebuilt per distinct value and cached, and the lean is driven by a ratio
+#: that changes every frame, so every frame wants its own integer lean: 21
+#: distinct keys per animation frame. Two or three frames of the run sheet in
+#: play at once is enough to blow past the cache cap, and then the cache purges,
+#: rebuilds, purges again -- measured at 100% rebuild rate and 95 microseconds
+#: a frame, forever, instead of a cache that would otherwise sit at zero.
+#:
+#: Halving the key space puts three frames of animation comfortably inside the
+#: cap, and costs nothing visible: the lean was already rounded to whole pixels,
+#: and a two-pixel step is about two degrees a frame on a 56-pixel sprite --
+#: the same ramp, sampled less finely.
+SKEW_STEP = 2
+
+
+def _quantize_skew(skew: int) -> int:
+    """``skew`` snapped to a multiple of :data:`SKEW_STEP`, away from zero.
+
+    Two rules, and the second is the one that took a test to find.
+
+    The snap never lands on zero for a non-zero input: a lean rounded down to
+    nothing is not a smaller lean, it is no lean, and it would look like the
+    quantisation had been honoured while quietly deleting the smallest tilts.
+    ``round`` alone does exactly that -- Python rounds halves to even, so
+    ``round(1 / 2)`` is ``0`` -- hence the ``max(1, ...)``.
+
+    Rounding out from zero rather than to it also means a half-step goes the
+    same way as a full one, so the ramp has no sawtooth at the bottom.
+    """
+    if skew == 0:
+        return 0
+    step = max(1, SKEW_STEP)
+    snapped = max(1, int(round(abs(skew) / step))) * step
+    return snapped if skew > 0 else -snapped
+
+
+def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
+    """``image`` sheared sideways by ``skew`` pixels from bottom to top.
+
+    The bottom row is the fixed one and the top row moves by ``skew``, so the
+    feet stay on the floor and only the body goes over. Every row is placed at
+    its own shear plus a common base of ``-min(0, skew)``, and the base is
+    what keeps the result inside its own surface: with a leftward lean the rows
+    run from x=0 at the top to x=-skew at the feet, so without it the feet
+    would be blitted off the left edge and the shear would quietly become a
+    half-applied one.
+
+    Rounded to whole pixels, because a sub-pixel shear is a resample on every
+    frame and this runs on the one fighter that is pivoting.
+    """
+    key = (id(image), skew)
+    cached = _SHEAR_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    width, height = image.get_size()
+    base = -min(0, skew)
+    out = pygame.Surface((width + abs(skew), height), pygame.SRCALPHA)
+    out.fill((0, 0, 0, 0))
+
+    last = max(1, height - 1)
+    for y in range(height):
+        # 0 at the bottom row, 1 at the top.
+        depth = 1.0 - (y / last)
+        row = image.subsurface(pygame.Rect(0, y, width, 1))
+        out.blit(row, (base + int(round(skew * depth)), y))
+
+    if len(_SHEAR_CACHE) >= _SHEAR_CACHE_MAX:
+        _evict_half_shear_cache()
+    _SHEAR_CACHE[key] = out
+    return out
+
+
+def _evict_half_shear_cache() -> None:
+    """Drop the oldest half of the shear cache rather than all of it.
+
+    Wiping the lot is what a cache full of entries you are still using does to
+    itself: the next frame rebuilds them, and the frame after finds the cache
+    full again. Measured with eight animation frames in play -- each rebuild
+    sweeping the whole table -- that was a 100% rebuild rate at 95 microseconds
+    a frame, sustained, in exchange for saving about a megabyte.
+
+    Dropping half and letting it refill means an oversized working set costs
+    some rebuilds rather than all of them. Insertion order is the eviction
+    order here, which is not a real LRU: with a handful of fighters and a
+    skew that walks down then back up, what is oldest is nearly always what is
+    needed least, and the alternative -- ordering on last use -- means a write
+    on every hit, which is the thing being optimised.
+    """
+    for stale in list(_SHEAR_CACHE)[: len(_SHEAR_CACHE) // 2]:
+        del _SHEAR_CACHE[stale]
 
 
 def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
@@ -114,6 +293,7 @@ class Renderer:
         # ``_scaled_cache`` and holding the source for the same reason.
         self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: object | None = None
+        self._turning_player: object | None = None
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
         #: a renderer that was handed a bare group (every test that draws a
@@ -275,6 +455,7 @@ class Renderer:
         """
         self.camera.begin_frame(alpha)
         self._dashing_player = self._find_dashing_player(groups)
+        self._turning_player = self._find_turning_player(groups)
         self.surface.fill(self.background_color)
         blits = self._collect_visible_blits(groups)
         for surface, screen_rect in blits:
@@ -296,6 +477,18 @@ class Renderer:
         """
         for sprite in groups.entity_sprites:
             if is_player_dashing(sprite):
+                return cast("pygame.sprite.Sprite", sprite)
+        return None
+
+    def _find_turning_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
+        """The one sprite mid-pivot, or None.
+
+        The same shape and the same reason as :meth:`_find_dashing_player`:
+        ``turn_ratio`` is one attribute lookup on the entity, asked once here
+        instead of of every visible sprite in the blit loop.
+        """
+        for sprite in groups.entity_sprites:
+            if float(getattr(sprite, "turn_ratio", 0.0) or 0.0) > 0.0:
                 return cast("pygame.sprite.Sprite", sprite)
         return None
 
@@ -413,6 +606,10 @@ class Renderer:
         # over every tile of the level.
         if self._dashing_player is not None and sprite is self._dashing_player:
             image, screen_rect = dash_frame(image, screen_rect)
+        if self._turning_player is not None and sprite is self._turning_player:
+            image, screen_rect = turn_frame(
+                image, screen_rect, turn_offset_px(sprite), turn_skew_px(sprite)
+            )
         blits.append((image, screen_rect))
 
     def _collect_flashes(self, groups: SpriteGroups) -> list[tuple[pygame.Surface, pygame.Rect]]:
@@ -447,6 +644,11 @@ class Renderer:
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
+            # The same slide and lean the body got, or a flash fired mid-pivot
+            # paints a silhouette of a fighter who is not standing there.
+            overlay, screen_rect = turn_frame(
+                overlay, screen_rect, turn_offset_px(sprite), turn_skew_px(sprite)
+            )
             flashes.append((overlay, screen_rect))
         return flashes
 

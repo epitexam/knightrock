@@ -887,8 +887,17 @@ def test_a_footstep_is_the_same_mark_at_every_gait_and_that_is_deliberate() -> N
     loudness, and this holds the rest still: the sheet, the kick and the life are
     one number each for the whole effect, and no tier row may grow a third knob
     to carry a difference the ladder cannot show.
+
+    ``turn`` is in the set because a pivot is a tier of its own -- the third row
+    is the same two knobs, and it holds the same two-knob rule. It was left out
+    of this assertion before because there was no pivot; adding one without
+    adding it here would have made the guard stop guarding.
     """
-    assert set(FootstepDust.TIER) == {PlayerState.WALK.value, PlayerState.RUN.value}
+    assert set(FootstepDust.TIER) == {
+        PlayerState.WALK.value,
+        PlayerState.RUN.value,
+        PlayerState.TURN.value,
+    }
     assert set(FootstepDust.SILENT) == {PlayerState.WALK_SLOW.value}
     for tier in FootstepDust.TIER.values():
         assert len(tier) == 2, f"a tier row is cadence and spread and nothing else: {tier}"

@@ -107,6 +107,11 @@ def read_enemy_config(
                 else None
             ),
             parry_stun_duration=float(raw.get("parry_stun_duration", 0.0)),
+            # Pivot sub-group name. Left as-is rather than validated against
+            # ``settings.PROFILES``: an unknown name resolves to the shipped
+            # defaults, and a level that names a group nobody defined should
+            # get a fighter that moves rather than one that refuses to spawn.
+            turn_profile=raw.get("turn_profile"),
             animations=_read_animations(raw.get("animations"), f"{where}.animations"),
         )
     except (TypeError, ValueError) as exc:
@@ -171,5 +176,6 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "leap_speed_mult": config.leap_speed_mult,
         "parry_stun_threshold": config.parry_stun_threshold,
         "parry_stun_duration": config.parry_stun_duration,
+        **({"turn_profile": config.turn_profile} if config.turn_profile is not None else {}),
         "animations": dict(config.animations),
     }

@@ -19,6 +19,17 @@ class NullStateMachine:
         """Register a state (no-op: keeps the StateMachine interface)."""
         pass
 
+    def has_tag(self, tag: str) -> bool:
+        """No state, so no tags.
+
+        Present because the real machine answers this and callers hold either
+        one: an entity with no state logic still runs the same update loop, and
+        a query it cannot answer would make the loop branch on which machine it
+        was handed. Always False is also the truthful answer -- nothing is
+        holding anything.
+        """
+        return False
+
     def set_initial_state(self, name: str) -> None:
         """Set the initial state (no-op for the null state machine)."""
         self.current_state_name = name

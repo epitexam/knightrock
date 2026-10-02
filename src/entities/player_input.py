@@ -15,6 +15,7 @@ from src.core.input.input_actions import InputAction
 from src.core.settings import GameFeel
 from src.core.settings import Input as InputSettings
 from src.physics.movement import apply_jump_cut
+from src.states.turn_state import request_turn
 
 if TYPE_CHECKING:
     from src.entities.player import Player
@@ -46,7 +47,14 @@ class PlayerInputHandler:
         if im.just_pressed(InputAction.GUARD):
             player.guard.press()
 
-        player.face_movement()
+        # A ground reversal enters the pivot state instead of mirroring, so the
+        # facing is held while the feet are already rolling the other way.
+        # This has to be asked here, where the facing would otherwise be
+        # written: the input read runs before the state machine, so a decision
+        # taken from a state's own update would be a frame too late to stop the
+        # mirror it is meant to delay.
+        if not request_turn(player):
+            player.face_movement()
 
         if im.just_pressed(InputAction.JUMP):
             player.jump.buffer_press()
