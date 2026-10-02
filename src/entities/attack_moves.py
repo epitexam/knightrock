@@ -19,6 +19,14 @@ from src.core.input.input_actions import InputAction
 #: commitment, and letting it come out of a crouch would trade the posture's
 #: whole purpose -- a fighter went down to be hard to hit, and then stood still
 #: for two seconds doing it on purpose.
+#:
+#: The air column mirrors the ground one button for button, so ``ATTACK_3`` is
+#: the rising blow in the air and the launcher on the floor, and ``ATTACK_2`` is
+#: the descending one up there and the heavy hit down here. Each of them is the
+#: aerial answer to its grounded counterpart rather than a second neutral poke
+#: wearing a different key -- the whole point of an air kit is that the four
+#: buttons mean four things, and four identical aerials would be the missing
+#: feature replaced by a worse one.
 BUTTON_MOVES: dict[InputAction, dict[Stance, MoveId]] = {
     InputAction.ATTACK_1: {
         Stance.GROUND: move_id("light_attack"),
@@ -28,9 +36,16 @@ BUTTON_MOVES: dict[InputAction, dict[Stance, MoveId]] = {
     InputAction.ATTACK_2: {
         Stance.GROUND: move_id("heavy_attack"),
         Stance.CROUCH: move_id("crouch_sweep"),
+        Stance.AIR: move_id("air_sweep"),
     },
-    InputAction.ATTACK_3: {Stance.GROUND: move_id("uppercut")},
-    InputAction.ATTACK_4: {Stance.GROUND: move_id("dash_attack")},
+    InputAction.ATTACK_3: {
+        Stance.GROUND: move_id("uppercut"),
+        Stance.AIR: move_id("air_rise"),
+    },
+    InputAction.ATTACK_4: {
+        Stance.GROUND: move_id("dash_attack"),
+        Stance.AIR: move_id("air_forward"),
+    },
     InputAction.SPECIAL_ATTACK: {Stance.GROUND: move_id("special_attack")},
 }
 

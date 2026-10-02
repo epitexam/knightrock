@@ -405,3 +405,103 @@ def test_load_attacks_validates_before_registering() -> None:
         load_attacks(combat, {"kick": broken})  # type: ignore[arg-type]
 
     assert combat.attacks == {}
+
+
+def test_a_vertical_lunge_on_a_ground_only_move_is_refused() -> None:
+    """It loads today and is never read.
+
+    The impulse is applied on the airborne branch, so a move that cannot be
+    thrown from the air carries a number nothing will ever look at. Same shape
+    as the self-cancel: a balance change someone made to a move that will not
+    run it, invisible until the stance list is edited and the number is found
+    to have been a typo all along.
+    """
+    grounded = replace(
+        _valid_attack().phases[0],
+        cancel_into=(),
+    )
+    definition = replace(
+        _valid_attack(), phases=(grounded,), stances=(Stance.GROUND,), vertical_lunge=0.6
+    )
+
+    with pytest.raises(GameplayDataError, match=r"which do not include 'air'"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_stronger_than_a_jump_is_refused() -> None:
+    """``vertical_lunge`` is a multiple of jump height, so 1.0 *is* a jump.
+
+    Above that, the move out-launches the jump that put the fighter in the air:
+    the jump becomes optional and the attack mandatory, which inverts what the
+    jump is for. The bound is the only reason the field is safe to author in.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=1.4,
+    )
+
+    with pytest.raises(GameplayDataError, match=r"exceeds 1.0 jump heights"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_of_exactly_one_jump_is_allowed() -> None:
+    """The bound is inclusive, and the boundary is where an off-by-one hides.
+
+    1.0 means "as much as a jump", which is a coherent aerial. A check written
+    ``>=`` would refuse it and quietly push every future aerial down toward
+    0.99 without anybody deciding to.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=1.0,
+    )
+
+    validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_survives_the_round_trip() -> None:
+    """The field is on the wire, so a data file has to be able to carry it.
+
+    Checked separately from the other round-trips because a field that reads but
+    does not write round-trips to a *default* and looks fine -- the failure
+    being that the shipped JSON silently loses the value on the next
+    regeneration.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=-0.4,
+    )
+
+    back = read_attack_definition(attack_definition_to_dict(definition), "test")
+
+    assert back.vertical_lunge == pytest.approx(-0.4)
+
+
+def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
+    """The shipped data against the rule, which is the only place both exist.
+
+    Each aerial is asserted against the direction its button already means on
+    the floor: ATTACK_3 launches on the ground so it rises in the air, ATTACK_2
+    is the heavy hit down here so it falls up there, and the neutral one leaves
+    the arc alone. A table where all four had the same sign would satisfy the
+    validation and be the missing feature replaced by a worse one.
+    """
+    player = PLAYER_ATTACKS
+    from src.core.input.input_actions import InputAction
+    from src.entities.attack_moves import BUTTON_MOVES
+
+    aerial = {
+        action.value: moves[Stance.AIR]
+        for action, moves in BUTTON_MOVES.items()
+        if Stance.AIR in moves
+    }
+
+    assert player[aerial[InputAction.ATTACK_3.value]].vertical_lunge > 0
+    assert player[aerial[InputAction.ATTACK_2.value]].vertical_lunge < 0
+    assert player[aerial[InputAction.ATTACK_1.value]].vertical_lunge == 0.0
