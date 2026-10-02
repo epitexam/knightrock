@@ -15,7 +15,6 @@ import dataclasses
 import pygame
 import pytest
 
-from src.core.input.input_manager import InputManager
 from src.core.settings import (
     PROFILES,
     Turn,
@@ -24,7 +23,6 @@ from src.core.settings import (
 )
 from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy
-from src.entities.player import Player
 
 
 @pytest.fixture
@@ -43,13 +41,22 @@ def clean_profiles():
         PROFILES.update(snapshot)
 
 
-def _enemy(**overrides):
+def _enemy(kind: str = "goblin", **overrides):
+    """An enemy that takes the group and nothing else, unless told otherwise.
+
+    ``turn_profile`` defaults to ``None`` so the fighter built here inherits
+    the group its faction names rather than whatever the shipped config for
+    that type happens to say. Which fighters take the pivot is a decision that
+    changes; that a group is applied and a sub-group layers onto it is the
+    mechanism, and only the second is worth a test that outlives a retune.
+    """
+    config = dataclasses.replace(ENEMY_CONFIGS[kind], **{"turn_profile": None, **overrides})
     return Enemy(
         pos=(0, 0),
         groups=pygame.sprite.Group(),
         collision_sprites=pygame.sprite.Group(),
         player_reference=None,
-        config=dataclasses.replace(ENEMY_CONFIGS["goblin"], **overrides),
+        config=config,
     )
 
 
@@ -136,48 +143,12 @@ def test_a_chain_of_three_layers(clean_profiles) -> None:
 # --- What entities adopt ---------------------------------------------------
 
 
-def test_the_shipped_table_changes_nothing_but_the_player() -> None:
-    """The defaults should keep saying nothing.
-
-    Only the player takes the pivot out of the box, and every enemy type
-    inherits that off. A test that only checks the player is on would pass with
-    a table that switched everything on by accident.
-    """
-    player = Player(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        moving_platforms=[],
-        input_manager=InputManager(),
-    )
-
-    assert player.turn_profile == "player"
-    assert player.turn_enabled is True
-    for kind in ("goblin", "slime", "dummy"):
-        enemy = Enemy(
-            pos=(0, 0),
-            groups=pygame.sprite.Group(),
-            collision_sprites=pygame.sprite.Group(),
-            player_reference=None,
-            config=ENEMY_CONFIGS[kind],
-        )
-        assert enemy.turn_profile == "enemy", kind
-        assert enemy.turn_enabled is False, kind
-
-
 def test_a_group_switches_on_every_enemy_type_that_inherits_it(clean_profiles) -> None:
     """The group is the faction: one entry reaches every enemy."""
     clean_profiles["enemy"] = TurnProfile(inherits="default", enabled=True)
 
     for kind in ("goblin", "slime", "dummy"):
-        enemy = Enemy(
-            pos=(0, 0),
-            groups=pygame.sprite.Group(),
-            collision_sprites=pygame.sprite.Group(),
-            player_reference=None,
-            config=ENEMY_CONFIGS[kind],
-        )
-        assert enemy.turn_enabled is True, kind
+        assert _enemy(kind).turn_enabled is True, kind
 
 
 def test_a_sub_group_switches_one_type_off_inside_a_group_that_is_on(

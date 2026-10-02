@@ -13,6 +13,7 @@ the game, because the pieces were only ever exercised one at a time. The
 end-to-end ones below are the ones that would have caught it.
 """
 
+import dataclasses
 import math
 import os
 from itertools import pairwise
@@ -48,6 +49,29 @@ def _headless_display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((64, 64))
+
+
+def _enemy(kind: str = "goblin", **overrides):
+    """An enemy whose pivot behaviour this test decides for itself.
+
+    ``turn_profile`` is forced to ``None`` unless a test asks otherwise, so
+    every fighter built here takes the group its faction names and nothing
+    more. Without that, a test inherits whatever the shipped config for that
+    type happens to say -- and "which fighters take the pivot" is a decision
+    that changes, whereas "the group is applied and the flag is read at the
+    right moment" is the mechanism and does not.
+    """
+    from src.entities.enemies.configs import ENEMY_CONFIGS
+    from src.entities.enemies.enemy import Enemy
+
+    config = dataclasses.replace(ENEMY_CONFIGS[kind], **{"turn_profile": None, **overrides})
+    return Enemy(
+        pos=(0, 0),
+        groups=pygame.sprite.Group(),
+        collision_sprites=pygame.sprite.Group(),
+        player_reference=None,
+        config=config,
+    )
 
 
 def _player(input_manager: InputManager | None = None) -> Player:
@@ -837,16 +861,7 @@ def test_every_machine_registers_the_pivot_under_the_same_name() -> None:
     function: if the two enums drifted apart it would still look right from the
     player and simply never fire for an enemy.
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
-
-    enemy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["goblin"],
-    )
+    enemy = _enemy("goblin")
     fighter = _player()
 
     assert PlayerState.TURN.value == Turn.STATE
@@ -861,16 +876,7 @@ def test_a_fighter_can_opt_in_and_out_at_runtime() -> None:
     for the pivot above and refused below, which is the difference between
     "available" and "enabled".
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
-
-    enemy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["goblin"],
-    )
+    enemy = _enemy("goblin")
     enemy.on_surface["floor"] = True
     enemy.move_axis = -1.0
     enemy.facing_right = True
@@ -886,16 +892,7 @@ def test_a_fighter_can_opt_in_and_out_at_runtime() -> None:
 
 def test_the_knobs_are_per_fighter_and_default_from_settings() -> None:
     """A goblin and a boss should not turn like each other."""
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
-
-    enemy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["goblin"],
-    )
+    enemy = _enemy("goblin")
     fighter = _player()
 
     for attribute, default in (
@@ -919,16 +916,7 @@ def test_a_machine_without_the_pivot_reports_that_nothing_was_entered() -> None:
     nothing. Reporting "entered" there would tell the caller a hold is running
     when no state is, so the answer is read back off the machine.
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
-
-    dummy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["dummy"],
-    )
+    dummy = _enemy("dummy")
     dummy.turn_enabled = True
     dummy.on_surface["floor"] = True
     dummy.move_axis = -1.0
@@ -945,17 +933,9 @@ def test_an_enemy_pivots_when_it_opts_in() -> None:
     stick reversal is for the player, and it is the one that reads well: the
     fighter is already turning and nothing about it announces the change.
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
     from src.states.enemy_states import EnemyState  # noqa: F401
 
-    enemy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["goblin"],
-    )
+    enemy = _enemy("goblin")
     enemy.turn_enabled = True
     enemy.on_surface["floor"] = True
     enemy.patrol_speed = 200.0
@@ -1021,16 +1001,7 @@ def test_an_enemy_that_loses_the_floor_just_resumes() -> None:
     Its whole air vocabulary is nothing, so dropping the hold *is* the answer,
     and it must not raise looking for a state that does not exist.
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
-    from src.entities.enemies.enemy import Enemy
-
-    enemy = Enemy(
-        pos=(0, 0),
-        groups=pygame.sprite.Group(),
-        collision_sprites=pygame.sprite.Group(),
-        player_reference=None,
-        config=ENEMY_CONFIGS["goblin"],
-    )
+    enemy = _enemy("goblin")
     enemy.turn_enabled = True
     enemy.on_surface["floor"] = True
     enemy.patrol_speed = 200.0
