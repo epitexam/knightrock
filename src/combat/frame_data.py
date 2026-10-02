@@ -575,11 +575,22 @@ class AttackDefinition:
     ----------
     total_frames : int
         Total frame count across all phases.
+
+    animation : str
+        Sprite-sheet clip to play while this move runs. This is art, not
+        balance, so it lives here rather than in the renderer: the point is that
+        a move can name its own clip. The player used to return ``"attack"`` for
+        every grounded move, which meant no move could ever have art of its own
+        -- the mapping existed, it just had one entry. A name with no directory
+        under ``assets/graphics/player/`` is a no-op in :class:`Animator`, so a
+        clip that has not landed yet falls back to the last one rather than
+        breaking the render.
     """
 
     phases: tuple[PhaseDefinition, ...]
     cooldown: float
     stances: tuple[Stance, ...] = (Stance.GROUND,)
+    animation: str = "attack"
     lock_direction: bool = False
     combo_reset: bool = False
     chargeable: bool = False

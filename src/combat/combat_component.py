@@ -134,6 +134,15 @@ class CombatComponent:
         return self.state.is_attacking
 
     @property
+    def current_attack_def(self) -> AttackDefinition | None:
+        """The definition of the move running right now, or ``None``.
+
+        Read by the renderer to learn which sprite clip the move wants, which is
+        why it is on the component rather than reached into from the player.
+        """
+        return self.state.current_attack_def
+
+    @property
     def attack_box(self) -> pygame.FRect | None:
         """The current active attack hitbox, or ``None`` if inactive."""
         return self.hitbox.rect
@@ -583,6 +592,11 @@ class NullCombatComponent:
         """Always ``False``: nothing is ever registered."""
         del name
         return False
+
+    @property
+    def current_attack_def(self) -> AttackDefinition | None:
+        """Always ``None``: no move is ever running."""
+        return None
 
     def start_attack(
         self,

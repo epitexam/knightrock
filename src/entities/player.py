@@ -273,7 +273,7 @@ class Player(ControllerView, Entity):
         if state is None:
             return None
         if state == PlayerState.ATTACK:
-            return "air_attack" if not self.on_surface["floor"] else "attack"
+            return self._attack_animation()
         if state in (PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER):
             return "hit"
         if state == PlayerState.CROUCH:
@@ -294,6 +294,22 @@ class Player(ControllerView, Entity):
             PlayerState.WALL_SLIDE: "wall",
         }
         return mapping.get(state)
+
+    def _attack_animation(self) -> str:
+        """The clip the running move asks for.
+
+        Read off the definition rather than decided here, so a move can have art
+        of its own. It used to be ``"air_attack" if not on the floor else
+        "attack"`` -- one branch, one entry per case, and no way to add a third
+        without editing this. The fallback order matters more than the read: a
+        move with no art yet plays the airborne clip in the air and the standing
+        one on the floor, exactly as before, and only a move that names a clip
+        changes what is drawn.
+        """
+        definition = self.combat.current_attack_def
+        if definition is not None:
+            return definition.animation
+        return "air_attack" if not self.on_surface["floor"] else "attack"
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""

@@ -4,11 +4,15 @@ import os
 import random
 import statistics
 from collections.abc import Iterator
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pygame
 import pytest
 
+from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.frame_data import move_id
+from src.combat.refusal import Refusal
 from src.core.colors import FXColors
 from src.core.display.framing import Framing
 from src.core.fx import (
@@ -605,6 +609,63 @@ def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
 
     # Now has dedicated dash animation (falls back to run if not available)
     assert player._animation_name() == "dash"
+
+
+def test_a_move_plays_the_clip_it_names_rather_than_the_one_for_its_posture() -> None:
+    """The renderer used to decide: airborne or not, ``"attack"``.
+
+    One branch meant no move could have art of its own -- not the crouch moves,
+    not any future one -- and the two crouch moves landed with no way to say so.
+    Now the clip is data on the definition, and this is the assertion that makes
+    the field worth having.
+    """
+    from src.core.input.input_manager import InputManager
+    from src.entities.player import Player
+
+    player = Player(
+        pos=(0, 0),
+        groups=pygame.sprite.Group(),
+        collision_sprites=pygame.sprite.Group(),
+        moving_platforms=[],
+        input_manager=InputManager(),
+    )
+    player.state_machine.current_state_name = "attack"
+    player.on_surface["floor"] = True
+    player.combat.add_attack(
+        move_id("light_attack"),
+        replace(PLAYER_ATTACKS["light_attack"], animation="heavy_attack"),
+    )
+    assert player.combat.start_attack(move_id("light_attack")) is Refusal.NONE
+
+    assert player._animation_name() == "heavy_attack"
+
+
+def test_a_move_with_no_art_of_its_own_still_falls_back_to_the_posture_default() -> None:
+    """Half the table has no clip of its own, and must keep working.
+
+    Every grounded move still names ``"attack"``; the fallback exists for the ones
+    a designer adds before the frames do. :class:`Animator` treats an
+    unresolvable clip as a no-op, so naming a clip that has not landed is safe.
+    """
+    from src.core.input.input_manager import InputManager
+    from src.entities.player import Player
+
+    def _in_air() -> Player:
+        player = Player(
+            pos=(0, 0),
+            groups=pygame.sprite.Group(),
+            collision_sprites=pygame.sprite.Group(),
+            moving_platforms=[],
+            input_manager=InputManager(),
+        )
+        player.state_machine.current_state_name = "attack"
+        player.on_surface["floor"] = False
+        return player
+
+    grounded = _in_air()
+    grounded.on_surface["floor"] = True
+    assert grounded._animation_name() == "attack"
+    assert _in_air()._animation_name() == "air_attack"
 
 
 def test_a_puff_billows_through_its_ladder_and_snaps_its_radius() -> None:

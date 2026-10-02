@@ -56,6 +56,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -115,6 +116,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": true,
@@ -174,6 +176,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -237,6 +240,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -296,6 +300,7 @@
         "stances": [
           "air"
         ],
+        "animation": "attack",
         "lock_direction": false,
         "combo_reset": false,
         "chargeable": false,
@@ -369,6 +374,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -464,6 +470,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -523,6 +530,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -582,6 +590,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -813,6 +822,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1029,6 +1039,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1118,6 +1129,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1179,6 +1191,7 @@
         "stances": [
           "crouch"
         ],
+        "animation": "crouch_slash",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -1238,6 +1251,7 @@
         "stances": [
           "crouch"
         ],
+        "animation": "crouch_sweep",
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1342,6 +1356,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -1403,6 +1418,7 @@
         "stances": [
           "ground"
         ],
+        "animation": "attack",
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
