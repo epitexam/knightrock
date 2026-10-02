@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import pygame
 
 from src.combat.frame_data import MoveId, move_id
+from src.combat.refusal import Refusal
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
@@ -44,6 +45,14 @@ DEBUG_SPAWNS = {
 #: on use, so a move renamed or removed in ``attacks.json`` fails loudly here
 #: rather than leaving a number key that silently does nothing -- which is what a
 #: bare string in this dict would do.
+#:
+#: The air kit is on ``7``-``0`` rather than appended to ``1``-``6`` so the two
+#: groups read apart at a glance, which matters more here than usual: the ground
+#: keys work from anywhere and the air keys only work off the ground, so a dev
+#: pressing ``7`` on the floor is holding an airborne move the stance gate will
+#: refuse. :meth:`SpawnSystem.trigger_test_attack` raises on that rather than
+#: returning ``False``, so the reason is a traceback instead of a key that
+#: appears broken.
 DEBUG_ATTACKS: dict[int, MoveId] = {
     pygame.K_1: move_id("twin_fangs"),
     pygame.K_2: move_id("sweeping_arc"),
@@ -51,6 +60,10 @@ DEBUG_ATTACKS: dict[int, MoveId] = {
     pygame.K_4: move_id("otg_slam"),
     pygame.K_5: move_id("p5_shapes"),
     pygame.K_6: move_id("circle_burst"),
+    pygame.K_7: move_id("air_attack"),
+    pygame.K_8: move_id("air_forward"),
+    pygame.K_9: move_id("air_rise"),
+    pygame.K_0: move_id("air_sweep"),
 }
 
 #: Phase 5 projectile presets fired from the player.
@@ -162,10 +175,22 @@ class SpawnSystem:
     def trigger_test_attack(self, player: Player, attack_name: MoveId) -> bool:
         """Force a showcase attack on the player (Phase 5 test bench).
 
-        An unregistered name raises instead of returning ``False``. ``start_attack``
-        cannot tell "you are busy" from "I have never heard of that move", and on a
-        bench whose whole job is exercising specific moves, a renamed move that
-        leaves the key quietly doing nothing is the failure worth hearing about.
+        Two refusals raise and the rest return ``False``, because on a bench
+        they mean different things and one of them is a broken bench.
+
+        An unregistered name raises: the key is wired to a move nothing knows,
+        which is a rename in ``attacks.json`` that was not followed through.
+        ``start_attack`` cannot tell that from "you are busy".
+
+        A ``STANCE`` refusal raises too, and this is the air kit's reason for
+        existing. The four air keys only work off the ground, so a dev pressing
+        ``7`` while standing holds a move the gate is right to refuse -- and a
+        silent ``False`` for that reads as a dead key rather than as the posture
+        rule the bench is there to demonstrate. Naming the reason turns it into
+        the thing to jump first.
+
+        ``COOLDOWN`` and ``BUSY`` stay quiet: pressing a showcase key twice in a
+        row is not a mistake, and a bench that raised on it would be unusable.
         """
         start = getattr(getattr(player, "combat", None), "start_attack", None)
         if not callable(start):
@@ -175,7 +200,13 @@ class SpawnSystem:
                 f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
                 "rename it in attacks.json or drop it from DEBUG_ATTACKS"
             )
-        return bool(start(attack_name))
+        refusal = start(attack_name)
+        if refusal is Refusal.STANCE:
+            raise RuntimeError(
+                f"Debug bench attack {str(attack_name)!r} needs a different posture; "
+                "the air keys only fire off the ground"
+            )
+        return bool(refusal)
 
     def toggle_attack_replay(self, attack_name: MoveId | None = None) -> MoveId | None:
         """Toggle looped replay of ``attack_name``; return the active name (``None`` = off)."""

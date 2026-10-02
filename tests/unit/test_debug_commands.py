@@ -443,3 +443,79 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
         == 0
     )
     assert PanelLayer.draw_clash_marker  # bound method still wired in overlays
+
+
+def test_the_bench_holds_the_whole_air_kit() -> None:
+    """Four keys that only work off the ground need to be reachable somehow.
+
+    They used to be unreachable from the bench at all, which is worse than a key
+    that is awkward: there was no way to look at an aerial's hitbox without
+    playing into a live fight to arrange being in the air at the right moment.
+    """
+    air = [name for name in DEBUG_ATTACKS.values() if "air" in str(name)]
+
+    assert sorted(air) == ["air_attack", "air_forward", "air_rise", "air_sweep"]
+
+
+def test_the_air_keys_are_not_laid_out_among_the_ground_ones() -> None:
+    """Grouped, because pressing ``7`` on the floor is a mistake the layout invites.
+
+    Interleaving them would make the bench one list of ten where some always work
+    and some never do, which teaches the wrong thing before it teaches anything.
+    Asserted as contiguity plus order rather than as an exact split, because six
+    ground keys and four air ones do not meet in the middle and a test that said
+    so would be asserting an arithmetic coincidence instead of the layout.
+
+    Not asserted: that the keys ascend. ``pygame.K_0`` is 48 and ``K_1`` is 49,
+    so the number row is not sorted in pygame's keycodes and asking for that
+    would be pinning the order of an int table rather than anything about the
+    bench.
+    """
+    is_air = ["air" in str(name) for name in DEBUG_ATTACKS.values()]
+
+    assert is_air == sorted(is_air), "an air key sits among the ground ones"
+    assert is_air[-1] and not is_air[0], "the groups are not separated at all"
+
+
+def test_pressing_an_air_key_on_the_floor_says_why_instead_of_looking_dead() -> None:
+    """The whole reason the air keys are safe to add.
+
+    A silent ``False`` here is a fighter standing still, which is what a broken
+    key looks like. The stance gate is right to refuse; the bench is what has to
+    explain it.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = True
+
+    with pytest.raises(RuntimeError, match=r"'air_rise' needs a different posture"):
+        system.trigger_test_attack(player, move_id("air_rise"))
+
+
+def test_pressing_a_ground_key_from_the_air_still_says_so() -> None:
+    """The rule is about the mismatch, not about which key was pressed.
+
+    Half of this would be a bench that only explained itself for the keys it had
+    just learned about.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = False
+
+    with pytest.raises(RuntimeError, match=r"'twin_fangs' needs a different posture"):
+        system.trigger_test_attack(player, move_id("twin_fangs"))
+
+
+def test_pressing_a_bench_key_twice_in_a_row_is_not_an_error() -> None:
+    """Cooldown and busy stay quiet, or the bench is unusable.
+
+    Spamming the showcase keys is how you look at a move's timing; raising on
+    the second press would make the tool that is supposed to be forgiving into
+    the strictest thing on the keymap.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = True
+
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is False
