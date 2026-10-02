@@ -20,6 +20,8 @@ from src.combat.shapes import (
     shape_aabb_intersects,
     swept_intersects_aabb,
 )
+from tests.unit.helpers import make_attack as attack
+from tests.unit.helpers import make_phase as phase
 
 
 def test_pose_and_anchor_specs_are_immutable() -> None:
@@ -173,3 +175,56 @@ def test_broadphase_dimensions_match_capsule_rotation() -> None:
     assert axis_aligned.size == pytest.approx((26.0, 6.0))
     assert vertical.size == pytest.approx((6.0, 26.0))
     assert axis_aligned.center == vertical.center == (0.0, 0.0)
+
+
+def test_the_primary_hitbox_spec_is_built_once_per_phase() -> None:
+    """It is read once per box per tick and every field it reads is frozen.
+
+    ``HitboxManager`` rebuilt it on every positioning pass: a ``HitboxSpec``,
+    its validator, and the throwaway ``ShapePose`` that validator constructs.
+    ``extra_hitboxes`` stored its specs for exactly this reason, and the primary
+    was the only one recomputing. Identity is the observable that pins the
+    cache -- two equal-but-distinct specs would still be correct, so comparing
+    them would pass whether or not the cache exists.
+    """
+    definition = phase(startup=1, active=2, recovery=1, size=(30.0, 20.0), offset=(20.0, 0.0))
+    equal_but_separate = attack(
+        phase(startup=1, active=2, recovery=1, size=(30.0, 20.0), offset=(20.0, 0.0))
+    ).phases[0]
+
+    assert definition.hitbox_spec == equal_but_separate.hitbox_spec
+    assert definition.hitbox_spec is definition.hitbox_spec
+
+
+def test_a_cached_spec_never_leaks_into_another_phase() -> None:
+    """The regression a cache on a frozen dataclass can have and cannot have a
+    type checker for.
+
+    ``cached_property`` stores through ``__dict__``, which a frozen dataclass
+    forbids via ``__setattr__`` -- so this works because there are no
+    ``__slots__``, and it would stop working the day somebody added them. The
+    failure mode if the store became shared would be two phases of the same
+    attack, or of two different attacks, reporting one box's geometry: a
+    player's swing shaped like an enemy's, silently, in data rather than in
+    code. So the second phase's box is deliberately a different size.
+    """
+    definition = phase(startup=1, active=2, recovery=1, size=(30.0, 20.0), offset=(20.0, 0.0))
+    other = phase(startup=1, active=2, recovery=1, size=(99.0, 40.0), offset=(-5.0, 3.0))
+
+    assert definition.hitbox_spec.size == (30.0, 20.0)
+    assert other.hitbox_spec.size == (99.0, 40.0)
+    assert definition.hitbox_spec.offset == (20.0, 0.0)
+    assert other.hitbox_spec.offset == (-5.0, 3.0)
+
+
+def test_the_cached_spec_is_still_validated_when_it_is_first_built() -> None:
+    """Caching the result must not cache away the refusal.
+
+    The validator is what rejects a non-positive dimension or a non-finite
+    angle, and it runs inside ``HitboxSpec.__post_init__``. Reading the spec is
+    now the first thing that triggers it, so a phase carrying bad geometry is
+    caught when the box is first positioned rather than at load -- which is
+    still before anything is drawn with it.
+    """
+    with pytest.raises(ValueError, match="strictly positive"):
+        _ = phase(startup=1, active=2, recovery=1, size=(0.0, 20.0), offset=(20.0, 0.0)).hitbox_spec

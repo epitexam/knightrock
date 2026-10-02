@@ -11,6 +11,7 @@ reference frame rate.
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import cached_property
 from typing import NewType
 
 from src.combat.damage_types import DamageType
@@ -470,9 +471,18 @@ class PhaseDefinition:
             self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
         )
 
-    @property
+    @cached_property
     def hitbox_spec(self) -> HitboxSpec:
-        """Return the primary hitbox using the extended shape model."""
+        """The primary hitbox under the extended shape model.
+
+        Cached, and the cache is the point: this is reached once per box per
+        tick by ``HitboxManager._position_rects``, and every field it reads is
+        frozen on the phase. Built fresh each time it was 2.9us -- a
+        ``HitboxSpec``, its validator, and the throwaway ``ShapePose`` that
+        validator constructs -- for an answer that cannot change until the phase
+        does. ``extra_hitboxes`` already stored its specs for the same reason;
+        the primary was the only one recomputing.
+        """
         return HitboxSpec(
             size=self.hitbox_size,
             offset=self.hitbox_offset,
