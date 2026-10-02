@@ -542,3 +542,43 @@ def test_an_extender_is_a_slowing_multiplier_over_a_juggle_who_has_a_floor() -> 
         later < earlier for earlier, later in zip(scales, scales[1:], strict=False) if later > floor
     )
     assert all(scale >= floor for scale in scales)
+
+
+def test_a_rise_cannot_be_chained_so_it_needs_no_claim_on_the_midair_jump() -> None:
+    """Why ``air_rise`` does not spend ``midair_jumps_left``.
+
+    Consuming the jump is the usual answer to "can this be spammed into a climb",
+    and the question was left open because the climb had not been ruled out.
+    It can be, arithmetically: a fighter rises at
+    ``jump_height * vertical_lunge`` and decelerates at ``GRAVITY``, so the
+    impulse lasts until the apex, and a second impulse cannot be requested until
+    the cooldown is up. Bounding the one by the other bounds the climb.
+
+    ``air_rise`` is 0.31s of lift against 0.70s of cooldown, so more than half
+    the window is spent falling back down before the move is available again.
+    Spending the midair jump on top would cost the player their remaining air
+    mobility to prevent something the numbers already prevent, and would do it
+    in the case where it matters least -- having jumped already leaves no
+    midair jumps to spend, so the consumption would only ever bite a fighter who
+    walked off a ledge.
+
+    Read off the constants rather than asserted as literals, so a change to
+    gravity or to jump height is checked here instead of quietly reintroducing
+    the climb.
+    """
+    from src.core.settings import Physics
+
+    jump_height = _player().jump_height
+
+    unclimbable = {
+        name: (jump_height * attack.vertical_lunge / Physics.GRAVITY, attack.cooldown)
+        for name, attack in PLAYER_ATTACKS.items()
+        if Stance.AIR in attack.stances and attack.vertical_lunge > 0
+    }
+
+    assert unclimbable, "no aerial rises, so this says nothing about climbing"
+    for name, (time_to_apex, cooldown) in unclimbable.items():
+        assert cooldown >= time_to_apex, (
+            f"{name} spends {time_to_apex:.3f}s rising but only {cooldown}s before it "
+            "can be thrown again, so two impulses overlap and the climb is unbounded"
+        )
