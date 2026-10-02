@@ -119,6 +119,15 @@ class CombatComponent:
         self._attacks[name] = definition
         self._cooldowns[name] = 0.0
 
+    def has_attack(self, name: MoveId) -> bool:
+        """Whether ``name`` is registered.
+
+        For callers holding a name from somewhere else -- the button table, the
+        debug bench -- where a typo is indistinguishable from a refusal.
+        ``start_attack`` answers ``False`` for both.
+        """
+        return name in self._attacks
+
     @property
     def is_attacking(self) -> bool:
         """Whether an attack sequence is currently in progress."""
@@ -569,6 +578,11 @@ class NullCombatComponent:
 
     def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """No-op."""
+
+    def has_attack(self, name: MoveId) -> bool:
+        """Always ``False``: nothing is ever registered."""
+        del name
+        return False
 
     def start_attack(
         self,

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
+from src.combat.frame_data import MoveId, move_id
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
@@ -39,13 +40,17 @@ DEBUG_SPAWNS = {
 }
 
 #: Phase 5 showcase attacks forced on the player (touch nothing else).
-DEBUG_ATTACKS = {
-    pygame.K_1: "twin_fangs",
-    pygame.K_2: "sweeping_arc",
-    pygame.K_3: "sky_launcher",
-    pygame.K_4: "otg_slam",
-    pygame.K_5: "p5_shapes",
-    pygame.K_6: "circle_burst",
+#: Key to the move each number triggers. Checked against the player's own table
+#: on use, so a move renamed or removed in ``attacks.json`` fails loudly here
+#: rather than leaving a number key that silently does nothing -- which is what a
+#: bare string in this dict would do.
+DEBUG_ATTACKS: dict[int, MoveId] = {
+    pygame.K_1: move_id("twin_fangs"),
+    pygame.K_2: move_id("sweeping_arc"),
+    pygame.K_3: move_id("sky_launcher"),
+    pygame.K_4: move_id("otg_slam"),
+    pygame.K_5: move_id("p5_shapes"),
+    pygame.K_6: move_id("circle_burst"),
 }
 
 #: Phase 5 projectile presets fired from the player.
@@ -85,8 +90,8 @@ class SpawnSystem:
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
         #: Attack name looped by the debug replay key, ``None`` when off.
-        self.attack_replay: str | None = None
-        self._last_attack: str | None = None
+        self.attack_replay: MoveId | None = None
+        self._last_attack: MoveId | None = None
 
     @property
     def spawn_cooldown_max(self) -> float:
@@ -154,14 +159,25 @@ class SpawnSystem:
         ):
             self._arm_debug_cooldown("juggle_dummy")
 
-    def trigger_test_attack(self, player: Player, attack_name: str) -> bool:
-        """Force a showcase attack on the player (Phase 5 test bench)."""
+    def trigger_test_attack(self, player: Player, attack_name: MoveId) -> bool:
+        """Force a showcase attack on the player (Phase 5 test bench).
+
+        An unregistered name raises instead of returning ``False``. ``start_attack``
+        cannot tell "you are busy" from "I have never heard of that move", and on a
+        bench whose whole job is exercising specific moves, a renamed move that
+        leaves the key quietly doing nothing is the failure worth hearing about.
+        """
         start = getattr(getattr(player, "combat", None), "start_attack", None)
         if not callable(start):
             return False
+        if not player.combat.has_attack(attack_name):
+            raise KeyError(
+                f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
+                "rename it in attacks.json or drop it from DEBUG_ATTACKS"
+            )
         return bool(start(attack_name))
 
-    def toggle_attack_replay(self, attack_name: str | None = None) -> str | None:
+    def toggle_attack_replay(self, attack_name: MoveId | None = None) -> MoveId | None:
         """Toggle looped replay of ``attack_name``; return the active name (``None`` = off)."""
         if self.attack_replay is not None:
             self.attack_replay = None
@@ -169,7 +185,7 @@ class SpawnSystem:
         self.attack_replay = attack_name or self._last_attack or next(iter(DEBUG_ATTACKS.values()))
         return self.attack_replay
 
-    def selected_attack(self) -> str | None:
+    def selected_attack(self) -> MoveId | None:
         """Return the attack currently selected for replay or export."""
         return self.attack_replay or self._last_attack
 

@@ -10,6 +10,7 @@ only one of them was ever tested.
 
 import pytest
 
+from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import Stance
 from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
@@ -26,6 +27,44 @@ def test_every_bound_button_is_in_the_press_order() -> None:
     table does not know throws nothing at all, silently, on every press.
     """
     assert set(ATTACK_ACTIONS) == set(ATTACK_BUTTONS)
+
+
+def test_every_move_the_table_names_is_a_real_attack() -> None:
+    """The table and the frame data are two files; nothing connected them.
+
+    ``BUTTON_MOVES`` says pressing 2 while crouched throws ``crouch_sweep``. If
+    that name is not in ``attacks.json``, the input is accepted, the posture is
+    checked, the cooldown is checked, and then the gate looks up a move that
+    isn't there -- which the old code reported as a plain refusal. A posture
+    quietly doing nothing is indistinguishable from the restriction being
+    intentional.
+    """
+    unknown = {
+        str(move)
+        for stance_moves in BUTTON_MOVES.values()
+        for move in stance_moves.values()
+        if move not in PLAYER_ATTACKS
+    }
+
+    assert unknown == set()
+
+
+def test_every_move_the_table_names_allows_the_posture_it_is_asked_from() -> None:
+    """The two files have to agree twice: the name, and the reach of the move.
+
+    Naming ``light_attack`` from a crouch would satisfy the check above -- the
+    move exists -- and then be refused by the stance gate at runtime, because
+    ``light_attack`` is ground-only. Asserting it here means the disagreement is
+    a failing test about the table, not a surprising ``Refusal`` in play.
+    """
+    mismatched = {
+        f"{action.value}/{stance.value} -> {move}"
+        for action, stance_moves in BUTTON_MOVES.items()
+        for stance, move in stance_moves.items()
+        if stance not in PLAYER_ATTACKS[move].stances
+    }
+
+    assert mismatched == set()
 
 
 def test_every_move_in_the_table_exists_and_is_legal_from_where_it_is_bound() -> None:

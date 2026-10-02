@@ -7,6 +7,7 @@ import pygame
 import pytest
 
 from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.frame_data import move_id
 from src.core.colors import Colors
 from src.core.display.framing import Framing
 from src.core.level.systems.projectile_system import ProjectileSystem
@@ -85,13 +86,34 @@ def test_trigger_test_attack_starts_showcase_move() -> None:
     system = SpawnSystem(groups)
     player = _player()
 
-    assert system.trigger_test_attack(player, "twin_fangs") is True
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
     assert player.combat.is_attacking
 
 
-def test_trigger_test_attack_rejects_unknown_name() -> None:
+def test_trigger_test_attack_says_so_when_the_move_is_not_registered() -> None:
+    """It used to answer ``False``, which is also what "you are busy" answers.
+
+    A move renamed in ``attacks.json`` left the number key wired to a name
+    nothing knows, and pressing it looked exactly like a fighter standing still.
+    """
     system = SpawnSystem(SpriteGroups())
-    assert system.trigger_test_attack(_player(), "nope") is False
+
+    with pytest.raises(KeyError, match=r"Debug bench attack 'nope' is not in"):
+        system.trigger_test_attack(_player(), move_id("nope"))
+
+
+def test_trigger_test_attack_still_answers_false_when_the_player_has_no_combat() -> None:
+    """The bench runs against every entity on the map, not just the player.
+
+    Only the player carries an attack table, so the missing-``combat`` case is
+    ordinary and must stay quiet -- unlike the missing-*move* case above.
+    """
+
+    class _Bare:
+        combat = None
+
+    system = SpawnSystem(SpriteGroups())
+    assert system.trigger_test_attack(_Bare(), move_id("twin_fangs")) is False
 
 
 def test_attack_replay_restarts_attack_when_idle() -> None:
@@ -99,7 +121,7 @@ def test_attack_replay_restarts_attack_when_idle() -> None:
     player = _player()
 
     assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
-    assert system.trigger_test_attack(player, "twin_fangs")
+    assert system.trigger_test_attack(player, move_id("twin_fangs"))
     # Replay waits while the attack runs, then restarts once idle.
     system.tick_attack_replay(player)
     assert player.combat.is_attacking
@@ -141,7 +163,7 @@ def test_attack_replay_ignored_while_attacking_or_on_cooldown() -> None:
 
     # Attacking: replay must not interrupt.
     system.debug_cooldowns.clear()
-    assert system.trigger_test_attack(player, "twin_fangs")
+    assert system.trigger_test_attack(player, move_id("twin_fangs"))
     combat = player.combat
     started = combat.state.frame_counter
     system.tick_attack_replay(player)

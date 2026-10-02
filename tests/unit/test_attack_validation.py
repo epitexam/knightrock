@@ -18,7 +18,7 @@ from src.combat.attack_loading import (
     load_attacks,
     validate_attacks,
 )
-from src.combat.frame_data import HitboxKeyframe
+from src.combat.frame_data import HitboxKeyframe, Stance, move_id
 from src.data.attacks import attack_definition_to_dict, read_attack_definition, read_attacks_file
 from src.data.errors import GameplayDataError
 from tests.unit.helpers import make_attack as attack
@@ -138,11 +138,72 @@ def test_a_cancel_naming_an_unregistered_attack_is_rejected() -> None:
     untested when grepping by name, and the failure it reports when broken is
     two assertions and a scroll away from the assertion that broke.
     """
-    broken_phase = replace(_valid_attack().phases[0], cancel_into=("nope",))
+    broken_phase = replace(_valid_attack().phases[0], cancel_into=(move_id("nope"),))
     definition = replace(_valid_attack(), phases=(broken_phase,))
 
     with pytest.raises(GameplayDataError, match=r"kick' references unknown cancels: nope"):
         validate_attacks({"kick": definition})
+
+
+def test_a_cancel_into_the_attack_itself_is_rejected() -> None:
+    """It loads today and is dead in play.
+
+    The cooldown gate runs before the cancel gate, and every move is still on
+    cooldown at its own last frame -- so a self-cancel is accepted by the data
+    and then never fires.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=(move_id("kick"),)),),
+    )
+
+    with pytest.raises(GameplayDataError, match=r"cancels into itself"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_cancel_into_a_posture_it_cannot_be_thrown_from_is_rejected() -> None:
+    """An air chain into a ground move was loadable, and playable.
+
+    ``air_attack.cancel_into = ("light_attack",)`` passed every existing check
+    for as long as it existed, and nothing stopped a fighter chaining from
+    mid-air into a standing swing. The move's own ``stances`` are what make the
+    crossing visible.
+    """
+    ground = _valid_attack()
+    air_phase = replace(ground.phases[0], cancel_into=(move_id("jab"),))
+    air = replace(ground, phases=(air_phase,), stances=(Stance.AIR,))
+    jab = replace(_valid_attack(), phases=(replace(_valid_attack().phases[0], cancel_into=()),))
+
+    with pytest.raises(GameplayDataError, match=r"not reachable from air"):
+        validate_attacks({"punch": air, "jab": jab})
+
+
+def test_a_mutual_cancel_is_allowed() -> None:
+    """Refusing cycles between moves would reject a table that works.
+
+    ``light_attack`` and ``dash_attack`` cancel into each other in the shipped
+    data. What bounds the chain is the cooldown gate -- every move clears its
+    cooldown before it can be thrown again -- not the shape of the graph, so a
+    cycle check would have refused an ordinary table.
+    """
+    a = _valid_attack()
+    b = replace(a, phases=(replace(a.phases[0], cancel_into=(move_id("kick"),)),))
+    a_mutual = replace(a, phases=(replace(a.phases[0], cancel_into=(move_id("jab"),)),))
+
+    validate_attacks({"kick": a_mutual, "jab": b})
+
+
+def test_the_shipped_tables_satisfy_every_cancel_rule() -> None:
+    """The shipped tables are checked by the same code that checks a bad one.
+
+    Otherwise the rules above could be wrong in a way that only shows up on a
+    table nobody validates -- which is exactly what happened to the air chain.
+    """
+    from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
+
+    validate_attacks(PLAYER_ATTACKS)
+    validate_attacks(GOBLIN_ATTACKS)
+    validate_attacks(SLIME_ATTACKS)
 
 
 def _raw_json_attack() -> dict[str, object]:

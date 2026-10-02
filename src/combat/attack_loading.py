@@ -146,7 +146,47 @@ def validate_attacks(attacks: Mapping[MoveId, AttackDefinition]) -> None:
             raise GameplayDataError(
                 f"Attack {name!r} references unknown cancels: {', '.join(sorted(unknown))}"
             )
+        _validate_cancels(name, definition, attacks)
         _validate_attack(name, definition)
+
+
+def _validate_cancels(
+    name: MoveId,
+    definition: AttackDefinition,
+    attacks: Mapping[MoveId, AttackDefinition],
+) -> None:
+    """Refuse a cancel that cannot fire, or one that crosses a posture.
+
+    Two ways a ``cancel_into`` name passes the existence check and is still
+    wrong:
+
+    * it names the attack itself. The cooldown gate runs before the cancel gate,
+      and every move is still on cooldown at its own last frame, so
+      ``light_attack -> light_attack`` was accepted at load time and dead in
+      play.
+    * it names a move whose ``stances`` do not include this one's. That was the
+      ``air_attack -> light_attack`` chain: an air chain into a ground move.
+
+    A cycle *between* different moves is deliberately not refused.
+    ``light_attack`` and ``dash_attack`` cancel into each other, and that is
+    ordinary: what bounds the chain is the cooldown gate, which every move clears
+    before it can be thrown again. Refusing mutual cancels would have rejected a
+    table that works.
+    """
+    for index, phase in enumerate(definition.phases):
+        for target in phase.cancel_into:
+            if target == name:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: cancels into itself ({target!r}), "
+                    "which the cooldown gate makes unreachable"
+                )
+            missing = set(attacks[target].stances) - set(definition.stances)
+            if missing:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: cancels into {target!r}, which is not "
+                    f"reachable from {'/'.join(sorted(s.value for s in definition.stances))} "
+                    f"(it needs {'/'.join(sorted(s.value for s in missing))})"
+                )
 
 
 def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:
