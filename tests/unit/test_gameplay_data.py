@@ -2,15 +2,22 @@
 
 import json
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, Stance
+from src.core.input.input_manager import InputManager
 from src.core.level.level_manager import LEVEL_PATHS
 from src.core.paths import PROJECT_ROOT
-from src.data.attacks import ATTACKS_FILENAME, attack_definition_to_dict, read_attacks_file
+from src.data.attacks import (
+    ATTACKS_FILENAME,
+    attack_definition_to_dict,
+    read_attack_definition,
+    read_attacks_file,
+)
 from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
 from src.data.errors import GameplayDataError
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
@@ -27,6 +34,28 @@ def _write(path: Path, payload: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def _grounded_player(input_manager: InputManager):
+    """A fighter on the floor, for the posture-resolution test.
+
+    Built directly rather than through a level: this asks what ``stance``
+    returns for a given set of surface flags, so the only setup that matters is
+    the flags.
+    """
+    import pygame
+
+    from src.entities.player import Player
+
+    player = Player(
+        pos=(0, 0),
+        groups=pygame.sprite.Group(),
+        collision_sprites=pygame.sprite.Group(),
+        moving_platforms=[],
+        input_manager=input_manager,
+    )
+    player.on_surface["floor"] = True
+    return player
 
 
 def _attacks_doc() -> dict:
@@ -626,6 +655,125 @@ def test_shipped_gameplay_json_files_are_present() -> None:
     assert root == PROJECT_ROOT / "data" / "gameplay"
     for name in (ATTACKS_FILENAME, ENEMIES_FILENAME, PLAYER_FILENAME, LEVELS_FILENAME):
         assert (root / name).is_file(), f"missing tracked gameplay file: {name}"
+
+
+def test_a_misspelled_stance_is_refused(tmp_path: Path) -> None:
+    """The whitelist is a whitelist: an unknown posture is not a shrug.
+
+    A typo here would silently drop the move from every posture, which reads as
+    "this attack does nothing" rather than as a data error.
+    """
+    raw = {
+        "phases": [
+            {
+                "startup_frames": 1,
+                "active_frames": 2,
+                "recovery_frames": 1,
+                "hitbox_size": [30.0, 20.0],
+                "hitbox_offset": [20.0, 0.0],
+                "hit": {
+                    "damage": 5.0,
+                    "damage_type": "blunt",
+                    "knockback": {"power": [100.0, 0.0]},
+                },
+            }
+        ],
+        "cooldown": 1.0,
+        "stances": ["gound"],
+    }
+
+    with pytest.raises(GameplayDataError, match=r"unknown stance 'gound'"):
+        read_attack_definition(raw, "t")
+
+
+def test_a_single_stance_may_be_spelled_without_a_list(tmp_path: Path) -> None:
+    """``"stances": "air"`` is what a designer writes for a one-entry move."""
+    doc = {
+        "version": 1,
+        "sets": {
+            "test_set": {
+                "punch": attack_definition_to_dict(PLAYER_ATTACKS["air_attack"]),
+            }
+        },
+    }
+    doc["sets"]["test_set"]["punch"]["stances"] = "air"
+
+    sets = read_attacks_file(_write(tmp_path / "attacks.json", doc))
+
+    assert sets["test_set"]["punch"].stances == (Stance.AIR,)
+
+
+def test_a_move_is_ground_only_unless_it_says_otherwise() -> None:
+    """The default is the restriction, which is why the field is a whitelist.
+
+    A posture added later has to be opted into; if the default were "anywhere",
+    a new posture would silently make every existing move reachable from it.
+    """
+    definition = read_attack_definition(
+        {
+            "phases": [
+                {
+                    "startup_frames": 1,
+                    "active_frames": 2,
+                    "recovery_frames": 1,
+                    "hitbox_size": [30.0, 20.0],
+                    "hitbox_offset": [20.0, 0.0],
+                    "hit": {
+                        "damage": 5.0,
+                        "damage_type": "blunt",
+                        "knockback": {"power": [100.0, 0.0]},
+                    },
+                }
+            ],
+            "cooldown": 1.0,
+        },
+        "t",
+    )
+
+    assert definition.stances == (Stance.GROUND,)
+
+
+def test_an_attack_reachable_from_nowhere_is_rejected() -> None:
+    """An empty whitelist would make a move permanently unstartable."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+        replace(
+            PLAYER_ATTACKS["light_attack"],
+            stances=(),
+        )
+
+
+def test_a_duplicated_stance_is_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicates"):
+        replace(
+            PLAYER_ATTACKS["light_attack"],
+            stances=(Stance.GROUND, Stance.AIR, Stance.GROUND),
+        )
+
+
+def test_the_posture_a_fighter_is_in_is_resolved_most_specific_first() -> None:
+    """The postures overlap, so the order is the answer.
+
+    Sliding a wall is also airborne, and the crouch needs a floor -- resolve in
+    the other order and a wall-slide reads as AIR or a crouch reads as GROUND,
+    each of which quietly changes which moves are live.
+    """
+    input_manager = InputManager()
+    player = _grounded_player(input_manager)
+
+    assert player.stance is Stance.GROUND
+
+    player.on_surface["floor"] = False
+    assert player.stance is Stance.AIR
+
+    player.on_surface["left"] = True
+    player.left_held = True
+    player.velocity.y = 100.0
+    assert player.stance is Stance.WALL
+
+    player.on_surface["floor"] = True
+    player.left_held = False
+    player.crouch._wanted = True
+    assert player.stance is Stance.CROUCH
 
 
 def test_load_gameplay_data_json_parity_with_builtin_values(

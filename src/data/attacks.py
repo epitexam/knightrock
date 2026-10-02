@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import MISSING, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
@@ -34,6 +34,7 @@ from src.combat.frame_data import (
     HitProperties,
     MoveId,
     PhaseDefinition,
+    Stance,
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
@@ -48,6 +49,7 @@ _KNOCKBACK_MODES = ("from_attacker", "fixed")
 _SHAPE_KINDS = {member.value: member for member in ShapeKind}
 _EASING_KINDS = {member.value: member for member in EasingKind}
 _ANCHOR_KINDS = {member.value: member for member in AnchorKind}
+_STANCES: dict[str, Stance] = {member.value: member for member in Stance}
 
 
 def _defaults(cls: type) -> dict[str, Any]:
@@ -342,6 +344,31 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
 
 
+def _read_stances(raw: Any, where: str) -> tuple[Stance, ...]:
+    """Parse the ``stances`` whitelist, defaulting to ground only.
+
+    A single string is accepted for the common one-stance case, since
+    ``"stances": "air"`` is what a designer writes for a single-entry move and
+    forcing them into a list of one is friction with no payoff.
+    """
+    if raw is None:
+        return cast("tuple[Stance, ...]", _ATTACK_DEFAULTS["stances"])
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        raise GameplayDataError(
+            f"{where}.stances: expected a stance name or a non-empty list of them, got {raw!r}"
+        )
+    stances: list[Stance] = []
+    for value in raw:
+        if value not in _STANCES:
+            raise GameplayDataError(
+                f"{where}.stances: unknown stance {value!r} (expected one of {', '.join(_STANCES)})"
+            )
+        stances.append(_STANCES[value])
+    return tuple(stances)
+
+
 def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
     """Parse one attack block into :class:`AttackDefinition`."""
     if not isinstance(raw, dict):
@@ -357,6 +384,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
                 for index, phase in enumerate(raw_phases)
             ),
             cooldown=float(_required(raw, "cooldown", where)),
+            stances=_read_stances(raw.get("stances"), where),
             lock_direction=bool(raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"])),
             combo_reset=bool(raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"])),
             chargeable=bool(raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"])),
@@ -499,6 +527,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
             for phase in definition.phases
         ],
         "cooldown": definition.cooldown,
+        "stances": [stance.value for stance in definition.stances],
         "lock_direction": definition.lock_direction,
         "combo_reset": definition.combo_reset,
         "chargeable": definition.chargeable,

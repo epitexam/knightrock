@@ -18,6 +18,7 @@ instead of only from a test that pokes the state name.
 from dataclasses import dataclass
 from typing import Any
 
+from src.combat.frame_data import Stance
 from src.core.settings import Locomotion, Physics
 
 
@@ -65,6 +66,17 @@ class CrouchPosture:
     def stood_height(self) -> float:
         """The fighter's full standing collider height."""
         return self._stood_height
+
+    @property
+    def stance(self) -> Stance:
+        """The posture the fighter is in, for anything that gates on it.
+
+        Only ``CROUCH`` versus not: the crouch requires a floor, so an airborne
+        fighter is never in it even mid-release. What the fighter is *not* doing
+        -- airborne, on a wall -- is the entity's business, so the full
+        resolution lives in ``Entity.stance`` rather than here.
+        """
+        return Stance.CROUCH if self._wanted else Stance.GROUND
 
     def restore(self, snapshot: CrouchSnapshot) -> None:
         """Restore posture state from a validated rollback snapshot."""

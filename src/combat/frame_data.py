@@ -41,6 +41,35 @@ than starting nothing.
 """
 
 
+class Stance(Enum):
+    """The posture an attack has to be thrown from.
+
+    The question this exists to answer is "which attacks are available right
+    now", and it could not be asked before: ``AttackDefinition`` had no notion
+    of a posture, so the whole answer lived in one ternary in the input handler
+    that picked a move name from whether the fighter had a floor under them.
+    That is why every attack was reachable from the crouch once crouching was
+    allowed -- there was nowhere to say otherwise.
+
+    Ordered by how specific the posture is to the fighter's situation, not by
+    how it affects the attack. Resolution runs most-specific first:
+    ``WALL`` before ``AIR`` (sliding a wall is airborne), ``AIR`` before
+    ``CROUCH`` (the crouch requires a floor).
+    """
+
+    GROUND = "ground"
+    """Standing or moving on the floor -- the default posture."""
+
+    CROUCH = "crouch"
+    """Held down on the floor. Shrinks the hurtbox and slows the fighter."""
+
+    AIR = "air"
+    """No floor contact, not sliding a wall."""
+
+    WALL = "wall"
+    """Airborne and in contact with a wall the fighter is holding into."""
+
+
 class PhaseState(Enum):
     """Sub-state of an attack phase within the frame data system.
 
@@ -492,6 +521,12 @@ class AttackDefinition:
     phases : tuple[PhaseDefinition, ...]
         Ordered tuple of hitbox events. The sequence advances automatically
         when the current phase's recovery frames expire.
+    stances : tuple[Stance, ...]
+        Postures this attack can be thrown from. A whitelist, not a blacklist:
+        a posture added later has to be opted into deliberately, so a new
+        posture does not silently make every existing move available from it.
+        Defaults to ground only, which is what all shipped moves were
+        implicitly restricted to before the field existed.
     cooldown : float
         Minimum time in seconds before this attack can be started again,
         measured from the moment it was triggered (not from when it ended).
@@ -534,6 +569,7 @@ class AttackDefinition:
 
     phases: tuple[PhaseDefinition, ...]
     cooldown: float
+    stances: tuple[Stance, ...] = (Stance.GROUND,)
     lock_direction: bool = False
     combo_reset: bool = False
     chargeable: bool = False
@@ -546,6 +582,14 @@ class AttackDefinition:
     def __post_init__(self) -> None:
         if not self.phases:
             raise ValueError("An attack requires at least one phase")
+        if not self.stances:
+            raise ValueError(
+                "Attack 'stances' cannot be empty: an attack reachable from no "
+                "posture could never be thrown"
+            )
+        if len(set(self.stances)) != len(self.stances):
+            duplicated = sorted({stance.value for stance in self.stances})
+            raise ValueError(f"Attack 'stances' has duplicates: {', '.join(duplicated)}")
         if self.cooldown < 0:
             raise ValueError("Attack cooldown cannot be negative")
         if self.max_charge_time <= 0:

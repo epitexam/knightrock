@@ -14,7 +14,7 @@ from src.combat.attack_loading import load_attacks
 from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCombatComponent
 from src.combat.combatant_protocol import DamageResult
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import AttackDefinition, MoveId
+from src.combat.frame_data import AttackDefinition, MoveId, Stance
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
@@ -392,6 +392,17 @@ class Entity(Sprite):
     def max_health(self, value: float) -> None:
         """Set maximum health, ensuring it's at least 1.0."""
         self.vitals.max_health = value
+
+    @property
+    def stance(self) -> Stance:
+        """The posture this entity is in, which decides which moves are live.
+
+        ``GROUND`` for everything that cannot be anything else, which today
+        means every enemy: they have no crouch and no wall slide. Overridden by
+        the player, which has both. Defined here rather than only on the player
+        so the attack policy can ask any combatant without a type check.
+        """
+        return Stance.GROUND
 
     @property
     def is_dead(self) -> bool:

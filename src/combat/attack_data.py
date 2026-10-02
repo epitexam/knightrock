@@ -13,6 +13,7 @@ from src.combat.frame_data import (
     HitProperties,
     MoveId,
     PhaseDefinition,
+    Stance,
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
@@ -134,10 +135,18 @@ PLAYER_ATTACKS: dict[MoveId, AttackDefinition] = {
                     damage_type=DamageType.SLASH,
                     stagger=0.1,
                 ),
-                cancel_into=(move_id("light_attack"),),
+                # Air -> ground was the only stance-crossing cancel in the table,
+                # and it was reachable in play: the chain was legal at load time
+                # and the whole reason the move exists. Dropped with the field
+                # that could express it; a follow-up from this one lands back
+                # on the ground first.
             ),
         ),
         cooldown=0.35,
+        # The one shipped move that is not a ground move. Every other attack in
+        # the table keeps the ``GROUND`` default, which is the restriction they
+        # were all implicitly living under before ``stances`` existed.
+        stances=(Stance.AIR,),
         lock_direction=False,
         attack_move_multiplier=0.6,
     ),

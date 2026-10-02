@@ -53,6 +53,9 @@
           }
         ],
         "cooldown": 0.3,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -109,6 +112,9 @@
           }
         ],
         "cooldown": 0.8,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": true,
@@ -165,6 +171,9 @@
           }
         ],
         "cooldown": 0.9,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -225,6 +234,9 @@
           }
         ],
         "cooldown": 0.5,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -264,9 +276,7 @@
               "tags": []
             },
             "reset_targets": true,
-            "cancel_into": [
-              "light_attack"
-            ],
+            "cancel_into": [],
             "hitboxes": [
               {
                 "size": [
@@ -283,6 +293,9 @@
           }
         ],
         "cooldown": 0.35,
+        "stances": [
+          "air"
+        ],
         "lock_direction": false,
         "combo_reset": false,
         "chargeable": false,
@@ -353,6 +366,9 @@
           }
         ],
         "cooldown": 0.5,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -445,6 +461,9 @@
           }
         ],
         "cooldown": 0.7,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -501,6 +520,9 @@
           }
         ],
         "cooldown": 1.0,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -557,6 +579,9 @@
           }
         ],
         "cooldown": 1.2,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -785,6 +810,9 @@
           }
         ],
         "cooldown": 2.0,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -998,6 +1026,9 @@
           }
         ],
         "cooldown": 0.5,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1084,6 +1115,9 @@
           }
         ],
         "cooldown": 0.25,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": true,
         "chargeable": false,
@@ -1185,6 +1219,9 @@
           }
         ],
         "cooldown": 1.0,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,
@@ -1243,6 +1280,9 @@
           }
         ],
         "cooldown": 1.25,
+        "stances": [
+          "ground"
+        ],
         "lock_direction": true,
         "combo_reset": false,
         "chargeable": false,

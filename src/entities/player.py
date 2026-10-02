@@ -8,7 +8,7 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
-from src.combat.frame_data import MoveId
+from src.combat.frame_data import MoveId, Stance
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
@@ -210,6 +210,28 @@ class Player(ControllerView, Entity):
         return (
             not self.on_surface["floor"] and (on_left_wall or on_right_wall) and self.velocity.y > 0
         )
+
+    @property
+    def stance(self) -> Stance:
+        """The posture the fighter is in, which decides which moves are live.
+
+        Most specific first, because the postures overlap: sliding a wall is
+        also airborne, and the crouch requires a floor. Order is
+        ``WALL`` -> ``AIR`` -> ``CROUCH`` -> ``GROUND``.
+
+        This is the only place the resolution is written. It is asked per attack
+        press rather than decided per state, which is the point: ``crouch`` is a
+        property of the fighter's geometry, not of a state name, so a fighter
+        who crouches and then attacks is still crouched -- which is also what
+        makes the low half of ``Guard.HEIGHT_BLOCK`` resolve for a crouch-guard.
+        """
+        if self.is_wall_sliding():
+            return Stance.WALL
+        if not self.on_surface["floor"]:
+            return Stance.AIR
+        if self.crouch.is_crouched:
+            return Stance.CROUCH
+        return Stance.GROUND
 
     def _on_floor_contact(self) -> None:
         """Reset midair and wall jumps when landing."""
