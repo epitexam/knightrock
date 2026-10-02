@@ -493,7 +493,7 @@ runtime model.
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
 | `enemies.json` | Enemy configs, referencing attack sets by name or inlining them. |
-| `player.json` | Player overrides plus the attack-name list. |
+| `player.json` | Player overrides plus the name of the attack set to use. |
 | `levels.json` | Level id to TMX path mapping. |
 
 Loading is **strict**: unknown keys, missing fields, bad versions and unknown

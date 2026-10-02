@@ -579,11 +579,28 @@ def _can_guard(player: Any) -> bool:
 def _can_attack_interrupt(player: Any) -> bool:
     """Check if the player can currently interrupt to attack.
 
-    ``Player.can_attack()`` is deliberately *not* a precondition: it forbids
-    ``DASH`` outright, which used to make the dash branch below unreachable
-    (pressing an attack mid-dash was swallowed). The state test that follows
-    already covers every forbidden state, so the dash window stays the only
-    thing that gates a dash cancel.
+    ``Player.can_attack()`` is deliberately *not* a precondition. It used to
+    be, and that made this function's own ``DASH`` branch unreachable dead
+    code: ``DASH`` is in the forbidden set, so the input gate returned False and
+    swallowed the press before an attack could ever be cancelled into a dash.
+    The dash window is now the only thing gating that cancel, read through
+    :func:`dash_cancel_open` -- the same helper the input gate reads, so the
+    two cannot disagree about the window itself.
+
+    The test below still covers every forbidden state, and adds two things the
+    input gate knows nothing about. An attack has to actually be *running*:
+    this interrupt *replaces* the ``ATTACK`` state, so without that precondition
+    a press refused further down ``start_attack`` -- a cooldown, an unknown
+    move -- would drop the fighter into an attack state with nothing running.
+    And the dash coyote window opens the cancel on frames where the dash has
+    already ended.
+
+    That coyote bypass is the one place where this and ``Player.can_attack``
+    answer differently for the same fighter: the input gate knows only the dash
+    *cancel* window, not the coyote one. It is deliberate (a guard or attack
+    pressed just after a dash should still connect) but it does mean the input
+    gate and this transition are not interchangeable, which is worth knowing
+    before either is edited.
     """
     if not player.combat.is_attacking:
         return False

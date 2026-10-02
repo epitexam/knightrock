@@ -503,6 +503,12 @@ class AttackDefinition:
         Multiplier applied to the entity's speed to compute the forward
         lunge velocity applied when this attack starts on the ground.
         0.0 disables the lunge entirely.
+    attack_move_multiplier : float
+        Multiplier applied to the entity's movement speed for the whole
+        sequence, read every frame while the attack is live (see
+        ``CombatComponent.movement_multiplier``). 1.0 = unrestricted,
+        0.0 = frozen in place. Distinct from ``lunge_speed_multiplier``,
+        which is a one-off impulse on the first grounded frame.
 
     Properties
     ----------
