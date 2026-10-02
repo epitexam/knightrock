@@ -12,6 +12,9 @@ import os
 import pygame
 import pytest
 
+from src.combat.attack_data import move_id
+from src.combat.frame_data import Stance
+from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
@@ -174,21 +177,30 @@ def test_the_crouched_shuffle_is_slower_than_standing() -> None:
 # --- Attacks and guard ------------------------------------------------------
 
 
-def test_attacking_from_a_crouch_is_not_swallowed() -> None:
-    """Down+attack has to reach an attack state.
+def test_attacking_from_a_crouch_is_refused_for_the_right_reason() -> None:
+    """Down+attack no longer reaches an attack, and that is the fix, not a regression.
 
-    ``CROUCH`` used to sit in ``ATTACK_FORBIDDEN_STATES``, and the press was
-    dropped rather than buffered: holding Down cost the player their whole
-    offence, with no crouch attack to reach for instead.
+    ``CROUCH`` used to sit in ``ATTACK_FORBIDDEN_STATES``, so holding Down cost
+    the player their whole offence -- and once the state stopped being forbidden,
+    the honest answer turned out to be worse: *every* move in the table became
+    available from down there, including the chargeable one and the lunging one,
+    both of which throw the fighter standing up.
+
+    The restriction now lives on the move (``AttackDefinition.stances``) instead
+    of on a list of states, and this pins the reason it reports. A refusal that
+    said ``UNKNOWN`` or ``BUSY`` would be the same silence as before with a
+    different cause.
     """
     input_manager = InputManager()
     player = _player(input_manager)
     _run(player, input_manager, frames=5, down=True)
     assert _state(player) == PlayerState.CROUCH.value
+    assert player.stance is Stance.CROUCH
 
-    _run(player, input_manager, frames=1, down=True, attack=True)
+    refusal = player.combat.start_attack(move_id("light_attack"))
 
-    assert _state(player) == PlayerState.ATTACK.value
+    assert refusal is Refusal.STANCE
+    assert _state(player) == PlayerState.CROUCH.value
 
 
 def test_guarding_from_a_crouch_is_not_swallowed() -> None:

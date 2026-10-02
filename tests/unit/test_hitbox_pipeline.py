@@ -7,7 +7,7 @@ from pygame.sprite import Group
 
 from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.attack_state import AttackStateMachine
-from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition, Stance
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from tests.unit.helpers import activate, entity_at, make_entity
@@ -345,8 +345,12 @@ def test_invalid_frame_data_fails_fast() -> None:
 
 
 def _drive(name: str, attacks: dict) -> list[tuple[str, int, tuple | None]]:
+    # Launched from the posture the move is legal in: `stances` restricts what
+    # each move can be thrown from, and `air_attack` is now AIR-only.
+    stance = next(iter(attacks[name].stances))
     owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
-    assert owner.combat.start_attack(name), name
+    owner.on_surface["floor"] = stance is Stance.GROUND
+    assert owner.combat.start_attack(name), f"{name} from {stance}"
     frames: list[tuple[str, int, tuple | None]] = []
     while owner.combat.is_attacking:
         owner.combat.update(1 / 60)
@@ -468,8 +472,12 @@ def _lethal_jumps(attacks: dict, name: str) -> list[float]:
     Ne retient que les arrives en ACTIVE : seul ce sous-etat est teste par
     `_attacker_ready`, donc seuls ces sauts peuvent changer un contact en P1.
     """
+    # Launched from the posture the move is legal in: `stances` restricts what
+    # each move can be thrown from, and `air_attack` is now AIR-only.
+    stance = next(iter(attacks[name].stances))
     owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
-    assert owner.combat.start_attack(name), name
+    owner.on_surface["floor"] = stance is Stance.GROUND
+    assert owner.combat.start_attack(name), f"{name} from {stance}"
     jumps: list[float] = []
     prev: tuple[float, float] | None = None
     while owner.combat.is_attacking:

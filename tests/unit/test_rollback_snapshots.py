@@ -213,6 +213,7 @@ def test_entity_snapshot_captures_combat_and_state_machine() -> None:
         collision_sprites=Group(),
         attacks={"test": make_attack(phase)},
     )
+    entity.on_surface["floor"] = True
     assert entity.combat.start_attack("test")
     entity.combat.update(1 / 60)  # advance one attack frame
 

@@ -397,12 +397,16 @@ class Entity(Sprite):
     def stance(self) -> Stance:
         """The posture this entity is in, which decides which moves are live.
 
-        ``GROUND`` for everything that cannot be anything else, which today
-        means every enemy: they have no crouch and no wall slide. Overridden by
-        the player, which has both. Defined here rather than only on the player
-        so the attack policy can ask any combatant without a type check.
+        Ground or air, from floor contact. No crouch and no wall slide: those
+        belong to the player, which overrides this. An entity that is not on the
+        floor is airborne whether or not it was ever meant to leave it -- a
+        goblin knocked off a ledge is in the air, and reading that as ground
+        would let it throw ground moves at the moment it can least afford to.
+
+        Defined here rather than only on the player so the attack policy can ask
+        any combatant without a type check.
         """
-        return Stance.GROUND
+        return Stance.GROUND if self.on_surface.get("floor", False) else Stance.AIR
 
     @property
     def is_dead(self) -> bool:

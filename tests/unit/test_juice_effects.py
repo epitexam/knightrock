@@ -252,7 +252,8 @@ def test_the_fan_dissolves_instead_of_vanishing_on_one_frame() -> None:
 
 
 def test_hard_landing_records_impact_while_hops_stay_clean() -> None:
-    entity = make_entity(pos=(50.0, 155.0), faction="player")
+    # Airborne: the whole point is the transition into contact.
+    entity = make_entity(pos=(50.0, 155.0), faction="player", floor=False)
     entity.collision_sprites = [_floor_tile()]
     entity.velocity.y = 600.0
 
