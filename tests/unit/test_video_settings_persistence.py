@@ -27,6 +27,7 @@ window coordinates, converted by the presentation.
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pygame
 import pytest
@@ -37,7 +38,20 @@ from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.input_actions import InputAction
 
-pytestmark = pytest.mark.usefixtures("_video_display")
+
+@pytest.fixture(autouse=True)
+def _debug_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Build the video menu with the overlay on, so the debug row exists.
+
+    ``panel_scale`` is in ``VALUE_ROWS``, and the tests below walk the real screen
+    looking each row up by action -- so without the flag, ``_row_index`` fails on
+    it. Which is the honest failure: this file is about the rows the screen
+    offers, and it should not quietly pass by not offering one.
+    """
+    monkeypatch.setenv("DEBUG", "1")
+
+
+pytestmark = pytest.mark.usefixtures("_video_display", "_debug_on")
 
 #: The rows that carry a value, and how to read it back out of the settings.
 #: ``AUTO`` is excluded: it is resolved at launch against the machine, so what
@@ -47,6 +61,7 @@ VALUE_ROWS = {
     "vsync": lambda settings: settings.vsync,
     "frame_limit": lambda settings: settings.frame_limit,
     "scale": lambda settings: settings.ui_scale,
+    "panel_scale": lambda settings: settings.panel_scale,
 }
 
 #: What each row is worth cycling to from the defaults: a value that is not the
@@ -56,6 +71,11 @@ CYCLED_TO = {
     "vsync": True,
     "frame_limit": 120,
     "scale": 1.2,
+    # The panel ladder ascends ``0.4 0.5 0.6 0.8 1.0 1.2`` and the default is
+    # 1.0, so one forward click lands on 1.2. Not 0.5, which is what the
+    # interface ladder's spacing would suggest -- the two ladders are unrelated
+    # and the cyclicers index their own.
+    "panel_scale": 1.2,
 }
 
 
@@ -313,3 +333,118 @@ def test_a_failed_read_is_reported_rather_than_swallowed(tmp_path: Path) -> None
     # And the file is left exactly as it was, so the controls are recoverable.
     assert store.path.read_text(encoding="utf-8") == "{ not json"
     assert game.settings.bindings == rebound, "the live runtime still holds them"
+
+
+# --- the debug-only panel scale --------------------------------------------
+
+
+def test_the_panel_scale_is_persisted_and_survives_a_relaunch(tmp_path: Path) -> None:
+    """The default is 1.0, which makes a dropped key look correct.
+
+    ``VALUE_ROWS`` covers the three-part claim for every row in the cycle tables;
+    this one is called out because its default equals the value a missing key
+    would produce, so a save that quietly omitted it would pass every assertion
+    here until the player restarted -- and saw their panels at full size again
+    without being told why.
+    """
+    game, store = _runtime(tmp_path)
+
+    assert game.settings.panel_scale == 1.0
+    game.apply_settings(game.settings.with_video(panel_scale=0.5))
+    game.step()
+
+    assert game.settings.panel_scale == 0.5
+    written = json.loads(store.path.read_text())
+    assert written["ui"]["panel_scale"] == 0.5
+
+    relaunched, _ = _runtime(tmp_path)
+    assert relaunched.settings.panel_scale == 0.5
+
+
+def test_a_settings_file_without_the_key_keeps_the_default_size(tmp_path) -> None:
+    """A file written before the key existed must not resize every panel.
+
+    ``ui.scale`` has a default for the same reason, and the general rule is in
+    ``settings_store``: unknown keys are ignored rather than rejected, because
+    losing the bindings over a video key is a bad trade.
+    """
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "bindings": {},
+                "video": {"display": "window", "vsync": False},
+                "ui": {"scale": 1.0},
+            }
+        )
+    )
+    game, _ = _runtime(tmp_path)
+
+    assert game.settings.panel_scale == 1.0
+    assert game.settings.ui_scale == 1.0
+
+
+def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
+    """It is a size preference, and ``video`` is held to four exact keys.
+
+    That exactness exists so no setting can describe the window and disagree with
+    it. A panel scale cannot -- it says how big to draw on the window, not how big
+    it is -- so it belongs beside the interface scale rather than among the keys
+    that once got a stored resolution.
+    """
+    game, store = _runtime(tmp_path)
+    game.apply_settings(game.settings.with_video(panel_scale=0.4))
+    game.step()
+
+    written = json.loads(store.path.read_text())
+
+    assert set(written["video"]) == {"display", "pixel_perfect", "vsync", "frame_limit"}
+    assert "panel_scale" in written["ui"]
+
+
+def test_applying_the_panel_scale_reaches_the_panels_that_draw_them(
+    tmp_path: Path,
+) -> None:
+    """The push, which nothing above tested.
+
+    The persistence tests prove the value moves in ``settings``, reaches the
+    file, and comes back on the next launch. None of that says the renderer ever
+    hears about it -- and the setting is worthless if the panels keep drawing at
+    the old size while the menu reports a new one. That gap was found by deleting
+    the call from ``apply_settings`` and watching every test in this file stay
+    green.
+
+    Asserted as a ratio on the resolved ``screen_scale``, not as an absolute:
+    the harness builds a 2304x1296 target, whose density is 2.0 and therefore
+    already at the cap, so a fixed number here would be asserting the density as
+    much as the preference. Halving the preference has to halve what is drawn.
+    """
+    game, _ = _runtime(tmp_path)
+    overlay = game.world_overlay(game.presentation.surface)
+    before = overlay.renderer.screen_scale
+
+    game.apply_settings(game.settings.with_video(panel_scale=0.5))
+
+    assert overlay.renderer.panel_scale == pytest.approx(0.5)
+    assert overlay.renderer.screen_scale == pytest.approx(before * 0.5)
+
+
+def test_applying_the_panel_scale_does_not_rebuild_the_window(tmp_path: Path) -> None:
+    """It is a size preference, not a window one.
+
+    A window change rebuilds the display and re-derives the screen scale from the
+    new density, which would silently overwrite the preference -- so the two must
+    stay independent. This is the same claim as
+    ``test_applying_only_the_ui_scale_keeps_the_window``, for the neighbouring
+    row: if this ever started calling ``set_mode``, the setting would work and
+    then stop working on the next window change.
+    """
+    game, _ = _runtime(tmp_path)
+    overlay = game.world_overlay(game.presentation.surface)
+
+    with patch.object(pygame.display, "set_mode") as set_mode:
+        game.apply_settings(game.settings.with_video(panel_scale=0.4))
+
+    assert set_mode.call_count == 0
+    assert overlay.renderer.panel_scale == pytest.approx(0.4)

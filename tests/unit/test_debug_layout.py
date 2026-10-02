@@ -614,3 +614,114 @@ def test_the_special_row_says_no_key_rather_than_inventing_one() -> None:
     # The claim that it has no key: stated rather than assumed, since the default
     # map is the thing that would change.
     assert InputAction.SPECIAL_ATTACK in unbound or not unbound
+
+
+def test_the_whole_stack_fits_a_small_display_at_a_low_panel_scale() -> None:
+    """The problem the setting exists for, as a regression guard.
+
+    Measured before the setting: at 1.0 on a 640x480 window, *one* of the five
+    placeable panels found a slot and four were dropped with a warning -- and
+    ``PanelLayout`` does not clip, so a dropped panel is not a squeezed panel, it
+    is an absent one. At 0.5 all five fit; 0.4 is the margin below that.
+
+    A guard rather than a fix: it says the setting still does what it was added
+    for, and it fails if the panel stack grows past what the bottom rung holds.
+    """
+    import warnings
+
+    from src.combat.frame_data import Stance
+    from src.ui.panel_renderer import set_compact_panels
+
+    surface = pygame.Surface((640, 480))
+    overlay = make_overlay(surface)
+    overlay.renderer.set_panel_scale(0.5)
+    player = _full_player()
+    player.stance = Stance.GROUND
+
+    placed: list[pygame.Rect] = []
+    original_place = PanelLayout.place
+    original_pin = PanelLayout.place_top_right
+
+    def spy_place(self: PanelLayout, w: int, h: int) -> tuple[int, int]:
+        pos = original_place(self, w, h)
+        placed.append(pygame.Rect(*pos, w, h))
+        return pos
+
+    def spy_pin(self: PanelLayout, w: int, h: int) -> tuple[int, int]:
+        pos = original_pin(self, w, h)
+        placed.append(pygame.Rect(*pos, w, h))
+        return pos
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(PanelLayout, "place", spy_place)
+    monkey.setattr(PanelLayout, "place_top_right", spy_pin)
+    set_compact_panels(False)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            overlay.draw_debug_panels(
+                player=player,
+                fps=60.0,
+                sprite_count=1,
+                combat_count=1,
+                entity_count=1,
+                collision_count=1,
+                hit_stop=0.0,
+                spawn_cooldown=0.0,
+                scene_host=None,
+                frame_time=16.0,
+                cache_size=0,
+            )
+    finally:
+        monkey.undo()
+        set_compact_panels(True)
+
+    # SCENE is absent because scene_host is None, so five panels are the whole
+    # stack available here: the pinned PERFORMANCE plus four that flow.
+    assert len(placed) == 5, "a panel could not find a slot at 0.5 on 640x480"
+    assert all(surface.get_rect().contains(rect) for rect in placed)
+    for index, rect in enumerate(placed):
+        for other in placed[index + 1 :]:
+            assert not rect.colliderect(other), f"{rect} stacks on {other}"
+
+
+def test_the_setting_does_not_pretend_the_default_layout_fits() -> None:
+    """1.0 does not fit, and the guard above is only meaningful if that is true.
+
+    If this ever passes at 1.0 -- a smaller panel design, say -- then the low rung
+    is no longer buying anything and the test above has stopped guarding the
+    reason the setting exists.
+    """
+    import warnings
+
+    from src.combat.frame_data import Stance
+    from src.ui.panel_renderer import set_compact_panels
+
+    surface = pygame.Surface((640, 480))
+    overlay = make_overlay(surface)
+    player = _full_player()
+    player.stance = Stance.GROUND
+
+    set_compact_panels(False)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            overlay.draw_debug_panels(
+                player=player,
+                fps=60.0,
+                sprite_count=1,
+                combat_count=1,
+                entity_count=1,
+                collision_count=1,
+                hit_stop=0.0,
+                spawn_cooldown=0.0,
+                scene_host=None,
+                frame_time=16.0,
+                cache_size=0,
+            )
+    finally:
+        set_compact_panels(True)
+
+    assert [str(w.message) for w in caught], (
+        "the default panel scale now fits 640x480, so the scale setting is redundant"
+    )

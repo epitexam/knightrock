@@ -417,7 +417,14 @@ class PanelRenderer:
         self.text_cache_capacity = text_cache_capacity
 
         self._world_scale = world_scale(density)
-        self._screen_scale = screen_scale(density)
+        #: The window's own density, kept so :meth:`set_surface` can re-derive the
+        #: screen scale from it *and* re-apply the preference, rather than
+        #: recomputing one number and silently dropping the other.
+        self._density = density
+        #: The player's panel-scale preference, kept apart from the density for
+        #: the same reason: the two are multiplied together and must be separable.
+        self._panel_scale = 1.0
+        self._screen_scale = screen_scale(density) * self._panel_scale
         self._build_fonts()
 
         self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
@@ -439,8 +446,66 @@ class PanelRenderer:
 
     @property
     def screen_scale(self) -> float:
-        """Scale of the panels and their hit boxes: the display's, capped."""
+        """Scale of the panels and their hit boxes: the display's, capped, times the
+        player's preference.
+
+        A multiplier rather than a replacement, so shrinking the panels does not
+        also flatten the density behaviour: a 4K window still gets panels larger
+        than the design size, just smaller by the chosen factor.
+        """
         return self._screen_scale
+
+    @property
+    def panel_scale(self) -> float:
+        """The player's preference on its own, as it was asked for.
+
+        The resolved :attr:`screen_scale` is this times the window's density, and
+        the two are not interchangeable: 0.5 on a 1440p window resolves to
+        something well under 0.5, so a panel reporting ``panel_scale == 1.0``
+        while drawing at half size is correct, not a bug.
+        """
+        return self._panel_scale
+
+    def set_panel_scale(self, scale: float) -> None:
+        """Apply the player's panel-scale preference, live.
+
+        Everything screen-space follows this one number -- the three panel fonts,
+        the padding and gaps through :meth:`_px`, the close-button box, and
+        ``interaction.scale`` for its hit box -- so the change is one number plus
+        the rebuild that number implies. The fonts are not optional: they are
+        sized *from* the scale, so keeping them would draw 24px text inside a box
+        measured for 10px.
+
+        The text cache has to go with them. It keys on ``(text, id(font),
+        color)``, and CPython reuses an ``id`` after a collection, so a stale
+        surface can be served for a font that no longer exists.
+
+        Refuses a non-positive scale rather than clamping it: below 1 the panels
+        stop being readable and the correct answer at that point is the compact
+        layout, which drops rows rather than shrinking them.
+        """
+        if not scale > 0.0:
+            raise ValueError(f"panel scale must be positive, got {scale}")
+        self._panel_scale = float(scale)
+        self._adopt_screen_scale(screen_scale(self._density) * self._panel_scale)
+
+    def _adopt_screen_scale(self, screen: float) -> None:
+        """Rebuild everything that follows from the screen scale, if it moved.
+
+        The fonts, both caches and the interaction's copy of the scale are all
+        derived, so they all have to move together -- :meth:`_build_fonts` sizes
+        from the scale, the caches are keyed on the fonts they were rendered with,
+        and ``interaction.scale`` is what makes the close box's hit area the size
+        of the box that was drawn.
+        """
+        if screen == self._screen_scale:
+            return
+        self._screen_scale = screen
+        self._build_fonts()
+        self.clear_text_cache()
+        self._background_cache.clear()
+        self.interaction.scale = screen
+        self.interaction.clamp_positions((self.surface.get_width(), self.surface.get_height()))
 
     @property
     def world_scale(self) -> float:
@@ -478,15 +543,23 @@ class PanelRenderer:
         renderer. A window change and a whole-pixel change both land here, and
         both change the answer, so neither can be applied anywhere else without
         a second copy of this arithmetic to drift from it.
+
+        The panel-scale preference is re-applied rather than recomputed away. The
+        screen scale used to be assigned from the density here, against a guard
+        comparing it with the current value -- and once the current value was
+        density * preference, that comparison could not tell whether the density
+        had changed or the product had, so a window resize after the player had
+        chosen a scale put the panels back with nothing to show for it.
         """
         self.surface = surface
+        self._density = density
+        self._adopt_screen_scale(screen_scale(density) * self._panel_scale)
         world = world_scale(density)
-        screen = screen_scale(density)
-        if (world, screen) != (self._world_scale, self._screen_scale):
+        if world != self._world_scale:
             self._world_scale = world
-            self._screen_scale = screen
             self._build_fonts()
-            self.interaction.scale = screen
+        # Cleared unconditionally: a new surface invalidates every surface the
+        # cache holds even when the scale did not move.
         self.clear_text_cache()
         self.interaction.clamp_positions((surface.get_width(), surface.get_height()))
 

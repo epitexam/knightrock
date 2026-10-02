@@ -103,6 +103,16 @@ class UIManager:
     def set_ui_scale(self, scale: float) -> None:
         self.hud.set_scale(scale)
 
+    def set_panel_scale(self, scale: float) -> None:
+        """Hand the player's debug-panel scale to the renderer that draws them.
+
+        Distinct from :meth:`set_ui_scale`, which is the HUD and the menus and
+        leaves the debug panels alone: an interface-scale preference of 0.8 has
+        never moved a panel, and folding the two together would make one setting
+        silently control the other's subject.
+        """
+        self.renderer.set_panel_scale(scale)
+
     def draw_state_panel(
         self,
         x: int,

@@ -92,6 +92,23 @@ def _drawn(display: DisplayMode = DisplayMode.WINDOW) -> VideoScene:
     return scene
 
 
+@pytest.fixture(autouse=True)
+def _debug_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run this file with the overlay on, so the debug-only row exists.
+
+    ``panel_scale`` is in ``CYCLING_ROWS``, and those tests are the check that
+    every row in it answers every key -- so without the flag the row is absent
+    from the model and ``_row`` raises ``StopIteration`` on it. Which is the
+    right failure: it says the suite is exercising a row the screen is not
+    showing, rather than quietly skipping one.
+
+    The flag is per-test rather than per-module because the tests that assert the
+    row is *absent* without it need the opposite, and a module-level
+    ``setenv`` would be undone by neither.
+    """
+    monkeypatch.setenv("DEBUG", "1")
+
+
 def _row(scene: VideoScene, action: str) -> int:
     return next(index for index, item in enumerate(scene.model.items) if item.action == action)
 
@@ -482,3 +499,91 @@ def test_whole_pixel_art_still_plainly_reports_on_when_there_is_work_to_do() -> 
 
         assert item.value.startswith("on"), f"{window}: {item.value!r}"
         assert "already whole" not in item.value, f"{window} has work to do: {item.value!r}"
+
+
+# --- the debug-only row -----------------------------------------------------
+
+
+def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
+    """Nothing to size when there are no panels.
+
+    The first row in this screen's history to be conditional on anything, and
+    gated on ``Debug.is_enabled()`` because ``--debug`` is nothing but the
+    environment variable -- so that is the only thing that can say whether the
+    overlay is on at the time this menu is built.
+    """
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.delenv("DEBUG", raising=False)
+    try:
+        actions = [item.action for item in _drawn().model.items]
+    finally:
+        monkeypatch.undo()
+
+    assert "panel_scale" not in actions
+    assert actions == [
+        "display",
+        "pixel_perfect",
+        "vsync",
+        "frame_limit",
+        "scale",
+        "reset",
+        "back",
+        "info",
+    ]
+
+
+def test_the_panel_scale_row_appears_with_the_overlay() -> None:
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("DEBUG", "1")
+    try:
+        scene = _drawn()
+        actions = [item.action for item in scene.model.items]
+    finally:
+        monkeypatch.undo()
+
+    assert "panel_scale" in actions
+    # Between the two size rows, so the scales read as one group.
+    assert actions.index("panel_scale") == actions.index("scale") + 1
+
+
+def test_the_row_reports_the_scale_it_will_apply() -> None:
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("DEBUG", "1")
+    try:
+        scene = _drawn()
+        index = _row(scene, "panel_scale")
+    finally:
+        monkeypatch.undo()
+
+    assert scene.model.items[index].value == "1x"
+
+
+def test_stepping_the_row_walks_the_panel_ladder_not_the_interface_one() -> None:
+    """Its own ladder, because the interface one does not go low enough.
+
+    ``UI_SCALES`` bottoms out at 0.8. The panels start from ``Debug.FONT_SIZE =
+    24`` over a design frame, and at 1.0 only one of the five placeable panels
+    finds a slot on a 640x480 window, so a ladder that starts at 0.8 would not
+    offer a value that helps.
+    """
+    from src.application.settings_store import PANEL_SCALES
+
+    assert min(PANEL_SCALES) == 0.4
+    assert min(PANEL_SCALES) < 0.8
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("DEBUG", "1")
+    try:
+        scene = _drawn()
+        # Focused first: a direction key acts on the *selected* row, and the
+        # selection starts on ``display``. Without this the press walked the
+        # display mode and the panel scale never moved.
+        _focus(scene, _row(scene, "panel_scale"))
+        seen = []
+        for _ in range(len(PANEL_SCALES)):
+            seen.append(scene.game.settings.panel_scale)
+            _press(scene, InputAction.UI_RIGHT)
+    finally:
+        monkeypatch.undo()
+
+    assert seen == list(PANEL_SCALES[4:]) + list(PANEL_SCALES[:4]), seen

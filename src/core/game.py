@@ -297,6 +297,7 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
+        self._apply_panel_scale(settings)
         if self.stage is None or self.presentation is None:
             return
         # Before anything else, and unconditionally: the letterbox belongs to
@@ -311,6 +312,23 @@ class Game:
         elif previous.pixel_perfect != settings.pixel_perfect:
             self._retarget()
         self.scene_manager.set_ui_scale(self.ui_scale)
+
+    def _apply_panel_scale(self, settings: UserSettings) -> None:
+        """Hand the debug-panel scale to the overlay, if one has been built.
+
+        Before the ``stage`` guard, because the overlay exists independently of
+        it and can already be holding fonts sized for the old scale. And guarded
+        on ``self.ui`` rather than calling :meth:`world_overlay`, which *builds*
+        the overlay: applying a preference must not be the thing that brings the
+        whole debug UI into existence.
+
+        Not in :meth:`_window_signature` on purpose. A window change rebuilds the
+        display, and the rebuild re-derives the screen scale from the new density
+        -- so putting it there would rebuild the window on every step of the
+        ladder, for a setting that has nothing to do with the window.
+        """
+        if self.ui is not None:
+            self.ui.set_panel_scale(settings.panel_scale)
 
     @staticmethod
     def _invalidate_assets() -> None:

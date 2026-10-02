@@ -52,6 +52,16 @@ LEGACY_FORMAT_VERSIONS = (1, 2)
 #: legibility and not a claim about the screen.
 UI_SCALES: tuple[float, ...] = (0.8, 1.0, 1.2)
 
+#: Debug-panel scale, offered down to 0.4. Its own ladder and not a slice of
+#: ``UI_SCALES``, because the panels are at the far end of the problem: they are
+#: ``Debug.FONT_SIZE = 24`` over a design frame, and at 1.0 only one of the five
+#: placeable panels finds a slot on a 640x480 window. 0.5 is where the full stack
+#: fits there, and 0.4 is the margin below it.
+#:
+#: A multiplier on the window's density rather than a replacement for it, so a
+#: high-resolution display still gets panels larger than the design size.
+PANEL_SCALES: tuple[float, ...] = (0.4, 0.5, 0.6, 0.8, 1.0, 1.2)
+
 
 #: Frame limits offered. 20, 30 and 60 divide the 60Hz tick rate, so each is a
 #: whole number of simulation ticks per presented frame; above that the render
@@ -95,6 +105,9 @@ class UserSettings:
     - **pixel_perfect**: give up filling the window to get whole-pixel art.
     - **vsync**, **frame_limit**: how often to present.
     - **ui_scale**: the interface's own size, independent of the density.
+    - **panel_scale**: the debug panels' size, down to 0.4 so the full stack fits
+      a small window. Offered in the video menu only when the game is running
+      with the debug overlay on, since there is nothing for it to size otherwise.
     - **bindings**: what the buttons do.
     """
 
@@ -104,6 +117,7 @@ class UserSettings:
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
+    panel_scale: float = 1.0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -115,7 +129,11 @@ class UserSettings:
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
             },
-            "ui": {"scale": self.ui_scale},
+            # Under ``ui`` and not ``video``: this is about the size of text on
+            # screen, like the scale above it, and the ``video`` section is held
+            # to exactly the four keys above by tests that exist to keep window
+            # data out of it. A panel scale is not a claim about the window.
+            "ui": {"scale": self.ui_scale, "panel_scale": self.panel_scale},
         }
 
     @classmethod
@@ -152,6 +170,10 @@ class UserSettings:
         if scale not in UI_SCALES:
             raise ValueError(f"ui.scale must be one of {UI_SCALES}")
 
+        panel_scale = ui.get("panel_scale", 1.0)
+        if panel_scale not in PANEL_SCALES:
+            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+
         frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
         if frame_limit is not None:
             frame_limit = _bounded_int(
@@ -165,6 +187,7 @@ class UserSettings:
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
             ui_scale=scale,
+            panel_scale=panel_scale,
         )
 
     @classmethod
@@ -188,6 +211,9 @@ class UserSettings:
         scale = ui.get("scale", 1.0)
         if scale not in UI_SCALES:
             raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+        panel_scale = ui.get("panel_scale", 1.0)
+        if panel_scale not in PANEL_SCALES:
+            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
 
         frame_counter = video.get("frame_counter", True)
         if not isinstance(frame_counter, bool):
@@ -207,6 +233,7 @@ class UserSettings:
             display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
+            panel_scale=panel_scale,
             ui_scale=scale,
         )
 
@@ -234,9 +261,16 @@ class UserSettings:
         scale = ui.get("scale", 1.0)
         if scale not in UI_SCALES:
             raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+        # A v1 file predates the key; 1.0 is what an absent preference has to
+        # mean, or migrating a file would resize every panel on the first launch
+        # after the upgrade.
+        panel_scale = ui.get("panel_scale", 1.0)
+        if panel_scale not in PANEL_SCALES:
+            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
         return cls(
             bindings=bindings,
             display=DisplayMode.BORDERLESS if fullscreen else DisplayMode.WINDOW,
+            panel_scale=panel_scale,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             ui_scale=scale,
         )
@@ -245,7 +279,12 @@ class UserSettings:
         return replace(self, bindings=bindings)
 
     def with_video(self, **changes: object) -> UserSettings:
-        """A copy with some video fields replaced, for the menu's cycling."""
+        """A copy with some video fields replaced, for the menu's cycling.
+
+        The name is now the least accurate thing here: the interface and panel
+        scales are edited through it too. Renamed for clarity the moment it is
+        cheaper than the grep this comment is standing in for.
+        """
         return replace(self, **changes)  # type: ignore[arg-type]
 
 
