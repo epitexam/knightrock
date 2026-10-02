@@ -6,7 +6,9 @@ than wrong, and a jittering render still produces correct pixels every frame.
 The tests below pin the mechanics instead.
 """
 
+import contextlib
 import os
+from unittest.mock import patch
 
 import pygame
 import pytest
@@ -16,6 +18,20 @@ from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider, NullInputProvider
 
 pytestmark = pytest.mark.usefixtures("_latch_display")
+
+
+@contextlib.contextmanager
+def held_key(key: int):
+    """Present ``key`` as down in ``pygame.key.get_pressed()``.
+
+    A mapping rather than a list: SDL keycodes are large integers, well past the
+    length of a would-be key array, and the provider's key reads accept a
+    mapping as readily as a sequence.
+    """
+    down: dict[int, bool] = {}
+    with patch.object(pygame.key, "get_pressed", lambda: down):
+        down[key] = True
+        yield
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -124,6 +140,41 @@ def test_an_unbound_key_latches_nothing(provider: LocalInputProvider) -> None:
     state = provider.poll()
 
     assert InputAction.JUMP not in state.held_actions
+
+
+def test_a_sub_poll_tap_of_down_does_not_report_held(provider: LocalInputProvider) -> None:
+    """``MOVE_DOWN`` is the exception to the latch, deliberately.
+
+    The latch reports a sub-poll tap as held for exactly one tick so an *edge*
+    action is not lost. ``MOVE_DOWN`` is not an edge action: it is the crouch on
+    the ground and the fast fall in the air, two postures. A one-tick hold there
+    squashes the hurtbox, marks the fighter ``busy`` and re-derives every zone
+    before restoring it -- a stutter on every graze of the key, rather than the
+    press simply not registering.
+
+    A fighter who wants a crouch holds it; one who taps it gets nothing, which is
+    the honest answer for a hold-only binding.
+    """
+    binding = provider._bindings.gameplay.keyboard[InputAction.MOVE_DOWN]
+    assert isinstance(binding, int)
+
+    provider.note_event(_key_down(binding))
+    provider.note_event(_key_up(binding))
+
+    assert InputAction.MOVE_DOWN not in provider.poll().held_actions
+
+
+def test_a_held_down_still_reports_held(provider: LocalInputProvider) -> None:
+    """Dropping the latch must not cost the action its real state.
+
+    The crouch reads the live key like any other hold, so a Down genuinely held
+    down is a crouch -- which is what makes the exclusion above safe.
+    """
+    binding = provider._bindings.gameplay.keyboard[InputAction.MOVE_DOWN]
+    assert isinstance(binding, int)
+
+    with held_key(binding):
+        assert InputAction.MOVE_DOWN in provider.poll().held_actions
 
 
 def test_the_manager_exposes_the_hook_to_its_provider() -> None:

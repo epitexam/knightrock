@@ -75,7 +75,17 @@ class Physics:
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05
     DASH_WALL_BOUNCE = 0.5
+    # Crouch: the posture shrinks the hurtbox to this fraction of the standing
+    # height, and the shrink is interpolated over BLEND_TIME rather than applied
+    # in one tick, so entering and leaving it reads as a body moving rather than
+    # a hitbox popping.
     CROUCH_HEIGHT_FACTOR = 0.6
+    CROUCH_HEIGHT_BLEND_TIME = 0.08
+    # Crouch-walk speed as a fraction of the entity's own speed. Deliberately
+    # far below ``Guard.MOVE_MULT``: crouching is a defensive posture that
+    # shuffles, not a way to travel, and a fighter who can hold it down and
+    # cross the level has made the hurtbox shrink optional.
+    CROUCH_SPEED_MULT = 0.2
 
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0

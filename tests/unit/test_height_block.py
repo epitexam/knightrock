@@ -118,5 +118,10 @@ def test_heavy_hit_level_increases_guard_posture_cost() -> None:
     player.on_surface["floor"] = True
     stood = player.hitbox.height
     player.down_held = True
-    player.state_machine.change_state("crouch", force=True)
+    # The height is driven by ``Player.update_timers`` -- by the fighter, not by
+    # the crouch state -- and eases over ``CROUCH_HEIGHT_BLEND_TIME`` rather than
+    # snapping, so it takes a few ticks to arrive. Driving the posture directly is
+    # the seam under test; the state machine is not even involved here.
+    for _ in range(10):
+        player.update_timers(1 / 60)
     assert player.hitbox.height == pytest.approx(stood * 0.6)

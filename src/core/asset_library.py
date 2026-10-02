@@ -126,12 +126,19 @@ class AssetLibrary:
     def _fallback_directory(relative_directory: str | Path) -> str | None:
         """The directory to serve when the requested one is absent, or None.
 
-        Only player animations degrade, and only ``dash`` -> ``run``: a dash
-        that reuses the run frames animates, where a missing frameset for any
-        other animation is a broken asset and should say so.
+        Only player animations degrade, and only where the reuse is readable:
+        ``dash`` -> ``run`` (a dash reusing the run frames animates) and
+        ``crouch`` -> ``idle`` (a crouch reusing the idle frames at least stays
+        on the ground instead of animating a run cycle in place). A missing
+        frameset for any other animation is a broken asset and should say so.
         """
-        if "player/dash" in str(relative_directory):
-            return str(relative_directory).replace("player/dash", "player/run")
+        name = str(relative_directory)
+        for animation, fallback in (
+            ("player/dash", "player/run"),
+            ("player/crouch", "player/idle"),
+        ):
+            if animation in name:
+                return name.replace(animation, fallback)
         return None
 
     def clear(self) -> None:

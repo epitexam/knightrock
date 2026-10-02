@@ -52,6 +52,7 @@ class CombatSnapshot:
     cooldowns: dict[str, float]
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
+    combo_armed: bool = False
     geometry_checksum: str = field(default="", compare=False)
 
 
@@ -350,11 +351,17 @@ class CombatComponent:
         self.state.end()
         self.hitbox.clear()
         self.charging.cancel()
+        # Taking a hit ends whatever the entity was doing, so a combo that was
+        # still open dies with it: a juggle interrupted by the player losing the
+        # exchange should not keep counting, and neither should the arming left
+        # over from the attack that was cancelled here.
+        self.combo.reset()
 
     def cancel_attack(self) -> None:
         self.state.end()
         self.hitbox.clear()
         self.charging.cancel()
+        self.combo.disarm()
 
     def save_state(self) -> CombatSnapshot:
         """Capture the full combat state for a rollback frame.
@@ -373,6 +380,7 @@ class CombatComponent:
             cooldowns=dict(self._cooldowns),
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
+            combo_armed=self.combo.is_armed,
             geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
         )
 
@@ -387,7 +395,12 @@ class CombatComponent:
         self.state.load_state(snapshot.attack_state)
         self.is_hurt = snapshot.is_hurt
         self._hurt_timer = snapshot.hurt_timer
-        self.combo.restore(snapshot.combo_count, snapshot.combo_timer, snapshot.air_combo_count)
+        self.combo.restore(
+            snapshot.combo_count,
+            snapshot.combo_timer,
+            snapshot.air_combo_count,
+            snapshot.combo_armed,
+        )
         self._cooldowns = dict(snapshot.cooldowns)
         self.charging.load_state(snapshot.charge_state)
         # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
@@ -430,6 +443,13 @@ class CombatComponent:
         self.charging.update(delta_time)
         self.state.resolve_facing(self._entity.facing_right)
         self.state.update(delta_time)
+        # An attack that has run out of frames without landing is a whiff: the
+        # arming it took is spent here rather than left for the next hit to
+        # claim. Checked off the live state so a hit landing on the attack's own
+        # last active frame still counts, that frame being one where the attack
+        # is still attacking.
+        if not self.state.is_attacking:
+            self.combo.disarm()
 
     def sync_attack_box(self) -> None:
         """Synchronize offensive geometry from the owner's final position."""
@@ -645,12 +665,23 @@ class _NullComboTracker:
     count = 0
     air_count = 0
 
+    timer = 0.0
+    is_armed = False
+
     def on_attack_started(self, resets_combo: bool) -> None:
         """No-op."""
+        del resets_combo
 
     def on_hit_landed(self, airborne: bool) -> None:
         """No-op."""
         del airborne
 
+    def disarm(self) -> None:
+        """No-op."""
+
+    def reset(self) -> None:
+        """No-op."""
+
     def update(self, delta_time: float) -> None:
         """No-op."""
+        del delta_time

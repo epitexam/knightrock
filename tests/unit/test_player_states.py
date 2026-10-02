@@ -229,7 +229,10 @@ def test_can_attack_interrupt_false_when_not_attacking() -> None:
 def test_attack_forbidden_states_contains_expected_members() -> None:
     assert PlayerState.WALL_SLIDE in ATTACK_FORBIDDEN_STATES
     assert PlayerState.GUARD in ATTACK_FORBIDDEN_STATES
-    assert PlayerState.CROUCH in ATTACK_FORBIDDEN_STATES
+    # ``CROUCH`` used to be here, which made crouching cost the player their
+    # entire offence for as long as the button was held: the press was dropped
+    # rather than buffered, so there was no crouch attack to reach for either.
+    assert PlayerState.CROUCH not in ATTACK_FORBIDDEN_STATES
     assert PlayerState.HURT in ATTACK_FORBIDDEN_STATES
     assert PlayerState.DASH in ATTACK_FORBIDDEN_STATES
     assert PlayerState.STAGGER in ATTACK_FORBIDDEN_STATES

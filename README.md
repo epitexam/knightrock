@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2308%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2337%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2308 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2337 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -81,7 +81,7 @@ DEBUG=1 uv run python main.py
 | Action | Key |
 |---|---|
 | Move | `Left arrow` / `Right arrow` |
-| Fast fall | `Down arrow` |
+| Crouch (ground) / fast fall (air) | `Down arrow` |
 | Jump | `Space` |
 | Dash | `Left Shift` (cancellable into an attack/guard) |
 | Guard (tap = parry) | `Q` |
@@ -334,6 +334,9 @@ legacy, assist-free behaviour:
 | `STICKY_FACTOR` | Stay mounted on fast-descending platforms. |
 | `APEX_GRAVITY_DIVISOR` | Reduced gravity at the jump apex for a longer hang time. |
 | `FAST_FALL_GRAVITY_MULTIPLIER` | Extra fall acceleration while the down key is held. |
+| `CROUCH_HEIGHT_FACTOR` | Crouched hurtbox as a fraction of the standing height. |
+| `CROUCH_HEIGHT_BLEND_TIME` | Seconds to ease into and out of the crouched collider. |
+| `CROUCH_SPEED_MULT` | Crouch-walk speed as a fraction of the fighter's own speed. |
 
 ## The ground pivot (`turn`)
 
@@ -567,7 +570,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2308 tests passing · 93 % instruction coverage ·
+> **Current baseline:** 2337 tests passing · 93 % instruction coverage ·
 > 85 % branch coverage · Ruff clean · mypy clean (168 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so
