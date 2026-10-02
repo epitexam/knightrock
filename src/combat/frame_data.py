@@ -41,6 +41,16 @@ than starting nothing.
 """
 
 
+def move_id(name: str) -> MoveId:
+    """Name a move, so a table says which string is an identity.
+
+    Reads as a call rather than a cast because a bare ``MoveId("x")`` at every
+    ``cancel_into`` drowns a table in punctuation, and the point of the alias is
+    that it is used often enough to be worth naming.
+    """
+    return MoveId(name)
+
+
 class Stance(Enum):
     """The posture an attack has to be thrown from.
 

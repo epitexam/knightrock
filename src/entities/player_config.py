@@ -4,7 +4,6 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.frame_data import AttackDefinition, MoveId
 from src.core.colors import Colors
 from src.core.settings import Combat, Guard, Physics
@@ -12,7 +11,15 @@ from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 def _default_attacks() -> dict[MoveId, AttackDefinition]:
-    """Return default attacks dictionary."""
+    """The player's default attack table, read from the shipped data file.
+
+    Imported here rather than at module scope: ``attack_data`` resolves its
+    tables by reading ``attacks.json``, and doing that during this module's
+    import would run the loader before ``PlayerConfig`` exists -- the loader
+    reaches back here through ``data.player``.
+    """
+    from src.combat.attack_data import PLAYER_ATTACKS
+
     return dict(PLAYER_ATTACKS)
 
 

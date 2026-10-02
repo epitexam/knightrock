@@ -12,8 +12,7 @@ fallback to the standing version, just nothing -- which is what makes a crouch a
 real restriction instead of a costume.
 """
 
-from src.combat.attack_data import move_id
-from src.combat.frame_data import MoveId, Stance
+from src.combat.frame_data import MoveId, Stance, move_id
 from src.core.input.input_actions import InputAction
 
 #: Stance to move, per button. The special is ground-only: it is a 110-frame

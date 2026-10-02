@@ -12,8 +12,8 @@ import os
 import pygame
 import pytest
 
-from src.combat.attack_data import PLAYER_ATTACKS, move_id
-from src.combat.frame_data import Stance
+from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.frame_data import Stance, move_id
 from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager

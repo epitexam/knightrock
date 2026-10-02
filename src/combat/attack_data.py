@@ -1,545 +1,70 @@
+"""The shipped attack tables, loaded from ``data/gameplay/attacks.json``.
+
+This module used to *be* the tables -- 545 lines of ``AttackDefinition(...)``
+constructors that the JSON duplicated field for field, with a CI test asserting
+the two were equal. Two hand-maintained copies of the same fourteen attacks is
+two places to forget a field, and the forgetting was silent: an edited dataclass
+that missed its JSON twin produced a failing equality assertion whose message
+was a repr, not a diff.
+
+The tables now come from the data file, which is the source the game already
+loaded at runtime -- ``src/data/provider.py`` preferred the JSON and only fell
+back here when it was absent, so for every shipped build this module was a
+*copy* of what the game used.
+
+``PLAYER_ATTACKS`` and friends resolve lazily through :pep:`562`, on first
+access rather than at import, so importing this module costs nothing until
+something wants a table. The attributes still exist as module attributes, so
+``from src.combat.attack_data import PLAYER_ATTACKS`` keeps working across the
+dozen modules and tests that read them.
+
+Not a fallback any more. A missing or malformed ``attacks.json`` is an error:
+booting on a different balance than the one that was reviewed is worse than not
+booting.
 """
-Centralized attack data for all entities.
 
-This module converts design intent into precise frame data using the new
-architecture. Balancing can be done here without modifying core systems.
-"""
+from __future__ import annotations
 
-from src.combat.damage_types import DamageType
-from src.combat.frame_data import (
-    AttackDefinition,
-    HitboxKeyframe,
-    HitboxSpec,
-    HitProperties,
-    MoveId,
-    PhaseDefinition,
-    Stance,
-)
-from src.combat.knockback import KnockbackConfig
-from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
+from functools import cache
+from typing import TYPE_CHECKING, Any
+
+from src.combat.frame_data import MoveId, move_id
+
+if TYPE_CHECKING:  # pragma: no cover - declarations for the type checker
+    from src.combat.frame_data import AttackDefinition
+
+    # Declared, not bound: the real values arrive through :func:`__getattr__`
+    # below. A module-level assignment would read the data file at import, which
+    # is the whole thing this shim is for -- and it would run the loader before
+    # the classes the loader imports.
+    PLAYER_ATTACKS: dict[MoveId, AttackDefinition]
+    GOBLIN_ATTACKS: dict[MoveId, AttackDefinition]
+    SLIME_ATTACKS: dict[MoveId, AttackDefinition]
+
+__all__ = ["GOBLIN_ATTACKS", "PLAYER_ATTACKS", "SLIME_ATTACKS", "move_id"]
 
 
-def move_id(name: str) -> MoveId:
-    """Name a move, so the tables below say which string is an identity.
+@cache
+def _attack_sets() -> dict[str, dict[MoveId, AttackDefinition]]:
+    """Every attack set, from the data file the game actually plays."""
+    from src.data.attacks import ATTACKS_FILENAME, read_attacks_file
+    from src.data.roots import gameplay_data_root
 
-    Reads as a call rather than a cast because a bare ``MoveId("x")`` at every
-    ``cancel_into`` drowns the tables in punctuation, and the whole point of the
-    alias is that it is used often enough to be worth naming.
+    return read_attacks_file(gameplay_data_root() / ATTACKS_FILENAME)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve a shipped table on first access (:pep:`562`).
+
+    Raises for anything that is not one of the three tables, so a typo here is
+    an ``AttributeError`` naming what was asked for rather than a silent ``None``.
     """
-    return MoveId(name)
+    if name in ("PLAYER_ATTACKS", "GOBLIN_ATTACKS", "SLIME_ATTACKS"):
+        table = dict(_attack_sets()[name.removesuffix("_ATTACKS").lower()])
+        globals()[name] = table
+        return table
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-PLAYER_ATTACKS: dict[MoveId, AttackDefinition] = {
-    move_id("light_attack"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=3,
-                active_frames=6,
-                recovery_frames=3,
-                hitbox_size=(40.0, 20.0),
-                hitbox_offset=(24.0, -4.0),
-                hit=HitProperties(
-                    damage=8,
-                    knockback=KnockbackConfig(power=(150.0, -50.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.1,
-                ),
-                cancel_into=(move_id("heavy_attack"), move_id("uppercut"), move_id("dash_attack")),
-            ),
-        ),
-        cooldown=0.30,
-        lock_direction=True,
-        attack_move_multiplier=0.5,
-    ),
-    move_id("heavy_attack"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=8,
-                active_frames=6,
-                recovery_frames=8,
-                hitbox_size=(55.0, 35.0),
-                hitbox_offset=(32.0, -10.0),
-                hit=HitProperties(
-                    damage=18,
-                    knockback=KnockbackConfig(power=(300.0, -200.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.3,
-                    super_armor_break=True,
-                ),
-            ),
-        ),
-        cooldown=0.80,
-        lock_direction=True,
-        combo_reset=True,
-        chargeable=True,
-        max_charge_time=1.0,
-        charge_move_multiplier=0.4,
-        attack_move_multiplier=0.15,
-    ),
-    # ── Crouch ────────────────────────────────────────────────────────────────
-    # The posture's own moves. Without them, forbidding the standing ones from a
-    # crouch would leave Down+attack doing nothing at all -- strictly worse than
-    # before, since the player traded a whole button for a smaller hurtbox.
-    move_id("crouch_slash"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=3,
-                active_frames=4,
-                recovery_frames=2,
-                hitbox_size=(42.0, 18.0),
-                # Low and forward of centre: the box has to reach a fighter's
-                # legs from a collider that is itself 40% shorter, and a height
-                # of "low" is what makes a crouched guard block it.
-                hitbox_offset=(26.0, 14.0),
-                hit=HitProperties(
-                    damage=6,
-                    knockback=KnockbackConfig(power=(120.0, -20.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.1,
-                    height="low",
-                ),
-                cancel_into=(move_id("crouch_sweep"), move_id("light_attack")),
-            ),
-        ),
-        cooldown=0.28,
-        stances=(Stance.CROUCH,),
-        lock_direction=True,
-        # A crouching fighter shuffles at CROUCH_SPEED_MULT already; the extra
-        # slowdown here is the swing's own weight, kept above zero so the move
-        # still has a step to it.
-        attack_move_multiplier=0.7,
-    ),
-    move_id("crouch_sweep"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=5,
-                active_frames=5,
-                recovery_frames=7,
-                hitbox_size=(64.0, 22.0),
-                hitbox_offset=(34.0, 10.0),
-                hit=HitProperties(
-                    damage=9,
-                    knockback=KnockbackConfig(power=(240.0, -140.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.2,
-                    height="low",
-                ),
-            ),
-        ),
-        cooldown=0.65,
-        stances=(Stance.CROUCH,),
-        lock_direction=True,
-        # The way out of the posture: a knockdown that resets the combo, so a
-        # crouch chain cannot run into the ground moves without spending a
-        # beat. Uncancellable, so it is a real commitment rather than another
-        # link in a chain.
-        combo_reset=True,
-        attack_move_multiplier=0.4,
-    ),
-    move_id("uppercut"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=5,
-                active_frames=5,
-                recovery_frames=9,
-                hitbox_size=(30.0, 50.0),
-                hitbox_offset=(18.0, -30.0),
-                hit=HitProperties(
-                    damage=16,
-                    knockback=KnockbackConfig(power=(400.0, -550.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.4,
-                    super_armor_break=True,
-                ),
-            ),
-        ),
-        cooldown=0.90,
-        lock_direction=True,
-        combo_reset=True,
-        attack_move_multiplier=0.2,
-    ),
-    move_id("dash_attack"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=1,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(70.0, 24.0),
-                hitbox_offset=(42.0, -8.0),
-                hit=HitProperties(
-                    damage=16,
-                    knockback=KnockbackConfig(power=(550.0, -80.0)),
-                    damage_type=DamageType.PIERCE,
-                    stagger=0.25,
-                    super_armor_break=True,
-                ),
-                cancel_into=(move_id("light_attack"), move_id("heavy_attack"), move_id("uppercut")),
-            ),
-        ),
-        cooldown=0.50,
-        lock_direction=True,
-        lunge_speed_multiplier=1.0,
-        attack_move_multiplier=0.7,
-    ),
-    move_id("air_attack"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=3,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(45.0, 25.0),
-                hitbox_offset=(26.0, -2.0),
-                hit=HitProperties(
-                    damage=10,
-                    knockback=KnockbackConfig(power=(180.0, -120.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.1,
-                ),
-                # Air -> ground was the only stance-crossing cancel in the table,
-                # and it was reachable in play: the chain was legal at load time
-                # and the whole reason the move exists. Dropped with the field
-                # that could express it; a follow-up from this one lands back
-                # on the ground first.
-            ),
-        ),
-        cooldown=0.35,
-        # The one shipped move that is not a ground move. Every other attack in
-        # the table keeps the ``GROUND`` default, which is the restriction they
-        # were all implicitly living under before ``stances`` existed.
-        stances=(Stance.AIR,),
-        lock_direction=False,
-        attack_move_multiplier=0.6,
-    ),
-    # ── Phase 5 showcase (reachable with the debug keys 1-4) ──
-    move_id("twin_fangs"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=4,
-                active_frames=6,
-                recovery_frames=6,
-                hitbox_size=(45.0, 22.0),
-                hitbox_offset=(26.0, -4.0),
-                extra_hitboxes=(HitboxSpec(size=(30.0, 18.0), offset=(20.0, -24.0)),),
-                hit=HitProperties(
-                    damage=8,
-                    knockback=KnockbackConfig(power=(180.0, -80.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.15,
-                ),
-                cancel_into=(move_id("light_attack"), move_id("heavy_attack")),
-            ),
-        ),
-        cooldown=0.50,
-        lock_direction=True,
-        attack_move_multiplier=0.5,
-    ),
-    move_id("sweeping_arc"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=6,
-                recovery_frames=5,
-                hitbox_size=(40.0, 22.0),
-                hitbox_offset=(24.0, -4.0),
-                hitbox_keyframes=(
-                    HitboxKeyframe(frame=0, size=(28.0, 14.0), offset=(16.0, -2.0)),
-                    HitboxKeyframe(frame=6, size=(55.0, 28.0), offset=(30.0, -6.0)),
-                    HitboxKeyframe(frame=12, size=(70.0, 34.0), offset=(38.0, -8.0)),
-                ),
-                hit=HitProperties(
-                    damage=12,
-                    knockback=KnockbackConfig(power=(220.0, -100.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.2,
-                ),
-                cancel_into=(move_id("light_attack"),),
-            ),
-        ),
-        cooldown=0.70,
-        lock_direction=True,
-        attack_move_multiplier=0.4,
-    ),
-    move_id("sky_launcher"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=7,
-                active_frames=5,
-                recovery_frames=10,
-                hitbox_size=(32.0, 48.0),
-                hitbox_offset=(16.0, -28.0),
-                hit=HitProperties(
-                    damage=14,
-                    knockback=KnockbackConfig(power=(250.0, -650.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.35,
-                    super_armor_break=True,
-                    juggle_gravity_mult=0.5,
-                ),
-            ),
-        ),
-        cooldown=1.0,
-        lock_direction=True,
-        combo_reset=False,
-        attack_move_multiplier=0.2,
-    ),
-    move_id("otg_slam"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=9,
-                active_frames=4,
-                recovery_frames=12,
-                hitbox_size=(60.0, 30.0),
-                hitbox_offset=(30.0, 10.0),
-                hit=HitProperties(
-                    damage=20,
-                    knockback=KnockbackConfig(power=(200.0, 450.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.4,
-                    super_armor_break=True,
-                    otg_allowed=True,
-                ),
-            ),
-        ),
-        cooldown=1.2,
-        lock_direction=True,
-        combo_reset=True,
-        attack_move_multiplier=0.15,
-    ),
-    move_id("special_attack"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(30.0, 30.0),
-                hitbox_offset=(0.0, -20.0),
-                hit=HitProperties(
-                    damage=12,
-                    knockback=KnockbackConfig(power=(100.0, -100.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.5,
-                    super_armor_break=True,
-                ),
-                reset_targets=True,
-            ),
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(40.0, 40.0),
-                hitbox_offset=(0.0, -20.0),
-                hit=HitProperties(
-                    damage=12,
-                    knockback=KnockbackConfig(power=(100.0, -100.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.5,
-                    super_armor_break=True,
-                ),
-                reset_targets=True,
-            ),
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(50.0, 50.0),
-                hitbox_offset=(0.0, -20.0),
-                hit=HitProperties(
-                    damage=12,
-                    knockback=KnockbackConfig(power=(100.0, -100.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.5,
-                    super_armor_break=True,
-                ),
-                reset_targets=True,
-            ),
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=8,
-                recovery_frames=4,
-                hitbox_size=(70.0, 70.0),
-                hitbox_offset=(0.0, -20.0),
-                hit=HitProperties(
-                    damage=12,
-                    knockback=KnockbackConfig(power=(100.0, -100.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.5,
-                    super_armor_break=True,
-                ),
-                reset_targets=True,
-            ),
-            PhaseDefinition(
-                startup_frames=3,
-                active_frames=10,
-                recovery_frames=25,
-                hitbox_size=(90.0, 90.0),
-                hitbox_offset=(0.0, -20.0),
-                hit=HitProperties(
-                    damage=30,
-                    knockback=KnockbackConfig(power=(900.0, -600.0)),
-                    damage_type=DamageType.PIERCE,
-                    stagger=0.8,
-                    super_armor_break=True,
-                    is_finisher=True,
-                ),
-            ),
-        ),
-        cooldown=2.0,
-        lock_direction=True,
-        combo_reset=True,
-        lunge_speed_multiplier=0.0,
-        attack_move_multiplier=0.1,
-    ),
-    move_id("p5_shapes"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=1,
-                active_frames=2,
-                recovery_frames=1,
-                hitbox_size=(24.0, 24.0),
-                hitbox_offset=(36.0, -4.0),
-                hitbox_shape=ShapeKind.CIRCLE,
-                hitbox_anchor=AnchorKind.WEAPON,
-                hitbox_anchor_offset=(8.0, -10.0),
-                hit=HitProperties(
-                    damage=8.0,
-                    knockback=KnockbackConfig(power=(120.0, -40.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.1,
-                ),
-            ),
-            PhaseDefinition(
-                startup_frames=2,
-                active_frames=4,
-                recovery_frames=2,
-                hitbox_size=(36.0, 16.0),
-                hitbox_offset=(34.0, -8.0),
-                hitbox_shape=ShapeKind.CAPSULE,
-                hitbox_angle=20.0,
-                hitbox_easing=EasingKind.EASE_IN_OUT,
-                hitbox_anchor=AnchorKind.HAND,
-                hitbox_anchor_offset=(10.0, -4.0),
-                hitbox_keyframes=(
-                    HitboxKeyframe(0, (28.0, 14.0), (31.0, -6.0), 0.0),
-                    HitboxKeyframe(6, (44.0, 18.0), (38.0, -10.0), 30.0),
-                ),
-                hit=HitProperties(
-                    damage=10.0,
-                    knockback=KnockbackConfig(power=(180.0, -60.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.2,
-                ),
-            ),
-            PhaseDefinition(
-                startup_frames=3,
-                active_frames=4,
-                recovery_frames=3,
-                hitbox_size=(48.0, 24.0),
-                hitbox_offset=(32.0, -10.0),
-                hitbox_shape=ShapeKind.OBB,
-                hitbox_angle=30.0,
-                hitbox_easing=EasingKind.EASE_IN,
-                hitbox_anchor=AnchorKind.WEAPON,
-                hitbox_anchor_offset=(12.0, -6.0),
-                hitbox_keyframes=(
-                    HitboxKeyframe(0, (40.0, 20.0), (22.0, -8.0), 20.0),
-                    HitboxKeyframe(7, (56.0, 28.0), (36.0, -12.0), 45.0),
-                ),
-                hit=HitProperties(
-                    damage=12.0,
-                    knockback=KnockbackConfig(power=(240.0, -100.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.3,
-                ),
-            ),
-        ),
-        cooldown=0.5,
-        lock_direction=True,
-        combo_reset=True,
-    ),
-    move_id("circle_burst"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=2,
-                active_frames=4,
-                recovery_frames=2,
-                hitbox_size=(20.0, 20.0),
-                hitbox_offset=(12.0, 0.0),
-                hitbox_shape=ShapeKind.CIRCLE,
-                hitbox_easing=EasingKind.EASE_OUT,
-                hitbox_anchor=AnchorKind.WEAPON,
-                hitbox_anchor_offset=(4.0, -6.0),
-                hitbox_keyframes=(
-                    HitboxKeyframe(0, (20.0, 20.0), (12.0, 0.0), 0.0),
-                    HitboxKeyframe(6, (40.0, 40.0), (24.0, 0.0), 0.0),
-                ),
-                hit=HitProperties(
-                    damage=12.0,
-                    knockback=KnockbackConfig(power=(180.0, -60.0)),
-                    damage_type=DamageType.PIERCE,
-                    stagger=0.2,
-                ),
-            ),
-        ),
-        cooldown=0.25,
-        lock_direction=True,
-        combo_reset=True,
-    ),
-}
-
-GOBLIN_ATTACKS: dict[MoveId, AttackDefinition] = {
-    move_id("claw_swipe"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=4,
-                active_frames=5,
-                recovery_frames=4,
-                hitbox_size=(40, 20),
-                hitbox_offset=(20, -4),
-                hit=HitProperties(
-                    damage=8,
-                    knockback=KnockbackConfig(power=(100.0, -80.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.1,
-                ),
-            ),
-            PhaseDefinition(
-                startup_frames=2,
-                active_frames=5,
-                recovery_frames=5,
-                hitbox_size=(48, 24),
-                hitbox_offset=(24, 4),
-                hit=HitProperties(
-                    damage=10,
-                    knockback=KnockbackConfig(power=(120.0, -150.0)),
-                    damage_type=DamageType.SLASH,
-                    stagger=0.15,
-                ),
-                reset_targets=True,
-            ),
-        ),
-        cooldown=1.0,
-        lock_direction=True,
-    ),
-}
-
-SLIME_ATTACKS: dict[MoveId, AttackDefinition] = {
-    move_id("body_slam"): AttackDefinition(
-        phases=(
-            PhaseDefinition(
-                startup_frames=6,
-                active_frames=5,
-                recovery_frames=7,
-                hitbox_size=(36.0, 22.0),
-                hitbox_offset=(22.0, 2.0),
-                hit=HitProperties(
-                    damage=6,
-                    knockback=KnockbackConfig(power=(90.0, -120.0)),
-                    damage_type=DamageType.BLUNT,
-                    stagger=0.08,
-                ),
-            ),
-        ),
-        cooldown=1.25,
-        lock_direction=True,
-    ),
-}
+def __dir__() -> list[str]:
+    return sorted(__all__)

@@ -6,7 +6,6 @@ from typing import Any, ClassVar
 import pygame
 from pygame.sprite import Group
 
-from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combatant_protocol import DamageResult
 from src.combat.frame_data import MoveId, Stance
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
@@ -119,8 +118,14 @@ class Player(ControllerView, Entity):
         attacks = None
         if hasattr(config, "attacks") and config.attacks:
             attacks = dict(config.attacks)
-        elif PLAYER_ATTACKS:
-            attacks = PLAYER_ATTACKS
+        else:
+            # No config carried attacks: take the shipped table. Imported here
+            # rather than at module scope for the same reason as
+            # ``player_config._default_attacks`` -- reading the data file during
+            # import would run the loader before the classes it imports exist.
+            from src.combat.attack_data import PLAYER_ATTACKS
+
+            attacks = dict(PLAYER_ATTACKS)
 
         super().__init__(
             pos,
