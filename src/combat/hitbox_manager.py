@@ -23,8 +23,9 @@ class HitboxManager:
     P1 sweep: ``_prev_pool`` holds the geometry captured at the previous
     tick boundary (``capture_origin``), the sole other writers of which
     are the ``start_attack`` seed (D1) and ``clear`` (attack end).
-    ``update`` never touches it: positioning is pure and idempotent, so
-    the double sync (``Entity.update`` + gameplay loop) is harmless.
+    ``update`` never touches it: positioning is pure and idempotent, so a
+    second sync in the same tick -- which the gameplay loop still does, for
+    the fighters separation just pushed -- is harmless.
     """
 
     def __init__(self, entity: Combatant) -> None:

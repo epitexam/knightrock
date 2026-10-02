@@ -297,9 +297,15 @@ class GameplayLoop:
             return
 
         self.entity_grid.rebuild(entity_sprites)
-        self.separation_system.process(entity_sprites, self.entity_grid)
+        displaced = self.separation_system.process(entity_sprites, self.entity_grid)
         combatants = tuple(combat_sprites)
-        for combatant in combatants:
+        # Only the fighters separation actually pushed need their attack box
+        # re-positioned: it is derived from the hitbox, and separation moved
+        # that after ``Entity.update`` had already synced it. This used to loop
+        # over every combatant unconditionally, which paid for the ones that
+        # happened to be standing near somebody -- which is most of them, most
+        # of the time.
+        for combatant in displaced:
             combatant.combat.sync_attack_box()
         self.combat_system.process_attacks(combatants, self.entity_grid)
 

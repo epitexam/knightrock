@@ -11,6 +11,8 @@ reference frame rate.
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import cached_property
+from typing import NewType
 
 from src.combat.damage_types import DamageType
 from src.combat.knockback import KnockbackConfig
@@ -23,6 +25,60 @@ All frame counts in PhaseDefinition are expressed at this rate.
 The AttackStateMachine converts frame counts to real time using
 1 / FRAME_RATE as the fixed timestep.
 """
+
+MoveId = NewType("MoveId", str)
+"""The name of one attack, as the key it is stored under everywhere.
+
+A ``NewType``, not an ``Enum``: attacks come from ``data/gameplay/*.json`` and
+are meant to be authorable there, so the set of valid names cannot be closed at
+import time or every new move would be a code change. What this buys is the
+typing, so a name flowing from the input layer into the attack tables cannot be
+passed off as an arbitrary string by accident.
+
+It costs nothing at runtime and enforces nothing. A typo is still a ``str``, and
+the places a misspelled name actually hurts are loud already -- an unknown key
+in a data file raises, and ``start_attack`` refuses an unregistered move rather
+than starting nothing.
+"""
+
+
+def move_id(name: str) -> MoveId:
+    """Name a move, so a table says which string is an identity.
+
+    Reads as a call rather than a cast because a bare ``MoveId("x")`` at every
+    ``cancel_into`` drowns a table in punctuation, and the point of the alias is
+    that it is used often enough to be worth naming.
+    """
+    return MoveId(name)
+
+
+class Stance(Enum):
+    """The posture an attack has to be thrown from.
+
+    The question this exists to answer is "which attacks are available right
+    now", and it could not be asked before: ``AttackDefinition`` had no notion
+    of a posture, so the whole answer lived in one ternary in the input handler
+    that picked a move name from whether the fighter had a floor under them.
+    That is why every attack was reachable from the crouch once crouching was
+    allowed -- there was nowhere to say otherwise.
+
+    Ordered by how specific the posture is to the fighter's situation, not by
+    how it affects the attack. Resolution runs most-specific first:
+    ``WALL`` before ``AIR`` (sliding a wall is airborne), ``AIR`` before
+    ``CROUCH`` (the crouch requires a floor).
+    """
+
+    GROUND = "ground"
+    """Standing or moving on the floor -- the default posture."""
+
+    CROUCH = "crouch"
+    """Held down on the floor. Shrinks the hurtbox and slows the fighter."""
+
+    AIR = "air"
+    """No floor contact, not sliding a wall."""
+
+    WALL = "wall"
+    """Airborne and in contact with a wall the fighter is holding into."""
 
 
 class PhaseState(Enum):
@@ -384,7 +440,7 @@ class PhaseDefinition:
     extra_hitboxes: tuple[HitboxSpec, ...] = ()
     hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
-    cancel_into: tuple[str, ...] = ()
+    cancel_into: tuple[MoveId, ...] = ()
 
     def __post_init__(self) -> None:
         if self.startup_frames < 0 or self.recovery_frames < 0:
@@ -415,9 +471,18 @@ class PhaseDefinition:
             self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
         )
 
-    @property
+    @cached_property
     def hitbox_spec(self) -> HitboxSpec:
-        """Return the primary hitbox using the extended shape model."""
+        """The primary hitbox under the extended shape model.
+
+        Cached, and the cache is the point: this is reached once per box per
+        tick by ``HitboxManager._position_rects``, and every field it reads is
+        frozen on the phase. Built fresh each time it was 2.9us -- a
+        ``HitboxSpec``, its validator, and the throwaway ``ShapePose`` that
+        validator constructs -- for an answer that cannot change until the phase
+        does. ``extra_hitboxes`` already stored its specs for the same reason;
+        the primary was the only one recomputing.
+        """
         return HitboxSpec(
             size=self.hitbox_size,
             offset=self.hitbox_offset,
@@ -476,6 +541,12 @@ class AttackDefinition:
     phases : tuple[PhaseDefinition, ...]
         Ordered tuple of hitbox events. The sequence advances automatically
         when the current phase's recovery frames expire.
+    stances : tuple[Stance, ...]
+        Postures this attack can be thrown from. A whitelist, not a blacklist:
+        a posture added later has to be opted into deliberately, so a new
+        posture does not silently make every existing move available from it.
+        Defaults to ground only, which is what all shipped moves were
+        implicitly restricted to before the field existed.
     cooldown : float
         Minimum time in seconds before this attack can be started again,
         measured from the moment it was triggered (not from when it ended).
@@ -503,6 +574,25 @@ class AttackDefinition:
         Multiplier applied to the entity's speed to compute the forward
         lunge velocity applied when this attack starts on the ground.
         0.0 disables the lunge entirely.
+    vertical_lunge : float
+        Vertical velocity, as a multiple of the fighter's jump height, used to
+        bound the fighter's vertical speed when this attack starts **off the
+        ground**. Signed: positive rises (matching the jump, whose velocity is
+        ``-jump_height``), negative dives. 0.0 = no impulse.
+
+        The horizontal twin above is grounded only, because a fighter who
+        lunges on the ground overshoots the target while a fighter who rises in
+        the air has nowhere to overshoot into. There is nothing to be gained by
+        pretending otherwise, and the sign is shared so that "up" is the same
+        word in both fields.
+
+        A floor on the fighter's momentum, not a replacement for it: a rise
+        takes ``min(current, -lunge)``, a dive ``max(current, +lunge)``. See
+        ``PlayerAttackState.enter``, which is where that is applied.
+
+        Distinct from the *hit's* knockback, which moves the target. This moves
+        the attacker, and it is applied once at the start of the sequence: the
+        fighter's arc carries them and the hitbox travels with them.
     attack_move_multiplier : float
         Multiplier applied to the entity's movement speed for the whole
         sequence, read every frame while the attack is live (see
@@ -514,10 +604,22 @@ class AttackDefinition:
     ----------
     total_frames : int
         Total frame count across all phases.
+
+    animation : str
+        Sprite-sheet clip to play while this move runs. This is art, not
+        balance, so it lives here rather than in the renderer: the point is that
+        a move can name its own clip. The player used to return ``"attack"`` for
+        every grounded move, which meant no move could ever have art of its own
+        -- the mapping existed, it just had one entry. A name with no directory
+        under ``assets/graphics/player/`` is a no-op in :class:`Animator`, so a
+        clip that has not landed yet falls back to the last one rather than
+        breaking the render.
     """
 
     phases: tuple[PhaseDefinition, ...]
     cooldown: float
+    stances: tuple[Stance, ...] = (Stance.GROUND,)
+    animation: str = "attack"
     lock_direction: bool = False
     combo_reset: bool = False
     chargeable: bool = False
@@ -525,11 +627,20 @@ class AttackDefinition:
     charge_move_multiplier: float = 1.0
     uninterruptible: bool = False
     lunge_speed_multiplier: float = 0.35
+    vertical_lunge: float = 0.0
     attack_move_multiplier: float = 0.3
 
     def __post_init__(self) -> None:
         if not self.phases:
             raise ValueError("An attack requires at least one phase")
+        if not self.stances:
+            raise ValueError(
+                "Attack 'stances' cannot be empty: an attack reachable from no "
+                "posture could never be thrown"
+            )
+        if len(set(self.stances)) != len(self.stances):
+            duplicated = sorted({stance.value for stance in self.stances})
+            raise ValueError(f"Attack 'stances' has duplicates: {', '.join(duplicated)}")
         if self.cooldown < 0:
             raise ValueError("Attack cooldown cannot be negative")
         if self.max_charge_time <= 0:

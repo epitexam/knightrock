@@ -168,7 +168,7 @@ def test_juggle_damage_decays_with_air_count() -> None:
         attacker.combat.record_hit_landed(True)
     assert attacker.combat.air_combo_count == 3
 
-    target = make_entity(faction="enemy")  # airborne by default (no floor)
+    target = make_entity(faction="enemy", floor=False)  # a juggled victim is airborne
     assert target.on_surface["floor"] is False
     HitResolver.resolve(
         attacker, target, HitProperties(damage=10, knockback=KnockbackConfig(power=(0.0, 0.0)))

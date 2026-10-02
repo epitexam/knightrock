@@ -343,14 +343,6 @@ def shape_shape_intersects(first: ShapePose, second: ShapePose) -> bool:
             )
             <= (first.size[0] + second.size[0]) / 2.0 + _EPSILON
         )
-    if first.kind is ShapeKind.CIRCLE and second.kind is ShapeKind.CIRCLE:
-        return (
-            math.hypot(
-                first.position[0] - second.position[0],
-                first.position[1] - second.position[1],
-            )
-            <= (first.size[0] + second.size[0]) / 2.0 + _EPSILON
-        )
     if first.kind is ShapeKind.CAPSULE and second.kind is ShapeKind.CAPSULE:
         first_start, first_end = _capsule_segment(first)
         second_start, second_end = _capsule_segment(second)

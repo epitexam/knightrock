@@ -7,6 +7,7 @@ import pygame
 import pytest
 
 from src.combat.attack_data import PLAYER_ATTACKS
+from src.combat.frame_data import move_id
 from src.core.colors import Colors
 from src.core.display.framing import Framing
 from src.core.level.systems.projectile_system import ProjectileSystem
@@ -85,13 +86,34 @@ def test_trigger_test_attack_starts_showcase_move() -> None:
     system = SpawnSystem(groups)
     player = _player()
 
-    assert system.trigger_test_attack(player, "twin_fangs") is True
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
     assert player.combat.is_attacking
 
 
-def test_trigger_test_attack_rejects_unknown_name() -> None:
+def test_trigger_test_attack_says_so_when_the_move_is_not_registered() -> None:
+    """It used to answer ``False``, which is also what "you are busy" answers.
+
+    A move renamed in ``attacks.json`` left the number key wired to a name
+    nothing knows, and pressing it looked exactly like a fighter standing still.
+    """
     system = SpawnSystem(SpriteGroups())
-    assert system.trigger_test_attack(_player(), "nope") is False
+
+    with pytest.raises(KeyError, match=r"Debug bench attack 'nope' is not in"):
+        system.trigger_test_attack(_player(), move_id("nope"))
+
+
+def test_trigger_test_attack_still_answers_false_when_the_player_has_no_combat() -> None:
+    """The bench runs against every entity on the map, not just the player.
+
+    Only the player carries an attack table, so the missing-``combat`` case is
+    ordinary and must stay quiet -- unlike the missing-*move* case above.
+    """
+
+    class _Bare:
+        combat = None
+
+    system = SpawnSystem(SpriteGroups())
+    assert system.trigger_test_attack(_Bare(), move_id("twin_fangs")) is False
 
 
 def test_attack_replay_restarts_attack_when_idle() -> None:
@@ -99,7 +121,7 @@ def test_attack_replay_restarts_attack_when_idle() -> None:
     player = _player()
 
     assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
-    assert system.trigger_test_attack(player, "twin_fangs")
+    assert system.trigger_test_attack(player, move_id("twin_fangs"))
     # Replay waits while the attack runs, then restarts once idle.
     system.tick_attack_replay(player)
     assert player.combat.is_attacking
@@ -141,7 +163,7 @@ def test_attack_replay_ignored_while_attacking_or_on_cooldown() -> None:
 
     # Attacking: replay must not interrupt.
     system.debug_cooldowns.clear()
-    assert system.trigger_test_attack(player, "twin_fangs")
+    assert system.trigger_test_attack(player, move_id("twin_fangs"))
     combat = player.combat
     started = combat.state.frame_counter
     system.tick_attack_replay(player)
@@ -421,3 +443,79 @@ def test_clash_marker_draws_gold_ring_then_decays(world_ui, camera) -> None:
         == 0
     )
     assert PanelLayer.draw_clash_marker  # bound method still wired in overlays
+
+
+def test_the_bench_holds_the_whole_air_kit() -> None:
+    """Four keys that only work off the ground need to be reachable somehow.
+
+    They used to be unreachable from the bench at all, which is worse than a key
+    that is awkward: there was no way to look at an aerial's hitbox without
+    playing into a live fight to arrange being in the air at the right moment.
+    """
+    air = [name for name in DEBUG_ATTACKS.values() if "air" in str(name)]
+
+    assert sorted(air) == ["air_attack", "air_forward", "air_rise", "air_sweep"]
+
+
+def test_the_air_keys_are_not_laid_out_among_the_ground_ones() -> None:
+    """Grouped, because pressing ``7`` on the floor is a mistake the layout invites.
+
+    Interleaving them would make the bench one list of ten where some always work
+    and some never do, which teaches the wrong thing before it teaches anything.
+    Asserted as contiguity plus order rather than as an exact split, because six
+    ground keys and four air ones do not meet in the middle and a test that said
+    so would be asserting an arithmetic coincidence instead of the layout.
+
+    Not asserted: that the keys ascend. ``pygame.K_0`` is 48 and ``K_1`` is 49,
+    so the number row is not sorted in pygame's keycodes and asking for that
+    would be pinning the order of an int table rather than anything about the
+    bench.
+    """
+    is_air = ["air" in str(name) for name in DEBUG_ATTACKS.values()]
+
+    assert is_air == sorted(is_air), "an air key sits among the ground ones"
+    assert is_air[-1] and not is_air[0], "the groups are not separated at all"
+
+
+def test_pressing_an_air_key_on_the_floor_says_why_instead_of_looking_dead() -> None:
+    """The whole reason the air keys are safe to add.
+
+    A silent ``False`` here is a fighter standing still, which is what a broken
+    key looks like. The stance gate is right to refuse; the bench is what has to
+    explain it.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = True
+
+    with pytest.raises(RuntimeError, match=r"'air_rise' needs a different posture"):
+        system.trigger_test_attack(player, move_id("air_rise"))
+
+
+def test_pressing_a_ground_key_from_the_air_still_says_so() -> None:
+    """The rule is about the mismatch, not about which key was pressed.
+
+    Half of this would be a bench that only explained itself for the keys it had
+    just learned about.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = False
+
+    with pytest.raises(RuntimeError, match=r"'twin_fangs' needs a different posture"):
+        system.trigger_test_attack(player, move_id("twin_fangs"))
+
+
+def test_pressing_a_bench_key_twice_in_a_row_is_not_an_error() -> None:
+    """Cooldown and busy stay quiet, or the bench is unusable.
+
+    Spamming the showcase keys is how you look at a move's timing; raising on
+    the second press would make the tool that is supposed to be forgiving into
+    the strictest thing on the keymap.
+    """
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = True
+
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
+    assert system.trigger_test_attack(player, move_id("twin_fangs")) is False

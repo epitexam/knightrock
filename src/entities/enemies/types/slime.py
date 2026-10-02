@@ -1,11 +1,23 @@
-from src.combat.attack_data import SLIME_ATTACKS
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.entities.enemies.schema import EnemyConfig
+
+
+def _shipped_slime_attacks() -> dict[MoveId, AttackDefinition]:
+    """The shipped table for this enemy, read from the data file.
+
+    Read lazily so importing this module does not read ``attacks.json``: the
+    loader imports the enemy schemas, which import this.
+    """
+    from src.combat.attack_data import SLIME_ATTACKS
+
+    return dict(SLIME_ATTACKS)
+
 
 SLIME_CONFIG = EnemyConfig(
     size=(32.0, 32.0),
     color=(80, 200, 220),
     health=40.0,
-    attacks=SLIME_ATTACKS,
+    attacks=_shipped_slime_attacks(),
     attack_name="body_slam",
     chase_speed=80.0,
     vision_range=250.0,

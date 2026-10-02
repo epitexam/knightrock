@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
+    MoveId,
     PhaseDefinition,
     PhaseState,
 )
@@ -45,7 +46,7 @@ class AttackStateSnapshot:
         Time accumulator for the fixed-timestep update loop.
     """
 
-    attack_name: str | None
+    attack_name: MoveId | None
     phase_index: int
     sub_state: str
     frame_counter: int
@@ -65,15 +66,15 @@ class AttackStateMachine:
 
     Parameters
     ----------
-    attacks : dict[str, AttackDefinition]
+    attacks : dict[MoveId, AttackDefinition]
         Shared reference to the attack registry.
     """
 
     _FRAME_DURATION: float = 1.0 / FRAME_RATE
 
-    def __init__(self, attacks: dict[str, AttackDefinition]) -> None:
-        self._attacks: dict[str, AttackDefinition] = attacks
-        self.attack_name: str | None = None
+    def __init__(self, attacks: dict[MoveId, AttackDefinition]) -> None:
+        self._attacks: dict[MoveId, AttackDefinition] = attacks
+        self.attack_name: MoveId | None = None
         self.phase_index: int = 0
         self.sub_state: PhaseState = PhaseState.IDLE
         self.frame_counter: int = 0
@@ -156,7 +157,7 @@ class AttackStateMachine:
             if attack and attack.lock_direction:
                 self._locked_facing = entity_facing
 
-    def can_cancel_into(self, attack_name: str) -> bool:
+    def can_cancel_into(self, attack_name: MoveId) -> bool:
         """Check whether the current recovery allows cancelling into the given attack.
 
         Parameters
@@ -177,7 +178,7 @@ class AttackStateMachine:
             return False
         return attack_name in phase.cancel_into
 
-    def start(self, attack_name: str, charge_multiplier: float = 1.0) -> bool:
+    def start(self, attack_name: MoveId, charge_multiplier: float = 1.0) -> bool:
         """Begin a new attack sequence deterministically.
 
         The machine must be IDLE before calling this method.

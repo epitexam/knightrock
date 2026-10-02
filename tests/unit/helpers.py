@@ -100,9 +100,16 @@ def make_entity(
     invincibility: float = 0.0,
     hurtbox_inflate: tuple[float, float] = (0.0, 0.0),
     hurtbox_zones: Sequence[HurtboxZoneDef] | None = None,
+    floor: bool = True,
 ) -> Entity:
-    """Build a bare :class:`Entity` in isolated sprite groups."""
-    return Entity(
+    """Build a bare :class:`Entity` in isolated sprite groups.
+
+    Grounded by default. A fresh entity reports no floor contact, which means
+    ``stance`` is AIR, so a ground-only attack would be refused on sight -- and
+    almost every test built here is about combat rather than about falling.
+    Tests that genuinely want an airborne fighter pass ``floor=False``.
+    """
+    entity = Entity(
         pos=pos,
         size=size,
         color=color,
@@ -116,6 +123,8 @@ def make_entity(
         hurtbox_inflate=hurtbox_inflate,
         hurtbox_zones=hurtbox_zones,
     )
+    entity.on_surface["floor"] = floor
+    return entity
 
 
 def entity_at(

@@ -26,7 +26,9 @@ from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
     HitboxKeyframe,
+    MoveId,
     PhaseDefinition,
+    Stance,
 )
 from src.data.errors import GameplayDataError
 
@@ -42,6 +44,11 @@ SPRITE_SIZE = (40.0, 48.0)
 
 ENVELOPE_MARGIN = 2.0
 """Allowed box reach, as a multiple of ``SPRITE_SIZE``, from the owner center."""
+
+MAX_VERTICAL_LUNGE = 1.0
+"""Largest vertical lunge, in jump heights. 1.0 *is* a jump; above that a move
+out-launches the jump that put the fighter in the air, which makes the jump the
+optional move and the attack the mandatory one."""
 
 _BoxEntry = tuple[str, tuple[float, float], tuple[float, float], tuple[HitboxKeyframe, ...]]
 
@@ -115,6 +122,7 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
             f"{FRAME_RATE} Hz)"
         )
     last_index = len(definition.phases) - 1
+    _validate_vertical_lunge(name, definition)
     for index, phase in enumerate(definition.phases):
         _validate_phase(name, index, phase)
         if index < last_index and not phase.reset_targets:
@@ -127,7 +135,36 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
             )
 
 
-def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
+def _validate_vertical_lunge(name: str, definition: AttackDefinition) -> None:
+    """Refuse a vertical lunge that cannot fire, or one without a ceiling.
+
+    Two things can be wrong with the number, and only one of them is loud.
+
+    A ground-only move carrying a vertical lunge is dead data: the impulse is
+    applied on the airborne branch, so the field is read and discarded. That is
+    a balance change someone made to a move that will never run it -- the same
+    class of mistake as a self-cancel, and just as invisible.
+
+    A multiplier above 1.0 launches the fighter higher than a jump does, which
+    is the sort of number that looks fine in a diff and is not fine in a game.
+    The field is a multiple of jump height precisely so that 1.0 *is* a jump,
+    and the bound keeps the comparison meaningful.
+    """
+    lunge = definition.vertical_lunge
+    if lunge and Stance.AIR not in definition.stances:
+        raise GameplayDataError(
+            f"Attack {name!r}: vertical_lunge {lunge} but its stances are "
+            f"{[stance.value for stance in definition.stances]}, which do not include "
+            "'air' — the impulse is only applied off the ground, so this is never read"
+        )
+    if abs(lunge) > MAX_VERTICAL_LUNGE:
+        raise GameplayDataError(
+            f"Attack {name!r}: vertical_lunge {lunge} exceeds {MAX_VERTICAL_LUNGE} "
+            "jump heights; a move that out-jumps the jump is a launcher, not an aerial"
+        )
+
+
+def validate_attacks(attacks: Mapping[MoveId, AttackDefinition]) -> None:
     """Validate a whole attack table, including cross-attack cancels.
 
     Raises
@@ -138,24 +175,64 @@ def validate_attacks(attacks: Mapping[str, AttackDefinition]) -> None:
     """
     names = set(attacks)
     for name, definition in attacks.items():
-        unknown: set[str] = set()
+        unknown: set[MoveId] = set()
         for phase in definition.phases:
             unknown.update(set(phase.cancel_into) - names)
         if unknown:
             raise GameplayDataError(
                 f"Attack {name!r} references unknown cancels: {', '.join(sorted(unknown))}"
             )
+        _validate_cancels(name, definition, attacks)
         _validate_attack(name, definition)
 
 
-def load_attacks(combat: CombatComponent, attacks: Mapping[str, AttackDefinition]) -> None:
+def _validate_cancels(
+    name: MoveId,
+    definition: AttackDefinition,
+    attacks: Mapping[MoveId, AttackDefinition],
+) -> None:
+    """Refuse a cancel that cannot fire, or one that crosses a posture.
+
+    Two ways a ``cancel_into`` name passes the existence check and is still
+    wrong:
+
+    * it names the attack itself. The cooldown gate runs before the cancel gate,
+      and every move is still on cooldown at its own last frame, so
+      ``light_attack -> light_attack`` was accepted at load time and dead in
+      play.
+    * it names a move whose ``stances`` do not include this one's. That was the
+      ``air_attack -> light_attack`` chain: an air chain into a ground move.
+
+    A cycle *between* different moves is deliberately not refused.
+    ``light_attack`` and ``dash_attack`` cancel into each other, and that is
+    ordinary: what bounds the chain is the cooldown gate, which every move clears
+    before it can be thrown again. Refusing mutual cancels would have rejected a
+    table that works.
+    """
+    for index, phase in enumerate(definition.phases):
+        for target in phase.cancel_into:
+            if target == name:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: cancels into itself ({target!r}), "
+                    "which the cooldown gate makes unreachable"
+                )
+            missing = set(attacks[target].stances) - set(definition.stances)
+            if missing:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: cancels into {target!r}, which is not "
+                    f"reachable from {'/'.join(sorted(s.value for s in definition.stances))} "
+                    f"(it needs {'/'.join(sorted(s.value for s in missing))})"
+                )
+
+
+def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:
     """Validate then register a mapping of attack definitions.
 
     Parameters
     ----------
     combat : CombatComponent
         The combat component to populate.
-    attacks : Mapping[str, AttackDefinition]
+    attacks : Mapping[MoveId, AttackDefinition]
         A dictionary-like object mapping attack names to their definitions.
 
     Raises

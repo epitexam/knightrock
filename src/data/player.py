@@ -18,7 +18,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from src.combat.frame_data import AttackDefinition
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.errors import (
     GameplayDataError,
     pair_of_floats,
@@ -62,7 +62,7 @@ def _read_wall_jumps(value: Any, where: str) -> int | float:
 def read_player_config(
     raw: Any,
     where: str,
-    attack_sets: dict[str, dict[str, AttackDefinition]],
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]],
 ) -> PlayerConfig:
     """Merge a ``player`` JSON block over ``PlayerConfig()`` defaults."""
     if not isinstance(raw, dict):
@@ -74,11 +74,11 @@ def read_player_config(
     reject_unknown(raw, _player_override_keys(), where)
     base = PlayerConfig()
     raw_attacks = raw.get("attack_set")
-    attacks: dict[str, AttackDefinition] | None = None
+    attacks: dict[MoveId, AttackDefinition] | None = None
     if raw_attacks is not None:
         if not isinstance(raw_attacks, str) or raw_attacks not in attack_sets:
             raise GameplayDataError(f"{where}: unknown attack set {raw_attacks!r}")
-        attacks = dict(attack_sets[raw_attacks])
+        attacks = dict(attack_sets[MoveId(raw_attacks)])
     try:
         return PlayerConfig(
             size=pair_of_floats(raw.get("size", list(base.size)), f"{where}.size"),
@@ -138,7 +138,7 @@ def read_player_config(
 
 
 def read_player_file(
-    path: str | Path, attack_sets: dict[str, dict[str, AttackDefinition]]
+    path: str | Path, attack_sets: dict[str, dict[MoveId, AttackDefinition]]
 ) -> PlayerConfig:
     """Load the player config block from a ``player.json`` file."""
     raw = read_json_object(path, PLAYER_VERSION)

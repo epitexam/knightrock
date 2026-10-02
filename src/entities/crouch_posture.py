@@ -15,9 +15,13 @@ what makes the crouching half of ``Guard.HEIGHT_BLOCK`` reachable through play
 instead of only from a test that pokes the state name.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+import pygame
+
+from src.combat.frame_data import Stance
 from src.core.settings import Locomotion, Physics
 
 
@@ -65,6 +69,17 @@ class CrouchPosture:
     def stood_height(self) -> float:
         """The fighter's full standing collider height."""
         return self._stood_height
+
+    @property
+    def stance(self) -> Stance:
+        """The posture the fighter is in, for anything that gates on it.
+
+        Only ``CROUCH`` versus not: the crouch requires a floor, so an airborne
+        fighter is never in it even mid-release. What the fighter is *not* doing
+        -- airborne, on a wall -- is the entity's business, so the full
+        resolution lives in ``Entity.stance`` rather than here.
+        """
+        return Stance.CROUCH if self._wanted else Stance.GROUND
 
     def restore(self, snapshot: CrouchSnapshot) -> None:
         """Restore posture state from a validated rollback snapshot."""
@@ -143,12 +158,46 @@ def _headroom(entity: Any) -> float:
     the feet (the floor under them does not), must reach down to their level or
     above (a pit below does not), and must span the fighter horizontally (a wall
     beside them is not overhead).
+
+    When the entity carries the level's spatial hash -- which every entity in a
+    real level does, assigned in ``Level.__init__`` -- the candidates come from
+    the grid instead of from a walk of every collidable on the map. On the
+    shipped stage that is 461 sprites turned into 2, and this function ran once
+    per player per tick precisely because the fighter is usually *not* holding
+    the crouch, so there was nothing about the posture that made it cheap.
+
+    The query is only the fighter's own column, from the feet up to the
+    standing height, and that bound is sound rather than convenient: ``tallest``
+    starts at the standing height and is only ever lowered by a ``min``, so a
+    solid more than a full standing height above the feet cannot change the
+    answer. Without the bound the query would be the whole screen, which is the
+    scan this is replacing.
+
+    The linear walk stays for an entity with no hash -- a fighter built outside
+    a level -- and is what the unit tests exercise, since they assemble their
+    own collision group. ``get_nearby_sprites`` already resolves collision
+    through the same grid with the same fallback, so this leans on an invariant
+    that is already load-bearing rather than adding a second one.
     """
     hitbox = entity.hitbox
     bottom = hitbox.bottom
-    tallest = max(0.0, _stand_height(entity))
-    for sprite in entity.collision_sprites:
-        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+    stood = _stand_height(entity)
+    tallest = max(0.0, stood)
+
+    spatial_hash = getattr(entity, "spatial_hash", None)
+    if spatial_hash is None:
+        candidates: Iterable[Any] = entity.collision_sprites
+    else:
+        column = pygame.FRect(hitbox.left, bottom - stood, hitbox.width, stood)
+        candidates = spatial_hash.get_nearby(column)
+
+    for sprite in candidates:
+        # Not ``getattr(sprite, "hitbox", getattr(sprite, "rect", None))``:
+        # the default is evaluated before the call, so the fallback lookup runs
+        # for every sprite including the tiles that all have a ``rect``.
+        box = getattr(sprite, "hitbox", None)
+        if box is None:
+            box = getattr(sprite, "rect", None)
         if box is None:
             continue
         if not float(box.bottom) < bottom or float(box.top) > bottom:

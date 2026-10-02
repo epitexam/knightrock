@@ -1,10 +1,15 @@
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition
+from src.combat.frame_data import (
+    AttackDefinition,
+    HitProperties,
+    MoveId,
+    PhaseDefinition,
+)
 from src.combat.knockback import NULL_KNOCKBACK
 from src.entities.enemies.schema import EnemyConfig
 
-DUMMY_ATTACKS = {
-    "test": AttackDefinition(
+DUMMY_ATTACKS: dict[MoveId, AttackDefinition] = {
+    MoveId("test"): AttackDefinition(
         phases=(
             PhaseDefinition(
                 startup_frames=1,

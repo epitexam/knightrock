@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import MISSING, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
@@ -32,7 +32,9 @@ from src.combat.frame_data import (
     HitboxKeyframe,
     HitboxSpec,
     HitProperties,
+    MoveId,
     PhaseDefinition,
+    Stance,
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
@@ -47,6 +49,7 @@ _KNOCKBACK_MODES = ("from_attacker", "fixed")
 _SHAPE_KINDS = {member.value: member for member in ShapeKind}
 _EASING_KINDS = {member.value: member for member in EasingKind}
 _ANCHOR_KINDS = {member.value: member for member in AnchorKind}
+_STANCES: dict[str, Stance] = {member.value: member for member in Stance}
 
 
 def _defaults(cls: type) -> dict[str, Any]:
@@ -333,10 +336,37 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             extra_hitboxes=extras,
             hitbox_keyframes=primary.keyframes,
             reset_targets=bool(raw.get("reset_targets", _PHASE_DEFAULTS["reset_targets"])),
-            cancel_into=tuple(raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])),
+            cancel_into=tuple(
+                MoveId(name) for name in raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
+
+
+def _read_stances(raw: Any, where: str) -> tuple[Stance, ...]:
+    """Parse the ``stances`` whitelist, defaulting to ground only.
+
+    A single string is accepted for the common one-stance case, since
+    ``"stances": "air"`` is what a designer writes for a single-entry move and
+    forcing them into a list of one is friction with no payoff.
+    """
+    if raw is None:
+        return cast("tuple[Stance, ...]", _ATTACK_DEFAULTS["stances"])
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        raise GameplayDataError(
+            f"{where}.stances: expected a stance name or a non-empty list of them, got {raw!r}"
+        )
+    stances: list[Stance] = []
+    for value in raw:
+        if value not in _STANCES:
+            raise GameplayDataError(
+                f"{where}.stances: unknown stance {value!r} (expected one of {', '.join(_STANCES)})"
+            )
+        stances.append(_STANCES[value])
+    return tuple(stances)
 
 
 def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
@@ -354,6 +384,9 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
                 for index, phase in enumerate(raw_phases)
             ),
             cooldown=float(_required(raw, "cooldown", where)),
+            stances=_read_stances(raw.get("stances"), where),
+            animation=str(raw.get("animation", _ATTACK_DEFAULTS["animation"])),
+            vertical_lunge=float(raw.get("vertical_lunge", _ATTACK_DEFAULTS["vertical_lunge"])),
             lock_direction=bool(raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"])),
             combo_reset=bool(raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"])),
             chargeable=bool(raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"])),
@@ -373,14 +406,14 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
         raise GameplayDataError(f"{where}: invalid attack value: {exc}") from exc
 
 
-def read_attacks_file(path: str | Path) -> dict[str, dict[str, AttackDefinition]]:
+def read_attacks_file(path: str | Path) -> dict[str, dict[MoveId, AttackDefinition]]:
     """Load every named attack set from an ``attacks.json`` file."""
     raw = read_json_object(path, SUPPORTED_ATTACK_VERSIONS)
     reject_unknown(raw, frozenset({"version", "sets"}), str(path))
     raw_sets = _required(raw, "sets", str(path))
     if not isinstance(raw_sets, dict):
         raise GameplayDataError(f"{path}: 'sets' must be an object")
-    sets: dict[str, dict[str, AttackDefinition]] = {}
+    sets: dict[str, dict[MoveId, AttackDefinition]] = {}
     for set_name, raw_attacks in raw_sets.items():
         if not isinstance(raw_attacks, dict):
             raise GameplayDataError(f"{path}#{set_name}: attack set must be an object")
@@ -398,7 +431,7 @@ def read_attacks_file(path: str | Path) -> dict[str, dict[str, AttackDefinition]
         if not raw_attacks:
             raise GameplayDataError(f"{path}#{set_name}: attack set must name at least one attack")
         sets[set_name] = {
-            name: read_attack_definition(definition, f"{path}#{set_name}.{name}")
+            MoveId(name): read_attack_definition(definition, f"{path}#{set_name}.{name}")
             for name, definition in raw_attacks.items()
         }
     return sets
@@ -496,6 +529,8 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
             for phase in definition.phases
         ],
         "cooldown": definition.cooldown,
+        "stances": [stance.value for stance in definition.stances],
+        "animation": definition.animation,
         "lock_direction": definition.lock_direction,
         "combo_reset": definition.combo_reset,
         "chargeable": definition.chargeable,
@@ -503,6 +538,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
         "charge_move_multiplier": definition.charge_move_multiplier,
         "uninterruptible": definition.uninterruptible,
         "lunge_speed_multiplier": definition.lunge_speed_multiplier,
+        "vertical_lunge": definition.vertical_lunge,
         "attack_move_multiplier": definition.attack_move_multiplier,
     }
 
@@ -530,7 +566,7 @@ def attack_definition_to_v2_dict(definition: AttackDefinition) -> dict[str, Any]
 
 
 def attacks_document(
-    attack_sets: Mapping[str, Mapping[str, AttackDefinition]],
+    attack_sets: Mapping[str, Mapping[MoveId, AttackDefinition]],
     version: int = ATTACKS_VERSION,
 ) -> dict[str, Any]:
     """Serialize a complete attack bundle into the loadable JSON document shape."""
@@ -546,7 +582,7 @@ def attacks_document(
 
 def write_attacks_file(
     path: str | Path,
-    attack_sets: Mapping[str, Mapping[str, AttackDefinition]],
+    attack_sets: Mapping[str, Mapping[MoveId, AttackDefinition]],
     version: int = ATTACKS_VERSION,
 ) -> Path:
     """Write a complete attack bundle atomically and return its destination."""

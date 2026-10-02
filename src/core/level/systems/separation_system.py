@@ -11,7 +11,7 @@ class SeparationSystem:
         self,
         entity_sprites: pygame.sprite.Group,
         entity_grid: EntityGrid | None = None,
-    ) -> None:
+    ) -> list[Any]:
         """Push overlapping entities apart on the dominant overlap axis.
 
         Pair candidates come from the per-tick :class:`EntityGrid` when one
@@ -19,8 +19,20 @@ class SeparationSystem:
         order is preserved, so behaviour is unchanged (see
         :func:`overlapping_pairs`).  Without a grid the pairs are tested
         exhaustively — still correct, just slower.
+
+        Returns the entities whose hitbox this call actually displaced, so the
+        caller can repair whatever it derived from that position.  Attack boxes
+        are positioned from the hitbox, and :meth:`Entity.sync_rects` does not
+        know about them -- so a fighter pushed apart here used to need its
+        attack box re-synced afterwards, which is why the loop did it for
+        *every* combatant every tick to cover the handful that moved.
+
+        The list is usually empty.  Overlapping is the rare case, and the
+        alternative -- re-syncing all of them unconditionally -- charged every
+        fighter for the ones that happened to be standing near someone.
         """
         entities = [e for e in entity_sprites if hasattr(e, "hitbox") and hasattr(e, "on_surface")]
+        moved: list[Any] = []
 
         if entity_grid is not None:
             pairs = overlapping_pairs(entities, entity_grid)
@@ -56,6 +68,8 @@ class SeparationSystem:
             both_airborne = not a_grounded and not b_grounded
             clearly_stacked = overlap_y < overlap_x * Sep.VERTICAL_STACK_RATIO
 
+            before = ((ent_a.hitbox.x, ent_a.hitbox.y), (ent_b.hitbox.x, ent_b.hitbox.y))
+
             if clearly_stacked and both_airborne:
                 push = overlap_y * Sep.STRENGTH
                 dir_a = -1.0 if ent_a.hitbox.centery <= ent_b.hitbox.centery else 1.0
@@ -67,6 +81,15 @@ class SeparationSystem:
 
             ent_a.sync_rects()
             ent_b.sync_rects()
+
+            # Measured rather than assumed: a pair can reach here with a push
+            # that rounds to nothing, and an entity pushed twice in one tick is
+            # worth re-syncing once.
+            for entity, previous in ((ent_a, before[0]), (ent_b, before[1])):
+                if (entity.hitbox.x, entity.hitbox.y) != previous and entity not in moved:
+                    moved.append(entity)
+
+        return moved
 
     @staticmethod
     def _push(ent_a: Any, ent_b: Any, delta_a: float, delta_b: float, axis: str) -> None:

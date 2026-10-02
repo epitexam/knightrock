@@ -18,7 +18,7 @@ from src.combat.attack_loading import (
     load_attacks,
     validate_attacks,
 )
-from src.combat.frame_data import HitboxKeyframe
+from src.combat.frame_data import HitboxKeyframe, Stance, move_id
 from src.data.attacks import attack_definition_to_dict, read_attack_definition, read_attacks_file
 from src.data.errors import GameplayDataError
 from tests.unit.helpers import make_attack as attack
@@ -138,11 +138,72 @@ def test_a_cancel_naming_an_unregistered_attack_is_rejected() -> None:
     untested when grepping by name, and the failure it reports when broken is
     two assertions and a scroll away from the assertion that broke.
     """
-    broken_phase = replace(_valid_attack().phases[0], cancel_into=("nope",))
+    broken_phase = replace(_valid_attack().phases[0], cancel_into=(move_id("nope"),))
     definition = replace(_valid_attack(), phases=(broken_phase,))
 
     with pytest.raises(GameplayDataError, match=r"kick' references unknown cancels: nope"):
         validate_attacks({"kick": definition})
+
+
+def test_a_cancel_into_the_attack_itself_is_rejected() -> None:
+    """It loads today and is dead in play.
+
+    The cooldown gate runs before the cancel gate, and every move is still on
+    cooldown at its own last frame -- so a self-cancel is accepted by the data
+    and then never fires.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=(move_id("kick"),)),),
+    )
+
+    with pytest.raises(GameplayDataError, match=r"cancels into itself"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_cancel_into_a_posture_it_cannot_be_thrown_from_is_rejected() -> None:
+    """An air chain into a ground move was loadable, and playable.
+
+    ``air_attack.cancel_into = ("light_attack",)`` passed every existing check
+    for as long as it existed, and nothing stopped a fighter chaining from
+    mid-air into a standing swing. The move's own ``stances`` are what make the
+    crossing visible.
+    """
+    ground = _valid_attack()
+    air_phase = replace(ground.phases[0], cancel_into=(move_id("jab"),))
+    air = replace(ground, phases=(air_phase,), stances=(Stance.AIR,))
+    jab = replace(_valid_attack(), phases=(replace(_valid_attack().phases[0], cancel_into=()),))
+
+    with pytest.raises(GameplayDataError, match=r"not reachable from air"):
+        validate_attacks({"punch": air, "jab": jab})
+
+
+def test_a_mutual_cancel_is_allowed() -> None:
+    """Refusing cycles between moves would reject a table that works.
+
+    ``light_attack`` and ``dash_attack`` cancel into each other in the shipped
+    data. What bounds the chain is the cooldown gate -- every move clears its
+    cooldown before it can be thrown again -- not the shape of the graph, so a
+    cycle check would have refused an ordinary table.
+    """
+    a = _valid_attack()
+    b = replace(a, phases=(replace(a.phases[0], cancel_into=(move_id("kick"),)),))
+    a_mutual = replace(a, phases=(replace(a.phases[0], cancel_into=(move_id("jab"),)),))
+
+    validate_attacks({"kick": a_mutual, "jab": b})
+
+
+def test_the_shipped_tables_satisfy_every_cancel_rule() -> None:
+    """The shipped tables are checked by the same code that checks a bad one.
+
+    Otherwise the rules above could be wrong in a way that only shows up on a
+    table nobody validates -- which is exactly what happened to the air chain.
+    """
+    from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
+
+    validate_attacks(PLAYER_ATTACKS)
+    validate_attacks(GOBLIN_ATTACKS)
+    validate_attacks(SLIME_ATTACKS)
 
 
 def _raw_json_attack() -> dict[str, object]:
@@ -344,3 +405,103 @@ def test_load_attacks_validates_before_registering() -> None:
         load_attacks(combat, {"kick": broken})  # type: ignore[arg-type]
 
     assert combat.attacks == {}
+
+
+def test_a_vertical_lunge_on_a_ground_only_move_is_refused() -> None:
+    """It loads today and is never read.
+
+    The impulse is applied on the airborne branch, so a move that cannot be
+    thrown from the air carries a number nothing will ever look at. Same shape
+    as the self-cancel: a balance change someone made to a move that will not
+    run it, invisible until the stance list is edited and the number is found
+    to have been a typo all along.
+    """
+    grounded = replace(
+        _valid_attack().phases[0],
+        cancel_into=(),
+    )
+    definition = replace(
+        _valid_attack(), phases=(grounded,), stances=(Stance.GROUND,), vertical_lunge=0.6
+    )
+
+    with pytest.raises(GameplayDataError, match=r"which do not include 'air'"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_stronger_than_a_jump_is_refused() -> None:
+    """``vertical_lunge`` is a multiple of jump height, so 1.0 *is* a jump.
+
+    Above that, the move out-launches the jump that put the fighter in the air:
+    the jump becomes optional and the attack mandatory, which inverts what the
+    jump is for. The bound is the only reason the field is safe to author in.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=1.4,
+    )
+
+    with pytest.raises(GameplayDataError, match=r"exceeds 1.0 jump heights"):
+        validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_of_exactly_one_jump_is_allowed() -> None:
+    """The bound is inclusive, and the boundary is where an off-by-one hides.
+
+    1.0 means "as much as a jump", which is a coherent aerial. A check written
+    ``>=`` would refuse it and quietly push every future aerial down toward
+    0.99 without anybody deciding to.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=1.0,
+    )
+
+    validate_attacks({"kick": definition})
+
+
+def test_a_vertical_lunge_survives_the_round_trip() -> None:
+    """The field is on the wire, so a data file has to be able to carry it.
+
+    Checked separately from the other round-trips because a field that reads but
+    does not write round-trips to a *default* and looks fine -- the failure
+    being that the shipped JSON silently loses the value on the next
+    regeneration.
+    """
+    definition = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=()),),
+        stances=(Stance.AIR,),
+        vertical_lunge=-0.4,
+    )
+
+    back = read_attack_definition(attack_definition_to_dict(definition), "test")
+
+    assert back.vertical_lunge == pytest.approx(-0.4)
+
+
+def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
+    """The shipped data against the rule, which is the only place both exist.
+
+    Each aerial is asserted against the direction its button already means on
+    the floor: ATTACK_3 launches on the ground so it rises in the air, ATTACK_2
+    is the heavy hit down here so it falls up there, and the neutral one leaves
+    the arc alone. A table where all four had the same sign would satisfy the
+    validation and be the missing feature replaced by a worse one.
+    """
+    player = PLAYER_ATTACKS
+    from src.core.input.input_actions import InputAction
+    from src.entities.attack_moves import BUTTON_MOVES
+
+    aerial = {
+        action.value: moves[Stance.AIR]
+        for action, moves in BUTTON_MOVES.items()
+        if Stance.AIR in moves
+    }
+
+    assert player[aerial[InputAction.ATTACK_3.value]].vertical_lunge > 0
+    assert player[aerial[InputAction.ATTACK_2.value]].vertical_lunge < 0
+    assert player[aerial[InputAction.ATTACK_1.value]].vertical_lunge == 0.0

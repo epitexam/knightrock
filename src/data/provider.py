@@ -1,23 +1,19 @@
-"""Single entry point loading all gameplay data with fallback (Phase 3 #4).
+"""Single entry point loading all gameplay data (Phase 3 #4).
 
-Source of truth at runtime: the JSON files in ``data/gameplay/``. The
-in-code values (``src/combat/attack_data.py`` and siblings) are an
-absence-only fallback, never a second source — see the resolution order
-below. Parity between both layers is pinned by
-``tests/unit/test_gameplay_data.py`` (P0.2): editing one side without the
-other fails the suite instead of drifting silently.
+Source of truth: the JSON files in ``data/gameplay/``, and only them. They used
+to be shadowed by hand-maintained copies in Python -- ``src/combat/attack_data.py``
+held all fourteen attacks a second time, with a CI test asserting the two were
+equal. That test's failure mode was a repr rather than a diff, and a field added
+to one side was silently absent from the other.
 
-:class:`GameplayData` is a plain value bundle — attack sets, enemy configs,
-the player config and the level registry — built either from the tracked
-JSON files in ``data/gameplay/`` or from the historical in-code values
-(fallback, with a warning).  Both layers produce identical frozen
-dataclasses, so the simulation cannot tell them apart.
+``src/combat/attack_data.py`` is now a lazy shim that reads ``attacks.json``, so
+there is one copy of the balance and it is the one the game loads. ``attacks.json``
+is therefore required: a malformed one raises (:class:`GameplayDataError`), and a
+missing one raises too. Booting on a balance nobody reviewed is a worse outcome
+than not booting.
 
-Resolution order per file (JSON errors vs absence):
-- file present and valid → use it;
-- file present but malformed → :class:`GameplayDataError` (fail loudly:
-  a typo must never boot with silently wrong balance);
-- file absent → fall back to the in-code source for that file only.
+:class:`GameplayData` is a plain value bundle -- attack sets, enemy configs, the
+player config and the level registry.
 
 ``KNIGHTROCK_DATA_DIR`` may point at an alternate root containing
 ``gameplay/*.json`` (modders, tests).
@@ -26,18 +22,16 @@ Resolution order per file (JSON errors vs absence):
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
-from src.combat.frame_data import AttackDefinition
-from src.core.paths import resource_path
+from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.attacks import ATTACKS_FILENAME, read_attacks_file
 from src.data.enemies import ENEMIES_FILENAME, read_enemies_file
 from src.data.levels import LEVELS_FILENAME, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
+from src.data.roots import gameplay_data_root
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.player_config import PlayerConfig
 
@@ -46,35 +40,20 @@ logger = logging.getLogger(__name__)
 # The gameplay JSON files are tracked in the repository (unlike ``assets/``,
 # which is git-ignored and only materialized at build time), so designers can
 # review and edit gameplay values in a pull request.
-DATA_ROOT = "data"
-GAMEPLAY_SUBDIR = "gameplay"
-
-BUILTIN_ATTACK_SETS: dict[str, dict[str, AttackDefinition]] = {
-    "player": PLAYER_ATTACKS,
-    "goblin": GOBLIN_ATTACKS,
-    "slime": SLIME_ATTACKS,
-}
 
 
 @dataclass(frozen=True)
 class GameplayData:
     """Every gameplay value group in one immutable bundle."""
 
-    attack_sets: Mapping[str, dict[str, AttackDefinition]] = field(default_factory=dict)
+    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]] = field(default_factory=dict)
     enemies: Mapping[str, EnemyConfig] = field(default_factory=dict)
     player: PlayerConfig | None = None
     levels: Mapping[int, str] = field(default_factory=dict)
 
 
-def gameplay_data_root() -> Path:
-    """Resolve the root holding ``gameplay/*.json``."""
-    override = os.environ.get("KNIGHTROCK_DATA_DIR")
-    base = Path(override) if override else Path(resource_path(DATA_ROOT))
-    return base / GAMEPLAY_SUBDIR
-
-
 def _fallback_enemy_configs(
-    attack_sets: Mapping[str, dict[str, AttackDefinition]],
+    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]],
 ) -> dict[str, EnemyConfig]:
     """Rebuild the historical enemy table (mirror of ``configs.py``)."""
     from src.entities.enemies.types.dummy import DUMMY_CONFIG
@@ -90,15 +69,18 @@ def _fallback_enemy_configs(
 
 
 def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
-    """Load every gameplay JSON file, falling back per missing file."""
+    """Load every gameplay JSON file.
+
+    ``attacks.json`` is required and raises if it is missing or malformed. It
+    used to fall back to a second copy of the tables kept in
+    ``src/combat/attack_data.py`` -- which is now a shim that reads this same
+    file, so there is nothing to fall back to, and a game that booted on
+    unreviewed balance would be worse than one that refuses to start.
+    """
     directory = Path(root) if root is not None else gameplay_data_root()
 
-    attack_sets: dict[str, dict[str, AttackDefinition]] = dict(BUILTIN_ATTACK_SETS)
     attacks_path = directory / ATTACKS_FILENAME
-    if attacks_path.exists():
-        attack_sets = read_attacks_file(attacks_path)
-    else:
-        logger.warning("Gameplay JSON %s missing: using built-in attack sets", attacks_path)
+    attack_sets: dict[str, dict[MoveId, AttackDefinition]] = read_attacks_file(attacks_path)
 
     enemies: dict[str, EnemyConfig]
     enemies_path = directory / ENEMIES_FILENAME

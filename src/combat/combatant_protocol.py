@@ -12,7 +12,7 @@ from typing import Any, Protocol, runtime_checkable
 import pygame
 
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import PhaseDefinition
+from src.combat.frame_data import PhaseDefinition, Stance
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapePose, SweptShape
 
@@ -162,6 +162,11 @@ class Combatant(Protocol):
         The entity's combat component through its explicit public port.
     state_machine : Any
         The entity's state machine for state-based logic (optional, for DIZZY checks).
+    stance : Stance
+        The posture the entity is in, read by the attack policy to decide which
+        moves are available. Defaults to GROUND on `Entity`; the player resolves
+        it from its geometry so a crouch-guard or a crouch-attack still reads as
+        crouched.
     """
 
     id: str
@@ -176,6 +181,11 @@ class Combatant(Protocol):
     @property
     def is_dead(self) -> bool:
         """True if the entity's health has reached zero."""
+        ...
+
+    @property
+    def stance(self) -> Stance:
+        """The posture this entity is in."""
         ...
 
     @property

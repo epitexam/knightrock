@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
+from src.combat.frame_data import MoveId, move_id
+from src.combat.refusal import Refusal
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
@@ -39,13 +41,29 @@ DEBUG_SPAWNS = {
 }
 
 #: Phase 5 showcase attacks forced on the player (touch nothing else).
-DEBUG_ATTACKS = {
-    pygame.K_1: "twin_fangs",
-    pygame.K_2: "sweeping_arc",
-    pygame.K_3: "sky_launcher",
-    pygame.K_4: "otg_slam",
-    pygame.K_5: "p5_shapes",
-    pygame.K_6: "circle_burst",
+#: Key to the move each number triggers. Checked against the player's own table
+#: on use, so a move renamed or removed in ``attacks.json`` fails loudly here
+#: rather than leaving a number key that silently does nothing -- which is what a
+#: bare string in this dict would do.
+#:
+#: The air kit is on ``7``-``0`` rather than appended to ``1``-``6`` so the two
+#: groups read apart at a glance, which matters more here than usual: the ground
+#: keys work from anywhere and the air keys only work off the ground, so a dev
+#: pressing ``7`` on the floor is holding an airborne move the stance gate will
+#: refuse. :meth:`SpawnSystem.trigger_test_attack` raises on that rather than
+#: returning ``False``, so the reason is a traceback instead of a key that
+#: appears broken.
+DEBUG_ATTACKS: dict[int, MoveId] = {
+    pygame.K_1: move_id("twin_fangs"),
+    pygame.K_2: move_id("sweeping_arc"),
+    pygame.K_3: move_id("sky_launcher"),
+    pygame.K_4: move_id("otg_slam"),
+    pygame.K_5: move_id("p5_shapes"),
+    pygame.K_6: move_id("circle_burst"),
+    pygame.K_7: move_id("air_attack"),
+    pygame.K_8: move_id("air_forward"),
+    pygame.K_9: move_id("air_rise"),
+    pygame.K_0: move_id("air_sweep"),
 }
 
 #: Phase 5 projectile presets fired from the player.
@@ -85,8 +103,8 @@ class SpawnSystem:
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
         #: Attack name looped by the debug replay key, ``None`` when off.
-        self.attack_replay: str | None = None
-        self._last_attack: str | None = None
+        self.attack_replay: MoveId | None = None
+        self._last_attack: MoveId | None = None
 
     @property
     def spawn_cooldown_max(self) -> float:
@@ -154,14 +172,43 @@ class SpawnSystem:
         ):
             self._arm_debug_cooldown("juggle_dummy")
 
-    def trigger_test_attack(self, player: Player, attack_name: str) -> bool:
-        """Force a showcase attack on the player (Phase 5 test bench)."""
+    def trigger_test_attack(self, player: Player, attack_name: MoveId) -> bool:
+        """Force a showcase attack on the player (Phase 5 test bench).
+
+        Two refusals raise and the rest return ``False``, because on a bench
+        they mean different things and one of them is a broken bench.
+
+        An unregistered name raises: the key is wired to a move nothing knows,
+        which is a rename in ``attacks.json`` that was not followed through.
+        ``start_attack`` cannot tell that from "you are busy".
+
+        A ``STANCE`` refusal raises too, and this is the air kit's reason for
+        existing. The four air keys only work off the ground, so a dev pressing
+        ``7`` while standing holds a move the gate is right to refuse -- and a
+        silent ``False`` for that reads as a dead key rather than as the posture
+        rule the bench is there to demonstrate. Naming the reason turns it into
+        the thing to jump first.
+
+        ``COOLDOWN`` and ``BUSY`` stay quiet: pressing a showcase key twice in a
+        row is not a mistake, and a bench that raised on it would be unusable.
+        """
         start = getattr(getattr(player, "combat", None), "start_attack", None)
         if not callable(start):
             return False
-        return bool(start(attack_name))
+        if not player.combat.has_attack(attack_name):
+            raise KeyError(
+                f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
+                "rename it in attacks.json or drop it from DEBUG_ATTACKS"
+            )
+        refusal = start(attack_name)
+        if refusal is Refusal.STANCE:
+            raise RuntimeError(
+                f"Debug bench attack {str(attack_name)!r} needs a different posture; "
+                "the air keys only fire off the ground"
+            )
+        return bool(refusal)
 
-    def toggle_attack_replay(self, attack_name: str | None = None) -> str | None:
+    def toggle_attack_replay(self, attack_name: MoveId | None = None) -> MoveId | None:
         """Toggle looped replay of ``attack_name``; return the active name (``None`` = off)."""
         if self.attack_replay is not None:
             self.attack_replay = None
@@ -169,7 +216,7 @@ class SpawnSystem:
         self.attack_replay = attack_name or self._last_attack or next(iter(DEBUG_ATTACKS.values()))
         return self.attack_replay
 
-    def selected_attack(self) -> str | None:
+    def selected_attack(self) -> MoveId | None:
         """Return the attack currently selected for replay or export."""
         return self.attack_replay or self._last_attack
 

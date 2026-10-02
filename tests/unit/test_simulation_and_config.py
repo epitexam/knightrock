@@ -78,7 +78,10 @@ def wire_world_systems(level: Level, groups, player) -> None:
         tick_system=level.tick_system,
     )
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
-    level.gameplay_loop.separation_system.process = Mock()
+    # ``process`` now reports the entities it displaced, which the loop iterates
+    # to re-sync their attack boxes. A bare Mock is not iterable, and a tick with
+    # nobody overlapping is the common case this test is about.
+    level.gameplay_loop.separation_system.process = Mock(return_value=[])
     level.gameplay_loop.combat_system.process_attacks = Mock()
 
 

@@ -1,32 +1,58 @@
 """Tests of the src/data package: typed JSON loaders + fallback (Phase 3 #4)."""
 
 import json
-import logging
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
-from src.combat.frame_data import AttackDefinition
-from src.core.level.level_manager import LEVEL_PATHS
+from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS
+from src.combat.frame_data import AttackDefinition, Stance
+from src.core.input.input_manager import InputManager
 from src.core.paths import PROJECT_ROOT
-from src.data.attacks import ATTACKS_FILENAME, attack_definition_to_dict, read_attacks_file
+from src.data.attacks import (
+    ATTACKS_FILENAME,
+    attack_definition_to_dict,
+    attacks_document,
+    read_attack_definition,
+    read_attacks_file,
+)
 from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
 from src.data.errors import GameplayDataError
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
 from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
 from src.entities.enemies.schema import EnemyConfig
-from src.entities.enemies.types.dummy import DUMMY_CONFIG
 from src.entities.enemies.types.goblin import GOBLIN_CONFIG
-from src.entities.enemies.types.slime import SLIME_CONFIG
-from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
+from src.entities.player_config import PlayerConfig
 
 
 def _write(path: Path, payload: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def _grounded_player(input_manager: InputManager):
+    """A fighter on the floor, for the posture-resolution test.
+
+    Built directly rather than through a level: this asks what ``stance``
+    returns for a given set of surface flags, so the only setup that matters is
+    the flags.
+    """
+    import pygame
+
+    from src.entities.player import Player
+
+    player = Player(
+        pos=(0, 0),
+        groups=pygame.sprite.Group(),
+        collision_sprites=pygame.sprite.Group(),
+        moving_platforms=[],
+        input_manager=input_manager,
+    )
+    player.on_surface["floor"] = True
+    return player
 
 
 def _attacks_doc() -> dict:
@@ -558,21 +584,22 @@ def test_read_levels_file_rejects_non_integer_id(tmp_path: Path) -> None:
 # ── provider: fallback, parity, errors ─────────────────────────────────
 
 
-def test_load_gameplay_data_falls_back_when_dir_is_empty(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+def test_load_gameplay_data_refuses_to_boot_without_its_attacks(
+    tmp_path: Path,
 ) -> None:
+    """A missing ``attacks.json`` is an error, not a fallback to a second copy.
+
+    There used to be one: fourteen attacks kept twice, in this data file and in
+    ``src/combat/attack_data.py``, with a CI test asserting the two were equal.
+    The Python side is now a shim that reads this file, so there is nothing to
+    fall back to -- and booting on a balance nobody reviewed would be worse than
+    a game that says why it did not start.
+    """
     empty = tmp_path / "gameplay"
     empty.mkdir()
 
-    with caplog.at_level(logging.WARNING):
-        data = load_gameplay_data(empty)
-
-    assert set(data.attack_sets) == {"player", "goblin", "slime"}
-    assert data.attack_sets["player"] == PLAYER_ATTACKS
-    assert data.player is None
-    assert dict(data.levels) == LEVEL_PATHS
-    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
-    assert len(warnings) == 4  # one per missing JSON file
+    with pytest.raises((FileNotFoundError, GameplayDataError)):
+        load_gameplay_data(empty)
 
 
 def test_load_gameplay_data_uses_json_when_present(tmp_path: Path) -> None:
@@ -628,33 +655,180 @@ def test_shipped_gameplay_json_files_are_present() -> None:
         assert (root / name).is_file(), f"missing tracked gameplay file: {name}"
 
 
-def test_load_gameplay_data_json_parity_with_builtin_values(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The tracked JSON must reproduce the historical Python values exactly.
+def test_a_misspelled_stance_is_refused(tmp_path: Path) -> None:
+    """The whitelist is a whitelist: an unknown posture is not a shrug.
 
-    Asserted on the end state of the *default* root, so a transcription error
-    in the tracked files fails CI instead of silently shifting the balance.
+    A typo here would silently drop the move from every posture, which reads as
+    "this attack does nothing" rather than as a data error.
+    """
+    raw = {
+        "phases": [
+            {
+                "startup_frames": 1,
+                "active_frames": 2,
+                "recovery_frames": 1,
+                "hitbox_size": [30.0, 20.0],
+                "hitbox_offset": [20.0, 0.0],
+                "hit": {
+                    "damage": 5.0,
+                    "damage_type": "blunt",
+                    "knockback": {"power": [100.0, 0.0]},
+                },
+            }
+        ],
+        "cooldown": 1.0,
+        "stances": ["gound"],
+    }
+
+    with pytest.raises(GameplayDataError, match=r"unknown stance 'gound'"):
+        read_attack_definition(raw, "t")
+
+
+def test_a_single_stance_may_be_spelled_without_a_list(tmp_path: Path) -> None:
+    """``"stances": "air"`` is what a designer writes for a one-entry move."""
+    doc = {
+        "version": 1,
+        "sets": {
+            "test_set": {
+                "punch": attack_definition_to_dict(PLAYER_ATTACKS["air_attack"]),
+            }
+        },
+    }
+    doc["sets"]["test_set"]["punch"]["stances"] = "air"
+
+    sets = read_attacks_file(_write(tmp_path / "attacks.json", doc))
+
+    assert sets["test_set"]["punch"].stances == (Stance.AIR,)
+
+
+def test_a_move_is_ground_only_unless_it_says_otherwise() -> None:
+    """The default is the restriction, which is why the field is a whitelist.
+
+    A posture added later has to be opted into; if the default were "anywhere",
+    a new posture would silently make every existing move reachable from it.
+    """
+    definition = read_attack_definition(
+        {
+            "phases": [
+                {
+                    "startup_frames": 1,
+                    "active_frames": 2,
+                    "recovery_frames": 1,
+                    "hitbox_size": [30.0, 20.0],
+                    "hitbox_offset": [20.0, 0.0],
+                    "hit": {
+                        "damage": 5.0,
+                        "damage_type": "blunt",
+                        "knockback": {"power": [100.0, 0.0]},
+                    },
+                }
+            ],
+            "cooldown": 1.0,
+        },
+        "t",
+    )
+
+    assert definition.stances == (Stance.GROUND,)
+
+
+def test_an_attack_reachable_from_nowhere_is_rejected() -> None:
+    """An empty whitelist would make a move permanently unstartable."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+        replace(
+            PLAYER_ATTACKS["light_attack"],
+            stances=(),
+        )
+
+
+def test_a_duplicated_stance_is_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicates"):
+        replace(
+            PLAYER_ATTACKS["light_attack"],
+            stances=(Stance.GROUND, Stance.AIR, Stance.GROUND),
+        )
+
+
+def test_the_posture_a_fighter_is_in_is_resolved_most_specific_first() -> None:
+    """The postures overlap, so the order is the answer.
+
+    Sliding a wall is also airborne, and the crouch needs a floor -- resolve in
+    the other order and a wall-slide reads as AIR or a crouch reads as GROUND,
+    each of which quietly changes which moves are live.
+    """
+    input_manager = InputManager()
+    player = _grounded_player(input_manager)
+
+    assert player.stance is Stance.GROUND
+
+    player.on_surface["floor"] = False
+    assert player.stance is Stance.AIR
+
+    player.on_surface["left"] = True
+    player.left_held = True
+    player.velocity.y = 100.0
+    assert player.stance is Stance.WALL
+
+    player.on_surface["floor"] = True
+    player.left_held = False
+    player.crouch._wanted = True
+    assert player.stance is Stance.CROUCH
+
+
+def test_the_shipped_files_survive_a_full_write_read_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The generator has to reproduce the file, or it is not a generator.
+
+    This replaced a parity test that compared ``attacks.json`` against the
+    hand-maintained Python tables and asserted the two were equal -- a
+    comparison of one source against its own copy, whose failure message was a
+    repr rather than a diff. There is one copy now, so what is worth pinning is
+    that serialising what we loaded gives back what we read: the property a
+    designer needs before editing the JSON by hand and trusting the tool.
+
+    The enemy configs are included, since ``enemy_config_to_dict`` inlines their
+    attacks rather than naming a set -- a second place the same data is written.
     """
     monkeypatch.delenv("KNIGHTROCK_DATA_DIR", raising=False)
     data = load_gameplay_data()
 
-    assert data.player is not None, "shipped player.json was not loaded"
+    attacks_path = tmp_path / "attacks.json"
+    attacks_path.write_text(
+        json.dumps(attacks_document(data.attack_sets, 2), indent=2, allow_nan=False)
+    )
+    enemies_path = tmp_path / "enemies.json"
+    enemies_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "enemies": {name: enemy_config_to_dict(c) for name, c in data.enemies.items()},
+            },
+            indent=2,
+            allow_nan=False,
+        )
+    )
 
-    for name, builtin in (
-        ("player", PLAYER_ATTACKS),
-        ("goblin", GOBLIN_ATTACKS),
-        ("slime", SLIME_ATTACKS),
-    ):
-        assert data.attack_sets[name] == builtin
+    reloaded = read_attacks_file(attacks_path)
+    assert reloaded == data.attack_sets
+    assert read_enemies_file(enemies_path, reloaded) == data.enemies
 
-    # Enemy configs are frozen dataclasses: full equality, field by field.
-    assert data.enemies["goblin"] == GOBLIN_CONFIG
-    assert data.enemies["dummy"] == DUMMY_CONFIG
-    assert data.enemies["slime"] == SLIME_CONFIG
 
-    # The JSON encodes DEFAULT_PLAYER_CONFIG (pink sprite), not the bare
-    # PlayerConfig() defaults; Player uses the former when config is None.
-    assert data.player == DEFAULT_PLAYER_CONFIG
+def test_the_shipped_attacks_file_is_exactly_what_the_serializer_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Byte for byte, so a hand edit that drifts the formatting is visible.
 
-    assert dict(data.levels) == LEVEL_PATHS
+    The normalisation commit made this true; without pinning it, the file and
+    the writer drift apart again and the next regeneration is a 1000-line diff
+    nobody dares apply.
+    """
+    monkeypatch.delenv("KNIGHTROCK_DATA_DIR", raising=False)
+    data = load_gameplay_data()
+
+    from src.data.roots import gameplay_data_root
+
+    shipped = gameplay_data_root() / ATTACKS_FILENAME
+    assert (
+        shipped.read_text(encoding="utf-8")
+        == json.dumps(attacks_document(data.attack_sets, 2), indent=2, allow_nan=False) + "\n"
+    )
