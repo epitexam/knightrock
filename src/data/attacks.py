@@ -386,6 +386,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
             cooldown=float(_required(raw, "cooldown", where)),
             stances=_read_stances(raw.get("stances"), where),
             animation=str(raw.get("animation", _ATTACK_DEFAULTS["animation"])),
+            vertical_lunge=float(raw.get("vertical_lunge", _ATTACK_DEFAULTS["vertical_lunge"])),
             lock_direction=bool(raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"])),
             combo_reset=bool(raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"])),
             chargeable=bool(raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"])),
@@ -537,6 +538,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
         "charge_move_multiplier": definition.charge_move_multiplier,
         "uninterruptible": definition.uninterruptible,
         "lunge_speed_multiplier": definition.lunge_speed_multiplier,
+        "vertical_lunge": definition.vertical_lunge,
         "attack_move_multiplier": definition.attack_move_multiplier,
     }
 

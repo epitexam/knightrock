@@ -287,12 +287,39 @@ class PlayerAttackState(PlayerBaseState):
         super().__init__(entity, tags=["attack", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and apply forward momentum if grounded."""
+        """Enter the state and apply forward momentum if grounded.
+
+        Off the ground the horizontal lunge is skipped -- a fighter who lunges
+        on the ground overshoots the target -- and the vertical impulse takes its
+        place. ``vertical_lunge`` is a multiple of ``jump_height``, signed so
+        positive rises, matching the jump itself.
+
+        The impulse is a *floor* on the fighter's momentum in the direction it
+        pushes, never a replacement for it. Overwriting would mean that pressing
+        the rising aerial a frame after a full jump replaces ``-jump_height``
+        with ``-0.62 * jump_height``: the attack would make the fighter rise
+        more slowly than the jump that put them in the air, which is the one
+        thing a follow-up should never do. So a rise takes
+        ``min(current, -lunge)`` and a dive ``max(current, +lunge)``. A fighter
+        already going up faster than the move lifts keeps the arc they earned,
+        and a fighter already falling faster than the dive drops keeps it.
+
+        The horizontal momentum an airborne fighter keeps is not set here but
+        read every frame from ``attack_move_multiplier``, so a move that wants
+        to carry forward sets that instead and inherits whatever horizontal
+        velocity the fighter arrived with.
+        """
+        attack = self.entity.combat.state.current_attack_def
         if self.entity.on_surface["floor"]:
-            attack = self.entity.combat.state.current_attack_def
             multiplier = attack.lunge_speed_multiplier if attack else 0.35
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * multiplier
+        elif attack is not None and attack.vertical_lunge:
+            impulse = -self.entity.jump_height * attack.vertical_lunge
+            if impulse < 0.0:
+                self.entity.velocity.y = min(self.entity.velocity.y, impulse)
+            else:
+                self.entity.velocity.y = max(self.entity.velocity.y, impulse)
 
     def exit(self, next_state: str | None = None) -> None:
         """Cancel the attack unless this state is restarting a buffered one."""

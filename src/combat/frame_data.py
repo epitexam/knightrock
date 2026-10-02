@@ -574,6 +574,25 @@ class AttackDefinition:
         Multiplier applied to the entity's speed to compute the forward
         lunge velocity applied when this attack starts on the ground.
         0.0 disables the lunge entirely.
+    vertical_lunge : float
+        Vertical velocity, as a multiple of the fighter's jump height, used to
+        bound the fighter's vertical speed when this attack starts **off the
+        ground**. Signed: positive rises (matching the jump, whose velocity is
+        ``-jump_height``), negative dives. 0.0 = no impulse.
+
+        The horizontal twin above is grounded only, because a fighter who
+        lunges on the ground overshoots the target while a fighter who rises in
+        the air has nowhere to overshoot into. There is nothing to be gained by
+        pretending otherwise, and the sign is shared so that "up" is the same
+        word in both fields.
+
+        A floor on the fighter's momentum, not a replacement for it: a rise
+        takes ``min(current, -lunge)``, a dive ``max(current, +lunge)``. See
+        ``PlayerAttackState.enter``, which is where that is applied.
+
+        Distinct from the *hit's* knockback, which moves the target. This moves
+        the attacker, and it is applied once at the start of the sequence: the
+        fighter's arc carries them and the hitbox travels with them.
     attack_move_multiplier : float
         Multiplier applied to the entity's movement speed for the whole
         sequence, read every frame while the attack is live (see
@@ -608,6 +627,7 @@ class AttackDefinition:
     charge_move_multiplier: float = 1.0
     uninterruptible: bool = False
     lunge_speed_multiplier: float = 0.35
+    vertical_lunge: float = 0.0
     attack_move_multiplier: float = 0.3
 
     def __post_init__(self) -> None:

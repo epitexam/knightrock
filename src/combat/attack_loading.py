@@ -28,6 +28,7 @@ from src.combat.frame_data import (
     HitboxKeyframe,
     MoveId,
     PhaseDefinition,
+    Stance,
 )
 from src.data.errors import GameplayDataError
 
@@ -43,6 +44,11 @@ SPRITE_SIZE = (40.0, 48.0)
 
 ENVELOPE_MARGIN = 2.0
 """Allowed box reach, as a multiple of ``SPRITE_SIZE``, from the owner center."""
+
+MAX_VERTICAL_LUNGE = 1.0
+"""Largest vertical lunge, in jump heights. 1.0 *is* a jump; above that a move
+out-launches the jump that put the fighter in the air, which makes the jump the
+optional move and the attack the mandatory one."""
 
 _BoxEntry = tuple[str, tuple[float, float], tuple[float, float], tuple[HitboxKeyframe, ...]]
 
@@ -116,6 +122,7 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
             f"{FRAME_RATE} Hz)"
         )
     last_index = len(definition.phases) - 1
+    _validate_vertical_lunge(name, definition)
     for index, phase in enumerate(definition.phases):
         _validate_phase(name, index, phase)
         if index < last_index and not phase.reset_targets:
@@ -126,6 +133,35 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
                 UserWarning,
                 stacklevel=2,
             )
+
+
+def _validate_vertical_lunge(name: str, definition: AttackDefinition) -> None:
+    """Refuse a vertical lunge that cannot fire, or one without a ceiling.
+
+    Two things can be wrong with the number, and only one of them is loud.
+
+    A ground-only move carrying a vertical lunge is dead data: the impulse is
+    applied on the airborne branch, so the field is read and discarded. That is
+    a balance change someone made to a move that will never run it -- the same
+    class of mistake as a self-cancel, and just as invisible.
+
+    A multiplier above 1.0 launches the fighter higher than a jump does, which
+    is the sort of number that looks fine in a diff and is not fine in a game.
+    The field is a multiple of jump height precisely so that 1.0 *is* a jump,
+    and the bound keeps the comparison meaningful.
+    """
+    lunge = definition.vertical_lunge
+    if lunge and Stance.AIR not in definition.stances:
+        raise GameplayDataError(
+            f"Attack {name!r}: vertical_lunge {lunge} but its stances are "
+            f"{[stance.value for stance in definition.stances]}, which do not include "
+            "'air' — the impulse is only applied off the ground, so this is never read"
+        )
+    if abs(lunge) > MAX_VERTICAL_LUNGE:
+        raise GameplayDataError(
+            f"Attack {name!r}: vertical_lunge {lunge} exceeds {MAX_VERTICAL_LUNGE} "
+            "jump heights; a move that out-jumps the jump is a launcher, not an aerial"
+        )
 
 
 def validate_attacks(attacks: Mapping[MoveId, AttackDefinition]) -> None:
