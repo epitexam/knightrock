@@ -40,6 +40,31 @@ def read_json_object(path: str | Path, version: int | tuple[int, ...]) -> dict[s
     return raw
 
 
+def reject_unknown(raw: dict[str, Any], allowed: frozenset[str] | set[str], where: str) -> None:
+    """Refuse any key the reader below does not read.
+
+    A typo in a hand-edited balance file must fail loudly. Silently defaulting
+    it is the worst outcome available: the game boots, the attack or the enemy
+    still exists, and the field that was meant to change it quietly did not -- so
+    a designer tuning a number sees no effect and concludes the number is wrong.
+
+    The message names the accepted keys alongside the refused one, because the
+    reader's own failure mode is a near-miss spelling and the fix is a list to
+    pick from, not a pointer to the source.
+
+    Lives here rather than in one loader because the promise is made about the
+    whole ``src/data`` package (``__init__`` and ``README`` both state it), and
+    a check that had to be repeated per file is a check that would eventually
+    be missed in one of them.
+    """
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise GameplayDataError(
+            f"{where}: unknown field(s) {', '.join(repr(key) for key in unknown)}; "
+            f"expected one of {', '.join(sorted(allowed))}"
+        )
+
+
 # -- shared shape validators ------------------------------------------------
 # A gameplay JSON document is hand-edited, so the shapes that appear in more
 # than one file get one implementation. `player.json` and `enemies.json` both

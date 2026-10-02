@@ -13,6 +13,7 @@ inline attack table (the pattern ``dummy`` uses).  Animations are plain
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from src.data.errors import (
     GameplayDataError,
     pair_of_floats,
     read_json_object,
+    reject_unknown,
     triple_of_ints,
 )
 from src.entities.enemies.schema import EnemyConfig
@@ -56,6 +58,7 @@ def read_enemy_config(
     """Parse one enemy block into :class:`EnemyConfig`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: enemy must be an object, got {raw!r}")
+    reject_unknown(raw, frozenset(field.name for field in fields(EnemyConfig)), where)
     raw_attacks = _required(raw, "attacks", where)
     attacks: dict[str, AttackDefinition]
     if isinstance(raw_attacks, str):
@@ -124,6 +127,7 @@ def read_enemies_file(
 ) -> dict[str, EnemyConfig]:
     """Load every enemy type from an ``enemies.json`` file."""
     raw = read_json_object(path, ENEMIES_VERSION)
+    reject_unknown(raw, frozenset({"version", "enemies"}), str(path))
     raw_enemies = _required(raw, "enemies", str(path))
     if not isinstance(raw_enemies, dict):
         raise GameplayDataError(f"{path}: 'enemies' must be an object")

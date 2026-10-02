@@ -12,6 +12,7 @@ from src.core.level.level_manager import LEVEL_PATHS
 from src.core.paths import PROJECT_ROOT
 from src.data.attacks import ATTACKS_FILENAME, attack_definition_to_dict, read_attacks_file
 from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemies_file
+from src.data.errors import GameplayDataError
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
 from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
@@ -399,6 +400,138 @@ def test_read_player_file_attack_set_reference(tmp_path: Path) -> None:
     config = read_player_file(path, {"player": dict(PLAYER_ATTACKS)})
 
     assert dict(config.attacks) == PLAYER_ATTACKS
+
+
+# ── unknown keys, per file ────────────────────────────────────────────────
+#
+# `data/__init__.py` and `README.md` both promise that unknown keys raise across
+# the whole package, not just in `attacks.json`. Each document therefore gets its
+# own case, at its own level: a typo in the outermost object of a file is the one
+# a hand-editor actually makes, and a check that only ran inside the inner
+# reader would never see it.
+
+
+def test_attacks_file_rejects_an_unknown_top_level_key(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path / "attacks.json",
+        {"version": 1, "sets": {}, "evrey": {"goblin": {}}},
+    )
+
+    with pytest.raises(GameplayDataError, match=r"unknown field\(s\) 'evrey'"):
+        read_attacks_file(path)
+
+
+def test_enemies_file_rejects_an_unknown_top_level_key(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path / "enemies.json",
+        {"version": 1, "enemies": {}, "enemys": {}},
+    )
+
+    with pytest.raises(GameplayDataError, match=r"unknown field\(s\) 'enemys'"):
+        read_enemies_file(path, {})
+
+
+def test_enemies_file_rejects_an_unknown_enemy_field(tmp_path: Path) -> None:
+    """The inner level, keyed off ``EnemyConfig``'s own fields.
+
+    ``EnemyConfig`` is the schema, so adding a field to it makes the file able
+    to carry it with no edit here. The failure this prevents is a designer
+    setting ``attack_ranges`` and watching the enemy keep its old reach.
+    """
+    path = _write(
+        tmp_path / "enemies.json",
+        {
+            "version": 1,
+            "enemies": {
+                "goblin": {
+                    "size": [36, 48],
+                    "color": [200, 60, 60],
+                    "health": 60.0,
+                    "attacks": {"a": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"])},
+                    "attack_ranges": 90.0,
+                }
+            },
+        },
+    )
+
+    with pytest.raises(GameplayDataError, match=r"unknown field\(s\) 'attack_ranges'"):
+        read_enemies_file(path, {})
+
+
+def test_player_file_rejects_an_unknown_override(tmp_path: Path) -> None:
+    """Every key is a ``PlayerConfig`` field, so this was one ``set()`` call."""
+    path = _write(
+        tmp_path / "player.json",
+        {"version": 1, "player": {"jump_hight": 700.0}},
+    )
+
+    with pytest.raises(GameplayDataError, match=r"unknown field\(s\) 'jump_hight'"):
+        read_player_file(path, {})
+
+
+def test_player_file_accepts_every_configurable_field(tmp_path: Path) -> None:
+    """The flip side: nothing a dataclass field can express may be refused.
+
+    ``_player_override_keys`` is derived from ``PlayerConfig``, so this walks the
+    same list the guard does. Without it, a field added to the config would
+    quietly stop being overridable -- the same silent failure this commit exists
+    to remove, one level up.
+    """
+    from src.data.player import _player_override_keys
+
+    everything = {key: _OVERRIDE_SAMPLES[key] for key in _player_override_keys()}
+    path = _write(tmp_path / "player.json", {"version": 1, "player": everything})
+
+    config = read_player_file(path, {"player": dict(PLAYER_ATTACKS)})
+
+    assert config.faction == everything["faction"]
+    assert config.dash_speed == everything["dash_speed"]
+    assert config.max_wall_jumps == everything["max_wall_jumps"]
+
+
+_OVERRIDE_SAMPLES: dict[str, object] = {
+    "size": [48.0, 56.0],
+    "color": [1, 2, 3],
+    "health": 90.0,
+    "max_health": 90.0,
+    "hitbox_inflate": [-8.0, 0.0],
+    "hurtbox_inflate": [0.0, 0.0],
+    "hurtbox_zones": None,
+    "attack_set": "player",
+    "speed": 320.0,
+    "floor_control": 25.0,
+    "air_control": 12.0,
+    "jump_height": 700.0,
+    "wall_jump_height": 650.0,
+    "wall_jump_push_multiplier": 320.0,
+    "wall_jump_lock_duration": 0.1,
+    "wall_jump_min_lock": 0.05,
+    "wall_slide_speed": 100.0,
+    "max_midair_jumps": 1,
+    "max_wall_jumps": 3,
+    "coyote_duration": 0.12,
+    "jump_buffer_duration": 0.1,
+    "guard_posture_max": 100.0,
+    "guard_break_lockout": 1.2,
+    "max_dash_charges": 5,
+    "dash_speed": 1100.0,
+    "dash_duration": 0.08,
+    "dash_friction": 25.0,
+    "dash_penalty_duration": 2.0,
+    "dash_recharge_time": 0.35,
+    "dash_gravity_mult": 0.0,
+    "dash_coyote_time": 0.05,
+    "hurt_duration": 0.12,
+    "invincibility_duration": 0.18,
+    "faction": "hero",
+}
+
+
+def test_levels_file_rejects_an_unknown_top_level_key(tmp_path: Path) -> None:
+    path = _write(tmp_path / "levels.json", {"version": 1, "levels": {}, "levles": {}})
+
+    with pytest.raises(GameplayDataError, match=r"unknown field\(s\) 'levles'"):
+        read_levels_file(path)
 
 
 # ── levels.json ───────────────────────────────────────────────────────────

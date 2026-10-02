@@ -36,7 +36,7 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
-from src.data.errors import GameplayDataError, read_json_object
+from src.data.errors import GameplayDataError, read_json_object, reject_unknown
 
 ATTACKS_FILENAME = "attacks.json"
 ATTACKS_VERSION = 1
@@ -110,22 +110,6 @@ def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
     return mapping[key]
 
 
-def _reject_unknown(raw: dict[str, Any], allowed: frozenset[str], where: str) -> None:
-    """Refuse any key the level below does not read.
-
-    A typo in a hand-edited balance file must fail loudly. Silently defaulting
-    it is the worst outcome available: the game boots, the attack exists, and
-    the field that was meant to change it silently did not -- so a designer
-    tuning a number sees no effect and concludes the number is wrong.
-    """
-    unknown = sorted(set(raw) - allowed)
-    if unknown:
-        raise GameplayDataError(
-            f"{where}: unknown field(s) {', '.join(repr(key) for key in unknown)}; "
-            f"expected one of {', '.join(sorted(allowed))}"
-        )
-
-
 def _pair_of_floats(value: Any, where: str) -> tuple[float, float]:
     """Parse a JSON ``[x, y]`` pair into a float tuple."""
     if not isinstance(value, (list, tuple)) or len(value) != 2:
@@ -140,7 +124,7 @@ def _read_knockback(raw: Any, where: str) -> KnockbackConfig:
     """Parse a knockback block (power pair + mode)."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: knockback must be an object, got {raw!r}")
-    _reject_unknown(raw, _field_names(KnockbackConfig), where)
+    reject_unknown(raw, _field_names(KnockbackConfig), where)
     power = _pair_of_floats(_required(raw, "power", where), f"{where}.power")
     mode = raw.get("mode", _KNOCKBACK_DEFAULTS["mode"])
     if mode not in _KNOCKBACK_MODES:
@@ -160,7 +144,7 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
     """Parse a hit block into :class:`HitProperties`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hit must be an object, got {raw!r}")
-    _reject_unknown(raw, _field_names(HitProperties) | {"knockback"}, where)
+    reject_unknown(raw, _field_names(HitProperties) | {"knockback"}, where)
     damage_type = _required(raw, "damage_type", where)
     if damage_type not in _DAMAGE_TYPES:
         raise GameplayDataError(f"{where}.damage_type: unknown type {damage_type!r}")
@@ -170,7 +154,9 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             knockback=_read_knockback(raw.get("knockback", {}), f"{where}.knockback"),
             damage_type=_DAMAGE_TYPES[damage_type],
             stagger=float(raw.get("stagger", _HIT_DEFAULTS["stagger"])),
-            super_armor_break=bool(raw.get("super_armor_break", _HIT_DEFAULTS["super_armor_break"])),
+            super_armor_break=bool(
+                raw.get("super_armor_break", _HIT_DEFAULTS["super_armor_break"])
+            ),
             is_finisher=bool(raw.get("is_finisher", _HIT_DEFAULTS["is_finisher"])),
             juggle_gravity_mult=float(
                 raw.get("juggle_gravity_mult", _HIT_DEFAULTS["juggle_gravity_mult"])
@@ -200,7 +186,7 @@ def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
     """Parse one hitbox specification, including advanced shape fields."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hitbox must be an object, got {raw!r}")
-    _reject_unknown(raw, _field_names(HitboxSpec) | {_LEGACY_ANCHOR_KEY}, where)
+    reject_unknown(raw, _field_names(HitboxSpec) | {_LEGACY_ANCHOR_KEY}, where)
     try:
         return HitboxSpec(
             size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
@@ -247,7 +233,7 @@ def _read_hitbox_keyframe(raw: Any, where: str) -> HitboxKeyframe:
     """Parse one ``{"frame": N, "size": [...], "offset": [...]}`` sample."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: hitbox keyframe must be an object, got {raw!r}")
-    _reject_unknown(raw, _field_names(HitboxKeyframe), where)
+    reject_unknown(raw, _field_names(HitboxKeyframe), where)
     try:
         return HitboxKeyframe(
             frame=int(_required(raw, "frame", where)),
@@ -286,7 +272,7 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
     # merely redundant -- and the original guard-fou listed only the geometry
     # keys, silently dropping those four beside a ``hitboxes`` list.
     legacy_fields = frozenset(_LEGACY_HITBOX_FIELDS)
-    _reject_unknown(raw, _field_names(PhaseDefinition) | {"hitboxes"} | legacy_fields, where)
+    reject_unknown(raw, _field_names(PhaseDefinition) | {"hitboxes"} | legacy_fields, where)
     if hitboxes is not None and legacy_fields.intersection(raw):
         raise GameplayDataError(
             f"{where}: 'hitboxes' cannot be combined with legacy hitbox fields "
@@ -357,7 +343,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
     """Parse one attack block into :class:`AttackDefinition`."""
     if not isinstance(raw, dict):
         raise GameplayDataError(f"{where}: attack must be an object, got {raw!r}")
-    _reject_unknown(raw, _field_names(AttackDefinition), where)
+    reject_unknown(raw, _field_names(AttackDefinition), where)
     raw_phases = _required(raw, "phases", where)
     if not isinstance(raw_phases, list) or not raw_phases:
         raise GameplayDataError(f"{where}: 'phases' must be a non-empty list")
@@ -371,15 +357,11 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
             lock_direction=bool(raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"])),
             combo_reset=bool(raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"])),
             chargeable=bool(raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"])),
-            max_charge_time=float(
-                raw.get("max_charge_time", _ATTACK_DEFAULTS["max_charge_time"])
-            ),
+            max_charge_time=float(raw.get("max_charge_time", _ATTACK_DEFAULTS["max_charge_time"])),
             charge_move_multiplier=float(
                 raw.get("charge_move_multiplier", _ATTACK_DEFAULTS["charge_move_multiplier"])
             ),
-            uninterruptible=bool(
-                raw.get("uninterruptible", _ATTACK_DEFAULTS["uninterruptible"])
-            ),
+            uninterruptible=bool(raw.get("uninterruptible", _ATTACK_DEFAULTS["uninterruptible"])),
             lunge_speed_multiplier=float(
                 raw.get("lunge_speed_multiplier", _ATTACK_DEFAULTS["lunge_speed_multiplier"])
             ),
@@ -394,6 +376,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
 def read_attacks_file(path: str | Path) -> dict[str, dict[str, AttackDefinition]]:
     """Load every named attack set from an ``attacks.json`` file."""
     raw = read_json_object(path, SUPPORTED_ATTACK_VERSIONS)
+    reject_unknown(raw, frozenset({"version", "sets"}), str(path))
     raw_sets = _required(raw, "sets", str(path))
     if not isinstance(raw_sets, dict):
         raise GameplayDataError(f"{path}: 'sets' must be an object")
@@ -409,7 +392,9 @@ def read_attacks_file(path: str | Path) -> dict[str, dict[str, AttackDefinition]
         # nobody tunes.
         if set_name.startswith("_"):
             continue
-        raw_attacks = {name: value for name, value in raw_attacks.items() if not name.startswith("_")}
+        raw_attacks = {
+            name: value for name, value in raw_attacks.items() if not name.startswith("_")
+        }
         if not raw_attacks:
             raise GameplayDataError(f"{path}#{set_name}: attack set must name at least one attack")
         sets[set_name] = {
