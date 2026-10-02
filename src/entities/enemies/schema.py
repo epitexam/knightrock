@@ -46,3 +46,8 @@ class EnemyConfig:
     # None = immune (e.g. dummy).  Set per enemy type in its config.
     parry_stun_threshold: int | None = None
     parry_stun_duration: float = 0.0
+    # Pivot sub-group: the name of a profile in ``settings.PROFILES`` to layer
+    # onto the "enemy" group, e.g. "enemy_goblin".  None means the group as it
+    # is, which for enemies is off -- so this is what turns the pivot on for one
+    # enemy type and not another, which is the whole of that decision.
+    turn_profile: str | None = None

@@ -3,7 +3,7 @@ Centralized game configuration and constants.
 """
 
 import os
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 
 class Display:
@@ -1081,6 +1081,222 @@ class DashDust:
     """
 
 
+class TurnProfile(NamedTuple):
+    """One layer of the pivot's tuning. Every ``None`` means "inherit".
+
+    Partial by construction rather than a full set of numbers, because the
+    whole point of grouping is that a group says only what it means to say. A
+    group that turns the pivot on should not have to restate the delay, the
+    brake and the lean in order to be switched on; a sub-group that wants a
+    heavier plant should be able to say ``brake_control=12`` and inherit the
+    rest. A profile with real numbers in every slot could only be overridden
+    wholesale, and then "all enemies take it, except slimes which take it more
+    slowly" would need the whole table copied per line.
+    """
+
+    inherits: str | None = None
+    """The profile this one layers onto, or ``None`` to sit on the defaults."""
+    enabled: bool | None = None
+    """Whether this layer's fighters take the pivot. Inherited otherwise."""
+    delay_s: float | None = None
+    brake_control: float | None = None
+    plant_px_s: float | None = None
+    min_speed_px_s: float | None = None
+    lead_px: float | None = None
+    skew_px: float | None = None
+
+
+class Turn:
+    """The ground pivot: ``turn``, the state a reversal on the floor enters.
+
+    A fighter running right who presses left used to have both happen at once.
+    The velocity eased across zero over about a third of a second while the
+    sprite mirrored on the same frame, so the reversal read as a teleport. The
+    velocity curve was never wrong; the picture refused to show it.
+
+    The pivot is a **state** and not a delayed facing write, and that is the
+    whole design. A delay is a value that has to be undone by everyone who can
+    interrupt the thing holding it -- an attack, a dash, a guard, a hit -- and
+    each of those has to know the rule exists. A state is the machine's own
+    answer: it is entered, it is exited, and anything that interrupts it leaves
+    through ``exit``, which is where the facing is finally committed. So "an
+    attack pressed inside the pivot still comes out the way the player is
+    pointing" is not a special case anyone has to remember; it is what exiting
+    the state means.
+
+    What the state buys beyond that:
+
+    * the hold is simulation state, so the rollback snapshot carries it for
+      free -- ``StateMachine.save_state`` captures every state's scalars.
+    * the dust becomes a row in :data:`FootstepDust.TIER` keyed on the state
+      name, the same way a walk and a run are, instead of a flag and a method.
+    * ``_footstep_tier`` already asks the state machine rather than the
+      velocity, on the documented grounds that re-deriving the tier here would
+      put the flicker back. A pivot is a change in the fighter's movement, so
+      it belongs in the machine that classifies movement.
+
+    The one thing the state cannot do is hold the facing by itself, and the
+    reason is the loop's order: the player reads input in ``_pre_update``,
+    which runs before the state machine, so the mirror has already happened by
+    the time any state runs. The freeze is therefore installed from the input
+    side -- :func:`src.states.turn_state.request_turn` is asked *instead of*
+    ``face_movement`` -- and the state keeps it with the ``facing_locked`` tag.
+
+    :data:`DELAY_S` at 0 is not "legacy": the state is simply never entered,
+    because ``request_turn`` declines to enter it.
+    """
+
+    STATE = "turn"
+    """The state name every fighter's machine registers the pivot under.
+
+    One shared string rather than a member of each enum, because
+    :func:`src.states.turn_state.request_turn` has to name a state in a machine
+    it knows nothing about. ``PlayerState.TURN`` and ``EnemyState.TURN`` are
+    both this value and a test holds them to it -- the alternative is a state
+    name that quietly differs between fighters, which is exactly the kind of
+    thing that reads as "the pivot works for the player".
+
+    Availability is global and activation is not. Every fighter's machine
+    registers :data:`STATE`, so the pivot is there to be switched on;
+    ``turn_enabled`` on the entity is what decides whether it is.
+    """
+
+    DELAY_S = 0.14
+    """How long the pivot holds, in seconds.
+
+    Just under nine ticks at 60Hz, and -- this is the number that matters --
+    the length of the plant that :data:`BRAKE_CONTROL` produces.
+
+    The hold is *tied to the plant*, not chosen for its own sake, and the two
+    were walked together: 0.14 is what ``BRAKE_CONTROL = 20`` takes to bleed a
+    full run down to :data:`PLANT_PX_S`. So the fighter spends the whole hold
+    visibly shedding speed and arrives at the facing flip standing still, with
+    the mirroring and the braking ending on the same tick.
+
+    That alignment is the whole reason it is not longer. The hold went
+    0.09 -> 0.16 -> 0.20 -> 0.10 -> this, and the climb chased the wrong
+    symptom: a longer hold felt *worse*, because it stretched the window in
+    which the fighter is visibly travelling one way while looking the other.
+    A hold is the lean and the plant, not a delay on its own; :data:`LEAD_PX`
+    and :data:`SKEW_PX` are what carry the weight.
+
+    Set to 0, the state is never entered and the mirror is instant, as before.
+    """
+    MIN_SPEED_PX_S = 30.0
+    """Ground speed above which a reversal is worth a state at all.
+
+    Below this the fighter is effectively stationary and the flip is applied the
+    same frame, with no state entered. A turn taken from a standstill has no
+    momentum to announce, and holding the facing there would only add latency
+    to something the player read as deliberate.
+
+    Lower than the 60 it started at, and for a reason that only became true once
+    :data:`BRAKE_CONTROL` existed: a slow walk now *plants* rather than curving,
+    because the brake aims at zero. A reversal at 40 px/s stops at 20, dwells a
+    frame and pushes -- which is exactly the shape of the effect at full speed,
+    only smaller. Skipping it there would have meant the pivot appearing only
+    above some speed and reading as a special case of itself.
+    """
+    LEAD_PX = 32.0
+    """Horizontal sprite offset at the start of the pivot, shrinking to zero.
+
+    Render-only, in pixels of screen rect, so it cannot touch the hitbox.
+
+    The number that sets the scale is the fighter's *speed*, not the sprite's
+    width. At ``PLAYER_SPEED`` the fighter covers 5.8 pixels per frame, so the 6px
+    this started at was one frame of travel and the 12px it became was two.
+    Both read as a jitter on a couple of frames, and a jitter is what you see
+    when something is wrong rather than when a character pivots.
+
+    Thirty-two is five and a half frames of travel at a full run, and two thirds
+    of the player's width -- an offset you cannot miss, while the sprite still
+    overlaps the hitbox it is drawn over. That overlap is the ceiling and the
+    reason not to go further: past roughly the sprite's own width the fighter
+    stops looking like a fighter sliding along and starts looking like a
+    fighter pasted next to one, which is a bug with a nicer frame.
+
+    :data:`SKEW_PX` carries more of the effect than this does, and it can be
+    pushed further, because a lean cannot detach from anything.
+    """
+    SKEW_PX = 20.0
+    """How far the sprite's top edge leans over, in pixels, at the start.
+
+    The offset alone slides a sprite, and nothing in a slide says *leaning*; a
+    fighter throwing his weight around is one whose body is not vertical. This
+    shears the frame instead: the feet stay exactly where they were and only
+    the top goes over, which is what a pivot looks like from the side.
+
+    This is the number that carries the effect, and the reason is worth
+    keeping: at 9 it was a **7.7 degree** lean on a 56-pixel sprite, which is
+    under the threshold at which the eye reads a change of pose at all. At 20 it
+    is about **20 degrees** -- the silhouette is broken, the character is
+    unmistakably off its feet-line, and the outline is still the same outline.
+
+    A shear rather than a rotation, because a rotation lifts the feet off the
+    floor at this amplitude, which is the difference between a character and a
+    bug. And a shear rather than a squash, because the animation's own jump and
+    dash frames already change the silhouette's height and this would be read
+    as one of those instead.
+    """
+    BRAKE_CONTROL = 20.0
+    """Ground damping applied while the input opposes the current velocity.
+
+    The reversal was already decelerating -- it is an exponential ease toward
+    the target either way -- but it was doing it at :data:`Physics.FLOOR_CONTROL`
+    in *both* directions, and a symmetric curve is a curve: it never plants. The
+    fighter crossed zero in under two frames, so the deceleration existed and
+    was never seen. That is what "it turns instantly" means in practice -- not
+    that nothing happens, but that what happens is over before the eye has it.
+
+    This is the brake half, and it is higher than the acceleration rate so the
+    bleed is quick and unmistakable. At 20 a full run comes down through 243,
+    168, 117, 81, 56, 39 and 27 px/s in eight frames. It was 30, which did the
+    same job in five -- and five frames of a slow-down is the difference between
+    a change of speed and a stop.
+
+    The rate is not the interesting number, though; the interesting number is
+    what it aims at. The bleed aims at **zero**, not at the new direction, and
+    that is the whole trick. Easing toward the target makes the velocity curve
+    through the crossing without ever dwelling there -- at any rate -- so the
+    fighter is always moving and a plant never happens. Aiming at zero makes him
+    actually stop, and the push then starts from a plant.
+
+    Not so high that it becomes friction: at this rate the deceleration is still
+    visibly a ramp rather than a stop, which is what keeps a pivot from reading
+    as the fighter hitting a wall. 0 restores the old single-rate curve exactly.
+    """
+    PLANT_PX_S = 20.0
+    """Ground speed below which a reversal has planted and the push begins.
+
+    The switch between the two halves, and deliberately small. A plant is the
+    fighter standing still for a moment, so the threshold has to be low enough
+    that the velocity actually reaches it -- at 45 px/s the brake stopped being
+    asked while the fighter was still doing a sixth of his top speed, and the
+    "plant" was a curve with a label on it.
+
+    Not zero, because exactly zero would hand the push a single exponential
+    leap as its first frame. 20 px/s is a real stand -- about a fifteenth of
+    the player's top speed -- and it is where the friction starts from rather
+    than a dead stop the fighter has to be pushed all the way out of.
+    """
+    STEP_DISTANCE_PX = 40.0
+    """Ground covered before a pivoting fighter scuffs the floor again.
+
+    A row in :data:`FootstepDust.TIER` like ``walk`` and ``run``, so the pivot
+    marks the floor by cadence and nothing has to know it happened. Sized for
+    about one mark over the whole hold: a fighter crossing zero covers roughly
+    thirty-five pixels on the way, so a shorter stride would draw the dash
+    trail small and a longer one would draw nothing at all.
+    """
+    SPREAD = 1.15
+    """The pivot's share of the footstep spread: the run row, unchanged.
+
+    A pivot is not a scuff, so the two halves separate the way they do at a
+    run -- one mark under the trailing heel rather than a paired line down the
+    middle of a path.
+    """
+
+
 class FootstepTier(NamedTuple):
     """One locomotion tier's dust: how far between steps, and how scattered.
 
@@ -1173,11 +1389,18 @@ class FootstepDust:
     TIER: dict[str, FootstepTier] = {
         "walk": FootstepTier(40.0, 0.6),
         "run": FootstepTier(14.0, 1.15),
+        "turn": FootstepTier(Turn.STEP_DISTANCE_PX, Turn.SPREAD),
     }
     """The ground tiers that mark the floor, keyed on ``PlayerState`` values.
 
     See :data:`SILENT` for the one that does not, and the class docstring for why
     the tiers are read by name rather than by speed.
+
+    ``turn`` is here for the reason the table exists at all: a pivot is the one
+    ground movement with weight in it, and the footstep comb is paced by
+    distance covered -- which a fighter turning on the spot covers none of. As
+    a state it is addressable by name, so the mark is a row here rather than a
+    flag and a method in the FX pass.
     """
     SILENT: frozenset[str] = frozenset({"walk_slow"})
     """The ground tiers that deliberately leave no dust at all.
@@ -1716,6 +1939,96 @@ class Locomotion:
     # Enemy patrol cruise as a fraction of chase_speed when config omits
     # an explicit patrol_speed.
     ENEMY_PATROL_SPEED_MULT = 0.5
+
+
+def resolve_turn_profile(name: str) -> TurnProfile:
+    """Flatten ``name``'s inheritance chain into one fully-populated profile.
+
+    Nearest layer wins, and the chain is walked root-first so a sub-group only
+    has to state what it changes. An unknown name resolves to the defaults
+    rather than raising: this is tuning, and a level that names a group nobody
+    defined should get the shipped behaviour and a game that still starts, not
+    a crash on the first spawn. A cycle is broken the same way -- the walk stops
+    revisiting names, so a typo that points a profile at its own descendant
+    costs the most specific values rather than hanging.
+
+    Reads :data:`PROFILES` directly. It used to take the table as an argument so
+    a test could pass its own, and that turned out to be a way of doing things
+    twice: the test could equally add to the real table and let it be restored,
+    and the argument was a second code path through this function that nothing
+    in the game ever took.
+    """
+    profiles = PROFILES
+    if name not in profiles:
+        return TurnProfile(
+            enabled=False,
+            delay_s=Turn.DELAY_S,
+            brake_control=Turn.BRAKE_CONTROL,
+            plant_px_s=Turn.PLANT_PX_S,
+            min_speed_px_s=Turn.MIN_SPEED_PX_S,
+            lead_px=Turn.LEAD_PX,
+            skew_px=Turn.SKEW_PX,
+        )
+
+    chain: list[TurnProfile] = []
+    seen: set[str] = set()
+    cursor: str | None = name
+    while cursor is not None and cursor in profiles and cursor not in seen:
+        seen.add(cursor)
+        profile = profiles[cursor]
+        chain.append(profile)
+        cursor = profile.inherits
+    chain.reverse()
+
+    merged: dict[str, Any] = {
+        "enabled": False,
+        "delay_s": Turn.DELAY_S,
+        "brake_control": Turn.BRAKE_CONTROL,
+        "plant_px_s": Turn.PLANT_PX_S,
+        "min_speed_px_s": Turn.MIN_SPEED_PX_S,
+        "lead_px": Turn.LEAD_PX,
+        "skew_px": Turn.SKEW_PX,
+    }
+    for profile in chain:
+        for field in (
+            "enabled",
+            "delay_s",
+            "brake_control",
+            "plant_px_s",
+            "min_speed_px_s",
+            "lead_px",
+            "skew_px",
+        ):
+            value = getattr(profile, field)
+            if value is not None:
+                merged[field] = value
+    return TurnProfile(**merged)
+
+
+#: Named tuning layers, from the most general to the most specific.
+#:
+#: This is the whole configuration surface for groups. An entity names one and
+#: is done: a fighter class picks the group it belongs to in its own
+#: constructor, and a per-type sub-group is a matter of naming it in that type's
+#: config. Nothing else in the codebase has to know the group exists.
+#:
+#: The shipped set is deliberately small and says almost nothing, because the
+#: defaults should keep saying nothing too: only the player takes the pivot,
+#: and every other fighter inherits that off. Adding a line here is how a group
+#: of enemies is switched on.
+PROFILES: dict[str, TurnProfile] = {
+    "default": TurnProfile(),
+    "player": TurnProfile(inherits="default", enabled=True),
+    "enemy": TurnProfile(inherits="default"),
+    "neutral": TurnProfile(inherits="default"),
+}
+"""Profile per faction, which is the one grouping every fighter already has.
+
+``Player`` takes ``"player"`` and every ``Enemy`` takes ``"enemy"``, so the
+shipped table is a no-op over the defaults apart from the player -- and that is
+the point of it existing. Switching the pivot on for a whole faction is one
+entry, and an entity that belongs to no named group is simply off.
+"""
 
 
 class AI:

@@ -2,10 +2,11 @@ from enum import Enum
 from typing import Any
 
 from src.core.settings import Guard as GuardSettings
-from src.core.settings import Locomotion, Physics
+from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
 from src.states.reaction_states import HurtState, KnockbackState, StaggerState
 from src.states.state_machine import State, StateMachine
+from src.states.turn_state import TurnState
 
 
 def _classify_ratio(ratio: float) -> str:
@@ -17,25 +18,37 @@ def _classify_ratio(ratio: float) -> str:
     return PlayerState.WALK_SLOW.value
 
 
-def resolve_locomotion_state(entity: Any) -> str:
-    """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis."""
+def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
+    """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis.
+
+    ``from_state`` overrides the tier the hysteresis is measured against, and
+    the pivot state needs it. The pivot absorbs the frames where the velocity
+    sweeps through every tier on its way across zero, so resuming from it with
+    the live state name would find no match, drop to :func:`_classify_ratio`,
+    and flicker the tier boundaries exactly where they are being crossed at the
+    fastest. The tier the pivot was entered from is the one the comparison has
+    to continue from.
+    """
     vx = abs(float(entity.velocity.x))
     base = float(getattr(entity, "speed", 0.0) or 0.0) or Physics.PLAYER_SPEED
     if base <= 0.0:
         return PlayerState.WALK_SLOW.value
     ratio = vx / base
-    current = str(getattr(getattr(entity, "state_machine", None), "current_state_name", "") or "")
-    if current in (PlayerState.RUN.value, PlayerState.RUN):
+    if from_state is None:
+        from_state = str(
+            getattr(getattr(entity, "state_machine", None), "current_state_name", "") or ""
+        )
+    if from_state in (PlayerState.RUN.value, PlayerState.RUN):
         if ratio < Locomotion.WALK_DEMOTE:
             return PlayerState.WALK.value
         return PlayerState.RUN.value
-    if current in (PlayerState.WALK.value, PlayerState.WALK):
+    if from_state in (PlayerState.WALK.value, PlayerState.WALK):
         if ratio >= Locomotion.WALK_PROMOTE:
             return PlayerState.RUN.value
         if ratio < Locomotion.WALK_SLOW_DEMOTE:
             return PlayerState.WALK_SLOW.value
         return PlayerState.WALK.value
-    if current in (PlayerState.WALK_SLOW.value, PlayerState.WALK_SLOW):
+    if from_state in (PlayerState.WALK_SLOW.value, PlayerState.WALK_SLOW):
         if ratio >= Locomotion.WALK_SLOW_PROMOTE:
             return PlayerState.WALK.value
         return PlayerState.WALK_SLOW.value
@@ -115,6 +128,45 @@ class PlayerWalkState(PlayerGroundLocomotionState):
 
 class PlayerWalkSlowState(PlayerGroundLocomotionState):
     """Slow ground tier (Guard MOVE_MULT, partial analog stick)."""
+
+
+class PlayerTurnState(TurnState):
+    """The player's pivot: where to go, and how the player leaves the floor.
+
+    All of the hold itself -- arming it, keeping the fighter moving, freezing
+    the mirror, committing it on the way out -- is in :class:`TurnState`, which
+    the enemy's pivot shares. Only the three answers below are the player's.
+
+    The jump hook is not a nicety: the pivot calls
+    ``apply_horizontal_movement`` every tick, and without the jump the player
+    could not leave the ground from inside a hold at all. It reads as a fighter
+    who is locked to the floor for the length of a pivot, which is a different
+    bug with the same shape.
+    """
+
+    def resume_state(self) -> str:
+        """Back to the locomotion tier the pivot interrupted.
+
+        ``resume``, captured on entry, not the live state name. The hold spans
+        the frames where the velocity sweeps through ``run``, ``walk`` and
+        ``walk_slow`` on its way across zero, so resuming from ``turn`` would
+        match none of the hysteresis branches and drop to a plain ratio
+        classification -- flickering the tier boundaries, and with them the
+        animation clock and the footstep cadence, at exactly the moment the
+        fighter is moving fastest.
+        """
+        return resolve_locomotion_state(self.entity, self.resume)
+
+    def _before_move(self, delta_time: float) -> str | None:
+        """A jump leaves the hold for the air states."""
+        self.entity.handle_jump()
+        if self.entity.velocity.y < 0:
+            return "jump"
+        return None
+
+    def _lost_the_ground(self) -> str:
+        """Walked off an edge mid-pivot."""
+        return "fall"
 
 
 class PlayerJumpState(PlayerBaseState):
@@ -443,6 +495,7 @@ class PlayerState(str, Enum):
     WALK_SLOW = "walk_slow"
     WALK = "walk"
     RUN = "run"
+    TURN = Turn.STATE
     JUMP = "jump"
     FALL = "fall"
     WALL_SLIDE = "wall_slide"
@@ -549,6 +602,14 @@ def _wants_crouch(player: Any) -> bool:
 
 
 def _can_crouch(player: Any) -> bool:
+    """Whether the player may crouch from the state they are in.
+
+    ``turn`` is in there because a pivot is locomotion with a lean on it, and a
+    fighter who cannot crouch for the length of the hold has lost a move for
+    two hundred milliseconds because they turned around. The states not listed
+    are genuinely incompatible with it: they have already answered a different
+    question about what the fighter is doing.
+    """
     if not _wants_crouch(player):
         return False
     return player.state_machine.current_state_name in (
@@ -556,6 +617,7 @@ def _can_crouch(player: Any) -> bool:
         PlayerState.WALK_SLOW,
         PlayerState.WALK,
         PlayerState.RUN,
+        PlayerState.TURN,
     )
 
 
@@ -567,6 +629,7 @@ def configure_player_state_machine(player: Any) -> None:
     sm.add_state(PlayerState.WALK_SLOW, PlayerWalkSlowState(player))
     sm.add_state(PlayerState.WALK, PlayerWalkState(player))
     sm.add_state(PlayerState.RUN, PlayerRunState(player))
+    sm.add_state(PlayerState.TURN, PlayerTurnState(player))
     sm.add_state(PlayerState.JUMP, PlayerJumpState(player))
     sm.add_state(PlayerState.FALL, PlayerFallState(player))
     sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))

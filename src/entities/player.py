@@ -143,6 +143,11 @@ class Player(ControllerView, Entity):
         self.speed = config.speed
         self.floor_control = config.floor_control
         self.air_control = config.air_control
+        # The pivot is per fighter and per group, so this one line is the whole
+        # difference between a fighter who turns around and one who changes
+        # direction. Enemies keep the "enemy" profile, which inherits it off.
+        self.turn_profile = "player"
+        self.apply_turn_profile()
 
         self.jump = JumpController(config)
         self.guard = GuardController(config)

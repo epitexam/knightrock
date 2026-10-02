@@ -263,7 +263,7 @@ def test_configure_state_machine_sets_all_states() -> None:
     configure_player_state_machine(entity)
     sm = entity.state_machine
     assert sm.current_state_name == "idle"
-    assert len(list(PlayerState)) == 16
+    assert len(list(PlayerState)) == 17
     for state_name in PlayerState:
         assert state_name.value in sm.states
 

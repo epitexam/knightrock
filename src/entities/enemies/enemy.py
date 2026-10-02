@@ -28,6 +28,7 @@ from src.states.enemy_states import (
     EnemyPatrolState,
     EnemyStaggerState,
     EnemyState,
+    EnemyTurnState,
 )
 from src.states.ledge_state import LedgeState
 from src.states.state_machine import StateMachine
@@ -191,6 +192,16 @@ class Enemy(Entity):
         self.jump_cooldown = config.jump_cooldown
         self.leap_speed_mult = config.leap_speed_mult
 
+        # Pivot group, then sub-group. The group is the faction the enemy
+        # already belongs to; a type inside that group names a sub-group in its
+        # own config, which is how "all enemies take it, except the slimes" is
+        # said: one line in ``settings.PROFILES`` and ``"turn_profile"`` in that
+        # type's config. Leaving it None means the group, which for enemies is
+        # off -- an enemy pivoting on the spot would advertise its own turn to
+        # the player.
+        self.turn_profile = config.turn_profile or "enemy"
+        self.apply_turn_profile()
+
         if config.animations:
             specs = {
                 name: AnimationSpec(name, directory, AnimationSettings.FRAME_DURATION, loop=True)
@@ -212,6 +223,7 @@ class Enemy(Entity):
         self.state_machine.add_state(EnemyState.IDLE, EnemyIdleState(self))
         self.state_machine.add_state(EnemyState.PATROL, EnemyPatrolState(self))
         self.state_machine.add_state(EnemyState.CHASE, EnemyChaseState(self))
+        self.state_machine.add_state(EnemyState.TURN, EnemyTurnState(self))
         self.state_machine.add_state(EnemyState.ATTACK, EnemyAttackState(self))
         self.state_machine.add_state(EnemyState.CHARGE, EnemyChargeState(self))
         self.state_machine.add_state(EnemyState.HURT, EnemyHurtState(self))
