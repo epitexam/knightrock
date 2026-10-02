@@ -447,3 +447,98 @@ def test_only_the_designated_move_pokes_a_downed_enemy() -> None:
     }
 
     assert carriers == {"otg_slam"}
+
+
+def test_the_aerial_kit_has_three_roles_and_each_move_has_exactly_one() -> None:
+    """The kit is two extenders bracketing a launcher and a terminator.
+
+    ``air_forward`` arrived with ``juggle_gravity_mult: 0.8`` and ``air_attack``
+    with the default 1.0, which left the fastest aerial in the game -- 0.35s of
+    cooldown over 15 frames, against the forward one's 0.40s over 16 -- unable to
+    keep a juggle alive while a marginally costlier move could. Nobody decides
+    that; it is what happens when a value is set on one move and not reasoned
+    about across the set.
+
+    So the role follows the reach. The two cheap moves extend a juggle, because
+    extending one means re-reaching the target and those are the two that can be
+    thrown again soonest. The two expensive ones do not: ``air_rise`` launches
+    and ``air_sweep`` drops them, and neither is a tool for staying on top of a
+    target that is already going up.
+
+    Read as a role per move and asserted as a partition, so a fifth aerial has to
+    declare which of the three it is instead of inheriting whichever defaults it
+    was built with.
+    """
+    roles = {
+        name: (
+            "extend"
+            if attack.phases[0].hit.juggle_gravity_mult != 1.0
+            else ("launch" if attack.vertical_lunge > 0 else "drop")
+        )
+        for name, attack in PLAYER_ATTACKS.items()
+        if Stance.AIR in attack.stances
+    }
+
+    assert roles == {
+        "air_attack": "extend",
+        "air_forward": "extend",
+        "air_rise": "launch",
+        "air_sweep": "drop",
+    }
+
+
+def test_the_extenders_are_the_aerials_that_can_be_thrown_again_soonest() -> None:
+    """The reason the roles fall that way, so re-sorting them needs a reason.
+
+    An extender is worth its cooldown only if it comes back fast, so the rule
+    is checked against the numbers instead of trusted: every extender must be
+    cheaper than every non-extender. If someone makes the rise the extender, or
+    stretches the neutral aerial past the dive, this is what says no.
+    """
+    aerial = {
+        name: attack for name, attack in PLAYER_ATTACKS.items() if Stance.AIR in attack.stances
+    }
+    extenders = [a.cooldown for a in aerial.values() if a.phases[0].hit.juggle_gravity_mult != 1.0]
+    others = [a.cooldown for a in aerial.values() if a.phases[0].hit.juggle_gravity_mult == 1.0]
+
+    assert extenders and others
+    assert max(extenders) < min(others), (
+        f"an extender ({max(extenders)}s) is no cheaper than a bookend ({min(others)}s)"
+    )
+
+
+def test_an_extender_is_a_slowing_multiplier_over_a_juggle_who_has_a_floor() -> None:
+    """What the flag actually does, pinned against the gate rather than the table.
+
+    ``hit_resolver`` applies it only when the target was already airborne, and
+    only for ``JUGGLE_GRAVITY_TIME``. So the value is a claim about a juggle in
+    progress -- against a grounded target it is inert, which is why the
+    extenders need no special handling for a knockdown. That half is covered
+    where the gate lives; what is asserted here is the value's own contract,
+    because a number above 1.0 would be a *shortener* wearing an extender's name.
+    """
+    from src.combat.hit_resolver import _juggle_scale
+    from src.core.settings import Combat as CombatSettings
+
+    extenders = [
+        attack.phases[0].hit.juggle_gravity_mult
+        for attack in PLAYER_ATTACKS.values()
+        if Stance.AIR in attack.stances and attack.phases[0].hit.juggle_gravity_mult != 1.0
+    ]
+
+    assert extenders, "nothing in the air kit extends a juggle any more"
+    assert all(value < 1.0 for value in extenders), "a multiplier above 1.0 is not an extender"
+
+    # The floor is what stops a juggle draining to nothing, so an extender is
+    # worth having rather than strictly less damage for longer. Stated as the
+    # shape rather than a number: strictly decreasing until it stops, and stopping
+    # at the floor. The floor is five hits in at JUGGLE_DECAY_STEP 0.1, not
+    # three, which is the kind of thing an off-by-two makes look like a bug.
+    scales = [_juggle_scale(n) for n in range(1, 12)]
+    floor = CombatSettings.JUGGLE_DAMAGE_FLOOR
+
+    assert scales[-1] == floor
+    assert all(
+        later < earlier for earlier, later in zip(scales, scales[1:], strict=False) if later > floor
+    )
+    assert all(scale >= floor for scale in scales)

@@ -273,7 +273,7 @@
               "stagger": 0.1,
               "super_armor_break": false,
               "is_finisher": false,
-              "juggle_gravity_mult": 1.0,
+              "juggle_gravity_mult": 0.8,
               "otg_allowed": false,
               "unblockable": false,
               "priority": 0,
