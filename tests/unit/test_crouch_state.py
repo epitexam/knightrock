@@ -19,7 +19,9 @@ from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
 from src.core.settings import Physics
+from src.entities.crouch_posture import _headroom
 from src.entities.player import Player
+from src.physics.spatial_hash import SpatialHash
 from src.states.player_states import PlayerState
 
 TICK = 1 / 60
@@ -56,6 +58,7 @@ def _player(
     input_manager: InputManager | None = None,
     *,
     ceiling_top: float | None = None,
+    grid: bool = False,
 ) -> Player:
     """A fighter standing on a real floor, optionally under a low ceiling.
 
@@ -63,9 +66,25 @@ def _player(
     and vertical collision resolve as they do in a level. Several assertions here
     are about where the feet end up, and a fighter sinking through a fake floor
     would answer those questions about the harness instead of about crouch.
+
+    ``grid`` hands the fighter a spatial grid over its own collision group,
+    which is the shape it has in a real level: ``Level`` assigns one to every
+    entity, and ``get_nearby_sprites`` already resolves movement collision
+    through it. Without it the fighter keeps ``spatial_hash is None`` and the
+    crouch takes its linear fallback -- correct for the tests that predate the
+    grid, and no coverage at all of the grid path, since deleting that path
+    would leave this whole file green.
     """
     collision = pygame.sprite.Group()
     collision.add(Solid(FLOOR_TOP, 400.0))
+    spatial_hash = SpatialHash() if grid else None
+    if spatial_hash is not None:
+        # The grid has to *cover* the collision group, not merely exist:
+        # ``Entity.move`` resolves its neighbours through it, so an unpopulated
+        # one is a fighter who falls through the floor. ``Level`` builds the
+        # invariant once, at ``Level.__init__``, and nothing adds to
+        # ``collision_sprites`` afterwards.
+        spatial_hash.add_all(collision)
     manager = input_manager or InputManager()
     player = Player(
         pos=(0, 0),
@@ -73,6 +92,7 @@ def _player(
         collision_sprites=collision,
         moving_platforms=[],
         input_manager=manager,
+        spatial_hash=spatial_hash,
     )
     # Land before handing the fighter to a test. A freshly spawned player has not
     # touched the floor yet, so its first tick is a fall, and a test that pressed
@@ -83,7 +103,10 @@ def _player(
     # standing, so vertical resolution pushes them straight back out and the
     # settle above would never settle.
     if ceiling_top is not None:
-        player.collision_sprites.add(Solid(ceiling_top - 400.0, 400.0))
+        slab = Solid(ceiling_top - 400.0, 400.0)
+        player.collision_sprites.add(slab)
+        if spatial_hash is not None:
+            spatial_hash.add(slab)
     return player
 
 
@@ -542,3 +565,103 @@ def test_a_rollback_keeps_the_crouched_height_it_captured() -> None:
 
     assert player.hitbox.height == pytest.approx(crouched)
     assert _state(player) == PlayerState.CROUCH.value
+
+
+# --- Headroom through the spatial grid --------------------------------------
+
+
+def test_the_grid_and_the_linear_walk_agree_about_a_tight_ceiling() -> None:
+    """Both paths have to answer the same, or the grid is not a faster form of
+    the scan -- it is a different question.
+
+    The walk is the original: every collidable, filtered. A grid version that
+    reported a *taller* ceiling would let a fighter grow through a slab; one
+    that reported a *shorter* one would leave a fighter crouching on open
+    ground. Both fail silently, so the equality is the test.
+    """
+    walked = _player(ceiling_top=TIGHT_CEILING)
+    gridded = _player(ceiling_top=TIGHT_CEILING, grid=True)
+
+    assert gridded.spatial_hash is not None, "the fighter under test has no grid"
+    assert walked.hitbox.size == gridded.hitbox.size, "the two fighters differ"
+    assert _headroom(gridded) == _headroom(walked)
+
+
+def test_the_grid_and_the_linear_walk_agree_about_open_ground() -> None:
+    """The equality on a single ceiling could be luck; this is the boring case.
+
+    With nothing overhead, both have to answer the full standing height -- which
+    is the answer the blend actually consumes, and the one a query box too small
+    or too low would silently turn into a crouch.
+    """
+    walked = _player()
+    gridded = _player(grid=True)
+
+    assert _headroom(gridded) == _headroom(walked) == pytest.approx(gridded.crouch.stood_height)
+
+
+def test_a_ceiling_reached_through_the_grid_still_caps_the_release() -> None:
+    """The behaviour, not merely the number.
+
+    ``test_releasing_under_a_low_ceiling_stops_at_the_headroom`` proves this for
+    a fighter with no grid, and would pass unchanged if the grid path were
+    deleted. This is the one that fails if it is.
+    """
+    input_manager = InputManager()
+    player = _player(input_manager, ceiling_top=TIGHT_CEILING, grid=True)
+    _run(player, input_manager, frames=20, down=True)
+    crouched = player.hitbox.height
+    assert player.hitbox.top >= TIGHT_CEILING, "the crouch has to actually fit"
+    stood = crouched / Physics.CROUCH_HEIGHT_FACTOR
+
+    _run(player, input_manager, frames=30)
+
+    assert player.hitbox.height < stood, "it stood up through the grid's ceiling"
+    assert player.hitbox.top >= TIGHT_CEILING - 0.01, "and put its head through it"
+    assert player.hitbox.height > crouched, "and did not rise at all"
+
+
+def test_a_solid_far_above_the_standing_height_is_not_a_ceiling() -> None:
+    """The grid query is bounded to the fighter's column up to standing height.
+
+    That bound is what makes the query a handful of candidates rather than the
+    whole map, and it holds only because ``tallest`` is capped at the standing
+    height -- a slab a full standing height higher cannot lower it. If the cap
+    ever moved, the slab would start mattering, and this is the test that would
+    say so: it is the slab the grid is allowed not to look at.
+    """
+    player = _player(grid=True)
+    stood = player.crouch.stood_height
+
+    high = Solid(FLOOR_TOP - stood - 400.0, 400.0)
+    player.collision_sprites.add(high)
+    assert player.spatial_hash is not None
+    player.spatial_hash.add(high)
+
+    assert _headroom(player) == pytest.approx(stood)
+
+
+@pytest.mark.parametrize("grid", [False, True], ids=["linear", "grid"])
+def test_a_wall_beside_the_fighter_is_not_a_ceiling(grid: bool) -> None:
+    """The horizontal filter, on both paths.
+
+    It earns its place on the linear walk, which visits every collidable and
+    would otherwise read any slab on the same floor as a ceiling and leave a
+    fighter crouching in a doorway. On the grid path it is kept for the same
+    reason rather than because the query is too wide: the grid returns whole
+    128px cells, so a slab one column over is pruned by cell granularity rather
+    than by this test of it.
+
+    The slab's underside sits at ``30``, above the feet at ``56`` and inside the
+    56px standing height -- so the vertical filter admits it and only the
+    horizontal one rejects it. Placed level with the feet instead, the vertical
+    filter would drop it and the test would pass with this line deleted.
+    """
+    player = _player(grid=grid)
+    beside = Solid(30.0 - 200.0, 200.0, x=400.0, width=200.0)
+    player.collision_sprites.add(beside)
+    if grid:
+        assert player.spatial_hash is not None
+        player.spatial_hash.add(beside)
+
+    assert _headroom(player) == pytest.approx(player.crouch.stood_height)
