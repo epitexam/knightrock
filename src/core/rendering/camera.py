@@ -220,11 +220,33 @@ class Camera:
         self.offset.x += (target_x - self.offset.x) * smoothing_factor
         self.offset.y += (target_y - self.offset.y) * smoothing_factor
 
-        self._shake_time += delta_time
-        self.trauma = max(0.0, self.trauma - CameraShake.DECAY_PER_S * delta_time)
+        self.advance_shake(delta_time)
 
         self._clamp_to_world()
         self._viewport = None
+
+    def advance_shake(self, delta_time: float) -> None:
+        """Age the impact shake by one tick: decay its trauma and move its phase.
+
+        Split out of :meth:`follow`, which used to own this bookkeeping as a
+        side effect of positioning. The level pipeline freezes the camera on
+        the tick the player dies -- a dead body does not move, so following it
+        would be pointless -- and that skip also froze the shake with it. The
+        killing blow feeds trauma on the very tick it lands (the impact rule
+        keys off the knockback, not off the death), so the shake was held at
+        full amplitude, offsetting the entire frame by a constant non-zero
+        vector for the whole death window instead of decaying over the fraction
+        of a second it is supposed to last. It read as the whole screen
+        trembling rather than as one impact, because ``begin_frame`` bakes this
+        single vector into the shift every sprite is drawn through.
+
+        So the shake ages whether or not the camera is following anybody.
+        :meth:`follow` still calls it, keeping the two in lockstep for a living
+        player; a caller that skipped ``follow`` for its own reasons has to age
+        the shake itself.
+        """
+        self._shake_time += delta_time
+        self.trauma = max(0.0, self.trauma - CameraShake.DECAY_PER_S * delta_time)
 
     def add_trauma(self, amount: float) -> None:
         """Feed impact shake (clamped); heavy launches shake the most."""
