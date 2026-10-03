@@ -29,7 +29,7 @@ import pygame
 import pytest
 
 from src.application.scenes.video_scene import VideoScene
-from src.application.settings_store import UserSettings
+from src.application.settings_store import PANEL_SCALES, UserSettings
 from src.core.display.mode import DisplayMode
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -210,7 +210,9 @@ def test_no_row_opens_another_screen() -> None:
 
 def test_the_reset_row_resets() -> None:
     scene = _drawn()
-    scene.game.settings = scene.game.settings.with_video(pixel_perfect=True, vsync=True)
+    scene.game.settings = scene.game.settings.with_video(
+        pixel_perfect=True, vsync=True, panel_scale=0.4
+    )
     before = scene.game.settings
 
     _click(scene, _row(scene, "reset"))
@@ -218,6 +220,29 @@ def test_the_reset_row_resets() -> None:
     assert scene.game.settings != before
     assert scene.game.settings.pixel_perfect is False
     assert scene.game.settings.vsync is False
+    assert scene.game.settings.panel_scale == 1.0
+
+
+def test_reset_puts_the_panel_scale_back_to_the_default_one() -> None:
+    """The reset row is the only way back from the smallest rung.
+
+    Shown here because a setting that can only be raised by hand is a setting with
+    no way back: 0.4 is where the panels actually fit a small window, so it is a
+    value a player will land on and stay on. ``panel_scale`` was added to the
+    reset row without a test, which meant the reset could quietly stop covering it
+    -- and it would look fine, because the value is legal, it just would not come
+    back to 1.0.
+
+    Every rung rather than one, since a reset that skipped a single value would
+    still read as working.
+    """
+    for panel_scale in PANEL_SCALES:
+        scene = _drawn()
+        scene.game.settings = scene.game.settings.with_video(panel_scale=panel_scale)
+
+        _click(scene, _row(scene, "reset"))
+
+        assert scene.game.settings.panel_scale == 1.0, f"{panel_scale} did not reset"
 
 
 def test_the_back_row_leaves() -> None:
