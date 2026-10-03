@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2431%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2478%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -44,7 +44,7 @@
 | **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2431 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2478 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
 
 ---
 
@@ -123,8 +123,10 @@ close a menu in a loop.
 is a navigation hub — every setting lives in the screen that owns it:
 
 - **Video settings** — display mode, whole-pixel art, VSync, frame limit, UI
-  scale, and a read-out of what the game derived from the window. Every row
-  reports its value in its own column, and `←`/`→` set it. There is no
+  scale, a read-out of what the game derived from the window, and — only when
+  the game runs with `DEBUG=1` — a **debug panel scale**, which is what makes the
+  whole debug stack fit a small window. Every row reports its value in its own
+  column, and `←`/`→` set it. There is no
   **resolution** row, and that is the point: a list of window sizes is a claim
   about the player's monitor that the game cannot check, and a remembered size
   is a claim that goes stale — in borderless the window is the screen's own size
@@ -570,7 +572,7 @@ uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2431 tests passing · 93 % instruction coverage ·
+> **Current baseline:** 2478 tests passing · 93 % instruction coverage ·
 > 85 % branch coverage · Ruff clean · mypy clean (168 files across
 > `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
 > through the `SDL_*_DRIVER=dummy` variables, so

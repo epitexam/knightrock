@@ -386,6 +386,52 @@ def set_compact_panels(compact: bool) -> None:
     _compact_panels = compact
 
 
+def _close_glyph(rect: pygame.Rect) -> tuple[tuple[int, int], tuple[int, int], int]:
+    """The two endpoints and the stroke width of a close box's ``×``.
+
+    Derived from the box rather than written as pixel offsets, because the box
+    used to have a floor: ``screen_scale`` could not go below 1.0, so the smallest
+    box was 14px and fixed insets of 3 and 4 fitted inside it. The player-settable
+    panel scale removes that floor, and at 0.5 the insets met -- the ``×`` collapsed
+    to a single pixel -- and at 0.4 the second endpoint landed *before* the first,
+    so the cross was drawn diagonally the wrong way, out of the box it belongs to.
+
+    22% and 14% reproduce the old insets and stroke exactly at the 14px box and
+    hold at every rung, so nothing moves at the size the panels were designed for
+    and the small rungs stay legible.
+
+    Why it cannot invert: the inset is 22% of the edge and the far end is a whole
+    inset from the other side, so the run spans ``0.56 * edge - 1`` -- positive
+    from a 4px box up. That is why the number is 22% and not 30%: below a quarter,
+    the inset stays under half the box by a margin rather than landing on it. At 30%
+    a 6px box inverts again. A cap like ``min(inset, (edge - 2) // 2)`` would also
+    hold, and was tried, but 22% already implies it and a branch that cannot change
+    the answer is a second thing to keep true.
+
+    The return is a plain tuple rather than a shape so a test can read the
+    endpoints without opening a surface.
+    """
+    edge = min(rect.width, rect.height)
+    inset = max(1, round(edge * 0.22))
+    stroke = max(1, round(edge * 0.14))
+    near = (rect.left + inset, rect.top + inset)
+    far = (rect.right - 1 - inset, rect.bottom - 1 - inset)
+    return near, far, stroke
+
+
+def _checked_panel_scale(scale: float) -> float:
+    """A panel scale, or a refusal.
+
+    Shared by the constructor and :meth:`PanelRenderer.set_panel_scale` so the two
+    cannot drift: a value accepted when the overlay is built and refused when the
+    player cycles it would be a setting that fails on the second run and not the
+    first.
+    """
+    if not scale > 0.0:
+        raise ValueError(f"panel scale must be positive, got {scale}")
+    return float(scale)
+
+
 class PanelRenderer:
     """Render debug panels and cache fonts.
 
@@ -409,6 +455,7 @@ class PanelRenderer:
         surface: pygame.Surface,
         *,
         density: float = 1.0,
+        panel_scale: float = 1.0,
         text_cache_capacity: int = 256,
     ) -> None:
         self.surface = surface
@@ -417,7 +464,14 @@ class PanelRenderer:
         self.text_cache_capacity = text_cache_capacity
 
         self._world_scale = world_scale(density)
-        self._screen_scale = screen_scale(density)
+        #: The window's own density, kept so :meth:`set_surface` can re-derive the
+        #: screen scale from it *and* re-apply the preference, rather than
+        #: recomputing one number and silently dropping the other.
+        self._density = density
+        #: The player's panel-scale preference, kept apart from the density for
+        #: the same reason: the two are multiplied together and must be separable.
+        self._panel_scale = _checked_panel_scale(panel_scale)
+        self._screen_scale = screen_scale(density) * self._panel_scale
         self._build_fonts()
 
         self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
@@ -439,8 +493,64 @@ class PanelRenderer:
 
     @property
     def screen_scale(self) -> float:
-        """Scale of the panels and their hit boxes: the display's, capped."""
+        """Scale of the panels and their hit boxes: the display's, capped, times the
+        player's preference.
+
+        A multiplier rather than a replacement, so shrinking the panels does not
+        also flatten the density behaviour: a 4K window still gets panels larger
+        than the design size, just smaller by the chosen factor.
+        """
         return self._screen_scale
+
+    @property
+    def panel_scale(self) -> float:
+        """The player's preference on its own, as it was asked for.
+
+        The resolved :attr:`screen_scale` is this times the window's density, and
+        the two are not interchangeable: 0.5 on a 1440p window resolves to
+        something well under 0.5, so a panel reporting ``panel_scale == 1.0``
+        while drawing at half size is correct, not a bug.
+        """
+        return self._panel_scale
+
+    def set_panel_scale(self, scale: float) -> None:
+        """Apply the player's panel-scale preference, live.
+
+        Everything screen-space follows this one number -- the three panel fonts,
+        the padding and gaps through :meth:`_px`, the close-button box, and
+        ``interaction.scale`` for its hit box -- so the change is one number plus
+        the rebuild that number implies. The fonts are not optional: they are
+        sized *from* the scale, so keeping them would draw 24px text inside a box
+        measured for 10px.
+
+        The text cache has to go with them. It keys on ``(text, id(font),
+        color)``, and CPython reuses an ``id`` after a collection, so a stale
+        surface can be served for a font that no longer exists.
+
+        Refuses a non-positive scale rather than clamping it: below 1 the panels
+        stop being readable and the correct answer at that point is the compact
+        layout, which drops rows rather than shrinking them.
+        """
+        self._panel_scale = _checked_panel_scale(scale)
+        self._apply_screen_scale(screen_scale(self._density) * self._panel_scale)
+
+    def _apply_screen_scale(self, screen: float) -> None:
+        """Rebuild everything that follows from the screen scale, if it moved.
+
+        The fonts, both caches and the interaction's copy of the scale are all
+        derived, so they all have to move together -- :meth:`_build_fonts` sizes
+        from the scale, the caches are keyed on the fonts they were rendered with,
+        and ``interaction.scale`` is what makes the close box's hit area the size
+        of the box that was drawn.
+        """
+        if screen == self._screen_scale:
+            return
+        self._screen_scale = screen
+        self._build_fonts()
+        self.clear_text_cache()
+        self._background_cache.clear()
+        self.interaction.scale = screen
+        self.interaction.clamp_positions((self.surface.get_width(), self.surface.get_height()))
 
     @property
     def world_scale(self) -> float:
@@ -478,15 +588,23 @@ class PanelRenderer:
         renderer. A window change and a whole-pixel change both land here, and
         both change the answer, so neither can be applied anywhere else without
         a second copy of this arithmetic to drift from it.
+
+        The panel-scale preference is re-applied rather than recomputed away. The
+        screen scale used to be assigned from the density here, against a guard
+        comparing it with the current value -- and once the current value was
+        density * preference, that comparison could not tell whether the density
+        had changed or the product had, so a window resize after the player had
+        chosen a scale put the panels back with nothing to show for it.
         """
         self.surface = surface
+        self._density = density
+        self._apply_screen_scale(screen_scale(density) * self._panel_scale)
         world = world_scale(density)
-        screen = screen_scale(density)
-        if (world, screen) != (self._world_scale, self._screen_scale):
+        if world != self._world_scale:
             self._world_scale = world
-            self._screen_scale = screen
             self._build_fonts()
-            self.interaction.scale = screen
+        # Cleared unconditionally: a new surface invalidates every surface the
+        # cache holds even when the scale did not move.
         self.clear_text_cache()
         self.interaction.clamp_positions((surface.get_width(), surface.get_height()))
 
@@ -728,20 +846,9 @@ class PanelRenderer:
             pygame.draw.rect(self.surface, PANEL_BORDER, rect)
         pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=self._border())
         color = TEXT_CRIT if hovered else TEXT_MUTED
-        pygame.draw.line(
-            self.surface,
-            color,
-            (rect.left + 3, rect.top + 3),
-            (rect.right - 4, rect.bottom - 4),
-            2,
-        )
-        pygame.draw.line(
-            self.surface,
-            color,
-            (rect.right - 4, rect.top + 3),
-            (rect.left + 3, rect.bottom - 4),
-            2,
-        )
+        first, second, stroke = _close_glyph(rect)
+        pygame.draw.line(self.surface, color, first, second, stroke)
+        pygame.draw.line(self.surface, color, (second[0], first[1]), (first[0], second[1]), stroke)
         return rect
 
     def get_panel_width(self, lines: list[str]) -> int:

@@ -336,6 +336,9 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         "vsync",
         "frame_limit",
         "ui_scale",
+        # A size preference, not a size: nothing about it can disagree with the
+        # window, because it says how big to draw on it and not how big it is.
+        "panel_scale",
     }
 
 

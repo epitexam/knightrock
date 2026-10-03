@@ -27,14 +27,27 @@ PANEL_LEGEND = "legend"
 class UIManager:
     """Facade pattern for the user interface."""
 
-    def __init__(self, surface: pygame.Surface, density: float = 1.0) -> None:
+    def __init__(
+        self,
+        surface: pygame.Surface,
+        density: float = 1.0,
+        panel_scale: float = 1.0,
+    ) -> None:
         #: ``density`` is the render target's pixel density, read off the camera
         #: by the renderer. It is a constructor argument rather than something
         #: set later because the first frame is drawn with it: a panel built at
         #: the design size and scaled on the next window change is a frame of
         #: unreadable text, and the first frame is the one the developer is
         #: looking at.
-        self.renderer = PanelRenderer(surface, density=density)
+        #:
+        #: ``panel_scale`` is here for the same reason and for one more. The
+        #: overlay is built *lazily* -- on the first frame that needs it -- which
+        #: is long after the settings file has been read. So a preference applied
+        #: only from ``apply_settings`` reaches an overlay that does not exist
+        #: yet, and the panels come up at the default however the file is
+        #: written: the variable right, the drawing wrong. Passing it here means
+        #: the object is correct the moment it exists.
+        self.renderer = PanelRenderer(surface, density=density, panel_scale=panel_scale)
         self.player_ui = PlayerUI(self.renderer)
         self.world_ui = WorldUI(self.renderer)
         self.hud = HUD(self.renderer)
@@ -86,7 +99,9 @@ class UIManager:
         if panel_id == PANEL_SCENE:
             return self.draw_scene_panel(10, 10, scene_host, layout, compact=True)
         if panel_id == PANEL_KEYS:
-            return self.draw_help_panel(10, 10, layout, self.world_ui.layers, compact=True)
+            return self.draw_help_panel(
+                10, 10, layout, self.world_ui.layers, compact=True, player=player
+            )
         return self.draw_legend_panel(10, 10, layout, compact=True)
 
     def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
@@ -100,6 +115,16 @@ class UIManager:
 
     def set_ui_scale(self, scale: float) -> None:
         self.hud.set_scale(scale)
+
+    def set_panel_scale(self, scale: float) -> None:
+        """Hand the player's debug-panel scale to the renderer that draws them.
+
+        Distinct from :meth:`set_ui_scale`, which is the HUD and the menus and
+        leaves the debug panels alone: an interface-scale preference of 0.8 has
+        never moved a panel, and folding the two together would make one setting
+        silently control the other's subject.
+        """
+        self.renderer.set_panel_scale(scale)
 
     def draw_state_panel(
         self,
@@ -186,6 +211,57 @@ class UIManager:
             x, y, lines, title="SCENE", layout=layout, panel_id=PANEL_SCENE
         )
 
+    @staticmethod
+    def _attack_button_rows(player: Any) -> list[tuple[str, tuple[int, int, int]]]:
+        """What each attack button would throw from where the fighter is standing.
+
+        This is the gate, rendered -- not a report of what the gate last decided.
+        ``start_attack`` tests posture before cooldown, and both are readable from
+        ``player.stance``, ``BUTTON_MOVES`` and ``combat.cooldowns``, so the
+        reason for a refusal is visible *before* the press rather than logged
+        after it. Nothing has to publish a refusal for that: ``refusal.py`` notes
+        no consumer exists yet, and the obvious one is a log, when the cheaper
+        answer is to show the rule.
+
+        The rows come from iterating ``BUTTON_MOVES``, never from a list written
+        out here. A button added to the table appears without a UI edit -- the
+        property whose absence let ``air_rise`` drift to a guard height its
+        grounded counterpart did not have.
+
+        A button with no move in this posture shows a dash. Printing the standing
+        move instead would claim it works from here, which is the one thing it
+        must not say.
+        """
+        from src.core.input.input_actions import InputAction
+        from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+
+        # Read the way the rest of this panel reads: duck-typed off a real player.
+        # A player with no stance resolves every button to ``None`` rather than
+        # raising, which is the right failure for a debug overlay -- it draws an
+        # empty table instead of taking the frame down.
+        stance: Any = getattr(player, "stance", None)
+        cooldowns = getattr(getattr(player, "combat", None), "cooldowns", {}) or {}
+        rows: list[tuple[str, tuple[int, int, int]]] = [
+            (f"Stance  {getattr(stance, 'value', stance)}", TEXT_OK)
+        ]
+        for action in BUTTON_MOVES:
+            # The action, not the key it defaults to. ``SPECIAL_ATTACK`` has no
+            # keyboard binding at all and the rest are rebindable, so printing a
+            # letter would be a claim this panel cannot keep -- the same mistake
+            # as a guard height a move's grounded twin did not have.
+            label = "special" if action is InputAction.SPECIAL_ATTACK else action.value
+            name = move_for_button(action, stance)
+            if name is None:
+                text, color = f"{label:<7} —", TEXT_MUTED
+            else:
+                remaining = float(cooldowns.get(name, 0.0))
+                if remaining > 0.0:
+                    text, color = f"{label:<7} {name} {remaining:.1f}s", TEXT_WARN
+                else:
+                    text, color = f"{label:<7} {name}", TEXT_MUTED
+            rows.append((text, color))
+        return rows
+
     def draw_help_panel(
         self,
         x: int,
@@ -193,8 +269,17 @@ class UIManager:
         layout: PanelLayout | None = None,
         layers: dict[str, bool] | None = None,
         compact: bool = False,
+        player: Any = None,
     ) -> int:
-        """List the debug test-bench keys and overlay toggles."""
+        """The attack buttons from where the fighter stands, plus the bench keys.
+
+        The live block comes first because it is what a developer is reading while
+        playing; the static key list is reference and is the same every frame.
+
+        ``1-0`` rather than ``1-6``: the air keys only fire off the ground, so the
+        two halves of that range behave differently and saying so is what keeps a
+        developer from reading a refused press as a dead key.
+        """
         if self.renderer.interaction.is_closed(PANEL_KEYS):
             return 0
         states = layers or {}
@@ -204,33 +289,49 @@ class UIManager:
                 return ""
             return " [ON]" if states[key] else " [OFF]"
 
-        lines = [
-            "1-4  showcase",
-            "5    P5 shapes",
-            "6    circle burst",
-            "V/B  firebolt/pierce",
-            "C    juggle dummy",
-            "G/P/T spawn",
-            f"F1   boxes{mark('boxes')}",
-            f"F2   labels{mark('labels')}",
-            f"F3   vectors{mark('velocities')}",
-            f"F4   statics{mark('statics')}",
-            f"F5   panels{mark('panels')}",
-            "F6-F9 sim/debug",
-            "F10   compact panel",
-            "×    close · drag",
+        # The bench list is reference, identical every frame, and it was fifteen rows for
+        # a sentence's worth of facts -- F1 through F5 one per line, which is five
+        # rows to say there are five toggles. Merging it is what keeps the panel
+        # placeable at 640x480: the live block adds six rows, and this panel is the
+        # tallest in the stack, so every bench row it did not need was a row the
+        # column flow could not find a slot for.
+        # One range for the whole top row rather than ``1-6`` and ``7-0``: the
+        # split reads as two ranges, and a reader checking whether their key is
+        # listed has to work out which half it is in. The distinction that matters
+        # is in the note beside it, not in the range itself.
+        # ``1-6`` and ``7-0`` rather than one ``1-0``: two explicit ranges, because a
+        # range written high-to-low is a thing a reader has to work out, and
+        # "which half of the row is my key in" is not a question a legend should
+        # raise. Splitting it is also what let the legend drop the air half when
+        # the air kit landed -- one range would have covered it by accident.
+        bench = [
+            "1-6 showcase · 7-0 air kit (in the air)",
+            "V/B shots · C dummy · G/P/T spawn",
+            f"F1-F5 layers{mark('boxes')}",
+            "F6-F9 sim · F10 next · F11 layout",
+            "× close · drag",
         ]
         if compact:
-            lines = [
-                "1-6  test attacks",
-                "V/B  projectiles",
-                "G/P/T spawn",
-                "F1-F5 layers",
-                "F6-F10 tools",
-                "×    close · drag",
+            bench = [
+                "1-0 attacks · V/B shots · G/P/T spawn",
+                "F1-F5 layers · F6-F11 tools · × close",
             ]
+
+        lines: list[str] = []
+        line_colors: dict[int, tuple[int, int, int]] = {}
+        if player is not None:
+            rows = self._attack_button_rows(player)
+            lines.extend(text for text, _ in rows)
+            line_colors.update({index: color for index, (_, color) in enumerate(rows)})
+        lines.extend(bench)
         return self.renderer.draw_panel(
-            x, y, lines, title="DEBUG KEYS", layout=layout, panel_id=PANEL_KEYS
+            x,
+            y,
+            lines,
+            title="DEBUG KEYS",
+            layout=layout,
+            panel_id=PANEL_KEYS,
+            line_colors=line_colors or None,
         )
 
     def draw_legend_panel(
@@ -507,7 +608,7 @@ class UIManager:
         self.draw_stats_panel(10, 10, player, layout=layout)
         if scene_host is not None:
             self.draw_scene_panel(10, 10, scene_host, layout=layout)
-        self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers)
+        self.draw_help_panel(10, 10, layout=layout, layers=self.world_ui.layers, player=player)
         self.draw_legend_panel(10, 10, layout=layout)
 
     def draw_metrics_panel(self, player: Any, hit_stop: float) -> None:

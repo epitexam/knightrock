@@ -27,7 +27,8 @@ import pytest
 
 from src.core.game import Game
 from src.core.settings import Debug
-from src.ui.panel_renderer import PanelRenderer
+from src.ui.panel_renderer import PanelRenderer, close_box_rect
+from src.ui.styles import TEXT_MUTED
 from src.ui.world_ui import WorldUI
 
 WINDOW = (2176, 1224)
@@ -273,3 +274,115 @@ def test_an_unrelated_key_never_produces_a_notice(tmp_path, monkeypatch) -> None
     game._handle_events()
 
     assert game.notice_lines == ()
+
+
+# --- the player's panel scale -----------------------------------------------
+
+
+def _renderer(density: float = 1.0, panel_scale: float = 1.0):
+    renderer = PanelRenderer(pygame.Surface((640, 480)), density=density)
+    renderer.set_panel_scale(panel_scale)
+    return renderer
+
+
+def test_the_panel_scale_multiplies_the_display_density() -> None:
+    """A multiplier, so shrinking the panels does not flatten the density.
+
+    A replacement would mean a 4K window drew its debug panels at 0.5 of the
+    design size -- the opposite of why a 4K window gets bigger ones.
+    """
+    assert _renderer(1.0, 0.5).screen_scale == pytest.approx(0.5)
+    assert _renderer(1.0, 0.5).panel_scale == pytest.approx(0.5)
+    # Density 2.0 is the cap, so 0.5 of it is 1.0: still the design size, but
+    # chosen rather than forced by the window.
+    assert _renderer(2.0, 0.5).screen_scale == pytest.approx(1.0)
+    assert _renderer(2.0, 1.0).screen_scale == pytest.approx(2.0)
+
+
+def test_the_preference_survives_a_window_change() -> None:
+    """The one that had to be got right.
+
+    ``set_surface`` used to assign the screen scale from the density, against a
+    guard comparing it with the current value. Once the current value was
+    *density times preference*, that comparison could not tell which had changed
+    -- so resizing the window after choosing a scale put the panels back, with
+    the menu still saying otherwise.
+    """
+    renderer = _renderer(1.0, 0.5)
+
+    renderer.set_surface(pygame.Surface((1280, 720)), density=1.0)
+
+    assert renderer.panel_scale == pytest.approx(0.5)
+    assert renderer.screen_scale == pytest.approx(0.5)
+
+
+def test_the_preference_survives_a_density_change_too() -> None:
+    """The same repair, on the branch where the density really did move."""
+    renderer = _renderer(1.0, 0.5)
+
+    renderer.set_surface(pygame.Surface((2560, 1440)), density=2.0)
+
+    assert renderer.panel_scale == pytest.approx(0.5)
+    assert renderer.screen_scale == pytest.approx(1.0)
+
+
+def test_the_world_cards_do_not_follow_the_panel_scale() -> None:
+    """They are sized from the world scale, on purpose.
+
+    ``Debug.WORLD_*_FONT_SIZE`` are small (14 and 12) so a floating card stays
+    beside a ~48px sprite instead of dwarfing it. Multiplying them by a panel
+    preference would undo that -- and they are world-space, so the panel scale has
+    nothing to say about them.
+    """
+    big = _renderer(2.0, 1.2)
+    small = _renderer(2.0, 0.4)
+
+    assert big.world_title_font.get_height() == small.world_title_font.get_height()
+    assert big.world_label_font.get_height() == small.world_label_font.get_height()
+    # ...while the panels did move, or the assertion above would pass for free.
+    assert big.debug_font.get_height() > small.debug_font.get_height()
+
+
+def test_the_close_box_hit_area_is_the_box_that_was_drawn() -> None:
+    """``interaction.scale`` is a separate copy and has to move in lockstep.
+
+    If it did not, the ``×`` would be drawn at one size and clickable at another
+    -- invisible, and worst at small scales where the drawn glyph is already the
+    loosest fit against the panel edge.
+    """
+    renderer = _renderer(1.0, 0.4)
+
+    assert renderer.interaction.scale == pytest.approx(renderer.screen_scale)
+    drawn = close_box_rect(0, 0, renderer.screen_scale)
+    hit = close_box_rect(0, 0, renderer.interaction.scale)
+    assert drawn.size == hit.size
+
+
+def test_a_scale_that_is_not_positive_is_refused() -> None:
+    """Refused rather than clamped: below 1 the panels stop being readable.
+
+    The right answer at that point is the compact layout, which drops rows
+    instead of shrinking them, and it is already a key.
+    """
+    renderer = PanelRenderer(pygame.Surface((640, 480)))
+
+    with pytest.raises(ValueError, match="panel scale must be positive"):
+        renderer.set_panel_scale(0.0)
+    with pytest.raises(ValueError, match="panel scale must be positive"):
+        renderer.set_panel_scale(-0.5)
+    assert renderer.screen_scale == pytest.approx(1.0), "a refused scale was applied anyway"
+
+
+def test_the_text_cache_is_dropped_when_the_scale_moves() -> None:
+    """``render_text`` keys on ``id(font)``, and CPython reuses ids after a GC.
+
+    So a surface cached at one font size can be served for a different one, and
+    the text comes out at the old size inside a box measured for the new one.
+    """
+    renderer = _renderer(1.0, 1.0)
+    renderer.render_text("hitbox", renderer.debug_font, TEXT_MUTED)
+    assert renderer.text_cache_stats["entries"] > 0
+
+    renderer.set_panel_scale(0.5)
+
+    assert renderer.text_cache_stats["entries"] == 0

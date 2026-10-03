@@ -7,6 +7,7 @@ import pygame
 import pytest
 
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.combat.frame_data import Stance
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
@@ -19,9 +20,10 @@ from src.ui.panel_renderer import (
     PanelInteraction,
     PanelLayout,
     PanelRenderer,
+    _close_glyph,
     close_box_rect,
 )
-from src.ui.styles import PANEL_BORDER, TEXT_TITLE
+from src.ui.styles import PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
 from src.ui.ui_manager import UIManager
 from tests.unit.helpers import make_overlay
 
@@ -51,10 +53,18 @@ def _motion(pos: tuple[int, int]) -> pygame.event.Event:
     return pygame.event.Event(pygame.MOUSEMOTION, pos=pos, rel=(0, 0), buttons=(1, 0, 0))
 
 
-def _draw_help(ui: UIManager, size: tuple[int, int]) -> PanelLayout:
-    """Draw the DEBUG KEYS panel through the flow and settle the frame."""
+def _draw_help(ui: UIManager, size: tuple[int, int], *, with_player: bool = False) -> PanelLayout:
+    """Draw the DEBUG KEYS panel through the flow and settle the frame.
+
+    ``with_player`` adds the live attack-button block, which is what a real frame
+    draws -- ``draw_debug_panels`` always passes the player -- so the geometry
+    these tests measure is the geometry the game produces. Without it the panel
+    is a different size and a drag test would be asserting against a shape no
+    frame ever had.
+    """
     layout = PanelLayout(*size)
-    ui.draw_help_panel(10, 10, layout=layout, layers={})
+    player = _player() if with_player else None
+    ui.draw_help_panel(10, 10, layout=layout, layers={}, player=player)
     _frame(ui)
     return layout
 
@@ -88,6 +98,71 @@ def test_close_button_is_drawn_inside_the_top_right_corner() -> None:
     assert rect == close_box_rect(200, 0)
     assert rect.right == 200 - PANEL_CLOSE_INSET
     assert surface.get_at(rect.topleft)[:3] == PANEL_BORDER
+
+
+def test_the_close_cross_is_the_same_thing_at_every_panel_scale() -> None:
+    """The ``×`` has to be *drawn* at the scales the panels are shrunk to.
+
+    This is the pixel test the feature was missing. Its hit box is sized from
+    ``panel_scale`` and a test already pinned the box, so the one thing nothing
+    checked was what lands inside it: the insets were the pixels 3 and 4, and a
+    7px box has no room for a 4px inset. At 0.5 the two endpoints met and the cross
+    was a single pixel, and at 0.4 the second landed *before* the first, so it was
+    drawn diagonally out of its own box. Both rungs are the ones a player reaches
+    for precisely because the panels did not fit the window.
+
+    So the invariant is that the stroke spans a real run of pixels at every rung
+    rather than a collapsed or reversed line, checked on the surface, because that
+    is what the player sees. The rung where the cross is exact is pinned too, so a
+    fix that moved the 1.0 glyph while fixing the small ones would be caught.
+    """
+    for panel_scale in (1.2, 1.0, 0.8, 0.6, 0.5, 0.4):
+        surface = pygame.Surface((320, 160))
+        surface.fill((0, 0, 0))
+        renderer = PanelRenderer(surface, panel_scale=panel_scale)
+
+        rect = renderer.draw_close_button(0, 0, 200)
+
+        lit = [
+            (px, py)
+            for px in range(rect.width)
+            for py in range(rect.height)
+            if surface.get_at((rect.left + px, rect.top + py))[:3] == TEXT_MUTED
+        ]
+        xs = {px for px, _ in lit}
+        ys = {py for _, py in lit}
+
+        assert len(lit) >= 2, f"the × is missing at {panel_scale}: {len(lit)}px lit"
+        assert max(xs) - min(xs) >= 1, f"the × collapsed to a line at {panel_scale}"
+        assert max(ys) - min(ys) >= 1, f"the × collapsed to a line at {panel_scale}"
+        assert min(xs) >= 1 and max(xs) <= rect.width - 2, "the × escaped its box"
+        assert min(ys) >= 1 and max(ys) <= rect.height - 2, "the × escaped its box"
+
+        # Two strokes, not one. A single diagonal spans both axes too, so the
+        # bounds above cannot tell a cross from one line -- but only a cross lights
+        # all four inner corners.
+        near, far, _ = _close_glyph(rect)
+        corners = [near, (far[0], near[1]), (near[0], far[1]), far]
+        unlit = [c for c in corners if surface.get_at(c)[:3] != TEXT_MUTED]
+        assert not unlit, f"at {panel_scale} only one stroke was drawn, not a ×: {unlit}"
+
+    exact = pygame.Surface((320, 160))
+    exact.fill((0, 0, 0))
+    box = PanelRenderer(exact).draw_close_button(0, 0, 200)
+    assert exact.get_at((box.left + 3, box.top + 3))[:3] == TEXT_MUTED, "the 1.0 × moved"
+
+    # The share of the box the inset takes is what keeps the two ends apart, so
+    # the invariant is pinned across every box size, reachable or not -- raising
+    # 22% to 30% inverts a 6px box again. It starts at 4px because a 2px or 3px
+    # box cannot hold a diagonal at any inset: there is no room between the ends.
+    for edge in range(4, 18):
+        near, far, _ = _close_glyph(pygame.Rect(0, 0, edge, edge))
+        assert far[0] > near[0] and far[1] > near[1], f"inverted at a {edge}px box"
+
+    # The stroke is part of the contract too, and the pixel bounds above cannot
+    # see it: a 1px cross satisfies all of them and looks like an ant's hair.
+    assert _close_glyph(close_box_rect(200, 0, 1.0))[2] == 2, "the 1.0 × got thinner"
+    assert _close_glyph(close_box_rect(200, 0, 0.4))[2] == 1, "the 0.4 × got thicker"
 
 
 def test_close_click_uses_topmost_panel() -> None:
@@ -196,12 +271,17 @@ def test_drag_and_drop_moves_a_panel_out_of_the_flow() -> None:
     """Dropping a panel stores its position; it is redrawn exactly there."""
     size = (1024, 768)
     ui = UIManager(pygame.Surface(size))
-    _draw_help(ui, size)
+    _draw_help(ui, size, with_player=True)
     rect = ui.renderer.interaction.panels[ui_ids.PANEL_KEYS]
 
     start = rect.topleft
     assert ui.handle_panel_event(_mousedown(start)) is True
-    target = (640, 300)  # roomy enough for the tall DEBUG KEYS panel
+    # Inside the display *for the panel as drawn*. The drop is clamped to the
+    # surface, so a fixed x=640 stopped being where it was asked to go once the
+    # live attack block made the panel wider than the space to the right edge --
+    # the clamp was working, and the test was asserting a pre-clamp position.
+    target = (size[0] - rect.width - 20, 300)
+    assert target[0] + rect.width <= size[0], "the target does not fit the surface"
     assert ui.handle_panel_event(_motion(target)) is True
     assert ui.handle_panel_event(_mouseup(target)) is True
     assert ui.renderer.interaction.drag_id is None
@@ -380,4 +460,9 @@ def _player() -> SimpleNamespace:
         stagger_timer=0.0,
         invincibility_timer=0.0,
         otg_timer=0.0,
+        # The DEBUG KEYS panel reads both when a player is passed to it. Absent
+        # before, its live block was simply never exercised here and the panel
+        # under test was three rows smaller than any frame the game draws.
+        stance=Stance.GROUND,
+        combat=SimpleNamespace(cooldowns={}),
     )

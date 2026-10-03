@@ -20,7 +20,12 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.application.scene import Scene
-from src.application.settings_store import FRAME_LIMITS, UI_SCALES, UserSettings
+from src.application.settings_store import (
+    FRAME_LIMITS,
+    PANEL_SCALES,
+    UI_SCALES,
+    UserSettings,
+)
 from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import (
@@ -31,6 +36,7 @@ from src.core.display.letterbox import (
 from src.core.display.mode import DisplayMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
+from src.core.settings import Debug
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 
@@ -51,6 +57,7 @@ DISPLAY_VALUES = (
 class VideoScene(Scene):
     TITLE = "VIDEO"
     SCALE_VALUES: tuple[float, ...] = UI_SCALES
+    PANEL_SCALE_VALUES: tuple[float, ...] = PANEL_SCALES
     VALUE_FLASH_SECONDS = 0.5
     FOOTER = "↑↓ row · ←→ change · Esc back"
 
@@ -74,6 +81,12 @@ class VideoScene(Scene):
             settings.vsync,
             settings.frame_limit,
             settings.ui_scale,
+            settings.panel_scale,
+            # The debug row is conditional on this, and the rebuild is skipped
+            # when the signature is unchanged -- so without the flag in the
+            # signature, flipping DEBUG mid-session would leave the menu
+            # describing a set of rows the model does not have.
+            Debug.is_enabled(),
             self._screen_refresh_rate(),
             self._window_size(),
         )
@@ -91,6 +104,22 @@ class VideoScene(Scene):
             MenuItem("vsync", "VSync", self._vsync_label()),
             MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
             MenuItem("scale", "UI scale", f"{settings.ui_scale:.1f}x"),
+            # Debug only, because it is the one row here the game cannot honour
+            # for a player who never sees the overlay: without ``DEBUG`` there
+            # are no panels to size. Gated on ``Debug.is_enabled()`` rather than
+            # a stored flag, since ``--debug`` is nothing but the environment
+            # variable and this screen is built after the game is up.
+            *(
+                (
+                    MenuItem(
+                        "panel_scale",
+                        "Debug panel scale",
+                        f"{settings.panel_scale:g}x",
+                    ),
+                )
+                if Debug.is_enabled()
+                else ()
+            ),
             MenuItem("reset", "Reset video settings"),
             MenuItem("back", "Back"),
             MenuItem("info", "Window", self._window_label(), enabled=False),
@@ -253,6 +282,7 @@ class VideoScene(Scene):
         "vsync",
         "frame_limit",
         "scale",
+        "panel_scale",
     )
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
@@ -295,6 +325,7 @@ class VideoScene(Scene):
             "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
             "frame_limit": lambda: self._cycle_frame_limit(action),
             "scale": lambda: self._cycle_scale(action),
+            "panel_scale": lambda: self._cycle_panel_scale(action),
         }
         cycler = cyclers.get(name)
         if cycler is None:
@@ -353,6 +384,21 @@ class VideoScene(Scene):
             self.game.settings.with_video(ui_scale=self.SCALE_VALUES[(index + step) % size])
         )
 
+    def _cycle_panel_scale(self, action: InputAction) -> None:
+        """Step the debug-panel scale, on its own ladder.
+
+        ``PANEL_SCALE_VALUES`` and not ``SCALE_VALUES``: the panels start from
+        ``Debug.FONT_SIZE = 24`` over a design frame, so the interface ladder's
+        lowest step (0.8) is not a reduction at all -- at 1.0 only one of the
+        five placeable panels finds a slot on a 640x480 window. This ladder goes
+        to 0.4 for that, and 0.5 is where the full stack fits.
+        """
+        current = self.game.settings.panel_scale
+        values = self.PANEL_SCALE_VALUES
+        index = values.index(current) if current in values else 4
+        step = -1 if action is InputAction.UI_LEFT else 1
+        self._apply(self.game.settings.with_video(panel_scale=values[(index + step) % len(values)]))
+
     def _reset(self) -> None:
         """Put every video setting back to its default, and only those.
 
@@ -367,6 +413,7 @@ class VideoScene(Scene):
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
                 ui_scale=defaults.ui_scale,
+                panel_scale=defaults.panel_scale,
             )
         )
 
