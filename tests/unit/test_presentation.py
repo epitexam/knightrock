@@ -162,3 +162,81 @@ def test_a_degenerate_window_does_not_divide_by_zero() -> None:
     assert presentation.rect.width >= 1 and presentation.rect.height >= 1
     assert presentation.density > 0.0
     assert presentation.recompute() is False
+
+
+class CountingSurface(pygame.Surface):
+    """A window surface that remembers how often it was filled."""
+
+    def __init__(self, size: tuple[int, int]) -> None:
+        super().__init__(size)
+        self.fills = 0
+
+    def fill(self, *args: Any, **kwargs: Any) -> None:
+        self.fills += 1
+        super().fill(*args, **kwargs)
+
+
+def test_the_bars_are_painted_once_and_not_every_frame() -> None:
+    """Repainting black over black is the cost this stopped paying.
+
+    The strips used to be filled on every single frame, which is a second full
+    pass over 1.27 million pixels on a 3440x1440 window -- 0.69ms, measured,
+    for a colour the window already held. ``present`` now fills them when they
+    have moved and not otherwise, so this counts rather than trusts.
+    """
+    window = (3440, 1440)
+    stage = CountingSurface(window)
+    presentation = Presentation(stage, FRAMING)
+    assert presentation.bars, "a 21:9 window is the shape this is about"
+
+    presentation.present()
+    after_first = stage.fills
+    assert after_first == len(presentation.bars)
+
+    for _ in range(10):
+        presentation.present()
+    assert stage.fills == after_first, "the strips were repainted under a window that stood still"
+
+
+def test_the_bars_are_repainted_when_the_rect_moves_but_its_size_does_not() -> None:
+    """The strip cache is keyed on the whole rect, and this is why.
+
+    ``Game._retarget`` calls ``recompute`` directly and never ``retarget``, so
+    this path leaves the cache alone and relies on it: SDL resizes the window
+    surface in place for a ``VIDEORESIZE``, and a 16:9 window dragged taller
+    keeps its fitted width -- the rectangle keeps its size and slides down.
+    Keyed on the size, as ``recompute`` itself is, the cache would look unchanged
+    and skip the paint, leaving the newly exposed strips holding the frame that
+    was on screen before the drag. That is the bug the strips exist to prevent,
+    reintroduced by optimising them away.
+
+    The size genuinely is unchanged here, which is the point: asserting only
+    that the strips are black after a resize passes against a size-keyed cache,
+    because a fresh surface has been filled anyway.
+    """
+    presentation: Any = Presentation(CountingSurface((1920, 1080)), FRAMING)
+    assert presentation.bars == (), "a 16:9 window starts with nothing to paint"
+    stage = presentation.stage
+    stage.fill((200, 100, 50))
+    presentation.surface.fill((200, 100, 50))
+    presentation.present()
+
+    # The window the player dragged: SDL keeps the pixels it had, which is the
+    # whole reason the strips are painted, so the simulation copies the frame
+    # across rather than handing over an empty surface.
+    grown = CountingSurface((1920, 1200))
+    grown.blit(stage, (0, 0))
+    presentation.stage = grown
+    presentation.recompute()
+    presentation.surface.fill((200, 100, 50))
+    presentation.present()
+
+    assert presentation.rect.size == (1920, 1080), "the fitted size is what must not change"
+    assert presentation.rect.y > 0, "a taller window slides the picture down"
+    assert presentation.bars, "a taller window has strips"
+    assert grown.get_at((960, 1))[:3] == (0, 0, 0), (
+        "the strip kept the frame the window had before the drag"
+    )
+    assert grown.get_at((960, presentation.rect.centery))[:3] == (200, 100, 50), (
+        "the picture still has to arrive under it"
+    )
