@@ -3,7 +3,7 @@ import math
 import pygame
 
 from src.core.display.framing import DEFAULT_FRAMING, Framing
-from src.core.settings import CameraShake
+from src.core.settings import CameraFollow, CameraShake
 
 WorldRect = pygame.FRect | pygame.Rect
 """A world-space rectangle, whole-pixel or fractional.
@@ -216,9 +216,20 @@ class Camera:
         target_x = target_rect.centerx - self.viewport_width / 2.0
         target_y = target_rect.centery - self.viewport_height / 2.0
 
-        smoothing_factor = min(1.0, 8.0 * delta_time)
-        self.offset.x += (target_x - self.offset.x) * smoothing_factor
-        self.offset.y += (target_y - self.offset.y) * smoothing_factor
+        smoothing_factor = min(1.0, CameraFollow.SMOOTHING_RATE * delta_time)
+        step = pygame.math.Vector2(
+            (target_x - self.offset.x) * smoothing_factor,
+            (target_y - self.offset.y) * smoothing_factor,
+        )
+        # Smoothing closes a fixed *fraction* of the gap, so the faster the
+        # camera has to travel the faster it travels -- which is right for a
+        # body in motion and catastrophic for a body that was teleported. The
+        # gap only becomes large when the target jumped, so capping the step is
+        # capping the discontinuity, not the follow. See CameraFollow.
+        max_step = CameraFollow.MAX_SPEED_PX_S * delta_time
+        if step.length_squared() > max_step * max_step:
+            step.scale_to_length(max_step)
+        self.offset.update(self.offset.x + step.x, self.offset.y + step.y)
 
         self.advance_shake(delta_time)
 
