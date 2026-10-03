@@ -386,6 +386,39 @@ def set_compact_panels(compact: bool) -> None:
     _compact_panels = compact
 
 
+def _close_glyph(rect: pygame.Rect) -> tuple[tuple[int, int], tuple[int, int], int]:
+    """The two endpoints and the stroke width of a close box's ``×``.
+
+    Derived from the box rather than written as pixel offsets, because the box
+    used to have a floor: ``screen_scale`` could not go below 1.0, so the smallest
+    box was 14px and fixed insets of 3 and 4 fitted inside it. The player-settable
+    panel scale removes that floor, and at 0.5 the insets met -- the ``×`` collapsed
+    to a single pixel -- and at 0.4 the second endpoint landed *before* the first,
+    so the cross was drawn diagonally the wrong way, out of the box it belongs to.
+
+    22% and 14% reproduce the old insets and stroke exactly at the 14px box and
+    hold at every rung, so nothing moves at the size the panels were designed for
+    and the small rungs stay legible.
+
+    Why it cannot invert: the inset is 22% of the edge and the far end is a whole
+    inset from the other side, so the run spans ``0.56 * edge - 1`` -- positive
+    from a 4px box up. That is why the number is 22% and not 30%: below a quarter,
+    the inset stays under half the box by a margin rather than landing on it. At 30%
+    a 6px box inverts again. A cap like ``min(inset, (edge - 2) // 2)`` would also
+    hold, and was tried, but 22% already implies it and a branch that cannot change
+    the answer is a second thing to keep true.
+
+    The return is a plain tuple rather than a shape so a test can read the
+    endpoints without opening a surface.
+    """
+    edge = min(rect.width, rect.height)
+    inset = max(1, round(edge * 0.22))
+    stroke = max(1, round(edge * 0.14))
+    near = (rect.left + inset, rect.top + inset)
+    far = (rect.right - 1 - inset, rect.bottom - 1 - inset)
+    return near, far, stroke
+
+
 def _checked_panel_scale(scale: float) -> float:
     """A panel scale, or a refusal.
 
@@ -813,20 +846,9 @@ class PanelRenderer:
             pygame.draw.rect(self.surface, PANEL_BORDER, rect)
         pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=self._border())
         color = TEXT_CRIT if hovered else TEXT_MUTED
-        pygame.draw.line(
-            self.surface,
-            color,
-            (rect.left + 3, rect.top + 3),
-            (rect.right - 4, rect.bottom - 4),
-            2,
-        )
-        pygame.draw.line(
-            self.surface,
-            color,
-            (rect.right - 4, rect.top + 3),
-            (rect.left + 3, rect.bottom - 4),
-            2,
-        )
+        first, second, stroke = _close_glyph(rect)
+        pygame.draw.line(self.surface, color, first, second, stroke)
+        pygame.draw.line(self.surface, color, (second[0], first[1]), (first[0], second[1]), stroke)
         return rect
 
     def get_panel_width(self, lines: list[str]) -> int:
