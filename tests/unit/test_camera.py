@@ -20,13 +20,16 @@ import random
 
 import pygame
 import pytest
+from pygame.math import Vector2
 
 from src.core.colors import Color, Colors
 from src.core.display.framing import DEFAULT_FRAMING, Framing
 from src.core.display.viewport import Viewport
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import ParryFlash
+from src.core.settings import CameraFollow, ParryFlash, Simulation
+from src.core.settings import Combat as CombatSettings
+from src.core.settings import Physics as PhysicsSettings
 from src.core.sprite_groups import SpriteGroups
 
 
@@ -204,6 +207,97 @@ def test_trauma_decays_and_is_clamped() -> None:
     for _ in range(240):
         camera.follow(pygame.FRect(0, 0, 8, 8), 1 / 60)
     assert camera.trauma == 0.0
+
+
+def _gap_left(camera: Camera, target: pygame.FRect) -> float:
+    """Distance from where the camera is to where it would centre on the target."""
+    return (
+        Vector2(
+            target.centerx - camera.viewport_width / 2.0,
+            target.centery - camera.viewport_height / 2.0,
+        )
+        - camera.offset
+    ).length()
+
+
+def _peak_follow_speed(target_speed_px_s: float) -> float:
+    """Peak camera speed (world px/s) while tracking a body moving at a constant speed.
+
+    The world is wide enough that the framing clamp is nowhere near, and the
+    body is parked well inside it before the clock starts, so what is measured
+    is the follow and not the arrival.
+    """
+    camera = Camera()
+    camera.set_world_size(200000, 200000)
+    start_x, start_y = 8000.0, 400.0
+    box = pygame.FRect(start_x, start_y, 64, 64)
+    _settled(camera, box)
+    peak = 0.0
+    for i in range(300):
+        box.x = start_x + target_speed_px_s * Simulation.TIMESTEP * i
+        before = camera.offset.copy()
+        camera.follow(box, Simulation.TIMESTEP)
+        peak = max(peak, (camera.offset - before).length() / Simulation.TIMESTEP)
+    return peak
+
+
+def test_tracking_a_body_is_never_capped() -> None:
+    """The cap exists for teleports, so moving must not be able to reach it.
+
+    Smoothing closes a fraction of the gap per tick, so in steady state the
+    camera travels at exactly the body's speed -- whatever that is, up to and
+    including the largest motion one tick can legitimately contain. Were the cap
+    below any of those, the camera would visibly fall behind a launched body.
+    """
+    fastest_legitimate = CombatSettings.SWEEP_MAX_DISPLACEMENT_PX / Simulation.TIMESTEP
+
+    for speed in (
+        PhysicsSettings.PLAYER_SPEED,
+        PhysicsSettings.DASH_SPEED,
+        PhysicsSettings.MAX_FALL_SPEED,
+        fastest_legitimate,
+    ):
+        peak = _peak_follow_speed(speed)
+        assert peak == pytest.approx(speed, rel=0.01), f"tracking was capped at {speed} px/s"
+
+
+def test_the_camera_does_not_whip_when_the_body_is_teleported() -> None:
+    """A respawn must not turn into a blur of the whole level.
+
+    The corpse holds the camera still for the death window, so the respawn
+    opens a gap of thousands of units. Closing that at the smoothing rate
+    reached 20000 px/s; the cap keeps the rush fast and legible instead, and
+    the camera still arrives where the body did.
+    """
+    camera = Camera()
+    camera.set_world_size(200000, 200000)
+    corpse = pygame.FRect(8000.0, 400.0, 64, 64)
+    _settled(camera, corpse)
+    respawned = pygame.FRect(1200.0, 2000.0, 64, 64)
+    assert _gap_left(camera, respawned) > 5000.0, "the teleport has to be a real gap"
+
+    peak = 0.0
+    for _ in range(300):
+        before = camera.offset.copy()
+        camera.follow(respawned, Simulation.TIMESTEP)
+        peak = max(peak, (camera.offset - before).length() / Simulation.TIMESTEP)
+
+    assert peak == pytest.approx(CameraFollow.MAX_SPEED_PX_S, rel=0.01)
+    assert _gap_left(camera, respawned) == pytest.approx(0.0, abs=1.0), "it still arrives"
+
+
+def test_the_speed_cap_is_the_sweep_bound_and_not_a_taste_call() -> None:
+    """Hold the number to the derivation in its docstring.
+
+    ``MAX_SPEED_PX_S`` is written as ``Combat.SWEEP_MAX_DISPLACEMENT_PX`` over
+    the tick: the largest displacement a tick can legitimately hold. The two
+    are the same judgement -- motion or teleport -- made by the sweep and by the
+    camera, so if either bound moves the other has to move with it.
+    """
+    assert (
+        pytest.approx(CombatSettings.SWEEP_MAX_DISPLACEMENT_PX / Simulation.TIMESTEP)
+        == CameraFollow.MAX_SPEED_PX_S
+    )
 
 
 def test_a_screen_rect_covers_the_pixels_it_was_meant_to_cover() -> None:

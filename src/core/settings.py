@@ -196,6 +196,36 @@ class CameraShake:
     HEAVY_DIV = 1200.0
 
 
+class CameraFollow:
+    """Follow smoothing, and the speed past which it stops being a follow."""
+
+    #: Fraction of the remaining distance each tick closes. The lag therefore
+    #: settles at ``rate / TIMESTEP`` ticks of travel -- 32 world px at 60Hz,
+    #: half a tile, which is what keeps the camera from feeling bolted on.
+    SMOOTHING_RATE = 8.0
+
+    #: How fast the framing may travel, whatever the gap to close.
+    #:
+    #: Smoothing an unbounded gap is what turned a death into a whip. The
+    #: corpse holds the camera still for the whole respawn window, so by the
+    #: time the player is teleported back to the spawn point the camera can be
+    #: a couple of thousand units behind -- and closing that at
+    #: ``SMOOTHING_RATE`` took it to 20000 px/s, the whole level blurring past
+    #: in half a second. The same gap opened on the first tick of every level,
+    #: where the camera starts at the world origin and slides to wherever the
+    #: player was placed: 1020 units of drift before the player has moved.
+    #:
+    #: The number is not a taste call. The camera's steady-state speed *is* the
+    #: body's speed, and the largest displacement one tick can legitimately
+    #: contain is already written down for the collision sweep, which has to
+    #: make the same teleport-or-motion judgement:
+    #: ``Combat.SWEEP_MAX_DISPLACEMENT_PX / Simulation.TICK_DURATION`` = 3840
+    #: px/s. So the cap sits above everything a body can do and can only ever
+    #: engage across a discontinuity -- which is the only thing it is for.
+    #: ``tests/unit/test_camera_system.py`` holds it to that derivation.
+    MAX_SPEED_PX_S = 3840.0
+
+
 class HitFlash:
     """White damage flash overlay (render-only, never in snapshots)."""
 
