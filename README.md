@@ -1,78 +1,69 @@
 # Knightrock
 
-> A 2D hack 'n' slash platformer written in Python with
+> A 2D hack 'n' slash platformer in Python with
 > [pygame-ce](https://github.com/pygame-community/pygame-ce) — frame-data combat,
 > a deterministic fixed-timestep simulation, data-driven gameplay values and a
 > built-in debug test bench.
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
+[![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
 [![tests](https://img.shields.io/badge/tests-2491%20passing-brightgreen)](#tests--quality)
-[![coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](#tests--quality)
+[![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
+## Quick start
+
+Requires **Python ≥ 3.14** (`.python-version`) and [**uv**](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --dev                    # --dev adds pytest, pytest-cov, ruff, mypy
+uv run python main.py            # play
+uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
+```
+
+`--help` prints the usage. `uv run python main.py --debug` and
+`DEBUG=1 uv run python main.py` are equivalent.
+
 ---
 
-## Table of contents
+## Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Running the game](#running-the-game)
+- [What it is](#what-it-is)
 - [Controls](#controls)
-- [Phase 5 test bench](#phase-5-test-bench-hitbox--advanced-combat)
-- [Debug overlay](#debug-overlay-debug1)
-- [Gameplay camera](#gameplay-camera)
-- [Physics engine](#physics-engine-assists-on-by-default)
-- [Knockback & hit feedback](#knockback--hit-feedback)
+- [In-game options](#in-game-options)
+- [Debugging](#debugging)
+  - [Test bench](#test-bench)
+  - [Debug overlay](#debug-overlay)
+  - [Frame timings & benchmarks](#frame-timings--benchmarks)
+- [How it works](#how-it-works)
+  - [Framing](#framing)
+  - [Camera, rounding and culling](#camera-rounding-and-culling)
+  - [Physics and assists](#physics-and-assists)
+  - [Combat and knockback](#combat-and-knockback)
+  - [The ground pivot](#the-ground-pivot)
+  - [Draw planes](#draw-planes)
 - [Data-driven gameplay](#data-driven-gameplay)
-- [Tests & quality](#tests--quality)
-- [Packaging & releases](#packaging--releases)
 - [Architecture](#architecture)
 - [Conventions](#conventions)
-- [Documentation](#documentation)
+- [Tests & quality](#tests--quality)
+- [Packaging & releases](#packaging--releases)
+- [Further notes](#further-notes)
 
 ---
 
-## Features
+## What it is
 
 | Capability | What it does |
 |---|---|
 | **Frame-data combat** | Startup / active / recovery phases, chargeable heavies, combos, juggles, OTG guard and multi-hitbox attacks. |
-| **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms and spatial hashing. |
+| **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms, spatial hashing. |
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
-| **Scene stack** | Menu, level select, options, controls, gameplay, pause, game-over and victory scenes with a synchronous, ordered [event bus](#architecture). |
-| **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back); no screen names a cue or a file. Silent and non-fatal without a sound card, and the pointer speaks once per row it lands on. |
+| **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
+| **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2491 tests, 93 % instruction / 85 % branch coverage, Ruff (lint, format, `C901`) and strict mypy (no per-module exemptions) — all blocking in CI. Ruff covers `src`, `tests`, `main.py` and `tools/`; mypy covers `src`, `main.py` and `tools/` ([`tests/` is deliberately not type-checked](#tests--quality)). |
+| **Quality gates** | 2491 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
-
-## Requirements
-
-- **Python ≥ 3.14** (see `.python-version`)
-- **[uv](https://docs.astral.sh/uv/)** — dependency and virtualenv manager
-
-## Installation
-
-```bash
-uv sync --dev
-```
-
-`--dev` also installs the test and quality tooling (`pytest`, `pytest-cov`,
-`ruff`, `mypy`). Drop it for a runtime-only environment.
-
-## Running the game
-
-```bash
-uv run python main.py
-```
-
-With the debug overlay (FPS, states, hitboxes, panels):
-
-```bash
-DEBUG=1 uv run python main.py
-```
 
 ## Controls
 
@@ -83,10 +74,10 @@ DEBUG=1 uv run python main.py
 | Move | `Left arrow` / `Right arrow` |
 | Crouch (ground) / fast fall (air) | `Down arrow` |
 | Jump | `Space` |
-| Dash | `Left Shift` (cancellable into an attack/guard) |
+| Dash (cancellable into an attack or guard) | `Left Shift` |
 | Guard (tap = parry) | `Q` |
 | Reset position | `R` |
-| Attack 1 — light (aerial in the air) | `A` |
+| Attack 1 — light on the ground, aerial in the air | `A` |
 | Attack 2 — heavy (hold to charge, release to swing) | `S` |
 | Attack 3 — uppercut | `D` |
 | Attack 4 — dash attack (lunge; cancels a dash) | `F` |
@@ -99,7 +90,8 @@ DEBUG=1 uv run python main.py
 
 | Action | Button / axis |
 |---|---|
-| Move | Left stick (axis 0) |
+| Move | Left stick (axis `0`) or D-pad (`0`) |
+| Crouch / fast fall | Left stick (axis `1`) or D-pad (`0`) |
 | Jump | `0` |
 | Attack 1 | `1` |
 | Attack 2 | `2` |
@@ -112,177 +104,150 @@ DEBUG=1 uv run python main.py
 | Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
 | Back in menus | `1` (`B`) |
 
-A stick is a position, not a press, so the two say different things. A quarter of
-its travel moves one row; **pushing further scrolls** and easing back stops it,
-without stepping backwards. The D-pad has no partial travel to read, so holding
-it scrolls on its own. Both the D-pad and the stick auto-repeat, the keyboard
-included, and only the four directions repeat: a held confirm would open and
-close a menu in a loop.
+Three details of the menu navigation, all in `src/core/settings.py` under
+`Input`:
 
-**In-game screens:** the main menu and the pause screen open **Options**, which
-is a navigation hub — every setting lives in the screen that owns it:
+- **A stick is a position, not a press.** A quarter of its travel moves one row;
+  pushing further *scrolls*, and easing back stops it without stepping backwards.
+- **The D-pad has no partial travel to read**, so holding it scrolls on its own.
+- **Only the four directions auto-repeat**, stick and D-pad included — a held
+  confirm would otherwise open and close a menu in a loop.
 
-- **Video settings** — display mode, whole-pixel art, VSync, frame limit, UI
-  scale, a read-out of what the game derived from the window, and — only when
-  the game runs with `DEBUG=1` — a **debug panel scale**, which is what makes the
-  whole debug stack fit a small window. Every row reports its value in its own
-  column, and `←`/`→` set it. There is no
-  **resolution** row, and that is the point: a list of window sizes is a claim
-  about the player's monitor that the game cannot check, and a remembered size
-  is a claim that goes stale — in borderless the window is the screen's own size
-  whatever the file says, so the row used to display a number the game was not
-  using. The window belongs to the window manager now; the game resizes the
-  picture when the player resizes the window.
-- **Controls** → *Menu controls* (key/button rebinding and the menu stick Y
-  inversion) and *Gameplay controls* (key/button rebinding). Each screen ends
-  on a separated, greyed block of options — the Y inversion, **Reset to
-  defaults** and **Back**. They are choices rather than slots, so they carry no
-  key: a row that looks like the others and cannot take a binding is a row you
-  press a key on and nothing happens.
+---
+
+## In-game options
+
+Options is a **navigation hub**, not a list: every setting lives in the screen
+that owns it. Reachable from the main menu and from the pause screen.
+
+| Screen | Owns |
+|---|---|
+| **Video** | Display mode, whole-pixel art, VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. |
+| **Controls → Menu controls** | Key/button rebinding and the menu stick Y inversion. |
+| **Controls → Gameplay controls** | Key/button rebinding. |
+
+Each controls screen ends on a separated, greyed block — the Y inversion,
+**Reset to defaults** and **Back**. They are *choices*, not slots, so they carry
+no key: a row that looks like the others and cannot take a binding is a row you
+press a key on and nothing happens.
 
 Choices are written to `~/.knightrock/settings.json` and apply without
-restarting. Each sub-menu has its own **Reset** that restores exactly what it
-owns — the video one leaves your controls alone. A file that cannot be read is
-reported in the log with the reason instead of being silently replaced by the
-defaults, and the file being overwritten is kept as `settings.json.bak`.
+restarting. Each sub-menu has its own **Reset**, restoring exactly what it owns —
+the video one leaves your controls alone. A file that cannot be read is reported
+in the log with its reason rather than silently replaced, and the file being
+overwritten is kept as `settings.json.bak`.
 
-**The window is the only source of truth about the window.** There is no stored
-size, no `size_mode`, no render scale and no smoothing flag, and no video setting
-can go stale because none of them describes a screen:
+---
 
-- the **display mode** defaults to *auto*: borderless when the screen already has
-  the shape of the framing, a window otherwise, re-evaluated on every launch. A
-  chosen mode is never re-resolved;
-- a **windowed** game opens as large as fits with room for its own title bar, and
-  that is all. Drag it to whatever you like;
-- the **render target is the window** — more precisely, the rectangle of the
-  window that carries the picture at the framing's aspect, the rest being bars.
-  The finished frame is blitted **1:1**, so the picture is exactly the picture at
-  any window size, and the measured cost of presenting it is a copy rather than a
-  resample: ~0.4 ms at 1280×720, ~2.4 ms at 2560×1440, against 3.95 ms and 7.46 ms
-  of `smoothscale` for the same windows;
-- the **pixel density** — how many pixels a world unit gets — is read back off
-  that rectangle, never chosen. It is a fraction on most displays (1.667 at
-  1920×1080), and the art is magnified once per window, at load;
-- **whole-pixel art** gives up filling the window to get every art pixel as an
-  exact *k*×*k* block: the picture becomes the largest whole multiple of the
-  framing that fits and the bars take the rest. It is a no-op on a window smaller
-  than the framing, and the row says so.
+## Debugging
 
-Resizing the window rebuilds the render target, re-reads the density and re-lays
-out the interface — the same cascade as a display change, which is why it is one
-piece of code. What resizing never does is change **how much world you see**:
-that is the framing, in world units, and it is the one display quantity the
-simulation may read.
+Everything below is inert unless the game runs with `DEBUG=1` (or
+`--debug`). Pressing an F-key without the flag shows a transitory notice naming
+it once, then stops — a key that silently does nothing is indistinguishable from
+a bug, but the flag is never implied either.
 
-**Debug spawns:** `G` goblin · `P` slime · `T` dummy.
+### Test bench
 
-## Phase 5 test bench (hitbox / advanced combat)
+Every showcase feature is reachable from a single hotkey, live in game.
 
-Every showcase feature is reachable from a single hotkey, live in game — nothing
-to recompile, no code to edit:
-
-| Key | Feature under test | Detail |
+| Key | Feature | Detail |
 |:---:|---|---|
-| `1` | Multi-hitbox (#1) | `twin_fangs` — blade plus a second, disjoint box |
-| `2` | Animated hitbox (#2) | `sweeping_arc` — the box grows along its keyframe curve |
-| `3` | Juggle (#4) | `sky_launcher` — launches upward with softened gravity (`×0.5`) |
-| `4` | OTG (#4) | `otg_slam` — the only attack allowed during the OTG guard |
-| `V` | Projectile (#3) | plain `firebolt`, reuses `HitResolver` |
-| `B` | Piercing projectile (#3) | passes through and hits each target once |
+| `1` | Multi-hitbox | `twin_fangs` — blade plus a second, disjoint box |
+| `2` | Animated hitbox | `sweeping_arc` — the box grows along its keyframe curve |
+| `3` | Juggle | `sky_launcher` — launches upward with softened gravity (`×0.5`) |
+| `4` | OTG | `otg_slam` — the only attack allowed during the OTG guard |
+| `5` | Extra shapes | `p5_shapes` |
+| `6` | Radial burst | `circle_burst` |
+| `7` `8` `9` `0` | Air kit | `air_attack`, `air_forward`, `air_rise`, `air_sweep` — **in the air only** |
+| `V` | Projectile | plain `firebolt`, reuses `HitResolver` |
+| `B` | Piercing projectile | passes through, hits each target once |
 | `C` | Juggle dummy | pops an airborne dummy in front of the player |
+| `G` `P` `T` | Spawn | goblin · slime · dummy |
 
-**Suggested protocol:** press `C`, then `3` under the dummy (neutral while
-airborne) to start the juggle; juggle mid-air with `A` during the jump, then
-finish on the ground with `4` while the OTG guard is active. The debug overlay
-(`DEBUG=1`) shows the offensive boxes, `Combo (air xN)`, `Juggle`, `OTG guard`
-and the `Shots` counter in the SCENE panel.
+<details>
+<summary><b>Suggested juggle protocol</b></summary>
 
-## Debug overlay (`DEBUG=1`)
+Press `C`, then `3` under the dummy (neutral, while airborne) to start the
+juggle. Juggle mid-air with `A` during the jump, then finish on the ground with
+`4` while the OTG guard is active.
 
-Every F-key is behind the flag. Without it they do nothing at all, and a key
-that does nothing is indistinguishable from a bug — so pressing one shows a
-transitory notice naming the flag once, and then stops. The flag itself is never
-implied: a player who asked for no panels should get no panels.
+Under `DEBUG=1` the overlay shows the offensive boxes plus `Combo (air xN)`,
+`Juggle`, `OTG guard` and the `Shots` counter in the SCENE panel.
 
-Every dimension of the overlay is scaled by the same number as the world it
-annotates (`WorldOverlayMetrics`), because the overlay is a description of the
-world: an unscaled 1px hitbox outline arrives at 53% of its intent on a window
-whose density is 1.889, and a debug layer that is too thin to see is not a debug
-layer. Culling is `Camera.is_visible`, the one world-space cull in the
-renderer — the overlay used to compare world rectangles against a target-pixel
-rectangle, which rejects everything, so `F1` toggled a flag and drew nothing.
+</details>
 
-The overlay only draws what is on screen, which keeps the frame cost
-predictable:
+### Debug overlay
 
-- **Hitboxes** — blue = player, red = enemy, grey = neutral. Overlaid with the
-  green hurtbox, the orange offensive box and the velocity arrow: **red**
-  while the hit that caused it is fresh or while the knockback state still
-  carries the entity, **gold** on a parry, yellow for locomotion.
-- **Velocity arrows** — a tapered shaft, a filled triangular head and a pivot
-  dot on the entity, all wrapped in a dark rim so the silhouette survives a
-  bright sky. The head length is clamped and short vectors are stretched to a
-  minimum drawn length, so a slow walk and a dash both stay legible.
-- **Outlines** — cyan = OTG guard, purple = juggle gravity.
-- **Labels** — short cards (`Goblin chase 75/100`); a second line appears only
-  during an attack or when a flag is set (`STAG`, `OTG`, `JGx`, `AIR`).
-  Projectiles are labelled with speed, lifetime and pierce; tiles are skipped
-  and static props render without text.
-- **Toggles** — `F1` boxes · `F2` labels · `F3` velocities · `F4` statics ·
-  `F5` panels · `F6` freeze the simulation (debug only). `F7` steps one tick,
-  `F8` replays an attack and `F9` exports it. Multi-box indices are drawn as
-  in-situ vector points: the first is filled and the following ones hollow.
-  Melee, projectile AABB and moving-hazard geometry use swept collision;
-  static hazards and contact damage retain discrete collision. The full list
-  is recalled on-screen by the `DEBUG KEYS` panel. `F4` statics is **off by
-  default**: a level carries ~840 terrain tiles whose outline tells you
-  nothing, and drawing them is the most expensive thing the overlay does.
-  Measured on level 0 at 1280×720 with `DEBUG=1`, dropping the layer took
-  the whole overlay pass from 1.98 ms to 0.09 ms — 1.9 ms of a 16.7 ms
-  budget for a picture of the tileset.
+| Key | Layer / tool |
+|:---:|---|
+| `F1` | Hitboxes |
+| `F2` | Labels |
+| `F3` | Velocity arrows |
+| `F4` | Static geometry — **off by default** |
+| `F5` | Panels |
+| `F6` | Freeze the simulation |
+| `F7` | Step one tick (while frozen) |
+| `F8` | Replay an attack |
+| `F9` | Export it |
+| `F10` | Next debug panel |
+| `F11` | Panel layout — compact / full |
 
-### Frame timings
+The full list is recalled on screen by the `DEBUG KEYS` panel.
 
-There is no always-on frame readout. It used to be two lines in the top-left
-corner — `100.0 fps · 10.00 ms · limite 60`, then the four terms that make up
-the frame — painted whether or not the debug overlay was on, and the whole
-measurement ran on every frame of every session to feed it. It was a tool for
-one question, and it answered that question badly enough to be noise the rest
-of the time.
+**What the overlay draws.** Hitboxes are blue (player), red (enemy), grey
+(neutral); overlaid with a green hurtbox and an orange offensive box. Velocity
+arrows are a tapered shaft, a filled head and a pivot dot, all wrapped in a dark
+rim so the silhouette survives a bright sky — the head length is clamped and
+short vectors are stretched, so a walk and a dash both stay legible. The arrow
+is **red** while the hit that caused it is fresh or while the knockback state
+still carries the entity, **gold** on a parry, yellow for locomotion. Outlines:
+cyan = OTG guard, purple = juggle gravity. Labels are short cards, with a second
+line only during an attack or when a flag is set; projectiles carry speed,
+lifetime and pierce; tiles are skipped. Multi-box indices are drawn as in-situ
+vector points, the first filled and the following ones hollow.
 
-The `PERFORMANCE` panel under `DEBUG=1` carries what is still worth reading:
-frame rate, frame time, the overlay and panel cost, sprite counts and the text
-cache. Frame timing in general is `uv run python tests/benchmarks/ui_benchmark.py`; the
-FX plane has its own in `tests/benchmarks/fx_benchmark.py`, which reports what
-one particle costs to build rather than what a frame costs to draw.
+**Everything is scaled by the density of the world it annotates**
+(`WorldOverlayMetrics`), because the overlay is a *description* of the world: an
+unscaled 1 px hitbox outline arrives at 53 % of its intent on a window whose
+density is 1.889, and a debug layer too thin to see is not a debug layer. Culling
+is `Camera.is_visible`, the one world-space cull in the renderer. Melee, projectile
+AABB and moving-hazard geometry use **swept** collision; static hazards and
+contact damage keep **discrete** collision.
 
-## Framing: how much of the world is visible
+> **Why `F4` ships off.** A level carries 839 terrain tiles whose outline tells
+> you nothing, and drawing them is the most expensive thing the overlay does.
+> Measured on level 0 at 1280×720, dropping the layer took the whole overlay pass
+> from **1.98 ms to 0.09 ms** — 1.9 ms of a 16.7 ms budget, for a picture of the
+> tileset. (`notes/perf_debug_overlay.md`)
 
-The camera follows the player and shows a **fixed rectangle of the world**:
-1152x648 world units, in `src/core/display/framing.py`. That number is the
-whole framing policy. It is deliberately tight — the player sees 45% of the
-width and 34% of the height of the shipped level — so the level has to be read
-as it is entered rather than mapped from the menu, and tension comes from not
-being able to see what is coming.
+### Frame timings & benchmarks
 
-It used to be a **window** measurement. The camera was built from the window's
-pixel size and a zoom constant, which made the visible world a free variable of
-a video setting: the reveal ran from 34% of the level's height at the smallest
-preset to 60% at the largest, and on the 40x15 levels a high enough preset
-revealed a whole level, height included. A player could see more of a level by
-opening the video menu. `test_framing_contract.py` now asserts the framing is
-smaller than every `.tmx` in the level folder, and
-`test_sim_is_display_independent.py` runs one input log at five window sizes
-and five pixel densities and compares a world checksum.
+There is no always-on frame readout: the measurement used to run on every frame of
+every session to paint two lines in the corner, which made it noise the rest of the
+time. The `PERFORMANCE` panel under `DEBUG=1` carries what is still worth reading
+— frame rate, frame time, overlay and panel cost, sprite counts, text cache.
 
-How large the world is *drawn* is a separate question, and its answer is the
-**window**: the render target is the window's own letterbox rectangle, so a world
-unit gets `window / framing` pixels — 1.667 at 1920x1080, 0.694 in an 800x600
-window — and the art is magnified once, at load. The finished frame is then
-blitted 1:1, so the picture is never resampled and cannot be softened by a
-setting. The camera has no zoom; it has a density, and it reads it off the
-target so the two cannot disagree.
+```bash
+uv run python tests/benchmarks/ui_benchmark.py       # frame timing, in general
+uv run python tests/benchmarks/fx_benchmark.py       # cost to build one particle
+uv run python tests/benchmarks/render_benchmark.py
+uv run python tests/benchmarks/contact_benchmark.py
+```
+
+---
+
+## How it works
+
+### Framing
+
+> **The camera shows a fixed rectangle of the world: 1152×648 world units**
+> (`src/core/display/framing.py`). It is render-only, and **the simulation reads
+> it and nothing else** — window size, DPI, display mode and desktop dimensions
+> are not observable from it.
+
+It is deliberately tight: the player sees 45 % of the width and 34 % of the
+height of the shipped level, so a level has to be read as it is entered rather
+than mapped from the menu.
 
 | Object | What it is |
 |---|---|
@@ -291,88 +256,171 @@ target so the two cannot disagree.
 | `Stage` | the OS window: mode, position, DPI, vsync. No opinion about size. |
 | `Presentation` | window onto target, and the pointer back. Scales nothing. |
 
-The invariant the four rest on: **the simulation reads `Framing` and nothing
-else.** Window size, DPI, display mode and desktop dimensions are not
-observable from it.
+How large the world is *drawn* is a separate question, answered by the window: a
+world unit gets `window / framing` pixels — 1.667 at 1920×1080, 0.694 in an
+800×600 window — and the art is magnified once, at load. The camera has no zoom;
+it has a density, read off the target so the two cannot disagree.
 
-What follows from that:
+**The window is the only source of truth about the window.** There is no stored
+size, no `size_mode`, no render scale and no smoothing flag, because none of those
+describes a screen. Four rules replace them:
+
+- the **display mode** defaults to *auto* — borderless when the screen already has
+  the shape of the framing, a window otherwise, re-evaluated on every launch. A
+  chosen mode is never re-resolved;
+- a **windowed** game opens as large as fits with room for its own title bar, and
+  that is all. Drag it to whatever you like;
+- the **render target is the window** — more precisely the letterbox rectangle of
+  the window that carries the picture at the framing's aspect. The finished frame
+  is blitted **1:1**, so presenting costs a copy rather than a resample;
+- **whole-pixel art** trades filling the window for every art pixel being an exact
+  *k*×*k* block: the picture becomes the largest whole multiple of the framing
+  that fits and the bars take the rest. It is a no-op below the framing size, and
+  the row says so.
+
+Resizing the window rebuilds the render target, re-reads the pixel density and
+re-lays out the interface — the same cascade as a display change, which is why it
+is one piece of code. What resizing never changes is **how much world you see**.
+
+<details>
+<summary><b>Why the video menu has no resolution row, and the framing is not derived from the window</b></summary>
+
+**No resolution row.** A list of window sizes is a claim about the player's
+monitor that the game cannot check, and a remembered size is a claim that goes
+stale — in borderless the window *is* the screen's size whatever the file says,
+so the row used to display a number the game was not using.
+
+**The framing is not derived from the window.** It used to be built from the
+window's pixel size and a zoom constant, which made the visible world a free
+variable of a video setting: the reveal ran from 34 % of the level's height at the
+smallest preset to 60 % at the largest, and on the 40×15 levels a high enough
+preset revealed a whole level, height included. A player could see more of a level
+by opening the video menu.
+
+Two tests pin it now:
+
+- `tests/unit/test_framing_contract.py` asserts the framing is smaller, on both
+  axes, than every level in `data/levels_manifest.json`;
+- `tests/unit/test_sim_is_display_independent.py` runs one input log at five
+  window sizes and five pixel densities and compares a world checksum.
+
+</details>
+
+<details>
+<summary><b>Measured: presenting 1:1 versus <code>smoothscale</code></b></summary>
+
+Presenting the finished frame with a 1:1 copy, against resampling it to the same
+target with `pygame.transform.smoothscale`:
+
+| Window | 1:1 present | `smoothscale` |
+|---|---|---|
+| 1280×720 | ~0.38 ms | ~3.95 ms |
+| 2560×1440 | ~1.33 ms | ~7.46 ms |
+
+Sources: `notes/perf_shatter_arc.md`, `notes/audit_dimensions_fenetre.md`.
+
+</details>
+
+### Camera, rounding and culling
 
 - `Camera.apply()` maps a world rectangle to exact target coordinates —
   `screen = (world - offset) * density`. Sprites, health bars, hitboxes, labels
   and the debug overlays all read the one transform, so none of them can drift
-  from the others;
+  from the others.
 - `Camera.scaled_size()` is the **single rounding rule** in the drawing path: an
   image is magnified to that size and blitted into a rectangle of that size.
-  `Camera.apply_snapped()` is the matching position, rounded *down*, and the size
-  rounds *up* — which is what makes a run of tiles overlap by at most a pixel
-  instead of drifting apart by one every few tiles and opening a line of
-  background through the terrain. `pygame.blit` silently resamples a source that
-  does not fit its destination, so "off by a rounding" is a real defect here and
-  not a cosmetic one; fuzzing every framing, density, offset and rect finds no
-  gap and no resample;
-- `Camera.is_visible()` culls against the framing rect, and the frozen terrain
-  is narrowed to a handful of chunks before it gets there;
-- every frame is a complete repaint of the target, so a stale pixel is not
-  possible rather than merely unlikely;
-- a window resize rebuilds the target, re-reads the density and re-lays out the
-  interface — one cascade, shared with a display change. It never changes how
-  much world is visible;
-- the framing is **render-only**: sprite sizes, hitboxes, physics and the
-  deterministic simulation are untouched, so goldens stay valid.
+- `Camera.is_visible()` culls against the framing rect, and the frozen terrain is
+  narrowed to a handful of chunks before it gets there.
+- Every frame is a complete repaint of the target, so a stale pixel is not
+  possible rather than merely unlikely.
 
-## Physics engine (assists on by default)
+<details>
+<summary><b>Why the rounding rule is asymmetric</b></summary>
 
-All knobs live in `src/core/settings.py` under `GameFeel`, `Collision` and
-`PlatformRide`. Set a value to `0` (or `1` for the jump cut) to restore the
-legacy, assist-free behaviour:
+`Camera.apply_snapped()` rounds position **down** and size **up**. That is what
+makes a run of tiles overlap by at most a pixel instead of drifting apart by one
+every few tiles and opening a line of background through the terrain.
 
-| Constant | Effect |
-|---|---|
-| `JUMP_CUT_DIVISOR` | Variable jump height — releasing the button cuts the rise. |
-| `GROUND_SNAP_PX` | Sticks to the ground instead of floating off platform edges. |
-| `STEP_UP_PX` / `CORNER_CORRECT_PX` | Auto-mounts small steps, nudges around ceiling corners. |
-| `MIN_PENETRATION_PX` | Grazes keep sliding instead of stopping dead. |
-| `MAX_RESOLVE_PX` | Anti-teleport guard; deeper overlaps flag the entity as `crushed`. |
-| `STICKY_FACTOR` | Stay mounted on fast-descending platforms. |
-| `APEX_GRAVITY_DIVISOR` | Reduced gravity at the jump apex for a longer hang time. |
-| `FAST_FALL_GRAVITY_MULTIPLIER` | Extra fall acceleration while the down key is held. |
-| `CROUCH_HEIGHT_FACTOR` | Crouched hurtbox as a fraction of the standing height. |
-| `CROUCH_HEIGHT_BLEND_TIME` | Seconds to ease into and out of the crouched collider. |
-| `CROUCH_SPEED_MULT` | Crouch-walk speed as a fraction of the fighter's own speed. |
+It is a real defect rather than a cosmetic one because `pygame.blit` silently
+resamples a source that does not fit its destination. Fuzzing every framing,
+density, offset and rect finds no gap and no resample.
 
-## The ground pivot (`turn`)
+</details>
 
-Reversing on the ground used to mirror the sprite on the same frame the axis
-flipped, so a pivot read as a teleport. The velocity curve was never the
-problem — it always took about a third of a second to cross zero. The picture
-refused to show any of it.
+### Physics and assists
 
-`turn` is a **state**, not a delayed facing write. That is the whole design: a
-delay is a value every interrupter has to be told to undo, and each of them has
-to know the rule exists. A state is entered and exited, so an attack, a dash or
-a jump taken mid-pivot leaves through `PlayerTurnState.exit` — which is where
-the facing is finally committed. "An attack inside the pivot still comes out
-where the player is pointing" is not a special case anyone has to remember.
+Assists are **on**. Set a value to `0` (or `1` for the jump cut) to restore the
+legacy, assist-free behaviour. All of them live in `src/core/settings.py`.
+
+| Class | Constant | Effect |
+|---|---|---|
+| `GameFeel` | `JUMP_CUT_DIVISOR` | Variable jump height — releasing the button cuts the rise. |
+| `GameFeel` | `GROUND_SNAP_PX` | Sticks to the ground instead of floating off platform edges. |
+| `GameFeel` | `STEP_UP_PX` / `CORNER_CORRECT_PX` | Auto-mounts small steps, nudges around ceiling corners. |
+| `GameFeel` | `APEX_GRAVITY_DIVISOR` | Reduced gravity at the jump apex, for a longer hang time. |
+| `GameFeel` | `FAST_FALL_GRAVITY_MULTIPLIER` | Extra fall acceleration while the down key is held. |
+| `Collision` | `MIN_PENETRATION_PX` | Grazes keep sliding instead of stopping dead. |
+| `Collision` | `MAX_RESOLVE_PX` | Anti-teleport guard; deeper overlaps flag the entity `crushed`. |
+| `PlatformRide` | `STICKY_FACTOR` | Stay mounted on fast-descending platforms. |
+| `Physics` | `CROUCH_HEIGHT_FACTOR` | Crouched hurtbox as a fraction of the standing height. |
+| `Physics` | `CROUCH_HEIGHT_BLEND_TIME` | Seconds to ease into and out of the crouched collider. |
+| `Physics` | `CROUCH_SPEED_MULT` | Crouch-walk speed as a fraction of the fighter's own speed. |
+
+> **The crouch constants live in `Physics`, not `GameFeel`.** They belong to the
+> collider, not to the feel, and their only readers are
+> `src/entities/crouch_posture.py` and `src/states/player_states.py`.
+
+### Combat and knockback
+
+Combat is frame-data driven: startup / active / recovery phases feed
+`HitboxManager` and `HitResolver` through the two-pass deterministic
+`CombatSystem` (`src/core/level/systems/combat_system.py`).
 
 | Constant | Effect |
 |---|---|
-| `DELAY_S` | How long the pivot holds — eight frames, the length of the plant. `0` never enters the state: the mirror is instant, as before. |
-| `MIN_SPEED_PX_S` | Below this the fighter is not travelling, so the flip is immediate and no state is entered. |
-| `BRAKE_CONTROL` / `PLANT_PX_S` | Ground braking on a reversal: bleed toward **zero** at this rate, then push once under this speed. |
-| `LEAD_PX` | Render-only trailing offset of the body, shrinking to zero as the facing lands. |
-| `SKEW_PX` | Shears the frame so the feet stay planted and the top of the body leans over. **This one carries the effect** — the lean is what says "weight", and it has no ceiling the way the slide does. |
-| `STEP_DISTANCE_PX` / `SPREAD` | The pivot's row in `FootstepDust.TIER` — the footstep comb is distance-paced, and a fighter turning on the spot covers none. |
+| `Combat.WALL_BOUNCE_FACTOR` | Mid-launch entities rebound off walls (red arrow in debug) instead of stopping dead. |
+| `Combat.KNOCKBACK_MAX_DURATION` | Anti-lock safety for pits. |
+| `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
+| `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
+| `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
+| `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
+| `CameraShake` | `MAX_PX`, `DECAY_PER_S`, `FREQUENCY` — the shake envelope itself. |
 
-### Per-group, per-type, and available to everyone
+> **Directional influence is not player-gated.** `_apply_directional_influence` in
+> `src/states/reaction_states.py` fires for any entity whose `move_axis` is
+> non-zero, and enemies do set `move_axis`. In practice a launched enemy rarely
+> carries a stale axis into the air, but the gate is "has an axis", not "is the
+> player".
 
-The pivot is registered in **every** fighter's state machine, under one shared
-name (`Turn.STATE`). Availability is global; activation is yours, and it is
-decided by **group and sub-group** rather than one entity at a time.
+### The ground pivot
 
-Groups and sub-groups are named profiles in `settings.PROFILES`, layered on each
-other by inheritance. Every field is optional, and a field a layer leaves out
-is inherited — so a group that only wants to switch the pivot on does not have
-to restate the delay, the brake and the lean to say so.
+> **`turn` is a state, not a delayed facing write.** Reversing on the ground used
+> to mirror the sprite on the same frame the axis flipped, so a pivot read as a
+> teleport. The velocity curve was never the problem — it always took about a
+> third of a second to cross zero. The picture refused to show any of it.
+
+A delay would be a value every interrupter has to be told to undo, and each of
+them would have to know the rule exists. A state is entered and exited, so an
+attack, a dash or a jump taken mid-pivot leaves through `PlayerTurnState.exit` —
+which is where the facing is finally committed. *"An attack inside the pivot
+still comes out where the player is pointing"* is not a special case anyone has
+to remember.
+
+| Constant | Shipped | Effect |
+|---|---|---|
+| `Turn.DELAY_S` | `0.14` | How long the pivot holds — just under nine ticks at 60 Hz, the length of the plant. |
+| `Turn.MIN_SPEED_PX_S` | `30.0` | Below this the fighter is not travelling, so the flip is immediate and no state is entered. |
+| `Turn.BRAKE_CONTROL` | `20.0` | Ground braking on a reversal: bleed toward **zero** at this rate. |
+| `Turn.PLANT_PX_S` | `20.0` | …then push out of the plant at this speed. |
+| `Turn.LEAD_PX` | `32.0` | Render-only trailing offset of the body, shrinking to zero as the facing lands. |
+| `Turn.SKEW_PX` | `20.0` | Shears the frame so the feet stay planted and the top of the body leans over. |
+| `Turn.STEP_DISTANCE_PX` / `SPREAD` | `40.0` / `1.15` | The pivot's row in `FootstepDust.TIER`. |
+
+**The pivot is registered in every fighter's state machine** under one shared name
+(`Turn.STATE`), and activation is decided by **group and sub-group** rather than
+by one entity at a time. Groups and sub-groups are named profiles in
+`settings.PROFILES`, layered by inheritance; every field is optional, and a field
+a layer leaves out is inherited.
 
 | Layer | Where it is named | Ships as |
 |---|---|---|
@@ -380,6 +428,33 @@ to restate the delay, the brake and the lean to say so.
 | group (one per faction) | `PROFILES["player" / "enemy" / "neutral"]` | only the player is on |
 | sub-group (one per enemy type) | `EnemyConfig.turn_profile`, i.e. `"turn_profile"` in `enemies.json` | `null` — takes the group |
 | the entity | an attribute set in code | wins over all of the above |
+
+<details>
+<summary><b>Measured rationale, worked example, and two state details</b></summary>
+
+**Why braking and accelerating are separate.** A single exponential ease toward
+the target is symmetric by construction: the same rate bleeds speed off on the way
+to a stop as on the way back up to a run. That is right for one and wrong for the
+other. A *reversal* is not that — and a symmetric curve never plants, it crosses
+zero without dwelling. At `Physics.FLOOR_CONTROL` a full run crosses in under two
+frames, so the deceleration existed and was never seen. *"It turns instantly"*
+means not that nothing happens but that what happens is over before the eye has it.
+
+- **Brake toward zero, then plant.** From `PLAYER_SPEED`, a full run sheds
+  `251 → 180 → 129 → 92 → 66 → 47 → 34 → 24 px/s` over the eight ticks of
+  `DELAY_S`, arriving at the flip standing still.
+- **Aiming at zero is the part that matters.** The rate only decides how fast the
+  bleed is; aiming at the *target* makes the velocity curve pass through the
+  crossing at any rate, so the plant never happens.
+- **Airborne is untouched** — a mid-air reversal is a jump turn, and the tighter
+  air curve is what makes an air dash feel like an air dash.
+- **The lean carries the effect, not the slide.** `LEAD_PX` at 32 px is half the
+  sprite's width — 5.5 frames of travel, clear and near its ceiling. A lean has no
+  such ceiling, because it cannot detach from anything, which is why raising
+  `SKEW_PX` paid far more than raising the slide would have.
+
+**Worked example** — *"all the enemies except the slimes"*. Illustrative: the
+repository ships the mechanism, not these entries.
 
 ```python
 # src/core/settings.py — all the enemies take it...
@@ -394,102 +469,61 @@ PROFILES["enemy_slime"] = TurnProfile(inherits="enemy", enabled=False)
 { "goblin": { "turn_profile": "enemy_goblin" } }
 ```
 
-Which is exactly *"all the enemies except the slimes"*: one entry switched on
-for the faction, one switched off for the type, and one string in the type's
+One entry on for the faction, one off for the type, one string in the type's
 config. Nothing in the simulation, the state machine or the renderer knows a
 group exists — an entity adopts a name and is done.
 
-Two decisions worth knowing:
-
-- **An unknown profile name is the defaults, not a crash.** A typo in a data
-  file gives a fighter the shipped behaviour and a game that still starts.
-  Likewise a profile that inherits from itself stops at the cycle and keeps the
-  most specific values rather than hanging at import.
+- **An unknown profile name is the defaults, not a crash.** A typo gives a fighter
+  the shipped behaviour and a game that still starts; a self-inheriting profile
+  stops at the cycle rather than hanging at import.
 - **The drawing numbers travel with the profile.** `turn_lead_px` and
-  `turn_skew_px` live on the entity, not in `settings.Turn`, because the
-  renderer is handed a sprite. Leaving them in the settings block would make a
-  group look tunable while the lean quietly ignored it.
-
-The brake is gated by the same switch as the facing hold, and has to be: the
-movement call is shared by every fighter, so gating only the hold would leave
-the plant running on enemies — they would stop and push differently while never
-being turned around.
-
-The per-fighter attributes the resolution writes are `turn_enabled`,
-`turn_delay_s`, `turn_brake_control`, `turn_plant_px_s`, `turn_min_speed_px_s`,
-`turn_lead_px` and `turn_skew_px`. Assigning one of them in code overrides
-whatever the profile said, which is the layer above the named ones.
-
-### Why braking and accelerating are separate
-
-A single exponential ease toward the target is symmetric by construction: the
-same rate bleeds speed off on the way to a stop as it does on the way back up
-to a run. That is right for one and wrong for the other. Coasting to a halt
-should follow the same curve as accelerating out of it. A *reversal* is not
-that — and a symmetric curve never plants, it crosses zero without dwelling.
-At `FLOOR_CONTROL` a full run crossed in **1.6 frames**, so the deceleration
-existed and was never seen. "It turns instantly" means not that nothing happens
-but that what happens is over before the eye has it.
-
-So a reversal brakes toward zero at `BRAKE_CONTROL` and pushes out of the plant
-at `PLANT_PX_S`. A full run bleeds through 251 → 180 → 129 → 92 → 66 → 47 → 34
-→ 24 px/s in eight frames, and `DELAY_S` is those eight — so the fighter spends
-the hold visibly shedding speed and arrives at the facing flip standing still.
-
-Aiming at zero rather than at the new direction is the part that matters. The
-rate only decides how fast the bleed is; aiming at the target makes the
-velocity curve through the crossing at *any* rate, so the plant never happens.
-Airborne is untouched — a mid-air reversal is a jump turn, and the tighter air
-curve is what makes an air dash feel like an air dash.
-
-**What carries the effect is the lean, not the slide.** Two numbers, measured
-on the shipped sprite at `PLAYER_SPEED`:
-
-| | pixels | in something the eye reads | verdict |
-|---|---|---|---|
-| `LEAD_PX` 22 → **32** | half the sprite's width | 3.7 → **5.5** frames of travel | clear, and near the ceiling |
-| `SKEW_PX` 8 → **20** | top of a 56px sprite | 7.7° → **20°** | the weak number, now not |
-
-The slide has a hard ceiling: past roughly the sprite's own width the fighter
-stops looking like a fighter sliding along and starts looking like a fighter
-pasted next to one. The lean has no such ceiling, because a lean cannot detach
-from anything — and at 8 px it was a **7.7 degree** tilt, which is under the
-threshold at which the eye registers a change of pose at all. That is why
-raising it paid far more than raising the slide would have.
-
-Two details worth knowing about the state:
-
-- **The hold is installed from the input side.** `PlayerInputHandler` reads
-  input in `_pre_update`, which runs *before* the state machine, so a decision
-  taken from a state's own `update` would be a frame too late to stop the
-  mirror it is meant to delay. `request_turn()` is asked instead of
-  `face_movement()`, and the state keeps the mirror frozen with the
-  `facing_locked` tag.
+  `turn_skew_px` live on the entity, not in `settings.Turn`, because the renderer
+  is handed a sprite. Left in the settings block they would make a group look
+  tunable while the lean quietly ignored it.
+- **Per-fighter overrides** win over every named layer: `turn_enabled`,
+  `turn_delay_s`, `turn_brake_control`, `turn_plant_px_s`,
+  `turn_min_speed_px_s`, `turn_lead_px`, `turn_skew_px`.
+- **The hold is installed from the input side.** `PlayerInputHandler` reads input
+  in `_pre_update`, *before* the state machine, so a decision taken from a state's
+  own `update` would be a frame too late to stop the mirror it is meant to delay.
+  `request_turn()` is asked instead of `face_movement()`, and the state keeps the
+  mirror frozen with the `facing_locked` tag.
 - **The pivot carries the tier it interrupted.** The hold spans the frames where
-  the velocity sweeps through `run`/`walk`/`walk_slow`, so resuming from it with
-  the live state name would drop `resolve_locomotion_state`'s hysteresis and
+  the velocity sweeps through `run` / `walk` / `walk_slow`, so resuming from it
+  with the live state name would drop `resolve_locomotion_state`'s hysteresis and
   flicker the tier boundaries at the fastest moment.
 
-## Knockback & hit feedback
+</details>
 
-Tuned through `Combat` and `CameraShake` in `src/core/settings.py`:
+### Draw planes
 
-- `WALL_BOUNCE_FACTOR` — mid-launch entities rebound off walls (red arrow in
-  debug) instead of stopping dead.
-- `KNOCKBACK_MAX_DURATION` — anti-lock safety for pits; `KNOCKBACK_DI_ACCEL` /
-  `KNOCKBACK_DI_CAP` — the player can steer an airborne trajectory, enemies
-  cannot.
-- `JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` — diminishing returns on
-  consecutive juggle hits.
-- `HITSTOP_KNOCKBACK_FACTOR` and `CameraShake` — hit-stop and screen shake
-  scaled to impact magnitude (launches ≥ 400 trigger trauma).
+The world is drawn from three **planes**, split by one property: whether the
+sprite moves.
+
+| Group | Contents | Culling |
+|---|---|---|
+| `SpriteGroups.static_sprites` | Background and terrain layers, built once | `TileChunkIndex`, a chunk grid built at load |
+| `SpriteGroups.all_sprites` | Everything that moves | Scanned — exact and cheap, tens of sprites |
+| `SpriteGroups.fg_sprites` | Foreground tile layers | `TileChunkIndex` |
+
+That split is what makes the index pay: leaving the tiles in `all_sprites` would
+force the renderer to walk all 839 of them every frame just to discover it had
+already drawn them. Measured on level 0: **0.22 ms against 0.28 ms** for the scan;
+at 22 000 tiles, **0.07 ms against 2.67 ms**. The tile layers stay in
+`collision_sprites` as before, so physics is untouched.
+
+Anything that genuinely wants the whole world — the debug overlay, the sprite
+counter — reads `SpriteGroups.every_sprite` instead of one group. The index
+decides which sprites are *worth asking about*; `Camera.is_visible` still decides
+which are drawn, so a chunk can over-select but never under-select.
+
+---
 
 ## Data-driven gameplay
 
-Attacks, enemies, the player and the level registry live in **tracked JSON**
-under `data/gameplay/`. These files are versioned (unlike `assets/`), so balance
-changes are reviewable in a pull request. The frozen dataclasses stay the
-runtime model.
+Attacks, enemies, the player and the level registry live in **tracked JSON** under
+`data/gameplay/`. These files are versioned — unlike `assets/` — so balance changes
+are reviewable in a pull request. The frozen dataclasses stay the runtime model.
 
 | File | Contents |
 |---|---|
@@ -500,83 +534,173 @@ runtime model.
 
 Loading is **strict**: unknown keys, missing fields, bad versions and unknown
 attack references raise `GameplayDataError`. A *missing* file falls back to the
-historical in-code values with a warning, so the game never refuses to boot over
-a data problem.
+historical in-code values with a warning, so the game never refuses to boot over a
+data problem.
 
 **Environment variables**
 
 | Variable | Purpose |
 |---|---|
-| `DEBUG=1` | Enable the debug overlay and hotkeys. |
+| `DEBUG=1` | Enable the debug overlay and hotkeys. Same as `main.py --debug`. |
 | `KNIGHTROCK_DATA_DIR` | Alternate root containing `gameplay/*.json` (modders, tests). |
-| `KNIGHTROCK_EXPORT_DIR` | Destination for F9 attack exports (default `~/.knightrock/exports/`). |
+| `KNIGHTROCK_EXPORT_DIR` | Destination for `F9` attack exports (default `~/.knightrock/exports/`). |
 | `KNIGHTROCK_SAVE_DIR` | Override the save directory (default `~/.knightrock/`). |
 | `SDL_VIDEODRIVER=dummy` | Headless rendering (CI, automated tests). |
 | `SDL_AUDIODRIVER=dummy` | Headless audio (CI, automated tests). |
 
-## Tests & quality
+---
 
-Run the suite:
+## Architecture
+
+```
+src/
+├── application/   Scene stack, event bus, save game, settings store
+│   └── scenes/    menu · level select · options · video · controls category ·
+│                  controls · gameplay · pause · game over · victory
+├── combat/        Frame data, hit resolver, knockback, charge and combo
+│                  tracking (CombatSystem lives in core/level/systems/)
+├── core/          Bootstrap (game.py), settings, paths, colors, object pool,
+│                  hazards, sprites, sprite groups, asset library, audio
+│   ├── animation/ Animator
+│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
+│   ├── fx/        Draw, particles, spawners
+│   ├── input/     Bindings, providers, managers, input state
+│   ├── level/     Level facade + ordered fixed-tick systems
+│   ├── rendering/ Camera (fixed framing + a density read off the target),
+│   │              renderer, tile chunk index, world-overlay port
+│   └── rollback/  Snapshot ring buffer and deterministic restore
+├── data/          Strict JSON loaders + in-code fallback values
+├── entities/      Entity base, player + controllers, projectiles, vitals,
+│                  crouch posture
+│   └── enemies/   Data-driven configs, factory, per-type behaviour
+├── physics/       Collisions, gravity, movement, spatial hash, entity grid
+├── states/        State machines (player, enemies, shared reactions, turn)
+└── ui/            Player HUD, panels, world-space debug overlay
+                   (dimensions in `world_overlay_metrics.py`, bars in
+                   `world_overlay_bars.py`, menus in `metrics.py`)
+
+data/gameplay/     Tracked JSON gameplay values
+assets/            TMX levels and sprites — required at runtime
+notes/             Refactoring plans, audit reports, measurements, open gaps
+```
+
+### Reading the code, module by module
+
+| Module | Owns |
+|---|---|
+| `src/core/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
+| `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. Each system stays independently testable. |
+| `src/application/events.py` | A synchronous, strictly ordered event bus with two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`, `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no reference to the application) and interface feedback (`UiFeedback`, emitted by the input dispatcher from what a screen reports). Subscribers must never mutate the simulation. |
+| `src/core/audio.py` | The only module that touches `pygame.mixer`, and it is a **consumer**: it never asks who did something and imports neither the input router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole policy — one effect, one cue — and `attach(bus)` subscribes to the facts it answers. It loads each sound once, caches it, applies the cue's category volume and never raises: no sound card, no asset and an undecodable file all end with a warning and a silent cue, which is also the CI path. |
+| `src/core/rendering/overlay.py` | The `WorldOverlay` port. `UIManager` implements it and `Game.world_overlay` builds it once. |
+
+The **frame loop is paced exactly once**: with vsync off the `Clock` holds the
+frame limit, with vsync on the present already blocks on the vertical blank, so the
+clock is ticked only against a runaway ceiling derived from that rate. Targeting
+60 on top of a 60 Hz present waits twice for one refresh and alternates between on
+time and one refresh late. The ceiling is a backstop, not a frame rate control,
+and it is derived rather than hardcoded so raising the limit can never leave it
+underneath. `Display.FPS` is a build target that feeds that ceiling — *not* the
+player-facing frame rate, which lives in `settings_store.FRAME_LIMITS`. A frame
+runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
+
+> **The interface reaches the world by injection, not by import.** The renderer
+> takes a `WorldOverlay` and draws nothing beyond the world without one, so `core`
+> never imports `ui`. `GameplayScene` does name `UIManager` concretely, which is
+> the point: `application` is where the two layers are allowed to meet.
+> `tests/unit/test_layer_boundaries.py` enforces the direction, so the next
+> convenient import does not put it back.
+
+---
+
+## Conventions
+
+- **Typed code.** `mypy src main.py tools` is blocking
+  (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) with **no
+  per-module override left** in `pyproject.toml`. `tests/` is excluded, on
+  purpose.
+- **Formatted & measured.** `ruff format` for style, `C901` for cyclomatic
+  complexity (threshold 10, every exception justified).
+- **Deterministic simulation.** Fixed timestep
+  (`Simulation.TICK_RATE = 60`). Nothing may introduce non-determinism into the
+  tick.
+- **Centralized tuning.** Gameplay constants live in `src/core/settings.py` — no
+  magic numbers in the systems. A constant **shared by two modules has exactly
+  one home**, and it belongs to the module that acts on it: HP-bar geometry is
+  defined once in `src/ui/world_overlay_metrics.py`, which every layer that draws
+  a bar reads, and it reaches the renderer through the `WorldOverlay` port rather
+  than by `core` importing `ui`. Two copies agree only until someone edits one.
+  UI-only constants (`HUD_PIP_SIZE`, `HEALTH_BAR_*`) stay in their UI module, and
+  renderer internals (`DASH_STRETCH_*`) stay next to their only user.
+- **One table for the interface.** `src/ui/metrics.py` holds every layout
+  dimension of the menus as a `DESIGN_*` constant, and `Metrics` is the only
+  thing that multiplies one by a scale. A view may not contain a layout literal.
+  The reason is not tidiness: at a window density of 1.889 the grid used to pair a
+  49 px font with 34 px rows, so a clickable band covered 44 % of the label above
+  it and clicking the row you read activated the row above.
+- **A row is never shorter than its text**, at any scale, in any window. A list
+  that does not fit gives up *font size* (down to `MIN_TEXT_RATIO`) instead,
+  because smaller text is still readable while an overlapping row is not clickable
+  at all. `GridView` measures the real fonts rather than trusting the design
+  constants, since a fallback face has different metrics again.
+- **No dead menu options.** User-facing hotkeys are mirrored by tests.
+
+---
+
+## Tests & quality
 
 ```bash
 uv run pytest
 ```
 
-Coverage — CI enforces an 80 % instruction threshold (currently **90 %**):
+> **Current baseline:** 2491 tests · 94 % instruction coverage · 82 % branch
+> coverage · Ruff clean · mypy clean (175 files across `src main.py tools`;
+> `mypy src` alone is 172).[^coverage]
+
+Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
+display. Coverage, from:
 
 ```bash
 uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
-```
-
-Branch coverage is measured separately (currently **76 %**) and is *not*
-compared against the instruction percentage:
-
-```bash
 uv run pytest --cov=src --cov-branch --cov-report=term-missing
 ```
 
-The figures quoted in the badges, the summary table and the baseline block at
-the end of this section are the output of the two commands above.
-`tests/unit/test_readme_claims.py` re-checks the test count on every run
-(`pytest --collect-only` costs under a second) and checks that the three
-places quoting a coverage pair still agree with each other, so the numbers
-cannot drift apart silently. The mypy file counts come from
-`uv run mypy src main.py tools` and `uv run mypy src`.
+Branch coverage is measured but **not gated**: CI compares the instruction
+percentage against 80 % and nothing else. There is no `[tool.coverage]` section,
+so `--cov-branch` is opt-in per command.
 
-Static analysis — every check below is **blocking in CI**:
+Static analysis — every check below is **blocking in CI**
+(`.github/workflows/build.yml`):
 
 ```bash
 uv run ruff check src tests main.py tools            # lint
 uv run ruff format --check src tests main.py tools   # formatting
-uv run ruff check src tests --select C901            # complexity (threshold 10)
 uv run mypy src main.py tools                         # types
 ```
 
-`src` carries no mypy per-module override any more, and
-`disallow_incomplete_defs` is on globally, so a partially annotated signature
-is a CI failure rather than something mypy quietly accepts.
+`C901` has no standalone CI step — it is enforced because it sits in the ruff
+`select` list consumed by the lint step. Ruff covers all four paths, 328 files.
 
-`tests/` is **deliberately not type-checked**, which is why the mypy command
-above omits it: running `uv run mypy tests` on its own reports 773 errors in 78
-files. That is not a broken gate — the suite pins behaviour, not annotations,
-and test doubles are intentionally loose. Do not add `tests` to the mypy
-command in `.github/workflows/build.yml` without treating that debt first.
-Ruff *does* cover `tests/`, so it is linted and format-checked like everything
-else.
+`tests/` is **deliberately not type-checked**, which is why the mypy command omits
+it.[^mypy-tests] The suite pins behaviour, not annotations, and test doubles are
+intentionally loose; Ruff *does* cover `tests/`. Do not add `tests` to the mypy
+command in `build.yml` without treating that debt first.
 
-The same gates run
-locally through `pre-commit`:
+`pre-commit` runs the lint and format passes locally, auto-fixing rather than
+checking, and does not run coverage:
 
 ```bash
 uv run pre-commit install   # once
 uv run pre-commit run --all-files
 ```
 
-> **Current baseline:** 2491 tests passing · 93 % instruction coverage ·
-> 85 % branch coverage · Ruff clean · mypy clean (168 files across
-> `src main.py tools`, the CI command; `mypy src` alone is 165). Tests run headless
-> through the `SDL_*_DRIVER=dummy` variables, so
-> they need no display.
+`tests/unit/test_readme_claims.py` runs as part of the suite and re-checks this
+file: it recounts the collected tests and asserts that every test-count figure
+here equals the real one, and that the coverage badge and the coverage pair agree
+with each other. It checks internal consistency, not truth — keep this section in
+sync when the numbers move.
+
+---
 
 ## Packaging & releases
 
@@ -594,146 +718,32 @@ uv run --with pyinstaller==6.22.2 pyinstaller knightrock.spec --noconfirm --clea
    artifacts, with a **headless smoke test** that boots the packaged binary;
 3. publishes a GitHub Release with those artifacts when a `v*` tag is pushed.
 
-## Architecture
+---
 
-```
-src/
-├── application/   Scene stack, event bus, save game
-│   └── scenes/    menu · level select · options · controls · gameplay ·
-│                  pause · game over · victory
-├── core/          Bootstrap (game.py), settings, paths, colors, fx
-│   ├── input/     Bindings, providers, managers, input state
-│   ├── level/     Level facade + ordered fixed-tick systems
-│   ├── rendering/ Camera (fixed framing + a density read off the target), renderer,
-│   │              and the tile chunk index that culls the frozen terrain
-│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
-│   ├── rollback/  Snapshot ring buffer and deterministic restore
-│   ├── rendering/ Camera, renderer, tile chunk index, world-overlay port
-│                   Asset library and animator (`core/asset_library.py`)
-│                   Audio bus (`core/audio.py`)
-├── combat/        Frame data, hit resolver, knockback, charge and combo
-│                  tracking (CombatSystem lives in core/level/systems/)
-├── entities/      Entity base, player + controllers, projectiles, vitals
-│   └── enemies/   Data-driven configs, factory, per-type behaviour
-├── physics/       Collisions, gravity, movement, spatial hash, entity grid
-├── states/        State machines (player, enemies, shared reactions)
-├── ui/            Player HUD, panels, world-space debug overlay
-│                 (dimensions in `world_overlay_metrics.py`, health bars in
-│                 `world_overlay_bars.py`)
-└── data/          Strict JSON loaders + in-code fallback values
-data/gameplay/     Tracked JSON gameplay values (attacks, enemies, player, levels)
-assets/            TMX levels and sprites — required at runtime (git-ignored)
-notes/             Refactoring plans, audit reports and open gaps
-```
+## Further notes
 
-**Reading the code, module by module**
+Written in French unless stated otherwise.
 
-- `src/core/game.py` owns the display, input and the scene stack; the loop feeds
-  fixed ticks to the active scene, draws into the render target and presents
-  it once. The loop is paced **exactly once**: with vsync off the `Clock` holds
-  the frame limit, with vsync on the present already blocks on the vertical
-  blank, so the clock is ticked only against a runaway ceiling derived from that
-  rate — targeting 60 on top of a 60Hz present waits twice for one refresh and
-  the cadence alternates between on time and one refresh late. The ceiling is a
-  backstop, not a frame rate control, and it is derived rather than hardcoded so
-  raising the limit can never leave it underneath. A frame runs at most
-  `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped: the
-  accumulator's own clamp bounds a single frame, and only accumulated debt from
-  a sustained overload can exceed that.
-- `src/core/level/systems/gameplay_loop.py` defines the *order* in which the
-  level systems run; each system stays independently testable.
-- The world is drawn from three **planes**, split by one property: whether the
-  sprite moves. The tile layers are built once and never move, so they live in
-  `SpriteGroups.static_sprites` and `fg_sprites` and are culled through
-  `TileChunkIndex`, a chunk grid built once at load; everything that moves is
-  in `all_sprites` and is scanned, which is exact and cheap because it is tens
-  of sprites. The split is what makes the index pay: leaving the tiles in
-  `all_sprites` would force the renderer to walk all ~840 of them every frame
-  just to discover it had already drawn them. Anything that genuinely wants the
-  whole world — the debug overlay, the sprite counter — reads
-  `SpriteGroups.every_sprite` instead of one group, and the tile layers stay in
-  `collision_sprites` as before, so physics is untouched. The index decides
-  which sprites are *worth asking about*; `Camera.is_visible` still decides
-  which are drawn, so a chunk can over-select but never under-select.
-  `tests/unit/test_tile_chunk_index.py` asserts that on the real level, and
-  `render_benchmark.py` measures it: 0.22 ms against 0.28 ms for the scan on
-  level 0, and 0.07 ms against 2.67 ms at 22 000 tiles.
-- `src/application/events.py` is a synchronous, strictly ordered event bus with
-  two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`,
-  `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no
-  reference to the application) and interface feedback (`UiFeedback`, emitted by
-  the input dispatcher from what a screen reports). Subscribers (UI, save, audio,
-  logs) must never mutate the simulation.
-- `src/core/audio.py` is the only module that touches `pygame.mixer`, and it is a
-  **consumer**: it never asks who did something and imports neither the input
-  router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole
-  policy — one effect, one cue — and `attach(bus)` subscribes to the facts it
-  answers, so a single line in the application layer knows the audio system
-  exists. It loads each sound once, caches it, applies the volume of the cue's
-  category and never raises: no sound card, no asset and an undecodable file all
-  end with a warning and a silent cue, which is also the CI path since `assets/`
-  is git-ignored. Silence is structural rather than a setting: a screen reports
-  `None` when it did nothing, so the gameplay keys the player holds and a key
-  swallowed by a rebinding capture are never announced.
-- Combat is frame-data driven: startup / active / recovery phases feed
-  `HitboxManager` and `HitResolver` through the two-pass deterministic
-  `CombatSystem`.
-- The interface reaches the world by **injection**, not by import. `Renderer`
-  takes a `WorldOverlay` (`src/core/rendering/overlay.py`) and draws nothing
-  beyond the world without one; `UIManager` implements it, and `Game.world_overlay`
-  builds it once and hands it to the level. So `core` never imports `ui`: the
-  renderer can be built to ask whether a tile is culled without standing up a
-  font cache and a panel layout first, and a level transition no longer throws
-  the previous interface — and every font it had cached — away. `GameplayScene`
-  does name `UIManager` concretely, which is the point: `application` is where
-  the two layers are allowed to meet. `tests/unit/test_layer_boundaries.py`
-  enforces the direction, so the next convenient import does not put it back.
+| File | Contents |
+|---|---|
+| `notes/audit_consolide.md` | Consolidated code audit. |
+| `notes/audit_ui.md`, `notes/audit_controles.md` | UI and input audits, with the delivery matrix and acceptance checklist. |
+| `notes/ecarts_ouverts.md` | Open gaps and the measured reference baseline. |
+| `notes/hitbox_amelioration.md` | Hitbox and advanced-combat work, with `notes/plan_hitbox_amelioration_partiels.md` for the partial-compliance follow-up. |
+| `notes/plan_limit_frames_video.md` | Planned frame-limit setting for the video menu, with the measurements that bound it. |
+| `notes/audit_p1_measured.md` | Measured rendering baselines behind the tile-chunk index numbers. |
+| `notes/audit_dimensions_fenetre.md` | Window and sizing audit, with the `smoothscale` measurements. |
+| `notes/perf_debug_overlay.md` | The overlay pass cost, with and without the static layer. |
+| `notes/perf_shatter_arc.md` | Particle construction cost and the 1:1 present measurement. |
+| `notes/refacto.md` | Refactoring plans and open threads. |
 
-## Conventions
+---
 
-- **Typed code.** `mypy src main.py tools` is blocking
-  (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) with
-  **no per-module override left** in
-  `pyproject.toml`, so a partially annotated signature is a CI failure rather
-  than something mypy quietly accepts. `tests/` is excluded, on purpose.
-- **Formatted & measured.** `ruff format` for style, `ruff --select C901` for
-  cyclomatic complexity (threshold 10, every exception justified).
-- **Deterministic simulation.** Fixed timestep (`Simulation.TICK_RATE = 60`);
-  rendering follows `Display.FPS`. Nothing may introduce non-determinism into
-  the tick.
-- **Centralized tuning.** Gameplay constants live in `src/core/settings.py` —
-  no magic numbers in the systems. A constant **shared by two modules has
-  exactly one home**, and it belongs to the module that acts on it: the HP bar
-  geometry is defined once in `src/ui/world_overlay_metrics.py`, which every
-  layer that draws a bar reads, and it reaches the renderer through the
-  `WorldOverlay` port rather than by `core` importing `ui`. Two copies agree
-  only until someone edits one. UI-only constants (`HUD_PIP_SIZE`,
-  `HEALTH_BAR_*`) stay in their UI module, and renderer internals
-  (`DASH_STRETCH_*`) stay next to their only user.
-- **One table for the interface.** `src/ui/metrics.py` holds every layout
-  dimension of the menus as a `DESIGN_*` constant, and `Metrics` is the only
-  thing that multiplies one by a scale. A view may not contain a layout
-  literal: paddings, gaps, row heights and the panel border all come from a
-  token. The reason is not tidiness — at a window density of 1.889 the grid used
-  to pair a 49px font with 34px rows, so a clickable band covered 44% of the
-  label above it and clicking the row you read activated the row above.
-- **A row is never shorter than its text**, at any scale, in any window. A list
-  that does not fit gives up *font size* (down to `MIN_TEXT_RATIO`) instead,
-  because smaller text is still readable while an overlapping row is not
-  clickable at all. `GridView` measures the real fonts rather than trusting the
-  design constants, since a fallback face has different metrics again.
-- **No dead menu options.** User-facing hotkeys are mirrored by tests
-  (`DEBUG KEYS` panel, bindings, attack sets).
+[^coverage]: Measured on this commit. `tests/unit/test_readme_claims.py` checks
+    that the figures agree with each other, not that they agree with a run.
 
-## Documentation
-
-- `notes/audit_consolide.md` — consolidated code audit (written in French).
-- `notes/audit_ui.md` and `notes/audit_controles.md` — UI and input audits, with
-  the delivery matrix and acceptance checklist (written in French).
-- `notes/ecarts_ouverts.md` — open gaps and the measured reference baseline
-  (written in French).
-- `notes/hitbox_amelioration.md` — hitbox and advanced-combat work, with
-  `notes/plan_hitbox_amelioration_partiels.md` for the partial-compliance
-  follow-up (written in French).
-- `notes/plan_limit_frames_video.md` — planned frame-limit setting for the
-  video menu, with the measurements that bound it (written in French).
+[^mypy-tests]: Adding `tests/` to the mypy gate means first paying roughly 1400
+    errors across 122 files of intentionally loose test doubles. That figure grows
+    with every new test module — re-measure with `uv run mypy tests` rather than
+    trusting it, and note that it is far higher under recent mypy releases than
+    when it was first recorded.
