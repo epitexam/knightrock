@@ -236,6 +236,44 @@ class Camera:
         self._clamp_to_world()
         self._viewport = None
 
+    def hold(self, delta_time: float) -> None:
+        """Hold the framing still on a tick the camera does not follow, ageing the shake.
+
+        The counterpart to :meth:`follow` for the ticks the level pipeline
+        spends holding the picture still -- today, the respawn window, where a
+        dead body has nowhere to be followed to. Skipping :meth:`follow` is not
+        enough on its own, and the reason is the interpolation rather than the
+        position.
+
+        :meth:`follow` leaves a gap on purpose: it stashes where the draw left
+        off in ``_previous_offset`` and moves ``offset``, and ``begin_frame``
+        blends between them by the pending-tick fraction so the picture stays
+        smooth between a tick's end and the next one's. That fraction is
+        residual real time, and it wanders every frame. Normally the next
+        :meth:`follow` closes the gap, and the wander is motion worth drawing.
+
+        While the camera is held there is no next :meth:`follow`, so nothing
+        ever closed the gap -- it froze at the last tick's worth of travel (4
+        world px, measured) and stayed there for the whole window. The
+        simulation was not halted either, so the fraction kept being a live
+        fraction rather than pinned to 1 as it is behind the pause menu, and
+        every wandering fraction was multiplied by that permanent gap and drawn
+        as the entire frame sliding up and down, several pixels a frame, twice a
+        second, for two seconds. It read as the screen trembling.
+
+        So holding closes the gap. With it at zero there is nothing to
+        interpolate, the fraction cannot matter, and the picture is exactly
+        where the simulation left it whatever the display's frame rate does --
+        which is the same invariant ``Game.render_alpha`` forces by hand behind
+        the pause menu, reached here by removing the gap instead of by
+        overriding the fraction.
+
+        The framing does not move, so the resolved viewport stays valid and
+        there is nothing to invalidate; the shake still ages.
+        """
+        self._previous_offset.update(self.offset.x, self.offset.y)
+        self.advance_shake(delta_time)
+
     def advance_shake(self, delta_time: float) -> None:
         """Age the impact shake by one tick: decay its trauma and move its phase.
 
@@ -253,8 +291,9 @@ class Camera:
 
         So the shake ages whether or not the camera is following anybody.
         :meth:`follow` still calls it, keeping the two in lockstep for a living
-        player; a caller that skipped ``follow`` for its own reasons has to age
-        the shake itself.
+        player, and :meth:`hold` is what a caller that is not following calls
+        instead -- it ages the shake and settles the interpolation, and a tick
+        that is given neither has quietly stopped both.
         """
         self._shake_time += delta_time
         self.trauma = max(0.0, self.trauma - CameraShake.DECAY_PER_S * delta_time)

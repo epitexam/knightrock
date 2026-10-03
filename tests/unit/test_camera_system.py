@@ -36,6 +36,59 @@ def test_a_dead_player_stops_the_camera() -> None:
     assert camera.offset == settled
 
 
+def test_the_whole_frame_does_not_move_while_the_player_is_dead() -> None:
+    """The death window must not depend on the display's frame rate.
+
+    ``follow`` leaves a pending-tick gap between ``_previous_offset`` and
+    ``offset`` so ``begin_frame`` can interpolate across it, and normally the
+    next ``follow`` closes it. While the camera is held there is no next
+    ``follow``, so the gap used to freeze at one tick's worth of travel (4
+    world px, measured) and stay there for the whole window.
+
+    The simulation is not halted during a death, so the interpolation fraction
+    stayed a live fraction rather than being pinned to 1 as it is behind the
+    pause menu -- and it wanders every frame, because it is residual real time.
+    A permanent gap times a wandering fraction is drawn as the entire frame
+    sliding several pixels up and down, twice a second, for two seconds.
+
+    So the picture while dead must be the picture for *any* fraction. This is
+    the invariant that was broken, and it is asserted over the range rather than
+    at one value: a single alpha would pass by luck.
+    """
+    camera = Camera()
+    camera.set_world_size(2560, 1920)
+    system = CameraSystem(camera)
+    moving = _player(True, pygame.FRect(2000, 1500, 64, 64))
+    _ticks(system, moving, 0.25)
+    corpse = _player(False)
+    _ticks(system, corpse, 0.5)
+
+    shifts = set()
+    for step in (0.0, 0.02, 0.25, 0.5, 0.75, 0.98, 1.0):
+        camera.begin_frame(step)
+        shifts.add((camera._shift, camera._shift_y))
+
+    assert len(shifts) == 1, f"the frame moves with the frame rate: {sorted(shifts)}"
+
+
+def test_holding_does_not_move_the_framing() -> None:
+    """Closing the interpolation gap must not nudge where the camera sits.
+
+    The gap is settled where the tick left the camera, so the picture on the
+    tick a player dies corrects to the simulation's position -- at most the one
+    tick of travel it had already earned -- rather than jumping anywhere new.
+    """
+    camera = Camera()
+    camera.set_world_size(2560, 1920)
+    system = CameraSystem(camera)
+    _ticks(system, _player(True, pygame.FRect(2000, 1500, 64, 64)), 0.25)
+    where_the_death_lands = camera.offset.copy()
+
+    system.process(1 / 60, _player(False))
+
+    assert camera.offset == where_the_death_lands
+
+
 def test_the_shake_decays_while_the_player_is_dead() -> None:
     """A dead player used to freeze the shake at full amplitude for the whole window.
 
