@@ -393,6 +393,15 @@ class WorldBuilder:
             config = (
                 self.gameplay_data.enemies.get(obj.name) if self.gameplay_data is not None else None
             )
+            where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+            # Absent is not false: an enemy that authors no direction keeps the
+            # coin toss, and one that does gets what it was given. Collapsing
+            # the two would pin every unplaced enemy to the same heading.
+            reverse = (
+                props.flag(obj.properties, "reverse", False, where=where)
+                if "reverse" in obj.properties
+                else None
+            )
             entity = create_enemy(
                 obj.name,
                 pos=(obj.x, obj.y),
@@ -401,6 +410,7 @@ class WorldBuilder:
                 player_reference=player,
                 config=config,
                 spatial_hash=self.spatial_hash,
+                reverse=reverse,
             )
             groups.combat_sprites.add(entity)
             groups.entity_sprites.add(entity)

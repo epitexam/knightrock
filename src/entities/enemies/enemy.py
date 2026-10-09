@@ -178,7 +178,13 @@ class Enemy(Entity):
         self.floor_control = CombatSettings.ENEMY_FLOOR_CONTROL
         self.air_control = CombatSettings.ENEMY_AIR_CONTROL
 
-        self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
+        if config.reverse is None:
+            self.patrol_direction = 1 if self.rng.random() > 0.5 else -1
+        else:
+            # Authored, so deterministic: a property written on every placement
+            # is a statement about that placement, and a coin would answer it
+            # with noise half the time.
+            self.patrol_direction = -1 if config.reverse else 1
         self.patrol_timer = 0.0
         self.patrol_interval = config.patrol_interval
 

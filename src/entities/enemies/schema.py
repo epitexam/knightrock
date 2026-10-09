@@ -46,6 +46,13 @@ class EnemyConfig:
     # None = immune (e.g. dummy).  Set per enemy type in its config.
     parry_stun_threshold: int | None = None
     parry_stun_duration: float = 0.0
+    # Authored initial patrol direction, off the TMX object's ``reverse``
+    # property. ``None`` leaves the historical coin toss, so a type that authors
+    # no direction behaves exactly as it always did; ``False`` pins the heading
+    # forward and ``True`` the other way. The three states matter: a property
+    # written on every placement is a statement about that placement, and
+    # folding "false" into "absent" would answer half of them with noise.
+    reverse: bool | None = None
     # Pivot sub-group: the name of a profile in ``settings.PROFILES`` to layer
     # onto the "enemy" group, e.g. "enemy_goblin".  None means the group as it
     # is, which for enemies is off -- so this is what turns the pivot on for one

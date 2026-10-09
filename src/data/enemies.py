@@ -110,6 +110,10 @@ def read_enemy_config(
                 else None
             ),
             parry_stun_duration=float(raw.get("parry_stun_duration", 0.0)),
+            # None is not a JSON value: the key is simply absent when the type
+            # authors no direction. Present and false are different -- the first
+            # keeps the historical coin toss, the second pins the heading.
+            reverse=(bool(raw["reverse"]) if raw.get("reverse") is not None else None),
             # Pivot sub-group name. Left as-is rather than validated against
             # ``settings.PROFILES``: an unknown name resolves to the shipped
             # defaults, and a level that names a group nobody defined should
@@ -181,5 +185,6 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "parry_stun_threshold": config.parry_stun_threshold,
         "parry_stun_duration": config.parry_stun_duration,
         **({"turn_profile": config.turn_profile} if config.turn_profile is not None else {}),
+        **({"reverse": config.reverse} if config.reverse is not None else {}),
         "animations": dict(config.animations),
     }

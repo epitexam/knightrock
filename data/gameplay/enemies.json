@@ -226,7 +226,8 @@
       "animations": {
         "idle": "assets/graphics/enemies/shell/idle",
         "attack": "assets/graphics/enemies/shell/fire"
-      }
+      },
+      "reverse": null
     },
     "tooth": {
       "size": [
@@ -270,7 +271,8 @@
         "idle": "assets/graphics/enemies/tooth/run",
         "patrol": "assets/graphics/enemies/tooth/run",
         "chase": "assets/graphics/enemies/tooth/run"
-      }
+      },
+      "reverse": null
     }
   }
 }

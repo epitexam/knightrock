@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from dataclasses import replace
 
 from pygame.math import Vector2
 from pygame.sprite import Group
@@ -33,6 +34,7 @@ def create_enemy(
     player_reference: PlayerReference | None = None,
     config: EnemyConfig | None = None,
     spatial_hash: SpatialHash | None = None,
+    reverse: bool | None = None,
 ) -> Enemy:
     """Create an enemy from the shared enemy registry.
 
@@ -69,6 +71,8 @@ def create_enemy(
     """
     config = config if config is not None else ENEMY_CONFIGS[name]
     spawn_pos = (float(pos[0]), float(pos[1]))
+    if reverse is not None:
+        config = replace(config, reverse=reverse)
     return Enemy(
         pos=spawn_pos,
         groups=groups,

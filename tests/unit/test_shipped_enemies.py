@@ -60,9 +60,10 @@ def test_every_enemy_the_level_declares_is_a_registered_type(built_enemies: list
     the art was drawn, and nothing in the level could be damaged. Each enemy
     built here carries a config, which is only true for a resolved name.
     """
-    known = {id(config) for config in ENEMY_CONFIGS.values()}
     for enemy in built_enemies:
-        assert id(enemy.config) in known, f"{enemy} was built without a registered enemy config"
+        assert enemy.enemy_type in ENEMY_CONFIGS, (
+            f"{enemy} was built as {enemy.enemy_type!r}, which is not a registered enemy"
+        )
 
 
 @pytest.mark.skipif(not ASSETS_PRESENT, reason="assets/ is git-ignored and absent")
