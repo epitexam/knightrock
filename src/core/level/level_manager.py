@@ -6,6 +6,7 @@ from pathlib import Path
 from pytmx.util_pygame import load_pygame
 
 from src.core.level.level_data import LevelData
+from src.core.level.properties import LevelPropertyError
 from src.core.paths import resource_path
 
 LEVEL_PATHS: dict[int, str] = {
@@ -39,6 +40,17 @@ class UnknownLevelError(LookupError):
             "A save file written by a build that shipped more levels than this "
             "one references an id that no longer exists."
         )
+
+
+class LevelLoadError(ValueError):
+    """The level file is there, but it cannot be turned into a level.
+
+    pytmx signals a truncated map with a ``ParseError`` and a missing tileset
+    with a bare ``Exception``, neither of which says anything about which map
+    was being read. ``LevelManager`` is the one place that knows, so this is
+    where the path and the original cause are attached. A ``ValueError`` so
+    that a caller which already handled a bad value keeps handling it.
+    """
 
 
 class LevelManager:
@@ -85,6 +97,7 @@ class LevelManager:
         Raises:
             UnknownLevelError: ``level_id`` is not in the registry.
             FileNotFoundError: The level is registered but its file is missing.
+            LevelLoadError: The file is there but cannot be turned into a level.
         """
         if level_id not in self._cache:
             if level_id not in self.level_paths:
@@ -97,8 +110,14 @@ class LevelManager:
                     "be present (clone the repository with assets, or restore "
                     "the missing file)."
                 )
-            tmx_map = load_pygame(absolute_path)
-            self._cache[level_id] = LevelData.from_tmx(tmx_map)
+            try:
+                tmx_map = load_pygame(absolute_path)
+                level_data = LevelData.from_tmx(tmx_map)
+            except LevelPropertyError:
+                raise
+            except Exception as error:  # noqa: BLE001 - pytmx raises bare types
+                raise LevelLoadError(f"{absolute_path} cannot be loaded: {error}") from error
+            self._cache[level_id] = level_data
         return self._cache[level_id]
 
     def next_id(self, level_id: int) -> int | None:
