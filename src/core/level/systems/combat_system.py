@@ -226,6 +226,8 @@ class CombatSystem:
                     continue
                 if id(entry_a.attacker) in clashed or id(entry_b.attacker) in clashed:
                     continue
+                if id(entry_a.attacker) in losers or id(entry_b.attacker) in losers:
+                    continue
                 if not _hitbox_pairs_overlap(entry_a, entry_b):
                     continue
                 self.metrics.overlaps += 1

@@ -74,6 +74,40 @@ def test_equal_priority_clash_cancels_both() -> None:
     assert system.hit_stop_timer > 0.0
 
 
+def _one(faction: str, priority: int, x: float = 100.0, clash: str = "trade"):
+    entity = entity_at(
+        x,
+        faction=faction,
+        hurtbox_inflate=(-38.0, -38.0),
+        definition=attack(
+            phase(
+                startup=1,
+                active=8,
+                recovery=1,
+                size=(60.0, 40.0),
+                priority=priority,
+                clash=clash,
+            )
+        ),
+    )
+    entity.combat.capture_attack_origin()
+    assert entity.combat.start_attack("test")
+    entity.combat.update(1 / 60)
+    entity.combat.sync_attack_box()
+    return entity
+
+
+def test_an_attacker_already_cancelled_cancels_no_one_else() -> None:
+    high = _one("A", 5)
+    middle = _one("B", 3)
+    low = _one("A", 0)
+    system = CombatSystem()
+    system.process_attacks([high, middle, low])
+    assert not middle.combat.state.is_attacking
+    assert high.combat.state.is_attacking
+    assert low.combat.state.is_attacking
+
+
 def test_unblockable_bypasses_guard() -> None:
     from pygame.sprite import Group
 
