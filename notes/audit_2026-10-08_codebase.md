@@ -1071,16 +1071,40 @@ La couverture est large ; les trous sont dans les **branches**, pas dans les fic
 *Ordonnancement par ratio bénéfice/effort. Aucun item n'ajoute de feature ni ne change le
 comportement voulu du jeu.*
 
+> **Statut après traitement** — branche `fix/remediation`, 30 commits au-dessus de `5b2b9cd`.
+> Chaque item ci-dessous porte une marque : **fait**, **refusé** (décision de l'auteur du
+> projet), ou **reste** (non traité). Les marques sont posées sur la colonne « # », pour que
+> le tableau se lise comme un état des lieux et non comme une liste de courses.
+>
+> **fait** : 0.0, 0.2, 0.3, 0.4, 0.5, 1.1 à 1.6, 2.1 à 2.9, 3.1, 3.2, 3.3, 3.4, 3.6, 3.7,
+> 4.1, 4.2, 4.3, 4.4, 4.7 — plus les LOW de la section G qui valaient une ligne de code
+> (G10, G12, G13, G17). 0.4 et 0.5 ont livré `shell` et `tooth`, qui passent le nombre
+> d'ennemis du niveau livré de 0 à 12, et la propriété `reverse` que 17 shells sur 17
+> portent est enfin lue.
+>
+> **refusé** : **0.1** — la décision d'exclure `assets/data` et `assets/graphics` du contrôle
+> de version est celle de l'auteur du projet, pas un oubli de cet audit. Le reste du plan a
+> été traité en la respectant, et 0.2 couvre ce que 0.1 aurait apporté : le manifeste échoue
+> dès que les cartes sont là.
+>
+> **reste** : **3.5**, **4.5**, **4.6**, **4.8**, et **G6** (les sept salles enregistrées).
+> G6 est **volontairement** laissé de côté : le système de niveaux part sur une matrice
+> Metroidvania, et les brancher en chaîne linéaire construirait le système qu'on remplace.
+> Voir `notes/design_matrice_niveaux.md`. Les trois autres sont des manques réels, pas des
+> choix : aucun `firstgid` dupliqué détecté, les 3 blocs `getattr` de `hit_resolver.py`
+> toujours là, `DASH_AIR_CONTROL`/`DASH_WALL_BOUNCE` toujours non couverts, et une carte
+> `0×0` toujours acceptée.
+
 ### Lot 0 — Débloquer la reproductibilité (à faire en premier, tout le reste en dépend)
 
 | # | Action | Fichiers | Problème | Difficulté | Risque | Bénéfice |
 |---|---|---|---|---|---|---|
-| **0.0** | **Réparer la collecte du manifeste TMX** — sortir `_tmx_files()` du `parametrize` de module (guard `pytest.importorskip`-like, ou fixture paramétrée) pour qu'un checkout sans `assets/` **skip au lieu d'avorter la session** | `tests/unit/test_levels_manifest.py:39-61` | J1, D1/D3 | **SMALL** | LOW | La suite redevient exécutable en CI ; aujourd'hui elle sort en code 2 |
-| **0.1** | Retirer `assets/data` et `assets/graphics` du `.gitignore` | `.gitignore:39-40` | J1 | **SMALL** | LOW | Le projet devient clonable, buildable, et le bundle CI a enfin du contenu |
-| **0.2** | Faire échouer le manifeste TMX quand `assets/` est présent mais vide | `tests/unit/test_levels_manifest.py:32-41` | J1, J2 | SMALL | LOW | La CI peut enfin voir le contenu |
-| **0.3** | Faire échouer au chargement un nom de couche/objet inconnu, ou au minimum `logger.warning` | `level_registry.py:62`, `world_builder.py:363` | J13 | SMALL | LOW | Fin des niveaux silencieusement cassés |
-| **0.4** | Résoudre `shell`/`tooth` vs `ENEMY_CONFIGS` | `configs.py`, `enemies.json`, TMX | J2 | MEDIUM | MEDIUM | Le jeu a enfin des ennemis |
-| **0.5** | Test d'intégration : un vrai `.tmx` se charge et contient ≥1 ennemi | `tests/unit/` | J2 | SMALL | LOW | Empêche la régression de contenu |
+| **0.0 ✅** | **Réparer la collecte du manifeste TMX** — sortir `_tmx_files()` du `parametrize` de module (guard `pytest.importorskip`-like, ou fixture paramétrée) pour qu'un checkout sans `assets/` **skip au lieu d'avorter la session** | `tests/unit/test_levels_manifest.py:39-61` | J1, D1/D3 | **SMALL** | LOW | La suite redevient exécutable en CI ; aujourd'hui elle sort en code 2 |
+| **0.1 ❌ refusé** | Retirer `assets/data` et `assets/graphics` du `.gitignore` | `.gitignore:39-40` | J1 | **SMALL** | LOW | Le projet devient clonable, buildable, et le bundle CI a enfin du contenu |
+| **0.2 ✅** | Faire échouer le manifeste TMX quand `assets/` est présent mais vide | `tests/unit/test_levels_manifest.py:32-41` | J1, J2 | SMALL | LOW | La CI peut enfin voir le contenu |
+| **0.3 ✅** | Faire échouer au chargement un nom de couche/objet inconnu, ou au minimum `logger.warning` | `level_registry.py:62`, `world_builder.py:363` | J13 | SMALL | LOW | Fin des niveaux silencieusement cassés |
+| **0.4 ✅** | Résoudre `shell`/`tooth` vs `ENEMY_CONFIGS` | `configs.py`, `enemies.json`, TMX | J2 | MEDIUM | MEDIUM | Le jeu a enfin des ennemis |
+| **0.5 ✅** | Test d'intégration : un vrai `.tmx` se charge et contient ≥1 ennemi | `tests/unit/` | J2 | SMALL | LOW | Empêche la régression de contenu |
 
 > **0.1 et 0.2 sont la condition préalable à toute garantie future.** Tant que `assets/` est
 > ignoré, J2 et les tests d'intégration sont structurellement impossibles.
@@ -1095,51 +1119,51 @@ comportement voulu du jeu.*
 
 | # | Action | Fichiers | Problème | Difficulté | Risque | Bénéfice |
 |---|---|---|---|---|---|---|
-| **1.1** | Ne décruer `stagger_timer` qu'à un seul endroit (retirer des états dizzy) | `enemy_states.py:455-456`, `player_states.py:517-518` | J5 | SMALL | MEDIUM | Les fenêtres de stun durent enfin leur durée configurée |
-| **1.2** | Exclure les attaquants déjà annulés des comparaisons hit-vs-hit | `combat_system.py:227` | J6 | SMALL | MEDIUM | Un attaquant mort n'annule plus un tiers |
-| **1.3** | Cooldown par cible pour les dégâts de hazard | `hazard_damage.py` | J3 | MEDIUM | MEDIUM | Un ennemi ne meurt plus en 83 ms sur un saw |
-| **1.4** | Faire réellement porter le `is_hurt` au gate de contact damage | `contact_damage.py:44,112` | J4 | SMALL | MEDIUM | Symétrie avec le correctif 1.3 |
-| **1.5** | `sync_rects()` après `_snap_to_ground` | `movement.py:376-377` | J9 | **SMALL** | LOW | Collisionneur et hurtbox d'accord à la frame d'atterrissage |
-| **1.6** | Ne conserver le surplus que si c'est voulu, ou le documenter | `attack_state.py:274-279` | F13 | SMALL | LOW | Levée d'ambiguïté sur le timing des attaques |
+| **1.1 ✅** | Ne décruer `stagger_timer` qu'à un seul endroit (retirer des états dizzy) | `enemy_states.py:455-456`, `player_states.py:517-518` | J5 | SMALL | MEDIUM | Les fenêtres de stun durent enfin leur durée configurée |
+| **1.2 ✅** | Exclure les attaquants déjà annulés des comparaisons hit-vs-hit | `combat_system.py:227` | J6 | SMALL | MEDIUM | Un attaquant mort n'annule plus un tiers |
+| **1.3 ✅** | Cooldown par cible pour les dégâts de hazard | `hazard_damage.py` | J3 | MEDIUM | MEDIUM | Un ennemi ne meurt plus en 83 ms sur un saw |
+| **1.4 ✅** | Faire réellement porter le `is_hurt` au gate de contact damage | `contact_damage.py:44,112` | J4 | SMALL | MEDIUM | Symétrie avec le correctif 1.3 |
+| **1.5 ✅** | `sync_rects()` après `_snap_to_ground` | `movement.py:376-377` | J9 | **SMALL** | LOW | Collisionneur et hurtbox d'accord à la frame d'atterrissage |
+| **1.6 ✅** | Ne conserver le surplus que si c'est voulu, ou le documenter | `attack_state.py:274-279` | F13 | SMALL | LOW | Levée d'ambiguïté sur le timing des attaques |
 
 ### Lot 2 — Corrections de robustesse à faible risque, fort bénéfice
 
 | # | Action | Fichiers | Problème | Difficulté | Risque | Bénéfice |
 |---|---|---|---|---|---|---|
-| **2.1** | Retenir la source dans `_SHEAR_CACHE` | `renderer.py:181` | J7 | **SMALL** | LOW | Supprime une classe entière de bugs de rendu |
-| **2.2** | Restaurer le scan linéaire dans `_static_plane` | `renderer.py:564-565` | J8 | **SMALL** | LOW | Supprime un monde vide possible + rend le log vrai |
-| **2.3** | Éviction bornée sur `_scaled_cache` / `_flash_cache` (demi-éviction déjà présente à `:198-221`) | `renderer.py:291,294` | E2 | SMALL | LOW | Finit ~1,9 Mo/min en fuite |
-| **2.4** | Invalider `LevelManager._cache` dans `_invalidate_assets` | `game.py:342-351` | J11 | **SMALL** | LOW | Plus de conversion alpha après un changement de résolution |
-| **2.5** | Passer `convert=True` à la présentation | `game.py:252` | E4 | **SMALL** | LOW | Le chemin existe déjà, il est gardé |
-| **2.6** | Réserver `losers` **et** filtrer `one_way` dans le chemin grille | `platforms.py:36-41` | J12 | SMALL | LOW | Les deux chemins d'accord |
-| **2.7** | Fixer la friction de dash | `player_states.py:472-473` | J20 | SMALL | **MEDIUM** | Le dash décélère enfin (changement de feel — tests requis) |
-| **2.8** | Test d'invariant `QUERY_MARGIN_PX >= MAX_FALL_SPEED * TIMESTEP` | `tests/unit/` | J10 | **SMALL** | LOW | Rend une hypothèse à 60 Hz explicite et vérifiée |
-| **2.9** | `exit()` sur `PlayerChargeState` / annuler `charging` sur changement d'état | `player_states.py:217-232` | J14 | SMALL | MEDIUM | Débloque le heavy après un dash |
+| **2.1 ✅** | Retenir la source dans `_SHEAR_CACHE` | `renderer.py:181` | J7 | **SMALL** | LOW | Supprime une classe entière de bugs de rendu |
+| **2.2 ✅** | Restaurer le scan linéaire dans `_static_plane` | `renderer.py:564-565` | J8 | **SMALL** | LOW | Supprime un monde vide possible + rend le log vrai |
+| **2.3 ✅** | Éviction bornée sur `_scaled_cache` / `_flash_cache` (demi-éviction déjà présente à `:198-221`) | `renderer.py:291,294` | E2 | SMALL | LOW | Finit ~1,9 Mo/min en fuite |
+| **2.4 ✅** | Invalider `LevelManager._cache` dans `_invalidate_assets` | `game.py:342-351` | J11 | **SMALL** | LOW | Plus de conversion alpha après un changement de résolution |
+| **2.5 ✅** | Passer `convert=True` à la présentation | `game.py:252` | E4 | **SMALL** | LOW | Le chemin existe déjà, il est gardé |
+| **2.6 ✅** | Réserver `losers` **et** filtrer `one_way` dans le chemin grille | `platforms.py:36-41` | J12 | SMALL | LOW | Les deux chemins d'accord |
+| **2.7 ✅** | Fixer la friction de dash | `player_states.py:472-473` | J20 | SMALL | **MEDIUM** | Le dash décélère enfin (changement de feel — tests requis) |
+| **2.8 ✅** | Test d'invariant `QUERY_MARGIN_PX >= MAX_FALL_SPEED * TIMESTEP` | `tests/unit/` | J10 | **SMALL** | LOW | Rend une hypothèse à 60 Hz explicite et vérifiée |
+| **2.9 ✅** | `exit()` sur `PlayerChargeState` / annuler `charging` sur changement d'état | `player_states.py:217-232` | J14 | SMALL | MEDIUM | Débloque le heavy après un dash |
 
 ### Lot 3 — Fiabiliser Tiled (après 0.1/0.3, sinon sans effet)
 
 | # | Action | Fichiers | Problème | Difficulté | Risque | Bénéfice |
 |---|---|---|---|---|---|---|
-| **3.1** | Honorer `visible` ; au minimum `logger.warning` | `level_data.py:112-119` | J15 | SMALL | LOW | Le level designer voit ce qu'il masque |
-| **3.2** | Conserver l'ordre z de Tiled au lieu du plan figé/moving | `world_builder.py`, `renderer.py` | J16 | MEDIUM | MEDIUM | `BG details` derrière le terrain |
-| **3.3** | Garde-fous sur les conversions de propriétés (`float`/`int`) | `world_builder.py:141,175,213` | J17, J18 | SMALL | LOW | Plus de FATAL ERROR sur une propriété mal typée |
-| **3.4** | `bg` : distinguer `None` de `""` | `level_data.py:151` | J19 | **SMALL** | LOW | Restaure le sentinelle |
-| **3.5** | Détecter les `firstgid` dupliqués + valider noms/objets/propriétés | `tests/unit/` | G15, §I | MEDIUM | LOW | Attrape la corruption de map avant le lancement |
-| **3.6** | Envelopper les `Exception` nus de pytmx | `level_manager.py:84-90` | §I | SMALL | LOW | Contrat d'erreur cohérent |
-| **3.7** | Corriger la docstring de `ObjectData.gid` | `level_data.py:23-24` | §I | **SMALL** | LOW | Le champ dit le contraire de ce qu'il contient |
+| **3.1 ✅** | Honorer `visible` ; au minimum `logger.warning` | `level_data.py:112-119` | J15 | SMALL | LOW | Le level designer voit ce qu'il masque |
+| **3.2 ✅** | Conserver l'ordre z de Tiled au lieu du plan figé/moving | `world_builder.py`, `renderer.py` | J16 | MEDIUM | MEDIUM | `BG details` derrière le terrain |
+| **3.3 ✅** | Garde-fous sur les conversions de propriétés (`float`/`int`) | `world_builder.py:141,175,213` | J17, J18 | SMALL | LOW | Plus de FATAL ERROR sur une propriété mal typée |
+| **3.4 ✅** | `bg` : distinguer `None` de `""` | `level_data.py:151` | J19 | **SMALL** | LOW | Restaure le sentinelle |
+| **3.5 ⏳ reste** | Détecter les `firstgid` dupliqués + valider noms/objets/propriétés | `tests/unit/` | G15, §I | MEDIUM | LOW | Attrape la corruption de map avant le lancement |
+| **3.6 ✅** | Envelopper les `Exception` nus de pytmx | `level_manager.py:84-90` | §I | SMALL | LOW | Contrat d'erreur cohérent |
+| **3.7 ✅** | Corriger la docstring de `ObjectData.gid` | `level_data.py:23-24` | §I | **SMALL** | LOW | Le champ dit le contraire de ce qu'il contient |
 
 ### Lot 4 — Qualité de test
 
 | # | Action | Fichiers | Problème | Difficulté | Risque | Bénéfice |
 |---|---|---|---|---|---|---|
-| **4.1** | Rendre les goldens indépendants de la police, **ou** livrer la police | `test_world_overlay_golden.py`, `panel_renderer.py:567` | K | MEDIUM | LOW | 4 des 7 échecs |
-| **4.2** | Idem pour `test_debug_overlay` | `test_debug_overlay.py` | K | MEDIUM | LOW | 2 des 7 échecs |
-| **4.3** | Balayage dt (1/120, 1/60, 1/30) sur la fixture existante | `tests/headless/` | K1 | **SMALL** | LOW | Couvre J10, J20, le verrouillage d'attaque — **le meilleur rapport valeur/effort de l'audit** |
-| **4.4** | Retirer `assert True` et les `or` tautologiques | 4 fichiers (§H) | K | **SMALL** | LOW | 4 tests qui passent avec le code cassé |
-| **4.5** | Rendre `test_combat_contracts.py:59-69` honnête (nom ↔ assertion), ou corriger les 3 blocs `getattr` | `test_combat_contracts.py`, `hit_resolver.py` | F12 | MEDIUM | LOW | Clôt l'item R-3 de l'audit précédente |
-| **4.6** | Couvrir `movement.py:193-206`, `DASH_AIR_CONTROL`, `DASH_WALL_BOUNCE` | `tests/unit/` | F17 | SMALL | LOW | La mécanique signature a enfin un filet |
-| **4.7** | Tests de cas multi-ticks pour hazards et contact damage | `test_hazard_damage.py` | J3, J4 | SMALL | LOW | Empêche la régression de J3/J4 |
-| **4.8** | `.tmx` corrompu / `0×0` → erreur claire | `tests/unit/` | K2 | SMALL | LOW | Empêche le joueur de tomber indéfiniment |
+| **4.1 ✅** | Rendre les goldens indépendants de la police, **ou** livrer la police | `test_world_overlay_golden.py`, `panel_renderer.py:567` | K | MEDIUM | LOW | 4 des 7 échecs |
+| **4.2 ✅** | Idem pour `test_debug_overlay` | `test_debug_overlay.py` | K | MEDIUM | LOW | 2 des 7 échecs |
+| **4.3 ✅** | Balayage dt (1/120, 1/60, 1/30) sur la fixture existante | `tests/headless/` | K1 | **SMALL** | LOW | Couvre J10, J20, le verrouillage d'attaque — **le meilleur rapport valeur/effort de l'audit** |
+| **4.4 ✅** | Retirer `assert True` et les `or` tautologiques | 4 fichiers (§H) | K | **SMALL** | LOW | 4 tests qui passent avec le code cassé |
+| **4.5 ⏳ reste** | Rendre `test_combat_contracts.py:59-69` honnête (nom ↔ assertion), ou corriger les 3 blocs `getattr` | `test_combat_contracts.py`, `hit_resolver.py` | F12 | MEDIUM | LOW | Clôt l'item R-3 de l'audit précédente |
+| **4.6 ⏳ reste** | Couvrir `movement.py:193-206`, `DASH_AIR_CONTROL`, `DASH_WALL_BOUNCE` | `tests/unit/` | F17 | SMALL | LOW | La mécanique signature a enfin un filet |
+| **4.7 ✅** | Tests de cas multi-ticks pour hazards et contact damage | `test_hazard_damage.py` | J3, J4 | SMALL | LOW | Empêche la régression de J3/J4 |
+| **4.8 ⏳ reste** | `.tmx` corrompu / `0×0` → erreur claire | `tests/unit/` | K2 | SMALL | LOW | Empêche le joueur de tomber indéfiniment |
 
 ---
 
