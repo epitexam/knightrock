@@ -7,6 +7,7 @@ import pytest
 
 from src.core.settings import Locomotion, Physics
 from src.states.player_states import (
+    PlayerDashState,
     PlayerState,
     _can_attack_interrupt,
     _can_dash,
@@ -255,7 +256,7 @@ def test_the_attack_interrupt_only_asks_whether_an_attack_is_running() -> None:
 # --- configure_player_state_machine ---
 
 
-def _dash_stub(duration: float = 0.08, duration_timer: float = 0.0):
+def _dash_stub(duration: float = 0.08, duration_timer: float = 0.0, friction: float = 25.0):
     """Dash double with the timers the cancel-window helper reads."""
     return SimpleNamespace(
         can_use=lambda: True,
@@ -263,11 +264,58 @@ def _dash_stub(duration: float = 0.08, duration_timer: float = 0.0):
         in_coyote=lambda: False,
         duration=duration,
         duration_timer=duration_timer,
+        friction=friction,
+        gravity_mult=1.0,
     )
 
 
 def _guard_stub():
     return SimpleNamespace(can_use=lambda: True)
+
+
+# --- PlayerDashState friction ---
+
+
+class _DashEntity:
+    def __init__(self, friction: float = Physics.DASH_FRICTION) -> None:
+        self.dash = _dash_stub(duration=1.0e9, duration_timer=1.0e9, friction=friction)
+        self.dash.speed = 800.0
+        self.on_surface = {"floor": True, "left": False, "right": False}
+        self.velocity = pygame.Vector2(800.0, 0.0)
+        self.move_axis = 0.0
+        self.left_held = False
+        self.right_held = False
+        self.facing_right = True
+        self.normal_gravity = Physics.GRAVITY
+        self.speed = Physics.PLAYER_SPEED
+        self.state_machine = SimpleNamespace(current_state_name="dash")
+        self.combat = SimpleNamespace(movement_multiplier=1.0)
+
+
+def _run_dash(dt: float, ticks: int, friction: float = Physics.DASH_FRICTION) -> float:
+    entity = _DashEntity(friction)
+    state = PlayerDashState(entity)
+    for _ in range(ticks):
+        state.update(dt)
+    return abs(entity.velocity.x)
+
+
+def test_dash_friction_is_a_rate_not_a_per_tick_factor() -> None:
+    """``dash.friction`` is a rate: the decay belongs to the helper, once.
+
+    The state used to pre-scale it into ``1 - friction * dt`` and hand that
+    over as a factor, so the helper's own ``1 - exp(-f dt)`` applied the decay
+    twice over. Measured at DASH_FRICTION = 25 from 800 px/s: 446 px/s left
+    after a second, where the same rate applied once leaves nothing.
+    """
+    assert _run_dash(1 / 60, 60) < 1.0
+
+
+def test_dash_friction_holds_at_any_timestep() -> None:
+    """The same rate must decline at the same pace at 30, 60 and 120 Hz."""
+    base = _run_dash(1 / 60, 60)
+    assert _run_dash(1 / 120, 120) == pytest.approx(base, rel=1e-3)
+    assert _run_dash(1 / 30, 30) == pytest.approx(base, rel=1e-2)
 
 
 def test_configure_state_machine_sets_all_states() -> None:

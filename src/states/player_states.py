@@ -469,8 +469,7 @@ class PlayerDashState(PlayerBaseState):
             # No friction while actively controlling - player has full authority
         else:
             # No input: apply friction to slow down naturally
-            friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
-            apply_velocity_friction(self.entity, friction, delta_time)
+            apply_velocity_friction(self.entity, self.entity.dash.friction, delta_time)
 
         # Wall bounce: if dashing into a wall, bounce off with momentum retention
         if self.entity.on_surface.get("left", False) and self.entity.velocity.x < 0:
