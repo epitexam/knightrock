@@ -7,6 +7,7 @@ import pytest
 
 from src.core.settings import Locomotion, Physics
 from src.states.player_states import (
+    PlayerChargeState,
     PlayerDashState,
     PlayerState,
     _can_attack_interrupt,
@@ -316,6 +317,54 @@ def test_dash_friction_holds_at_any_timestep() -> None:
     base = _run_dash(1 / 60, 60)
     assert _run_dash(1 / 120, 120) == pytest.approx(base, rel=1e-3)
     assert _run_dash(1 / 30, 30) == pytest.approx(base, rel=1e-2)
+
+
+# --- PlayerChargeState ---
+
+
+def test_charging_survives_the_release_into_the_attack_it_built() -> None:
+    """The release path is the one exit that must keep the charge."""
+    entity = _make_entity()
+    entity.combat = SimpleNamespace(
+        charging=_ChargeStub(), is_attacking=True, is_hurt=False, start_attack=lambda *a, **kw: True
+    )
+    state = PlayerChargeState(entity)
+    state.exit("attack")
+    assert entity.combat.charging.is_charging
+
+
+def test_a_charge_does_not_survive_leaving_the_state_for_a_dash() -> None:
+    """Otherwise the charge keeps growing and the heavy is unreachable.
+
+    A charge standing through a dash keeps accumulating its timer, keeps
+    multiplying the movement, and makes ``start_attack`` refuse the release:
+    the fighter could not throw the move it charged until it was hit.
+    """
+    entity = _make_entity()
+    entity.combat = SimpleNamespace(
+        charging=_ChargeStub(),
+        is_attacking=False,
+        is_hurt=False,
+        start_attack=lambda *a, **kw: True,
+    )
+    state = PlayerChargeState(entity)
+    state.exit("dash")
+    assert not entity.combat.charging.is_charging
+
+
+class _ChargeStub:
+    def __init__(self) -> None:
+        self.is_charging = True
+        self.charge_timer = 1.0
+        self.attack_name = "twin_fangs"
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+        self.is_charging = False
+
+    def update(self, delta_time: float) -> None:
+        self.charge_timer += delta_time
 
 
 def test_configure_state_machine_sets_all_states() -> None:

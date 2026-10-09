@@ -231,6 +231,19 @@ class PlayerChargeState(PlayerBaseState):
             return self.ground_return()
         return None
 
+    def exit(self, next_state: str | None = None) -> None:
+        """Drop the charge on the way out, unless an attack is taking it over.
+
+        Leaving this state by any other route -- a dash, a hurt, a state the
+        machine reached for -- left ``charging`` standing, and a standing charge
+        keeps growing, keeps multiplying the movement, and makes
+        ``start_attack`` refuse the release: the heavy was unreachable until
+        something hit the fighter.
+        """
+        if next_state == "attack":
+            return
+        self.entity.combat.charging.cancel()
+
 
 class PlayerCrouchState(PlayerBaseState):
     """Hold-to-crouch: a low, shuffling ground posture that can still fight.
