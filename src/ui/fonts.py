@@ -29,7 +29,11 @@ _CACHE: dict[int, tuple[pygame.font.Font, pygame.font.Font]] = {}
 def _load(path: Path, size: int) -> pygame.font.Font:
     if path.is_file():
         return pygame.font.Font(str(path), size)
-    return pygame.font.SysFont("monospace", size, bold=path is _BOLD)
+    raise FileNotFoundError(
+        f"{path} is missing. The font is versioned with the assets; a checkout "
+        "without it has no interface, and a system-font fallback would make "
+        "every machine answer differently."
+    )
 
 
 def ui_fonts(size: int) -> tuple[pygame.font.Font, pygame.font.Font]:
