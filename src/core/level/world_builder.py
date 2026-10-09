@@ -360,4 +360,4 @@ class WorldBuilder:
         elif obj.image is not None:
             Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=groups.all_sprites)
         else:
-            logger.debug("Object '%s' has no factory or image, ignored", obj.name)
+            logger.warning("Object '%s' has no factory or image, ignored", obj.name)

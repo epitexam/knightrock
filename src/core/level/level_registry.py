@@ -59,6 +59,6 @@ class Registry(Generic[T]):
         """
         handler = self._handlers.get(name)
         if handler is None:
-            logger.debug("%s: no handler for '%s', ignored", self._kind, name)
+            logger.warning("%s: no handler for '%s', ignored", self._kind, name)
             return None
         return handler(*args, **kwargs)
