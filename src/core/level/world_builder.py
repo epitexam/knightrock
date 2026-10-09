@@ -361,9 +361,16 @@ class WorldBuilder:
         return player
 
     def _build_player(self, groups: SpriteGroups, input_manager: InputManager) -> Player | None:
-        """Locate the player object and instantiate it."""
+        """Locate the player object and instantiate it.
+
+        The ``Data`` layer is skipped, as it is in :meth:`build`: it carries the
+        level's settings, not its world, and a definition that happened to be
+        named ``player`` there is not a spawn.
+        """
         config = self.gameplay_data.player if self.gameplay_data is not None else None
         for layer in self.level_data.object_layers.values():
+            if layer.name == DATA_LAYER_NAME:
+                continue
             for obj in layer.objects:
                 if obj.name == "player":
                     player = Player(
