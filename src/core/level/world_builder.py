@@ -7,12 +7,13 @@ import logging
 from collections.abc import Sequence
 
 import pygame
+from pygame.sprite import Group
 
 from src.core.colors import Colors
 from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
 from src.core.input.input_manager import InputManager
 from src.core.level import properties as props
-from src.core.level.level_data import LevelData, ObjectData
+from src.core.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
 from src.core.level.level_registry import Registry
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.settings import World
@@ -264,6 +265,36 @@ def _build_exit(obj: ObjectData, groups: SpriteGroups) -> None:
     groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites))
 
 
+#: Object layers whose sprites sit *behind* the world, not in it.
+#:
+#: Every map ships the same object layers in the same order, and the first one
+#: is the background props -- drawn in Tiled between the BG tiles and the
+#: Terrain tiles, so they read as scenery the level sits in front of. The world
+#: builder used to file every decorative object in the moving plane, which is
+#: drawn *after* the frozen tiles, so those props were painted on top of the
+#: terrain they were placed behind.
+#:
+#: The rule is the name, for the same reason the tile-layer handlers are: the
+#: layers are called ``BG``/``BG details``/``Terrain``/``Platforms``/``FG``
+#: across all eight maps, and the classification is the builder's, not
+#: Tiled's z.
+BACKGROUND_LAYER_PREFIX = "BG"
+
+
+def _decor_group(layer: ObjectLayerData, groups: SpriteGroups) -> Group:
+    """Where an unnamed decorative object's sprite belongs.
+
+    A background layer's props are scenery, and scenery that never moves
+    belongs in the frozen plane with the tiles: the chunk index covers them,
+    the cull is the O(log n) one, and they draw where the document put them.
+    """
+    return (
+        groups.static_sprites
+        if layer.name.startswith(BACKGROUND_LAYER_PREFIX)
+        else groups.all_sprites
+    )
+
+
 OBJECT_FACTORIES.register("helicopter")(_build_moving_platform)
 OBJECT_FACTORIES.register("boat")(_build_moving_platform)
 OBJECT_FACTORIES.register("saw")(_build_span_hazard)
@@ -316,10 +347,10 @@ class WorldBuilder:
             )
 
         for object_layer in self.level_data.object_layers.values():
-            if object_layer.name == "Data":
+            if object_layer.name == DATA_LAYER_NAME:
                 continue
             for obj in object_layer.objects:
-                self._build_object(obj, groups, player)
+                self._build_object(obj, groups, player, object_layer.name)
 
         return player
 
@@ -343,7 +374,13 @@ class WorldBuilder:
                     return player
         return None
 
-    def _build_object(self, obj: ObjectData, groups: SpriteGroups, player: Player | None) -> None:
+    def _build_object(
+        self,
+        obj: ObjectData,
+        groups: SpriteGroups,
+        player: Player | None,
+        layer_name: str = "",
+    ) -> None:
         """
         Build a single object from an object layer.
 
@@ -370,6 +407,8 @@ class WorldBuilder:
         elif OBJECT_FACTORIES.has(obj.name):
             OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
         elif obj.image is not None:
-            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=groups.all_sprites)
+            layer = self.level_data.object_layers.get(layer_name)
+            target = _decor_group(layer, groups) if layer else groups.all_sprites
+            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=target)
         else:
             logger.warning("Object '%s' has no factory or image, ignored", obj.name)

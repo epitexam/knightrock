@@ -299,6 +299,29 @@ def test_nothing_that_moves_is_in_the_frozen_plane(real_level: Level) -> None:
         assert not any(id(sprite) in static_ids for sprite in plane)
 
 
+def test_background_props_are_frozen_not_moving(real_level: Level) -> None:
+    """``BG details`` sits *between* the BG and the Terrain in Tiled.
+
+    The builder used to file every decorative object in the moving plane, which
+    is painted after the frozen tiles, so those props were drawn on top of the
+    terrain they were placed behind. The layer name is the contract all eight
+    shipped maps share, so it is what decides the plane.
+    """
+    groups = real_level.groups
+    background = real_level.level_data.object_layers["BG details"].objects
+    assert background, "the shipped level has no background props to place"
+
+    # Matched on the identity of the image object and the placement, because a
+    # coordinate alone is shared by every tile in the same column.
+    frozen = {(id(s.image), round(s.rect.left), round(s.rect.top)) for s in groups.static_sprites}
+    moving = {(id(s.image), round(s.rect.left), round(s.rect.top)) for s in groups.all_sprites}
+    placed = {(id(o.image), round(o.x), round(o.y)) for o in background if o.image is not None}
+
+    assert placed, "no background prop carries an image to place"
+    assert placed <= frozen, "a background prop is not in the frozen plane"
+    assert not (placed & moving), "a background prop is still in the moving plane"
+
+
 def test_a_refused_index_falls_back_to_the_linear_scan(real_level: Level) -> None:
     """The level promises the linear cull when it refuses the index.
 
