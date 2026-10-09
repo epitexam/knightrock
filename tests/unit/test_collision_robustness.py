@@ -187,3 +187,17 @@ def test_full_move_resets_crush_flag() -> None:
     move_entity(entity, 1 / 60)
 
     assert entity.crushed is False
+
+
+def test_a_ground_snap_agrees_with_the_collider() -> None:
+    entity = RobustEntity(pygame.FRect(50, 98, 40, 48))
+    entity.old_hitbox = pygame.FRect(50, 98, 40, 48)
+    entity.velocity = pygame.math.Vector2(0, 40.0)
+    entity.max_fall_speed = 1500.0
+    floor = _tile(pygame.FRect(0, 148, 200, 32))
+    entity.collision_sprites = [floor]
+
+    move_entity(entity, 1 / 60)
+
+    assert entity.hitbox.bottom == pytest.approx(148.0)
+    assert entity.rect.bottom == pytest.approx(entity.hitbox.bottom)

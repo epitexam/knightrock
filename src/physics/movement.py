@@ -373,6 +373,7 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
     if best is not None:
         entity.hitbox.bottom += best
         entity.velocity.y = 0.0
+        entity.sync_rects()
 
 
 def _revert_carry_crush(entity: MovableEntity) -> None:
