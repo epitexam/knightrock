@@ -193,7 +193,13 @@ def build_respawn_level() -> Level:
 # other two scenarios do not observe patrol translation (enemies either
 # chase immediately or leave the frame of interest), so they stay valid.
 PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
-RIDE_DIGEST = "3c103b21909777fba17a79c801f239dca30a1ac69b93cda8340a11ad9fc9a5a8"
+# Re-captured RIDE for the per-target hazard cooldown (commit
+# "fix(combat): a hazard may not damage the same target twice in a row"):
+# a saw re-emits its box every tick and no enemy configures an invincibility
+# window, so a lifetime rider died inside the cooldown window and never
+# reached the exit. 24 ticks, ~0.4s, roughly the player's own i-frame
+# window.  PHYSICS and RESPAWN carry no hazard and are unaffected.
+RIDE_DIGEST = "4f23129cd904725a48b0346798d93b7cc3eb420b3ac169db9706095a3ef4f124"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

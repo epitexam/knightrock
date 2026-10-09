@@ -8,8 +8,11 @@ import pygame
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 
 
-def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False) -> SimpleNamespace:
+def make_entity(
+    hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str = "e1"
+) -> SimpleNamespace:
     return SimpleNamespace(
+        id=entity_id,
         is_dead=is_dead,
         hitbox=hitbox,
         velocity=pygame.Vector2(0, 0),
@@ -100,6 +103,50 @@ def test_hazard_ignores_dead_entities() -> None:
 def test_hazard_defaults_are_non_zero_threat() -> None:
     assert HazardDamageSystem.DEFAULT_DAMAGE > 0
     assert HazardDamageSystem.DEFAULT_KNOCKBACK.power != (0.0, 0.0)
+
+
+def test_a_hazard_damages_the_same_target_once_per_cooldown() -> None:
+    """A saw re-emits its box every tick; the target may not be damaged by it.
+
+    An enemy configures no invincibility window, so without a per-target
+    cooldown a twenty-damage saw kills a hundred-hit-point enemy in five ticks.
+    """
+    entity = make_entity(pygame.FRect(0, 0, 40, 40))
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    for _ in range(60):
+        system.process([entity], [hazard])
+
+    calls = entity.receive_damage.call_count
+    assert calls <= 3, f"{calls} hits in one second of contact: the cooldown is not holding"
+
+
+def test_the_cooldown_is_per_target_and_not_global() -> None:
+    """A saw that stops damaging one target still damages the next."""
+    first = make_entity(pygame.FRect(0, 0, 40, 40), entity_id="e1")
+    second = make_entity(pygame.FRect(0, 0, 40, 40), entity_id="e2")
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    system.process([first], [hazard])
+    assert first.receive_damage.call_count == 1
+    assert second.receive_damage.call_count == 0
+
+    system.process([first, second], [hazard])
+    assert second.receive_damage.call_count == 1
+
+
+def test_the_cooldown_forgets_a_hazard_that_left_the_level() -> None:
+    entity = make_entity(pygame.FRect(0, 0, 40, 40))
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    system.process([entity], [hazard])
+    assert system._cooldowns
+
+    system.process([entity], [])
+    assert not system._cooldowns
 
 
 # -- the per-hazard box cache -------------------------------------------------

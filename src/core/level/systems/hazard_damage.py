@@ -1,6 +1,6 @@
 """Hazard contact damage system (saws, spikes, floor spikes)."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from src.combat.combatant_protocol import Combatant
@@ -12,10 +12,6 @@ from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
 
 
-def _always_contact(_target_id: str) -> bool:
-    return True
-
-
 class HazardDamageSystem:
     """Apply configured damage to entities overlapping an active hazard.
 
@@ -24,10 +20,17 @@ class HazardDamageSystem:
     Contact resolution is delegated to the unified pipeline (P4.1): hazards
     carry no faction and no memory, so every overlapping entity is a valid
     target and the damage never interrupts.
+
+    A hazard does have a memory, though: how recently it damaged each target.
+    A saw re-emits its box every tick, and an ``Enemy`` configures no
+    invincibility window, so without a cooldown a single saw kills in five
+    ticks at twenty damage a tick. The player was spared only by their own
+    0.18s window.
     """
 
     DEFAULT_DAMAGE = 20.0
     DEFAULT_KNOCKBACK = KnockbackConfig(power=(150.0, -60.0))
+    CONTACT_COOLDOWN_TICKS = 24
 
     def __init__(self, contact_system: ContactSystem | None = None) -> None:
         self.contact_system: ContactSystem = (
@@ -37,6 +40,30 @@ class HazardDamageSystem:
         #: holding the hazard itself so the key cannot be recycled onto a
         #: different object while the entry lives. See :meth:`produce_boxes`.
         self._boxes: dict[int, tuple[Any, OffensiveBox]] = {}
+        #: ``(id(hazard), target_id) -> ticks left before that hazard may
+        #: damage that target again``.
+        self._cooldowns: dict[tuple[int, str], int] = {}
+        #: Pairs the gate admitted this tick, so a target cleared by the
+        #: broadphase arms its cooldown once however often it was asked about.
+        self._armed: set[tuple[int, str]] = set()
+
+    def _can_contact(self, hazard_key: int) -> Callable[[str], bool]:
+        """The contact gate for one hazard, carrying its own memory.
+
+        Called once per (hazard, target) pair per tick by the pipeline. The
+        cooldown is armed here rather than after the hit resolves, so that a
+        target that walked out of a guarded or i-framed window does not get a
+        second answer for the same tick.
+        """
+
+        def can_contact(target_id: str) -> bool:
+            pair = (hazard_key, target_id)
+            if self._cooldowns.get(pair, 0) > 0:
+                return False
+            self._armed.add(pair)
+            return True
+
+        return can_contact
 
     def _build_box(self, hazard: Any, box: Any) -> OffensiveBox:
         """A hazard's offensive box, built once.
@@ -58,7 +85,7 @@ class HazardDamageSystem:
             swept_shapes=(),
             faction=None,
             owner_id="",
-            can_contact=_always_contact,
+            can_contact=self._can_contact(id(hazard)),
             kind="hazard",
             interrupt=False,
         )
@@ -109,6 +136,8 @@ class HazardDamageSystem:
         if len(self._boxes) != len(live):
             for key in [known for known in self._boxes if known not in live]:
                 del self._boxes[key]
+            for pair in [pair for pair in self._cooldowns if pair[0] not in live]:
+                del self._cooldowns[pair]
         return tuple(boxes)
 
     @staticmethod
@@ -128,6 +157,13 @@ class HazardDamageSystem:
     ) -> None:
         """Apply damage for every overlap between a hazard and a live entity."""
         entities = tuple(entity_sprites)
+        self._armed = set()
         self.contact_system.resolve(
             self.produce_boxes(entities, hazard_sprites), entities, entity_grid
         )
+        for pair in self._armed:
+            self._cooldowns[pair] = self.CONTACT_COOLDOWN_TICKS
+        for pair in [pair for pair, left in self._cooldowns.items() if left <= 1]:
+            del self._cooldowns[pair]
+        for pair in self._cooldowns:
+            self._cooldowns[pair] -= 1
