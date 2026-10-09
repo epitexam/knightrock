@@ -272,8 +272,13 @@ class AttackStateMachine:
         if self.is_idle:
             return
         self._accumulator += delta_time
-        # Resolve at most one attack frame per simulation tick so an active
-        # window always receives a collision pass, even after a delayed caller.
+        # Resolve at most one attack frame per simulation tick, so an active
+        # window always receives a collision pass even after a delayed caller.
+        # The surplus is *kept*, not dropped: the frame count is what the attack
+        # owes the player, and throwing the remainder away would play the same
+        # attack shorter and lose its tail. The cost is elapsed time -- a hitch
+        # stretches the attack -- which is the half of the choice that
+        # ``test_attack_accumulator.py`` pins down.
         if self._accumulator >= self._FRAME_DURATION:
             self._accumulator -= self._FRAME_DURATION
             self._advance_one_frame()
