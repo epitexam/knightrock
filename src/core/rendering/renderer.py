@@ -118,10 +118,14 @@ def turn_frame(
     return sheared, moved
 
 
-#: ``(id(source), skew) -> sheared``, so a pivot shears each frame once per
-#: distinct lean rather than once per draw. Sized off the sources in play: a
-#: fighter pivoting touches a handful of animation frames per hold.
-_SHEAR_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+#: ``(id(source), skew) -> (source, sheared)``, so a pivot shears each frame
+#: once per distinct lean rather than once per draw. Sized off the sources in
+#: play: a fighter pivoting touches a handful of animation frames per hold.
+#: The source is kept in the value for the same reason the scaled and flash
+#: caches keep theirs: a key built from ``id`` alone can be hit by a freed
+#: surface whose id was recycled, which would hand back a stale, wrongly sized
+#: blit.
+_SHEAR_CACHE: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
 _SHEAR_CACHE_MAX = 64
 
 
@@ -180,8 +184,8 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
     """
     key = (id(image), skew)
     cached = _SHEAR_CACHE.get(key)
-    if cached is not None:
-        return cached
+    if cached is not None and cached[0] is image:
+        return cached[1]
 
     width, height = image.get_size()
     base = -min(0, skew)
@@ -197,7 +201,7 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
 
     if len(_SHEAR_CACHE) >= _SHEAR_CACHE_MAX:
         _evict_half_shear_cache()
-    _SHEAR_CACHE[key] = out
+    _SHEAR_CACHE[key] = (image, out)
     return out
 
 
