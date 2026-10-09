@@ -1,5 +1,6 @@
 """Tests for parry-stun (DIZZY) mechanics: counters, thresholds, state, damage bonus."""
 
+import inspect
 from types import SimpleNamespace
 
 import pygame
@@ -223,9 +224,21 @@ def test_chip_damage_does_not_reset_parries_taken() -> None:
 
 
 def test_projectile_parry_does_not_count() -> None:
-    # Projectiles don't have parries_taken, and projectile parries don't count
-    # This is tested indirectly - projectile_system doesn't increment parries_taken
-    assert True
+    """A parried projectile must not feed the dizzy threshold.
+
+    The threshold counts *hits* the fighter parried, and a projectile carries no
+    ``parries_taken`` of its own. The test used to be a bare ``assert True``
+    justified by a comment -- it passed whatever the projectile system did, so
+    it guarded nothing. It now reads the source: the moment that system starts
+    writing the counter, this fails.
+    """
+    from src.core.level.systems import projectile_system
+
+    source = inspect.getsource(projectile_system)
+    assert "parries_taken" not in source, (
+        "the projectile system writes parries_taken, so a projectile parry "
+        "counts toward the dizzy threshold it should not feed"
+    )
 
 
 def test_dizzy_damage_multiplier() -> None:

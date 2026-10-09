@@ -1,6 +1,6 @@
 """Spawner cooldowns and attack priority branches."""
 
-import pygame
+import pytest
 
 from src.core.input.input_actions import InputAction
 from src.core.level.systems.spawn_system import SpawnSystem
@@ -17,11 +17,12 @@ def test_decay_cooldowns_ticks_both_dicts() -> None:
     system.spawn_cooldowns["goblin"] = 0.5
     system.debug_cooldowns["twin_fangs"] = 0.3
     system._decay_cooldowns(0.2)
-    assert (
-        system.spawn_cooldowns["goblin"] == pygame.math.Vector2(0.3, 0).x
-        or abs(system.spawn_cooldowns["goblin"] - 0.3) < 1e-9
-    )
-    assert abs(system.debug_cooldowns["twin_fangs"] - 0.1) < 1e-9
+    # No clamp to zero: the cooldown is allowed to go negative, and the point
+    # of the assertion is that it does. The first version tested the same value
+    # twice -- once through a Vector2 roundabout -- so it read as a clamp check
+    # while only ever checking one number.
+    assert system.spawn_cooldowns["goblin"] == pytest.approx(0.3)
+    assert system.debug_cooldowns["twin_fangs"] == pytest.approx(0.1)
     system._decay_cooldowns(1.0)
     assert system.spawn_cooldowns["goblin"] < 0
     assert system.debug_cooldowns["twin_fangs"] < 0

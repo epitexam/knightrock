@@ -560,7 +560,10 @@ def test_draw_returns_nothing_and_paints_the_whole_target() -> None:
     assert renderer.draw(groups) is None
 
     pixel = renderer.surface.get_at((1100, 600))
-    assert pixel[:3] == (7, 9, 11) or pixel[:3] == (255, 0, 0)
+    # The whole target is the erase now, so the pixel is the background or it
+    # is the sprite -- and the 16x16 one this test adds cannot reach (1100, 600).
+    assert not groups.all_sprites.sprites()[0].rect.collidepoint(1100, 600)
+    assert pixel[:3] == (7, 9, 11)
 
 
 def test_the_background_is_erased_every_frame() -> None:
