@@ -184,6 +184,93 @@
       "parry_stun_threshold": null,
       "parry_stun_duration": 0.0,
       "animations": {}
+    },
+    "shell": {
+      "size": [
+        44.0,
+        52.0
+      ],
+      "color": [
+        150,
+        110,
+        60
+      ],
+      "health": 90.0,
+      "attacks": "goblin",
+      "attack_name": "claw_swipe",
+      "max_health": null,
+      "hitbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_zones": null,
+      "chase_speed": 65.0,
+      "vision_range": 280.0,
+      "attack_range": 55.0,
+      "patrol_interval": 3.0,
+      "idle_duration": 1.2,
+      "has_ai": true,
+      "pushable": true,
+      "super_armor": true,
+      "passive_friction": 12.0,
+      "can_jump": false,
+      "jump_height": 500.0,
+      "jump_cooldown": 1.0,
+      "leap_speed_mult": 1.0,
+      "parry_stun_threshold": 3,
+      "parry_stun_duration": 1.4,
+      "animations": {
+        "idle": "assets/graphics/enemies/shell/idle",
+        "attack": "assets/graphics/enemies/shell/fire"
+      }
+    },
+    "tooth": {
+      "size": [
+        38.0,
+        46.0
+      ],
+      "color": [
+        190,
+        90,
+        120
+      ],
+      "health": 50.0,
+      "attacks": "goblin",
+      "attack_name": "claw_swipe",
+      "max_health": null,
+      "hitbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_inflate": [
+        0.0,
+        0.0
+      ],
+      "hurtbox_zones": null,
+      "chase_speed": 165.0,
+      "vision_range": 360.0,
+      "attack_range": 50.0,
+      "patrol_interval": 1.2,
+      "idle_duration": 0.35,
+      "has_ai": true,
+      "pushable": true,
+      "super_armor": false,
+      "passive_friction": 8.0,
+      "can_jump": true,
+      "jump_height": 560.0,
+      "jump_cooldown": 1.0,
+      "leap_speed_mult": 1.4,
+      "parry_stun_threshold": 2,
+      "parry_stun_duration": 1.2,
+      "animations": {
+        "idle": "assets/graphics/enemies/tooth/run",
+        "patrol": "assets/graphics/enemies/tooth/run",
+        "chase": "assets/graphics/enemies/tooth/run"
+      }
     }
   }
 }
