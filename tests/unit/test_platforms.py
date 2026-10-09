@@ -212,6 +212,48 @@ def test_the_grid_and_the_bare_scan_agree_when_the_pad_is_indexed() -> None:
     assert indexed_trace == reference_trace
 
 
+def test_a_one_way_tile_does_not_block_a_pad_on_either_path() -> None:
+    """The two paths must agree on where a one-way tile stops a platform.
+
+    A platform travelling sideways into a one-way tile used to be stopped by
+    the bare scan, which filters one-way out, and stopped by the grid too --
+    because the grid path filtered only the platform itself. The tile is not a
+    wall from the side any more than the platform is, so a platform that
+    should have passed through the tile was blocked by it.
+    """
+    groups = SpriteGroups()
+    tile = Sprite((120.0, 0.0), surf=pygame.Surface((64, 32)))
+    tile.one_way = True
+    groups.collision_sprites.add(tile)
+
+    def build() -> MovingPlatform:
+        return MovingPlatform(
+            (0.0, 0.0),
+            pygame.Surface((64, 32)),
+            waypoints=[(0.0, 0.0), (200.0, 0.0)],
+            speed=50.0,
+            groups=(groups.all_sprites, groups.collision_sprites),
+            collision_sprites=groups.collision_sprites,
+        )
+
+    indexed = build()
+    grid = SpatialHash(cell_size=128)
+    grid.add_all(groups.collision_sprites)
+    indexed.spatial_hash = grid
+
+    reference = build()
+    indexed_trace: list[float] = []
+    reference_trace: list[float] = []
+    for _ in range(40):
+        update_moving_platform(indexed, 0.5)
+        update_moving_platform(reference, 0.5)
+        indexed_trace.append(indexed.rect.x)
+        reference_trace.append(reference.rect.x)
+
+    assert max(indexed_trace) == pytest.approx(200.0)
+    assert indexed_trace == reference_trace
+
+
 def test_platform_without_collision_reference_keeps_legacy_ghost_move() -> None:
     blocker = SimpleNamespace(hitbox=pygame.FRect(90.0, 0.0, 64.0, 32.0))
     platform = MovingPlatform(

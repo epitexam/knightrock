@@ -37,7 +37,11 @@ def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | N
     if spatial_hash is not None:
         return cast(
             "Iterable[Any]",
-            (s for s in spatial_hash.get_nearby(candidate) if s is not platform),
+            (
+                s
+                for s in spatial_hash.get_nearby(candidate)
+                if s is not platform and not getattr(s, "one_way", False)
+            ),
         )
     return (
         s
