@@ -250,7 +250,10 @@ class Game:
         # is the window's letterbox rectangle and the density is read back off
         # it. Nothing here is chosen, and nothing here is stored.
         self.presentation = Presentation(
-            self.stage.surface, DEFAULT_FRAMING, pixel_perfect=self.settings.pixel_perfect
+            self.stage.surface,
+            DEFAULT_FRAMING,
+            pixel_perfect=self.settings.pixel_perfect,
+            convert=True,
         )
 
     def _retarget(self) -> None:
