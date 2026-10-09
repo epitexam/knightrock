@@ -653,9 +653,9 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 2509 tests · 94 % instruction coverage · 82 % branch
-> coverage · Ruff clean · mypy clean (175 files across `src main.py tools`;
-> `mypy src` alone is 172).[^coverage]
+> **Current baseline:** 2509 tests · 94 % instruction coverage · 91 % branch
+> coverage · Ruff clean · mypy clean (176 files across `src main.py tools`;
+> `mypy src` alone is 173).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:
