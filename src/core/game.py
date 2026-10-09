@@ -342,16 +342,17 @@ class Game:
         if self.ui is not None:
             self.ui.set_panel_scale(settings.panel_scale)
 
-    @staticmethod
-    def _invalidate_assets() -> None:
+    def _invalidate_assets(self) -> None:
         """Drop every surface derived from the old display format.
 
-        Two independent caches sit on top of the art: ``AssetLibrary`` and the
-        module-level frame cache in ``fx``. Clearing only the first would let
-        the second hand back pre-reformat surfaces anyway.
+        Three independent caches sit on top of the art: ``AssetLibrary``, the
+        module-level frame cache in ``fx``, and the level cache, whose tiles
+        PyTMX converted against the display format at load time. Clearing only
+        the first would let the others hand back pre-reformat surfaces anyway.
         """
         shared_library().clear()
         fx.clear_frame_cache()
+        self.level_manager.invalidate()
 
     @staticmethod
     def _window_signature(settings: UserSettings) -> tuple[object, ...]:

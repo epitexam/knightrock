@@ -63,6 +63,15 @@ class LevelManager:
         """
         self.level_paths[level_id] = path
 
+    def invalidate(self) -> None:
+        """Drop every cached level, so the next :meth:`get` re-reads it.
+
+        PyTMX converts each tile against the display format that was current at
+        load time. A display change makes those surfaces stale, and the cache
+        would keep handing them back for the rest of the session.
+        """
+        self._cache.clear()
+
     def get(self, level_id: int) -> LevelData:
         """
         Retrieve parsed level data, loading it if not yet cached.
