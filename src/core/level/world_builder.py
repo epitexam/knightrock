@@ -11,6 +11,7 @@ import pygame
 from src.core.colors import Colors
 from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
 from src.core.input.input_manager import InputManager
+from src.core.level import properties as props
 from src.core.level.level_data import LevelData, ObjectData
 from src.core.level.level_registry import Registry
 from src.core.level.systems.hazard_damage import HazardDamageSystem
@@ -102,8 +103,9 @@ def _explicit_waypoints(obj: ObjectData) -> list[tuple[float, float]] | None:
             points.append((float(x_str), float(y_str)))
         return points
     if "end_x" in obj.properties or "end_y" in obj.properties:
-        end_x = float(obj.properties.get("end_x", obj.x))
-        end_y = float(obj.properties.get("end_y", obj.y))
+        where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+        end_x = props.number(obj.properties, "end_x", obj.x, where=where)
+        end_y = props.number(obj.properties, "end_y", obj.y, where=where)
         return [(obj.x, obj.y), (end_x, end_y)]
     return None
 
@@ -138,11 +140,18 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
     'platform_height' properties, default 2 tiles x half a tile.
     """
     half_tile = World.TILE_SIZE // 2
-    width = max(float(obj.properties.get("platform_width", World.TILE_SIZE * 2)), half_tile)
-    height = max(float(obj.properties.get("platform_height", half_tile)), half_tile)
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    width = max(
+        props.number(obj.properties, "platform_width", World.TILE_SIZE * 2, where=where),
+        half_tile,
+    )
+    height = max(
+        props.number(obj.properties, "platform_height", half_tile, where=where),
+        half_tile,
+    )
     surf = pygame.Surface((width, height))
     surf.fill(Colors.gold)
-    speed = float(obj.properties.get("speed", 100))
+    speed = props.number(obj.properties, "speed", 100, where=where)
     half = pygame.math.Vector2(width / 2, height / 2)
     start, end = _rect_path(obj)
     waypoints = _explicit_waypoints(obj)
@@ -172,15 +181,16 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     forth at the 'speed' property (default 100 px/s).  Sprite size: 'size'
     property, else the animation's natural frame size, else one tile.
     """
-    speed = float(obj.properties.get("speed", 100))
-    flip = bool(obj.properties.get("flip", False))
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    speed = props.number(obj.properties, "speed", 100, where=where)
+    flip = props.flag(obj.properties, "flip", False, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
         animator = build_hazard_animator({"spin": "assets/graphics/enemies/saw/animation"}, "spin")
     except FileNotFoundError:
         animator = None
     if "size" in obj.properties:
-        side = float(obj.properties["size"])
+        side = props.number(obj.properties, "size", 0, where=where)
         size = (side, side)
     elif animator is not None:
         size = animator.frame_size
@@ -210,11 +220,12 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     size = max(obj.width, obj.height, 1)
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     pygame.draw.circle(surf, Colors.red, (size / 2, size / 2), size / 2)
-    radius = float(obj.properties.get("radius", 0))
-    start_angle = float(obj.properties.get("start_angle", 0))
-    end_angle = float(obj.properties.get("end_angle", 360))
-    speed = float(obj.properties.get("speed", 50))
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    radius = props.number(obj.properties, "radius", 0, where=where)
+    start_angle = props.number(obj.properties, "start_angle", 0, where=where)
+    end_angle = props.number(obj.properties, "end_angle", 360, where=where)
+    speed = props.number(obj.properties, "speed", 50, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     hazard = OrbitingHazard(
         (obj.x, obj.y),
         surf,
@@ -234,7 +245,8 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     if surf is None:
         surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
         surf.fill(Colors.red)
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
         animator = build_hazard_animator(
             {"spikes": "assets/graphics/enemies/floor_spikes"}, "spikes"

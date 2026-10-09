@@ -2,11 +2,18 @@
 Data structures for parsed TMX level data.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 import pygame
 import pytmx
+
+logger = logging.getLogger(__name__)
+
+#: The object layer that carries a level's settings rather than its world. It
+#: is hidden in Tiled as a matter of course, so it is read either way.
+DATA_LAYER_NAME = "Data"
 
 
 @dataclass
@@ -21,10 +28,11 @@ class TileLayerData:
 class ObjectData:
     """Represents a single object from an object layer.
 
-    ``gid`` is the tile id the TMX object refers to, carried straight through
-    from ``pytmx`` and not read: image objects are loaded by path, and nothing
-    in the world builder resolves tiles by gid. It stays so the field is here
-    when something does.
+    ``gid`` is the tile id the TMX object refers to, remapped by pytmx from
+    the tileset's own numbering into global ids -- a ``gid="229"`` in the file
+    arrives here as 92. It is carried through and not read: image objects are
+    loaded by path, and nothing in the world builder resolves tiles by gid. It
+    stays so the field is here when something does.
     """
 
     name: str
@@ -99,6 +107,12 @@ class LevelData:
         """
         Build a LevelData instance from a pytmx TiledMap.
 
+        A layer the designer hid in Tiled is skipped, with one exception: the
+        ``Data`` layer is the level's settings carrier and is routinely hidden
+        to keep it out of the editor, so it is read either way. Dropping the
+        config along with the visibility flag would silently take the level's
+        kill plane and its unlock with it.
+
         Args:
             tmx_map: The loaded TMX map object.
 
@@ -110,12 +124,19 @@ class LevelData:
         config = LevelConfig()
 
         for layer in tmx_map.layers:
+            if not getattr(layer, "visible", True) and layer.name != DATA_LAYER_NAME:
+                logger.warning(
+                    "'%s' is hidden in Tiled, so it is not built: it is neither "
+                    "drawn nor collided with",
+                    layer.name,
+                )
+                continue
             if isinstance(layer, pytmx.TiledTileLayer):
                 tile_layers[layer.name] = TileLayerData(name=layer.name, tiles=list(layer.tiles()))
             elif isinstance(layer, pytmx.TiledObjectGroup):
                 objects = [_object_from_tmx(obj) for obj in layer]
                 object_layers[layer.name] = ObjectLayerData(name=layer.name, objects=objects)
-                if layer.name == "Data" and objects:
+                if layer.name == DATA_LAYER_NAME and objects:
                     config = _config_from_properties(objects[0].properties)
 
         return cls(
@@ -147,8 +168,14 @@ def _object_from_tmx(obj: Any) -> ObjectData:
 
 def _config_from_properties(props: dict) -> LevelConfig:
     """Extract LevelConfig from the properties of the first Data object."""
+    # pytmx reads an empty ``<property value=""/>`` as None, so a designer who
+    # clears the background gets ``str(None)`` -- the literal string "None" --
+    # rather than the "" the field is documented to default to. Preserving the
+    # sentinel here is what lets the renderer tell "no background" apart from
+    # a colour somebody typed.
+    bg = props.get("bg", "")
     return LevelConfig(
-        bg=str(props.get("bg", "")),
+        bg="" if bg is None else str(bg),
         top_limit=float(props.get("top_limit", 0)),
         bottom_limit=float(props.get("bottom_limit", 0)),
         horizon_line=float(props.get("horizon_line", 0)),
