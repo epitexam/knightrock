@@ -17,8 +17,14 @@ from src.core.settings import Combat as CombatSettings
 class PairEntity(pygame.sprite.Sprite):
     """Minimal entity stub for the pairing systems."""
 
-    def __init__(self, x: float, faction: str, speed: float = 500.0):
+    _next_id = 0
+
+    def __init__(self, x: float, faction: str, speed: float = 500.0, entity_id: str | None = None):
         super().__init__()
+        if entity_id is None:
+            PairEntity._next_id += 1
+            entity_id = f"e{PairEntity._next_id}"
+        self.id = entity_id
         self.hitbox = pygame.FRect(x, 0, 40, 40)
         self.velocity = pygame.Vector2(speed, 0)
         self.faction = faction
@@ -42,6 +48,44 @@ def test_contact_damage_applies_to_fast_overlapping_pair():
 
     assert a.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
     assert b.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
+
+
+def test_contact_damage_applies_once_per_pair_per_cooldown():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    system = ContactDamageSystem()
+
+    for _ in range(60):
+        system.process(pygame.sprite.Group(a, b))
+
+    amount = CombatSettings.CONTACT_DAMAGE_AMOUNT
+    assert a.damage_taken <= 6 * amount, (
+        f"{a.damage_taken} damage over one second of overlap: the pair re-applies "
+        "every tick and the is_hurt gate never stops it"
+    )
+
+
+def test_the_contact_cooldown_is_per_pair():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    other = PairEntity(20, "enemy", entity_id="e2")
+    system = ContactDamageSystem()
+
+    system.process(pygame.sprite.Group(a, b))
+    assert a.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
+    assert other.damage_taken == 0.0
+
+    system.process(pygame.sprite.Group(a, other))
+    assert other.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
+
+
+def test_the_contact_cooldown_forgets_an_entity_that_left_the_level():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    system = ContactDamageSystem()
+
+    system.process(pygame.sprite.Group(a, b))
+    assert system._cooldowns
+
+    system.process(pygame.sprite.Group())
+    assert not system._cooldowns
 
 
 def test_contact_damage_ignores_slow_pair():

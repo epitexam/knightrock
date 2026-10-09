@@ -193,12 +193,21 @@ def build_respawn_level() -> Level:
 # other two scenarios do not observe patrol translation (enemies either
 # chase immediately or leave the frame of interest), so they stay valid.
 PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
+# Re-captured PHYSICS and RESPAWN for the per-pair contact damage cooldown
+# (commit "fix(combat): a contact pair may not damage twice in a row"):
+# MomentumGate asks whether the target is already hurt, but the contact box
+# resolves with ``interrupt=False``, which never put a target in the hurt
+# state -- so the guard could not fire and an overlapping pair re-applied the
+# damage every tick. 12 ticks, ~0.2s, about a quarter of the player's own
+# i-frame window. The goblin-on-goblin overlap in these scenarios is what
+# moves.
 # Re-captured RIDE for the per-target hazard cooldown (commit
-# "fix(combat): a hazard may not damage the same target twice in a row"):
-# a saw re-emits its box every tick and no enemy configures an invincibility
+# "fix(combat): give hazards a per-target damage cooldown"): a saw
+# re-emits its box every tick and no enemy configures an invincibility
 # window, so a lifetime rider died inside the cooldown window and never
 # reached the exit. 24 ticks, ~0.4s, roughly the player's own i-frame
 # window.  PHYSICS and RESPAWN carry no hazard and are unaffected.
+PHYSICS_DIGEST = "43ab72f5351c4b5d908fef2997b157d8af4a518c6a99961844160081cccaed32"
 RIDE_DIGEST = "4f23129cd904725a48b0346798d93b7cc3eb420b3ac169db9706095a3ef4f124"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
