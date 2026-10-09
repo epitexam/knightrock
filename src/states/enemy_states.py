@@ -452,8 +452,6 @@ class EnemyDizzyState(State):
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.stagger_timer > 0:
-            self.entity.stagger_timer -= delta_time
         if self.entity.stagger_timer <= 0:
             return EnemyState.IDLE
         return None

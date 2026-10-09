@@ -261,12 +261,17 @@ def test_dizzy_state_exits_after_duration() -> None:
     enemy.stagger_timer = 1.0
     state = EnemyDizzyState(enemy)
 
-    # First update
+    # The timer is owned by Vitals.tick_timers, not by the state: the state reads
+    # it. Decaying it here too halved every configured dizzy window.
     assert state.update(0.5) is None
+    assert enemy.stagger_timer == pytest.approx(1.0)
+
+    enemy.vitals.tick_timers(0.5)
+    assert state.update(0.0) is None
     assert enemy.stagger_timer == pytest.approx(0.5)
 
-    # Second update - timer clears
-    assert state.update(0.6) == "idle"
+    enemy.vitals.tick_timers(0.6)
+    assert state.update(0.0) == "idle"
 
 
 def test_player_dizzy_state_exits_via_ground_return() -> None:
@@ -274,13 +279,15 @@ def test_player_dizzy_state_exits_via_ground_return() -> None:
 
     player = _player()
     player.state_machine.current_state_name = DIZZY_STATE
-    player.stagger_timer = 0.5
+    player.stagger_timer = 1.0
     player.on_surface = {"floor": True, "left": False, "right": False}
 
     state = PlayerDizzyState(player)
     assert state.update(0.3) is None
+    assert player.stagger_timer == pytest.approx(1.0)
 
-    assert state.update(0.3) == "idle"  # timer clears, ground_return -> idle
+    player.vitals.tick_timers(1.0)
+    assert state.update(0.0) == "idle"  # timer clears, ground_return -> idle
 
 
 def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:

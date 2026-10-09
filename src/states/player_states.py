@@ -514,8 +514,6 @@ class PlayerDizzyState(State):
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.stagger_timer > 0:
-            self.entity.stagger_timer -= delta_time
         if self.entity.stagger_timer <= 0:
             return player_ground_return(self.entity)
         return None
