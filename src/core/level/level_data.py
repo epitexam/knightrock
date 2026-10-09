@@ -9,11 +9,22 @@ from typing import Any
 import pygame
 import pytmx
 
+from src.core.settings import World
+
 logger = logging.getLogger(__name__)
 
 #: The object layer that carries a level's settings rather than its world. It
 #: is hidden in Tiled as a matter of course, so it is read either way.
 DATA_LAYER_NAME = "Data"
+
+
+class LevelDataError(ValueError):
+    """A map cannot be read as the level this game plays.
+
+    A ``ValueError`` because it is a bad value in a file the game was handed,
+    and because ``LevelManager`` re-raises pytmx's own failures under a
+    ``ValueError`` for the same reason: the fatal screen already reports those.
+    """
 
 
 @dataclass
@@ -139,10 +150,19 @@ class LevelData:
                 if layer.name == DATA_LAYER_NAME and objects:
                     config = _config_from_properties(objects[0].properties)
 
+        tile_size = tmx_map.tilewidth
+        if tile_size != World.TILE_SIZE:
+            raise LevelDataError(
+                f"map tiles are {tile_size}px, the world is built on "
+                f"{World.TILE_SIZE}px. Every placement in the builder multiplies "
+                "by the world's size, so the camera, the tile index and the "
+                "sprites would disagree about where anything is."
+            )
+
         return cls(
             width=tmx_map.width,
             height=tmx_map.height,
-            tile_size=tmx_map.tilewidth,
+            tile_size=tile_size,
             tile_layers=tile_layers,
             object_layers=object_layers,
             config=config,

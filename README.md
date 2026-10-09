@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2542%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-2547%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2542 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 2547 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -653,7 +653,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 2542 tests · 94 % instruction coverage · 91 % branch
+> **Current baseline:** 2547 tests · 94 % instruction coverage · 91 % branch
 > coverage · Ruff clean · mypy clean (176 files across `src main.py tools`;
 > `mypy src` alone is 173).[^coverage]
 

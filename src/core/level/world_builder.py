@@ -228,7 +228,7 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     speed = props.number(obj.properties, "speed", 50, where=where)
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     hazard = OrbitingHazard(
-        (obj.x, obj.y),
+        (obj.x + obj.width / 2, obj.y + obj.height / 2),
         surf,
         radius,
         start_angle,
@@ -261,8 +261,14 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
 
 
 def _build_exit(obj: ObjectData, groups: SpriteGroups) -> None:
-    """Create the level exit flag."""
-    groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites))
+    """Create the level exit flag.
+
+    The trigger follows the object's own rectangle rather than a fixed tile
+    squared off at its top-left corner: a flag 68x186 authored in Tiled used to
+    be reachable from a 64x64 box 186 px above its own top edge, so the exit
+    was two body heights over the flag's head.
+    """
+    groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites, (obj.width, obj.height)))
 
 
 #: Object layers whose sprites sit *behind* the world, not in it.

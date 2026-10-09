@@ -95,6 +95,11 @@ class LevelExit(Sprite):
         self,
         pos: tuple[float, float],
         groups: pygame.sprite.AbstractGroup | None = None,
+        size: tuple[float, float] | None = None,
     ) -> None:
-        surf = pygame.Surface((World.TILE_SIZE, World.TILE_SIZE), pygame.SRCALPHA)
+        # The object's own rectangle, so the trigger is as tall and wide as the
+        # flag drawn in Tiled. An object placed without a size falls back to a
+        # tile, which is what a bare point marker in Tiled means anyway.
+        width, height = size if size else (World.TILE_SIZE, World.TILE_SIZE)
+        surf = pygame.Surface((max(width, 1.0), max(height, 1.0)), pygame.SRCALPHA)
         super().__init__(pos, color=None, surf=surf, groups=groups)
