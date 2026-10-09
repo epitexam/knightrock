@@ -4,6 +4,7 @@ from collections import OrderedDict
 import pygame
 
 from src.core.settings import Debug
+from src.ui.fonts import ui_font
 from src.ui.scale import font_size, screen_scale, world_scale
 from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_TITLE
 
@@ -563,23 +564,15 @@ class PanelRenderer:
         Two families, so the two scales have to be applied to the right ones: the
         world cards scale with the world, the panels with the screen.
         """
-        self.debug_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale)
-        )
-        self.title_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale), bold=True
-        )
-        self.label_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.LABEL_FONT_SIZE, self._screen_scale)
-        )
+        self.debug_font = ui_font(font_size(Debug.FONT_SIZE, self._screen_scale))
+        self.title_font = ui_font(font_size(Debug.FONT_SIZE, self._screen_scale), bold=True)
+        self.label_font = ui_font(font_size(Debug.LABEL_FONT_SIZE, self._screen_scale))
         # World-space entity cards: compact fonts so the floating labels
         # stay readable without covering the sprites they describe.
-        self.world_title_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.WORLD_TITLE_FONT_SIZE, self._world_scale), bold=True
+        self.world_title_font = ui_font(
+            font_size(Debug.WORLD_TITLE_FONT_SIZE, self._world_scale), bold=True
         )
-        self.world_label_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.WORLD_LABEL_FONT_SIZE, self._world_scale)
-        )
+        self.world_label_font = ui_font(font_size(Debug.WORLD_LABEL_FONT_SIZE, self._world_scale))
 
     def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
         """Adopt a new render target, and re-derive the scales from it.

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from src.ui.fonts import ui_font
 from src.ui.metrics import (
     MIN_ROW_RATIO,
     MIN_TEXT_RATIO,
@@ -579,11 +580,9 @@ class GridView:
         if self._fonts is not None and self._font_key == self._text_scale:
             return
         self._fonts = (
-            pygame.font.SysFont(
-                "Consolas", self._metrics.title_text_at(self._text_scale), bold=True
-            ),
-            pygame.font.SysFont("Consolas", self._metrics.item_text_at(self._text_scale)),
-            pygame.font.SysFont("Consolas", self._metrics.small_text_at(self._text_scale)),
+            ui_font(self._metrics.title_text_at(self._text_scale), bold=True),
+            ui_font(self._metrics.item_text_at(self._text_scale)),
+            ui_font(self._metrics.small_text_at(self._text_scale)),
         )
         if self._font_key is not None:
             self._text_cache.clear()

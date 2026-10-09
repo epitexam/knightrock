@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 import pygame
 
+from src.ui.fonts import ui_font
 from src.ui.menu_model import MenuModel
 from src.ui.metrics import Metrics
 from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale, font_size
@@ -247,9 +248,9 @@ class MenuView:
     def _fonts_for(self, scale: float) -> tuple[pygame.font.Font, ...]:
         """Title, item and footer fonts for a scale, built once per scale.
 
-        ``SysFont`` scans the system font list on every call, so all three live
-        in the same cache entry: a call site that builds its own is a per-frame
-        font lookup, which is what this cache exists to prevent.
+        Building a font rasterises its metrics, so all three live in the same
+        cache entry: a call site that builds its own is a per-frame font build,
+        which is what this cache exists to prevent.
         """
         # Keyed on the pixel sizes, not on the scale: a drag of the window
         # produces a new scale every frame, and a dict keyed on those grows by
@@ -260,9 +261,9 @@ class MenuView:
         cached = self._fonts.get(key)
         if cached is None:
             cached = (
-                pygame.font.SysFont("Consolas", key[0], bold=True),
-                pygame.font.SysFont("Consolas", key[1]),
-                pygame.font.SysFont("Consolas", key[2]),
+                ui_font(key[0], bold=True),
+                ui_font(key[1]),
+                ui_font(key[2]),
             )
             if len(self._fonts) >= FONT_CACHE_ENTRIES:
                 # A drag through a hundred densities is not a thing to keep.
