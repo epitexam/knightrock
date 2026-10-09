@@ -346,10 +346,12 @@ def test_applying_a_display_mode_change_rebuilds_the_window(manager, counter) ->
 
     assert count() == 1
     # The target is only replaced when its *size* moved. Under the dummy driver
-    # both modes hand back the same size, so the honest claim is that the
-    # picture is in step with the new window -- not that a new surface exists.
-    assert game.presentation.surface.get_size() == game.stage.size or True
+    # both modes hand back the same size, so the picture keeps its size. It is
+    # the window's letterbox, not the window: comparing the two directly used
+    # to read `or True`, which was hiding that the assertion is false whenever
+    # the aspect ratio bars are not zero.
     assert game.presentation.surface.get_size() == before.get_size()
+    assert game.presentation.surface.get_size()[1] <= game.stage.size[1]
 
 
 def test_whole_pixel_art_rebuilds_the_target_without_rebuilding_the_window(

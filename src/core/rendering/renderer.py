@@ -205,6 +205,38 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
     return out
 
 
+#: Working set, not a budget. The shipped level draws 38 distinct images
+#: through the scale cache at one density; a bound set to that number rebuilds
+#: the cache every frame, which is what made the shear cache's own first bound
+#: cost 95us a frame. Four times the measured set gives room for the debug
+#: spawn bench, which is the caller that keeps churning new Surfaces -- and at
+#: roughly 8 Ko a retained blend, 512 entries is a few megabytes of worst case
+#: instead of the unbounded growth the caches had, where every spawned enemy
+#: left one behind for the rest of the session.
+SCALE_CACHE_MAX = 512
+FLASH_CACHE_MAX = 512
+
+
+def _evict_half(cache: dict) -> None:
+    """Drop the oldest half of a cache rather than all of it.
+
+    Wiping the lot is what a cache full of entries you are still using does to
+    itself: the next frame rebuilds them, and the frame after finds the cache
+    full again. Measured with eight animation frames in play -- each rebuild
+    sweeping the whole table -- that was a 100% rebuild rate at 95 microseconds
+    a frame, sustained, in exchange for saving about a megabyte.
+
+    Dropping half and letting it refill means an oversized working set costs
+    some rebuilds rather than all of them. Insertion order is the eviction
+    order here, which is not a real LRU: with a handful of fighters and a
+    skew that walks down then back up, what is oldest is nearly always what is
+    needed least, and the alternative -- ordering on last use -- means a write
+    on every hit, which is the thing being optimised.
+    """
+    for stale in list(cache)[: len(cache) // 2]:
+        del cache[stale]
+
+
 def _evict_half_shear_cache() -> None:
     """Drop the oldest half of the shear cache rather than all of it.
 
@@ -221,8 +253,7 @@ def _evict_half_shear_cache() -> None:
     needed least, and the alternative -- ordering on last use -- means a write
     on every hit, which is the thing being optimised.
     """
-    for stale in list(_SHEAR_CACHE)[: len(_SHEAR_CACHE) // 2]:
-        del _SHEAR_CACHE[stale]
+    _evict_half(_SHEAR_CACHE)
 
 
 def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
@@ -365,6 +396,8 @@ class Renderer:
         if cached is not None:
             return cached[1]
         scaled = self._rescale(image)
+        if len(self._scaled_cache) >= SCALE_CACHE_MAX:
+            _evict_half(self._scaled_cache)
         self._scaled_cache[key] = (image, scaled)
         return scaled
 
@@ -388,6 +421,8 @@ class Renderer:
             return cached[1]
         mask = pygame.mask.from_surface(image)
         silhouette = mask.to_surface(setcolor=(*color, 255), unsetcolor=(0, 0, 0, 0))
+        if len(self._flash_cache) >= FLASH_CACHE_MAX:
+            _evict_half(self._flash_cache)
         self._flash_cache[key] = (image, silhouette)
         return silhouette
 
