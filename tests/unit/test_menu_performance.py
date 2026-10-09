@@ -26,6 +26,7 @@ from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
 from src.core.settings import Input as InputSettings
 from src.ui.controls_view import BindingCell, BindingRow, ControlsView
+from src.ui.fonts import ui_font  # noqa: F401 (patched by the font-build counter)
 from src.ui.grid_view import GridView
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
@@ -81,11 +82,13 @@ def counter(monkeypatch):
     return install
 
 
-def _count_sysfont(monkeypatch):
-    """Count ``pygame.font.SysFont`` constructions, returning a counter."""
+def _count_font_builds(monkeypatch):
+    """Count font constructions, returning a counter."""
     made: list[tuple] = []
-    original = pygame.font.SysFont
-    monkeypatch.setattr(pygame.font, "SysFont", lambda *a, **k: made.append(a) or original(*a, **k))
+    original = ui_font
+    monkeypatch.setattr(
+        "src.ui.menu_view.ui_font", lambda *a, **k: made.append(a) or original(*a, **k)
+    )
     return lambda: len(made)
 
 
@@ -100,7 +103,7 @@ def test_unchanged_scale_does_not_rebuild_menu_fonts(monkeypatch, surface) -> No
     model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
     view = MenuView(1.0)
     view.draw(surface, "TITLE", model, top=120)
-    made = _count_sysfont(monkeypatch)
+    made = _count_font_builds(monkeypatch)
 
     view.set_scale(1.0)
     view.draw(surface, "TITLE", model, top=120)
@@ -114,7 +117,7 @@ def test_changed_scale_still_rebuilds_menu_fonts(monkeypatch, surface) -> None:
     model = MenuModel([MenuItem("one", "One")])
     view = MenuView(1.0)
     view.draw(surface, "TITLE", model, top=120)
-    made = _count_sysfont(monkeypatch)
+    made = _count_font_builds(monkeypatch)
 
     view.set_scale(1.2)
     view.draw(surface, "TITLE", model, top=120)

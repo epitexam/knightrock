@@ -57,9 +57,9 @@ GOLDEN_BARS = {
 }
 
 GOLDEN_ANNOTATIONS = {
-    "Ooze": [(300, 70, 158, 31), (344, 24, 15, 15)],
-    "Slime": [(420, 251, 158, 31), (464, 314, 15, 15), (456, 348, 15, 15)],
-    "Ectoplasm": [(400, 251, 158, 31), (440, 310, 15, 15)],
+    "Ooze": [(300, 70, 158, 32), (344, 24, 15, 15)],
+    "Slime": [(420, 250, 158, 32), (464, 314, 15, 15), (456, 348, 15, 15)],
+    "Ectoplasm": [(400, 250, 158, 32), (440, 310, 15, 15)],
     "Goblin": [],
     "Rat": [],
 }
@@ -67,11 +67,11 @@ GOLDEN_ANNOTATIONS = {
 # Draw order is placement priority, not scene order: the player reads first,
 # then top to bottom. The Rat is last in the scene and first on screen.
 GOLDEN_PLACED = [
-    (680, 504, 80, 53),
-    (212, 105, 247, 72),
-    (310, 379, 247, 75),
-    (335, 479, 247, 72),
-    (468, 175, 104, 53),
+    (680, 500, 80, 57),
+    (212, 106, 247, 78),
+    (310, 379, 247, 78),
+    (335, 479, 247, 78),
+    (468, 171, 104, 57),
 ]
 
 # Every method ``WorldUI`` had before the split, and the one module each one is

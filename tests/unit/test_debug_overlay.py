@@ -560,11 +560,14 @@ def test_labels_beyond_all_slots_are_dropped(
     """More labels than dodge room: extras vanish instead of overdrawing."""
     placed = _place_crowd(monkeypatch, world_ui, _crowd(12), camera)
 
-    # Compact world fonts: cards are ~53 px tall with padding at the
+    # Compact world fonts: cards are ~57 px tall with padding at the
     # default anchor, so more dodge slots fit than with the old panel-sized
-    # fonts — exactly 5 cards, all apart, the rest dropped.
-    assert len(placed) == 5
-    assert all(not placed[i].colliderect(placed[j]) for i in range(5) for j in range(i + 1, 5))
+    # fonts — exactly 4 cards, all apart, the rest dropped.
+    count = len(placed)
+    assert count == 4
+    assert all(
+        not placed[i].colliderect(placed[j]) for i in range(count) for j in range(i + 1, count)
+    )
 
 
 def test_label_card_renders_header_divider_and_accent_edge(
@@ -606,15 +609,14 @@ def test_label_card_renders_header_divider_and_accent_edge(
     assert surface.get_at((bar.x + 1, bar.y + 2))[:3] != (0, 0, 0)
 
     # Inside the HP row (below the divider rule): the dark fill shows through
-    # in the padding, away from the glyphs.
-    assert surface.get_at((content_left + LABEL_PAD_X + 4, body_y + 2))[:3] == (14, 16, 19)
-    # Top accent edge (faction red for enemies): 2 px just inside the top
-    # border, spanning the card width.
+    # in the padding, away from the glyphs. The padding is read rather than the
+    # body, because which pixels a glyph covers is a function of the font.
     bg_left = content_left - LABEL_PAD_X
     bg_top = content_top - LABEL_PAD_Y
-    assert surface.get_at((bg_left + 3, bg_top + 2))[:3] == (Colors.light_red)
-    # No full-height side stripe anymore: the left padding shows card fill.
     assert surface.get_at((bg_left + 3, body_y + 2))[:3] == (14, 16, 19)
+    # Top accent edge (faction red for enemies): 2 px just inside the top
+    # border, spanning the card width.
+    assert surface.get_at((bg_left + 3, bg_top + 2))[:3] == (Colors.light_red)
 
 
 def test_health_bar_never_hides_inside_the_label_card(world_ui: WorldUI, camera: Camera) -> None:
