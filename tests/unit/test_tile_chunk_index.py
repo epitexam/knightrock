@@ -299,6 +299,23 @@ def test_nothing_that_moves_is_in_the_frozen_plane(real_level: Level) -> None:
         assert not any(id(sprite) in static_ids for sprite in plane)
 
 
+def test_a_refused_index_falls_back_to_the_linear_scan(real_level: Level) -> None:
+    """The level promises the linear cull when it refuses the index.
+
+    Refusing without a fallback left the frozen plane empty: the terrain
+    vanished and nothing at all logged it as wrong, because the warning said
+    the cull was kept. The scan is the same result, only slower.
+    """
+    level = real_level
+    groups = level.groups
+    renderer = level.renderer
+    renderer.set_static_planes(None, None)
+
+    assert list(renderer._static_plane(groups, None, renderer.camera.viewport)) == list(
+        groups.static_sprites
+    )
+
+
 def test_the_frozen_plane_still_answers_collision_queries(real_level: Level) -> None:
     """Moving the tiles out of ``all_sprites`` must not have moved them out of
     the physics: a level that cannot be collided with is not a level.

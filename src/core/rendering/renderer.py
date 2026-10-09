@@ -564,9 +564,18 @@ class Renderer:
         static_index: TileChunkIndex | None,
         viewport: pygame.FRect,
     ) -> Iterable[pygame.sprite.Sprite]:
-        """The frozen tile plane, through its chunk index when there is one."""
+        """The frozen tile plane, through its chunk index when there is one.
+
+        Without an index the plane falls back to a linear scan. The index is
+        refused by the level when a moving sprite reached the frozen plane, and
+        a chunked plane refused without a fallback draws nothing at all -- the
+        terrain disappears and the player falls through the floor. The scan is
+        the same result, only slower, which for a world with no valid index is
+        the right trade. The exact ``is_visible`` test still runs downstream on
+        every candidate, so the walker hands over the whole plane.
+        """
         if static_index is None:
-            return ()
+            return groups.static_sprites
         return static_index.candidates(viewport)
 
     def _sprite_planes(
