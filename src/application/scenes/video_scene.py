@@ -4,36 +4,41 @@ Sole owner of the display settings. They used to be duplicated in the Options
 hub, which let the player change the same value from two places; the Options
 screen is now navigation only.
 
-There is no resolution row, and that is the point rather than an omission. A
-list of window sizes is a claim about the player's monitor that the game cannot
-check -- offering 2560x1440 to a 1366x768 laptop is what that costs -- and a
-remembered size is a claim that goes stale: in borderless the window is the
-desktop's size whatever the file says, and the row would go on displaying a
-number the game was not using. The window is now the only source of truth, the
-player resizes it with the window manager, and the picture follows. So every row
-here is something the game can actually honour: a mode, whole-pixel art, a
-refresh, a cadence, a text size.
+This screen is a hub. Every setting with more than a handful of values opens a
+list (:class:`~src.application.scenes.option_screen.OptionScreen`), because
+cycling is only a reasonable control for two to four values and some of these
+are not: the driver reports 28 fullscreen modes on this panel, so a cycle took up
+to 27 presses and offered no way to discover the value existed. The lists
+themselves live in :mod:`src.application.scenes.video_options`, so what a setting
+*offers* is decided without a screen in the way.
+
+Left as direct ←/→ cycling, on purpose, are the rows that really are two or three
+states: the display mode, VSync, and the whole-pixel question -- which is no
+longer its own row, because it is the same setting as the integer fit policy and
+sitting next to it as a separate toggle produced a row that changed its label and
+changed nothing on screen. It is an entry inside the fit list now, where the
+sentence explaining what whole-pixel art is has room to be read.
+
+Still no resolution *catalogue*. A hardcoded list of window sizes is a claim
+about the player's monitor the game cannot check -- offering 2560x1440 to a
+1366x768 laptop is what that costs. The fullscreen list is the opposite: it is
+read from the driver on this machine and then filtered to modes the chosen panel
+can actually display, which is what makes it a claim the game can stand behind.
 """
 
-from typing import TYPE_CHECKING
+import logging
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
 from src.application.scene import Scene
-from src.application.settings_store import (
-    FRAME_LIMITS,
-    PANEL_SCALES,
-    UI_SCALES,
-    UserSettings,
-)
+from src.application.scenes import video_options
+from src.application.scenes.option_screen import Option, OptionScreen
+from src.application.settings_store import UserSettings
 from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import (
-    FitPolicy,
-    already_a_whole_multiple,
-    fits_whole_pixel,
-    letterbox,
-)
+from src.core.display.letterbox import FitPolicy, letterbox
 from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Resolution, ResolutionReason, Topology
 from src.core.input.event_router import RoutedInput
@@ -42,8 +47,20 @@ from src.core.settings import Debug
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from src.core.game import Game
+
+#: What a submenu builder hands back: a title, the options, which one is in
+#: force, and what to do when one is picked. A tuple rather than four
+#: arguments because these are read positionally at the call site and a named
+#: structure here would need a class for one use.
+#:
+#: Generic in the value type, because each builder knows exactly what its options
+#: carry -- a monitor name, a ``FitPolicy``, an ``int | None`` -- and an alias
+#: that erased that would force every caller to cast what it just built.
+Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 
 #: The modes offered as a cycle, ``AUTO`` first: it is a real choice -- "decide
 #: again next launch, on whatever machine I am on" -- and the row shows what it
@@ -63,10 +80,24 @@ FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
 
 class VideoScene(Scene):
     TITLE = "VIDEO"
-    SCALE_VALUES: tuple[float, ...] = UI_SCALES
-    PANEL_SCALE_VALUES: tuple[float, ...] = PANEL_SCALES
     VALUE_FLASH_SECONDS = 0.5
     FOOTER = "↑↓ row · ←→ change · Esc back"
+    #: Where a list row goes when it is opened, and what it says on the way out.
+    #: The picker draws its own footer, so it does not inherit this one.
+    SUBMENU_FOOTER = "↑↓ row · Enter select · Esc back"
+
+    #: Which list each row owns. Named rather than bound to the builders here,
+    #: because the builders are methods defined further down and a class body
+    #: cannot reference them -- and a table of names is what the row lists can be
+    #: checked against, which is the check that catches a row with no list.
+    SUBMENUS = (
+        "monitor",
+        "fullscreen_mode",
+        "fit",
+        "frame_limit",
+        "scale",
+        "panel_scale",
+    )
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -111,7 +142,7 @@ class VideoScene(Scene):
         topology = self._topology()
         resolution = self._topology().resolve(settings.monitor)
         items = (
-            MenuItem("display", "Display", self._display_label()),
+            MenuItem("display", "Display mode", self._display_label()),
             # Only where there is a choice to make. On a single-screen machine
             # there is nothing to pick and a row that always reads "Screen 1"
             # would be a row that cannot be acted on -- which is the dead-row
@@ -122,25 +153,23 @@ class VideoScene(Scene):
                         "monitor",
                         "Screen",
                         self._monitor_label(topology, resolution),
-                        enabled=len(topology.monitors) > 1,
                     ),
                 )
                 if len(topology.monitors) > 1
                 else ()
             ),
+            # Always shown, and disabled outside fullscreen, rather than hidden.
+            # A row that appears only in fullscreen is a row a windowed player
+            # never discovers exists, and a discovery problem is worse than a
+            # greyed-out one: the greyed row answers "not now", the missing one
+            # answers nothing at all.
             MenuItem(
                 "fullscreen_mode",
                 "Fullscreen mode",
                 self._fullscreen_mode_label(),
                 enabled=settings.display is DisplayMode.FULLSCREEN,
             ),
-            MenuItem("fit", "Scaling", self._fit_label()),
-            MenuItem(
-                "pixel_perfect",
-                "Whole-pixel art",
-                self._pixel_perfect_label(),
-                fits_whole_pixel(self._window_size(), DEFAULT_FRAMING),
-            ),
+            MenuItem("fit", "Picture fit", self._fit_label()),
             MenuItem("vsync", "VSync", self._vsync_label()),
             MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
             MenuItem("scale", "UI scale", f"{settings.ui_scale:.1f}x"),
@@ -201,22 +230,22 @@ class VideoScene(Scene):
         return self.game.settings.fit.value
 
     def _fullscreen_mode_label(self) -> str:
-        """The exclusive-fullscreen resolution, from what the driver reports.
+        """The fullscreen resolution, from what the driver reports.
 
         Read from ``list_modes`` rather than from a list this project wrote down,
         which is what makes it a choice the game can honour: every entry came out
-        of the driver on this machine, on this panel. An entry that is no longer
-        supported after a cable is swapped cannot be honoured, and the row says
-        so rather than offering it.
+        of the driver on this machine, on this panel. A mode the panel cannot
+        display is filtered out of the list as well, so what this row says and
+        what the list offers cannot disagree.
         """
-        modes = self.fullscreen_modes()
-        if not modes:
-            return "unavailable"
         stored = self.game.settings.fullscreen_mode
         if stored is None:
-            return "display's own"
+            return "the display's own mode"
         found = f"{stored[0]}x{stored[1]}"
-        return found if stored in modes else f"{found} (unavailable)"
+        monitor = self._topology().resolve(self.game.settings.monitor).monitor
+        if stored[0] > monitor.size[0] or stored[1] > monitor.size[1]:
+            return f"{found} (unavailable)"
+        return found
 
     @staticmethod
     def fullscreen_modes() -> tuple[tuple[int, int], ...]:
@@ -232,22 +261,6 @@ class VideoScene(Scene):
             return tuple(sorted(set(pygame.display.list_modes()), reverse=True))
         except pygame.error:
             return ()
-
-    def _cycle_fullscreen_mode(self, action: InputAction) -> None:
-        modes = self.fullscreen_modes()
-        if not modes:
-            return
-        current = self.game.settings.fullscreen_mode
-        index = modes.index(current) if current in modes else -1
-        step = -1 if action is InputAction.UI_LEFT else 1
-        # The first step lands on a real mode rather than on "auto": there is
-        # nothing to the left of the display's own mode, and a cycle that sticks
-        # at the end is a row that looks broken.
-        if index < 0:
-            chosen = modes[0] if step > 0 else modes[-1]
-        else:
-            chosen = modes[(index + step) % len(modes)]
-        self._apply(self.game.settings.with_video(fullscreen_mode=chosen))
 
     def _display_label(self) -> str:
         mode = self.game.settings.display
@@ -282,28 +295,6 @@ class VideoScene(Scene):
         rect = letterbox(size, DEFAULT_FRAMING, pixel_perfect=self.game.settings.pixel_perfect)
         bars = "" if rect.size == tuple(size) else " + bars"
         return f"{rect.width}x{rect.height} at {rect.width / DEFAULT_FRAMING.width:.2f}x{bars}"
-
-    def _pixel_perfect_label(self) -> str:
-        """The whole-pixel row, which has to be able to say "not here" twice.
-
-        Two different windows where the setting is honoured and the picture does
-        not move: one too small to hold a whole multiple at all, and one already
-        sized to one. The first is a refusal and says so; the second is the row
-        working perfectly and has nothing to do, which without saying so reads as
-        a dead row -- the label flips while the screen sits still, which is what
-        a dead row looks like.
-
-        The order is load-bearing rather than incidental: the two branches ask
-        the same question in opposite directions and the refusal is the one that
-        has to win, or a window too small for the art would be told there is
-        nothing left to do.
-        """
-        size = self._window_size()
-        if not fits_whole_pixel(size, DEFAULT_FRAMING):
-            return "off (window too small)"
-        if self.game.settings.pixel_perfect and already_a_whole_multiple(size, DEFAULT_FRAMING):
-            return "on (already whole)"
-        return self._on_off(self.game.settings.pixel_perfect)
 
     def _vsync_label(self) -> str:
         rate = self._screen_refresh_rate()
@@ -373,16 +364,14 @@ class VideoScene(Scene):
         action, _ = self.model.handle_routed(
             routed.action, routed.position, self.view.item_rects, routed.variant
         )
-        if action in self.CYCLING_ROWS:
-            # A click on a value row steps it forward, the same as →.
-            #
-            # It used to do nothing, which is the same as a dead row: the focus
-            # moved, so the click *looked* like it had landed, and the value
-            # only changed if you then pressed a direction or Enter. Six of the
-            # nine rows were dead to the mouse that way, and the only ones that
-            # worked were the three handled by name below -- which is a bug that
-            # reads as "this menu is awkward" rather than as a bug, because a
-            # row that highlights on click looks alive.
+        if action in self.SUBMENU_ROWS:
+            # A click on a list row opens the list, the same as → and as Enter.
+            # It used to step the value instead, which is a control that only
+            # makes sense for two or three states -- and on a 28-entry list it
+            # was a click that moved a value one step somewhere the player was
+            # not looking.
+            self._open(action)
+        elif action in self.CYCLING_ROWS:
             self._cycle(action, InputAction.UI_RIGHT, click=True)
         elif action == "reset":
             self._reset()
@@ -391,22 +380,116 @@ class VideoScene(Scene):
             return MenuAction.BACK
         return action
 
-    #: Rows whose value a press -- or a click -- steps. Every other row on this
-    #: screen is named in :meth:`handle_routed` (``reset``, ``back``) or is not
-    #: an action at all (``info``, which only reports). A row in neither set is a
-    #: row that does nothing, and this list is the check that there is no such
-    #: row: ``test_every_row_does_something`` reads it against the real model.
-    CYCLING_ROWS = (
-        "display",
+    #: Rows whose value a press -- or a click -- steps, because there are only
+    #: two or three of them and a list would be a worse control.
+    CYCLING_ROWS = ("display", "vsync")
+
+    #: Rows that open a list. Every other row on this screen is named in
+    #: :meth:`handle_routed` (``reset``, ``back``) or is not an action at all
+    #: (``info``, which only reports). A row in neither set is a row that does
+    #: nothing, and this list is the check that there is no such row:
+    #: ``test_every_row_does_something`` reads it against the real model.
+    SUBMENU_ROWS = (
         "monitor",
         "fullscreen_mode",
         "fit",
-        "pixel_perfect",
-        "vsync",
         "frame_limit",
         "scale",
         "panel_scale",
     )
+
+    def _open(self, action: str) -> None:
+        """Push the list a row owns.
+
+        The builder is looked up by name because the builders are methods and a
+        class-body table cannot reference one. A row with no builder is the
+        dead-row bug, so it is logged rather than swallowed: a row that refuses
+        every press is indistinguishable from a broken key, and the log is the
+        only thing that says which one.
+        """
+        builder = getattr(self, f"_submenu_{action}", None)
+        if builder is None:
+            logger.warning("The %r row has no list to open", action)
+            return
+        title, options, selected, apply = builder()
+        self.game.scene_manager.push(
+            OptionScreen(
+                self.game,
+                title,
+                options,
+                apply,
+                selected=selected,
+                footer=self.SUBMENU_FOOTER,
+                on_back=self._rebuild,
+            )
+        )
+
+    def _submenu_monitor(self) -> Submenu:
+        topology = self._topology()
+        resolution = topology.resolve(self.game.settings.monitor)
+        return (
+            "SCREEN",
+            video_options.screen_options(topology, resolution),
+            resolution.monitor.name or None,
+            lambda name: self._apply(self.game.settings.with_video(monitor=name)),
+        )
+
+    def _submenu_fit(self) -> Submenu:
+        return (
+            "PICTURE FIT",
+            video_options.fit_options(self._window_size(), self.game.settings.fit),
+            self.game.settings.fit,
+            self._apply_fit,
+        )
+
+    def _apply_fit(self, policy: FitPolicy) -> None:
+        """Choose a fit policy, keeping the whole-pixel flag consistent with it.
+
+        ``pixel_perfect`` is the older name for the integer policy and a v3 file
+        may still carry it, so it is written alongside rather than left to
+        override the choice on the next launch -- which is what used to happen.
+        """
+        self._apply(
+            self.game.settings.with_video(fit=policy, pixel_perfect=policy is FitPolicy.INTEGER)
+        )
+
+    def _submenu_fullscreen_mode(self) -> Submenu:
+        topology = self._topology()
+        monitor = topology.resolve(self.game.settings.monitor).monitor
+        modes = self.fullscreen_modes()
+        return (
+            "FULLSCREEN MODE",
+            video_options.fullscreen_mode_options(
+                modes, monitor, self.game.settings.fullscreen_mode
+            ),
+            self.game.settings.fullscreen_mode,
+            lambda mode: self._apply(self.game.settings.with_video(fullscreen_mode=mode)),
+        )
+
+    def _submenu_frame_limit(self) -> Submenu:
+        return (
+            "FRAME LIMIT",
+            video_options.frame_limit_options(),
+            self.game.settings.frame_limit,
+            lambda value: self._apply(self.game.settings.with_video(frame_limit=value)),
+        )
+
+    def _submenu_scale(self) -> Submenu:
+        density = 1.0 if self.game.presentation is None else self.game.presentation.density
+        return (
+            "UI SCALE",
+            video_options.ui_scale_options(self.game.settings.ui_scale, density),
+            self.game.settings.ui_scale,
+            lambda value: self._apply(self.game.settings.with_video(ui_scale=value)),
+        )
+
+    def _submenu_panel_scale(self) -> Submenu:
+        return (
+            "DEBUG PANEL SCALE",
+            video_options.panel_scale_options(),
+            self.game.settings.panel_scale,
+            lambda value: self._apply(self.game.settings.with_video(panel_scale=value)),
+        )
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
         """←/→ adjust the focused row's value, and Enter does the same.
@@ -432,6 +515,9 @@ class VideoScene(Scene):
             return False
         if not current.enabled:
             return True
+        if current.action in self.SUBMENU_ROWS:
+            self._open(current.action)
+            return True
         return self._cycle(current.action, routed.action)
 
     def _cycle(self, name: str, action: InputAction, *, click: bool = False) -> bool:
@@ -444,14 +530,7 @@ class VideoScene(Scene):
         """
         cyclers = {
             "display": lambda: self._cycle_enum(action, DISPLAY_VALUES, "display"),
-            "monitor": lambda: self._cycle_monitor(action),
-            "fullscreen_mode": lambda: self._cycle_fullscreen_mode(action),
-            "fit": lambda: self._cycle_fit(action),
-            "pixel_perfect": lambda: self._cycle_bool(action, "pixel_perfect", click=click),
             "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
-            "frame_limit": lambda: self._cycle_frame_limit(action),
-            "scale": lambda: self._cycle_scale(action),
-            "panel_scale": lambda: self._cycle_panel_scale(action),
         }
         cycler = cyclers.get(name)
         if cycler is None:
@@ -490,78 +569,6 @@ class VideoScene(Scene):
         else:
             value = action is InputAction.UI_RIGHT
         self._apply(self.game.settings.with_video(**{name: value}))
-
-    def _cycle_monitor(self, action: InputAction) -> None:
-        """Step to the next display, and store it by name.
-
-        By name and not by index, which is the only reason this row can be
-        stored at all: the platform's enumeration order is not stable across
-        boots, so an index in a settings file names a machine nobody can check.
-        A name is resolved against the topology on the next launch, and if that
-        screen is gone the row says so instead of the window quietly appearing
-        somewhere else.
-
-        The ladder ends on the primary rather than wrapping, and the primary is
-        reachable again from anywhere: cycling is a walk through the displays
-        this machine has, and a choice the player did not make is a legitimate
-        thing to return to.
-        """
-        topology = self._topology()
-        monitors = topology.monitors
-        if len(monitors) < 2:
-            return
-        current = topology.resolve(self.game.settings.monitor).monitor
-        step = -1 if action is InputAction.UI_LEFT else 1
-        index = monitors.index(current) if current in monitors else 0
-        chosen = monitors[(index + step) % len(monitors)]
-        self._apply(self.game.settings.with_video(monitor=topology.label_for(chosen)))
-
-    def _cycle_fit(self, action: InputAction) -> None:
-        values = FIT_POLICIES
-        current = self.game.settings.fit
-        index = values.index(current) if current in values else 0
-        step = -1 if action is InputAction.UI_LEFT else 1
-        chosen = values[(index + step) % len(values)]
-        # ``pixel_perfect`` is the older name for the integer policy and a v3 file
-        # may still carry it, so choosing bars has to clear it -- otherwise the
-        # saved flag would override the choice on the next launch.
-        self._apply(
-            self.game.settings.with_video(fit=chosen, pixel_perfect=chosen is FitPolicy.INTEGER)
-        )
-
-    def _cycle_frame_limit(self, action: InputAction) -> None:
-        current = self.game.settings.frame_limit
-        index = FRAME_LIMITS.index(current) if current in FRAME_LIMITS else 0
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(
-            self.game.settings.with_video(
-                frame_limit=FRAME_LIMITS[(index + step) % len(FRAME_LIMITS)]
-            )
-        )
-
-    def _cycle_scale(self, action: InputAction) -> None:
-        current = self.game.settings.ui_scale
-        index = self.SCALE_VALUES.index(current) if current in self.SCALE_VALUES else 1
-        step = -1 if action is InputAction.UI_LEFT else 1
-        size = len(self.SCALE_VALUES)
-        self._apply(
-            self.game.settings.with_video(ui_scale=self.SCALE_VALUES[(index + step) % size])
-        )
-
-    def _cycle_panel_scale(self, action: InputAction) -> None:
-        """Step the debug-panel scale, on its own ladder.
-
-        ``PANEL_SCALE_VALUES`` and not ``SCALE_VALUES``: the panels start from
-        ``Debug.FONT_SIZE = 24`` over a design frame, so the interface ladder's
-        lowest step (0.8) is not a reduction at all -- at 1.0 only one of the
-        five placeable panels finds a slot on a 640x480 window. This ladder goes
-        to 0.4 for that, and 0.5 is where the full stack fits.
-        """
-        current = self.game.settings.panel_scale
-        values = self.PANEL_SCALE_VALUES
-        index = values.index(current) if current in values else 4
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(self.game.settings.with_video(panel_scale=values[(index + step) % len(values)]))
 
     def _reset(self) -> None:
         """Put every video setting back to its default, and only those.

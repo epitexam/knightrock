@@ -134,7 +134,6 @@ def test_video_menu_owns_every_display_setting() -> None:
         "display",
         "fullscreen_mode",
         "fit",
-        "pixel_perfect",
         "vsync",
         "frame_limit",
         "scale",

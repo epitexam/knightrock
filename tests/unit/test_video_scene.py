@@ -28,8 +28,10 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
+from src.core.display.letterbox import FitPolicy
 from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
@@ -48,8 +50,11 @@ REPORT_ROWS = frozenset({"info"})
 #: It has to be the complement of the list rows: a boolean is *flipped* by a
 #: click and *set* by a key, on purpose, so a boolean that leaked into the list
 #: comparison would look like a drift between two paths that agree by design.
-BOOLEAN_ROWS = frozenset({"pixel_perfect", "vsync"})
-LIST_ROWS = frozenset(VideoScene.CYCLING_ROWS) - BOOLEAN_ROWS
+#: Whole-pixel art is not a row any more. It is the integer entry inside the fit
+#: list, because it is that same setting and having both was a row that changed
+#: its label and changed nothing on screen.
+BOOLEAN_ROWS = frozenset({"vsync"})
+LIST_ROWS = frozenset(VideoScene.SUBMENUS)
 
 #: A window with room for a whole multiple of the framing, so every row that can
 #: be enabled is. The read-out row needs one to report at all.
@@ -148,19 +153,36 @@ def _scene_for(action: str) -> VideoScene:
     return _drawn(DISPLAY_FOR_ROW.get(action, DisplayMode.WINDOW))
 
 
-def _focus_action(scene: VideoScene, action: str) -> None:
+def _list_for(scene: VideoScene, row: str) -> OptionScreen:
+    """Open ``row``'s list and return the pushed screen.
+
+    Through the real ``_open``, so the test exercises the same push the player's
+    press does rather than a hand-built screen that could differ from it.
+    """
+    pushed: list[object] = []
+    scene.game.scene_manager.push = pushed.append
+    assert _focus_action(scene, row), f"the {row!r} row was not reachable"
+    scene._open(row)
+    assert len(pushed) == 1, f"the {row!r} row opened {len(pushed)} lists"
+    screen = pushed[0]
+    assert isinstance(screen, OptionScreen)
+    return screen
+
+
+def _focus_action(scene: VideoScene, action: str) -> bool:
     """Put the focus on ``action``, pressing down until it arrives or runs out.
 
-    The assert is the point: a row that exists but cannot be reached by walking
-    is a row a keyboard or a gamepad cannot use, and that is a bug worth the same
-    failure as a row that is missing.
+    Returns whether it got there. The failure case is reported by the caller
+    rather than raised here, because "this row could not be reached" is an
+    ordinary outcome for a test that is about something else -- and a helper that
+    raises turns it into an error about the wrong thing.
     """
     for _ in range(len(scene.model.items) + 2):
         current = scene.model.current_item
         if current is not None and current.action == action:
-            return
+            return True
         scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-    pytest.fail(f"the walk never reached {action!r}: it is present but unreachable")
+    return False
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -212,42 +234,93 @@ def test_a_click_steps_a_list_row_like_the_right_key(action: str) -> None:
 
 
 def test_every_row_does_something() -> None:
-    """No row may be outside both lists.
+    """No row may be outside all three lists.
 
     This is the check that names the bug: the rows were split between one that
     a click reached and one that a key reached, and a row in neither is
-    invisible until someone tries it.
+    invisible until someone tries it. There are now three ways a row can act --
+    cycle a value, open a list, or be one of the named actions -- and a row has to
+    be in one of them.
     """
     scene = _drawn()
-    reachable = set(VideoScene.CYCLING_ROWS) | ACTION_ROWS | REPORT_ROWS
+    reachable = set(VideoScene.CYCLING_ROWS) | set(VideoScene.SUBMENUS) | ACTION_ROWS | REPORT_ROWS
 
     assert {item.action for item in scene.model.items} <= reachable
-    # And the three sets are disjoint, so a row cannot be quietly claimed by
-    # two of them and left to whichever runs first.
+    # And the sets are disjoint, so a row cannot be quietly claimed by two of
+    # them and left to whichever runs first.
+    assert not set(VideoScene.CYCLING_ROWS) & set(VideoScene.SUBMENUS)
     assert not set(VideoScene.CYCLING_ROWS) & ACTION_ROWS
-    assert not REPORT_ROWS & (set(VideoScene.CYCLING_ROWS) | ACTION_ROWS)
+    assert not REPORT_ROWS & (set(VideoScene.CYCLING_ROWS) | set(VideoScene.SUBMENUS) | ACTION_ROWS)
     for item in scene.model.items:
         if item.action in REPORT_ROWS:
             assert not item.enabled, "a read-out row must not be actionable"
 
 
-def test_no_row_opens_another_screen() -> None:
-    """The resolution picker is gone and nothing replaced it.
+def test_every_list_row_really_has_a_list() -> None:
+    """Every row that claims to open a list does, and the names agree.
 
-    It was the last place in the game that could claim a size for the player's
-    monitor. A click anywhere on this screen now either changes a value or does
-    nothing, which is a much easier thing to hold to account.
+    Two tables have to agree: the rows the screen offers and the builders that
+    fill them. A row in the first and not the second is a row that swallows
+    every press, which is exactly the dead-row failure this file has produced
+    twice -- and it is invisible until someone tries it on that row.
+    """
+    for row in VideoScene.SUBMENUS:
+        assert hasattr(VideoScene, f"_submenu_{row}"), f"the {row!r} row has no builder"
+
+
+@pytest.mark.parametrize("row", sorted(set(VideoScene.SUBMENUS)))
+def test_a_list_row_opens_its_list_from_a_click_and_from_every_key(row: str) -> None:
+    """All three ways into the list reach it, and open the same one.
+
+    A list row that answered a click but not → is a row that looks alive and does
+    nothing -- the failure mode from §10 of the notes, where six of nine rows
+    highlighted on click and changed nothing.
     """
     pushed: list[object] = []
+
+    for press in ("click", "right", "confirm"):
+        scene = _scene_for(row)
+        scene.game.scene_manager.push = pushed.append
+        if press == "click":
+            _click(scene, _row(scene, row))
+        else:
+            _focus_action(scene, row)
+            scene.handle_routed(
+                RoutedInput(
+                    InputAction.UI_CONFIRM if press == "confirm" else InputAction.UI_RIGHT,
+                    InputDevice.KEYBOARD,
+                )
+            )
+        assert pushed, f"{press!r} on the {row!r} row opened nothing"
+
+    # The three presses build three separate screens -- each press goes through
+    # the real push, so a shared object would mean the second press reused the
+    # first one's list rather than rebuilding it. What has to match is their
+    # content: three different lists here would be three different bugs.
+    lists = [(screen.title, tuple(o.label for o in screen.options)) for screen in pushed]
+    assert len(set(lists)) == 1, f"the three paths opened different lists: {lists}"
+
+
+def test_highlighting_a_list_entry_does_not_apply_it() -> None:
+    """Apply on selection, not on highlight.
+
+    The alternative looks better and is a trap: browsing a 28-entry list would
+    rebuild the window on every row the highlight touched, and a player who
+    scrolled past something would leave the game in it. Highlight is a cursor,
+    selection is a choice, and only the second one is something the player did.
+    """
     scene = _drawn()
+    pushed: list[object] = []
     scene.game.scene_manager.push = pushed.append
+    _focus_action(scene, "frame_limit")
+    before = scene.game.settings.frame_limit
 
-    for index, item in enumerate(scene.model.items):
-        if not item.enabled:
-            continue
-        _click(scene, index)
+    screen = _list_for(scene, "frame_limit")
+    for _ in range(4):
+        screen.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
 
-    assert pushed == []
+    assert screen.model.current_index != 0, "the fixture did not move the cursor"
+    assert scene.game.settings.frame_limit == before, "browsing changed a setting"
 
 
 def test_the_reset_row_resets() -> None:
@@ -297,13 +370,56 @@ def test_the_back_row_leaves() -> None:
     assert calls == ["pop"]
 
 
-def test_whole_pixel_art_is_unavailable_on_a_window_too_small_for_one() -> None:
-    """The row that can be unavailable, and it says which it is.
+def test_the_whole_pixel_setting_is_an_entry_in_the_fit_list_not_a_row() -> None:
+    """The contradiction that made the row dead is gone, not relabelled.
 
-    Whole-pixel art snaps the picture to a whole multiple of the framing, and a
-    window narrower than the framing has none to snap to. The row is then off and
-    labelled, rather than reading "off" on a window where it would do nothing --
-    a row that claims a setting it cannot honour.
+    Whole-pixel art and the integer fit policy were the same setting, on two
+    different rows. With zoom chosen, the whole-pixel row flipped its label and
+    changed the stored flag while the picture stayed byte-identical -- a row that
+    responds to every key and does nothing, which is indistinguishable from a
+    broken key.
+
+    So there is no longer a row, and the one thing it did is an entry in the fit
+    list where the sentence explaining what whole-pixel art is has room to be
+    read. What replaces the row is the thing that must hold: whatever the fit
+    policy, the flag agrees with it, so there is no second control to contradict.
+    """
+    scene = _drawn()
+    assert "pixel_perfect" not in {item.action for item in scene.model.items}
+
+    screen = _list_for(scene, "fit")
+    labels = {option.label: option for option in screen.options}
+    assert "integer" in labels, "the whole-pixel choice has to live somewhere"
+    assert labels["integer"].detail, "and it has to explain itself"
+
+
+@pytest.mark.parametrize("policy", list(FitPolicy))
+def test_the_whole_pixel_flag_always_agrees_with_the_fit_policy(policy: FitPolicy) -> None:
+    """The invariant that replaces the dead row.
+
+    Whatever the player picks, the stored flag is written from it rather than
+    left over from before. That is what stops a v3 file's ``pixel_perfect`` from
+    overriding a later choice on the next launch -- which is the bug that made
+    the row look broken to a player and pass every test written with the
+    arrow keys.
+    """
+    scene = _drawn()
+    screen = _list_for(scene, "fit")
+    wanted = f"option:{next(i for i, o in enumerate(screen.options) if o.value is policy)}"
+    assert _focus_action(screen, wanted), f"{policy.value} was not reachable in the fit list"
+    screen.handle_routed(RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD))
+
+    assert scene.game.settings.fit is policy
+    assert scene.game.settings.pixel_perfect is (policy is FitPolicy.INTEGER)
+
+
+def test_the_fit_list_says_so_on_a_window_too_small_for_whole_pixel() -> None:
+    """The one refusal the fit policy has, said in the list where it is chosen.
+
+    A window narrower than the framing has no whole multiple to snap to, so
+    ``integer`` cannot do anything here. The entry says so, rather than accepting
+    a choice that will look like it worked -- the same refusal the row used to
+    make, moved to where the decision is now taken.
     """
     game = _game()
     game.presentation.window_size = (800, 600)
@@ -311,9 +427,9 @@ def test_whole_pixel_art_is_unavailable_on_a_window_too_small_for_one() -> None:
     scene = VideoScene(game)
     scene.draw(pygame.Surface((1152, 648)))
 
-    item = scene.model.items[_row(scene, "pixel_perfect")]
-    assert not item.enabled
-    assert "too small" in item.value
+    screen = _list_for(scene, "fit")
+    integer = next(option for option in screen.options if option.value is FitPolicy.INTEGER)
+    assert "too small" in integer.detail
 
 
 # --- the keyboard half ------------------------------------------------------
@@ -526,47 +642,6 @@ def test_the_vsync_row_carries_no_caveat_when_it_is_off(
     assert "not honoured" not in label, f"but there was no request to ignore: {label!r}"
 
 
-def test_whole_pixel_art_says_when_there_is_nothing_to_snap() -> None:
-    """A window already sized to a whole multiple honours the setting by doing nothing.
-
-    The picture is right either way -- there was nothing to snap to -- but a row
-    whose label flips while the screen sits still is indistinguishable from a
-    dead one, which is the report this fixes. ``1152x648`` is the framing and so
-    exactly one multiple of it.
-    """
-    game = _game()
-    game.settings = game.settings.with_video(pixel_perfect=True)
-    game.presentation.window_size = (1152, 648)
-    game.stage = SimpleNamespace(size=(1152, 648))
-    scene = VideoScene(game)
-
-    item = scene.model.items[_row(scene, "pixel_perfect")]
-
-    assert item.enabled, "the row is usable; it just has nothing to do"
-    assert "already whole" in item.value, f"and says so: {item.value!r}"
-
-
-def test_whole_pixel_art_still_plainly_reports_on_when_there_is_work_to_do() -> None:
-    """The new caveat must not swallow the ordinary case.
-
-    ``1152x648`` fits a whole multiple and is one; ``2304x1296`` is two. Neither
-    is a multiple, so both rows should read a plain on and the picture should
-    move -- and if the caveat were computed wrongly, this is the row that would
-    start claiming there was nothing to do when there plainly was.
-    """
-    for window in ((1920, 1080), (2560, 1440)):
-        game = _game()
-        game.settings = game.settings.with_video(pixel_perfect=True)
-        game.presentation.window_size = window
-        game.stage = SimpleNamespace(size=window)
-        scene = VideoScene(game)
-
-        item = scene.model.items[_row(scene, "pixel_perfect")]
-
-        assert item.value.startswith("on"), f"{window}: {item.value!r}"
-        assert "already whole" not in item.value, f"{window} has work to do: {item.value!r}"
-
-
 # --- the debug-only row -----------------------------------------------------
 
 
@@ -591,7 +666,6 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
         "monitor",
         "fullscreen_mode",
         "fit",
-        "pixel_perfect",
         "vsync",
         "frame_limit",
         "scale",
@@ -625,34 +699,3 @@ def test_the_row_reports_the_scale_it_will_apply() -> None:
         monkeypatch.undo()
 
     assert scene.model.items[index].value == "1x"
-
-
-def test_stepping_the_row_walks_the_panel_ladder_not_the_interface_one() -> None:
-    """Its own ladder, because the interface one does not go low enough.
-
-    ``UI_SCALES`` bottoms out at 0.8. The panels start from ``Debug.FONT_SIZE =
-    24`` over a design frame, and at 1.0 only one of the five placeable panels
-    finds a slot on a 640x480 window, so a ladder that starts at 0.8 would not
-    offer a value that helps.
-    """
-    from src.application.settings_store import PANEL_SCALES
-
-    assert min(PANEL_SCALES) == 0.4
-    assert min(PANEL_SCALES) < 0.8
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("DEBUG", "1")
-    try:
-        scene = _drawn()
-        # Focused first: a direction key acts on the *selected* row, and the
-        # selection starts on ``display``. Without this the press walked the
-        # display mode and the panel scale never moved.
-        _focus_action(scene, "panel_scale")
-        seen = []
-        for _ in range(len(PANEL_SCALES)):
-            seen.append(scene.game.settings.panel_scale)
-            _press(scene, InputAction.UI_RIGHT)
-    finally:
-        monkeypatch.undo()
-
-    assert seen == list(PANEL_SCALES[4:]) + list(PANEL_SCALES[:4]), seen

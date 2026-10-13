@@ -32,12 +32,14 @@ from unittest.mock import patch
 import pygame
 import pytest
 
+from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import DISPLAY_VALUES, VideoScene
 from src.application.settings_store import (
     SETTINGS_FORMAT_VERSION,
     SettingsStore,
     UserSettings,
 )
+from src.core.display.letterbox import FitPolicy
 from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.input_actions import InputAction
@@ -61,26 +63,36 @@ pytestmark = pytest.mark.usefixtures("_video_display", "_debug_on")
 #: ``AUTO`` is excluded: it is resolved at launch against the machine, so what
 #: persists is the player's *request* for that, which is a separate test below.
 VALUE_ROWS = {
-    "pixel_perfect": lambda settings: settings.pixel_perfect,
     "vsync": lambda settings: settings.vsync,
     "frame_limit": lambda settings: settings.frame_limit,
     "scale": lambda settings: settings.ui_scale,
     "panel_scale": lambda settings: settings.panel_scale,
+    "fit": lambda settings: settings.fit,
 }
 
-#: What each row is worth cycling to from the defaults: a value that is not the
+#: What each row is worth changing to from the defaults: a value that is not the
 #: default, so "it persisted" cannot be confused with "it never changed".
+#:
+#: For a row that cycles, that is the next value along. For a row that opens a
+#: list, it is the entry the test picks -- named rather than by index, because a
+#: list is built from what the driver and the topology report and those orderings
+#: are not this file's to predict.
 CYCLED_TO = {
-    "pixel_perfect": True,
     "vsync": True,
     "frame_limit": 120,
     "scale": 1.2,
     # The panel ladder ascends ``0.4 0.5 0.6 0.8 1.0 1.2`` and the default is
-    # 1.0, so one forward click lands on 1.2. Not 0.5, which is what the
-    # interface ladder's spacing would suggest -- the two ladders are unrelated
-    # and the cyclicers index their own.
+    # 1.0, so one forward step lands on 1.2. Not 0.5, which is what the interface
+    # ladder's spacing would suggest -- the two ladders are unrelated.
     "panel_scale": 1.2,
+    # Whole-pixel art used to be a row here and is now an entry in the fit list,
+    # because it is that same setting and having both produced a row that changed
+    # its label and changed nothing on screen.
+    "fit": FitPolicy.ZOOM,
 }
+
+#: Rows that open a list rather than cycling a value.
+LIST_ROWS = frozenset(VideoScene.SUBMENUS)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -110,6 +122,41 @@ def _row_index(scene: VideoScene, action: str) -> int:
     index = next((i for i, item in enumerate(scene.model.items) if item.action == action), None)
     assert index is not None, f"row {action!r} does not exist"
     return index
+
+
+def _pick_in_list(game: Game, scene: VideoScene, row: str, wanted: object) -> None:
+    """Open ``row``'s list with a pointer and pick ``wanted`` out of it.
+
+    The pointer path all the way down, because the whole point of this file is
+    that the route a player takes is the one that gets tested: a click on the
+    row converted through the game's own letterbox handling, then a click on the
+    entry in the list that opens, in the list's own coordinates.
+    """
+    index = _row_index(scene, row)
+    _click(scene, index)
+    list_scene = game.scene_manager.current
+    assert isinstance(list_scene, OptionScreen), f"the {row!r} row opened nothing"
+    entry = next((i for i, option in enumerate(list_scene.options) if option.value == wanted), None)
+    assert entry is not None, f"{wanted!r} is not offered in the {row!r} list"
+    _click_list(list_scene, entry)
+
+
+def _click_list(list_scene: OptionScreen, index: int) -> None:
+    """Click a row of a list, at the rectangle its view drew.
+
+    The same conversion the parent's rows go through, on the list's own surface:
+    the letterbox offset belongs to the window, not to any one screen.
+    """
+    game = list_scene.game
+    assert game.presentation is not None
+    list_scene.draw(game.presentation.surface)
+    centre = list_scene.view.item_rects[index].center
+    position = (
+        centre[0] + game.presentation.rect.x,
+        centre[1] + game.presentation.rect.y,
+    )
+    event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
+    game.scene_manager.handle_event(game._to_target_coordinates(event))
 
 
 def _click(scene: VideoScene, index: int) -> None:
@@ -162,7 +209,7 @@ def _relaunch(store: SettingsStore, tmp_path: Path) -> UserSettings:
 def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
     """The whole claim, per row, on the runtime the player actually uses."""
     game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(pixel_perfect=False, vsync=False))
+    game.apply_settings(game.settings.with_video(vsync=False))
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
@@ -170,12 +217,19 @@ def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
     index = _row_index(scene, row)
     assert scene.model.items[index].enabled, f"row {row!r} is not usable on this window"
 
-    # 1. the click moves the setting
     before = VALUE_ROWS[row](game.settings)
-    _click(scene, index)
+
+    # 1. the change moves the setting -- a click that cycles for a short row, and
+    # a click that opens a list and then a pick for a long one. Both are the whole
+    # route a player takes, so neither gets a shortcut the player does not have.
+    if row in LIST_ROWS:
+        _pick_in_list(game, scene, row, CYCLED_TO[row])
+    else:
+        _click(scene, index)
+
     after = VALUE_ROWS[row](game.settings)
     assert after != before
-    assert after == CYCLED_TO[row], f"one click must land on the next value, got {after!r}"
+    assert after == CYCLED_TO[row], f"the press must land on {CYCLED_TO[row]!r}, got {after!r}"
 
     # 2. the frame writes it
     game.step()

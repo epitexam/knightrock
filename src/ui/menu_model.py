@@ -54,7 +54,11 @@ class MenuModel:
         return variant == "release"
 
     def __init__(
-        self, items: list[MenuItem] | tuple[MenuItem, ...] = (), *, wrap: bool = False
+        self,
+        items: list[MenuItem] | tuple[MenuItem, ...] = (),
+        *,
+        wrap: bool = False,
+        selected: int = 0,
     ) -> None:
         self._wrap = wrap
         self._items: tuple[MenuItem, ...] = ()
@@ -67,7 +71,7 @@ class MenuModel:
         # arrives on row 0, and row 0 was already "the hovered one" as far as
         # the selection is concerned.
         self._pointer_row: int | None = None
-        self.set_items(items)
+        self.set_items(items, selected)
 
     @property
     def items(self) -> tuple[MenuItem, ...]:
