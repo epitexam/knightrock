@@ -496,7 +496,7 @@ class VideoScene(Scene):
         return (
             "WINDOW SIZE",
             video_options.window_size_options(
-                modes, monitor, self.game.settings.window_size, self._window_size()
+                monitor, self.game.settings.window_size, self._window_size()
             ),
             self.game.settings.window_size,
             self._apply_window_size,

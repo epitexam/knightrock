@@ -22,6 +22,7 @@ from src.application.settings_store import FRAME_LIMITS, PANEL_SCALES, UI_SCALES
 from src.core.display.letterbox import FitPolicy, fits_whole_pixel
 from src.core.display.mode import DisplayMode
 from src.core.display.monitors import (
+    MIN_WINDOW,
     Monitor,
     Resolution,
     ResolutionReason,
@@ -197,33 +198,33 @@ def fullscreen_mode_options(
 
 
 def window_size_options(
-    modes: Sequence[tuple[int, int]],
     monitor: Monitor,
     current: tuple[int, int] | None,
     granted: tuple[int, int],
 ) -> tuple[Option, ...]:
-    """Sizes the window can actually take, on this panel.
+    """Sizes worth offering a window, on this panel.
 
-    The same shape as the fullscreen list and for the same reason: every entry
-    is derived from the panel the window is on, and filtered to sizes that fit
-    inside it. A catalogue written down in this file would be a claim about the
-    player's monitor the game cannot check, which is the resolution picker that
-    was deleted for exactly that reason.
+    **Not the driver's mode list**, unlike the fullscreen row beside it, and the
+    difference is the point. A *mode* is a resolution the panel is driven at, and
+    the whole of them is the right answer for exclusive fullscreen: if you are
+    taking the panel over, it is being run at one of these or nothing else.
 
-    What differs from fullscreen is that the window has a frame, so the sizes
-    here are not simply the panel's modes. Measured on the development machine:
-    requesting the usable area exactly -- 1920x1048 -- comes back as 1920x1011,
-    because the window manager subtracts the title bar and the borders, and only
-    the request that touches the edge is corrected. Everything smaller is granted
-    as asked. So the top entry is deliberately a margin below the usable area, and
-    it is the one the game already opens at.
+    A *window* is not driven at anything. It floats on the panel, it can be any
+    size the player drags it to, and the driver has no opinion. Feeding it the
+    mode list produced 26 entries on this machine -- down to 320x240 -- which is
+    not a list of choices, it is a list to scroll through, and offering somebody
+    a 320x240 window as a deliberate option is an insult to the screen it is on.
 
-    ``modes`` is the driver's own list, the same source as the fullscreen
-    options. A window is not obliged to match a display mode, but every number
-    offered here is one this panel can actually show at this panel's own
-    resolution, which is the property that makes the row honest. Writing a list
-    of common window sizes into this file instead would be the catalogue the
-    resolution picker used to be.
+    So the sizes are the useful ones, filtered to what this panel can hold: the
+    largest the frame allows, the panel's own resolution, and a ladder that
+    shrinks. Every one is checkable -- they are all either derived from the
+    monitor or refused if it cannot take them -- which is what keeps this from
+    being the catalogue the resolution picker used to be.
+
+    The frame matters and is measured, not assumed: requesting the usable area
+    exactly comes back short, because the window manager subtracts the title bar.
+    The largest entry is therefore :func:`opening_size`, which leaves that room,
+    and it is the size the game already opens at.
 
     ``current`` is the remembered preference, which may be a size this panel
     cannot take -- a 4K window arriving at a laptop. It is listed and disabled
@@ -238,24 +239,51 @@ def window_size_options(
             None,
             "follow the window wherever you put it",
         ),
-        Option(f"{widest[0]} x {widest[1]}", widest, "as large as the screen allows"),
     ]
-    offered: list[tuple[int, int]] = [widest]
-    for size in sorted(set(modes), key=lambda m: (m[0] * m[1], m), reverse=True):
-        if size[0] > usable[0] or size[1] > usable[1] or size in offered:
-            continue
+    offered: list[tuple[int, int]] = []
+
+    def offer(size: tuple[int, int], note: str = "") -> None:
+        if size in offered or size[0] > usable[0] or size[1] > usable[1]:
+            return
+        if size[0] < MIN_WINDOW[0] or size[1] < MIN_WINDOW[1]:
+            return
         offered.append(size)
-        options.append(Option(f"{size[0]} x {size[1]}", size))
-    if current is not None and current not in offered:
-        options.append(
+        if size == tuple(granted):
+            note = f"{note} · current" if note else "current"
+        options.append(Option(f"{size[0]} x {size[1]}", size, note))
+
+    offer(widest, "as large as the screen allows")
+    offer((monitor.size[0], monitor.size[1]), "the screen's own resolution")
+    # A ladder rather than everything the panel supports, and it only goes
+    # downwards: `widest` is already as large as the frame allows, so a
+    # "three quarters" rung would land above it and be filtered out as too big.
+    # These are derived from the panel rather than written down, so a 4K desk
+    # gets a 4K ladder and a laptop gets a laptop's.
+    for denominator, note in ((2, "half the screen"), (3, "a third of the screen")):
+        offer(
+            (
+                max(MIN_WINDOW[0], widest[0] // denominator),
+                max(MIN_WINDOW[1], widest[1] // denominator),
+            ),
+            note,
+        )
+    # Largest first, so the list reads as a scale rather than as an accident of
+    # the order the sizes were thought up in. On a 1366x768 laptop the panel's
+    # own resolution is *bigger* than the widest window that fits under its
+    # taskbar, and offering the smaller one first read as backwards.
+    entries = sorted(options[1:], key=lambda option: (-option.value[0] * option.value[1], option))
+    if current is not None and tuple(current) not in offered:
+        entries.append(
             Option(
                 f"{current[0]} x {current[1]}",
                 current,
-                f"too large for this screen ({usable[0]}x{usable[1]})",
+                f"too large for this screen ({usable[0]}x{usable[1]})"
+                if current[0] > usable[0] or current[1] > usable[1]
+                else "not one of the sizes offered here",
                 enabled=False,
             )
         )
-    return tuple(options)
+    return (options[0], *entries)
 
 
 def frame_limit_options() -> tuple[Option, ...]:
