@@ -27,6 +27,12 @@ class MenuView:
         self._panel_cache: pygame.Surface | None = None
         self._panel_cache_size: tuple[int, int] = (0, 0)
         self._surface_size: tuple[int, int] = (0, 0)
+        # The scroll rail's geometry from the last draw, or None when
+        # the list fit and nothing scrolls. Kept rather than painted
+        # blind so a caller can ask "is there more below" the same way
+        # it asks for the row rects.
+        self._scroll_rail: pygame.Rect | None = None
+        self._scroll_thumb: pygame.Rect | None = None
         # Rendered-text cache. One .render() per frame per item allocates a
         # Surface and triggers GC, which shows up as micro-freezes at 60fps.
         # Keyed by (font id, text, colour); invalidated on selection change.
@@ -43,6 +49,26 @@ class MenuView:
         mutates it, so copying it on every routed input only allocated.
         """
         return self._item_rects
+
+    @property
+    def scroll_rail(self) -> pygame.Rect | None:
+        """The rail of a list that scrolls, or ``None`` when it fits.
+
+        The rail says "there is more" without the player having to
+        scroll and find out -- a list cut off with no mark is a list
+        whose last visible row reads as the last row.
+        """
+        return self._scroll_rail
+
+    @property
+    def scroll_thumb(self) -> pygame.Rect | None:
+        """The thumb inside :attr:`scroll_rail`, at the position in force.
+
+        Its height is the visible fraction of the list and its place
+        is the scrolled-to fraction, so it answers "how much is left"
+        and "how far in" in one shape.
+        """
+        return self._scroll_thumb
 
     def set_scale(self, scale: float) -> None:
         """Set the UI scale, discarding caches only when it really changed.
@@ -281,6 +307,20 @@ class MenuView:
                 pygame.draw.rect(
                     surface, POINTER_OUTLINE, rect, max(1, metrics.px(2)), border_radius=3
                 )
+        # The rail is painted into the right padding gutter, which is
+        # wide enough to hold it without a row's label or value ever
+        # reaching it, so nothing has to make room for it.
+        self._paint_scroll_rail(
+            surface,
+            panel_x + panel_width - padding,
+            padding,
+            item_top,
+            item_height * len(painted),
+            first,
+            len(painted),
+            len(labels),
+            metrics,
+        )
         footer_y = panel_y + panel_height - padding - footer_height
         if description_surface is not None:
             # Directly above the footers, inside the panel: the band is already
@@ -373,6 +413,67 @@ class MenuView:
             self._fonts[key] = cached
         return cached
 
+    def _paint_scroll_rail(
+        self,
+        surface: pygame.Surface,
+        gutter_left: int,
+        gutter_width: int,
+        rows_top: int,
+        rows_height: int,
+        first: int,
+        visible: int,
+        total: int,
+        metrics: Metrics,
+    ) -> None:
+        """Mark a list that scrolls, in the padding gutter beside it.
+
+        A list cut off with nothing to say so is a list whose last
+        visible row reads as the last row -- the player scrolls once,
+        finds more, and has to revise what the panel was telling them.
+        The rail answers "there is more" before that, and the thumb
+        answers "how much, and how far in": its height is the visible
+        fraction of the list and its place is the scrolled-to fraction.
+
+        It lives in the padding rather than over the rows because a
+        marker on a row competes with the row for the eye, and the
+        padding is wide enough to hold a rail that no label or value
+        can reach. Nothing is painted when the list fits, because a
+        rail next to a complete list is a lie about it.
+        """
+        self._scroll_rail = None
+        self._scroll_thumb = None
+        if total <= visible or rows_height <= 0:
+            return
+
+        width = max(2, metrics.px(4))
+        # Centred in the gutter, whose left edge is the rows' right
+        # edge and whose right edge is the panel's own: the rail keeps
+        # its distance from both the text and the border.
+        rail = pygame.Rect(
+            gutter_left + (gutter_width - width) // 2,
+            rows_top,
+            width,
+            rows_height,
+        )
+        pygame.draw.rect(surface, PANEL_BORDER, rail, border_radius=2)
+
+        # The thumb's height is the visible fraction, floored so a
+        # nearly-whole list still shows a thumb and not a line.
+        thumb_height = max(
+            max(1, metrics.px(12)),
+            round(rail.height * visible / total),
+        )
+        # Where the thumb sits: the top when the list is at its start,
+        # the bottom when it is at its end, in between in proportion.
+        travel = max(0, rail.height - thumb_height)
+        span = max(1, total - visible)
+        thumb_y = rail.top + round(travel * first / span)
+        thumb = pygame.Rect(rail.x, thumb_y, rail.width, thumb_height)
+        pygame.draw.rect(surface, TEXT_MUTED, thumb, border_radius=2)
+
+        self._scroll_rail = rail
+        self._scroll_thumb = thumb
+
     def _panel_for(self, width: int, height: int) -> pygame.Surface:
         """Reuse the panel surface instead of allocating one per frame."""
         if self._panel_cache is None or self._panel_cache_size != (width, height):
@@ -402,3 +503,7 @@ class MenuView:
         self._panel_cache_size = (0, 0)
         self._text_cache.clear()
         self._text_cache_key = None
+        # Geometry from a draw whose surfaces are gone: it describes
+        # rows that no longer exist at this scale.
+        self._scroll_rail = None
+        self._scroll_thumb = None
