@@ -5,6 +5,7 @@ import pygame
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
+from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.controls_view import RowKind
@@ -24,6 +25,11 @@ def _game() -> SimpleNamespace:
             density=2.0,
         ),
         stage=None,
+        # The video screen asks the runtime what displays exist, so a stand-in
+        # has to answer. One screen with no names: enough for the rows that are
+        # about pacing and scaling, and it keeps the screen-picker row out of a
+        # screen-picker-agnostic test.
+        topology=lambda: degraded(((2304, 1296),)),
         # The views are laid out at the preference times the density; a stand-in
         # has to hand them something, and 1.0 keeps the assertions readable.
         ui_scale=1.0,

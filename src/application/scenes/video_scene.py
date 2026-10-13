@@ -29,11 +29,13 @@ from src.application.settings_store import (
 from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import (
+    FitPolicy,
     already_a_whole_multiple,
     fits_whole_pixel,
     letterbox,
 )
 from src.core.display.mode import DisplayMode
+from src.core.display.monitors import Resolution, ResolutionReason, Topology
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug
@@ -52,6 +54,11 @@ DISPLAY_VALUES = (
     DisplayMode.WINDOW,
     DisplayMode.FULLSCREEN,
 )
+
+#: The fit policies, in the order the row steps through them. Bars first because
+#: it is the only one that is never surprising, and zoom last because it is the
+#: one that costs the player some of the picture.
+FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
 
 
 class VideoScene(Scene):
@@ -82,6 +89,9 @@ class VideoScene(Scene):
             settings.frame_limit,
             settings.ui_scale,
             settings.panel_scale,
+            settings.fit,
+            settings.monitor,
+            settings.fullscreen_mode,
             # The debug row is conditional on this, and the rebuild is skipped
             # when the signature is unchanged -- so without the flag in the
             # signature, flipping DEBUG mid-session would leave the menu
@@ -89,12 +99,42 @@ class VideoScene(Scene):
             Debug.is_enabled(),
             self._screen_refresh_rate(),
             self._window_size(),
+            # The monitor rows are conditional on how many displays exist, and so
+            # is the rebuild guard. Without this in the signature, plugging in a
+            # second screen while the menu is open would leave it describing rows
+            # the model does not have.
+            len(self._topology().monitors),
         )
 
     def _rebuild(self, selected_action: str | None = None) -> None:
         settings = self.game.settings
+        topology = self._topology()
+        resolution = self._topology().resolve(settings.monitor)
         items = (
             MenuItem("display", "Display", self._display_label()),
+            # Only where there is a choice to make. On a single-screen machine
+            # there is nothing to pick and a row that always reads "Screen 1"
+            # would be a row that cannot be acted on -- which is the dead-row
+            # failure this screen has already produced once.
+            *(
+                (
+                    MenuItem(
+                        "monitor",
+                        "Screen",
+                        self._monitor_label(topology, resolution),
+                        enabled=len(topology.monitors) > 1,
+                    ),
+                )
+                if len(topology.monitors) > 1
+                else ()
+            ),
+            MenuItem(
+                "fullscreen_mode",
+                "Fullscreen mode",
+                self._fullscreen_mode_label(),
+                enabled=settings.display is DisplayMode.FULLSCREEN,
+            ),
+            MenuItem("fit", "Scaling", self._fit_label()),
             MenuItem(
                 "pixel_perfect",
                 "Whole-pixel art",
@@ -128,6 +168,86 @@ class VideoScene(Scene):
             (index for index, item in enumerate(items) if item.action == selected_action), 0
         )
         self.model.set_items(items, selected)
+
+    def _topology(self) -> Topology:
+        """The machine's displays, as the runtime last read them.
+
+        From the game rather than from the detection module directly, because the
+        runtime owns the cache: it is what notices a screen being plugged in, and
+        a menu reading behind that would keep offering a display that is no longer
+        attached. A screen that arrives is picked up by the poll, which this
+        shares.
+        """
+        return self.game.topology()
+
+    def _monitor_label(self, topology: Topology, resolution: Resolution) -> str:
+        """The screen in use, and *why* it is that one when it is not the choice.
+
+        The reason is the point of the row. A player who picked ``DP-1`` and
+        unplugs it comes back to a menu reading "Screen 2" with no way to tell
+        whether the game honoured them, ignored them, or guessed. Showing the
+        reason turns a silent substitution into something the player can see and
+        act on -- and it is why the stored name is never rewritten, so
+        reconnecting that screen uses it again with no further action.
+        """
+        label = topology.label_for(resolution.monitor)
+        if resolution.reason is ResolutionReason.NONE_CHOSEN:
+            return f"{label} (auto)"
+        if resolution.honoured:
+            return label
+        return f"{label} ({resolution.reason})"
+
+    def _fit_label(self) -> str:
+        return self.game.settings.fit.value
+
+    def _fullscreen_mode_label(self) -> str:
+        """The exclusive-fullscreen resolution, from what the driver reports.
+
+        Read from ``list_modes`` rather than from a list this project wrote down,
+        which is what makes it a choice the game can honour: every entry came out
+        of the driver on this machine, on this panel. An entry that is no longer
+        supported after a cable is swapped cannot be honoured, and the row says
+        so rather than offering it.
+        """
+        modes = self.fullscreen_modes()
+        if not modes:
+            return "unavailable"
+        stored = self.game.settings.fullscreen_mode
+        if stored is None:
+            return "display's own"
+        found = f"{stored[0]}x{stored[1]}"
+        return found if stored in modes else f"{found} (unavailable)"
+
+    @staticmethod
+    def fullscreen_modes() -> tuple[tuple[int, int], ...]:
+        """Every mode the driver says this display supports, largest first.
+
+        The driver's own answer rather than a catalogue. A hardcoded list is a
+        claim about the player's panel that the game cannot check -- offering
+        2560x1440 to a 1366x768 laptop is what that costs -- and this is the list
+        that was removed for exactly that reason, now rebuilt from a source that
+        can actually be asked.
+        """
+        try:
+            return tuple(sorted(set(pygame.display.list_modes()), reverse=True))
+        except pygame.error:
+            return ()
+
+    def _cycle_fullscreen_mode(self, action: InputAction) -> None:
+        modes = self.fullscreen_modes()
+        if not modes:
+            return
+        current = self.game.settings.fullscreen_mode
+        index = modes.index(current) if current in modes else -1
+        step = -1 if action is InputAction.UI_LEFT else 1
+        # The first step lands on a real mode rather than on "auto": there is
+        # nothing to the left of the display's own mode, and a cycle that sticks
+        # at the end is a row that looks broken.
+        if index < 0:
+            chosen = modes[0] if step > 0 else modes[-1]
+        else:
+            chosen = modes[(index + step) % len(modes)]
+        self._apply(self.game.settings.with_video(fullscreen_mode=chosen))
 
     def _display_label(self) -> str:
         mode = self.game.settings.display
@@ -278,6 +398,9 @@ class VideoScene(Scene):
     #: row: ``test_every_row_does_something`` reads it against the real model.
     CYCLING_ROWS = (
         "display",
+        "monitor",
+        "fullscreen_mode",
+        "fit",
         "pixel_perfect",
         "vsync",
         "frame_limit",
@@ -321,6 +444,9 @@ class VideoScene(Scene):
         """
         cyclers = {
             "display": lambda: self._cycle_enum(action, DISPLAY_VALUES, "display"),
+            "monitor": lambda: self._cycle_monitor(action),
+            "fullscreen_mode": lambda: self._cycle_fullscreen_mode(action),
+            "fit": lambda: self._cycle_fit(action),
             "pixel_perfect": lambda: self._cycle_bool(action, "pixel_perfect", click=click),
             "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
             "frame_limit": lambda: self._cycle_frame_limit(action),
@@ -364,6 +490,44 @@ class VideoScene(Scene):
         else:
             value = action is InputAction.UI_RIGHT
         self._apply(self.game.settings.with_video(**{name: value}))
+
+    def _cycle_monitor(self, action: InputAction) -> None:
+        """Step to the next display, and store it by name.
+
+        By name and not by index, which is the only reason this row can be
+        stored at all: the platform's enumeration order is not stable across
+        boots, so an index in a settings file names a machine nobody can check.
+        A name is resolved against the topology on the next launch, and if that
+        screen is gone the row says so instead of the window quietly appearing
+        somewhere else.
+
+        The ladder ends on the primary rather than wrapping, and the primary is
+        reachable again from anywhere: cycling is a walk through the displays
+        this machine has, and a choice the player did not make is a legitimate
+        thing to return to.
+        """
+        topology = self._topology()
+        monitors = topology.monitors
+        if len(monitors) < 2:
+            return
+        current = topology.resolve(self.game.settings.monitor).monitor
+        step = -1 if action is InputAction.UI_LEFT else 1
+        index = monitors.index(current) if current in monitors else 0
+        chosen = monitors[(index + step) % len(monitors)]
+        self._apply(self.game.settings.with_video(monitor=topology.label_for(chosen)))
+
+    def _cycle_fit(self, action: InputAction) -> None:
+        values = FIT_POLICIES
+        current = self.game.settings.fit
+        index = values.index(current) if current in values else 0
+        step = -1 if action is InputAction.UI_LEFT else 1
+        chosen = values[(index + step) % len(values)]
+        # ``pixel_perfect`` is the older name for the integer policy and a v3 file
+        # may still carry it, so choosing bars has to clear it -- otherwise the
+        # saved flag would override the choice on the next launch.
+        self._apply(
+            self.game.settings.with_video(fit=chosen, pixel_perfect=chosen is FitPolicy.INTEGER)
+        )
 
     def _cycle_frame_limit(self, action: InputAction) -> None:
         current = self.game.settings.frame_limit

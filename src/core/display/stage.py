@@ -77,6 +77,12 @@ class WindowSpec:
     #: a first launch and a reset, not a default the file ever holds.
     size: tuple[int, int] | None = None
     position: tuple[int, int] | None = None
+    #: The mode to ask for in exclusive fullscreen. ``None`` is ``(0, 0)``, which
+    #: is how SDL is told to use the display's current mode. A value the driver
+    #: does not report is refused here rather than at ``set_mode``, because
+    #: pygame's answer to an unsupported mode is a crash and this is the one place
+    #: that knows what the driver supports.
+    fullscreen_mode: tuple[int, int] | None = None
 
 
 class Stage:
@@ -168,12 +174,47 @@ class Stage:
         """
         mode = Stage._mode_for(spec)
         if mode is DisplayMode.FULLSCREEN:
-            return (0, 0)
+            return Stage._fullscreen_size(spec)
         if mode is DisplayMode.BORDERLESS:
             return monitor.usable_size
         if spec.size is not None:
             return fit_size(spec.size, monitor)
         return opening_size(monitor)
+
+    @staticmethod
+    def supported_modes() -> tuple[tuple[int, int], ...]:
+        """Every mode the driver reports for this display, largest first.
+
+        The driver's own answer, asked at launch rather than cached: the list is
+        what this panel supports right now, and it changes when a cable does. A
+        mode that is not in it cannot be honoured, so asking is the only way to
+        know before the crash rather than during it.
+        """
+        try:
+            return tuple(sorted(set(pygame.display.list_modes()), reverse=True))
+        except pygame.error:
+            return ()
+
+    @staticmethod
+    def _fullscreen_size(spec: WindowSpec) -> tuple[int, int]:
+        """The mode to request in exclusive fullscreen.
+
+        ``(0, 0)`` unless the player chose one, which is how SDL is told to use
+        the display's current mode rather than one we made up. A chosen mode is
+        checked against the driver and dropped if it is gone: this is the exact
+        failure the old resolution catalogue had -- 2560x1440 offered to a
+        1366x768 laptop -- except that the list here came from the panel, so the
+        only way to reach this branch is a machine that changed after the choice
+        was made, and the player's own mode list is not the thing at fault.
+        """
+        chosen = spec.fullscreen_mode
+        if chosen is None:
+            return (0, 0)
+        modes = Stage.supported_modes()
+        if modes and chosen not in modes:
+            logger.info("Fullscreen mode %s is no longer supported; using the display's", chosen)
+            return (0, 0)
+        return chosen
 
     @staticmethod
     def _flags(spec: WindowSpec) -> int:

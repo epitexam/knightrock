@@ -293,6 +293,7 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "fit",
         "vsync",
         "frame_limit",
+        "fullscreen_mode",
     }
     assert set(window) == {"size", "position"}
     # A window position may be negative -- a monitor left of the primary sits at a
@@ -427,6 +428,7 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
         "fit",
         "vsync",
         "frame_limit",
+        "fullscreen_mode",
     }
     assert "panel_scale" in written["ui"]
 

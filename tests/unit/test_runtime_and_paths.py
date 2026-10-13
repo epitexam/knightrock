@@ -408,6 +408,7 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         "frame_limit",
         "ui_scale",
         "panel_scale",
+        "fullscreen_mode",
         "window_size",
         "window_position",
     }

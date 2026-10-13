@@ -31,6 +31,7 @@ import pytest
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
 from src.core.display.mode import DisplayMode
+from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 
@@ -54,8 +55,29 @@ LIST_ROWS = frozenset(VideoScene.CYCLING_ROWS) - BOOLEAN_ROWS
 #: be enabled is. The read-out row needs one to report at all.
 WINDOW = (2304, 1296)
 
+#: The machine this screen is being tested on: three displays, the second of them
+#: at a negative origin because a Linux desktop whose primary is not leftmost
+#: puts the left monitor there.
+#:
+#: Fixed rather than read from the platform, because the rows under test are
+#: conditional on the *number* of displays -- the screen picker only exists on a
+#: multi-screen desk -- and a suite that skipped it whenever CI happened to be
+#: headless would never check the one row that can put the window on the wrong
+#: monitor. Names are the real EDID shape, including a duplicate pair, so the
+#: label disambiguation is exercised too.
+DESK = Topology(
+    monitors=(
+        Monitor(0, 'DP-1 27"', (0, 0, 2560, 1440), (0, 0, 2560, 1400), 180),
+        Monitor(1, 'DP-2 27"', (-1920, -120, 1920, 1080), (-1920, -120, 1920, 1040), 60),
+        Monitor(2, 'HDMI-1 27"', (-1920, -120, 1920, 1080), (-1920, -120, 1920, 1040), 144),
+    ),
+    named=True,
+)
 
-def _game(display: DisplayMode = DisplayMode.WINDOW) -> SimpleNamespace:
+
+def _game(
+    display: DisplayMode = DisplayMode.WINDOW, topology: Topology | None = None
+) -> SimpleNamespace:
     game = SimpleNamespace(
         settings=UserSettings().with_video(display=display),
         scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
@@ -67,6 +89,7 @@ def _game(display: DisplayMode = DisplayMode.WINDOW) -> SimpleNamespace:
             density=2.0,
         ),
         ui_scale=1.0,
+        topology=lambda: topology or DESK,
     )
 
     def apply_settings(settings: UserSettings) -> None:
@@ -84,10 +107,10 @@ def _click(scene: VideoScene, index: int) -> str | None:
     )
 
 
-def _drawn(display: DisplayMode = DisplayMode.WINDOW) -> VideoScene:
+def _drawn(display: DisplayMode = DisplayMode.WINDOW, topology: Topology | None = None):
     """A scene whose view has laid out, so its row rectangles exist."""
     pygame.init()
-    scene = VideoScene(_game(display))
+    scene = VideoScene(_game(display, topology))
     scene.draw(pygame.Surface((1152, 648)))
     return scene
 
@@ -113,12 +136,31 @@ def _row(scene: VideoScene, action: str) -> int:
     return next(index for index, item in enumerate(scene.model.items) if item.action == action)
 
 
-def _focus(scene: VideoScene, index: int) -> None:
-    """Walk the selection onto a row with the down key, as a player would."""
-    for _ in range(index):
+#: The display mode each row needs to be *enabled*. A row that cannot be used is
+#: skipped by the focus walk -- deliberately, so a disabled row swallows a press
+#: instead of activating whatever is nearest -- which means a test that wants to
+#: press a row has to build the screen where that row is live.
+DISPLAY_FOR_ROW = {"fullscreen_mode": DisplayMode.FULLSCREEN}
+
+
+def _scene_for(action: str) -> VideoScene:
+    """A drawn scene in which ``action``'s row can be pressed."""
+    return _drawn(DISPLAY_FOR_ROW.get(action, DisplayMode.WINDOW))
+
+
+def _focus_action(scene: VideoScene, action: str) -> None:
+    """Put the focus on ``action``, pressing down until it arrives or runs out.
+
+    The assert is the point: a row that exists but cannot be reached by walking
+    is a row a keyboard or a gamepad cannot use, and that is a bug worth the same
+    failure as a row that is missing.
+    """
+    for _ in range(len(scene.model.items) + 2):
+        current = scene.model.current_item
+        if current is not None and current.action == action:
+            return
         scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
-    assert scene.model.current_item is not None
-    assert scene.model.current_item.action == scene.model.items[index].action
+    pytest.fail(f"the walk never reached {action!r}: it is present but unreachable")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -130,7 +172,7 @@ def _display() -> None:
 
 @pytest.mark.parametrize("action", VideoScene.CYCLING_ROWS)
 def test_a_click_steps_the_row(action: str) -> None:
-    scene = _drawn()
+    scene = _scene_for(action)
     before = scene.game.settings
 
     assert _click(scene, _row(scene, action)) is not None
@@ -159,11 +201,11 @@ def test_a_click_on_a_boolean_row_toggles_it(action: str) -> None:
 @pytest.mark.parametrize("action", sorted(LIST_ROWS))
 def test_a_click_steps_a_list_row_like_the_right_key(action: str) -> None:
     """The two paths are one implementation, so they cannot drift again."""
-    by_click = _drawn()
+    by_click = _scene_for(action)
     _click(by_click, _row(by_click, action))
 
-    by_key = _drawn()
-    _focus(by_key, _row(by_key, action))
+    by_key = _scene_for(action)
+    _focus_action(by_key, action)
     by_key.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.KEYBOARD))
 
     assert by_click.game.settings == by_key.game.settings
@@ -296,9 +338,9 @@ def _starting_settings(action: str, key: InputAction) -> UserSettings:
     value works and they take the default.
     """
     if action not in BOOLEAN_ROWS:
-        return _drawn().game.settings
+        return _scene_for(action).game.settings
     start_on = key is InputAction.UI_LEFT
-    return _drawn().game.settings.with_video(**{action: start_on})
+    return _scene_for(action).game.settings.with_video(**{action: start_on})
 
 
 @pytest.mark.parametrize("action", VideoScene.CYCLING_ROWS)
@@ -316,9 +358,9 @@ def test_every_value_row_answers_every_key(action: str, key: InputAction) -> Non
     ``back`` act on confirm and must do nothing on a direction, and ``info`` is
     a read-out; ``test_every_row_does_something`` already owns those.
     """
-    scene = _drawn()
+    scene = _scene_for(action)
     scene.game.settings = _starting_settings(action, key)
-    _focus(scene, _row(scene, action))
+    _focus_action(scene, action)
     before = scene.game.settings
 
     _press(scene, key)
@@ -337,10 +379,9 @@ def test_a_confirm_toggles_a_boolean_row(action: str) -> None:
     that do have a direction. With a gamepad, where confirm is how you press a
     button, that is the whole row.
     """
-    scene = _drawn()
-    index = _row(scene, action)
+    scene = _scene_for(action)
 
-    _focus(scene, index)
+    _focus_action(scene, action)
     _press(scene, InputAction.UI_CONFIRM)
     after_first = getattr(scene.game.settings, action)
 
@@ -363,11 +404,11 @@ def test_a_direction_still_sets_a_boolean_row(action: str) -> None:
     "unified" them would be undoing a decision, not fixing one.
     """
     on = _drawn()
-    _focus(on, _row(on, action))
+    _focus_action(on, action)
     _press(on, InputAction.UI_LEFT)
 
     off = _drawn()
-    _focus(off, _row(off, action))
+    _focus_action(off, action)
     _press(off, InputAction.UI_RIGHT)
 
     assert getattr(on.game.settings, action) is False, "← from on goes off, not back to on"
@@ -382,12 +423,12 @@ def test_a_confirm_steps_a_list_row_like_the_right_key(action: str) -> None:
     already giving, and is why confirm was a toggle only for the rows that have
     no order to step through.
     """
-    by_confirm = _drawn()
-    _focus(by_confirm, _row(by_confirm, action))
+    by_confirm = _scene_for(action)
+    _focus_action(by_confirm, action)
     _press(by_confirm, InputAction.UI_CONFIRM)
 
-    by_right = _drawn()
-    _focus(by_right, _row(by_right, action))
+    by_right = _scene_for(action)
+    _focus_action(by_right, action)
     _press(by_right, InputAction.UI_RIGHT)
 
     assert by_confirm.game.settings == by_right.game.settings
@@ -547,6 +588,9 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
     assert "panel_scale" not in actions
     assert actions == [
         "display",
+        "monitor",
+        "fullscreen_mode",
+        "fit",
         "pixel_perfect",
         "vsync",
         "frame_limit",
@@ -603,7 +647,7 @@ def test_stepping_the_row_walks_the_panel_ladder_not_the_interface_one() -> None
         # Focused first: a direction key acts on the *selected* row, and the
         # selection starts on ``display``. Without this the press walked the
         # display mode and the panel scale never moved.
-        _focus(scene, _row(scene, "panel_scale"))
+        _focus_action(scene, "panel_scale")
         seen = []
         for _ in range(len(PANEL_SCALES)):
             seen.append(scene.game.settings.panel_scale)

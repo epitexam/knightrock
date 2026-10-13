@@ -140,6 +140,14 @@ class UserSettings:
     #: rather than overwritten -- see :func:`src.core.display.monitors.fit_size`.
     window_size: tuple[int, int] | None = None
     window_position: tuple[int, int] | None = None
+    #: The mode to ask the driver for in *exclusive* fullscreen, as a pair.
+    #:
+    #: Only meaningful in that one mode, and only honoured when the driver still
+    #: reports it -- a mode list is what the platform says this panel supports
+    #: today, so a mode that disappeared with a cable change cannot be asked for.
+    #: ``None`` means "whatever the display is already running", which is the
+    #: safe default and the one a first launch gets.
+    fullscreen_mode: tuple[int, int] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -152,6 +160,7 @@ class UserSettings:
                 "fit": self.fit.value,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
+                "fullscreen_mode": (list(self.fullscreen_mode) if self.fullscreen_mode else None),
             },
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
@@ -274,6 +283,7 @@ class UserSettings:
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
             window_position=_placement(window, "position"),
+            fullscreen_mode=_placement(video, "fullscreen_mode"),
         )
 
     @classmethod
@@ -370,8 +380,21 @@ class UserSettings:
         The name is now the least accurate thing here: the interface and panel
         scales are edited through it too. Renamed for clarity the moment it is
         cheaper than the grep this comment is standing in for.
+
+        The enum fields are coerced rather than trusted. This is the only way a
+        setting changes once the file has been read, so it is the only place a
+        raw ``"zoom"`` can enter -- from a caller cycling a row with the value
+        rather than the enum. A ``str`` that reached the dataclass unconverted
+        would sit there looking fine and then raise at ``to_dict``, on the frame
+        the game tries to write its settings on, which is the worst moment
+        available to find out.
         """
-        return replace(self, **changes)  # type: ignore[arg-type]
+        coerced = dict(changes)
+        if isinstance(coerced.get("fit"), str):
+            coerced["fit"] = FitPolicy(str(coerced["fit"]))
+        if isinstance(coerced.get("display"), str):
+            coerced["display"] = DisplayMode(str(coerced["display"]))
+        return replace(self, **coerced)  # type: ignore[arg-type]
 
 
 def _enum[E: StrEnum](enum_type: type[E], value: object, name: str) -> E:

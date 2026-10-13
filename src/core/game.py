@@ -23,7 +23,7 @@ from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for
 from src.core.display.mode import DisplayMode
-from src.core.display.monitors import Monitor
+from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
 from src.core.input.event_router import EventRouter
@@ -109,6 +109,10 @@ class Game:
         #: See :meth:`world_overlay`.
         self.ui: UIManager | None = None
         self.running = True
+        #: The display list, read once at launch and re-read on a poll. See
+        #: :meth:`topology`.
+        self._topology: Topology | None = None
+        self._topology_age = 0.0
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
         self._settings_dirty = False
@@ -233,6 +237,7 @@ class Game:
             vsync=self.settings.vsync,
             size=self.settings.window_size,
             position=self.settings.window_position,
+            fullscreen_mode=self.settings.fullscreen_mode,
         )
 
     def _resolve_display_settings(self) -> None:
@@ -255,15 +260,27 @@ class Game:
             display=detection.auto_display_mode(DEFAULT_FRAMING, self._monitor().usable_size)
         )
 
-    def _monitor(self) -> Monitor:
-        """The monitor the settings' name resolves to on this machine, right now.
+    def topology(self, *, refresh: bool = False) -> Topology:
+        """The machine's displays, read on launch and on every poll.
 
-        Read fresh rather than cached: a second screen can be plugged in between
-        two calls, and a cached topology would then resolve a name against a desk
-        that no longer exists. The probe's handle is cached underneath, so this
-        is cheap enough to call from the settings path.
+        Cached, because it is asked on every menu rebuild and every window
+        rebuild and neither is a reason to walk the display list. Invalidated by
+        ``refresh``, which is how a plugged-in screen is noticed: the platform
+        does not report one arriving, so it has to be asked again (see
+        :meth:`_poll_displays`).
+
+        The cache is a snapshot and not a promise. It goes stale the moment a cable
+        changes, which is why the poll exists and why every decision that depends
+        on it resolves a *name* rather than trusting an index.
         """
-        return detection.topology().resolve(self.settings.monitor).monitor
+        if self._topology is None or refresh:
+            self._topology = detection.topology()
+            self._topology_age = 0.0
+        return self._topology
+
+    def _monitor(self) -> Monitor:
+        """The monitor the settings' name resolves to, right now."""
+        return self.topology().resolve(self.settings.monitor).monitor
 
     def initialize_display(self) -> None:
         """Build the window and the presentation, once.
@@ -408,6 +425,7 @@ class Game:
             settings.monitor,
             settings.window_size,
             settings.window_position,
+            settings.fullscreen_mode,
         )
 
     def _persist_settings(self) -> None:
@@ -466,6 +484,49 @@ class Game:
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
+
+    #: Seconds between two display-list reads. Long enough that the poll is not
+    #: a per-frame cost (a read is ~0.005ms but is not free), short enough that
+    #: unplugging a screen is noticed while the player is still looking at it.
+    DISPLAY_POLL_SECONDS = 0.75
+
+    def _poll_displays(self, frame_delta: float) -> None:
+        """Notice a screen arriving or leaving, and cope with it.
+
+        pygame-ce surfaces ``WINDOWDISPLAYCHANGED`` -- the window moving to
+        another display -- but no event at all for a display being *added* or
+        *removed*: SDL keeps those two internal and translates neither. Measured
+        against the event constants pygame actually exports. So there is no
+        callback to hook and the only way to see a second screen arrive is to ask
+        again, which is what this does.
+
+        What it does about it is the part that matters. Losing the screen the
+        window is on would otherwise leave a fullscreen window on a display that
+        no longer exists, which on some drivers is a black screen with a running
+        game behind it. So the window is moved to the primary, and the player is
+        told, because a silent move is indistinguishable from the game deciding
+        to ignore them.
+        """
+        self._topology_age += frame_delta
+        if self.stage is None or self._topology_age < self.DISPLAY_POLL_SECONDS:
+            return
+        self._topology_age = 0.0
+        current = detection.topology()
+        if current == self._topology:
+            return
+
+        vanished = self._topology.primary.index if self._topology else 0
+        self._topology = current
+        if self.stage is not None and self.stage.monitor.index not in current.indices:
+            logger.info("Display %d is gone; moving the window to the primary", vanished)
+            self.settings = self.settings.with_video(monitor=None)
+            self.notice("That screen is no longer connected.", "The game moved to the main one.")
+            self._rebuild_display()
+        else:
+            self.notice(
+                f"{len(current.monitors)} screen(s) connected.",
+                "The video menu lists them.",
+            )
 
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
@@ -535,9 +596,11 @@ class Game:
         if self.clock is None:
             raise RuntimeError("the game runtime is not initialized")
         frame_started = perf_counter()
-        self._accumulator += min(self._frame_delta(), Simulation.MAX_FRAME_TIME)
+        frame_delta = self._frame_delta()
+        self._accumulator += min(frame_delta, Simulation.MAX_FRAME_TIME)
 
         self._handle_events()
+        self._poll_displays(frame_delta)
         self.scene_manager.poll_held_repeats()
         self.flush_settings()
 

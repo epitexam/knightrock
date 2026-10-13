@@ -93,6 +93,7 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
         "fit",
         "vsync",
         "frame_limit",
+        "fullscreen_mode",
     }
     assert set(payload["window"]) == {"size", "position"}
     for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
