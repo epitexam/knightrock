@@ -196,6 +196,25 @@ _bindings_cache: _Bindings | None = None
 _bindings_searched = False
 
 
+def _open(path: str | None) -> Iterator[ctypes.CDLL]:
+    """One handle, or nothing.
+
+    Every ``dlopen`` in this module goes through here rather than being called
+    directly, and the reason is that any of them can raise for reasons that have
+    nothing to do with whether the library is the right one: a file that is not a
+    shared object, a pattern that matched something unexpected, a path the loader
+    refuses. A generator that raised part way through the search would abort the
+    whole search and take the probe down with it, when the only thing that went
+    wrong is one candidate out of five.
+    """
+    if not path:
+        return
+    try:
+        yield ctypes.CDLL(path)
+    except OSError as error:
+        logger.debug("Not a loadable library: %s (%s)", path, error)
+
+
 def _libraries() -> Iterator[ctypes.CDLL]:
     """Handles to try, the one pygame uses first.
 
@@ -206,22 +225,26 @@ def _libraries() -> Iterator[ctypes.CDLL]:
     ``find_library`` is last and is the one that can find a *different* SDL,
     which is why its answer is cross-checked like any other.
     """
-    yield ctypes.CDLL(None)
+    yield from _open(None)
 
     for extension in (getattr(pygame, "base", None), pygame.display):
-        path = getattr(extension, "__file__", None)
-        if path:
-            yield ctypes.CDLL(path)
+        yield from _open(getattr(extension, "__file__", None))
 
     root = Path(pygame.__file__).parent
-    patterns = ("../pygame_ce.libs/libSDL2*", "libSDL2*.dll", "libSDL2*.dylib", "libSDL2*.so*")
-    for pattern in patterns:
+    # Only the SDL2 patterns, and only inside pygame's own two directories. The
+    # names are specific enough that nothing else matches, and the directories
+    # are the ones the wheel places them in -- this walks the installation, never
+    # the filesystem at large.
+    for pattern in (
+        "../pygame_ce.libs/libSDL2-*",
+        "libSDL2*.dll",
+        "libSDL2*.dylib",
+        "libSDL2*.so*",
+    ):
         for path in sorted(root.glob(pattern)):
-            yield ctypes.CDLL(str(path.resolve()))
+            yield from _open(str(path.resolve()))
 
-    found = ctypes.util.find_library("SDL2")
-    if found:
-        yield ctypes.CDLL(found)
+    yield from _open(ctypes.util.find_library("SDL2"))
 
 
 def _agree_with_pygame(displays: tuple[DisplayGeometry, ...]) -> bool:
@@ -267,9 +290,14 @@ def _bindings() -> _Bindings | None:
     for lib in _libraries():
         try:
             _bindings_cache = _Bindings(lib)
-            return _bindings_cache
-        except (AttributeError, OSError) as error:
-            logger.debug("SDL display probe unavailable: %s", error)
+        except AttributeError as error:
+            # The library loaded and is not the SDL we want: no display calls.
+            logger.debug("Not an SDL2 with display calls: %s", error)
+            continue
+        except OSError as error:
+            logger.debug("Could not read display calls: %s", error)
+            continue
+        return _bindings_cache
     logger.debug("No libSDL2 with display calls could be bound; geometry unavailable")
     return None
 

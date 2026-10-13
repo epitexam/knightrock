@@ -122,7 +122,7 @@ that owns it. Reachable from the main menu and from the pause screen.
 
 | Screen | Owns |
 |---|---|
-| **Video** | Display mode, whole-pixel art, VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. |
+| **Video** | Display mode, the screen to play on (multi-monitor), the fullscreen mode, how the picture fits the window (bars / whole-pixel / zoom), VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. |
 | **Controls → Menu controls** | Key/button rebinding and the menu stick Y inversion. |
 | **Controls → Gameplay controls** | Key/button rebinding. |
 
@@ -252,43 +252,93 @@ than mapped from the menu.
 | Object | What it is |
 |---|---|
 | `Framing` | the visible rectangle of the world, in world units. Fixed. |
-| `Viewport` | the surface everything is drawn into: the window's letterbox rect |
-| `Stage` | the OS window: mode, position, DPI, vsync. No opinion about size. |
+| `Viewport` | the surface everything is drawn into: the window's fitted rect |
+| `Stage` | the OS window: mode, monitor, position, DPI, vsync |
 | `Presentation` | window onto target, and the pointer back. Scales nothing. |
+| `monitors` | what this machine has, and which one the player meant |
+| `sdl_probe` | the libSDL2 pygame already links, for what pygame cannot say |
 
 How large the world is *drawn* is a separate question, answered by the window: a
 world unit gets `window / framing` pixels — 1.667 at 1920×1080, 0.694 in an
 800×600 window — and the art is magnified once, at load. The camera has no zoom;
 it has a density, read off the target so the two cannot disagree.
 
-**The window is the only source of truth about the window.** There is no stored
-size, no `size_mode`, no render scale and no smoothing flag, because none of those
-describes a screen. Four rules replace them:
+**More than one screen is a first-class case.** pygame-ce reports display
+*sizes* and nothing else, which is why the window used to be pinned to the
+primary: the other screens' origins were described as unknowable. They are not
+unknowable, they are one layer down — `sdl_probe` reads the bundled SDL2 through
+`ctypes` (stdlib only) and gets each display's bounds, the area a taskbar leaves
+free, the name the platform gives it, its refresh rate and the compositor's
+scale. Measured on the development machine:
+
+```
+pygame       SDL_GetDesktopSizes()   -> [(1920, 1080)]
+SDL          SDL_GetDisplayBounds(0) -> (0, 0, 1920, 1080)
+SDL          SDL_GetDisplayUsableBounds(0) -> (0, 32, 1920, 1048)
+SDL          SDL_GetDisplayName(0)   -> b'eDP-1 17"'
+```
+
+The probe is cross-checked against pygame's own numbers and thrown away if they
+disagree — `find_library` can hand back a second libSDL2 whose video subsystem
+was never initialised, and it answers with plausible numbers describing nothing.
+When it cannot be reached the game runs on what pygame can say, which is what it
+did before.
+
+**A monitor is stored by name, never by index.** Indices are reordered by the
+platform between boots, so an index in a settings file is a claim about a machine
+nobody can check. A name is resolved against the live topology on every launch,
+and a name that is not found is *reported* — the menu says "that screen is gone"
+and the window moves to the primary — rather than silently landing somewhere else
+and rewriting the file.
+
+**The window is the only source of truth about the window.** No `size_mode`, no
+render scale, no smoothing flag: none of those describes a screen. Five rules
+replace them:
 
 - the **display mode** defaults to *auto* — borderless when the screen already has
   the shape of the framing, a window otherwise, re-evaluated on every launch. A
   chosen mode is never re-resolved;
-- a **windowed** game opens as large as fits with room for its own title bar, and
-  that is all. Drag it to whatever you like;
-- the **render target is the window** — more precisely the letterbox rectangle of
-  the window that carries the picture at the framing's aspect. The finished frame
-  is blitted **1:1**, so presenting costs a copy rather than a resample;
-- **whole-pixel art** trades filling the window for every art pixel being an exact
-  *k*×*k* block: the picture becomes the largest whole multiple of the framing
-  that fits and the bars take the rest. It is a no-op below the framing size, and
-  the row says so.
+- **borderless means borderless**: `FULLSCREEN | NOFRAME` at the monitor's *usable*
+  size, so no display mode is changed and there is nothing to restore when a
+  hybrid-GPU laptop switches GPUs mid-session. Plain fullscreen does ask the
+  driver for a mode change, at a resolution taken from `list_modes()` rather than
+  from a list this project wrote down;
+- a **windowed** game opens as large as fits on the monitor it opens on, restores
+  the size and position the player left it at — clamped, never overwritten — and
+  refuses to be dragged smaller than the interface can be read at;
+- the **render target is the window** — more precisely the fitted rectangle of the
+  window that carries the picture at the framing's aspect. The finished frame is
+  blitted **1:1**, so presenting costs a copy rather than a resample;
+- **how the picture fits is the player's choice**: bars, whole-pixel art (each art
+  pixel an exact *k*×*k* block, bars taking the rest), or zoom to fill, which crops
+  the overflow. All three show *at most* the framing — zoom shows strictly less,
+  so a video setting can never show more level than another.
 
 Resizing the window rebuilds the render target, re-reads the pixel density and
 re-lays out the interface — the same cascade as a display change, which is why it
 is one piece of code. What resizing never changes is **how much world you see**.
 
-<details>
-<summary><b>Why the video menu has no resolution row, and the framing is not derived from the window</b></summary>
+Plugging a screen in or out mid-session is noticed: pygame-ce surfaces no event
+for a display appearing or disappearing, so the display list is re-read on a timer
+and a window whose screen has gone moves to the primary and says so.
 
-**No resolution row.** A list of window sizes is a claim about the player's
-monitor that the game cannot check, and a remembered size is a claim that goes
-stale — in borderless the window *is* the screen's size whatever the file says,
-so the row used to display a number the game was not using.
+<details>
+<summary><b>Why the fullscreen mode list comes from the driver, and the framing is not derived from the window</b></summary>
+
+**The mode list is asked, not written down.** A hardcoded resolution list is a
+claim about the player's monitor that the game cannot check — offering
+2560×1440 to a 1366×768 laptop is what that costs. The fullscreen picker reads
+`pygame.display.list_modes()`, which is the driver answering for *this* panel
+right now, and a stored mode the driver no longer reports is dropped rather than
+asked for. The same reasoning keeps a hardcoded resolution list out of the file:
+it is the catalogue that was deleted, rebuilt from a source that can be asked.
+
+**The window's remembered size is a request, not an assertion.** It is honoured
+where it fits and clamped where it does not, and the file keeps what the player
+chose — so a 4K window arrives at a laptop shrunk to fit and comes back at 4K on
+the next launch on a desk with the room. The old `width`/`height` keys were
+*overwritten* at launch whenever they did not fit, which is why a size could never
+survive a change of machine and why the menu and the screen used to disagree.
 
 **The framing is not derived from the window.** It used to be built from the
 window's pixel size and a zoom constant, which made the visible world a free
@@ -562,7 +612,7 @@ src/
 ├── core/          Bootstrap (game.py), settings, paths, colors, object pool,
 │                  hazards, sprites, sprite groups, asset library, audio
 │   ├── animation/ Animator
-│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
+│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, monitors, detection, sdl_probe
 │   ├── fx/        Draw, particles, spawners
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
