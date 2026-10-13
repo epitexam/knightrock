@@ -356,7 +356,7 @@ class OptionScreen(Scene):
             self.model,
             top=140 if self.subtitle else 180,
             description=self._description_for(focused),
-            footers=(self.footer,) if self.footer else (),
+            footers=(self._footer(),) if self.footer else (),
             scroll=scroll,
             scrollable=True,
         )
@@ -374,6 +374,18 @@ class OptionScreen(Scene):
             self._rows_top = first_rect.top
             self._rows_bottom = last_rect.bottom
             self._row_height = max(1, first_rect.height)
+
+    def _footer(self) -> str:
+        """The hint line, with the page keys when the list needs them.
+
+        A short list has nothing to page through, so the keys
+        would be a mystery with no answer; a long one is where
+        they earn their place, and the only place a player
+        looks for how to move a list.
+        """
+        if self._last_visible is None or self._last_visible >= len(self.model.items):
+            return self.footer
+        return f"{self.footer} · PgDn page"
 
     def _description_for(self, focused: MenuItem | None) -> str:
         """The one description to show: the focused row's, if it has one.
