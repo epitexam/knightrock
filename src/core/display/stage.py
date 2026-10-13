@@ -166,19 +166,26 @@ class Stage:
         - **Window**: the remembered size if there is one, else as large as fits.
           A starting point and a preference respectively; the player drags it to
           whatever they like and the render target follows.
-        - **Borderless**: the monitor's *usable* size. Not the panel's, because a
-          borderless window that covers a taskbar is not borderless, it is
-          overlapping -- measured here as a 32px panel on a 1080p screen.
+        - **Borderless**: the remembered size if there is one, else the monitor's
+          *usable* size. Not the panel's, because a borderless window that covers
+          a taskbar is not borderless, it is overlapping -- measured here as a
+          32px panel on a 1080p screen.
+
+          Borderless honours a chosen size because it is a window, not a takeover:
+          measured, ``FULLSCREEN | NOFRAME`` at 1600x900 yields a 1600x900
+          borderless window that is still positioned and draggable. Treating it
+          as always-the-panel would have made the window-size row a lie in this
+          mode -- the row says one thing and the window is another.
         - **Fullscreen**: the remembered mode, else ``(0, 0)``, which is how SDL
           is told to use the display's current mode rather than one we made up.
         """
         mode = Stage._mode_for(spec)
         if mode is DisplayMode.FULLSCREEN:
             return Stage._fullscreen_size(spec)
-        if mode is DisplayMode.BORDERLESS:
-            return monitor.usable_size
         if spec.size is not None:
             return fit_size(spec.size, monitor)
+        if mode is DisplayMode.BORDERLESS:
+            return monitor.usable_size
         return opening_size(monitor)
 
     @staticmethod
@@ -243,10 +250,13 @@ class Stage:
         reports what the driver actually says rather than assuming.
         """
         mode = Stage._mode_for(spec)
-        if mode is DisplayMode.BORDERLESS:
-            return pygame.FULLSCREEN | pygame.NOFRAME
         if mode is DisplayMode.FULLSCREEN:
             return pygame.FULLSCREEN
+        if mode is DisplayMode.BORDERLESS:
+            # No mode change: a window at the panel's own resolution, with the
+            # decoration off. NOFRAME is the whole difference from fullscreen,
+            # and it is what stops this asking the driver for a mode change.
+            return pygame.FULLSCREEN | pygame.NOFRAME
         return pygame.RESIZABLE
 
     def _place(self, spec: WindowSpec, monitor: Monitor) -> None:

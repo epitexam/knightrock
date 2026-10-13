@@ -233,6 +233,55 @@ def test_a_click_steps_a_list_row_like_the_right_key(action: str) -> None:
     assert by_click.game.settings == by_key.game.settings
 
 
+@pytest.mark.parametrize(
+    "mode",
+    [DisplayMode.AUTO, DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN],
+)
+def test_the_resolution_row_exists_in_every_mode(mode: DisplayMode) -> None:
+    """The row is never missing, and never greyed out.
+
+    This failed twice, in both directions the same mistake has. First it was
+    disabled outside fullscreen, which is worse than hiding it: the focus walk
+    skips a disabled row and a click on one does nothing, so the row was drawn,
+    aimable, and inert. Then it was hidden in borderless, on the grounds that a
+    borderless window has no size to choose -- and ``auto`` resolves to borderless
+    on any 16:9 desktop, so that took the row away from most players by default,
+    on the first launch, with no setting of theirs involved.
+
+    A default is exactly the thing that must not remove a menu item.
+    """
+    scene = _drawn()
+    scene.game.apply_settings(scene.game.settings.with_video(display=mode))
+    scene._rebuild("resolution")
+
+    index = next(
+        (i for i, item in enumerate(scene.model.items) if item.action == "resolution"), None
+    )
+    assert index is not None, f"the resolution row is missing in {mode.value}"
+    assert scene.model.items[index].enabled, (
+        f"the resolution row is greyed out in {mode.value}: a disabled row is "
+        "skipped by the focus walk and inert to a click"
+    )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [DisplayMode.AUTO, DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN],
+)
+def test_the_resolution_row_opens_a_list_in_every_mode(mode: DisplayMode) -> None:
+    """A row that exists but opens nothing is the same dead row, quieter."""
+    scene = _drawn()
+    scene.game.apply_settings(scene.game.settings.with_video(display=mode))
+    scene._rebuild("resolution")
+    pushed: list[object] = []
+    scene.game.scene_manager.push = pushed.append
+
+    _focus_action(scene, "resolution")
+    scene._open("resolution")
+
+    assert pushed, f"the resolution row opened nothing in {mode.value}"
+
+
 def test_every_row_does_something() -> None:
     """No row may be outside all three lists.
 

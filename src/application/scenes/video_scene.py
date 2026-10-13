@@ -163,32 +163,29 @@ class VideoScene(Scene):
                 if len(topology.monitors) > 1
                 else ()
             ),
-            # One row, two meanings, and it is live in both of the modes where a
-            # resolution is a thing the player gets to choose. It was a disabled
+            # One row, three modes, and it is always live. It was a disabled
             # "Fullscreen mode" outside fullscreen, which is worse than it
             # sounds: the focus walk skips a disabled row and a click on one
             # does nothing, so the row was drawn, aimable, and inert -- the
             # dead-row failure this screen has produced twice.
             #
-            # So the row asks the question that is real in the current mode: the
-            # window's size when there is a window, the mode's resolution when
-            # the game is fullscreen. Either way it opens a list built from what
-            # this panel reports.
+            # It was then hidden in borderless, on the grounds that there is
+            # nothing to choose. That was wrong twice over. A borderless window is
+            # a real window and SDL will give it a size other than the panel's --
+            # measured: FULLSCREEN|NOFRAME at 1600x900 yields a 1600x900
+            # borderless window, positioned and draggable. And `auto` resolves to
+            # borderless on any 16:9 desktop, so hiding the row took it away from
+            # most players by default, on the first launch, with no setting of
+            # theirs involved.
             #
-            # Borderless has neither and hides it rather than greying it. There is
-            # no window to drag and no mode to change, so there is genuinely
-            # nothing to pick, and a row that names a choice the game cannot make
-            # is worse than no row: it asks the player to work out why.
-            *(
-                (
-                    MenuItem(
-                        "resolution",
-                        self._resolution_label(settings.display),
-                        self._resolution_value(settings.display),
-                    ),
-                )
-                if settings.display is not DisplayMode.BORDERLESS
-                else ()
+            # So the row asks the question that is real in every mode: what size
+            # should the window be. In exclusive fullscreen it means the mode the
+            # driver is asked for; otherwise it means the window's own size, and
+            # borderless is a window like any other.
+            MenuItem(
+                "resolution",
+                self._resolution_label(settings.display),
+                self._resolution_value(settings.display),
             ),
             MenuItem("fit", "Picture fit", self._fit_label()),
             MenuItem("vsync", "VSync", self._vsync_label()),
@@ -475,20 +472,25 @@ class VideoScene(Scene):
     def _submenu_resolution(self) -> Submenu:
         """The list behind the one resolution row, whichever mode is in force.
 
-        Two settings behind one row, because there is only ever one of them
-        on screen: a window size while there is a window, a mode resolution
-        while the game is fullscreen. Borderless has neither -- the window is the
-        panel's own size and the game changes nothing -- so the row is absent
-        there rather than disabled.
+        Two settings behind one row, because only one of them is ever the live
+        one: the mode the driver is asked for while the game has taken the panel
+        over, and the window's own size in every other mode -- including
+        borderless, where the window is still a window with a size.
+
+        That inclusion is the point of this row existing at all. Hiding it in
+        borderless removed it from the default on any 16:9 screen, because
+        ``auto`` resolves to borderless there, and a player who never touched the
+        display mode would have had one fewer setting than a player who did.
         """
         topology = self._topology()
         monitor = topology.resolve(self.game.settings.monitor).monitor
-        modes = self.fullscreen_modes()
         if self.game.settings.display is DisplayMode.FULLSCREEN:
             return (
                 "FULLSCREEN MODE",
                 video_options.fullscreen_mode_options(
-                    modes, monitor, self.game.settings.fullscreen_mode
+                    self.fullscreen_modes(),
+                    monitor,
+                    self.game.settings.fullscreen_mode,
                 ),
                 self.game.settings.fullscreen_mode,
                 lambda mode: self._apply(self.game.settings.with_video(fullscreen_mode=mode)),
