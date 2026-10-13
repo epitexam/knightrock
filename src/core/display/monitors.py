@@ -91,6 +91,16 @@ class Monitor:
         return (self.usable[0], self.usable[1])
 
     @property
+    def origin(self) -> tuple[int, int]:
+        """Where this display sits on the virtual desktop.
+
+        May be negative: a Linux desktop whose primary is not leftmost puts the
+        left monitor there, and assuming otherwise is what once placed a window
+        on the wrong panel.
+        """
+        return (self.bounds[0], self.bounds[1])
+
+    @property
     def detail(self) -> str:
         """The resolution and rate, for a menu row that has a column for it."""
         rate = f" @ {self.refresh_rate} Hz" if self.refresh_rate > 0 else ""

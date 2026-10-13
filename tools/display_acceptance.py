@@ -36,6 +36,7 @@ import pygame
 
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import FitPolicy
 from src.core.display.mode import DisplayMode
 from src.core.game import Game
 
@@ -48,10 +49,11 @@ from src.core.game import Game
 #: ``pygame.display.set_mode`` below is what stands in for a player dragging the
 #: window edge, which the acceptance run cannot ask them to do on cue.
 WALKTHROUGH = [
-    ("borderless, whatever the machine picked", DisplayMode.BORDERLESS, False),
-    ("window, as large as fits", DisplayMode.WINDOW, False),
-    ("window, whole-pixel art", DisplayMode.WINDOW, True),
-    ("borderless again", DisplayMode.BORDERLESS, False),
+    ("borderless, whatever the machine picked", DisplayMode.BORDERLESS, False, FitPolicy.BARS),
+    ("window, as large as fits", DisplayMode.WINDOW, False, FitPolicy.BARS),
+    ("window, whole-pixel art", DisplayMode.WINDOW, False, FitPolicy.INTEGER),
+    ("window, zoomed to fill", DisplayMode.WINDOW, False, FitPolicy.ZOOM),
+    ("borderless again", DisplayMode.BORDERLESS, False, FitPolicy.BARS),
 ]
 
 #: Sizes a player would drag to, applied by hand to stand in for a drag.
@@ -63,9 +65,23 @@ def _report(game: Game) -> None:
     stage, presentation = game.stage, game.presentation
     assert stage is not None and presentation is not None
     desktop = detection.desktop_size()
+    # Re-read rather than trust the cache: the whole point of this run is to
+    # watch the window follow a display, so a stale list would report the desk as
+    # it was rather than as it is.
+    topology = game.topology(refresh=True)
     print("\n" + "=" * 72)
     print("WHAT THE GAME DECIDED ABOUT THIS MACHINE")
     print("=" * 72)
+    print(f"  displays found        {len(topology.monitors)}  (names: {topology.named})")
+    for monitor in topology.monitors:
+        origin_x, origin_y = monitor.origin
+        print(
+            f"    [{monitor.index}] {topology.label_for(monitor)!r} "
+            f"{monitor.detail} at ({origin_x}, {origin_y}) usable {monitor.usable_size} "
+            f"scale {monitor.scale}"
+        )
+    chosen = topology.resolve(settings.monitor)
+    print(f"  chosen display        [{chosen.monitor.index}] -- {chosen.reason}")
     print(f"  desktop reported      {desktop[0]} x {desktop[1]}")
     print(f"  refresh rates         {detection.desktop_refresh_rates() or 'unknown'}")
     print(f"  display mode          {settings.display.value}")
@@ -73,26 +89,58 @@ def _report(game: Game) -> None:
     print(f"  window position       {pygame.display.get_window_position()}")
     print(f"  render target         {presentation.surface.get_size()}")
     print(f"  framing (world units) {DEFAULT_FRAMING.size[0]:.0f} x {DEFAULT_FRAMING.height:.0f}")
+    print(f"  fit policy            {presentation.fit.value}")
+    source = presentation.picture.source
     print(
         f"  pixel density         {presentation.density:.3f}   whole-pixel {settings.pixel_perfect}"
     )
     print(f"  presented rect        {tuple(presentation.rect)}")
+    print(f"  shown from target     {tuple(source)}")
+    # What the framing contract is about, printed in the units it is stated in:
+    # world units of visible level, rather than pixels of target.
+    print(
+        f"  world visible         "
+        f"{source.width / presentation.density:.0f} x "
+        f"{source.height / presentation.density:.0f} of "
+        f"{DEFAULT_FRAMING.width:.0f} x {DEFAULT_FRAMING.height:.0f}"
+    )
     bars = presentation.bars
     print(f"  letterbox bars        {len(bars)}  {[tuple(b) for b in bars] or 'none'}")
     print(f"  interface scale       {game.ui_scale:.3f}  (preference {settings.ui_scale})")
     print(f"  vsync requested       {settings.vsync}   driver reports {pygame.display.is_vsync()}")
     print(f"  frame limit           {settings.frame_limit or 'uncapped'}")
+    print(f"  fullscreen mode       {settings.fullscreen_mode or 'the display own mode'}")
     print()
     print("  CHECK BY HAND:")
-    print("   - the window is centred on the primary screen")
+    print("   - the window is on the screen the settings asked for")
     print("   - the image keeps its shape, with black bars and no stretch")
     print("   - the picture is sharp: no soft edges, no doubled pixels")
     print("   - the menus are readable and the gauges sit where they should")
     print("   - dragging the window edge does NOT change how much world you see")
 
 
-def _apply(game: Game, mode: DisplayMode, pixel_perfect: bool) -> None:
-    game.apply_settings(game.settings.with_video(display=mode, pixel_perfect=pixel_perfect))
+def _apply(game: Game, mode: DisplayMode, pixel_perfect: bool, fit: FitPolicy) -> None:
+    game.apply_settings(
+        game.settings.with_video(display=mode, pixel_perfect=pixel_perfect, fit=fit)
+    )
+
+
+def _cycle_monitors(game: Game) -> None:
+    """Walk the window through every display this machine has.
+
+    The case the automated run cannot reach at all: whether the game follows the
+    player onto a second panel. Each step re-opens the window on the next display
+    and reports where it landed, which is the number worth checking by eye --
+    ``window position`` against the ``at (x, y)`` of the display it claims.
+    """
+    topology = game.topology(refresh=True)
+    if len(topology.monitors) < 2:
+        print("\nonly one display is attached; there is no monitor to walk to")
+        return
+    for monitor in topology.monitors:
+        print(f"\n--- asking for {topology.label_for(monitor)!r} ---")
+        game.apply_settings(game.settings.with_video(monitor=monitor.name))
+        _report(game)
 
 
 def _drag_to(game: Game, size: tuple[int, int]) -> None:
@@ -146,12 +194,14 @@ def main() -> None:
 
     import time
 
-    for index, (title, mode, pixel_perfect) in enumerate(WALKTHROUGH):
+    for index, (title, mode, pixel_perfect, fit) in enumerate(WALKTHROUGH):
         if index:
             print(f"\n--- {title} : {arguments.hold:.0f}s, watch the window ---")
             time.sleep(arguments.hold)
-        _apply(game, mode, pixel_perfect)
+        _apply(game, mode, pixel_perfect, fit)
         _report(game)
+
+    _cycle_monitors(game)
 
     for size in DRAG_SIZES:
         print(f"\n--- dragging the window to {size[0]} x {size[1]} ---")

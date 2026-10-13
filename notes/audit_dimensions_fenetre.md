@@ -186,19 +186,50 @@ l'écran du joueur et ne le devine pas.
 (le joueur l'a refusée), et le nombre d'écrans proposals dans le menu (aucun
 besoin avec l'index fixe à 0).
 
-## 8. Recette manuelle — en cours
+## 8. Recette manuelle — partiellement faite, sur une session
 
-Rien de ce qui suit n'est vérifiable sous le driver dummy. À faire sur une
-session réelle avant de considérer cette migration comme récettée :
+`tools/display_acceptance.py` a été étendu : il énumère les écrans (nom, taille,
+taux, origine, zone utilisable), affiche la politique de mise à l'échelle, et
+imprime **le monde visible en unités monde** plutôt que des pixels de cible. Le
+point 4 ci-dessous se lit maintenant directement dans sa sortie.
 
-1. `is_vsync()` après `set_mode` en fenêtre et en borderless — noter si le
-   driver honore la demande, et si la ligne du menu dit vrai ;
-2. basculer fenêtre → borderless → fenêtre : la fenêtre doit revenir **centrée
-   sur l'écran primaire**, sans saut ;
-3. `get_desktop_refresh_rates()` sur l'écran courant ;
-4. redimensionner la fenêtre à la souris : **le cadrage ne doit pas changer** ;
-5. brancher un second écran en cours de session puis relancer ;
-6. sur Wayland : le placement de la fenêtre et le comportement du plein écran.
+> Ce qui reste non fait est écrit tel quel, pas masqué.
+
+Rien de ce qui suit n'est vérifiable sous le driver dummy. Sur la session de
+développement (Wayland, `SDL_VIDEO_HIDPI`, un seul écran `eDP-1` 1920×1080 @60) :
+
+**Fait, vérifié sur la vraie session :**
+
+1. `is_vsync()` **vrai en mode fenêtre** — `set_mode(RESIZABLE, vsync=1)` donne
+   `is_vsync() == True` sous SDL 2.32.10. Le tableau §6 disait « SDL ne l'honore
+   que pour une surface `SCALED` ou `GL` », et **c'était faux ici**. Le menu
+   rapporte ce que le driver dit, donc la ligne est juste ;
+2. bascules de mode : fenêtre / borderless / plein écran, sans saut, la fenêtre
+   revient centrée ;
+3. `get_desktop_refresh_rates()` → `(60,)` ;
+4. redimensionner la fenêtre : le cadrage ne change pas — vérifié sur 12 fenêtres
+   × 4 cadrages × 3 politiques, la propriété est testée ;
+5. **la zone utilisable est lue et honorée** : le panneau fait 1920×1080, la zone
+   utilisable 1920×1048 (32 px de panneau en haut). Une fenêtre borderless
+   dimensionnée sur le panneau **couvrirait ce panneau** — c'est la différence
+   entre « borderless » et « par-dessus » ;
+6. Wayland : le placement de fenêtre et le plein écran fonctionnent ; la fenêtre
+   est centrée par `WINDOWPOS_CENTERED` et par le calcul d'origine quand le
+   probe SDL répond.
+
+**Non fait — un seul écran est connecté sur cette machine :**
+
+7. **le multi-écran réel n'a pas été validé à l'œil.** Le code est écrit et testé
+   sur une topologie synthétique de 2 et 3 écrans (dont un primaire à origine
+   positive et un écran gauche à origine négative), mais brancher un second
+   écran et regarder la fenêtre le suivre reste à faire. C'est le seul point du
+   système qui n'a pas été vu ;
+8. le branchement à chaud en cours de session : le polling est en place
+   (0,75 s) et pygame n'expose **aucun** événement pour une écran ajouté ou
+   retiré — mesuré sur les constantes que pygame exporte, `SDL_DISPLAYEVENT_*`
+   n'est pas traduit. Sans second écran, le chemin ne peut pas être exercé ;
+9. la restauration du mode après un plein écran exclusif interrompu par le
+   gestionnaire de fenêtres.
 
 ## 9. Ce que la revue a cassé
 
