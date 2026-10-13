@@ -43,6 +43,8 @@ REPEATABLE_UI_ACTIONS: frozenset[InputAction] = frozenset(
         InputAction.UI_DOWN,
         InputAction.UI_LEFT,
         InputAction.UI_RIGHT,
+        InputAction.UI_PAGE_UP,
+        InputAction.UI_PAGE_DOWN,
     }
 )
 

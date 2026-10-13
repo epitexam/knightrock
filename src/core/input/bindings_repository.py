@@ -98,6 +98,33 @@ def _repair_menu_direction_conflicts(bindings: ActionMap) -> ActionMap:
     return MappingProxyType(result)
 
 
+#: The list keys that arrived after the first bindings file. A file
+#: without them was written before they existed, not by a player who
+#: removed them, so each gets its default.
+_MENU_LIST_DEFAULTS: dict[InputAction, int] = {
+    InputAction.UI_PAGE_UP: pygame.K_PAGEUP,
+    InputAction.UI_PAGE_DOWN: pygame.K_PAGEDOWN,
+    InputAction.UI_HOME: pygame.K_HOME,
+    InputAction.UI_END: pygame.K_END,
+}
+
+
+def _fill_menu_defaults(bindings: ActionMap) -> ActionMap:
+    """Give the list keys their defaults when an old file has none.
+
+    ``bindings_from_dict``'s contract is that a missing action is an
+    unbound one, which is exactly right for a key the player
+    detached and exactly wrong for a key that did not exist when
+    the file was written. The four arrive as a set: a file that has
+    any of them was written after they existed, so it is left alone
+    in full -- a player who rebound page down and left page up
+    unbound meant to.
+    """
+    if any(action in bindings for action in _MENU_LIST_DEFAULTS):
+        return bindings
+    return MappingProxyType({**bindings, **_MENU_LIST_DEFAULTS})
+
+
 def _parse_action_map(
     data: object, allowed: set[InputAction], allow_pair: bool = False
 ) -> ActionMap:
@@ -228,6 +255,10 @@ def bindings_from_dict(data: object) -> InputBindings:
         InputAction.UI_CONFIRM,
         InputAction.UI_BACK,
         InputAction.UI_CANCEL,
+        InputAction.UI_PAGE_UP,
+        InputAction.UI_PAGE_DOWN,
+        InputAction.UI_HOME,
+        InputAction.UI_END,
     }
     gameplay_keyboard = _parse_action_map(
         gameplay_data["keyboard"], gameplay_actions, allow_pair=True
@@ -243,6 +274,14 @@ def bindings_from_dict(data: object) -> InputBindings:
     # Older files: capturing an arrow sometimes left two menu directions on one
     # key. Repaired without disturbing the other custom remaps.
     menu_keyboard = _repair_menu_direction_conflicts(menu_keyboard)
+    # Older files still: a map may be partial, and "missing means
+    # unbound" is right for a key the player detached on purpose but
+    # wrong for one that did not exist when the file was written. The
+    # four list keys arrive together, so a file without them predates
+    # them; each gets its default rather than nothing, which is the
+    # difference between "page down scrolls" and "page down is dead"
+    # for every player who never opened the controls screen.
+    menu_keyboard = _fill_menu_defaults(menu_keyboard)
     menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)

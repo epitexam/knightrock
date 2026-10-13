@@ -54,6 +54,10 @@ class ControlsScene(Scene):
             RebindSpec("Confirm", InputAction.UI_CONFIRM),
             RebindSpec("Back", InputAction.UI_BACK),
             RebindSpec("Cancel", InputAction.UI_CANCEL),
+            RebindSpec("Page up", InputAction.UI_PAGE_UP),
+            RebindSpec("Page down", InputAction.UI_PAGE_DOWN),
+            RebindSpec("First row", InputAction.UI_HOME),
+            RebindSpec("Last row", InputAction.UI_END),
             RebindSpec("New game shortcut", None),
         ),
         GAMEPLAY_SECTION: (

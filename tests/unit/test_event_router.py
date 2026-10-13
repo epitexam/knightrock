@@ -4,7 +4,12 @@ import pygame
 
 from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.input_dispatcher import InputDispatcher
-from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
+from src.core.input.event_router import (
+    REPEATABLE_UI_ACTIONS,
+    EventRouter,
+    InputDevice,
+    RoutedInput,
+)
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings, MenuBindings
 from src.core.settings import Input as InputSettings
@@ -416,9 +421,7 @@ def test_the_mouse_wheel_is_routed() -> None:
     up = router.route(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1, pos=(5, 5)))
     down = router.route(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1, pos=(5, 5)))
 
-    assert up == RoutedInput(
-        InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0
-    )
+    assert up == RoutedInput(InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0)
     assert down == RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=1.0)
 
     # A trackpad reports several rows in one notch; the value carries it
@@ -430,3 +433,32 @@ def test_the_mouse_wheel_is_routed() -> None:
     # routed twice: once as a wheel, once as a button press.
     legacy = router.route(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=4, pos=(5, 5)))
     assert legacy is None
+
+
+def test_the_list_keys_route() -> None:
+    """A 28-row list is 27 arrow keys without them.
+
+    Page up/down move by what the window shows and home/end
+    jump to the edges, which is the difference between reading
+    a long list and walking it.
+    """
+    router = EventRouter()
+
+    expected = {
+        pygame.K_PAGEUP: InputAction.UI_PAGE_UP,
+        pygame.K_PAGEDOWN: InputAction.UI_PAGE_DOWN,
+        pygame.K_HOME: InputAction.UI_HOME,
+        pygame.K_END: InputAction.UI_END,
+    }
+    for key, action in expected.items():
+        assert router.route(pygame.event.Event(pygame.KEYDOWN, key=key)) == (
+            RoutedInput(action, InputDevice.KEYBOARD)
+        )
+
+    # Holding page down repeats -- a page at a time is how the
+    # key is meant to be held -- while home and end do not,
+    # because repeating an edge is just re-pressing the edge.
+    assert InputAction.UI_PAGE_DOWN in REPEATABLE_UI_ACTIONS
+    assert InputAction.UI_PAGE_UP in REPEATABLE_UI_ACTIONS
+    assert InputAction.UI_HOME not in REPEATABLE_UI_ACTIONS
+    assert InputAction.UI_END not in REPEATABLE_UI_ACTIONS

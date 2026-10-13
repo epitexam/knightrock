@@ -122,6 +122,10 @@ class MenuBindings:
                 InputAction.UI_CONFIRM: (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE),
                 InputAction.UI_BACK: pygame.K_ESCAPE,
                 InputAction.UI_CANCEL: pygame.K_q,
+                InputAction.UI_PAGE_UP: pygame.K_PAGEUP,
+                InputAction.UI_PAGE_DOWN: pygame.K_PAGEDOWN,
+                InputAction.UI_HOME: pygame.K_HOME,
+                InputAction.UI_END: pygame.K_END,
             }
         )
     )

@@ -92,9 +92,7 @@ def test_a_list_that_scrolls_paints_a_rail_in_the_gutter() -> None:
     assert rail is not None and thumb is not None
     assert panel.contains(rail)
     drawn = [rect for rect in view.item_rects if rect.width > 0]
-    assert all(rect.right <= rail.left for rect in drawn), (
-        "the rail overlaps a row"
-    )
+    assert all(rect.right <= rail.left for rect in drawn), "the rail overlaps a row"
     assert rail.right <= panel.right - 1, "the rail crosses the panel border"
 
 

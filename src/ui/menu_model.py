@@ -41,6 +41,22 @@ class MenuAction(StrEnum):
     BACK = "back"
 
 
+#: The routed actions that move the focus, and nothing else.
+#: One module-level set rather than six ``is`` tests inside
+#: ``handle_routed``, which is what kept that method readable
+#: as the list vocabulary grew.
+_NAVIGATION_ACTIONS = frozenset(
+    {
+        InputAction.UI_UP,
+        InputAction.UI_DOWN,
+        InputAction.UI_PAGE_UP,
+        InputAction.UI_PAGE_DOWN,
+        InputAction.UI_HOME,
+        InputAction.UI_END,
+    }
+)
+
+
 class MenuModel:
     @staticmethod
     def is_release(variant: str | None) -> bool:
@@ -116,22 +132,72 @@ class MenuModel:
             elif not 0 <= index < len(self._items):
                 break
             if self._items[index].enabled:
-                self._current = index
-                # The keyboard has taken the selection from the pointer, so the
-                # pointer stops being treated as the thing that moved it.
-                #
-                # Without this the two fight and the pointer loses badly. Hover
-                # reports a change only when it lands on a row other than the one
-                # it last landed on, so after one arrow key the selection was
-                # somewhere the cursor was not, and every subsequent mouse move
-                # inside the *original* row reported "no change" -- the keyboard's
-                # row stayed drawn as selected, the cursor pointed at another,
-                # and nothing moved until the pointer crossed a line. Measured:
-                # hover row 1, press DOWN, wiggle one pixel on row 1, and the
-                # selection stayed on row 2 while the cursor sat on row 1.
-                self._pointer_row = None
+                self._select(index)
                 return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
         return None
+
+    def move_page(self, direction: int, page: int) -> str | None:
+        """Move by a page, which is how many rows the window shows.
+
+        A page is the window's, not a fixed count, because the
+        point of the key is "where I am looking now": a smaller
+        window means a smaller page, and the player's eyes never
+        have to leave the panel to know where they landed.
+
+        The row a page lands on may be disabled, and the nearest
+        enabled row the way the page was going is the one a page
+        means -- the same reading :meth:`move` gives one step.
+        """
+        if not self._items:
+            return None
+        start = self._current if self._current >= 0 else 0
+        target = max(0, min(start + direction * max(1, page), len(self._items) - 1))
+        for offset in range(len(self._items)):
+            index = target + direction * offset
+            if not 0 <= index < len(self._items):
+                break
+            if self._items[index].enabled:
+                self._select(index)
+                return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
+        return None
+
+    def jump(self, direction: int) -> str | None:
+        """To the first or last row: the whole list in one press.
+
+        ``direction`` is the way the list runs, as in
+        :meth:`move`: down (positive) is the last row. The
+        scan starts at the edge asked for and works inward,
+        so a disabled edge row lands on the first row that
+        can be, rather than refusing because the edge
+        itself cannot.
+        """
+        if not self._items:
+            return None
+        order = range(len(self._items) - 1, -1, -1) if direction > 0 else range(len(self._items))
+        for index in order:
+            if self._items[index].enabled:
+                self._select(index)
+                return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
+        return None
+
+    def _select(self, index: int) -> None:
+        """Move the cursor, and take the selection from the pointer.
+
+        The keyboard has taken the selection from the pointer, so
+        the pointer stops being treated as the thing that moved it.
+
+        Without this the two fight and the pointer loses badly. Hover
+        reports a change only when it lands on a row other than the
+        one it last landed on, so after one arrow key the selection
+        was somewhere the cursor was not, and every subsequent mouse
+        move inside the *original* row reported "no change" -- the
+        keyboard's row stayed drawn as selected, the cursor pointed
+        at another, and nothing moved until the pointer crossed a line.
+        Measured: hover row 1, press DOWN, wiggle one pixel on row 1,
+        and the selection stayed on row 2 while the cursor sat on row 1.
+        """
+        self._current = index
+        self._pointer_row = None
 
     def hover(self, position: tuple[int, int], rects: Sequence[pygame.Rect]) -> str | None:
         """Focus the item under the pointer; report only when the focus moved.
@@ -185,10 +251,8 @@ class MenuModel:
             # guard every press (move +1) was followed by a second move on
             # release -- a double step, which reads as lag.
             return None, variant
-        if action is InputAction.UI_UP:
-            return self.move(-1), variant
-        if action is InputAction.UI_DOWN:
-            return self.move(1), variant
+        if action in _NAVIGATION_ACTIONS:
+            return self._navigate(action, rects), variant
         if action is InputAction.UI_POINTER_MOVE and position is not None:
             return self.hover(position, rects), variant
         if action is InputAction.UI_POINTER_DOWN and position is not None:
@@ -202,6 +266,29 @@ class MenuModel:
             return self.activate(self._current), variant
         return None, variant
 
+    def _navigate(self, action: InputAction, rects: Sequence[pygame.Rect]) -> str | None:
+        """The six ways a list moves: one row, a page, or an edge.
+
+        Kept apart from :meth:`handle_routed` because the
+        router's vocabulary grew past what one method reads
+        like: a page is a move with the window's row count
+        in it, and an edge is a move that starts at the
+        end, but both are still "the focus moved".
+        """
+        if action is InputAction.UI_UP:
+            return self.move(-1)
+        if action is InputAction.UI_DOWN:
+            return self.move(1)
+        if action is InputAction.UI_PAGE_UP:
+            return self.move_page(-1, self._page_size(rects))
+        if action is InputAction.UI_PAGE_DOWN:
+            return self.move_page(1, self._page_size(rects))
+        if action is InputAction.UI_HOME:
+            return self.jump(-1)
+        if action is InputAction.UI_END:
+            return self.jump(1)
+        return None
+
     def _nearest_enabled(self, selected: int) -> int:
         if not self._items:
             return -1
@@ -212,3 +299,13 @@ class MenuModel:
             if self._items[index].enabled:
                 return index
         return -1
+
+    @staticmethod
+    def _page_size(rects: Sequence[pygame.Rect]) -> int:
+        """How many rows are on screen, which is what a page is.
+
+        The rects the view painted, one per item: a row scrolled
+        out of view keeps its place with an empty rect, so the
+        painted ones are exactly the visible ones.
+        """
+        return max(1, sum(1 for rect in rects if rect.width > 0))

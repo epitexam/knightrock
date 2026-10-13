@@ -28,6 +28,7 @@ pygame.display.set_mode((1152, 648))
 from src.application.scenes.option_screen import Option, OptionScreen  # noqa: E402
 from src.core.input.event_router import InputDevice, RoutedInput  # noqa: E402
 from src.core.input.input_actions import InputAction  # noqa: E402
+from src.core.settings import Input as InputSettings  # noqa: E402
 from src.ui.menu_model import MenuItem, MenuModel  # noqa: E402
 from src.ui.menu_view import MenuView  # noqa: E402
 
@@ -437,9 +438,7 @@ def test_a_stationary_pointer_lands_on_the_same_row() -> None:
         assert under is not None, "the pointer left the rows without moving"
         seen.add(under)
 
-    assert len(seen) == 1, (
-        f"a stationary pointer selected {sorted(seen)}: the list moved under it"
-    )
+    assert len(seen) == 1, f"a stationary pointer selected {sorted(seen)}: the list moved under it"
 
 
 def test_the_wheel_moves_the_cursor_one_row_per_notch() -> None:
@@ -455,23 +454,15 @@ def test_the_wheel_moves_the_cursor_one_row_per_notch() -> None:
 
     assert screen.model.current_index == 0
     for _ in range(3):
-        screen.handle_routed(
-            RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=1.0)
-        )
+        screen.handle_routed(RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=1.0))
     assert screen.model.current_index == 3
 
     # A wide notch steps by more than one row, and is still navigation.
-    screen.handle_routed(
-        RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=4.0)
-    )
+    screen.handle_routed(RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=4.0))
     assert screen.model.current_index == 7
 
     for _ in range(3):
-        screen.handle_routed(
-            RoutedInput(
-                InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0
-            )
-        )
+        screen.handle_routed(RoutedInput(InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0))
     assert screen.model.current_index == 4
 
 
@@ -504,3 +495,53 @@ def test_a_key_takes_the_list_back_from_the_pointer() -> None:
     screen.draw(surface)
     assert screen._pointer_y is None, "a key press left the pointer in charge"
     assert screen._scroll == max(0, screen.model.current_index - 1)
+
+
+def test_the_list_keys_move_a_long_list() -> None:
+    """A 28-entry list is 27 arrow keys without the list keys.
+
+    Page down moves by what the window shows, end jumps to the
+    last row, and home comes back -- the difference between
+    reading a long list and walking it.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    visible = sum(1 for rect in screen.view.item_rects if rect.width > 0)
+    assert visible < len(screen.model.items), "the fixture did not overflow"
+
+    screen.handle_routed(_key(InputAction.UI_PAGE_DOWN))
+    assert screen.model.current_index == visible
+
+    screen.handle_routed(_key(InputAction.UI_END))
+    assert screen.model.current_index == len(screen.model.items) - 1
+
+    screen.handle_routed(_key(InputAction.UI_HOME))
+    assert screen.model.current_index == 0
+
+
+def test_a_held_page_down_key_repeats() -> None:
+    """The key is meant to be held, so the repeat the router
+    arms for it has to reach the list.
+    """
+    from src.core.input.event_router import EventRouter
+
+    now = [100.0]
+    router = EventRouter(clock=lambda: now[0])
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    screen.handle_routed(router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_PAGEDOWN)))
+    first = screen.model.current_index
+
+    # Past the repeat delay, the held key reports itself again.
+    now[0] += InputSettings.UI_REPEAT_INITIAL_DELAY + 0.01
+    repeated = router.poll_repeats()
+    assert repeated, "a held page-down key armed no repeat"
+    for routed in repeated:
+        screen.handle_routed(routed)
+    assert screen.model.current_index > first, "the repeat did not move the list"

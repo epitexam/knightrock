@@ -117,3 +117,60 @@ def test_repository_keeps_ui_actions_out_of_gameplay_context(tmp_path: Path) -> 
     )
 
     assert BindingsRepository(path).load() == InputBindings()
+
+
+def test_a_file_from_before_the_list_keys_gets_their_defaults(
+    tmp_path: Path,
+) -> None:
+    """A page-down key that does not exist yet is not an unbound one.
+
+    ``bindings_from_dict``'s contract is that a missing action is
+    unbound -- right for a key the player detached, wrong for a
+    key that did not exist when the file was written. Every player
+    who never opened the controls screen has such a file, so every
+    one of them would otherwise have a dead page-down key.
+    """
+    path = tmp_path / "settings.json"
+    repository = BindingsRepository(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    keyboard = payload["bindings"]["menu"]["keyboard"]
+    for action in (
+        "ui_page_up",
+        "ui_page_down",
+        "ui_home",
+        "ui_end",
+    ):
+        del keyboard[action]
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = repository.load()
+
+    assert loaded.menu.keyboard[InputAction.UI_PAGE_DOWN] == pygame.K_PAGEDOWN
+    assert loaded.menu.keyboard[InputAction.UI_PAGE_UP] == pygame.K_PAGEUP
+    assert loaded.menu.keyboard[InputAction.UI_HOME] == pygame.K_HOME
+    assert loaded.menu.keyboard[InputAction.UI_END] == pygame.K_END
+
+
+def test_a_file_with_one_list_key_is_left_alone(tmp_path: Path) -> None:
+    """The four arrive as a set: a file that has any of them was
+    written after they existed, so a player who rebound page down
+    and left page up unbound meant exactly that.
+    """
+    path = tmp_path / "settings.json"
+    repository = BindingsRepository(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    keyboard = payload["bindings"]["menu"]["keyboard"]
+    del keyboard["ui_page_up"]
+    del keyboard["ui_home"]
+    del keyboard["ui_end"]
+    keyboard["ui_page_down"] = pygame.K_SPACE
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = repository.load()
+
+    assert loaded.menu.keyboard[InputAction.UI_PAGE_DOWN] == pygame.K_SPACE
+    assert InputAction.UI_PAGE_UP not in loaded.menu.keyboard
+    assert InputAction.UI_HOME not in loaded.menu.keyboard
+    assert InputAction.UI_END not in loaded.menu.keyboard
