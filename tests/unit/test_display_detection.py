@@ -21,7 +21,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((320, 240))
 
-from src.core.display import detection  # noqa: E402
+from src.core.display import detection, monitors  # noqa: E402
 from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
 from src.core.display.mode import DisplayMode  # noqa: E402
 
@@ -37,24 +37,28 @@ DESKTOPS = [
 ]
 
 
+def _monitor(desktop: tuple[int, int]) -> monitors.Monitor:
+    """A monitor whose usable area is the whole desktop, for size policy tests."""
+    return monitors.Monitor(index=0, name="", bounds=(0, 0, *desktop), usable=(0, 0, *desktop))
+
+
 @pytest.mark.parametrize("desktop", DESKTOPS)
 def test_the_opening_window_fits_and_leaves_room_when_it_can(desktop) -> None:
     """The bug this replaces: 2560x1440 was offered to a 1366x768 laptop.
 
     There is no longer a list of sizes to check -- the catalogue was seven claims
     about the player's monitor, and the game could check none of them. What is
-    left is one starting size, derived from the desktop, and per axis it has to
-    fit the screen and leave the title bar's room whenever there is room to
-    leave it.
+    left is one starting size, derived from the panel, and per axis it has to
+    fit and leave the title bar's room whenever there is room to leave it.
     """
-    size = detection.initial_window_size(desktop)
+    size = monitors.opening_size(_monitor(desktop))
 
     for axis in (0, 1):
         span = desktop[axis]
-        margin = detection.DESKTOP_MARGIN[axis]
-        default = detection.FALLBACK_WINDOW[axis]
-        assert 1 <= size[axis] <= span, f"axis {axis} does not fit the desktop"
-        if span - margin >= default:
+        margin = monitors.WINDOW_MARGIN[axis]
+        floor = monitors.MIN_WINDOW[axis]
+        assert 1 <= size[axis] <= span, f"axis {axis} does not fit the panel"
+        if span - margin >= floor:
             assert size[axis] == span - margin, f"axis {axis} ignored the margin"
         else:
             # Too tight for both: the window takes the whole span, because a
@@ -64,27 +68,50 @@ def test_the_opening_window_fits_and_leaves_room_when_it_can(desktop) -> None:
 
 @pytest.mark.parametrize("desktop", DESKTOPS)
 def test_a_bigger_desktop_opens_a_bigger_window(desktop) -> None:
-    size = detection.initial_window_size(desktop)
+    size = monitors.opening_size(_monitor(desktop))
     for wider, taller in ((desktop[0] + 320, desktop[1]), (desktop[0], desktop[1] + 200)):
-        grown = detection.initial_window_size((wider, taller))
+        grown = monitors.opening_size(_monitor((wider, taller)))
         assert grown[0] >= size[0] and grown[1] >= size[1]
 
 
-def test_an_unknown_desktop_opens_the_documented_default() -> None:
-    """Headless runs, and drivers that cannot answer, still get a window."""
-    assert detection.initial_window_size((0, 0)) == detection.FALLBACK_WINDOW
-
-
-def test_a_desktop_too_small_for_the_default_still_yields_a_size() -> None:
+def test_a_desktop_too_small_for_the_floor_still_yields_a_size() -> None:
     """Refusing to open a window is not a recovery.
 
-    The size has to stay inside the screen even then, or the player gets a
+    The size has to stay inside the panel even then, or the player gets a
     window they cannot move, which is the outcome the margin exists to prevent.
     """
     tiny = (100, 80)
-    size = detection.initial_window_size(tiny)
+    size = monitors.opening_size(_monitor(tiny))
     assert size[0] > 0 and size[1] > 0
     assert size[0] <= tiny[0] and size[1] <= tiny[1]
+
+
+def test_an_unknown_desktop_opens_a_usable_window() -> None:
+    """Headless runs, and drivers that cannot answer, still get a window.
+
+    The fallback is a real size rather than a zero, and not a 1x1 either: run
+    through the margin arithmetic a 0x0 monitor produces a window smaller than
+    any menu, which is a worse answer than having no monitor at all.
+    """
+    unknown = monitors.Monitor(index=0, name="", bounds=(0, 0, 0, 0), usable=(0, 0, 0, 0))
+    size = monitors.opening_size(unknown)
+    assert size == monitors.FALLBACK_WINDOW
+    assert size[0] >= monitors.MIN_WINDOW[0] and size[1] >= monitors.MIN_WINDOW[1]
+
+
+def test_the_opening_size_leaves_a_taskbar_alone() -> None:
+    """The size is taken from the *usable* area, so a bar is not covered.
+
+    Measured on the development machine: the panel reports 1920x1080 and the
+    usable area 1920x1048, a 32px panel at the top. Sizing the window from the
+    panel would put the game's own title bar under whatever the desktop put
+    there.
+    """
+    panel = _monitor((1920, 1080))
+    with_bar = monitors.Monitor(
+        index=0, name="", bounds=(0, 0, 1920, 1080), usable=(0, 32, 1920, 1048)
+    )
+    assert monitors.opening_size(with_bar)[1] < monitors.opening_size(panel)[1]
 
 
 def test_a_matching_desktop_gets_borderless_and_a_mismatched_one_a_window() -> None:
@@ -103,6 +130,38 @@ def test_the_automatic_display_mode_is_always_concrete(desktop) -> None:
     assert detection.auto_display_mode(DEFAULT_FRAMING, desktop).is_concrete
 
 
+def test_the_topology_answers_even_with_no_displays_to_describe() -> None:
+    """A topology with nothing in it is still a topology.
+
+    ``Topology.primary`` fabricates a panel rather than returning ``None``, so
+    every caller that wants a size has one to read and none of them has to test
+    for the degenerate case first. It is 1x1 on purpose: the smallest rectangle
+    that is still a rectangle.
+    """
+    empty = monitors.Topology()
+    assert empty.primary.size == (1, 1)
+    assert empty.containing((0, 0)) is None
+    assert empty.nearest((99, 99)).size == (1, 1)
+    # Not MISSING. An empty topology means nothing could be read at all, so a
+    # stored name cannot be said to be gone -- the machine never answered, which
+    # is a different thing and one the menu has to word differently.
+    assert empty.resolve("DP-1").reason is monitors.ResolutionReason.UNNAMED
+    assert not empty.resolve("DP-1").honoured
+
+
+def test_the_topology_the_game_reads_agrees_with_pygame() -> None:
+    """Whatever the probe says, display 0's size is the one pygame reports.
+
+    This is the seam between the two grades of query. If they ever disagree, the
+    probe is answering about a video subsystem that is not the one running the
+    game -- and the game would then place its window using a machine that does
+    not exist.
+    """
+    topology = detection.topology()
+    assert topology.primary.size == detection.desktop_size(0)
+    assert topology.indices == tuple(range(len(topology.monitors)))
+
+
 @pytest.mark.parametrize("mode", list(DisplayMode))
 def test_no_mode_asks_for_a_size_the_game_invented(mode: DisplayMode) -> None:
     """Each mode asks the platform for a size; none of them names one.
@@ -116,7 +175,7 @@ def test_no_mode_asks_for_a_size_the_game_invented(mode: DisplayMode) -> None:
     from src.core.display.stage import Stage, WindowSpec
 
     requested = Stage._window_size(WindowSpec(mode=mode), (1920, 1080))
-    assert requested in {(0, 0), (1920, 1080), detection.initial_window_size((1920, 1080))}
+    assert requested in {(0, 0), (1920, 1080), monitors.opening_size(_monitor((1920, 1080)))}
     assert all(value >= 0 for value in requested)
 
 

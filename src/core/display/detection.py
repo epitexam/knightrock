@@ -1,11 +1,20 @@
 """What the game can find out about the setup it is running on.
 
-Everything here that takes a ``desktop`` argument is a pure function of it, on
-purpose. The desktop queries need a display, so they are the only part that
-cannot be exercised headlessly; the decisions built on top of them can, and
-those are the ones that used to be wrong. ``pygame.display.get_desktop_sizes``
+Everything here that takes a ``desktop`` or a ``topology`` argument is a pure
+function of it, on purpose. The desktop queries need a display, so they are the
+only part that cannot be exercised headlessly; the decisions built on top of them
+can, and those are the ones that used to be wrong. ``pygame.display.get_desktop_sizes``
 answers under the dummy video driver, but a policy that has to be re-tested on
 a real screen is a policy nobody re-tests.
+
+The queries come in two grades. pygame alone gives sizes, and a count, and that
+was the whole of it for a long time -- which is why the window was pinned to the
+primary display, on the grounds that the origins of the others were unknowable.
+They are not unknowable, they are one layer down: :mod:`src.core.display.sdl_probe`
+reaches into the libSDL2 pygame already links and gets them, along with the
+usable area of each panel and what the platform calls it. So :func:`topology`
+prefers that and degrades to pygame's answer when the probe cannot be reached,
+and the two are told apart by ``Topology.named`` rather than by guesswork.
 
 Note what is *not* here any more: a catalogue of window sizes. The game used to
 offer five resolutions per machine and store the one it picked, which made a
@@ -16,18 +25,16 @@ picture is derived from it, so there is nothing left to offer and nothing left
 to store.
 """
 
+import logging
+
 import pygame
 
+from . import sdl_probe
 from .framing import Framing
 from .mode import DisplayMode
+from .monitors import Monitor, Topology, degraded
 
-#: Room left around the desktop for the title bar and the taskbar, so the
-#: window the game opens at is still a window the player can move.
-DESKTOP_MARGIN = (80, 96)
-
-#: The smallest window worth opening, used when the desktop is unknown -- a
-#: headless run, or a driver that cannot answer.
-FALLBACK_WINDOW = (1440, 900)
+logger = logging.getLogger(__name__)
 
 #: How far the desktop's aspect may sit from the framing's before the letterbox
 #: stops being invisible and starts being two black stripes.
@@ -37,9 +44,8 @@ ASPECT_TOLERANCE = 0.05
 def desktop_sizes() -> tuple[tuple[int, int], ...]:
     """Every attached display, as ``(width, height)``.
 
-    Only sizes: SDL's display bounds -- the origin of each screen on the
-    virtual desktop -- are not exposed by pygame, which is why the window is
-    positioned against the primary screen rather than a chosen one.
+    Only sizes: the origins of each screen on the virtual desktop are not
+    exposed by pygame, which is what :mod:`src.core.display.sdl_probe` is for.
     """
     try:
         return tuple((int(w), int(h)) for w, h in pygame.display.get_desktop_sizes())
@@ -64,6 +70,20 @@ def desktop_size(index: int = 0) -> tuple[int, int]:
     return sizes[index if 0 <= index < len(sizes) else 0]
 
 
+def topology() -> Topology:
+    """Every display on this machine, described as well as the platform allows.
+
+    The SDL probe when it works, pygame's sizes when it does not. Reached on
+    every launch and on every topology poll, so it must not raise and must not
+    be expensive: the probe's handle is cached, and a machine with no video
+    system answers with the primary's size and no name.
+    """
+    geometry = sdl_probe.probe()
+    if geometry:
+        return Topology(tuple(Monitor.from_geometry(found) for found in geometry), named=True)
+    return degraded(desktop_sizes())
+
+
 def desktop_refresh_rates() -> tuple[int, ...]:
     """The refresh rates a display reports, in Hz, best first.
 
@@ -75,13 +95,9 @@ def desktop_refresh_rates() -> tuple[int, ...]:
     The rates are the **primary** display's, and there is no way to ask for
     another's: ``get_desktop_refresh_rates`` takes no arguments in pygame 2.5,
     while ``get_desktop_sizes`` does. So this is a single display's answer
-    wearing a plural name, and a machine with a 180Hz primary and a 60Hz
-    secondary gets the primary's numbers either way.
-
-    That is acceptable here only because the window is placed on display 0
-    (:mod:`src.core.display.stage`); a game that let the window sit on another
-    screen would be reading the wrong panel's rate, and the honest fix would
-    have to be SDL, not pygame.
+    wearing a plural name. Per-display rates come from the SDL probe instead,
+    and a display the game is actually on has its own in
+    :attr:`src.core.display.monitors.Monitor.refresh_rate`.
     """
     try:
         rates = pygame.display.get_desktop_refresh_rates()
@@ -91,30 +107,17 @@ def desktop_refresh_rates() -> tuple[int, ...]:
 
 
 def initial_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
-    """The size to open a windowed game at, from the desktop alone.
+    """The size to open a windowed game at, from a bare desktop size.
 
-    Not a setting, and not remembered: a starting size, decided from the machine
-    at launch and gone at exit. The catalogue of resolutions this replaces was
-    seven claims about the player's monitor that the game had no way to check,
-    and it still ended up disagreeing with the window it had opened -- in
-    borderless the size on screen is the desktop's whatever the file says, and
-    nothing wrote the difference back, so the menu displayed a number the game
-    was not using.
-
-    So the game no longer has an opinion about how big the window should be. It
-    opens as large as it can without hiding its own title bar, the player drags
-    it to whatever they like, and the picture follows: the render target is the
-    window, so every size is a first-class one.
+    A thin wrapper kept for the callers that only have sizes -- headless tests
+    and the degraded topology. The real answer comes from
+    :func:`src.core.display.monitors.opening_size`, which knows about the taskbar
+    and the panel's origin and can therefore place the window rather than only
+    size it.
     """
-    if desktop[0] <= 0 or desktop[1] <= 0:
-        return FALLBACK_WINDOW
-    # The bigger of "as large as possible" and "the default", then capped at the
-    # desktop itself: on a 1366x768 laptop the margin is larger than the
-    # default, and a window wider than the screen is not a starting size.
-    return tuple(  # type: ignore[return-value]
-        max(1, min(desktop[axis], max(FALLBACK_WINDOW[axis], desktop[axis] - DESKTOP_MARGIN[axis])))
-        for axis in (0, 1)
-    )
+    from .monitors import Monitor, opening_size
+
+    return opening_size(Monitor(index=0, name="", bounds=(0, 0, *desktop), usable=(0, 0, *desktop)))
 
 
 def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode:

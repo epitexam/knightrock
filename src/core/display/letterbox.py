@@ -3,7 +3,8 @@
 The whole display system is three lines of arithmetic, and they live here so
 that there is exactly one copy of each:
 
-- a window of any shape is fitted to the framing's aspect (:func:`letterbox`);
+- a window of any shape is fitted to the framing's aspect, under a policy the
+  player chose (:func:`picture`);
 - the resulting rectangle is the render target, so the finished frame is blitted
   onto the window **1:1** and no resampling of the picture ever happens;
 - the density of pixels is read back off that rectangle (:func:`density_for`),
@@ -23,7 +24,23 @@ colours. Drawing into the window itself costs nothing at all and is exact.
 The two numbers are not independent, and that is the point: the target *is* the
 letterbox rectangle, so the density is whatever that rectangle implies. There is
 no setting that can put them out of step.
+
+Why zoom is safe, and "expand" is not offered
+---------------------------------------------
+The framing is a gameplay contract: how much of the level is visible decides the
+suspense, and it is fixed in world units precisely so a video setting cannot
+change it. ``ZOOM`` respects that. It fills the window with a picture at the
+framing's aspect and shows the window a centred *crop*, so a 21:9 player sees the
+framing's 1152x648 world units and loses the edges of the image rather than
+seeing a wider slice of the level.
+
+Widening the framing to fill the window -- Godot's "expand" -- would show *more
+world* on a wide screen, which is the exact defect the fixed framing closed: the
+amount of level visible became a function of a video setting. It is not offered
+as a policy for that reason, and there is no code path for it to be offered from.
 """
+
+from enum import StrEnum
 
 import pygame
 
@@ -31,15 +48,154 @@ from .framing import DEFAULT_FRAMING, Framing
 
 #: How far the two axes' densities may disagree, expressed in pixels of target.
 #:
-#: Rounding a letterbox to whole pixels cannot preserve a ratio exactly, so a
+#: Rounding a rectangle to whole pixels cannot preserve a ratio exactly, so a
 #: target's two axes always imply densities that differ slightly. The bound is
 #: "at most a pixel of mismatch across the whole frame": the framing's height in
 #: pixels then misses the target's by no more than one, which is the rounding the
-#: letterbox already made and cannot be seen. Beyond that the two axes are
+#: rectangle already made and cannot be seen. Beyond that the two axes are
 #: describing different worlds, and the frame would be drawn anisotropically --
 #: stretched on one axis only, which is the one thing a render target exists to
 #: prevent.
 DENSITY_TOLERANCE_PX = 1.0
+
+
+class FitPolicy(StrEnum):
+    """The ways a picture meets a window, as the video menu names them.
+
+    A ``StrEnum`` because it is persisted: the settings file stores the value and
+    has to read it back into the same enum the menu cycles, so the two cannot
+    disagree about what a policy is called.
+    """
+
+    BARS = "bars"
+    INTEGER = "integer"
+    ZOOM = "zoom"
+
+    @property
+    def covers_window(self) -> bool:
+        """Whether this policy leaves any part of the window uncovered.
+
+        Only zoom does, and that is why :class:`Picture` needs a source
+        rectangle at all: a policy that fits inside the window has bars, and the
+        presentation paints them.
+        """
+        return self is FitPolicy.ZOOM
+
+
+class Picture:
+    """Where the picture sits, where it comes from, and what surrounds it.
+
+    ``target`` is the render rectangle in target pixels. ``source`` is the part
+    of that rectangle the window shows and ``dest`` is where it lands on the
+    window. For bars and integer, ``source`` is the whole target and ``dest`` is
+    a rectangle inside the window. For zoom, ``dest`` is the window and ``source``
+    is a centred crop -- the only way to fill a window whose shape does not
+    match the framing without ever showing more world than the framing allows.
+
+    ``bars`` is the window minus ``dest``, empty when the window is covered. It
+    is computed here rather than per frame because presenting a frame reads it
+    every frame and it only moves when the window does.
+    """
+
+    __slots__ = ("bars", "dest", "source", "target", "window")
+
+    def __init__(
+        self,
+        target: pygame.Rect,
+        source: pygame.Rect,
+        dest: pygame.Rect,
+        window: tuple[int, int],
+    ) -> None:
+        self.target = target
+        self.source = source
+        self.dest = dest
+        self.window = window
+        self.bars = self._fit_bars()
+
+    @property
+    def covered(self) -> bool:
+        """Whether the picture reaches every corner of the window."""
+        return self.dest.topleft == (0, 0) and self.dest.size == self.window
+
+    def _fit_bars(self) -> tuple[pygame.Rect, ...]:
+        width, height = self.window
+        return tuple(
+            bar
+            for bar in (
+                pygame.Rect(0, 0, self.dest.x, height),
+                pygame.Rect(self.dest.right, 0, max(0, width - self.dest.right), height),
+                pygame.Rect(self.dest.x, 0, self.dest.width, self.dest.y),
+                pygame.Rect(
+                    self.dest.x,
+                    self.dest.bottom,
+                    self.dest.width,
+                    max(0, height - self.dest.bottom),
+                ),
+            )
+            if bar.width > 0 and bar.height > 0
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"Picture(target={tuple(self.target)}, source={tuple(self.source)}, "
+            f"dest={tuple(self.dest)}, bars={len(self.bars)})"
+        )
+
+
+def picture(
+    window: tuple[int, int],
+    framing: Framing = DEFAULT_FRAMING,
+    policy: FitPolicy | str = FitPolicy.BARS,
+) -> Picture:
+    """Where a window's picture goes, under ``policy``.
+
+    Every branch ends with a target that is a whole number of pixels and at the
+    framing's aspect to within that rounding, so :func:`density_for` reads one
+    exact density off it and the world is never stretched.
+    """
+    chosen = FitPolicy(policy)
+    width, height = window
+    if width <= 0 or height <= 0:
+        rect = pygame.Rect(0, 0, 1, 1)
+        return Picture(rect, pygame.Rect(0, 0, 1, 1), rect, (1, 1))
+    if chosen is FitPolicy.ZOOM:
+        return _zoom(window, framing)
+    return _fit_inside(window, framing, chosen is FitPolicy.INTEGER)
+
+
+def _fit_inside(window: tuple[int, int], framing: Framing, whole_multiples: bool) -> Picture:
+    """The rectangle carrying the picture, centred in the window, bars around it."""
+    width, height = window
+    scale = min(width / framing.width, height / framing.height)
+    if whole_multiples:
+        whole = int(scale)
+        if whole >= 1:
+            scale = float(whole)
+        # Below one whole multiple there is nothing to snap to, and clamping the
+        # multiple *down* to the window would hand back a rectangle of the wrong
+        # aspect -- which the density check refuses. So the fitted rectangle is
+        # returned unchanged and the caller says the policy does nothing here.
+    target_w = max(1, min(width, round(framing.width * scale)))
+    target_h = max(1, min(height, round(framing.height * scale)))
+    target = pygame.Rect((width - target_w) // 2, (height - target_h) // 2, target_w, target_h)
+    return Picture(target, pygame.Rect((0, 0), target.size), target, window)
+
+
+def _zoom(window: tuple[int, int], framing: Framing) -> Picture:
+    """Cover the window with a picture of the framing's shape, and crop it.
+
+    The target is larger than the window on at least one axis and exactly the
+    framing's aspect, so the density stays single-valued. The window is centred
+    in it, which means the world shown is a subset of the framing, never a
+    superset.
+    """
+    width, height = window
+    scale = max(width / framing.width, height / framing.height)
+    target_w = max(width, round(framing.width * scale))
+    target_h = max(height, round(framing.height * scale))
+    crop = pygame.Rect((target_w - width) // 2, (target_h - height) // 2, width, height)
+    dest = pygame.Rect(0, 0, width, height)
+    return Picture(pygame.Rect(0, 0, target_w, target_h), crop, dest, window)
 
 
 def letterbox(
@@ -50,38 +206,21 @@ def letterbox(
 ) -> pygame.Rect:
     """The rectangle of ``window`` that carries the picture, centred.
 
-    Fits the framing's aspect inside the window and centres what is left over.
-    A window that already has the framing's aspect gets no bars at all, which is
-    the common case and the reason this is a letterbox and not a fixed inset.
-
-    ``pixel_perfect`` takes the largest **whole** multiple of the framing that
-    still fits, so every art pixel becomes an exact k-by-k block. The bars grow
-    to take the difference. On a window too small to hold even one whole
-    multiple there is nothing to snap to, and clamping a multiple down to the
-    window would be worse than useless: it would hand back a rectangle of the
-    wrong aspect, and a target whose two axes imply different densities is
-    refused. So that case gets the fitted rectangle, unchanged, and the caller's
-    job is to say so rather than to fail.
+    A thin compatibility wrapper over :func:`picture` for the callers that only
+    need where the picture lands -- the camera, the overlay, the menu readout --
+    and not where it comes from. ``pixel_perfect`` is the older name for the
+    integer policy; it is kept because a whole-pixel picture is still a real
+    thing to ask for and the two are the same request.
     """
-    width, height = window
-    if width <= 0 or height <= 0:
-        return pygame.Rect(0, 0, 1, 1)
-    fit = min(width / framing.width, height / framing.height)
-    if pixel_perfect and int(fit) >= 1:
-        fit = float(int(fit))
-    fitted = (
-        max(1, min(width, round(framing.width * fit))),
-        max(1, min(height, round(framing.height * fit))),
-    )
-    return pygame.Rect((width - fitted[0]) // 2, (height - fitted[1]) // 2, *fitted)
+    return picture(window, framing, FitPolicy.INTEGER if pixel_perfect else FitPolicy.BARS).dest
 
 
 def fits_whole_pixel(window: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> bool:
     """Whether a whole multiple of the framing fits in ``window``.
 
-    What the ``pixel_perfect`` row has to know before offering itself: on a
-    window narrower than the framing there is no whole multiple to snap to, and
-    the row has to say that instead of pretending.
+    The integer policy has to know this before offering itself: on a window
+    narrower than the framing there is no whole multiple to snap to, and the menu
+    says that instead of pretending.
     """
     if window[0] <= 0 or window[1] <= 0:
         return False
@@ -92,39 +231,39 @@ def already_a_whole_multiple(window: tuple[int, int], framing: Framing = DEFAULT
     """Whether the window is *already* sized to a whole multiple of the framing.
 
     ``fits_whole_pixel`` asks whether a whole multiple fits; this asks whether the
-    window already is one. They disagree on exactly one class of window, and it
-    is the class that reads as a broken row: a window already sized to a whole
-    multiple, where :func:`letterbox` returns the same rectangle with the flag on
-    and off.
-
-    There the setting is honoured and the picture is unchanged, which is correct
-    -- there was nothing to snap to -- but the player pressing the row gets no
-    picture at all, and a row that flips its label while the screen sits still is
-    indistinguishable from a dead one.
+    window already is one. They disagree on exactly one class of window, and it is
+    the class that reads as a broken row: a window already sized to a whole
+    multiple, where :func:`picture` returns the same rectangle under bars and
+    under integer. The setting is honoured and the picture does not move, which is
+    correct -- there was nothing to snap to -- but the player pressing the row
+    gets no picture at all, and a row that flips its label while the screen sits
+    still is indistinguishable from a dead one.
 
     Rarer than the other case: only exact multiples of the framing, so a
     1152x648 or 2304x1296 window at the shipped framing, and a borderless desktop
     that happens to be exactly 2x.
 
     The ``fits_whole_pixel`` guard is not decoration, and it is what this function
-    got wrong first. Without it, a window too small to hold a whole multiple
-    also returns the same rectangle -- :func:`letterbox` hands the fitted one back
+    got wrong first. Without it, a window too small to hold a whole multiple also
+    returns the same rectangle -- :func:`picture` hands the fitted one back
     unchanged -- so the comparison alone reports a window with no whole multiple
     in it as "already one". That is the other refusal, and the two have to stay
     distinguishable: a caller that checked this alone would tell a player with a
     window too small for the art that there is nothing left to do.
     """
+    if not fits_whole_pixel(window, framing):
+        return False
     return (
-        fits_whole_pixel(window, framing)
-        and letterbox(window, framing).size == letterbox(window, framing, pixel_perfect=True).size
+        picture(window, framing, FitPolicy.BARS).dest.size
+        == picture(window, framing, FitPolicy.INTEGER).dest.size
     )
 
 
 def density_for(size: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> float:
     """Target pixels per world unit, read off a target of ``size``.
 
-    A refusal, not a clamp: a target whose two axes imply different densities
-    is not the framing at some density, it is a mistake somewhere upstream, and
+    A refusal, not a clamp: a target whose two axes imply different densities is
+    not the framing at some density, it is a mistake somewhere upstream, and
     rounding it away is how a frame ends up drawn at a density nobody asked for
     while the framing contract still claims otherwise.
     """
