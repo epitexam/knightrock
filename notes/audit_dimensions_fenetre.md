@@ -231,6 +231,44 @@ développement (Wayland, `SDL_VIDEO_HIDPI`, un seul écran `eDP-1` 1920×1080 @6
 9. la restauration du mode après un plein écran exclusif interrompu par le
    gestionnaire de fenêtres.
 
+## 8 bis. Ce que le menu vidéo ne faisait pas bien
+
+Ajouté après le système multi-écran, parce que les deux se sont trouvés
+ensemble : un réglage qu'on peut choisir mais qu'on ne peut pas *voir* n'est pas
+un réglage, c'est une devinette. Trois défauts, tous mesurés.
+
+**Le cycle était le mauvais contrôle pour une longue liste.** Le driver annonce
+28 modes plein écran sur cette machine : atteindre une résolution demandait donc
+jusqu'à **27 pressions de →**, et un joueur qui ignore que la valeur existe n'a
+aucun moyen de le découvrir. Tout ce qui dépasse quelques valeurs ouvre
+désormais une liste. Restent en cycle ce qui a deux ou trois états : mode
+d'affichage, VSync.
+
+**Une ligne morte, et pas une ligne mal étiquetée.** L'art en pixels entiers et
+la politique « entier » du cadrage étaient **le même réglage sur deux lignes**.
+Avec `zoom` sélectionné, appuyer sur « pixels entiers » faisait passer le label
+de `off` à `on`, changeait l'indicateur stocké — et laissait l'image
+*strictement identique*, au pixel près. Une ligne qui répond à toutes les touches
+et ne fait rien : indiscernable d'une touche cassée. Elle a disparu au profit
+d'une entrée dans la liste de cadrage, et l'invariant qui la remplace est testé —
+quelle que soit la politique, l'indicateur en découle, donc un fichier v3 ne peut
+plus écraser un choix fait plus tard.
+
+**Le plein écran n'était atteignable qu'en plein écran.** La ligne était
+*désactivée* hors de ce mode — ce qui est mieux qu'une ligne absente, mais
+demandait au joueur de deviner la condition. Elle est désormais toujours
+présente, grisée hors plein écran.
+
+Le défilement, lui, a été une **régression introduite puis corrigée** pendant le
+travail : appliquer le découpage à toutes les listes a fait tomber le bouton
+« Retour » du menu vidéo sous le bord de l'écran — il n'était plus dessiné, donc
+plus cliquable à la souris. Le défilement est maintenant demandé par l'écran qui
+veut, et `MenuView` le teste.
+
+Chiffré sur la vraie session, 29 entrées dans une fenêtre 640×480 : six lignes
+visibles à l'échelle 0,8, quatre à 1,0 ; panneau à l'intérieur de la fenêtre,
+dernière entrée toujours atteignable. Coût du tracé 0,24 ms.
+
 ## 9. Ce que la revue a cassé
 
 Une passe de relecture a demandé si le chemin de rendu était réellement adapté.
