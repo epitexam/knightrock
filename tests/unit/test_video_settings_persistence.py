@@ -33,7 +33,11 @@ import pygame
 import pytest
 
 from src.application.scenes.video_scene import DISPLAY_VALUES, VideoScene
-from src.application.settings_store import SettingsStore, UserSettings
+from src.application.settings_store import (
+    SETTINGS_FORMAT_VERSION,
+    SettingsStore,
+    UserSettings,
+)
 from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.input_actions import InputAction
@@ -179,7 +183,7 @@ def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
 
     # 3. the next launch reads it back
     assert VALUE_ROWS[row](_relaunch(store, tmp_path)) == after
-    assert written["version"] == 3
+    assert written["version"] == SETTINGS_FORMAT_VERSION
 
 
 def test_the_display_mode_survives_a_relaunch(tmp_path: Path) -> None:
@@ -255,14 +259,20 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
 
 
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:
-    """The structural version of the same claim, and the reason it now holds.
+    """The structural version of the same claim, restated against what survives it.
 
-    A setting that describes the window is a claim the game cannot check, and the
-    three that used to be here were all wrong in practice: the size was rewritten
-    at launch whenever it did not fit, the render scale was written back once and
+    A setting that *is* the window is a claim the game cannot check, and the three
+    that used to be here were all wrong in practice: the size was rewritten at
+    launch whenever it did not fit, the render scale was written back once and
     then believed forever, and in borderless the window was the desktop's size
-    while the menu displayed the stored one. With nothing left in the file that
-    can disagree with the window, there is nothing to reconcile.
+    while the menu displayed the stored one.
+
+    Three window keys are back and none of them can go stale, because none of them
+    is asserted about the window. ``monitor`` is a name resolved against the live
+    topology with the outcome reported; ``window.size`` and ``window.position``
+    are requests the stage clamps to the panel it opened on and never writes
+    back. The genuinely uncheckable ones stay gone, and the assertion below is
+    that they are gone.
     """
     game, store = _runtime(tmp_path)
 
@@ -274,12 +284,23 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
     game.apply_settings(game.settings.with_video(vsync=True))
     game.step()
 
-    video = json.loads(store.path.read_text(encoding="utf-8"))["video"]
-    assert set(video) == {"display", "pixel_perfect", "vsync", "frame_limit"}
+    written = json.loads(store.path.read_text(encoding="utf-8"))
+    video, window = written["video"], written["window"]
+    assert set(video) == {
+        "display",
+        "monitor",
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
+    assert set(window) == {"size", "position"}
+    # A window position may be negative -- a monitor left of the primary sits at a
+    # negative origin -- so these are not "no size keys", they are a request.
     assert not {"width", "height", "size_mode", "render_scale", "smoothing"} & set(video)
 
     # And the settings object agrees with the file, field for field.
-    fresh = UserSettings.from_dict(json.loads(store.path.read_text(encoding="utf-8")))
+    fresh = UserSettings.from_dict(written)
     assert fresh == game.settings
 
 
@@ -386,7 +407,7 @@ def test_a_settings_file_without_the_key_keeps_the_default_size(tmp_path) -> Non
 
 
 def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
-    """It is a size preference, and ``video`` is held to four exact keys.
+    """It is a size preference, and ``video`` is held to an exact key set.
 
     That exactness exists so no setting can describe the window and disagree with
     it. A panel scale cannot -- it says how big to draw on the window, not how big
@@ -399,7 +420,14 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
 
     written = json.loads(store.path.read_text())
 
-    assert set(written["video"]) == {"display", "pixel_perfect", "vsync", "frame_limit"}
+    assert set(written["video"]) == {
+        "display",
+        "monitor",
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
     assert "panel_scale" in written["ui"]
 
 

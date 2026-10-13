@@ -34,6 +34,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from src.core.display.letterbox import FitPolicy
 from src.core.display.mode import DisplayMode
 from src.core.input.bindings_repository import (
     bindings_from_dict,
@@ -43,8 +44,9 @@ from src.core.input.input_bindings import InputBindings
 
 logger = logging.getLogger(__name__)
 
-#: v1 had a boolean, v2 a window and a render scale, v3 only choices. All are read.
-SETTINGS_FORMAT_VERSION = 3
+#: v1 had a boolean, v2 a window and a render scale, v3 only choices, v4 adds
+#: the monitor the player picked and the window they left it at. All are read.
+SETTINGS_FORMAT_VERSION = 4
 LEGACY_FORMAT_VERSIONS = (1, 2)
 
 #: Interface scale, as the player chooses it. The scale the views are handed is
@@ -113,11 +115,31 @@ class UserSettings:
 
     bindings: InputBindings = field(default_factory=InputBindings)
     display: DisplayMode = DisplayMode.AUTO
+    #: The monitor the player picked, by the name the platform gives it.
+    #:
+    #: A name and not an index, and that is the whole reason this can be stored
+    #: at all. An index is a claim about a machine that cannot be checked: the
+    #: platform's enumeration order is not stable across boots, so "1" from a
+    #: three-monitor desk can be a different panel afterwards. A name is
+    #: resolved against the topology on every launch and, when it is not found,
+    #: the game says so on the menu and uses the primary rather than silently
+    #: landing somewhere else. ``None`` means "whatever the primary is", which is
+    #: a first launch and a reset rather than a preference anyone expressed.
+    monitor: str | None = None
     pixel_perfect: bool = False
+    #: How the picture meets the window: bars, whole-pixel blocks, or zoom to
+    #: fill with the overflow cropped. All three show *at most* the framing, so
+    #: none of them can turn a video setting into a gameplay advantage.
+    fit: FitPolicy = FitPolicy.BARS
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
     panel_scale: float = 1.0
+    #: The window geometry to restore, in window mode only. Remembered from what
+    #: the player dragged the window to, and clamped to the monitor it opens on
+    #: rather than overwritten -- see :func:`src.core.display.monitors.fit_size`.
+    window_size: tuple[int, int] | None = None
+    window_position: tuple[int, int] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -125,9 +147,15 @@ class UserSettings:
             "bindings": bindings_to_dict(self.bindings),
             "video": {
                 "display": self.display.value,
+                "monitor": self.monitor,
                 "pixel_perfect": self.pixel_perfect,
+                "fit": self.fit.value,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
+            },
+            "window": {
+                "size": list(self.window_size) if self.window_size else None,
+                "position": list(self.window_position) if self.window_position else None,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
             # screen, like the scale above it, and the ``video`` section is held
@@ -144,9 +172,11 @@ class UserSettings:
         version = data.get("version")
         if version in LEGACY_FORMAT_VERSIONS:
             return cls._from_v1(data) if version == 1 else cls._from_v2(data)
+        if version == 3:
+            return cls._from_v3(data)
         if version != SETTINGS_FORMAT_VERSION:
             raise ValueError("unsupported settings schema")
-        return cls._from_v3(data)
+        return cls._from_v4(data)
 
     @classmethod
     def _bindings(cls, data: dict[str, Any]) -> InputBindings:
@@ -188,6 +218,62 @@ class UserSettings:
             frame_limit=frame_limit,
             ui_scale=scale,
             panel_scale=panel_scale,
+        )
+
+    @classmethod
+    def _from_v4(cls, data: dict[str, Any]) -> UserSettings:
+        """Read a v4 file: a chosen screen and a chosen window, plus v3's choices.
+
+        The window keys are read as *requests*. Nothing here decides whether they
+        can be honoured -- that needs the topology, which is not known until the
+        window is opened -- so they are carried through and clamped by
+        :mod:`src.core.display.monitors` at launch. What is decided here is only
+        whether the file is well formed, because a settings file that fails to
+        parse takes the player's bindings down with it.
+
+        A v3 file loads through this too: the keys it lacks are simply absent, so
+        ``monitor``, ``fit`` and the window geometry all take their defaults and
+        the player keeps their controls and their choices.
+        """
+        bindings = cls._bindings(data)
+        video = data.get("video", {})
+        window = data.get("window", {})
+        ui = data.get("ui", {})
+        if not isinstance(video, dict) or not isinstance(ui, dict):
+            raise ValueError("settings sections must be objects")
+        if not isinstance(window, dict):
+            raise ValueError("settings window section must be an object")
+
+        scale = ui.get("scale", 1.0)
+        if scale not in UI_SCALES:
+            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+
+        panel_scale = ui.get("panel_scale", 1.0)
+        if panel_scale not in PANEL_SCALES:
+            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+
+        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
+        if frame_limit is not None:
+            frame_limit = _bounded_int(
+                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
+            )
+
+        monitor = video.get("monitor")
+        if monitor is not None and not isinstance(monitor, str):
+            raise ValueError("video.monitor must be a string or null")
+
+        return cls(
+            bindings=bindings,
+            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
+            monitor=monitor or None,
+            pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
+            fit=_enum(FitPolicy, video.get("fit", FitPolicy.BARS), "fit"),
+            vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
+            frame_limit=frame_limit,
+            ui_scale=scale,
+            panel_scale=panel_scale,
+            window_size=_placement(window, "size"),
+            window_position=_placement(window, "position"),
         )
 
     @classmethod
@@ -308,6 +394,42 @@ def _bounded_bool(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be boolean")
     return value
+
+
+def _placement(window: dict[str, Any], key: str) -> tuple[int, int] | None:
+    """A remembered window coordinate pair, or ``None`` for no preference.
+
+    Read strictly -- two numbers in range -- because the alternative is a
+    coordinate the stage would have to defend against, and a stage that
+    sanitises its own settings cannot be tested on its own arithmetic. The
+    values are still *clamped* rather than rejected at launch, because "this
+    window is larger than this laptop's screen" is a normal thing to open on
+    another machine and not a malformed file.
+    """
+    value = window.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError(f"window.{key} must be a pair of numbers or null")
+    first, second = value
+    for number in (first, second):
+        if not isinstance(number, int) or isinstance(number, bool):
+            raise ValueError(f"window.{key} must be a pair of numbers or null")
+    # A negative coordinate is legitimate: a monitor to the left of the primary
+    # sits at a negative origin, and that is where a window belongs. A wildly
+    # large one is not a coordinate, it is a corrupted number, and it is capped
+    # rather than refused so the file still loads and the player keeps their
+    # bindings.
+    return (
+        max(-_COORDINATE_LIMIT, min(_COORDINATE_LIMIT, first)),
+        max(-_COORDINATE_LIMIT, min(_COORDINATE_LIMIT, second)),
+    )
+
+
+#: Bound on a remembered coordinate. Beyond it the number cannot describe a
+#: position on any desktop the game will meet, and clamping it lets the rest of
+#: the file survive a corrupted value.
+_COORDINATE_LIMIT = 65535
 
 
 class SettingsStore:

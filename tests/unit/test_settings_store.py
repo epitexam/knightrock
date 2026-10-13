@@ -62,26 +62,42 @@ def test_settings_store_roundtrips_video_ui_and_bindings(tmp_path: Path) -> None
     assert payload["ui"]["scale"] == 1.2
 
 
-def test_the_saved_file_holds_no_window_size(tmp_path: Path) -> None:
-    """The regression, stated as a test: nothing may describe the window.
+def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> None:
+    """The regression, restated against the claims that survived it.
 
-    Every key here used to exist. ``width``/``height``/``size_mode`` were a claim
-    about the player's monitor that the game could not check and that went stale
-    the moment the window moved; ``render_scale`` was a claim about how a fixed
-    target should be sharpened, and it was the setting that got frozen -- written
-    back once at launch and then believed forever, so the menu said 2x while the
-    game drew at 1x. With the target being the window, all four have nothing left
-    to say.
+    This used to be ``test_the_saved_file_holds_no_window_size``, and it was
+    right for v3: every key in the file was a claim the game could not check, so
+    none of them could be stored. Two of those claims have since been made
+    *checkable*, and that is what allows them back:
+
+    - a **monitor** is a name resolved against the live topology on every launch,
+      with the outcome reported rather than rewritten, so the file can hold a
+      screen that is absent and the player is told;
+    - a **window size and position** is a request the stage clamps to the
+      monitor it opens on and never writes back, so a size from a 4K desk
+      survives arriving at a laptop instead of being overwritten.
+
+    What is still refused is the rest: ``render_scale`` described a fixed render
+    target that no longer exists, and ``smoothing`` described a per-frame
+    resample that no longer happens. Neither has anything to say, so there is
+    nowhere to put them.
     """
     store = SettingsStore(tmp_path / "settings.json")
     store.save(UserSettings())
-    video = json.loads(store.path.read_text(encoding="utf-8"))["video"]
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
 
-    assert set(video) == {"display", "pixel_perfect", "vsync", "frame_limit"}
-    assert not hasattr(UserSettings(), "width")
-    assert not hasattr(UserSettings(), "size_mode")
-    assert not hasattr(UserSettings(), "render_scale")
-    assert not hasattr(UserSettings(), "smoothing")
+    assert set(payload["video"]) == {
+        "display",
+        "monitor",
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
+    assert set(payload["window"]) == {"size", "position"}
+    for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
+        assert not hasattr(UserSettings(), dead), f"{dead} is gone and cannot come back"
+        assert dead not in payload["video"], f"{dead} has nothing left to describe"
 
 
 def test_a_v2_file_keeps_its_bindings_and_drops_its_window_claims(tmp_path: Path) -> None:

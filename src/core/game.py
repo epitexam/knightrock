@@ -21,8 +21,9 @@ from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import density_for
+from src.core.display.letterbox import FitPolicy, density_for
 from src.core.display.mode import DisplayMode
+from src.core.display.monitors import Monitor
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
 from src.core.input.event_router import EventRouter
@@ -220,8 +221,19 @@ class Game:
         return self.ui
 
     def _window_spec(self) -> WindowSpec:
-        """The window the settings currently ask for."""
-        return WindowSpec(mode=self.settings.display, vsync=self.settings.vsync)
+        """The window the settings currently ask for.
+
+        The monitor is passed as its index into the topology the settings' name
+        resolved against, and the stage validates it before it reaches
+        ``set_mode``.
+        """
+        return WindowSpec(
+            mode=self.settings.display,
+            monitor=self._monitor().index,
+            vsync=self.settings.vsync,
+            size=self.settings.window_size,
+            position=self.settings.window_position,
+        )
 
     def _resolve_display_settings(self) -> None:
         """Turn ``AUTO`` into a mode the window can be built from.
@@ -231,12 +243,27 @@ class Game:
         re-evaluated every launch, which is what ``AUTO`` is for, and it is not
         written back -- the file keeps saying "auto" so the next launch on
         another machine answers again.
+
+        Resolved against the *chosen* monitor rather than the desktop, because on
+        a two-screen desk the two differ: a laptop panel at 16:10 next to a 16:9
+        monitor means AUTO should pick a borderless on the monitor the player
+        asked for and a window on the one it did not.
         """
         if self.settings.display is not DisplayMode.AUTO:
             return
         self.settings = self.settings.with_video(
-            display=detection.auto_display_mode(DEFAULT_FRAMING, detection.desktop_size())
+            display=detection.auto_display_mode(DEFAULT_FRAMING, self._monitor().usable_size)
         )
+
+    def _monitor(self) -> Monitor:
+        """The monitor the settings' name resolves to on this machine, right now.
+
+        Read fresh rather than cached: a second screen can be plugged in between
+        two calls, and a cached topology would then resolve a name against a desk
+        that no longer exists. The probe's handle is cached underneath, so this
+        is cheap enough to call from the settings path.
+        """
+        return detection.topology().resolve(self.settings.monitor).monitor
 
     def initialize_display(self) -> None:
         """Build the window and the presentation, once.
@@ -244,17 +271,30 @@ class Game:
         Public because the headless fixtures need the same construction the loop
         does, rather than half of it.
         """
-        desktop = detection.desktop_size()
-        self.stage = Stage(self._window_spec(), desktop)
+        self.stage = Stage(self._window_spec(), self._monitor())
         # The window exists, so the picture can be drawn at its size: the target
-        # is the window's letterbox rectangle and the density is read back off
-        # it. Nothing here is chosen, and nothing here is stored.
+        # is the window's fitted rectangle and the density is read back off it.
         self.presentation = Presentation(
             self.stage.surface,
             DEFAULT_FRAMING,
-            pixel_perfect=self.settings.pixel_perfect,
+            fit=self._fit_policy(),
             convert=True,
         )
+
+    def _fit_policy(self) -> FitPolicy:
+        """The picture's fit, with the older whole-pixel flag folded in.
+
+        ``pixel_perfect`` and the integer policy are the same request and it
+        predates it, so it is honoured as that policy rather than as a fourth
+        one -- and only when the player has not chosen a policy of their own, so
+        a v4 file that says ``zoom`` is not overridden by a leftover flag from
+        v3.
+        """
+        if self.settings.fit is not FitPolicy.BARS and self.settings.pixel_perfect:
+            return self.settings.fit
+        if self.settings.pixel_perfect:
+            return FitPolicy.INTEGER
+        return self.settings.fit
 
     def _retarget(self) -> None:
         """Re-point everything at the render target after it changed size.
@@ -284,10 +324,9 @@ class Game:
         picture follows it: the target is the window's letterbox rectangle, so
         there is no separate "render target" setting left to keep in step.
         """
-        desktop = detection.desktop_size()
         assert self.stage is not None
         assert self.presentation is not None
-        self.stage.rebuild(self._window_spec(), desktop)
+        self.stage.rebuild(self._window_spec(), self._monitor())
         self.presentation.retarget(self.stage.surface)
         self._invalidate_assets()
         self.scene_manager.set_surface(self.presentation.surface)
@@ -318,10 +357,10 @@ class Game:
         # change and a sharpness change applied together left the presentation
         # snapping to whole pixels with the setting saying otherwise, which the
         # acceptance run caught and nothing else did.
-        self.presentation.pixel_perfect = settings.pixel_perfect
+        self.presentation.fit = self._fit_policy()
         if self._window_signature(previous) != self._window_signature(settings):
             self._rebuild_display()
-        elif previous.pixel_perfect != settings.pixel_perfect:
+        elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
             self._retarget()
         self.scene_manager.set_ui_scale(self.ui_scale)
 
@@ -363,7 +402,13 @@ class Game:
         the interface scale is a multiplier on a density the window already
         decided.
         """
-        return (settings.display, settings.vsync)
+        return (
+            settings.display,
+            settings.vsync,
+            settings.monitor,
+            settings.window_size,
+            settings.window_position,
+        )
 
     def _persist_settings(self) -> None:
         """Queue the settings for a write, coalesced to one per frame.

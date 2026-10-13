@@ -345,12 +345,15 @@ def test_applying_a_display_mode_change_rebuilds_the_window(manager, counter) ->
     game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
 
     assert count() == 1
-    # The target is only replaced when its *size* moved. Under the dummy driver
-    # both modes hand back the same size, so the picture keeps its size. It is
-    # the window's letterbox, not the window: comparing the two directly used
-    # to read `or True`, which was hiding that the assertion is false whenever
-    # the aspect ratio bars are not zero.
-    assert game.presentation.surface.get_size() == before.get_size()
+    # The two modes used to hand back the same size under the dummy driver, so
+    # this asserted that the picture survived a mode change unchanged. It no
+    # longer does, and that is the fix rather than a regression: borderless fills
+    # the panel's *usable* area and window leaves room for a title bar, so the
+    # window they produce is genuinely a different size. What still has to hold is
+    # the invariant underneath -- the picture is fitted inside the window it is in,
+    # and never larger than it on either axis.
+    assert game.presentation.surface.get_size() != before.get_size()
+    assert game.presentation.surface.get_size()[0] <= game.stage.size[0]
     assert game.presentation.surface.get_size()[1] <= game.stage.size[1]
 
 

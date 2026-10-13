@@ -4,7 +4,7 @@ import logging
 import sys
 from dataclasses import fields, replace
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pygame
 import pytest
@@ -13,6 +13,7 @@ from src.application.settings_store import UserSettings
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
+from src.core.display.monitors import opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
 from src.core.game import Game
@@ -289,7 +290,8 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     # No size of our own: the desktop decides how big a window to open, and the
     # player drags it from there.
     requested = set_mode.call_args.args[0]
-    assert requested == detection.initial_window_size(detection.desktop_size())
+    monitor = detection.topology().resolve(game.settings.monitor).monitor
+    assert requested == opening_size(monitor)
 
     game.apply_settings(replace(game.settings, display=DisplayMode.BORDERLESS))
 
@@ -297,7 +299,64 @@ def test_a_windowed_window_is_resizable_and_borderless_asks_for_no_mode_change(
     assert fullscreen_flags & pygame.FULLSCREEN
     assert not fullscreen_flags & pygame.RESIZABLE
     assert not fullscreen_flags & pygame.SCALED
-    assert set_mode.call_args.args[0] == detection.desktop_size()
+    assert set_mode.call_args.args[0] == monitor.usable_size
+
+
+def _panel(width: int, height: int):
+    """A monitor whose usable area is the whole panel, for stage arithmetic."""
+    from src.core.display.monitors import Monitor
+
+    return Monitor(index=0, name="", bounds=(0, 0, width, height), usable=(0, 0, width, height))
+
+
+def test_borderless_and_fullscreen_are_not_the_same_request(tmp_path: Path) -> None:
+    """The bug this file's own flag assertions used to agree with.
+
+    Both modes passed ``pygame.FULLSCREEN`` and nothing else, so the three names
+    in ``DisplayMode`` described two requests. The ``mode`` enum's docstring said
+    borderless "changes nothing on the player's system: no mode change to fail, no
+    refresh-rate change, nothing to redo when a hybrid-GPU laptop switches the
+    display over to its integrated chip mid-session" -- and the flags never
+    delivered that, so the shipped default was the risky one.
+
+    The difference is ``NOFRAME``: a borderless window covers the panel with no
+    decoration and at the panel's own resolution, so no mode is changed. This
+    asserts the requests differ rather than restating what each should be, since
+    the two assertions above already pin what each one is.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    # Read the request rather than wrapping set_mode: the second mode in the loop
+    # rebuilds the window, and patching the call the rebuild itself makes would
+    # record the rebuild rather than the setting.
+    requested: dict[DisplayMode, tuple[tuple[int, int], int]] = {}
+    real_set_mode = pygame.display.set_mode
+
+    def record(size, flags=0, depth=0, display=0, vsync=0):
+        requested[mode] = (size, flags)
+        return real_set_mode(size, flags, depth, display, vsync)
+
+    for mode in (DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN):
+        # From windowed, because applying the mode the game is already in does
+        # not rebuild -- the signature is unchanged and nothing asks for a new
+        # window. That skipping is correct behaviour and not what this test is
+        # about.
+        game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+        with patch.object(pygame.display, "set_mode", record):
+            game.apply_settings(replace(game.settings, display=mode))
+
+    borderless_size, borderless_flags = requested[DisplayMode.BORDERLESS]
+    fullscreen_size, fullscreen_flags = requested[DisplayMode.FULLSCREEN]
+
+    assert borderless_flags != fullscreen_flags, "the two modes are the same request"
+    assert borderless_flags & pygame.NOFRAME, "borderless needs no decoration"
+    assert not fullscreen_flags & pygame.NOFRAME, "fullscreen keeps the platform's own chrome"
+    assert borderless_size != fullscreen_size, (
+        "borderless fills the usable area, fullscreen defers to the display's mode"
+    )
 
 
 def test_fullscreen_asks_sdl_for_the_displays_own_mode(tmp_path: Path) -> None:
@@ -308,18 +367,28 @@ def test_fullscreen_asks_sdl_for_the_displays_own_mode(tmp_path: Path) -> None:
     measured.
     """
     spec = WindowSpec(mode=DisplayMode.FULLSCREEN)
-    assert Stage._window_size(spec, (2560, 1440)) == (0, 0)
+    assert Stage._window_size(spec, _panel(2560, 1440)) == (0, 0)
 
 
 def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> None:
-    """The regression, as a runtime property.
+    """The regression, restated against what is allowed to describe one.
 
-    The window used to be rebuilt from a stored size, and the target was a
-    constant, so a player who set a resolution saw the menu and the screen
-    disagree -- in borderless the window is the desktop's size whatever the file
-    says, and nothing wrote the difference back. There is no setting left that
-    could describe a window, which is the only way to be sure no two of them can
-    disagree.
+    A stored size used to *be* the window: the player set a resolution and the
+    window was rebuilt from it, so the menu and the screen disagreed whenever the
+    two could not both be true -- in borderless the window is the panel's size
+    whatever the file says, and nothing wrote the difference back.
+
+    Two window fields are back, and each is a different kind of claim:
+
+    - ``monitor`` names a screen, and the game resolves it against the live
+      topology and reports the outcome rather than overwriting the file;
+    - ``window_size``/``window_position`` are a *request* the stage clamps to
+      the monitor it opens on, never written back.
+
+    Neither can silently disagree with the window, because neither is asserted
+    about it. The genuinely uncheckable claims -- the fixed render scale and the
+    per-frame smoothing flag, both describing machinery that no longer exists --
+    stay gone, which is what this asserts.
     """
     game = Game(
         save_path=tmp_path / "savegame.json",
@@ -332,14 +401,53 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
     assert names == {
         "bindings",
         "display",
+        "monitor",
         "pixel_perfect",
+        "fit",
         "vsync",
         "frame_limit",
         "ui_scale",
-        # A size preference, not a size: nothing about it can disagree with the
-        # window, because it says how big to draw on it and not how big it is.
         "panel_scale",
+        "window_size",
+        "window_position",
     }
+
+
+def test_a_remembered_window_size_is_clamped_and_not_rewritten(tmp_path: Path) -> None:
+    """A 4K window arriving at a laptop is honoured as far as it can be.
+
+    The two halves are the point and they are not the same half. The window is
+    opened at a size that fits the panel it opened on, so the player is not left
+    with a window they cannot move -- and the file keeps the size they chose, so
+    the next launch on a desk that has the room uses it again. Writing the
+    clamped size back is what the old ``width``/``height`` keys did, and it is
+    why a size could never survive a change of machine.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+
+    from src.core.display.monitors import fit_size
+
+    oversized = (7680, 4320)
+    game.apply_settings(replace(game.settings, window_size=oversized))
+    monitor = detection.topology().resolve(game.settings.monitor).monitor
+
+    assert game.stage is not None
+    granted = fit_size(oversized, monitor)
+    # The window manager gets the last word on the granted size -- it subtracts
+    # the frame from the request, so a request for the panel's full height comes
+    # back short. That is why the stage measures the surface rather than
+    # trusting the request, and why the assertion is a containment rather than an
+    # equality: what matters is that the window fits the panel and is not the
+    # 8K the player asked for.
+    assert game.stage.size[0] <= granted[0]
+    assert game.stage.size[1] <= granted[1]
+    assert game.stage.size[0] > 0 and game.stage.size[1] > 0
+    assert game.settings.window_size == oversized, "the player's choice must survive"
 
 
 class FakeWindow:

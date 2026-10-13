@@ -174,7 +174,7 @@ def test_no_mode_asks_for_a_size_the_game_invented(mode: DisplayMode) -> None:
     """
     from src.core.display.stage import Stage, WindowSpec
 
-    requested = Stage._window_size(WindowSpec(mode=mode), (1920, 1080))
+    requested = Stage._window_size(WindowSpec(mode=mode), _monitor((1920, 1080)))
     assert requested in {(0, 0), (1920, 1080), monitors.opening_size(_monitor((1920, 1080)))}
     assert all(value >= 0 for value in requested)
 
