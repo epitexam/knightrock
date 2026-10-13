@@ -145,7 +145,7 @@ def _row(scene: VideoScene, action: str) -> int:
 #: skipped by the focus walk -- deliberately, so a disabled row swallows a press
 #: instead of activating whatever is nearest -- which means a test that wants to
 #: press a row has to build the screen where that row is live.
-DISPLAY_FOR_ROW = {"fullscreen_mode": DisplayMode.FULLSCREEN}
+DISPLAY_FOR_ROW = {"resolution": DisplayMode.FULLSCREEN}
 
 
 def _scene_for(action: str) -> VideoScene:
@@ -664,7 +664,7 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
     assert actions == [
         "display",
         "monitor",
-        "fullscreen_mode",
+        "resolution",
         "fit",
         "vsync",
         "frame_limit",

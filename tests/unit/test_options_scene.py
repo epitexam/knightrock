@@ -132,7 +132,7 @@ def test_video_menu_owns_every_display_setting() -> None:
     """
     expected = [
         "display",
-        "fullscreen_mode",
+        "resolution",
         "fit",
         "vsync",
         "frame_limit",

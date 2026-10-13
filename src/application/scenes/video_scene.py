@@ -92,12 +92,17 @@ class VideoScene(Scene):
     #: checked against, which is the check that catches a row with no list.
     SUBMENUS = (
         "monitor",
-        "fullscreen_mode",
+        "resolution",
         "fit",
         "frame_limit",
         "scale",
         "panel_scale",
     )
+    #: Kept as the older name for the callers that read it, and as the one place
+    #: a row's fate is decided: every row on this screen is in this tuple, in
+    #: ``CYCLING_ROWS``, or in ``handle_routed``'s named branches, and a row in
+    #: none of the three is the dead row this screen has produced twice.
+    SUBMENU_ROWS = SUBMENUS
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -158,16 +163,32 @@ class VideoScene(Scene):
                 if len(topology.monitors) > 1
                 else ()
             ),
-            # Always shown, and disabled outside fullscreen, rather than hidden.
-            # A row that appears only in fullscreen is a row a windowed player
-            # never discovers exists, and a discovery problem is worse than a
-            # greyed-out one: the greyed row answers "not now", the missing one
-            # answers nothing at all.
-            MenuItem(
-                "fullscreen_mode",
-                "Fullscreen mode",
-                self._fullscreen_mode_label(),
-                enabled=settings.display is DisplayMode.FULLSCREEN,
+            # One row, two meanings, and it is live in both of the modes where a
+            # resolution is a thing the player gets to choose. It was a disabled
+            # "Fullscreen mode" outside fullscreen, which is worse than it
+            # sounds: the focus walk skips a disabled row and a click on one
+            # does nothing, so the row was drawn, aimable, and inert -- the
+            # dead-row failure this screen has produced twice.
+            #
+            # So the row asks the question that is real in the current mode: the
+            # window's size when there is a window, the mode's resolution when
+            # the game is fullscreen. Either way it opens a list built from what
+            # this panel reports.
+            #
+            # Borderless has neither and hides it rather than greying it. There is
+            # no window to drag and no mode to change, so there is genuinely
+            # nothing to pick, and a row that names a choice the game cannot make
+            # is worse than no row: it asks the player to work out why.
+            *(
+                (
+                    MenuItem(
+                        "resolution",
+                        self._resolution_label(settings.display),
+                        self._resolution_value(settings.display),
+                    ),
+                )
+                if settings.display is not DisplayMode.BORDERLESS
+                else ()
             ),
             MenuItem("fit", "Picture fit", self._fit_label()),
             MenuItem("vsync", "VSync", self._vsync_label()),
@@ -229,15 +250,27 @@ class VideoScene(Scene):
     def _fit_label(self) -> str:
         return self.game.settings.fit.value
 
-    def _fullscreen_mode_label(self) -> str:
-        """The fullscreen resolution, from what the driver reports.
+    def _resolution_label(self, mode: DisplayMode) -> str:
+        """What the row is called, which depends on the mode it applies to.
 
-        Read from ``list_modes`` rather than from a list this project wrote down,
-        which is what makes it a choice the game can honour: every entry came out
-        of the driver on this machine, on this panel. A mode the panel cannot
-        display is filtered out of the list as well, so what this row says and
-        what the list offers cannot disagree.
+        Naming it for the mode rather than for the setting is the point: a row
+        called "Fullscreen mode" that is greyed out in windowed mode is a row
+        asking the player to work out why, and one called "Window size" in
+        fullscreen is asking the same question the other way.
         """
+        return "Fullscreen mode" if mode is DisplayMode.FULLSCREEN else "Window size"
+
+    def _resolution_value(self, mode: DisplayMode) -> str:
+        """The row's value: the fullscreen mode, or the size the window has.
+
+        In windowed mode this reads the size the window *actually has*, not the
+        one remembered for next launch -- those differ after the player drags it,
+        and a row reporting the remembered value while the window is another size
+        is the lie this menu used to tell about a resolution.
+        """
+        if mode is not DisplayMode.FULLSCREEN:
+            granted = self._window_size()
+            return f"{granted[0]} x {granted[1]}"
         stored = self.game.settings.fullscreen_mode
         if stored is None:
             return "the display's own mode"
@@ -384,20 +417,6 @@ class VideoScene(Scene):
     #: two or three of them and a list would be a worse control.
     CYCLING_ROWS = ("display", "vsync")
 
-    #: Rows that open a list. Every other row on this screen is named in
-    #: :meth:`handle_routed` (``reset``, ``back``) or is not an action at all
-    #: (``info``, which only reports). A row in neither set is a row that does
-    #: nothing, and this list is the check that there is no such row:
-    #: ``test_every_row_does_something`` reads it against the real model.
-    SUBMENU_ROWS = (
-        "monitor",
-        "fullscreen_mode",
-        "fit",
-        "frame_limit",
-        "scale",
-        "panel_scale",
-    )
-
     def _open(self, action: str) -> None:
         """Push the list a row owns.
 
@@ -453,18 +472,45 @@ class VideoScene(Scene):
             self.game.settings.with_video(fit=policy, pixel_perfect=policy is FitPolicy.INTEGER)
         )
 
-    def _submenu_fullscreen_mode(self) -> Submenu:
+    def _submenu_resolution(self) -> Submenu:
+        """The list behind the one resolution row, whichever mode is in force.
+
+        Two settings behind one row, because there is only ever one of them
+        on screen: a window size while there is a window, a mode resolution
+        while the game is fullscreen. Borderless has neither -- the window is the
+        panel's own size and the game changes nothing -- so the row is absent
+        there rather than disabled.
+        """
         topology = self._topology()
         monitor = topology.resolve(self.game.settings.monitor).monitor
         modes = self.fullscreen_modes()
+        if self.game.settings.display is DisplayMode.FULLSCREEN:
+            return (
+                "FULLSCREEN MODE",
+                video_options.fullscreen_mode_options(
+                    modes, monitor, self.game.settings.fullscreen_mode
+                ),
+                self.game.settings.fullscreen_mode,
+                lambda mode: self._apply(self.game.settings.with_video(fullscreen_mode=mode)),
+            )
         return (
-            "FULLSCREEN MODE",
-            video_options.fullscreen_mode_options(
-                modes, monitor, self.game.settings.fullscreen_mode
+            "WINDOW SIZE",
+            video_options.window_size_options(
+                modes, monitor, self.game.settings.window_size, self._window_size()
             ),
-            self.game.settings.fullscreen_mode,
-            lambda mode: self._apply(self.game.settings.with_video(fullscreen_mode=mode)),
+            self.game.settings.window_size,
+            self._apply_window_size,
         )
+
+    def _apply_window_size(self, size: tuple[int, int] | None) -> None:
+        """Ask for a window size, or forget the preference and follow the drag.
+
+        ``None`` clears the remembered size rather than storing one, which is
+        what makes the window follow whatever the player drags it to next time --
+        the honest answer for a setting whose whole point is that the window
+        manager owns it.
+        """
+        self._apply(self.game.settings.with_video(window_size=size))
 
     def _submenu_frame_limit(self) -> Submenu:
         return (

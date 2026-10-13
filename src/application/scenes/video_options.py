@@ -21,7 +21,13 @@ from src.application.scenes.option_screen import Option
 from src.application.settings_store import FRAME_LIMITS, PANEL_SCALES, UI_SCALES
 from src.core.display.letterbox import FitPolicy, fits_whole_pixel
 from src.core.display.mode import DisplayMode
-from src.core.display.monitors import Monitor, Resolution, ResolutionReason, Topology
+from src.core.display.monitors import (
+    Monitor,
+    Resolution,
+    ResolutionReason,
+    Topology,
+    opening_size,
+)
 
 #: Why the borderless mode is the one most players should be on. Said here rather
 #: than in a comment, because a player deciding between three modes is exactly the
@@ -184,6 +190,68 @@ def fullscreen_mode_options(
                 f"{current[0]} x {current[1]}",
                 current,
                 f"not available on this screen ({panel[0]}x{panel[1]})",
+                enabled=False,
+            )
+        )
+    return tuple(options)
+
+
+def window_size_options(
+    modes: Sequence[tuple[int, int]],
+    monitor: Monitor,
+    current: tuple[int, int] | None,
+    granted: tuple[int, int],
+) -> tuple[Option, ...]:
+    """Sizes the window can actually take, on this panel.
+
+    The same shape as the fullscreen list and for the same reason: every entry
+    is derived from the panel the window is on, and filtered to sizes that fit
+    inside it. A catalogue written down in this file would be a claim about the
+    player's monitor the game cannot check, which is the resolution picker that
+    was deleted for exactly that reason.
+
+    What differs from fullscreen is that the window has a frame, so the sizes
+    here are not simply the panel's modes. Measured on the development machine:
+    requesting the usable area exactly -- 1920x1048 -- comes back as 1920x1011,
+    because the window manager subtracts the title bar and the borders, and only
+    the request that touches the edge is corrected. Everything smaller is granted
+    as asked. So the top entry is deliberately a margin below the usable area, and
+    it is the one the game already opens at.
+
+    ``modes`` is the driver's own list, the same source as the fullscreen
+    options. A window is not obliged to match a display mode, but every number
+    offered here is one this panel can actually show at this panel's own
+    resolution, which is the property that makes the row honest. Writing a list
+    of common window sizes into this file instead would be the catalogue the
+    resolution picker used to be.
+
+    ``current`` is the remembered preference, which may be a size this panel
+    cannot take -- a 4K window arriving at a laptop. It is listed and disabled
+    rather than dropped, because silently forgetting it would leave the player
+    unable to see that something they chose is not available here.
+    """
+    usable = monitor.usable_size
+    widest = opening_size(monitor)
+    options: list[Option] = [
+        Option(
+            "the size I dragged it to",
+            None,
+            "follow the window wherever you put it",
+        ),
+        Option(f"{widest[0]} x {widest[1]}", widest, "as large as the screen allows"),
+    ]
+    offered: list[tuple[int, int]] = [widest]
+    for size in sorted(set(modes), key=lambda m: (m[0] * m[1], m), reverse=True):
+        if size[0] > usable[0] or size[1] > usable[1] or size in offered:
+            continue
+        offered.append(size)
+        options.append(Option(f"{size[0]} x {size[1]}", size))
+    if current is not None and current not in offered:
+        options.append(
+            Option(
+                f"{current[0]} x {current[1]}",
+                current,
+                f"too large for this screen ({usable[0]}x{usable[1]})",
                 enabled=False,
             )
         )

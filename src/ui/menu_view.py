@@ -10,6 +10,7 @@ from src.ui.styles import (
     GOLD,
     PANEL_BG,
     PANEL_BORDER,
+    POINTER_OUTLINE,
     TEXT_MUTED,
     TEXT_OK,
     TEXT_TITLE,
@@ -236,6 +237,14 @@ class MenuView:
             (panel_x + (panel_width - title_surface.get_width()) // 2, panel_y + padding),
         )
         item_top = panel_y + padding + title_surface.get_height() + title_gap
+        # A row under the pointer is outlined, whether or not it is the selected
+        # one. The `>` marker and the amber text both say "this is the one a key
+        # press will act on"; nothing said "this is where the cursor is", so the
+        # two devices disagreed on screen without the disagreement being visible.
+        # A player who moved the mouse to a row and then pressed an arrow key
+        # could not tell why the highlight had left them -- which is the whole of
+        # what made the navigation feel broken.
+        pointer_row = self._pointer_row(model)
         # Index-aligned with ``model.items``: the rows scrolled out of view keep
         # their place with an empty rect, so a pointer hit-test and a key press
         # both address the same row number.
@@ -265,6 +274,13 @@ class MenuView:
                     ),
                 )
             self._item_rects[index] = rect
+            if index == pointer_row and index != model.current_index:
+                # Outlined rather than filled, so it reads as "the cursor is here"
+                # and not as "a key press will act here" -- the two are different
+                # claims and the keyboard's is the one that changes something.
+                pygame.draw.rect(
+                    surface, POINTER_OUTLINE, rect, max(1, metrics.px(2)), border_radius=3
+                )
         footer_y = panel_y + panel_height - padding - footer_height
         if description_surface is not None:
             # Directly above the footers, inside the panel: the band is already
@@ -367,6 +383,17 @@ class MenuView:
     @staticmethod
     def _valid_scale(scale: float) -> float:
         return checked_ui_scale(scale)
+
+    @staticmethod
+    def _pointer_row(model: MenuModel) -> int:
+        """The row the pointer is on, or -1.
+
+        Read from the model rather than tracked here, so there is one answer to
+        "where is the cursor" rather than two that can disagree. ``hovered_index``
+        is -1 once the pointer has left the rows, which is what makes the outline
+        disappear rather than stick to whatever it was on.
+        """
+        return model.hovered_index
 
     def reset_cache(self) -> None:
         """Drop the cached fonts and surfaces (display changed)."""

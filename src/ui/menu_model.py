@@ -91,6 +91,13 @@ class MenuModel:
 
     def set_items(self, items: list[MenuItem] | tuple[MenuItem, ...], selected: int = 0) -> None:
         self._items = tuple(items)
+        # The pointer's row is forgotten, because the rows it was pointing at
+        # are new objects with new rects. Kept across a rebuild it becomes an
+        # index into a list that may no longer have that row, and the next
+        # hover onto a row at that index reports "no change" -- so the cursor
+        # sits over a row that does nothing until the player moves it off and
+        # back on.
+        self._pointer_row = None
         if not self._items:
             self._current = -1
             self._hovered = -1
@@ -110,6 +117,19 @@ class MenuModel:
                 break
             if self._items[index].enabled:
                 self._current = index
+                # The keyboard has taken the selection from the pointer, so the
+                # pointer stops being treated as the thing that moved it.
+                #
+                # Without this the two fight and the pointer loses badly. Hover
+                # reports a change only when it lands on a row other than the one
+                # it last landed on, so after one arrow key the selection was
+                # somewhere the cursor was not, and every subsequent mouse move
+                # inside the *original* row reported "no change" -- the keyboard's
+                # row stayed drawn as selected, the cursor pointed at another,
+                # and nothing moved until the pointer crossed a line. Measured:
+                # hover row 1, press DOWN, wiggle one pixel on row 1, and the
+                # selection stayed on row 2 while the cursor sat on row 1.
+                self._pointer_row = None
                 return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
         return None
 
