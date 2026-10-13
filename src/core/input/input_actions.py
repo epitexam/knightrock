@@ -23,3 +23,5 @@ class InputAction(StrEnum):
     UI_POINTER_MOVE = "ui_pointer_move"
     UI_POINTER_DOWN = "ui_pointer_down"
     UI_POINTER_UP = "ui_pointer_up"
+    UI_SCROLL = "ui_scroll"
+    UI_SCROLL_UP = "ui_scroll_up"

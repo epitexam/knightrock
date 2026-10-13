@@ -400,3 +400,33 @@ def test_router_peeks_whether_a_key_or_button_would_route() -> None:
     assert router.route(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_x)) == RoutedInput(
         InputAction.UI_UP, InputDevice.KEYBOARD
     )
+
+
+def test_the_mouse_wheel_is_routed() -> None:
+    """A list the mouse cannot scroll is a half-built control.
+
+    The option lists scroll, and the wheel was the one input that did
+    not move them: ``route`` had no ``MOUSEWHEEL`` case, so it returned
+    ``None`` and every notch was dropped. The wheel is now navigation --
+    one row per notch, up or down -- and not a selection, because a
+    trackpad's fractional ``y`` would otherwise apply half a value.
+    """
+    router = EventRouter()
+
+    up = router.route(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=1, pos=(5, 5)))
+    down = router.route(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1, pos=(5, 5)))
+
+    assert up == RoutedInput(
+        InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0
+    )
+    assert down == RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=1.0)
+
+    # A trackpad reports several rows in one notch; the value carries it
+    # so the scene can step by more than one row.
+    fast = router.route(pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=3, pos=(5, 5)))
+    assert fast is not None and fast.value == 3.0
+
+    # A wheel that some platforms report as buttons 4 and 5 must not be
+    # routed twice: once as a wheel, once as a button press.
+    legacy = router.route(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=4, pos=(5, 5)))
+    assert legacy is None

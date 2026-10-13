@@ -78,6 +78,19 @@ class EventRouter:
                 InputDevice.MOUSE,
                 position=tuple(getattr(event, "pos", (0, 0))),
             )
+        if event.type == pygame.MOUSEWHEEL:
+            # Routed rather than dropped, because a list the mouse cannot scroll
+            # is a half-built control: this menu's option lists are scrolled, and
+            # the wheel was the one input that did not move them.
+            #
+            # ``y`` is +1 for "scroll up". The value is carried on the routed
+            # input so the scene can step by more than a row: touchpads produce
+            # fractional ``precise_y`` and trackpoints produce several notches.
+            return RoutedInput(
+                InputAction.UI_SCROLL_UP if getattr(event, "y", 0) > 0 else InputAction.UI_SCROLL,
+                InputDevice.MOUSE,
+                value=abs(float(getattr(event, "y", 1))),
+            )
         if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) == 1:
             return RoutedInput(
                 InputAction.UI_POINTER_DOWN,

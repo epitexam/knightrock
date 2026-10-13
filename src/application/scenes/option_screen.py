@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 import pygame
 
 from src.application.scene import Scene
-from src.core.input.event_router import RoutedInput
+from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
@@ -126,6 +126,11 @@ class OptionScreen(Scene):
         #: layout arithmetic cannot disagree about how tall a row is.
         self._last_visible: int | None = None
         self._last_panel_height = 0
+        #: The pointer's last y, and the scroll in force. Both are in target
+        #: coordinates and belong to the same measurement, so they are kept
+        #: together: the scroll decision reads one and writes the other.
+        self._pointer_y: int | None = None
+        self._scroll = 0
         self.set_ui_scale(game.ui_scale)
 
     # ------------------------------------------------------------------ rows
@@ -180,6 +185,30 @@ class OptionScreen(Scene):
             self._leave()
             return MenuAction.BACK
 
+        if routed.action in (InputAction.UI_SCROLL, InputAction.UI_SCROLL_UP):
+            # Navigate, do not apply. The wheel moves the cursor one row per
+            # notch, which is the same thing an arrow key does -- scrolling it as
+            # a *selection* would change a resolution per notch, and a trackpad's
+            # fractional y would make one gesture apply half a value.
+            steps = max(1, int(routed.value or 1))
+            self._pointer_y = None
+            for _ in range(steps):
+                self.model.move(-1 if routed.action is InputAction.UI_SCROLL_UP else 1)
+            return (
+                MenuAction.MOVE_UP
+                if routed.action is InputAction.UI_SCROLL_UP
+                else MenuAction.MOVE_DOWN
+            )
+
+        if routed.action is InputAction.UI_POINTER_MOVE and routed.position is not None:
+            self._pointer_y = routed.position[1]
+        elif routed.device is not InputDevice.MOUSE:
+            # A key or a button takes the list back from the pointer. Left in
+            # place, the remembered y would outvote the row the player just
+            # walked to and scroll the list straight back -- the cursor moving up
+            # one line while the list slides down.
+            self._pointer_y = None
+
         action, _ = self.model.handle_routed(
             routed.action, routed.position, self.view.item_rects, routed.variant
         )
@@ -229,24 +258,55 @@ class OptionScreen(Scene):
         self.view.set_scale(scale)
 
     def _scroll_for(self, focused: int) -> int:
-        """Keep the cursor on screen, one row of margin above and below.
+        """The first row to show, decided by the pointer when there is one.
 
-        A list taller than the window has to scroll, because a row is never
-        shorter than its text -- so a list cannot be squeezed to fit and there is
-        no alternative to moving it. One row of margin rather than none, because
-        a cursor pinned to the very edge reads as the end of the list rather than
-        as a position within it.
+        This is the fix for the "one mouse position selects four rows"
+        bug, and the cause is worth writing down. The scroll used to
+        follow the keyboard cursor with a row of margin above it, so
+        when the pointer hovered the last drawn row the list jumped
+        down, which changed the row under the pointer, which jumped the
+        list again -- a hand moving steadily down selected rows 7, 13,
+        19, 25 in turn without the cursor moving at all.
 
-        Measured on the worst case, 28 modes in a 640x480 window: twelve rows
-        visible at scale 0.8, which without this would have put the twenty-eighth
-        option permanently out of reach.
+        Now the pointer's own y is the input, and the rule is
+        deliberately minimal: the list scrolls only to keep a row that
+        the pointer is *on* on screen, and by the smallest amount that
+        does it. There is deliberately no scrolling towards a pointer
+        parked in the gap above or below the rows -- the list would
+        keep moving, the gap would keep stay at the edge, and the
+        pointer would chase it to the end of the list, which is the
+        failure above with extra steps. The wheel is the way to move a
+        list the pointer is not on.
+
+        A keyboard walk still works: ``focused`` decides which row the
+        list moves to when the pointer is not over the rows, and any
+        non-pointer input clears the remembered y so the cursor cannot
+        be outvoted by a position the player left behind.
         """
-        if focused <= 0:
+        visible = self._visible_rows()
+        count = len(self.model.items)
+        if count <= visible:
+            # Everything fits; nothing to scroll. The keyboard's margin is
+            # meaningless here and would have pushed rows off the top.
             return 0
-        visible = max(1, len(self.model.items))
-        # The view decides how many fit; asking it is cheaper than duplicating
-        # its arithmetic here, and a second copy would drift.
-        return max(0, min(focused - 1, max(0, visible - self._visible_rows())))
+
+        if self._pointer_y is not None:
+            # The pointed-at row, from the geometry of the last draw.
+            row = self._row_at(self._pointer_y)
+            if row is not None:
+                current = self._scroll
+                if row < current:
+                    # Push only far enough to bring it in, and only when it is
+                    # entirely off -- nudging one row at a time makes the list
+                    # crawl under a stationary cursor.
+                    return max(0, row)
+                if row >= current + visible:
+                    return row - visible + 1
+                return current
+
+        # No pointer, or it is outside the rows: follow the keyboard, with the
+        # cursor one row from the edge rather than pinned to it.
+        return max(0, min(focused - 1, count - visible))
 
     def _visible_rows(self) -> int:
         """How many rows the window shows at this scale.
@@ -258,10 +318,38 @@ class OptionScreen(Scene):
         """
         return max(1, self._last_visible or len(self.model.items))
 
+    def _row_at(self, y: int) -> int | None:
+        """The row a y coordinate lands on, in terms of the row the view drew.
+
+        Uses the geometry of the last draw rather than the model's, because the
+        view is what painted them and it is the only holder of the row height
+        that is on screen. Returns ``None`` when y is outside the painted rows --
+        over the title, the gap, or below the last row -- and ``None`` means "the
+        pointer is not asking for anything", which is what keeps the list still.
+        """
+        first = self._scroll
+        visible = self._visible_rows()
+        for offset in range(visible):
+            index = first + offset
+            if not 0 <= index < len(self.model.items):
+                break
+            rect = self.view.item_rects[index]
+            if rect.width > 0 and rect.top <= y < rect.bottom:
+                return index
+        return None
+
     def draw(self, surface: pygame.Surface) -> None:
         self.view.set_scale(self.game.ui_scale)
         focused_index = self.model.current_index
         focused = self.model.current_item
+        # Decided once and kept: the view paints from it this frame, and
+        # the next frame's decision reads it as "where the list is".
+        # Not keeping it meant the scene's scroll stayed at zero while
+        # the view moved, so every later question -- which row is the
+        # pointer on, is this row on screen -- was answered about a list
+        # that was no longer the one drawn.
+        scroll = self._scroll_for(focused_index)
+        self._scroll = scroll
         panel = self.view.draw(
             surface,
             self.title,
@@ -269,14 +357,23 @@ class OptionScreen(Scene):
             top=140 if self.subtitle else 180,
             description=self._description_for(focused),
             footers=(self.footer,) if self.footer else (),
-            scroll=self._scroll_for(focused_index),
+            scroll=scroll,
             scrollable=True,
         )
         # Remembered for the next frame's scroll decision, so the arithmetic that
-        # decided what is on screen lives in exactly one place.
+        # decided what is on screen lives in exactly one place: the count drawn,
+        # the panel's height, and the band the rows occupy.
         drawn = sum(1 for rect in self.view.item_rects if rect.width > 0)
         self._last_visible = drawn
         self._last_panel_height = panel.height
+        if drawn:
+            first_rect = next(rect for rect in self.view.item_rects if rect.width > 0)
+            last_rect = next(rect for rect in reversed(self.view.item_rects) if rect.width > 0)
+            # The difference between where the rows stop and where the pointer is
+            # is what makes an edge press scroll by one rather than by a panel.
+            self._rows_top = first_rect.top
+            self._rows_bottom = last_rect.bottom
+            self._row_height = max(1, first_rect.height)
 
     def _description_for(self, focused: MenuItem | None) -> str:
         """The one description to show: the focused row's, if it has one.

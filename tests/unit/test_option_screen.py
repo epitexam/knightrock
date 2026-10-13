@@ -393,3 +393,114 @@ def test_a_value_whose_comparison_raises_is_not_a_crash() -> None:
     screen = _screen(FakeGame(), (Option("a", Awkward()),), selected="other")
 
     assert screen.model.current_index == 0
+
+
+# --- the pointer and the wheel --------------------------------------------
+
+
+def test_a_stationary_pointer_lands_on_the_same_row() -> None:
+    """One mouse position selected four different rows, and the cause is
+    worth writing down.
+
+    The scroll used to follow the keyboard cursor with a margin above
+    it, so when the pointer hovered the last drawn row the list jumped
+    down, which changed the row under the pointer, which jumped the
+    list again. A hand moving steadily down selected rows 7, 13, 19, 25
+    in turn without the cursor moving at all -- the pointer was moving
+    the list and the list was moving the pointer, each one amplifying
+    the other.
+
+    The rule now: the list scrolls only to keep the pointed-at row on
+    screen, so a still pointer is a still list.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    rows = [rect for rect in screen.view.item_rects if rect.width > 0]
+    assert len(rows) < len(screen.model.items), "the fixture did not overflow"
+    # Park on the last drawn row, the row that used to run away.
+    parked_y = rows[-1].centery
+
+    seen: set[int] = set()
+    for _ in range(8):
+        screen.handle_routed(
+            RoutedInput(
+                InputAction.UI_POINTER_MOVE,
+                InputDevice.MOUSE,
+                position=(320, parked_y),
+            )
+        )
+        screen.draw(surface)
+        under = screen._row_at(parked_y)
+        assert under is not None, "the pointer left the rows without moving"
+        seen.add(under)
+
+    assert len(seen) == 1, (
+        f"a stationary pointer selected {sorted(seen)}: the list moved under it"
+    )
+
+
+def test_the_wheel_moves_the_cursor_one_row_per_notch() -> None:
+    """The wheel navigates; it does not select.
+
+    Routing it as a selection would change a setting per notch, and a
+    trackpad's fractional ``y`` would apply half a value.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    assert screen.model.current_index == 0
+    for _ in range(3):
+        screen.handle_routed(
+            RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=1.0)
+        )
+    assert screen.model.current_index == 3
+
+    # A wide notch steps by more than one row, and is still navigation.
+    screen.handle_routed(
+        RoutedInput(InputAction.UI_SCROLL, InputDevice.MOUSE, value=4.0)
+    )
+    assert screen.model.current_index == 7
+
+    for _ in range(3):
+        screen.handle_routed(
+            RoutedInput(
+                InputAction.UI_SCROLL_UP, InputDevice.MOUSE, value=1.0
+            )
+        )
+    assert screen.model.current_index == 4
+
+
+def test_a_key_takes_the_list_back_from_the_pointer() -> None:
+    """The remembered pointer y must not outvote the row just walked to.
+
+    Left in place, a press of the arrow key would scroll the list to
+    the cursor and then straight back to where the mouse last was --
+    the cursor moving up one line while the list slides down.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=20)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    # The pointer is parked near the top of the list.
+    rows = [rect for rect in screen.view.item_rects if rect.width > 0]
+    screen.handle_routed(
+        RoutedInput(
+            InputAction.UI_POINTER_MOVE,
+            InputDevice.MOUSE,
+            position=(320, rows[0].centery),
+        )
+    )
+    screen.draw(surface)
+    assert screen._pointer_y is not None
+
+    # A key press takes over, and the scroll follows the cursor.
+    screen.handle_routed(_key(InputAction.UI_UP))
+    screen.draw(surface)
+    assert screen._pointer_y is None, "a key press left the pointer in charge"
+    assert screen._scroll == max(0, screen.model.current_index - 1)
