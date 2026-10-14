@@ -462,3 +462,20 @@ def test_the_list_keys_route() -> None:
     assert InputAction.UI_PAGE_UP in REPEATABLE_UI_ACTIONS
     assert InputAction.UI_HOME not in REPEATABLE_UI_ACTIONS
     assert InputAction.UI_END not in REPEATABLE_UI_ACTIONS
+
+
+def test_the_shoulders_page_a_menu() -> None:
+    """A gamepad player gets the same paging as the keyboard.
+
+    Without it, a 28-row list is one row at a time on a controller
+    while the keyboard has two keys for it -- and the shoulders
+    were free in this context, 4 and 5 being Guard and Attack 4
+    in *gameplay*, which is a different map.
+    """
+    router = EventRouter()
+
+    up = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=4, instance_id=1))
+    down = router.route(pygame.event.Event(pygame.JOYBUTTONDOWN, button=5, instance_id=1))
+
+    assert up == RoutedInput(InputAction.UI_PAGE_UP, InputDevice.GAMEPAD)
+    assert down == RoutedInput(InputAction.UI_PAGE_DOWN, InputDevice.GAMEPAD)

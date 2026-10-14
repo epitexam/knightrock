@@ -125,6 +125,28 @@ def _fill_menu_defaults(bindings: ActionMap) -> ActionMap:
     return MappingProxyType({**bindings, **_MENU_LIST_DEFAULTS})
 
 
+#: The two page buttons, for the same reason and by the same rule.
+#: Home and end have no standard gamepad equivalent and stay on the
+#: keyboard, so the set here is the two that do.
+_MENU_PAGE_BUTTON_DEFAULTS: dict[InputAction, int] = {
+    InputAction.UI_PAGE_UP: 4,
+    InputAction.UI_PAGE_DOWN: 5,
+}
+
+
+def _fill_menu_page_button_defaults(bindings: ButtonMap) -> ButtonMap:
+    """Give the shoulders their defaults when an old file has none.
+
+    The same reading as :func:`_fill_menu_defaults`, on the gamepad
+    map: a file that has either of the two was written after they
+    existed, so a player who moved page down and deliberately
+    unbound page up left the other alone and means it.
+    """
+    if any(action in bindings for action in _MENU_PAGE_BUTTON_DEFAULTS):
+        return bindings
+    return MappingProxyType({**bindings, **_MENU_PAGE_BUTTON_DEFAULTS})
+
+
 def _parse_action_map(
     data: object, allowed: set[InputAction], allow_pair: bool = False
 ) -> ActionMap:
@@ -284,6 +306,10 @@ def bindings_from_dict(data: object) -> InputBindings:
     menu_keyboard = _fill_menu_defaults(menu_keyboard)
     menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
+    # The shoulders, by the same rule as the keyboard list keys: an
+    # old file has none of them, and "missing means unbound" would
+    # leave a gamepad player without the two keys that page a menu.
+    menu_buttons = _fill_menu_page_button_defaults(menu_buttons)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)
     menu_axes = cast(AxisMap, _parse_int_map(menu_data["gamepad_axes"], menu_actions))
     if InputAction.UI_BACK not in menu_buttons and InputAction.UI_CANCEL in menu_buttons:

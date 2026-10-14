@@ -174,3 +174,57 @@ def test_a_file_with_one_list_key_is_left_alone(tmp_path: Path) -> None:
     assert InputAction.UI_PAGE_UP not in loaded.menu.keyboard
     assert InputAction.UI_HOME not in loaded.menu.keyboard
     assert InputAction.UI_END not in loaded.menu.keyboard
+
+
+def test_the_shoulders_are_bound_to_paging_by_default() -> None:
+    """A gamepad player walks a 28-row list one row at a time otherwise.
+
+    4 and 5 are Guard and Attack 4 in *gameplay* -- a separate
+    context, so borrowing the shoulders here costs nothing there.
+    """
+    bindings = InputBindings()
+
+    assert bindings.menu.gamepad_buttons[InputAction.UI_PAGE_UP] == 4
+    assert bindings.menu.gamepad_buttons[InputAction.UI_PAGE_DOWN] == 5
+
+
+def test_a_file_from_before_the_shoulders_gets_them(tmp_path: Path) -> None:
+    """The same migration as the keyboard side, on the button map.
+
+    Home and end have no standard gamepad equivalent and stay on
+    the keyboard, so the set that migrates is the two that do.
+    """
+    path = tmp_path / "settings.json"
+    repository = BindingsRepository(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    buttons = payload["bindings"]["menu"]["gamepad_buttons"]
+    del buttons["ui_page_up"]
+    del buttons["ui_page_down"]
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = repository.load()
+
+    assert loaded.menu.gamepad_buttons[InputAction.UI_PAGE_UP] == 4
+    assert loaded.menu.gamepad_buttons[InputAction.UI_PAGE_DOWN] == 5
+
+
+def test_a_file_with_one_shoulder_is_left_alone(tmp_path: Path) -> None:
+    """A file that has either of them was written after they existed,
+    so a player who moved page down and unbound page up on purpose
+    keeps exactly that.
+    """
+    path = tmp_path / "settings.json"
+    repository = BindingsRepository(path)
+    repository.save(InputBindings())
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    buttons = payload["bindings"]["menu"]["gamepad_buttons"]
+    del buttons["ui_page_up"]
+    del buttons["ui_page_down"]
+    buttons["ui_page_down"] = 7
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = repository.load()
+
+    assert loaded.menu.gamepad_buttons[InputAction.UI_PAGE_DOWN] == 7
+    assert InputAction.UI_PAGE_UP not in loaded.menu.gamepad_buttons

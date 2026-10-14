@@ -136,6 +136,14 @@ class MenuBindings:
                 InputAction.UI_CONFIRM: 0,
                 InputAction.UI_BACK: 1,
                 InputAction.UI_CANCEL: 1,
+                # The shoulders page a menu, as they page a list anywhere
+                # else. Without them a gamepad player walks a 28-row list
+                # one row at a time while the keyboard gets two keys for it,
+                # and the shoulders were sitting there free in this context --
+                # 4 and 5 are Guard and Attack 4 in *gameplay*, which is a
+                # separate map, so borrowing them here costs nothing.
+                InputAction.UI_PAGE_UP: 4,
+                InputAction.UI_PAGE_DOWN: 5,
             }
         )
     )
