@@ -853,4 +853,51 @@ d'ailleurs keyed sur `id(font)` : reconstruire les polices à chaque frame — c
 qu'un `draw` qui veut une police fraîche ferait volontiers — vide ce cache et
 re-rend trente chaînes par frame. D'où le `self._fonts = None` qui n'y est pas.
 
-Dernière mise à jour : 2026-09-26, branche `feat/display-cadrage-system`.
+## 16. La souris, deuxième passe : la liste qui fuyait sous le curseur
+
+Cinq correctifs, dans l'ordre où ils ont été trouvés, et un thème commun : **le
+défilement était décidé par une chose et observé par une autre.**
+
+**La molette n'était pas routée du tout.** `EventRouter.route` n'avait pas de cas
+`MOUSEWHEEL` : il renvoyait `None`, et chaque cran tombait à terre. Une liste que
+la souris ne peut pas faire défiler est un contrôle à moitié construit. Elle
+navigue — un cran, une ligne — plutôt qu'elle ne sélectionne, parce qu'une
+sélection changerait un réglage par cran et qu'un `y` fractionnaire de trackpad
+appliquerait une demi-valeur.
+
+**Un même point de souris sélectionnait quatre lignes.** Le défilement suivait le
+curseur clavier avec une marge au-dessus, donc le pointeur survolait la dernière
+ligne dessinée, la liste descendait, la ligne sous le pointeur changeait, la liste
+redescendait. Une main qui descend régulièrement choisissait les lignes 7, 13, 19,
+25 **sans que le curseur bouge**. La règle est maintenant minimale : la liste ne
+défile que pour garder la ligne pointée à l'écran, et par le plus petit montant qui
+le fait. Aucun défilement vers un pointeur posé dans la marge — la liste
+continuerait d'avancer et le pointeur la poursuivrait jusqu'en bas, c'est le même
+défaut avec des étapes en plus.
+
+**Le défilement n'était jamais écrit.** `_scroll_for` calculait la bonne première
+ligne et la passait à la vue, mais le champ restait à zéro : toute question
+ultérieure — quelle ligne est sous le pointeur — était posée sur une liste qui
+n'était plus celle dessinée.
+
+**Le `y` mémorisé outvotait le clavier.** Après une touche, le défilement suivait
+le curseur puis revenait où la souris était restée. Toute entrée non-souris efface
+maintenant le `y` mémorisé.
+
+**Une liste coupée ne le disait pas.** D'où trois ajouts : une glissière dans
+l'écart à droite du panneau (le poussoir fait la fraction visible en hauteur et la
+position défilée en place), ce même strip répond à un press — en dessous du poussoir
+on avance d'une page, au-dessus on recule, sur le poussoir rien — et les touches de
+liste, `PgUp`/`PgDn`/`Début`/`Fin`, pageant selon **le nombre de lignes que la
+fenêtre montre** : la clé veut dire « là où je regarde », et une fenêtre plus
+petite doit vouloir dire une page plus courte. Les épaules 4/5 d'une manette font
+la même chose (Guard et Attaque 4 en gameplay, une autre map).
+
+Une description est coupée avec un `…` quand elle ne tient pas : mesuré, 190
+caractères rendent 1158px de large contre un panneau de 616, et le texte centré
+déborde des deux côtés. Coupée et pas enroulée, parce que la bande réserve une
+ligne de haut — l'enrouler rendrait la hauteur du panneau fonction de la longueur
+de la note, qui est exactement le reflow qu'une liste qui défile ne doit pas
+avoir.
+
+Dernière mise à jour : 2026-10-14, branche `fix/remediation`.
