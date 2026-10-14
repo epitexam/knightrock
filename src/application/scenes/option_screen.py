@@ -131,6 +131,8 @@ class OptionScreen(Scene):
         #: together: the scroll decision reads one and writes the other.
         self._pointer_y: int | None = None
         self._scroll = 0
+        #: The panel the last draw produced, for the rail's hit strip.
+        self._panel: pygame.Rect | None = None
         self.set_ui_scale(game.ui_scale)
 
     # ------------------------------------------------------------------ rows
@@ -186,40 +188,64 @@ class OptionScreen(Scene):
             return MenuAction.BACK
 
         if routed.action in (InputAction.UI_SCROLL, InputAction.UI_SCROLL_UP):
-            # Navigate, do not apply. The wheel moves the cursor one row per
-            # notch, which is the same thing an arrow key does -- scrolling it as
-            # a *selection* would change a resolution per notch, and a trackpad's
-            # fractional y would make one gesture apply half a value.
-            steps = max(1, int(routed.value or 1))
-            self._pointer_y = None
-            for _ in range(steps):
-                self.model.move(-1 if routed.action is InputAction.UI_SCROLL_UP else 1)
-            return (
-                MenuAction.MOVE_UP
-                if routed.action is InputAction.UI_SCROLL_UP
-                else MenuAction.MOVE_DOWN
-            )
+            return self._wheel(routed)
 
+        if routed.action is InputAction.UI_POINTER_DOWN and routed.position is not None:
+            paged = self._page_from_rail(routed.position)
+            if paged is not None:
+                return paged
+
+        self._note_pointer(routed)
+        performed, _ = self.model.handle_routed(
+            routed.action, routed.position, self.view.item_rects, routed.variant
+        )
+        return self._report(performed)
+
+    def _wheel(self, routed: RoutedInput) -> str:
+        """The wheel navigates, one row per notch, and takes the list.
+
+        Navigating rather than selecting: a selection would change a
+        setting per notch, and a trackpad's fractional ``y`` would
+        apply half a value. The pointer's remembered row is cleared,
+        because the wheel moved the list too.
+        """
+        steps = max(1, int(routed.value or 1))
+        self._pointer_y = None
+        for _ in range(steps):
+            self.model.move(-1 if routed.action is InputAction.UI_SCROLL_UP else 1)
+        return (
+            MenuAction.MOVE_UP
+            if routed.action is InputAction.UI_SCROLL_UP
+            else MenuAction.MOVE_DOWN
+        )
+
+    def _note_pointer(self, routed: RoutedInput) -> None:
+        """Remember the pointer's row, and forget it for anything else.
+
+        The remembered y is what the scroll decision reads, so a key or
+        a button clears it: left in place it would outvote the row the
+        player just walked to and scroll the list straight back -- the
+        cursor moving up one line while the list slides down.
+        """
         if routed.action is InputAction.UI_POINTER_MOVE and routed.position is not None:
             self._pointer_y = routed.position[1]
         elif routed.device is not InputDevice.MOUSE:
-            # A key or a button takes the list back from the pointer. Left in
-            # place, the remembered y would outvote the row the player just
-            # walked to and scroll the list straight back -- the cursor moving up
-            # one line while the list slides down.
             self._pointer_y = None
 
-        action, _ = self.model.handle_routed(
-            routed.action, routed.position, self.view.item_rects, routed.variant
-        )
-        if action is None:
+    def _report(self, performed: str | None) -> str | None:
+        """Turn the model's report into the screen's.
+
+        ``back`` closes this screen and ``option:n`` applies row ``n``;
+        everything else is passed through as it came.
+        """
+        if performed is None:
             return None
-        if action == "back":
+        if performed == "back":
             self._leave()
             return MenuAction.BACK
-        if action.startswith("option:"):
-            self._choose(int(action.partition(":")[2]))
-        return action
+        if performed.startswith("option:"):
+            self._choose(int(performed.partition(":")[2]))
+        return performed
 
     def _choose(self, index: int) -> None:
         """Apply the option and go back to the screen that opened this one.
@@ -366,6 +392,11 @@ class OptionScreen(Scene):
         drawn = sum(1 for rect in self.view.item_rects if rect.width > 0)
         self._last_visible = drawn
         self._last_panel_height = panel.height
+        # Kept for the rail's hit strip, which runs from the rail to the
+        # panel's edge: the rail is painted inside the gutter and the
+        # gutter is inside the panel, so the panel is what bounds the
+        # strip on the right.
+        self._panel = panel
         if drawn:
             first_rect = next(rect for rect in self.view.item_rects if rect.width > 0)
             last_rect = next(rect for rect in reversed(self.view.item_rects) if rect.width > 0)
@@ -375,6 +406,52 @@ class OptionScreen(Scene):
             self._rows_bottom = last_rect.bottom
             self._row_height = max(1, first_rect.height)
 
+    def _rail_strip(self) -> pygame.Rect | None:
+        """The clickable strip beside the rows, or ``None`` when no rail.
+
+        The rail is painted inside the padding gutter, and the gutter
+        is inside the panel, so the strip runs from the rail's left
+        edge to the panel's right one -- wider than the painted rail,
+        because a four-pixel target is not a target.
+        """
+        rail = self.view.scroll_rail
+        if rail is None or self._panel is None:
+            return None
+        return pygame.Rect(rail.left, rail.top, self._panel.right - rail.left, rail.height)
+
+    def _page_from_rail(self, position: tuple[int, int]) -> str | None:
+        """Page from a press in the rail's strip, or ``None`` if it isn't one.
+
+        The strip is dead space today: no row is clickable there, so a
+        press in it does nothing at all. It is also where a scrollbar
+        has lived in every interface anyone has used, and a player
+        who has clicked one will click this one.
+
+        Above the thumb pages back, below pages forward. On the thumb
+        it does nothing, deliberately: dragging the thumb is a
+        separate interaction, and a press that both grabbed and paged
+        would jump the list the moment it was caught.
+        """
+        strip = self._rail_strip()
+        thumb = self.view.scroll_thumb
+        if strip is None or thumb is None or not strip.collidepoint(position):
+            return None
+        if thumb.top <= position[1] <= thumb.bottom:
+            return None
+        return self._page(-1 if position[1] < thumb.top else 1)
+
+    def _page(self, direction: int) -> str | None:
+        """Move by a page, through the model's own page move.
+
+        The model reads the visible-row count from the rects the view
+        painted, which is the same measurement the scroll uses --
+        asking the view for it here would be a second copy of that
+        arithmetic.
+        """
+        action = InputAction.UI_PAGE_DOWN if direction > 0 else InputAction.UI_PAGE_UP
+        performed, _ = self.model.handle_routed(action, None, self.view.item_rects, None)
+        return performed
+
     def _footer(self) -> str:
         """The hint line, with the page keys when the list needs them.
 
@@ -382,6 +459,13 @@ class OptionScreen(Scene):
         would be a mystery with no answer; a long one is where
         they earn their place, and the only place a player
         looks for how to move a list.
+
+        The hint lags the rail by a frame: the hint is decided
+        from the last draw's row count, the rail during this
+        one. Seventeen milliseconds, on the first frame of a
+        screen -- the alternative is a query on the view with
+        five parameters that mirror ``draw``'s own, which is
+        more machinery than the defect is worth.
         """
         if self._last_visible is None or self._last_visible >= len(self.model.items):
             return self.footer

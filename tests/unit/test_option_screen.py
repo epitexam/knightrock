@@ -545,3 +545,96 @@ def test_a_held_page_down_key_repeats() -> None:
     for routed in repeated:
         screen.handle_routed(routed)
     assert screen.model.current_index > first, "the repeat did not move the list"
+
+
+# --- the rail answers a click ---------------------------------------------
+
+
+def _press(screen: OptionScreen, target: tuple[int, int]) -> str | None:
+    return screen.handle_routed(
+        RoutedInput(InputAction.UI_POINTER_DOWN, InputDevice.MOUSE, position=target)
+    )
+
+
+def test_a_press_in_the_rail_strip_pages() -> None:
+    """The strip beside the rows was dead space.
+
+    No row is clickable there, so a press in it did nothing at all
+    -- and it is where a scrollbar has lived in every interface
+    anyone has used, so a player who has clicked one will click
+    this one. Below the thumb pages forward, above pages back.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    rail = screen.view.scroll_rail
+    assert rail is not None, "the fixture did not overflow"
+    below = (rail.centerx, rail.bottom - 2)
+
+    _press(screen, below)
+    first = screen.model.current_index
+    assert first > 0, "a press below the thumb did not page"
+
+    redraw = surface
+    screen.draw(redraw)
+    rail = screen.view.scroll_rail
+    above = (rail.centerx, rail.top + 2)
+    _press(screen, above)
+    assert screen.model.current_index < first, "a press above the thumb did not page back"
+
+
+def test_a_press_on_the_thumb_itself_does_nothing() -> None:
+    """Dragging the thumb is a separate interaction, not this one.
+
+    A press that both grabbed and paged would jump the list the
+    moment it was caught, which is the opposite of what the
+    player asked for.
+    """
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=0)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    screen.handle_routed(RoutedInput(InputAction.UI_PAGE_DOWN, InputDevice.KEYBOARD))
+    screen.draw(surface)
+    rail = screen.view.scroll_rail
+    thumb = screen.view.scroll_thumb
+    assert rail is not None and thumb is not None
+
+    before = screen.model.current_index
+    _press(screen, (rail.centerx, thumb.centery))
+
+    assert screen.model.current_index == before, "a press on the thumb moved the list"
+
+
+def test_a_press_on_a_row_still_selects_it() -> None:
+    """The strip must not swallow a press that lands on a row.
+
+    It runs from the rail's left edge rightward, and the rows end
+    to the left of that -- so a row's own click is untouched.
+    """
+    applied: list[object] = []
+    game = FakeGame()
+    screen = _screen(game, _options(28), selected=10, apply=applied.append)
+    surface = pygame.Surface((640, 480))
+    screen.draw(surface)
+
+    rows = [rect for rect in screen.view.item_rects if rect.width > 0]
+    _press(screen, (rows[0].centerx, rows[0].centery))
+
+    assert screen.model.current_index == 0, "the row under the press was not selected"
+    assert applied == [0], "the press on the row did not apply that option"
+    assert game.popped == 1, "the screen did not close as it would on a row press"
+
+
+def test_a_press_in_the_strip_of_a_list_that_fits_does_nothing() -> None:
+    """No rail, no strip: a list that fits has nothing to page."""
+    game = FakeGame()
+    screen = _screen(game, _options(4), selected=0)
+    surface = pygame.Surface((1152, 648))
+    screen.draw(surface)
+
+    assert screen.view.scroll_rail is None
+    assert screen._page_from_rail((600, 300)) is None
