@@ -150,3 +150,66 @@ def test_the_rail_follows_the_window() -> None:
         assert view.scroll_rail is None, "the list fits, but the rail is still painted"
     else:
         assert view.scroll_rail is not None
+
+
+# --- the fitted description ------------------------------------------------
+
+
+def test_a_long_description_is_cut_rather_than_left_to_spill() -> None:
+    """Free-form prose is the one line that can outgrow its panel.
+
+    Measured: 190 characters render 1158px wide against a 616px panel,
+    and the centred text spills out over both sides -- a note the
+    player cannot read the end of. Cut with a marker instead, because
+    the band's height is reserved as one line and wrapping it would
+    make the panel's height a function of the note's length, which is
+    the reflow a scrolling list is meant not to have.
+    """
+    surface = pygame.display.get_surface()
+    model = MenuModel([MenuItem("one", "One")])
+    view = MenuView()
+    long_note = "A much longer description that wraps across several lines of text. " * 3
+
+    panel = view.draw(surface, "TITLE", model, top=120, description=long_note)
+
+    assert view.description_width > 0
+    assert view.description_width + 2 * 28 <= panel.width, (
+        f"the description is {view.description_width}px wide in a {panel.width}px panel"
+    )
+
+
+def test_a_short_description_is_untouched() -> None:
+    """Cutting only where it has to: a note that fits is drawn whole,
+    with no marker on the end.
+    """
+    surface = pygame.display.get_surface()
+    model = MenuModel([MenuItem("one", "One")])
+    view = MenuView()
+    note = "shows the whole picture; black bars on the sides"
+    long_note = note + " and a great many more words than any panel on this screen can hold"
+    footer_font = view._fonts_for(1.0)[2]
+
+    view.draw(surface, "TITLE", model, top=120, description=note)
+    assert view.description_width == footer_font.size(note)[0], "the short note was cut"
+
+    raw = footer_font.size(long_note)[0]
+    view.draw(surface, "TITLE", model, top=120, description=long_note)
+    assert view.description_width < raw, "the long note was not cut"
+    assert view.description_width <= surface.get_width() - 24, "the cut note still spills"
+
+
+def test_the_description_fitted_the_same_way_in_a_small_window() -> None:
+    """The limit is the *screen's*, not the panel's: the panel is sized
+    partly from the description, so fitting it to the panel would be
+    fitting it to a number that depends on it.
+    """
+    small = pygame.Surface((400, 320))
+    model = MenuModel([MenuItem("one", "One")])
+    view = MenuView()
+    view.set_surface(small)
+    long_note = "A much longer description that wraps across several lines of text. " * 3
+
+    panel = view.draw(small, "TITLE", model, top=120, description=long_note)
+
+    assert view.description_width <= small.get_width() - 24
+    assert panel.width <= small.get_width()

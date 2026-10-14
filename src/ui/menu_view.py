@@ -33,6 +33,8 @@ class MenuView:
         # it asks for the row rects.
         self._scroll_rail: pygame.Rect | None = None
         self._scroll_thumb: pygame.Rect | None = None
+        # The description's width after being fitted, from the last draw.
+        self._description_width = 0
         # Rendered-text cache. One .render() per frame per item allocates a
         # Surface and triggers GC, which shows up as micro-freezes at 60fps.
         # Keyed by (font id, text, colour); invalidated on selection change.
@@ -69,6 +71,17 @@ class MenuView:
         and "how far in" in one shape.
         """
         return self._scroll_thumb
+
+    @property
+    def description_width(self) -> int:
+        """How wide the description was drawn, after being fitted.
+
+        The description is the one line of prose that can outgrow its
+        panel, and this is the width it was *given* rather than the
+        one it asked for -- which is the number that says whether a
+        note was cut.
+        """
+        return self._description_width
 
     def set_scale(self, scale: float) -> None:
         """Set the UI scale, discarding caches only when it really changed.
@@ -218,11 +231,25 @@ class MenuView:
             for offset in range(len(painted))
         ]
         footer_surfaces = [self._render_cached(footer_font, text, TEXT_WARN) for text in footers]
-        description_surface = (
-            self._render_cached(footer_font, description, TEXT_MUTED) if description else None
-        )
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
+        # The description is fitted before the panel is measured, and to
+        # the widest the panel can be rather than to the panel: the panel
+        # is sized partly from the description, so fitting it to the
+        # panel would be fitting it to a number that depends on it.
+        description_surface = (
+            self._fit_text(
+                footer_font,
+                description,
+                TEXT_MUTED,
+                surface.get_width() - metrics.margin * 2 - padding * 2,
+            )
+            if description
+            else None
+        )
+        self._description_width = (
+            description_surface.get_width() if description_surface is not None else 0
+        )
         label_width = max(
             [rendered.get_width() for rendered in label_surfaces if rendered]
             + [title_surface.get_width()]
@@ -386,6 +413,45 @@ class MenuView:
             cached = font.render(text, True, color)
             self._text_cache[key] = cached
         return cached
+
+    def _fit_text(
+        self,
+        font: pygame.font.Font,
+        text: str,
+        color: tuple[int, int, int],
+        max_width: int,
+    ) -> pygame.Surface:
+        """Render ``text`` no wider than ``max_width``, cutting with a marker.
+
+        The description is free-form prose and the panel is sized to
+        everything else, so a long note is the one thing that can
+        outgrow it: measured, 190 characters render 1158px wide
+        against a 616px panel, and the centred text spills out over
+        both sides.
+
+        Cut rather than wrapped, because the band's height is
+        reserved as a single line -- wrapping would make the panel's
+        height a function of the note's length, which is exactly the
+        reflow a scrolling list is meant not to have.
+
+        Cached on the text that was drawn, so a cut note costs one
+        measurement the first time and nothing after.
+        """
+        surface = self._render_cached(font, text, color)
+        if surface.get_width() <= max_width:
+            return surface
+        # Binary search for the longest prefix that fits with the marker
+        # on the end: linear trimming re-measures a whole paragraph's
+        # worth of characters when one will do.
+        low, high = 0, len(text)
+        marker = "…"
+        while low < high:
+            middle = (low + high + 1) // 2
+            if font.size(text[:middle] + marker)[0] <= max_width:
+                low = middle
+            else:
+                high = middle - 1
+        return self._render_cached(font, text[:low].rstrip() + marker, color)
 
     def _fonts_for(self, scale: float) -> tuple[pygame.font.Font, ...]:
         """Title, item and footer fonts for a scale, built once per scale.
