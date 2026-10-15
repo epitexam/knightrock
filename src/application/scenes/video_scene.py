@@ -38,7 +38,7 @@ from src.application.scenes.option_screen import Option, OptionScreen
 from src.application.settings_store import UserSettings
 from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, letterbox
+from src.core.display.letterbox import FitPolicy, density_for, picture
 from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Resolution, ResolutionReason, Topology
 from src.core.input.event_router import RoutedInput
@@ -317,14 +317,28 @@ class VideoScene(Scene):
         """What the game derived from the window, so the player can see it.
 
         The information the resolution row used to withhold by showing a number
-        the game was not using. Two facts, both derived and neither stored: how
-        big the picture is inside the window, and how many pixels a world unit
-        gets there.
+        the game was not using. Three facts, all derived and none stored: how big
+        the picture is, how many pixels a world unit gets there, and whether
+        anything around it is a bar.
+
+        Derived through :func:`picture` **with the policy in force**, which is the
+        whole of this fix: it used to call ``letterbox(..., pixel_perfect=)`` and
+        so described the picture under *bars* whatever the player had selected.
+        Under zoom -- which fills the window and crops the edges -- a window of
+        any other shape than the framing's was therefore reported with bars it did
+        not have, at a size it was not drawn at. A read-out that does not read out
+        is the same defect as the row that showed a number the game was not using,
+        which is what this line replaced.
+
+        The presentation is not asked, and that is deliberate rather than a
+        shortcut: it computes this from the window size and the same policy, so
+        the two agree by construction, and a pure function of two settings can be
+        read without a window existing.
         """
-        size = self._window_size()
-        rect = letterbox(size, DEFAULT_FRAMING, pixel_perfect=self.game.settings.pixel_perfect)
-        bars = "" if rect.size == tuple(size) else " + bars"
-        return f"{rect.width}x{rect.height} at {rect.width / DEFAULT_FRAMING.width:.2f}x{bars}"
+        fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.settings.fit)
+        density = density_for(fitted.target.size, DEFAULT_FRAMING)
+        bars = "" if fitted.covered else " + bars"
+        return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
 
     def _vsync_label(self) -> str:
         rate = self._screen_refresh_rate()

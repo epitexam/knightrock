@@ -76,6 +76,9 @@ class Game:
         for name, value in SDL_HINTS.items():
             os.environ[name] = value
         self.stage: Stage | None = None
+        #: The size the window was last built at, so SDL's own announcement of
+        #: it can be told from a drag. See :meth:`_forget_the_window_preference`.
+        self._built_window_size: tuple[int, int] | None = None
         self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
@@ -121,6 +124,10 @@ class Game:
         #: the loop owns, which is why there is exactly one.
         self._notice: tuple[str, ...] = ()
         self._notice_ttl = 0.0
+        #: The notice this module put up about the window's placement, so it can
+        #: take it back when a later rebuild does land. See
+        #: :meth:`_say_where_the_window_landed`.
+        self._window_notice: tuple[str, ...] = ()
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -224,21 +231,89 @@ class Game:
             )
         return self.ui
 
+    def _forget_the_window_preference(self) -> None:
+        """A drag is the player's last word: stop the menu's stored size overriding it.
+
+        The menu says it plainly -- "a normal window; drag it, and its size is
+        remembered" -- and it used to be false. Nothing ever wrote the geometry a
+        drag produced, so the preference the player had *chosen earlier* went on
+        overriding them: pick 1600x900, drag the window to 1200x800, toggle VSync,
+        and the window snapped back to 1600x900. Every setting that touched the
+        window was a way to throw away their own last word.
+
+        **What is remembered is the choice, not the measurement.** The stored
+        size goes back to ``None``, which now means "follow the window" rather
+        than "open as large as fits" -- see :meth:`_window_spec`. That is what
+        makes the file stop being a description of the machine: it records that
+        the player stopped choosing a size, not how big their panel happened to
+        be the day the window moved. A file that grew a width on every launch
+        would describe the hardware, and the first launch on another machine
+        would be a lie the next one had to be rewritten around.
+
+        Ignored for a resize the game itself asked for. SDL announces its own
+        ``set_mode`` as a ``VIDEORESIZE``, and treating that as a drag would
+        clear the preference the menu had just set, one event after applying it.
+        Windowed only: a borderless or fullscreen window is sized by the display
+        and is not the player's to move.
+        """
+        if self.stage is None or self.settings.display is not DisplayMode.WINDOW:
+            return
+        if self.stage.size == self._built_window_size:
+            return  # SDL announcing the window we just built, not a drag.
+        if self.settings.window_size is None:
+            return  # Already following the window: nothing to forget.
+        logger.info(
+            "The window moved to %s; the stored window size no longer applies", self.stage.size
+        )
+        self.settings = self.settings.with_video(window_size=None, window_position=None)
+        self._persist_settings()
+
     def _window_spec(self) -> WindowSpec:
         """The window the settings currently ask for.
 
         The monitor is passed as its index into the topology the settings' name
         resolved against, and the stage validates it before it reaches
         ``set_mode``.
+
+        A windowed size the player has not chosen is the window's *own* size.
+        That is the one place the two readings of "no preference" meet: with no
+        size in the file, a rebuild used to re-open the window as large as the
+        frame allowed, so any display setting undone a drag. Keeping the live
+        geometry instead means the file never has to describe the window, and the
+        window still survives every rebuild after a drag.
         """
         return WindowSpec(
             mode=self.settings.display,
             monitor=self._monitor().index,
             vsync=self.settings.vsync,
-            size=self.settings.window_size,
+            size=self._asked_window_size(),
             position=self.settings.window_position,
             fullscreen_mode=self.settings.fullscreen_mode,
         )
+
+    def _asked_window_size(self) -> tuple[int, int] | None:
+        """The size to ask for, and the fallback that follows the player.
+
+        Three readings, in order:
+
+        - a size the player chose is asked for as it stands;
+        - otherwise, a rebuild of a window that is *already* windowed keeps the
+          size the player has it at, which is what makes a drag survive the next
+          display setting rather than being undone by it;
+        - otherwise the stage asks for itself, and a first launch gets
+          ``opening_size`` -- as does a change of mode, where the player has just
+          asked for a different kind of window and the honest size is the one that
+          fits the panel rather than the one the old window happened to be.
+        """
+        if self.settings.window_size is not None:
+            return self.settings.window_size
+        if (
+            self.stage is not None
+            and self.settings.display is DisplayMode.WINDOW
+            and self.stage.spec.mode is DisplayMode.WINDOW
+        ):
+            return self.stage.size
+        return None
 
     def _resolve_display_settings(self) -> None:
         """Turn ``AUTO`` into a mode the window can be built from.
@@ -289,6 +364,7 @@ class Game:
         does, rather than half of it.
         """
         self.stage = Stage(self._window_spec(), self._monitor())
+        self._built_window_size = self.stage.size
         # The window exists, so the picture can be drawn at its size: the target
         # is the window's fitted rectangle and the density is read back off it.
         self.presentation = Presentation(
@@ -297,6 +373,10 @@ class Game:
             fit=self._fit_policy(),
             convert=True,
         )
+        # And the launch is checked too, not only the changes: measured, a window
+        # opened on the panel the player asked for can land on the other one, and
+        # the first moment the player could be told is the one they see it.
+        self._say_where_the_window_landed()
 
     def _fit_policy(self) -> FitPolicy:
         """The picture's fit, with the older whole-pixel flag folded in.
@@ -344,10 +424,64 @@ class Game:
         assert self.stage is not None
         assert self.presentation is not None
         self.stage.rebuild(self._window_spec(), self._monitor())
+        self._built_window_size = self.stage.size
         self.presentation.retarget(self.stage.surface)
         self._invalidate_assets()
         self.scene_manager.set_surface(self.presentation.surface)
         self.scene_manager.set_ui_scale(self.ui_scale)
+        self._say_where_the_window_landed()
+
+    def _say_where_the_window_landed(self) -> None:
+        """Tell the player when the window is not on the screen they asked for.
+
+        The window manager has the last word on placement and does not always
+        give it to us: measured, a window asked for the primary panel on this
+        machine's two-display desk stayed on the other one, clamped to its left
+        edge, while ``set_mode`` reported success and the settings file kept the
+        screen the player had chosen. The video menu then showed that screen as
+        selected, and the game was somewhere else -- the exact "it changed the
+        label and nothing else" this subsystem is supposed to have closed.
+
+        So the check the game can actually make -- *which panel is the window on*
+        -- is made after every rebuild, and a mismatch is announced. Not an
+        error: some window managers simply refuse, and the player can move the
+        window by hand. What must not happen is the game pretending it moved.
+
+        Announced **until it stops being true**: the notice is withdrawn on the
+        first rebuild that does land, because a warning about the last failure is
+        a lie about the present one.
+        """
+        if self.stage is None:
+            return
+        try:
+            position = tuple(pygame.display.get_window_position())
+        except pygame.error:
+            return
+        wanted = self.stage.monitor
+        if Stage.on_monitor(wanted, position):  # type: ignore[arg-type]
+            self._withdraw_the_window_notice()
+            return
+        topology = self.topology()
+        landed = topology.nearest(position)  # type: ignore[arg-type]
+        label = topology.label_for(landed)
+        logger.info("The window is on %s rather than the requested %s", label, wanted.name)
+        self._window_notice = (
+            f"The window stayed on {label}.",
+            f"{wanted.name or 'That screen'} could not be used.",
+        )
+        if self._notice != self._window_notice:
+            self.notice(*self._window_notice)
+
+    def _withdraw_the_window_notice(self) -> None:
+        """Take back this module's own notice, and only this module's.
+
+        The notice channel is shared, so a placement that succeeds must not clear
+        a message about a display that was plugged in -- and one that fails must
+        not leave its warning standing over a later, successful rebuild.
+        """
+        if self._window_notice and self._notice == self._window_notice:
+            self._notice = ()
+        self._window_notice = ()
 
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change actually touches.
@@ -683,6 +817,7 @@ class Game:
                 # setting change, which is why it is one method. SDL also
                 # announces this during an internal set_mode(), and recomputing
                 # an unchanged size is a no-op.
+                self._forget_the_window_preference()
                 self._retarget()
                 continue
 
@@ -703,6 +838,9 @@ class Game:
                 del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 
+            elif not self._is_a_real_pointer_move(event):
+                continue
+
             self.scene_manager.handle_event(self._to_target_coordinates(event))
 
     #: Pointer events whose position the interface hit-tests against.
@@ -715,6 +853,27 @@ class Game:
     )
     #: The subset that *acts*. A press on a letterbox bar is a press on nothing.
     _POINTER_PRESSES = frozenset({pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP})
+
+    @staticmethod
+    def _is_a_real_pointer_move(event: pygame.event.Event) -> bool:
+        """Whether this is the pointer moving, or the platform re-reporting it.
+
+        A window rebuilt -- which is what every display setting does -- makes SDL
+        emit a ``MOUSEMOTION`` with ``rel == (0, 0)``: the pointer did not move,
+        the window under it did. That is not a gesture, and routing it as one
+        moved the keyboard's selection: measured, the focus sat on "Display mode",
+        the player changed the display mode, and the focus came back as
+        "Back" -- because the menu takes its selection from the row under the
+        pointer, and the pointer was somewhere over the panel. The next press
+        closed the menu, or on a neighbouring row reset their video settings.
+
+        A real move always carries a delta, which is the only thing that
+        distinguishes the two here: there is no "moved to" event, and comparing
+        positions would say a pointer that did move and returned is idle.
+        """
+        if event.type != pygame.MOUSEMOTION:
+            return True
+        return tuple(getattr(event, "rel", (0, 0))) != (0, 0)
 
     def _to_target_coordinates(self, event: pygame.event.Event) -> pygame.event.Event | None:
         """Rewrite a pointer event's position into render-target coordinates.

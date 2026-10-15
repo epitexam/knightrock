@@ -31,7 +31,8 @@ import pytest
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
-from src.core.display.letterbox import FitPolicy
+from src.core.display.framing import DEFAULT_FRAMING
+from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
@@ -597,6 +598,38 @@ def test_a_confirm_steps_a_list_row_like_the_right_key(action: str) -> None:
     _press(by_right, InputAction.UI_RIGHT)
 
     assert by_confirm.game.settings == by_right.game.settings
+
+
+def test_the_window_read_out_describes_the_picture_that_is_drawn() -> None:
+    """The read-out must follow the policy in force, not describe bars forever.
+
+    It used to call ``letterbox(..., pixel_perfect=)``, so it described the
+    picture under *bars* whatever the player had selected. Under zoom -- which
+    fills the window and crops the edges -- a window of any other shape than the
+    framing's was reported with bars it did not have, at a size nothing was drawn
+    at: a read-out that does not read out, which is the same defect as the
+    resolution row it replaced.
+
+    Each policy therefore has to agree with the picture it produces, and the
+    window chosen here is deliberately not the framing's shape, because on a 16:9
+    window all three policies look alike and the check would prove nothing.
+    """
+    window = (1440, 900)  # 16:10, deliberately not the framing's 16:9
+    scene = _drawn()
+    scene.game.presentation.window_size = window
+
+    for policy in FitPolicy:
+        scene.game.settings = scene.game.settings.with_video(fit=policy)
+        scene._rebuild()
+        fitted = picture(window, DEFAULT_FRAMING, policy)
+        row = _row(scene, "info")
+
+        assert scene.model.items[row].value.startswith(
+            f"{fitted.target.width}x{fitted.target.height}"
+        ), f"{policy.value} is not described by the read-out"
+        assert ("+ bars" in scene.model.items[row].value) is not fitted.covered, (
+            f"{policy.value} reports bars the picture does not have"
+        )
 
 
 def test_the_window_read_out_can_never_be_focused() -> None:

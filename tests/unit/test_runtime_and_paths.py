@@ -13,8 +13,8 @@ from src.application.settings_store import UserSettings
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.mode import DisplayMode
-from src.core.display.monitors import opening_size
-from src.core.display.stage import Stage, WindowSpec
+from src.core.display.monitors import centre_on, opening_size
+from src.core.display.stage import PLACE_ATTEMPTS, TITLE_BAR_KEEP, Stage, WindowSpec
 from src.core.display.viewport import Viewport
 from src.core.game import Game
 from src.core.level.level_manager import LevelManager, UnknownLevelError
@@ -307,6 +307,317 @@ def _panel(width: int, height: int):
     from src.core.display.monitors import Monitor
 
     return Monitor(index=0, name="", bounds=(0, 0, width, height), usable=(0, 0, width, height))
+
+
+class _RecordingWindow:
+    """A window that goes where it is told, and remembers being asked to.
+
+    Stands in for the ``pygame.Window`` handle in the placement tests, because
+    what those are about is the *request*: which modes make one, and what it says.
+    A real handle cannot be steered, and what happens when one refuses is the
+    next test, which is why the setter is the seam rather than a ``Mock``: the
+    stage sets ``position`` and nothing else on the handle it places.
+    """
+
+    def __init__(self) -> None:
+        # ``asked`` is created last, so the initial position is set directly and
+        # only the stage's requests are recorded.
+        self.position: tuple[int, int] = (0, 0)
+        self.minimum_size: tuple[int, int] | None = None
+        self.asked: list[tuple[int, int]] = []
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "position" and "asked" in self.__dict__:
+            self.asked.append(value)  # type: ignore[arg-type]
+        object.__setattr__(self, name, value)
+
+
+def test_a_refused_window_size_is_asked_for_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first ``set_mode`` after a flag change is dropped; the second is not.
+
+    Measured on the development machine: switching from borderless to windowed and
+    picking a size left the window the size of the player's desktop, with
+    ``Requested window size: (1600, 900) / New window size: (2560, 1440)`` on
+    stderr and nothing else. The stage read the granted size back -- it had always
+    done that -- and then believed it.
+
+    So the platform is simulated here as the one measured: the first request comes
+    back at a different size than the one asked for and only the second is
+    honoured. A stage that asks once ends up on the wrong size, and the assertion
+    is on ``stage.size`` because that is the size the player would have had.
+    """
+    monitor = _panel(1920, 1080)
+    asked: list[tuple[int, int]] = []
+
+    def refuses_the_first_request(size, flags=0, depth=0, display=0, vsync=0):
+        # A plain surface rather than a real window: the dummy video driver in CI
+        # has an opinion of its own about sizes -- it hands back the desktop's
+        # whatever is asked -- and a test about the game re-asking must not be
+        # able to pass or fail on that.
+        asked.append(size)
+        granted = (1280, 1024) if len(asked) == 1 else size
+        return pygame.Surface(granted)
+
+    monkeypatch.setattr(pygame.display, "set_mode", refuses_the_first_request)
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (0, 0))
+    window = _RecordingWindow()
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: window))
+
+    stage = Stage(WindowSpec(mode=DisplayMode.WINDOW), monitor)
+
+    assert len(asked) >= 2, "a refused size was accepted as if it had been honoured"
+    assert stage.size == opening_size(monitor)
+
+
+def test_a_borderless_window_is_placed_and_not_only_a_windowed_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Borderless is a window, so a change of screen has to move it.
+
+    ``set_mode``'s display index does not move a window that already exists --
+    measured, twice in a row, the window stayed on the other display -- and the
+    stage only ever placed a *windowed* one. So picking another screen from the
+    video menu changed the label, changed the settings file, and left the game on
+    the panel the player had just said no to: a row that answers and does nothing.
+
+    ``FULLSCREEN | NOFRAME`` is the case this is about: measured at 1600x900 it is
+    still a real, positioned, draggable window. Exclusive fullscreen is left alone
+    and the test says so too -- a request SDL refuses on purpose is not a
+    placement the game should keep re-issuing.
+    """
+    monitor = _panel(1920, 1080)
+
+    for mode in (DisplayMode.WINDOW, DisplayMode.BORDERLESS):
+        window = _RecordingWindow()
+        monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda handle=window: handle))
+        monkeypatch.setattr(pygame.display, "get_window_position", lambda: (0, 0))
+
+        stage = Stage(WindowSpec(mode=mode), monitor)
+
+        assert window.asked, f"{mode.value} is left to the WM, so a screen change cannot move it"
+        assert window.asked[0] == centre_on(monitor, stage.size), (
+            "the window is asked for the middle of the panel it opens on"
+        )
+
+    exclusive = _RecordingWindow()
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: exclusive))
+    Stage(WindowSpec(mode=DisplayMode.FULLSCREEN), monitor)
+    assert exclusive.asked == [], "a real fullscreen window is placed by SDL, not by us"
+
+
+def test_a_remembered_window_position_is_honoured_and_clamped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Where the player left the window is where it goes, as long as it can be reached.
+
+    A remembered position is clamped into the usable area rather than dropped: a
+    window on a screen that is no longer attached cannot be dragged back, and the
+    player would be left with a game they cannot get to. The clamp is the
+    difference between a window that reopens where it was and one that reopens
+    off the desktop entirely.
+    """
+    from src.core.display.monitors import fit_position
+
+    monitor = _panel(1920, 1080)
+    window = _RecordingWindow()
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: window))
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (0, 0))
+
+    remembered = (-500, 4000)
+    stage = Stage(WindowSpec(mode=DisplayMode.WINDOW, position=remembered), monitor)
+
+    assert window.asked[0] == fit_position(remembered, stage.size, monitor)
+    assert Stage.on_monitor(monitor, window.asked[0]), (
+        "a remembered position is brought back onto the panel it cannot leave"
+    )
+
+
+def test_a_window_that_will_not_move_is_not_fought(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refused placement costs the same number of requests, whatever it costs.
+
+    Measured against a window manager that keeps every window inside one panel: the
+    game asked for another, got the same position back three times, and the window
+    stayed where it was. The stage stops after a fixed number of asks -- the player
+    is not waiting on a window manager -- and the runtime says so on screen, which
+    is the other half of the claim and the half the player needs.
+    """
+    monitor = _panel(1920, 1080)
+
+    class _StubbornWindow(_RecordingWindow):
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "position" and "asked" in self.__dict__:
+                self.asked.append(value)  # type: ignore[arg-type]
+                return  # the platform refuses to move the window
+            object.__setattr__(self, name, value)
+
+    window = _StubbornWindow()
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: window))
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (-9000, -9000))
+
+    Stage(WindowSpec(mode=DisplayMode.WINDOW), monitor)
+
+    assert len(window.asked) == PLACE_ATTEMPTS, "the retries must be bounded"
+
+
+def test_the_window_is_on_the_monitor_it_was_asked_for() -> None:
+    """``on_monitor`` is what both the placement and the notice are made of.
+
+    A pure function of bounds and a coordinate, so the window manager's frame --
+    which shifts every position it reports by its own decoration -- is what the
+    slack is for. Without it, a window that had arrived exactly on the origin of a
+    panel would be asked for three times and then reported as having failed.
+    """
+    from src.core.display.monitors import Monitor
+
+    monitor = Monitor(
+        index=1,
+        name="DP-2",
+        bounds=(1920, 0, 2560, 1440),
+        usable=(1920, 0, 2560, 1400),
+    )
+
+    assert Stage.on_monitor(monitor, (1920, 0))
+    assert Stage.on_monitor(monitor, (4000, 1400)), "the far corner is still on the panel"
+    assert Stage.on_monitor(monitor, (1920 - TITLE_BAR_KEEP[0], -TITLE_BAR_KEEP[1])), (
+        "a window manager's frame offsets the position it reports"
+    )
+    assert not Stage.on_monitor(monitor, (0, 0)), "the other monitor is not this one"
+    assert not Stage.on_monitor(monitor, (1920, 1440)), "below the panel is not on it"
+
+
+def test_a_resize_no_longer_undoes_the_players_own_drag(tmp_path: Path) -> None:
+    """A drag is the player's last word, and a settings change must not overrule it.
+
+    Measured: pick 1600x900 from the video menu, drag the window to 1200x800, then
+    toggle VSync -- and the window snapped back to 1600x900. The menu promised "a
+    normal window; drag it, and its size is remembered" while nothing ever wrote
+    the geometry a drag produced, so an earlier preference overruled the player on
+    the next rebuild.
+
+    What is forgotten is the *choice*, not the measurement: the stored size goes
+    back to ``None``, which now means "follow the window". The file therefore says
+    the player stopped choosing a size, rather than carrying a number that
+    describes their panel -- which is the rule
+    :func:`test_a_window_that_moves_does_not_rewrite_the_settings` is about.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=Path(tmp_path / "settings.json"),
+    )
+    game._initialize()
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW, window_size=(1200, 800)))
+    assert game.settings.window_size == (1200, 800)
+
+    dragged = (1000, 700)
+    game.stage.surface = pygame.display.set_mode(dragged, pygame.RESIZABLE)  # type: ignore[assignment]
+    game._built_window_size = (1600, 1200)  # the window the game built, not the one dragged
+    pygame.event.post(
+        pygame.event.Event(pygame.VIDEORESIZE, w=dragged[0], h=dragged[1], size=dragged)
+    )
+    game._handle_events()
+
+    assert game.settings.window_size is None, "the drag is the player choosing to follow the window"
+    assert game._asked_window_size() == dragged, "the next rebuild asks for what the player has"
+
+    game.apply_settings(replace(game.settings, vsync=not game.settings.vsync))
+    assert game.stage.size == dragged, "a display setting undid the player's drag"
+
+
+def test_the_own_resize_of_a_rebuild_is_not_read_as_a_drag(tmp_path: Path) -> None:
+    """SDL announces the game's own ``set_mode`` as a resize; that is not a drag.
+
+    Read as one, the preference the menu had just set would be cleared one event
+    after being applied, so choosing a size from the list would be undone by the
+    window opening at it.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=Path(tmp_path / "settings.json"),
+    )
+    game._initialize()
+    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW, window_size=(1200, 800)))
+
+    size = game.stage.size
+    pygame.event.post(pygame.event.Event(pygame.VIDEORESIZE, w=size[0], h=size[1], size=size))
+    game._handle_events()
+
+    assert game.settings.window_size == (1200, 800)
+
+
+def test_a_window_that_will_not_move_is_told_so_and_then_not(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The player is told when the window did not go where they asked, and when it does.
+
+    Measured on a two-display desk: a window asked for the panel it was not on
+    stays there while ``set_mode`` reports success and the settings file keeps the
+    screen the player chose. Silent, the menu says one thing and the desktop shows
+    another -- which is the failure this whole rework is about.
+
+    The message is withdrawn on the first rebuild that does land, because a warning
+    about a failure that has stopped being true is a lie about the present one.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=Path(tmp_path / "settings.json"),
+    )
+    game._initialize()
+    monitor = game.stage.monitor  # type: ignore[union-attr]
+
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (-9000, -9000))
+    game._say_where_the_window_landed()
+    told = game.notice_lines
+    assert told, "a window left on the wrong screen is silent about it"
+
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: monitor.bounds[:2])
+    game._say_where_the_window_landed()
+    assert not game.notice_lines, "the warning outlived the failure it described"
+
+
+def test_a_window_notice_does_not_clear_someone_elses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The notice channel is shared; a placement that succeeds owns nothing to clear.
+
+    ``notice`` also carries "a display was plugged in" and the dead-key warning, so
+    withdrawing this module's own message has to be able to tell the two apart.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=Path(tmp_path / "settings.json"),
+    )
+    game._initialize()
+    monitor = game.stage.monitor  # type: ignore[union-attr]
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: monitor.bounds[:2])
+
+    game.notice("That screen is no longer connected.")
+
+    game._say_where_the_window_landed()
+    assert game.notice_lines == ("That screen is no longer connected.",)
+
+
+def test_a_window_rebuilt_reports_the_pointer_where_it_is_not_a_gesture() -> None:
+    """The focus must not jump to whatever the mouse happens to be over.
+
+    A window rebuilt -- which is what every display setting does -- makes SDL emit
+    a ``MOUSEMOTION`` with no relative movement: the pointer did not move, the
+    window under it did. Routed as a gesture it takes the menu's selection with
+    it, because a list reads its focused row from the row under the pointer.
+    Measured: the focus sat on "Display mode", the player changed the display
+    mode, and the focus came back as "Back" -- the next press closed the menu, and
+    one row further down it was "Reset video settings".
+    """
+    stationary = pygame.event.Event(pygame.MOUSEMOTION, pos=(10, 20), rel=(0, 0))
+    moved = pygame.event.Event(pygame.MOUSEMOTION, pos=(30, 40), rel=(20, 20))
+    clicked = pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=(10, 20), button=1)
+
+    assert not Game._is_a_real_pointer_move(stationary), (
+        "a window moving under the pointer is not the player moving it"
+    )
+    assert Game._is_a_real_pointer_move(moved)
+    assert Game._is_a_real_pointer_move(clicked), (
+        "a press is a gesture whatever its relative motion"
+    )
 
 
 def test_borderless_and_fullscreen_are_not_the_same_request(tmp_path: Path) -> None:

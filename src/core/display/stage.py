@@ -54,6 +54,26 @@ logger = logging.getLogger(__name__)
 #: player to be able to grab it. Used by the position clamp.
 TITLE_BAR_KEEP = (64, 32)
 
+#: How many times the window is asked for the size it was given before the
+#: refusal is believed. One is not enough: measured, the first ``set_mode`` that
+#: changes the flags is dropped by SDL and the second is honoured, and the same
+#: alternation is visible on a display change -- one of the two requests lands
+#: per window recreation, so a request that checks "did it take?" and gives up is
+#: a coin toss. Two asks and a check are cheap; a window at the wrong size is not.
+SIZE_ATTEMPTS = 2
+
+#: How many times a placement is re-issued before the window is believed to be
+#: where the player asked for. Same measurement as :data:`SIZE_ATTEMPTS`, applied
+#: to the position: the platform re-places a window after a refused size, so the
+#: one request made right after ``set_mode`` can be the one that is lost.
+PLACE_ATTEMPTS = 3
+
+#: Milliseconds to give the window manager between two placement requests.
+#: Measured on the development machine: a move is applied asynchronously, and
+#: three moves issued in the same instant are read back from before all three --
+#: the game sees its own previous position and concludes the platform refused.
+PLACE_RETRY_WAIT_MS = 30
+
 
 @dataclass(frozen=True)
 class WindowSpec:
@@ -88,17 +108,24 @@ class WindowSpec:
 class Stage:
     """The OS window the game is presented in.
 
-    Two rules earn their keep here:
+    Three rules earn their keep here, and the third is the one that was missing:
 
     * **The surface is measured, never assumed.** The size actually granted is
-      read back off the surface rather than trusted from the request, because
-      with high-DPI windows the two differ and every layout downstream would be
-      quietly wrong.
-    * **Placement is computed from real display bounds, or handed to SDL.**
-      Both, in that order. Centring needs the monitor's origin on the virtual
-      desktop, which :mod:`src.core.display.sdl_probe` now supplies; when it
-      cannot, the position is left to ``WINDOWPOS_CENTERED`` rather than guessed
-      at, because a wrong guess puts the window on the other monitor.
+      read back off the surface rather than trusted from the request, because with
+      high-DPI windows the two differ and every layout downstream would be quietly
+      wrong.
+    * **Placement is computed from real display bounds.** Centring needs the
+      monitor's origin on the virtual desktop, which
+      :mod:`src.core.display.sdl_probe` supplies; a guess puts the window on the
+      other monitor, which is worse than not placing it at all.
+    * **A request that was not honoured is made again.** Measuring is only half
+      of it. Both ``set_mode`` and the window placement can be accepted by SDL
+      and then dropped by the window manager, and the game is the only thing in
+      the chain that can tell. Measured here: the first ``set_mode`` after a flag
+      change comes back at the desktop's size whatever was asked for, and the
+      display index in it moves a window that already exists exactly never. One
+      request and a shrug is how the video menu learned to change its label and
+      nothing else.
     """
 
     def __init__(self, spec: WindowSpec, monitor: Monitor) -> None:
@@ -125,14 +152,28 @@ class Stage:
         depends on how big the window turned out to be, and ``set_mode`` is what
         tells us that. Placing afterwards means the clamp works against the real
         size rather than the requested one.
+
+        **And the size is asked for more than once when the platform refuses it.**
+        Measured on the development machine: the first ``set_mode`` that changes
+        the flags is dropped -- ``Requested window size: (1600, 900) / New window
+        size: (2560, 1440)`` -- and the second, identical call is honoured. So a
+        player who switched from borderless to windowed and picked a size saw the
+        window stay the size of their desktop, with nothing wrong on screen to
+        explain it. Measuring the granted size and asking again is the whole fix,
+        and it is what "measured, never assumed" has to mean when the assumption
+        can be dropped on the floor.
         """
-        surface = pygame.display.set_mode(
-            self._window_size(spec, monitor),
-            self._flags(spec),
-            0,
-            self._display_index(spec, monitor),
-            1 if spec.vsync else 0,
-        )
+        asked = self._window_size(spec, monitor)
+        surface = self._set_mode(spec, monitor, asked)
+        for _ in range(SIZE_ATTEMPTS - 1):
+            if surface.get_size() == asked:
+                break
+            logger.info(
+                "The platform granted %s instead of %s; asking again",
+                surface.get_size(),
+                asked,
+            )
+            surface = self._set_mode(spec, monitor, asked)
         # Assigned before either step below, because both read ``self.size`` off
         # it and the granted size is what placement clamps against. Assigning it
         # after would work until something replaced the display surface behind
@@ -141,6 +182,24 @@ class Stage:
         self.surface = surface
         self._place(spec, monitor)
         self._limit_size()
+        return surface
+
+    def _set_mode(
+        self, spec: WindowSpec, monitor: Monitor, size: tuple[int, int]
+    ) -> pygame.Surface:
+        """One ``set_mode`` for this specification, at ``size``.
+
+        Assigned to ``self.surface`` as it goes, so that every caller between this
+        and :meth:`_place` sees the current one rather than the previous frame's.
+        """
+        surface = pygame.display.set_mode(
+            size,
+            self._flags(spec),
+            0,
+            self._display_index(spec, monitor),
+            1 if spec.vsync else 0,
+        )
+        self.surface = surface
         return surface
 
     @staticmethod
@@ -267,26 +326,120 @@ class Stage:
         monitor that is no longer attached cannot be dragged back, and the
         player is left with a game they cannot get to.
 
-        Only window mode is placed at all. SDL puts a fullscreen window on the
-        display itself and refuses to move it, so asking is at best a no-op.
+        **Every mode but exclusive fullscreen is placed**, borderless included.
+        Borderless used to be left alone on the grounds that a fullscreen window
+        is placed by SDL, and that is true of ``FULLSCREEN`` and false of
+        ``FULLSCREEN | NOFRAME``: a borderless window is a real window, measured
+        at 1600x900 still positioned and draggable. Leaving it alone had a price:
+        ``set_mode``'s display index does **not** move a window that already
+        exists (measured, twice in a row on the other display), so picking another
+        screen from the menu changed the label, changed nothing else, and left the
+        game on the panel the player had just said no to. A screen the menu
+        cannot move the window to is a row that cannot be acted on.
+
+        The request is then re-issued until the window is on the monitor we asked
+        for. Not the pixels -- a window manager may add its frame to the position
+        it reports -- but the *panel*: the exact figure only the game can check is
+        which screen the window ended up on.
         """
-        if Stage._mode_for(spec) is not DisplayMode.WINDOW:
+        if Stage._mode_for(spec) is DisplayMode.FULLSCREEN:
+            # SDL puts a real fullscreen window on the display itself and refuses
+            # to move it, so asking is at best a no-op.
+            return
+        window = self._window_handle()
+        if window is None:
             return
         granted = self.size
-        try:
-            window = pygame.Window.from_display_module()
-        except pygame.error, AttributeError:
-            # No Window handle in this build. Leave placement to the window
-            # manager, which gets it right more often than a guess would.
-            logger.debug("No Window handle; leaving the window where the WM put it")
-            return
-
-        position: tuple[int, int] | None = None
+        position = centre_on(monitor, granted)
         if spec.position is not None:
             position = fit_position(spec.position, granted, monitor)
+        for attempt in range(PLACE_ATTEMPTS):
+            if attempt:
+                # The wait is only paid when the previous request did not land,
+                # so the common case -- a window that is where it was asked to be
+                # -- costs nothing. Measured: three requests issued back to back
+                # are all dropped by the same window-manager pass, and the fourth
+                # lands 30ms later. A retry that never waits is a retry that never
+                # gets its turn.
+                pygame.time.wait(PLACE_RETRY_WAIT_MS)
+            window.position = position
+            # The window manager applies a move asynchronously and answers the
+            # question below from where the window *was*, so the queue is pumped
+            # before it is asked. Without this a burst of rebuilds reads its own
+            # previous request back and decides the platform refused.
+            pygame.event.pump()
+            if Stage.on_monitor(monitor):
+                return
+        logger.info(
+            "The window did not land on %s (%s); leaving it where the WM put it",
+            monitor.name,
+            self._reported_position(),
+        )
+
+    @staticmethod
+    def on_monitor(monitor: Monitor, position: tuple[int, int] | None = None) -> bool:
+        """Whether the window sits on ``monitor``.
+
+        The window's top-left corner rather than its whole rectangle, because a
+        window larger than the panel is a legitimate thing to ask for and
+        refusing to re-place it would be the game overriding a choice the player
+        can see.
+
+        With :data:`TITLE_BAR_KEEP` of slack **on the top and left only**. A
+        window manager that decorates a window draws the decoration outside the
+        client area, so the position it reports is the one that was asked for
+        moved *up and to the left* by the frame -- 32px on each axis, measured.
+        A check with no slack would re-issue the request three times for a window
+        that had arrived, and then log that it had not; a check with slack on the
+        bottom and right as well would accept a window a whole frame lower than
+        the panel it is supposed to be on.
+
+        ``position`` is read from the platform when not given, and a platform
+        that will not say is believed: :attr:`monitor` bounds the answer to a
+        coordinate the game cannot invent.
+        """
         if position is None:
-            position = centre_on(monitor, granted)
-        window.position = position
+            try:
+                reported: tuple[int, int] = tuple(  # type: ignore[assignment]
+                    pygame.display.get_window_position()
+                )
+            except pygame.error:
+                return True
+            position = reported
+        left, top, width, height = monitor.bounds
+        x, y = position
+        return (
+            left - TITLE_BAR_KEEP[0] <= x < left + width
+            and top - TITLE_BAR_KEEP[1] <= y < top + height
+        )
+
+    @staticmethod
+    def _reported_position() -> tuple[int, int] | str:
+        """Where the platform says the window is, or that it will not say.
+
+        For the log on a placement that failed: a failure that crashes the launch
+        while describing itself is not a failure the player can do anything with.
+        """
+        try:
+            return tuple(pygame.display.get_window_position())  # type: ignore[return-value]
+        except pygame.error:
+            return "unknown"
+
+    @staticmethod
+    def _window_handle() -> pygame.Window | None:
+        """The window behind the display surface, when this build has one.
+
+        Reaching for it is deprecated, and correctly so: ``pygame.display`` and
+        ``pygame.Window`` are two APIs the library intends to separate. The
+        alternative is not doing the thing at all, and the failure mode of a
+        handle that stopped working is a window left where the window manager put
+        it -- worse-looking, not broken.
+        """
+        try:
+            return pygame.Window.from_display_module()
+        except pygame.error, AttributeError:
+            logger.debug("No Window handle; leaving the window where the WM put it")
+            return None
 
     def _limit_size(self) -> None:
         """Refuse a window too small to hold the interface.
@@ -300,9 +453,8 @@ class Stage:
         Best effort. A window manager that refuses the constraint is a cosmetic
         problem, not a reason to fail the launch.
         """
-        try:
-            window = pygame.Window.from_display_module()
-        except pygame.error, AttributeError:
+        window = self._window_handle()
+        if window is None:
             return
         try:
             window.minimum_size = MIN_WINDOW
@@ -316,4 +468,11 @@ class Stage:
         )
 
 
-__all__ = ["Stage", "WindowSpec", "TITLE_BAR_KEEP"]
+__all__ = [
+    "Stage",
+    "WindowSpec",
+    "TITLE_BAR_KEEP",
+    "SIZE_ATTEMPTS",
+    "PLACE_ATTEMPTS",
+    "PLACE_RETRY_WAIT_MS",
+]

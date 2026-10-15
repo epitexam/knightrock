@@ -639,19 +639,29 @@ class GridView:
         shrink-one-character-at-a-time loop re-measured the whole remaining
         string on every iteration, which is quadratic and cost 0.83ms for a
         single long label.
+
+        **The marker is inside the measurement.** The search used to measure the
+        bare prefix, drop a character to leave room, and append an ellipsis it
+        had never measured -- so a label could come back *wider* than the cell it
+        was asked to fit in, measured: 44px against a 40px budget. It only
+        looked right on a machine whose font made the marker narrower than a
+        character; the fallback font is wider, and the label spills.
         """
         if not text or font.size(text)[0] <= max_width:
             return font.render(text, True, color)
+        marker = "…"
         low, high = 0, len(text)
         while low < high:
             middle = (low + high + 1) // 2
-            if font.size(text[:middle])[0] <= max_width:
+            if font.size(text[:middle] + marker)[0] <= max_width:
                 low = middle
             else:
                 high = middle - 1
         if low == 0:
+            # Not even the marker fits. An empty cell is honest; a marker that
+            # overhangs is the defect this search exists to remove.
             return font.render("", True, color)
-        return font.render(f"{text[: low - 1]}…", True, color)
+        return font.render(f"{text[:low].rstrip()}{marker}", True, color)
 
 
 def _centred_x(panel: pygame.Rect, width: int) -> int:

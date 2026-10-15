@@ -900,4 +900,84 @@ ligne de haut — l'enrouler rendrait la hauteur du panneau fonction de la longu
 de la note, qui est exactement le reflow qu'une liste qui défile ne doit pas
 avoir.
 
-Dernière mise à jour : 2026-10-14, branche `fix/remediation`.
+## 17. Ce que la vraie session a cassé, cinquième fois : la fenêtre elle-même
+
+Un joueur a pris la branche en testant : « tout est encore plus bugé qu'avant ».
+Les quatre sections qui suivent sont ce que la recette manuelle a trouvé, mesuré
+sur la même session (X11 sous RDP, deux écrans `rdp-0` 2560×1440 à (1920, 0) et
+`rdp-2 24"` 1920×1080 à (0, 130)). Aucun n'est visible dans la suite de tests :
+les quatre sont des demandes que la plateforme refuse, et personne ne les vérifiait
+après coup.
+
+**Le premier `set_mode` qui change les drapeaux est perdu.** SDL répond
+`Requested window size: (1600, 900) / New window size: (2560, 1440)`, et le second
+appel identique est honoré. Le joueur passait en fenêtré, choisissait une taille,
+et la fenêtre restait celle de son bureau — sans rien à l'écran qui l'explique.
+`Stage` lisait pourtant la taille accordée : il la mesurait, puis y croyait. La
+correction est de **redemander** (`SIZE_ATTEMPTS = 2`), parce que « mesuré, jamais
+supposé » ne veut rien dire quand la supposition peut être posée par terre.
+
+**`set_mode`'s index d'écran ne déplace pas une fenêtre qui existe déjà.** Mesuré
+deux fois de suite : la fenêtre reste sur l'autre écran. Et la ligne « Screen »
+était une ligne morte — le menu affichait le nouvel écran, le fichier l'enregistrait,
+la fenêtre ne bougeait pas. `Stage._place` ne plaçait qu'en mode `WINDOW` ; or
+`FULLSCREEN | NOFRAME` *est* une fenêtre (mesuré à 1600×900 : encore positionnée et
+déplaçable). Elle est donc placée dans les deux modes, et la demande est **répétée
+jusqu'à ce que la fenêtre soit sur le panneau demandé** — la seule figure que le
+jeu peut vérifier, la taille en pixels d'un cadre que le gestionnaire de fenêtres
+décale de 32 px sur chaque axe (`TITLE_BAR_KEEP`).
+
+Quand le gestionnaire de fenêtres refuse malgré tout, le jeu **le dit** :
+« The window stayed on rdp-2 24". / rdp-0 could not be used. » C'est la moitié de
+la régression qui est la sienne : non pas que le déplacement échoue — certains
+gestionnaires refusent, et le joueur peut déplacer la fenêtre à la main — mais que
+le jeu le fasse silencieusement. L'avertissement est **retiré** au premier
+reconstruction qui atterrit, parce qu'un avertissement sur un échec qui n'est plus
+vrai ment sur le présent.
+
+**Un redimensionnement accompli n'est pas une préférence, et rien ne l'écrivait.**
+La ligne du menu disait « a normal window; drag it, and its size is remembered »
+et c'était faux : mesurer la taille 1600×900, glisser la fenêtre à 1200×800, basculer
+le VSync — et la fenêtre revenait à 1600×900. Toute phrase du menu qui rebuild la
+fenêtre était une façon de jeter le dernier mot du joueur. Ce qui est oublié est le
+**choix**, pas la mesure : la taille stockée repart à `None`, qui veut maintenant
+dire « suivre la fenêtre ». Le fichier dit donc que le joueur a cessé de choisir
+une taille, au lieu de porter un nombre qui décrit son panneau — la règle de
+`test_a_window_that_moves_does_not_rewrite_the_settings`. Le redimensionnement que
+SDL annonce pour *son propre* `set_mode` est distingué de celui du joueur par la
+taille à laquelle la fenêtre a été construite.
+
+**Un `MOUSEMOTION` sans mouvement n'est pas un geste.** Une fenêtre recréée — ce que
+fait *chaque* réglage d'affichage — fait émettre par SDL un `MOUSEMOTION` avec
+`rel == (0, 0)` : le pointeur n'a pas bougé, la fenêtre sous lui si. Routé comme un
+geste, il emporte la sélection du menu, parce qu'une liste lit sa ligne active dans
+la ligne sous le pointeur. Mesuré : le focus était sur « Display mode », le joueur
+changeait le mode d'affichage, et le focus revenait sur « Back » — la pression
+suivante fermait le menu, et une ligne plus bas c'était « Reset video settings ».
+C'était déjà vrai avant ce rework ; la branche a triplé les déclencheurs, en
+ajoutant la taille et l'écran à la signature qui rebuild la fenêtre.
+
+Deux défauts sans rapport avec la fenêtre, trouvés le même jour :
+
+- **`GridView._fit` mesurait le préfixe sans le marqueur.** La recherche binaire
+  trouvait le plus long préfixe entrant dans la largeur, retirait un caractère et
+  ajoutait un `…` jamais mesuré — donc une étiquette pouvait revenir *plus large*
+  que sa cellule : 44 px contre un budget de 40. Ça ne se voyait qu'avec une police
+  de repli plus large que la prévue (Consolas absent). `MenuView._fit_text`, écrit
+  le même jour, mesurait correctement ; le même fichier avait les deux.
+- **La ligne « Window » décrivait l'image sous *bars*, quelle que soit la politique.**
+  Sous `zoom`, une fenêtre d'un autre format que le cadrage était annoncée avec des
+  barres qu'elle n'avait pas, à une taille où rien n'était dessiné.
+
+### Ce qui reste à la plateforme
+
+Le gestionnaire de fenêtres de cette session ne connaît qu'un panneau : il borne
+toute fenêtre à celui de `rdp-2` et refuse les positions qui iraient vers `rdp-0`,
+quelle que soit la demande. Le jeu peut poser la demande, la vérifier et dire
+qu'elle a échoué ; il ne peut pas placer une fenêtre sur un écran que le
+gestionnaire ne voit pas. C'est aussi pourquoi §8 mesurait sur une seule session :
+le multi-écran réel reste la seule partie du système qui n'a pas été vue (§8, point 7).
+
+La suite est à **3147 tests**, avec et sans `DEBUG=1`.
+
+Dernière mise à jour : 2026-10-15, branche `fix/remediation`.
