@@ -97,6 +97,11 @@ def _game(
         ui_scale=1.0,
         topology=lambda: topology or DESK,
     )
+    # The screen the window is on, which is what the VSync row reports. Pinned to
+    # the first of the desk rather than asked of the platform: a rate is a fact
+    # about a screen, and a test that took one from the machine would be testing
+    # the machine.
+    game.window_monitor = lambda: (topology or DESK).monitors[0]
 
     def apply_settings(settings: UserSettings) -> None:
         game.settings = settings
@@ -722,6 +727,55 @@ def test_the_vsync_row_carries_no_caveat_when_it_is_off(
 
     assert label.startswith("off")
     assert "not honoured" not in label, f"but there was no request to ignore: {label!r}"
+
+
+def test_the_vsync_rate_is_the_rate_of_the_screen_the_window_is_on() -> None:
+    """The hint on the row is about the window's screen, not the primary's.
+
+    It used to be ``desktop_refresh_rates()[0]``, which is the primary display's
+    rate whatever the window is doing -- so on a two-panel desk a player reading
+    "60 Hz screen" on a window sitting on the 60Hz panel, and the same "60 Hz
+    screen" on a window sitting on the 180Hz one. The number was a claim about a
+    screen the player might not be looking at, and there was nothing in the row
+    to tell them so.
+
+    So the rate is read off the monitor that holds the window, and these are
+    three screens with three rates (180, 60, 144), so a row that reported the
+    primary by accident would be caught rather than coincidentally right.
+    """
+    seen = []
+    for index in (0, 1, 2):
+        game = _game()
+        game.window_monitor = lambda index=index: DESK.monitors[index]
+        game.settings = game.settings.with_video(vsync=True)
+        scene = VideoScene(game)
+        seen.append(scene._vsync_label())
+
+    for index, label in zip((0, 1, 2), seen, strict=True):
+        assert f"{DESK.monitors[index].refresh_rate} Hz" in label, (
+            f"the window is on {DESK.monitors[index].name} at "
+            f"{DESK.monitors[index].refresh_rate}Hz and the row says {label!r}"
+        )
+
+
+def test_the_vsync_rate_is_silent_when_the_windows_screen_is_unknown() -> None:
+    """No screen to name means no rate, rather than the wrong screen's rate.
+
+    This is the choice the other side of the one above: a degraded desktop knows
+    sizes and no origins, so the window's position cannot be mapped to a panel
+    and the primary's rate is a guess. A row with no rate in it is a missing
+    hint; a row with the primary's rate is a fact, and a wrong one, in the same
+    place the player reads the setting.
+    """
+    game = _game()
+    game.window_monitor = lambda: None
+    game.settings = game.settings.with_video(vsync=True)
+    scene = VideoScene(game)
+
+    label = scene._vsync_label()
+
+    assert label.startswith("on"), label
+    assert "Hz" not in label, f"a rate was reported for a screen nobody can name: {label!r}"
 
 
 # --- the debug-only row -----------------------------------------------------

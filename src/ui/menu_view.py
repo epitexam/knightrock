@@ -573,3 +573,19 @@ class MenuView:
         # rows that no longer exist at this scale.
         self._scroll_rail = None
         self._scroll_thumb = None
+        # And the rows themselves, which is the half that is *clicked*. They
+        # were left in place for a long time on the reasoning that the next draw
+        # would replace them a frame later -- which is true, and is also exactly
+        # one frame in which a click is measured against rows that are no longer
+        # where anything is drawn. Measured, the last row of the video menu was
+        # 244px from where it had been drawn.
+        #
+        # The frame the *window* moved is handled by the runtime, which lays the
+        # scenes out before reading the input. This covers the case the runtime
+        # cannot see coming: a change the game performs *while* handling one
+        # input, with a second input already queued behind it in the same frame --
+        # two clicks, the first applying a video setting that rebuilds the window.
+        # An empty rectangle hit-tests to nothing, which is the safe answer: a
+        # click that does nothing is better than one that changes a setting the
+        # player did not click.
+        self._item_rects = []

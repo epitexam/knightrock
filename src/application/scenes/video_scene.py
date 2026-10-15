@@ -36,7 +36,6 @@ from src.application.scene import Scene
 from src.application.scenes import video_options
 from src.application.scenes.option_screen import Option, OptionScreen
 from src.application.settings_store import UserSettings
-from src.core.display.detection import desktop_refresh_rates
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for, picture
 from src.core.display.mode import DisplayMode
@@ -366,10 +365,20 @@ class VideoScene(Scene):
     def _on_off(value: bool) -> str:
         return "on" if value else "off"
 
-    @staticmethod
-    def _screen_refresh_rate() -> int:
-        rates = desktop_refresh_rates()
-        return rates[0] if rates else 0
+    def _screen_refresh_rate(self) -> int:
+        """The refresh rate of the screen the window is *on*, or 0 when nobody can say.
+
+        It used to be the **primary** display's rate, which is a claim about a
+        screen the window may not be on: on a two-panel desk the player reading
+        180Hz on the VSync row while the window sat on the 60Hz panel was reading
+        the wrong number, and one they had no way to tell apart from the right one.
+
+        So it reads the rate off the monitor that holds the window, and says
+        nothing at all when that monitor cannot be established -- a row with no
+        screen in it is a missing hint, where a wrong rate is a fact.
+        """
+        monitor = self.game.window_monitor()
+        return monitor.refresh_rate if monitor is not None else 0
 
     def _vsync_is_active(self) -> bool:
         try:

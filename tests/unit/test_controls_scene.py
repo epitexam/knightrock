@@ -32,6 +32,9 @@ def _game() -> SimpleNamespace:
         # about pacing and scaling, and it keeps the screen-picker row out of a
         # screen-picker-agnostic test.
         topology=lambda: degraded(((2304, 1296),)),
+        # The screen the window is on, which is what the VSync row reports: the
+        # primary's rate would be a claim about a screen the window may not be on.
+        window_monitor=lambda: degraded(((2304, 1296),)).primary,
         # The views are laid out at the preference times the density; a stand-in
         # has to hand them something, and 1.0 keeps the assertions readable.
         ui_scale=1.0,

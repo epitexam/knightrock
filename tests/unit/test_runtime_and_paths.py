@@ -6,11 +6,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import fields, replace
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pygame
 import pytest
 
+from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
@@ -20,6 +22,7 @@ from src.core.display.monitors import centre_on, fit_size, opening_size
 from src.core.display.stage import PLACE_ATTEMPTS, TITLE_BAR_KEEP, Stage, WindowSpec
 from src.core.display.viewport import Viewport
 from src.core.game import Game
+from src.core.input.input_actions import InputAction
 from src.core.level.level_manager import LevelManager, UnknownLevelError
 from src.core.paths import PROJECT_ROOT, resource_path
 
@@ -525,6 +528,64 @@ def test_a_resize_no_longer_undoes_the_players_own_drag(tmp_path: Path) -> None:
     )
 
 
+def test_a_click_after_a_resize_hits_the_row_it_was_aimed_at(tmp_path: Path) -> None:
+    """A click is measured against the geometry it is drawn on, not a former one.
+
+    The conversion and the hit-test read two different things: the pointer goes
+    through the picture in force *now*, while the rows are the ones the last draw
+    produced. After a resize those disagree, and the gap is large -- measured, the
+    last row of the video menu was 244px from where it had been drawn, so a click
+    landed on a neighbour, on nothing, or on the disabled read-out. That is the
+    "the clickable space has moved" report, and it is a wrong row rather than a
+    dead one, which is the worst of the two.
+
+    So the frame in which the window moves lays the scenes out before the input is
+    read. The assertion is that the rows a click is measured against are the rows
+    the frame goes on to draw -- the pointer is aimed nowhere in particular,
+    because the point is not where it lands but that both geometries agree.
+    """
+    game = _game_in_a_window(tmp_path, window_size=(2560, 1440))
+    video = _video_scene(game)
+    frames(game, 2)
+    before = [tuple(rect) for rect in video.view.item_rects]
+
+    # What a pointer event is measured against, at the moment it is dispatched.
+    # Captured there rather than after the frame, which would compare the layout
+    # with itself and pass either way.
+    seen: list[list[pygame.Rect]] = []
+    dispatch = video.handle_routed
+    video.handle_routed = lambda routed: (  # type: ignore[method-assign]
+        seen.append(list(video.view.item_rects)),
+        dispatch(routed),
+    )[1]
+
+    # The window changes under the game and the pointer arrives on the very next
+    # frame. No draw in between: that is the whole point of the ordering.
+    #
+    # A *move*, not a click, and the reason is this test's own reliability: a
+    # click that lands on a value row changes a setting, and a setting like the
+    # scale rebuilds the window -- so the frame would end with a *third*
+    # geometry and the assertion would be about which row the click happened to
+    # find. A move is measured against the very same rectangles and changes
+    # nothing, which leaves the geometry as the only variable. ``rel`` is given
+    # because a move without a delta is the platform re-reporting a pointer that
+    # did not move, and the runtime drops those on purpose.
+    _resize(game, (1920, 1080))
+    pygame.event.post(
+        pygame.event.Event(pygame.MOUSEMOTION, pos=(960, 540), rel=(4, 0), buttons=(0, 0, 0))
+    )
+    game.step()
+
+    assert seen, "the pointer never reached the scene"
+    assert before != [tuple(rect) for rect in video.view.item_rects], (
+        "the resize did not move the layout, so this proves nothing"
+    )
+    assert seen[-1] == list(video.view.item_rects), (
+        "the rows a click is measured against are not the rows the frame drew: the "
+        f"hit-test used {seen[-1][0]} and the frame drew {video.view.item_rects[0]}"
+    )
+
+
 def test_a_snap_is_a_drag_and_forgets_the_chosen_size_the_same_way(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -819,6 +880,47 @@ class FakeWindow:
         self.surface.blit(*args, **kwargs)  # type: ignore[arg-type]
 
 
+def _video_scene(game: Game) -> Any:
+    """The video screen on top of a running game, laid out.
+
+    Driven through the real scene rather than a stub, because the claim is about
+    what a click hits on the screen the player is looking at, and a stub's rows are
+    the test's own invention. The menu's own rows are found by name, because the
+    main menu has a different number of entries depending on whether a save
+    exists -- and pinning two presses would land on "Level select" on one machine
+    and "Options" on another.
+    """
+    from src.application.scenes.options_scene import OptionsScene
+    from src.application.scenes.video_scene import VideoScene
+
+    menu = game.scene_manager.current
+    assert isinstance(menu, MenuScene), f"expected the main menu, got {type(menu).__name__}"
+    for _ in range(len(menu.model.items)):
+        if menu.model.current_item is not None and menu.model.current_item.action == "options":
+            break
+        press_key(game, InputAction.UI_DOWN)
+        game.step()
+    else:
+        pytest.fail("the main menu has no Options row to reach")
+
+    press_key(game, InputAction.UI_CONFIRM)
+    game.step()
+    assert isinstance(game.scene_manager.current, OptionsScene)
+    press_key(game, InputAction.UI_CONFIRM)
+    game.step()
+    video = game.scene_manager.current
+    assert isinstance(video, VideoScene), type(video).__name__
+    return video
+
+
+def press_key(game: Game, action: InputAction) -> None:
+    """A key press through the real event queue, the way a player's reaches it."""
+    bound = game.settings.bindings.menu.keyboard[action]
+    key = bound[0] if isinstance(bound, tuple) else bound
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key, mod=0, unicode=""))
+    game._handle_events()
+
+
 def _game_in_a_window(tmp_path: Path, *, window_size: tuple[int, int]) -> Game:
     """A running game whose window is a :class:`FakeWindow`, windowed at ``window_size``.
 
@@ -840,6 +942,52 @@ def _game_in_a_window(tmp_path: Path, *, window_size: tuple[int, int]) -> Game:
     game.presentation.recompute()
     game._built_window_size = window.get_size()
     return game
+
+
+def test_the_game_can_name_the_screen_its_window_is_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``window_monitor`` is what the VSync row reads, so it has to be the truth.
+
+    Not the monitor the settings name: that one is a request, and it stays the
+    requested screen on a desk where the platform refuses the move -- so reading
+    the rate off it is how a window on a 60Hz panel came to be described as a
+    180Hz one. The window's own top-left corner is the fact, mapped through the
+    desktop, with ``nearest`` so a window whose corner falls in the gap between
+    two panels still resolves to one of them.
+
+    Patched rather than asked of the machine, since a position the test does not
+    control would make the answer a property of the desk it ran on.
+    """
+    game = _game_in_a_window(tmp_path, window_size=(1280, 720))
+    from src.core.display.monitors import Monitor, Topology
+
+    desk = Topology(
+        monitors=(
+            Monitor(0, 'DP-1 27"', (0, 0, 2560, 1440), (0, 0, 2560, 1400), 180),
+            Monitor(1, 'DP-2 24"', (2560, 0, 1920, 1080), (2560, 0, 1920, 1040), 60),
+        ),
+        named=True,
+    )
+    monkeypatch.setattr(game, "topology", lambda: desk)
+
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (2700, 100))
+    on_the_second = game.window_monitor()
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (10, 10))
+    on_the_first = game.window_monitor()
+
+    assert on_the_second is not None and on_the_second.refresh_rate == 60, (
+        "the window is at x=2700, which is inside DP-2 and nowhere else"
+    )
+    assert on_the_first is not None and on_the_first.refresh_rate == 180, (
+        "the window is at the origin, which is inside DP-1"
+    )
+
+
+def frames(game: Game, count: int = 2) -> None:
+    """Run whole frames, so a draw happens the way it does in the loop."""
+    for _ in range(count):
+        game.step()
 
 
 def _resize(game: Game, size: tuple[int, int]) -> None:

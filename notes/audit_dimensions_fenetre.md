@@ -1050,6 +1050,69 @@ changement de mode déguisé, et une plateforme refuse de redimensionner une fen
 qu'elle affiche en plein écran. L'étape rapporterait alors un redimensionnement qui
 n'a pas eu lieu, ce qu'un contrôle de ce genre ne doit jamais faire.
 
-La suite est à **3150 tests**, avec et sans `DEBUG=1`.
+## 19. Ce que la vraie session a cassé, septième fois : le clic et le taux
+
+Trois rapports, et deux causes — dont une n'était pas celle qu'on attendait.
+
+« Les menus ne réagissent plus après un changement d'écran : la zone cliquable
+a bougé. » — **La géométrie du clic et la géométrie du blit n'étaient pas le même
+document.** Un clic est converti par la picture *en vigueur*, qui change dès que la
+fenêtre change, puis il est testé contre `item_rects`, que le dernier dessin a
+produits. Les deux sont vrais, ils ne sont pas vrais ensemble : mesuré après un
+snap, la dernière ligne du menu vidéo était à 891 là où elle avait été dessinée à
+657 — **244 px d'écart**, soit plusieurs lignes, et le clic atterrissait sur une
+voisine ou sur rien. C'est ce que « la zone cliquable a bougé » décrit ; pire
+qu'un clic mort, parce que c'est un clic *faux*.
+
+Le correctif n'est pas de rejeter le clic d'une frame, c'est de le mesurer dans la
+géométrie qu'il va rencontrer. `Game.step` sonde donc la fenêtre **avant** les
+entrées, et quand elle a bougé, dessine la pile une fois de plus :
+
+```
+_follow_the_window()  →  la fenêtre a-t-elle changé de taille ?
+                       → oui : scene_manager.draw(_draw_target())
+_handle_events()      → le clic est alors mesuré contre les lignes qui viennent
+                        d'être dessinées
+```
+
+Un dessin de plus, uniquement dans la frame où la fenêtre bouge, et le dessin de
+fin de frame le recouvre : il n'y a pas de trace à l'écran. Le test ne vérifie pas
+« le clic n'est pas perdu » — il vérifie que les rectangles mesurés au moment de la
+dispatch sont ceux que la frame dessine ensuite, ce qui est l'invariant lui-même.
+Vérifié qu'il mord : l'ordre rétabli, l'échec dit `hit-test used Rect(436, 370,
+1687, 89)` contre `frame drew Rect(332, 315, 1256, 64)`.
+
+Le geste du pointeur dans ce test est un **déplacement**, pas un clic, et c'est
+délibéré : un clic qui tombe sur une ligne de valeur change un réglage, et un
+réglage comme l'échelle reconstruit la fenêtre — la frame finirait sur une
+*troisième* géométrie et l'assertion parlerait de la ligne que le clic a trouvée
+par hasard. Un déplacement passe par les mêmes rectangles et ne change rien.
+
+`MenuView.reset_cache` efface aussi `self._item_rects`. Le runtime couvre le cas
+qu'il voit venir ; ceci couvre celui qu'il ne peut pas voir : un changement que le
+jeu fait **pendant** qu'il traite une entrée, avec une seconde entrée déjà en file
+derrière dans la même frame — deux clics, le premier appliquant un réglage vidéo qui
+reconstruit la fenêtre. Un rectangle vide ne touche rien, ce qui est la réponse
+sûre : un clic qui ne fait rien vaut mieux qu'un clic qui change un réglage que le
+joueur n'a pas cliqué.
+
+« VSync reste sur 60 Hz. » — **La ligne disait le taux du moniteur *principal*.**
+`desktop_refresh_rates()[0]` est le taux de l'écran principal quoi que fasse la
+fenêtre : sur un bureau à deux dalles, un joueur lisait « 60 Hz » sur une fenêtre
+posée sur la dalle 60 Hz — et le même « 60 Hz » sur une fenêtre posée sur la dalle
+180 Hz. Un nombre qui parle d'un écran qu'on ne regarde pas, sans rien dans la ligne
+qui le dise. C'est aussi ce qui rendait le symptôme « c'est figé » : le nombre ne
+changeait pas, puisque seule la position de la fenêtre changeait.
+
+`Game.window_monitor()` donne le moniteur que la fenêtre occupe **réellement**, par
+son coin haut-gauche à travers la topologie, `nearest` compris pour une fenêtre plus
+grande que la dalle — décision cohérente avec le placement. Et quand personne ne
+peut le dire — une topologie dégradée connaît des tailles, pas des origines — la
+ligne **ne dit rien** plutôt que de dire le taux du principal. Un taux absent est
+une indication manquante ; un taux erroné est un fait, à l'endroit exact où le joueur
+lit son réglage. L'implémentation, c'est `desktop_refresh_rates` qui devient inutile
+dans `video_scene.py` : l'import a disparu, la donnée est lue là où elle est vraie.
+
+La suite est à **3154 tests**, avec et sans `DEBUG=1`.
 
 Dernière mise à jour : 2026-10-15, branche `fix/remediation`.

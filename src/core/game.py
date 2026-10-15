@@ -472,12 +472,40 @@ class Game:
         landed = topology.nearest(position)  # type: ignore[arg-type]
         label = topology.label_for(landed)
         logger.info("The window is on %s rather than the requested %s", label, wanted.name)
+        logger.info("The window is on %s rather than the requested %s", label, wanted.name)
         self._window_notice = (
             f"The window stayed on {label}.",
             f"{wanted.name or 'That screen'} could not be used.",
         )
         if self._notice != self._window_notice:
             self.notice(*self._window_notice)
+
+    def window_monitor(self) -> Monitor | None:
+        """The monitor the window is *actually* on, and ``None`` when nobody can say.
+
+        Not the one the settings name, which is a request: on a two-screen desk the
+        two differ whenever the platform refuses to move the window, and the
+        settings are then a claim about a screen the game is not on. The video
+        menu's VSync row reads this rather than the primary display's rate, which
+        is what made it report 60Hz while the window sat on a 180Hz panel.
+
+        The top-left corner is what decides it, for the same reason placement does:
+        a window may legitimately be larger than the panel, and ``nearest`` gives
+        the closest panel when the corner falls in a gap between two of them.
+
+        ``None`` where the desktop has no readable geometry at all -- a degraded
+        topology knows sizes and no origins, so there is nothing to be honest
+        about, and a caller that has to print a rate would otherwise print the
+        wrong one.
+        """
+        try:
+            position = tuple(pygame.display.get_window_position())
+        except pygame.error:
+            return None
+        topology = self.topology()
+        if not topology.has_geometry:
+            return None
+        return topology.nearest(position)  # type: ignore[arg-type]
 
     def _withdraw_the_window_notice(self) -> None:
         """Take back this module's own notice, and only this module's.
@@ -740,8 +768,16 @@ class Game:
         frame_delta = self._frame_delta()
         self._accumulator += min(frame_delta, Simulation.MAX_FRAME_TIME)
 
+        # The window before the input: a click is converted through the picture
+        # that is in force now and hit-tested against the rectangles the last draw
+        # produced, so if the window moved between the two the two disagree --
+        # measured, 244px off on the last row of the video menu after a snap, and
+        # the click landed on a neighbour or on nothing. Laying the stack out
+        # first is what makes them one geometry again.
+        if self._follow_the_window():
+            self.scene_manager.draw(self._draw_target())
+
         self._handle_events()
-        self._follow_the_window()
         self._poll_displays(frame_delta)
         self.scene_manager.poll_held_repeats()
         self.flush_settings()
@@ -757,7 +793,7 @@ class Game:
             if self._notice_ttl == 0.0:
                 self._notice = ()
 
-    def _follow_the_window(self) -> None:
+    def _follow_the_window(self) -> bool:
         """Refit the picture when the window is no longer the size it was built at.
 
         **Read off the window, not off an event.** This started as a
@@ -782,16 +818,21 @@ class Game:
         reported 700x600 within a frame. One ``get_size`` per frame is 0.07
         microseconds, and :meth:`_retarget` decides for itself whether anything
         actually moved -- so this costs a comparison, not a cascade.
+
+        Returns whether the window moved, which is the one thing the caller has to
+        know: a frame in which it did has to lay the scenes out before it reads
+        the input, or the click is measured against rectangles from a geometry
+        that no longer exists.
         """
         if self.stage is None or self.presentation is None:
-            return
+            return False
         # Off the presentation rather than the stage: they are the same surface in
         # production, and the presentation is the one that keeps it -- so this
         # asks the object that owns the window what shape it is now, which is also
         # the only question a caller can ask about a window it did not build.
         live = self.presentation.window_size
         if live == self._built_window_size:
-            return
+            return False
         logger.info(
             "The window is now %sx%s (it was built at %s)",
             live[0],
@@ -803,6 +844,7 @@ class Game:
         self._forget_the_window_preference()
         self._retarget()
         self._built_window_size = live
+        return True
 
     def _run_ticks(self) -> None:
         """Drain the accumulator, but never more than a frame's worth of ticks.

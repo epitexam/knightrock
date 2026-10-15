@@ -37,6 +37,9 @@ def _game(topology=None) -> SimpleNamespace:
         # about pacing and scaling, and it keeps the screen picker out of a test
         # that is about navigation.
         topology=lambda: desk,
+        # The screen the window is on, which is what the VSync row reports -- the
+        # primary's rate is a claim about a screen the window may not be on.
+        window_monitor=lambda: desk.primary,
     )
 
     def apply_settings(settings: UserSettings) -> None:

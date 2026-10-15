@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3150%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3154%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3150 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3154 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -317,6 +317,25 @@ replace them:
 Resizing the window rebuilds the render target, re-reads the pixel density and
 re-lays out the interface — the same cascade as a display change, which is why it
 is one piece of code. What resizing never changes is **how much world you see**.
+
+A resize is **read off the window, not off an event**: pygame-ce turns one SDL
+window event into seven of its own, and which of them carries the new size depends
+on the platform *and* on the gesture — measured, a snap reports `WindowSizeChanged`,
+a maximise reports three events, a drag reports `VideoResize`. The size is polled
+once per frame (0.07 µs), and the frame in which it changed lays the interface out
+**before** the input is read. That ordering is the whole fix for "the clickable
+area moved": a click is converted through the picture in force *now* and hit-tested
+against the rectangles the last draw produced, and after a resize those two
+disagreed — measured, by 244 px, so a click landed on a neighbour or on nothing.
+`reset_cache` drops the rectangles too, covering the one case the runtime cannot
+see coming: a change the game performs *while* handling an input, with a second
+input already queued behind it in the same frame.
+
+The screen the game reports — the placement notice, the VSync row's rate — is the
+screen **the window is actually on**, found from its position rather than from what
+the settings asked for, which stays a request the platform is free to refuse. When
+the window's screen cannot be established, the row says nothing rather than the
+primary's rate: a missing hint is recoverable, a wrong number is a fact.
 
 Plugging a screen in or out mid-session is noticed: pygame-ce surfaces no event
 for a display appearing or disappearing, so the display list is re-read on a timer
@@ -703,7 +722,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3150 tests · 94 % instruction coverage · 91 % branch
+> **Current baseline:** 3154 tests · 94 % instruction coverage · 91 % branch
 > coverage · Ruff clean · mypy clean (176 files across `src main.py tools`;
 > `mypy src` alone is 173).[^coverage]
 
