@@ -258,13 +258,16 @@ class Game:
         """
         if self.stage is None or self.settings.display is not DisplayMode.WINDOW:
             return
-        if self.stage.size == self._built_window_size:
-            return  # SDL announcing the window we just built, not a drag.
+        # Off the presentation, like :meth:`_follow_the_window`, and for the same
+        # reason: the stage's surface and the presentation's are one object in
+        # production, and asking the one that keeps the window is what makes the
+        # two agree in a test that owns its own window.
+        window = self.presentation.window_size if self.presentation is not None else self.stage.size
+        if window == self._built_window_size:
+            return  # The window the game just built, not a drag.
         if self.settings.window_size is None:
             return  # Already following the window: nothing to forget.
-        logger.info(
-            "The window moved to %s; the stored window size no longer applies", self.stage.size
-        )
+        logger.info("The window moved to %s; the stored window size no longer applies", window)
         self.settings = self.settings.with_video(window_size=None, window_position=None)
         self._persist_settings()
 
@@ -312,7 +315,11 @@ class Game:
             and self.settings.display is DisplayMode.WINDOW
             and self.stage.spec.mode is DisplayMode.WINDOW
         ):
-            return self.stage.size
+            # The window the picture is drawn onto, for the same reason as
+            # everywhere else in this file: the stage's surface is that surface in
+            # production, and asking the presentation keeps the two readings of
+            # "the window" from drifting apart.
+            return self.presentation.window_size if self.presentation is not None else None
         return None
 
     def _resolve_display_settings(self) -> None:
@@ -734,6 +741,7 @@ class Game:
         self._accumulator += min(frame_delta, Simulation.MAX_FRAME_TIME)
 
         self._handle_events()
+        self._follow_the_window()
         self._poll_displays(frame_delta)
         self.scene_manager.poll_held_repeats()
         self.flush_settings()
@@ -748,6 +756,53 @@ class Game:
             self._notice_ttl = max(0.0, self._notice_ttl - _elapsed_ms(frame_started) / 1000.0)
             if self._notice_ttl == 0.0:
                 self._notice = ()
+
+    def _follow_the_window(self) -> None:
+        """Refit the picture when the window is no longer the size it was built at.
+
+        **Read off the window, not off an event.** This started as a
+        ``VIDEORESIZE`` handler and it was the wrong seam: pygame-ce translates
+        SDL's window events into seven events of its own, and which one a resize
+        arrives as depends on the platform and on the gesture. Measured on the
+        development machine:
+
+            Super+Left/Right (a snap)     WINDOWSIZECHANGED
+            maximise, restore             WINDOWSIZECHANGED + VIDEORESIZE + WINDOWRESIZED
+            a plain drag                  VIDEORESIZE
+
+        So a snap -- the gesture that produces the most resizes of all -- told
+        the game nothing at all, while a maximise happened to work. The symptom
+        was the picture keeping the size it had: a 1000x562 frame blitted into a
+        640x500 window is clipped at the right and the bottom, and a 1000x562
+        frame in a 1600x1100 window leaves the new area holding whatever was
+        there before. Both measured, both reproduced by the acceptance run.
+
+        The window's own size is the one fact that holds whether or not SDL felt
+        like mentioning it: with every event thrown away, the surface still
+        reported 700x600 within a frame. One ``get_size`` per frame is 0.07
+        microseconds, and :meth:`_retarget` decides for itself whether anything
+        actually moved -- so this costs a comparison, not a cascade.
+        """
+        if self.stage is None or self.presentation is None:
+            return
+        # Off the presentation rather than the stage: they are the same surface in
+        # production, and the presentation is the one that keeps it -- so this
+        # asks the object that owns the window what shape it is now, which is also
+        # the only question a caller can ask about a window it did not build.
+        live = self.presentation.window_size
+        if live == self._built_window_size:
+            return
+        logger.info(
+            "The window is now %sx%s (it was built at %s)",
+            live[0],
+            live[1],
+            self._built_window_size,
+        )
+        # In that order: forgetting compares the window against the size the game
+        # built it at, so the build size has to still be the old one here.
+        self._forget_the_window_preference()
+        self._retarget()
+        self._built_window_size = live
 
     def _run_ticks(self) -> None:
         """Drain the accumulator, but never more than a frame's worth of ticks.
@@ -810,15 +865,11 @@ class Game:
             # be over before the simulation ever looks at it.
             self.input_provider.note_event(event)
 
-            if event.type == pygame.VIDEORESIZE:
-                # The window is resizable and the picture is the window's size,
-                # so a drag rebuilds the render target, re-reads the density and
-                # re-lays out the interface -- the same cascade as a display
-                # setting change, which is why it is one method. SDL also
-                # announces this during an internal set_mode(), and recomputing
-                # an unchanged size is a no-op.
-                self._forget_the_window_preference()
-                self._retarget()
+            if event.type in self._WINDOW_SIZE_EVENTS:
+                # Not scene input, and not the trigger either: the reaction to a
+                # resize is read off the window every frame by
+                # :meth:`_follow_the_window`, because which of these events a
+                # resize arrives as is the platform's business, not the game's.
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
@@ -853,6 +904,16 @@ class Game:
     )
     #: The subset that *acts*. A press on a letterbox bar is a press on nothing.
     _POINTER_PRESSES = frozenset({pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP})
+
+    #: The events a change of window size can arrive as, listed so they are kept
+    #: out of the scenes rather than acted on. Which one is delivered depends on
+    #: the platform and the gesture -- measured, a snap sends only
+    #: ``WINDOWSIZECHANGED`` on this machine while a maximise sends all three --
+    #: so this is a list of "not input", not a list of "handle it here". The
+    #: reaction is :meth:`_follow_the_window`, which reads the window instead.
+    _WINDOW_SIZE_EVENTS = frozenset(
+        {pygame.VIDEORESIZE, pygame.WINDOWRESIZED, pygame.WINDOWSIZECHANGED}
+    )
 
     @staticmethod
     def _is_a_real_pointer_move(event: pygame.event.Event) -> bool:

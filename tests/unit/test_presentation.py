@@ -22,8 +22,12 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((320, 240))
 
+from src.application.settings_store import UI_SCALES  # noqa: E402
 from src.core.display.framing import Framing  # noqa: E402
+from src.core.display.letterbox import density_for, picture  # noqa: E402
+from src.core.display.monitors import MIN_WINDOW  # noqa: E402
 from src.core.display.presentation import Presentation  # noqa: E402
+from src.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
 
 FRAMING = Framing(1152.0, 648.0)
 
@@ -44,6 +48,60 @@ def _presentation(window: tuple[int, int], *, pixel_perfect: bool = False) -> Pr
 
 
 WINDOWS = [(1920, 1080), (1440, 900), (2560, 1440), (3440, 1440), (5120, 1440), (800, 600)]
+
+
+def test_a_window_under_the_floor_keeps_the_last_target_it_could_draw() -> None:
+    """A window too small to lay the interface out in is refused, not fitted.
+
+    The interface has a scale floor of its own, and a window under the display's
+    own floor puts the density below it: measured, a 240x180 window asks the
+    interface for a scale of 0.21, which it refuses with an exception rather than
+    a smaller font. So the window is not fitted at all -- the last drawable
+    target stands, and the drag below the floor is clipped instead of fatal.
+
+    The *first* fit is the exception that proves the rule: a runtime that opens
+    on a window this small -- a headless caller, a platform that refused the
+    minimum outright -- still gets a surface it can draw on, which is what a
+    degenerate window has always meant here.
+    """
+    stage = FakeStage(MIN_WINDOW)
+    presentation = Presentation(stage.surface, FRAMING)
+    drawable = presentation.surface.get_size()
+
+    # The presentation reads the surface it was handed, so that is what a resize
+    # replaces -- a new object is what ``set_mode`` and SDL between them produce.
+    presentation.stage = pygame.Surface((240, 180))  # type: ignore[assignment]
+    assert presentation.recompute() is False, "a window this small was fitted anyway"
+    assert presentation.surface.get_size() == drawable, "the target was replaced by one it refused"
+
+    # And a window that grows again is fitted as if nothing had happened.
+    presentation.stage = pygame.Surface((1920, 1080))  # type: ignore[assignment]
+    assert presentation.recompute() is True
+    assert presentation.surface.get_size() == (1920, 1080)
+
+    # A presentation built *on* a degenerate window still has a surface.
+    assert _presentation((0, 0)).surface.get_width() >= 1
+
+
+def test_the_window_floor_is_a_size_the_interface_can_be_laid_out_in() -> None:
+    """The display's floor and the interface's floor have to agree.
+
+    They live in different layers -- ``core/display`` cannot import ``ui/scale``,
+    and the presentation is the one place that refuses a window -- so the number
+    is stated twice and pinned here instead. If either floor is raised without
+    the other, a window that the display considers drawable asks the interface
+    for a scale it refuses, and that refusal is an exception rather than a
+    smaller font.
+    """
+    density = density_for(picture(MIN_WINDOW, FRAMING).target.size, FRAMING)
+
+    for preference in UI_SCALES:
+        assert checked_ui_scale(preference * density), (
+            f"a {MIN_WINDOW} window at a preference of {preference} is not drawable"
+        )
+    # And the floor is not gratuitously high: the window just under it is refused
+    # for a reason, and the window at it has room to spare.
+    assert density > MIN_UI_SCALE / max(UI_SCALES)
 
 
 @pytest.mark.parametrize("window", WINDOWS)

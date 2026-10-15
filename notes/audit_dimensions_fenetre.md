@@ -978,6 +978,78 @@ qu'elle a échoué ; il ne peut pas placer une fenêtre sur un écran que le
 gestionnaire ne voit pas. C'est aussi pourquoi §8 mesurait sur une seule session :
 le multi-écran réel reste la seule partie du système qui n'a pas été vue (§8, point 7).
 
-La suite est à **3147 tests**, avec et sans `DEBUG=1`.
+## 18. Ce que la vraie session a cassé, sixième fois : le redimensionnement
+
+« Quand je bouge la fenêtre avec Super et les flèches, l'affichage ne se met pas à
+jour, et les dimensions, si elles sont trop grosses, la fenêtre déborde. »
+
+Le premier symptôme est mesuré jusqu'à sa cause ; le second en est la conséquence
+et disparaît avec lui.
+
+**Le jeu écoutait un seul des événements de fenêtre.** pygame-ce traduit les
+événements SDL de fenêtre en sept événements distincts, et celui qui porte un
+redimensionnement dépend de la plateforme *et du geste*. Mesuré sur la session de
+développement :
+
+```
+Super + ← / →  (un snap)   ['WindowSizeChanged', 'VideoExpose', 'WindowExposed']
+maximiser, restaurer       ['WindowSizeChanged', 'VideoResize', 'WindowResized', ...]
+un glissement à la souris   VIDEORESIZE
+```
+
+`Game._handle_events` ne traitait que `VIDEORESIZE`. Donc le snap — le geste qui
+produit le plus de redimensionnements de tous — ne disait rien du tout, tandis que
+maximiser passait, parce qu'il émet aussi cet événement-là. C'est aussi pourquoi
+« parfois ça marche ».
+
+**La conséquence est exactement ce qui a été décrit.** Après un snap en 640×500, la
+cible valait toujours 1000×562 : le blit 1:1 de `present` plaçait un rectangle plus
+grand que la fenêtre, rogné à droite et en bas. Dans l'autre sens — snap vers
+1600×1100 — la nouvelle partie de la fenêtre gardait la frame précédente, et les
+barres peintes étaient celles de l'ancienne taille. Les deux mesurés, les deux
+visibles dans une capture.
+
+**Le correctif lit la fenêtre au lieu d'écouter un événement.** Une liste
+d'événements ne couvre que les événements que pygame choisit d'émettre. La taille
+de la fenêtre, elle, est vraie dans tous les cas : en jetant la file d'événements
+entière, la surface déclarait déjà 700×600. Un `get_size()` par frame coûte
+**0,07 µs**, et `_retarget` décide lui-même si quelque chose a bougé — c'est donc
+une comparaison, pas une cascade. Les trois événements sont déclarés dans
+`_WINDOW_SIZE_EVENTS` avec une seule fonction : **les sortir des scènes**, et non
+les réagir ici. C'est la seule couture que cet audit contredit : §9 affirmait que le
+chemin de rendu était adapté, et il l'est — il lisait une taille, pas un événement.
+
+**Un snap est un drag.** Il tombe donc sur la même règle que le §17 : la taille
+choisie dans le menu repart à `None`, et le jeu suit la fenêtre. Le redimensionnement
+que le gestionnaire de fenêtres impose pour son propre compte compte aussi comme un
+geste du joueur.
+
+**Une fenêtre sous le plancher est refusée, pas ajustée.** L'interface a son propre
+plancher d'échelle, et une fenêtre sous `MIN_WINDOW` met la densité en dessous :
+mesuré, 240×180 demande une échelle de 0,21 que `checked_ui_scale` refuse par une
+exception et non par une police plus petite. `Presentation.recompute` refuse donc
+la fenêtre et garde la dernière cible dessinable — un glissement sous le plancher est
+rogné pendant sa durée au lieu d'emporter le jeu avec lui. La **première** exception
+prouve la règle : un runtime qui s'ouvre sur une fenêtre aussi petite — un appel
+headless, une plateforme qui refuse la contrainte — reçoit quand même une surface.
+Les deux planchers sont dans des couches différentes (`core/display` n'importe pas
+`ui/scale`), donc un test affirme qu'ils coïncident.
+
+### La recette ne pouvait pas le voir
+
+`tools/display_acceptance.py` redimensionnait la fenêtre par `set_mode` — le seul
+chemin qui produit un `VIDEORESIZE` — **et faisait la réaction à la main**. Elle ne
+pouvait donc pas voir un redimensionnement que le jeu n'aurait pas vu. L'outil a
+maintenant une étape qui passe par le handle `Window`, sans `set_mode` et sans
+événement posté, et chaque état du rapport répond à une question : *l'image affichée
+est-elle celle que cette fenêtre appelle ?* Vérifié qu'elle a du mord — la réaction
+retirée, l'étape dit `NO -- THE FRAME IS STALE`.
+
+Le snap se fait en mode fenêtré, et c'est dit : un snap d'une fenêtre borderless est un
+changement de mode déguisé, et une plateforme refuse de redimensionner une fenêtre
+qu'elle affiche en plein écran. L'étape rapporterait alors un redimensionnement qui
+n'a pas eu lieu, ce qu'un contrôle de ce genre ne doit jamais faire.
+
+La suite est à **3150 tests**, avec et sans `DEBUG=1`.
 
 Dernière mise à jour : 2026-10-15, branche `fix/remediation`.

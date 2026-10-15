@@ -16,11 +16,16 @@ sides of the reconciliation. :meth:`recompute` says whether the target changed,
 which is the one fact a caller needs in order to re-point the scene stack at it.
 """
 
+import logging
+
 import pygame
 
 from .framing import DEFAULT_FRAMING, Framing
 from .letterbox import FitPolicy, Picture, picture
+from .monitors import MIN_WINDOW
 from .viewport import Viewport
+
+logger = logging.getLogger(__name__)
 
 
 class Presentation:
@@ -100,8 +105,36 @@ class Presentation:
 
         Returns whether the target surface is new, so the caller knows if it has
         to re-point the scene stack, the camera and the interface at it. Called
-        on launch, after a display setting changes, and on every window resize.
+        on launch, after a display setting changes, and on every frame the window
+        is found to have changed size.
+
+        **A window too small to draw in is refused, not fitted.** The interface
+        has a floor of its own -- a scale below which its text stops being text --
+        and a window narrower than
+        :data:`~src.core.display.monitors.MIN_WINDOW` puts the density under it:
+        measured, a 240x180 window asks the interface to draw at 0.21, which
+        :func:`~src.ui.scale.checked_ui_scale` refuses, and that refusal is an
+        exception rather than a smaller font. The last target that was drawable
+        is kept instead, so a window dragged below the floor is clipped for the
+        duration of the drag rather than taking the game down with it.
+
+        "Last target that was drawable" rather than "no target": the *first* fit
+        has nothing to keep, so a runtime that opens on a window this small --
+        a headless caller, a platform that refused the minimum outright -- still
+        gets a surface it can draw on. That is what a degenerate window has always
+        meant here, and it is not the case this is refusing.
+
+        The floor is the same number the stage asks the platform for, and the two
+        are pinned together by a test: a platform that refuses the request is a
+        platform that will hand us a window under it, which is what this is for.
         """
+        if self._fitted is not None and self._is_too_small():
+            logger.debug(
+                "A %sx%s window is below the %s floor; keeping the current target",
+                *self.window_size,
+                MIN_WINDOW,
+            )
+            return False
         self.picture = picture(self.window_size, self.framing, self.fit)
         self.rect = self.picture.dest
         # Refitted on every call, before the early return below: the strips are a
@@ -114,6 +147,11 @@ class Presentation:
         self._fitted = self.picture.target.size
         self.viewport = Viewport(self.framing, self._fitted, convert=self.convert)
         return True
+
+    def _is_too_small(self) -> bool:
+        """Whether the window is under the size the interface can be laid out in."""
+        width, height = self.window_size
+        return width < MIN_WINDOW[0] or height < MIN_WINDOW[1]
 
     @property
     def window_size(self) -> tuple[int, int]:

@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -36,8 +37,9 @@ import pygame
 
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy
+from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.mode import DisplayMode
+from src.core.display.monitors import MIN_WINDOW
 from src.core.game import Game
 
 #: The display states worth watching, in the order the acceptance run shows
@@ -106,6 +108,11 @@ def _report(game: Game) -> None:
     )
     bars = presentation.bars
     print(f"  letterbox bars        {len(bars)}  {[tuple(b) for b in bars] or 'none'}")
+    follows = _picture_matches_the_window(game)
+    print(f"  picture follows window {'yes' if follows else 'NO -- THE FRAME IS STALE'}")
+    if not follows:
+        print("     ^ the render target did not move with the window; check whether the")
+        print("       resize reached the game at all. It has to be read off the window.")
     print(f"  interface scale       {game.ui_scale:.3f}  (preference {settings.ui_scale})")
     print(f"  vsync requested       {settings.vsync}   driver reports {pygame.display.is_vsync()}")
     print(f"  frame limit           {settings.frame_limit or 'uncapped'}")
@@ -143,12 +150,60 @@ def _cycle_monitors(game: Game) -> None:
         _report(game)
 
 
+def _picture_matches_the_window(game: Game) -> bool:
+    """Whether the picture on screen is the one this window calls for.
+
+    The claim the whole display system rests on, and the one a resize that goes
+    unnoticed breaks: the fitted picture is a function of the window's size and the
+    fit policy, so a target that disagrees with them is a frame drawn at a
+    density nobody asked for. Measured when it was last ignored: a 1000x562
+    picture blitted into a 640x500 window, clipped at the right and the bottom,
+    with no error and nothing on screen to say so.
+    """
+    presentation = game.presentation
+    assert presentation is not None
+    expected = picture(presentation.window_size, DEFAULT_FRAMING, presentation.fit)
+    return tuple(presentation.picture.target.size) == tuple(expected.target.size) and tuple(
+        presentation.picture.dest.size
+    ) == tuple(expected.dest.size)
+
+
+def _snap_to(game: Game, size: tuple[int, int]) -> None:
+    """Stand in for the window manager resizing behind the game's back.
+
+    This is the step the walkthrough was missing, and it is missing it for a
+    reason worth writing down: every resize here used to go through
+    ``set_mode``, which is the one path that both produces a ``VIDEORESIZE`` and
+    lets the run perform the reaction itself. A snap arrives as something else --
+    measured, ``WINDOWSIZECHANGED`` and nothing more -- so the run could not see
+    the defect it was written to catch.
+
+    So: no ``set_mode``, no posted event, just the window resized the way a
+    window manager resizes it, and then a frame. The reaction has to come from
+    reading the window.
+    """
+    assert game.presentation is not None
+    try:
+        window = pygame.Window.from_display_module()
+    except pygame.error, AttributeError:
+        print("   no Window handle on this build; the snap cannot be run")
+        return
+    window.size = size
+    # Let the platform settle before the game looks, the way it would between two
+    # of its own frames.
+    for _ in range(10):
+        pygame.event.pump()
+        time.sleep(0.03)
+    for _ in range(3):
+        game.step()
+
+
 def _drag_to(game: Game, size: tuple[int, int]) -> None:
     """Stand in for a player dragging the window edge.
 
-    A real drag arrives as a ``VIDEORESIZE`` event and goes through
-    ``Game._retarget``; this reproduces the same cascade by hand, because the
-    acceptance run cannot ask anyone to drag on cue.
+    Kept as it was -- ``set_mode`` and the reaction by hand -- because it is the
+    only way to compare the two: :func:`_snap_to` is the same gesture done by the
+    platform, and the two have to end up at the same place.
     """
     assert game.stage is not None and game.presentation is not None
     game.stage.surface = pygame.display.set_mode(size, pygame.RESIZABLE)
@@ -192,8 +247,6 @@ def main() -> None:
     game._initialize()
     _report(game)
 
-    import time
-
     for index, (title, mode, pixel_perfect, fit) in enumerate(WALKTHROUGH):
         if index:
             print(f"\n--- {title} : {arguments.hold:.0f}s, watch the window ---")
@@ -208,6 +261,23 @@ def main() -> None:
         time.sleep(arguments.hold)
         _drag_to(game, size)
         _report(game)
+
+    print("\n\n==== the same sizes, snapped by the window manager ====")
+    print("(Super+Left/Right, maximise, restore: no set_mode, no posted event)")
+    # Windowed first, and said out loud: a snap of a borderless window is a mode
+    # change in disguise, and the platform refuses to resize a window it is
+    # displaying fullscreen -- so the step would report a resize that never
+    # happened, which is the one thing a check like this must not do.
+    _apply(game, DisplayMode.WINDOW, False, FitPolicy.BARS)
+    _report(game)
+    for size in DRAG_SIZES:
+        print(f"\n--- snapping to {size[0]} x {size[1]} ---")
+        _snap_to(game, size)
+        _report(game)
+    print("\n--- snapping to half of what the window is now ---")
+    half = (max(MIN_WINDOW[0], game.presentation.window_size[0] // 2), MIN_WINDOW[1])  # type: ignore[union-attr]
+    _snap_to(game, half)
+    _report(game)
 
     if arguments.once:
         print("\nDone (--once).")

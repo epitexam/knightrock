@@ -242,6 +242,9 @@ class Stage:
         if mode is DisplayMode.FULLSCREEN:
             return Stage._fullscreen_size(spec)
         if spec.size is not None:
+            # ``fit_size`` raises to the floor, and a chosen size of zero is not
+            # a size: a window under MIN_WINDOW cannot be laid out, so asking for
+            # one would buy a window the interface cannot be drawn in.
             return fit_size(spec.size, monitor)
         if mode is DisplayMode.BORDERLESS:
             return monitor.usable_size
