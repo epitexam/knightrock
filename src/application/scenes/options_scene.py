@@ -3,8 +3,8 @@
 Every actual setting lives in the screen that owns it, so a value has a
 single source of truth and a single place to change it:
 
-- **Video settings** — the screen to play on, the display mode, the fullscreen
-  mode, how the picture fits the window, VSync, frame limit, UI scale;
+- **Video settings** — the window's size, how the picture fits it, VSync, frame
+  limit, UI scale;
 - **Controls** — key/button rebinding and the menu stick Y inversion.
 
 This screen is navigation only: it holds no toggle of its own, hence no

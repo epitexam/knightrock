@@ -38,24 +38,23 @@ import pygame
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, picture
-from src.core.display.mode import DisplayMode
 from src.core.display.monitors import MIN_WINDOW
 from src.core.game import Game
 
 #: The display states worth watching, in the order the acceptance run shows
 #: them. The window geometry is checked after each one.
 #:
-#: There is no size to walk any more. The window is the source of truth, so the
-#: only states left are the ones the player chooses: how to occupy the screen, and
-#: whether to trade filling the window for whole-pixel art. The manual
-#: ``pygame.display.set_mode`` below is what stands in for a player dragging the
-#: window edge, which the acceptance run cannot ask them to do on cue.
+#: There is no display mode to walk any more. The window is the source of truth,
+#: so the states left are the ones the player chooses: how big the window opens,
+#: and whether to trade filling it for whole-pixel art. The manual
+#: ``set_mode`` in :func:`_drag_to` below is what stands in for a player dragging
+#: the window edge, which the acceptance run cannot ask them to do on cue.
 WALKTHROUGH = [
-    ("borderless, whatever the machine picked", DisplayMode.BORDERLESS, False, FitPolicy.BARS),
-    ("window, as large as fits", DisplayMode.WINDOW, False, FitPolicy.BARS),
-    ("window, whole-pixel art", DisplayMode.WINDOW, False, FitPolicy.INTEGER),
-    ("window, zoomed to fill", DisplayMode.WINDOW, False, FitPolicy.ZOOM),
-    ("borderless again", DisplayMode.BORDERLESS, False, FitPolicy.BARS),
+    ("the size the machine picked", None, FitPolicy.BARS),
+    ("a chosen size, 1280x720", (1280, 720), FitPolicy.BARS),
+    ("the same size, whole-pixel art", (1280, 720), FitPolicy.INTEGER),
+    ("zoomed to fill", (1280, 720), FitPolicy.ZOOM),
+    ("back to the machine's size", None, FitPolicy.BARS),
 ]
 
 #: Sizes a player would drag to, applied by hand to stand in for a drag.
@@ -76,17 +75,18 @@ def _report(game: Game) -> None:
     print("=" * 72)
     print(f"  displays found        {len(topology.monitors)}  (names: {topology.named})")
     for monitor in topology.monitors:
-        origin_x, origin_y = monitor.origin
+        left, top = monitor.bounds[0], monitor.bounds[1]
         print(
-            f"    [{monitor.index}] {topology.label_for(monitor)!r} "
-            f"{monitor.detail} at ({origin_x}, {origin_y}) usable {monitor.usable_size} "
-            f"scale {monitor.scale}"
+            f"    [{monitor.index}] {monitor.name or 'unnamed'!r} "
+            f"{monitor.size[0]}x{monitor.size[1]} at ({left}, {top}) "
+            f"usable {monitor.usable_size} scale {monitor.scale}"
         )
-    chosen = topology.resolve(settings.monitor)
-    print(f"  chosen display        [{chosen.monitor.index}] -- {chosen.reason}")
+    held = game.window_monitor()
+    on = f"[{held.index}] {held.name or 'unnamed'}" if held is not None else "unknown"
+    print(f"  window is on          {on}")
     print(f"  desktop reported      {desktop[0]} x {desktop[1]}")
     print(f"  refresh rates         {detection.desktop_refresh_rates() or 'unknown'}")
-    print(f"  display mode          {settings.display.value}")
+    print(f"  window size chosen    {settings.window_size or 'the machine picks'}")
     print(f"  window granted        {stage.size[0]} x {stage.size[1]}")
     print(f"  window position       {pygame.display.get_window_position()}")
     print(f"  render target         {presentation.surface.get_size()}")
@@ -116,38 +116,24 @@ def _report(game: Game) -> None:
     print(f"  interface scale       {game.ui_scale:.3f}  (preference {settings.ui_scale})")
     print(f"  vsync requested       {settings.vsync}   driver reports {pygame.display.is_vsync()}")
     print(f"  frame limit           {settings.frame_limit or 'uncapped'}")
-    print(f"  fullscreen mode       {settings.fullscreen_mode or 'the display own mode'}")
     print()
     print("  CHECK BY HAND:")
-    print("   - the window is on the screen the settings asked for")
+    print("   - the window opened centred on the primary display")
     print("   - the image keeps its shape, with black bars and no stretch")
     print("   - the picture is sharp: no soft edges, no doubled pixels")
     print("   - the menus are readable and the gauges sit where they should")
     print("   - dragging the window edge does NOT change how much world you see")
+    print("   - dragged onto another panel, the VSync row's rate follows it")
 
 
-def _apply(game: Game, mode: DisplayMode, pixel_perfect: bool, fit: FitPolicy) -> None:
+def _apply(game: Game, window_size: tuple[int, int] | None, fit: FitPolicy) -> None:
     game.apply_settings(
-        game.settings.with_video(display=mode, pixel_perfect=pixel_perfect, fit=fit)
+        game.settings.with_video(
+            window_size=window_size,
+            pixel_perfect=fit is FitPolicy.INTEGER,
+            fit=fit,
+        )
     )
-
-
-def _cycle_monitors(game: Game) -> None:
-    """Walk the window through every display this machine has.
-
-    The case the automated run cannot reach at all: whether the game follows the
-    player onto a second panel. Each step re-opens the window on the next display
-    and reports where it landed, which is the number worth checking by eye --
-    ``window position`` against the ``at (x, y)`` of the display it claims.
-    """
-    topology = game.topology(refresh=True)
-    if len(topology.monitors) < 2:
-        print("\nonly one display is attached; there is no monitor to walk to")
-        return
-    for monitor in topology.monitors:
-        print(f"\n--- asking for {topology.label_for(monitor)!r} ---")
-        game.apply_settings(game.settings.with_video(monitor=monitor.name))
-        _report(game)
 
 
 def _picture_matches_the_window(game: Game) -> bool:
@@ -247,14 +233,12 @@ def main() -> None:
     game._initialize()
     _report(game)
 
-    for index, (title, mode, pixel_perfect, fit) in enumerate(WALKTHROUGH):
+    for index, (title, window_size, fit) in enumerate(WALKTHROUGH):
         if index:
             print(f"\n--- {title} : {arguments.hold:.0f}s, watch the window ---")
             time.sleep(arguments.hold)
-        _apply(game, mode, pixel_perfect, fit)
+        _apply(game, window_size, fit)
         _report(game)
-
-    _cycle_monitors(game)
 
     for size in DRAG_SIZES:
         print(f"\n--- dragging the window to {size[0]} x {size[1]} ---")
@@ -264,11 +248,7 @@ def main() -> None:
 
     print("\n\n==== the same sizes, snapped by the window manager ====")
     print("(Super+Left/Right, maximise, restore: no set_mode, no posted event)")
-    # Windowed first, and said out loud: a snap of a borderless window is a mode
-    # change in disguise, and the platform refuses to resize a window it is
-    # displaying fullscreen -- so the step would report a resize that never
-    # happened, which is the one thing a check like this must not do.
-    _apply(game, DisplayMode.WINDOW, False, FitPolicy.BARS)
+    _apply(game, None, FitPolicy.BARS)
     _report(game)
     for size in DRAG_SIZES:
         print(f"\n--- snapping to {size[0]} x {size[1]} ---")

@@ -20,7 +20,6 @@ from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import letterbox
-from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
@@ -335,23 +334,20 @@ def test_applying_only_the_ui_scale_keeps_the_window(manager, counter) -> None:
     assert count() == 0
 
 
-def test_applying_a_display_mode_change_rebuilds_the_window(manager, counter) -> None:
-    """A mode is the only thing left that can replace the window."""
+def test_applying_a_window_size_change_rebuilds_the_window(manager, counter) -> None:
+    """A chosen size is the only thing left that can replace the window."""
     game = manager.game
     manager.switch(VideoScene(game))
     count = counter(pygame.display, "set_mode")
     before = game.presentation.surface
 
-    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+    game.apply_settings(replace(game.settings, window_size=(1400, 900)))
 
     assert count() == 1
-    # The two modes used to hand back the same size under the dummy driver, so
-    # this asserted that the picture survived a mode change unchanged. It no
-    # longer does, and that is the fix rather than a regression: borderless fills
-    # the panel's *usable* area and window leaves room for a title bar, so the
-    # window they produce is genuinely a different size. What still has to hold is
-    # the invariant underneath -- the picture is fitted inside the window it is in,
-    # and never larger than it on either axis.
+    # The window is rebuilt at the size the player chose rather than the one the
+    # panel decides, so the picture that comes back is a different size. What
+    # still has to hold is the invariant underneath -- the picture is fitted
+    # inside the window it is in, and never larger than it on either axis.
     assert game.presentation.surface.get_size() != before.get_size()
     assert game.presentation.surface.get_size()[0] <= game.stage.size[0]
     assert game.presentation.surface.get_size()[1] <= game.stage.size[1]
@@ -403,26 +399,22 @@ def test_the_letterbox_setting_and_the_letterbox_itself_cannot_disagree(manager)
     whole = letterbox((2560, 1440), DEFAULT_FRAMING, pixel_perfect=True).size
     assert fitted != whole, "this test needs a window where the two answers differ"
 
-    for display in (DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN):
-        for pixel_perfect in (False, True):
-            game.apply_settings(
-                replace(game.settings, display=display, pixel_perfect=pixel_perfect)
-            )
+    for pixel_perfect in (False, True):
+        game.apply_settings(replace(game.settings, pixel_perfect=pixel_perfect))
 
-            # The setting reached the letterbox, whichever path was taken.
-            assert game.presentation.pixel_perfect is pixel_perfect
+        # The setting reached the letterbox, whichever path was taken.
+        assert game.presentation.pixel_perfect is pixel_perfect
 
-            # And on a window where the two answers differ, the picture is the
-            # one the flag asks for. Pinned after the change, because applying a
-            # display mode rebuilds the window from the desktop.
-            game.presentation.retarget(pygame.Surface((2560, 1440)))  # type: ignore[arg-type]
-            game._retarget()
-            expected = whole if pixel_perfect else fitted
-            assert game.presentation.rect.size == expected, (
-                f"{display.value} pixel_perfect={pixel_perfect}: the picture is "
-                f"{game.presentation.rect.size}, expected {expected}"
-            )
-            assert game.presentation.surface.get_size() == expected
+        # And on a window where the two answers differ, the picture is the
+        # one the flag asks for. Pinned after the change, because the letterbox
+        # lives on the presentation and a rebuild reads it.
+        game.presentation.retarget(pygame.Surface((2560, 1440)))  # type: ignore[arg-type]
+        game._retarget()
+        expected = whole if pixel_perfect else fitted
+        assert game.presentation.rect.size == expected, (
+            f"pixel_perfect={pixel_perfect}: the picture is "
+            f"{game.presentation.rect.size}, expected {expected}"
+        )
 
 
 def test_whole_pixel_art_is_a_no_op_on_a_window_that_cannot_hold_one(manager, counter) -> None:

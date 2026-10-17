@@ -22,8 +22,6 @@ pygame.init()
 pygame.display.set_mode((320, 240))
 
 from src.core.display import detection, monitors  # noqa: E402
-from src.core.display.framing import DEFAULT_FRAMING  # noqa: E402
-from src.core.display.mode import DisplayMode  # noqa: E402
 
 #: Desktops worth caring about: 16:9, 16:10, 21:9, 32:9, a laptop, a netbook.
 DESKTOPS = [
@@ -114,22 +112,6 @@ def test_the_opening_size_leaves_a_taskbar_alone() -> None:
     assert monitors.opening_size(with_bar)[1] < monitors.opening_size(panel)[1]
 
 
-def test_a_matching_desktop_gets_borderless_and_a_mismatched_one_a_window() -> None:
-    """Borderless fills the screen only when the screen already has the shape."""
-    assert detection.auto_display_mode(DEFAULT_FRAMING, (1920, 1080)) is DisplayMode.BORDERLESS
-    assert detection.auto_display_mode(DEFAULT_FRAMING, (1440, 900)) is DisplayMode.WINDOW
-
-
-def test_a_dead_desktop_does_not_ask_for_a_zero_sized_borderless_window() -> None:
-    assert detection.auto_display_mode(DEFAULT_FRAMING, (0, 0)) is DisplayMode.WINDOW
-
-
-@pytest.mark.parametrize("desktop", DESKTOPS)
-def test_the_automatic_display_mode_is_always_concrete(desktop) -> None:
-    """AUTO defers to the machine; the result must not defer to anything."""
-    assert detection.auto_display_mode(DEFAULT_FRAMING, desktop).is_concrete
-
-
 def test_the_topology_answers_even_with_no_displays_to_describe() -> None:
     """A topology with nothing in it is still a topology.
 
@@ -142,11 +124,6 @@ def test_the_topology_answers_even_with_no_displays_to_describe() -> None:
     assert empty.primary.size == (1, 1)
     assert empty.containing((0, 0)) is None
     assert empty.nearest((99, 99)).size == (1, 1)
-    # Not MISSING. An empty topology means nothing could be read at all, so a
-    # stored name cannot be said to be gone -- the machine never answered, which
-    # is a different thing and one the menu has to word differently.
-    assert empty.resolve("DP-1").reason is monitors.ResolutionReason.UNNAMED
-    assert not empty.resolve("DP-1").honoured
 
 
 def test_the_topology_the_game_reads_agrees_with_pygame() -> None:
@@ -162,21 +139,26 @@ def test_the_topology_the_game_reads_agrees_with_pygame() -> None:
     assert topology.indices == tuple(range(len(topology.monitors)))
 
 
-@pytest.mark.parametrize("mode", list(DisplayMode))
-def test_no_mode_asks_for_a_size_the_game_invented(mode: DisplayMode) -> None:
-    """Each mode asks the platform for a size; none of them names one.
+@pytest.mark.parametrize("desktop", DESKTOPS)
+def test_the_window_size_never_names_a_resolution_the_game_invented(desktop) -> None:
+    """The window asks the platform for a size; it does not name one.
 
     The window used to be built from a size in the settings file, and in
     borderless it was built from the desktop while the file kept saying
     something else -- so the menu displayed a number the game was not using.
-    There is no size left anywhere in the request, which is the only way to be
-    sure no two components can disagree about one.
+    With no size in the request the game can do that to itself no longer: either
+    the player chose a size, and it is honoured, or there is none and the panel
+    decides.
     """
     from src.core.display.stage import Stage, WindowSpec
 
-    requested = Stage._window_size(WindowSpec(mode=mode), _monitor((1920, 1080)))
-    assert requested in {(0, 0), (1920, 1080), monitors.opening_size(_monitor((1920, 1080)))}
-    assert all(value >= 0 for value in requested)
+    monitor = _monitor(desktop)
+    assert Stage._window_size(WindowSpec(size=None), monitor) == monitors.opening_size(monitor)
+
+    chosen = (1600, 900)
+    asked = Stage._window_size(WindowSpec(size=chosen), monitor)
+    assert 0 < asked[0] <= desktop[0] and 0 < asked[1] <= desktop[1]
+    assert asked[0] <= desktop[0] and asked[1] <= desktop[1]
 
 
 def test_the_module_no_longer_offers_resolutions() -> None:
@@ -190,6 +172,17 @@ def test_the_module_no_longer_offers_resolutions() -> None:
     assert not hasattr(detection, "largest_window_size")
     assert not hasattr(detection, "fits_on_desktop")
     assert not hasattr(detection, "WINDOW_SIZE_FRACTIONS")
+
+
+def test_the_module_has_no_display_mode_to_resolve() -> None:
+    """A regression guard on the deletion itself.
+
+    ``auto_display_mode`` resolved ``AUTO`` into one of four ways to occupy the
+    screen, and it resolved to the one that asked the driver for a mode change
+    on every 16:9 desktop. The game is a window now and there is nothing to
+    resolve.
+    """
+    assert not hasattr(detection, "auto_display_mode")
 
 
 def test_the_module_does_not_pretend_to_place_a_window() -> None:

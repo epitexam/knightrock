@@ -18,9 +18,10 @@ holding a controller. The keyboard section below is the other half of the same
 claim, and the generic row test is the one that notices when a key is missing
 from either half.
 
-The screen has one row fewer than it had, and the one that went is the reason
-this file is short: there is no resolution any more. What replaced it is a
-read-out of the window, which no pointer and no key can change.
+The screen has two rows fewer than it had, and the ones that went are the reason
+this file is short: there is no display mode any more and there is no screen
+picker. What replaced them is one window-size row and a read-out of the window,
+which no pointer and no key can change.
 """
 
 from types import SimpleNamespace
@@ -33,7 +34,6 @@ from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, picture
-from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -65,12 +65,12 @@ WINDOW = (2304, 1296)
 #: at a negative origin because a Linux desktop whose primary is not leftmost
 #: puts the left monitor there.
 #:
-#: Fixed rather than read from the platform, because the rows under test are
-#: conditional on the *number* of displays -- the screen picker only exists on a
-#: multi-screen desk -- and a suite that skipped it whenever CI happened to be
-#: headless would never check the one row that can put the window on the wrong
-#: monitor. Names are the real EDID shape, including a duplicate pair, so the
-#: label disambiguation is exercised too.
+#: Fixed rather than read from the platform, because the VSync row has to report
+#: the rate of the screen the window is on, and a rate is a fact about a screen
+#: rather than about the machine the suite happens to run on. The second and third
+#: panels share their geometry and differ only in rate, so a point inside both
+#: still has to resolve to one of them, and a row that reported the wrong one is
+#: caught rather than coincidentally right.
 DESK = Topology(
     monitors=(
         Monitor(0, 'DP-1 27"', (0, 0, 2560, 1440), (0, 0, 2560, 1400), 180),
@@ -81,11 +81,9 @@ DESK = Topology(
 )
 
 
-def _game(
-    display: DisplayMode = DisplayMode.WINDOW, topology: Topology | None = None
-) -> SimpleNamespace:
+def _game(topology: Topology | None = None) -> SimpleNamespace:
     game = SimpleNamespace(
-        settings=UserSettings().with_video(display=display),
+        settings=UserSettings(),
         scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
         stage=SimpleNamespace(size=WINDOW),
         presentation=SimpleNamespace(
@@ -118,10 +116,10 @@ def _click(scene: VideoScene, index: int) -> str | None:
     )
 
 
-def _drawn(display: DisplayMode = DisplayMode.WINDOW, topology: Topology | None = None):
+def _drawn(topology: Topology | None = None):
     """A scene whose view has laid out, so its row rectangles exist."""
     pygame.init()
-    scene = VideoScene(_game(display, topology))
+    scene = VideoScene(_game(topology))
     scene.draw(pygame.Surface((1152, 648)))
     return scene
 
@@ -147,16 +145,16 @@ def _row(scene: VideoScene, action: str) -> int:
     return next(index for index, item in enumerate(scene.model.items) if item.action == action)
 
 
-#: The display mode each row needs to be *enabled*. A row that cannot be used is
-#: skipped by the focus walk -- deliberately, so a disabled row swallows a press
-#: instead of activating whatever is nearest -- which means a test that wants to
-#: press a row has to build the screen where that row is live.
-DISPLAY_FOR_ROW = {"resolution": DisplayMode.FULLSCREEN}
-
-
 def _scene_for(action: str) -> VideoScene:
-    """A drawn scene in which ``action``'s row can be pressed."""
-    return _drawn(DISPLAY_FOR_ROW.get(action, DisplayMode.WINDOW))
+    """A drawn scene in which ``action``'s row can be pressed.
+
+    ``action`` is accepted for the call sites, which are all parametrized over
+    the rows: every row on this screen is always live now, so there is no state
+    to build the scene in. It is kept because the shape of the call is right --
+    a row that needed a particular display state would need it here.
+    """
+    del action
+    return _drawn()
 
 
 def _list_for(scene: VideoScene, row: str) -> OptionScreen:
@@ -239,53 +237,32 @@ def test_a_click_steps_a_list_row_like_the_right_key(action: str) -> None:
     assert by_click.game.settings == by_key.game.settings
 
 
-@pytest.mark.parametrize(
-    "mode",
-    [DisplayMode.AUTO, DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN],
-)
-def test_the_resolution_row_exists_in_every_mode(mode: DisplayMode) -> None:
-    """The row is never missing, and never greyed out.
+def test_the_window_size_row_exists_and_opens_a_list() -> None:
+    """The row is never missing, never greyed out, and never silent.
 
-    This failed twice, in both directions the same mistake has. First it was
-    disabled outside fullscreen, which is worse than hiding it: the focus walk
-    skips a disabled row and a click on one does nothing, so the row was drawn,
-    aimable, and inert. Then it was hidden in borderless, on the grounds that a
-    borderless window has no size to choose -- and ``auto`` resolves to borderless
-    on any 16:9 desktop, so that took the row away from most players by default,
-    on the first launch, with no setting of theirs involved.
-
-    A default is exactly the thing that must not remove a menu item.
+    It replaces a resolution row that failed twice, in both directions of the
+    same mistake: it was a disabled "Fullscreen mode" outside fullscreen -- the
+    focus walk skips a disabled row and a click on one does nothing, so the row
+    was drawn, aimable and inert -- and then it was hidden in borderless. A
+    default is exactly the thing that must not remove a menu item, and the size of
+    the window is always worth choosing, so this row is unconditional.
     """
     scene = _drawn()
-    scene.game.apply_settings(scene.game.settings.with_video(display=mode))
-    scene._rebuild("resolution")
+    index = next((i for i, item in enumerate(scene.model.items) if item.action == "size"), None)
 
-    index = next(
-        (i for i, item in enumerate(scene.model.items) if item.action == "resolution"), None
-    )
-    assert index is not None, f"the resolution row is missing in {mode.value}"
+    assert index is not None, "the window size row is missing"
     assert scene.model.items[index].enabled, (
-        f"the resolution row is greyed out in {mode.value}: a disabled row is "
-        "skipped by the focus walk and inert to a click"
+        "the row is greyed out: a disabled row is skipped by the focus walk and inert to a click"
     )
 
-
-@pytest.mark.parametrize(
-    "mode",
-    [DisplayMode.AUTO, DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN],
-)
-def test_the_resolution_row_opens_a_list_in_every_mode(mode: DisplayMode) -> None:
-    """A row that exists but opens nothing is the same dead row, quieter."""
-    scene = _drawn()
-    scene.game.apply_settings(scene.game.settings.with_video(display=mode))
-    scene._rebuild("resolution")
     pushed: list[object] = []
     scene.game.scene_manager.push = pushed.append
+    _focus_action(scene, "size")
+    scene._open("size")
 
-    _focus_action(scene, "resolution")
-    scene._open("resolution")
-
-    assert pushed, f"the resolution row opened nothing in {mode.value}"
+    assert pushed, (
+        "the row opened nothing: a row that exists but opens nothing is the same dead row, quieter"
+    )
 
 
 def test_every_row_does_something() -> None:
@@ -665,8 +642,8 @@ def test_a_confirm_on_a_disabled_row_is_swallowed() -> None:
     ``_handle_row_value_navigation`` returns early on a disabled row rather than
     letting the press through, and the reason is in its docstring: the menu model
     answers an action on a disabled row by activating the nearest *enabled* one,
-    so a confirm that reached it would change the display mode from a row that
-    only reports the window.
+    so a confirm that reached it would change a setting from a row that only
+    reports the window.
 
     So the focus has to be put there by hand -- ``_current`` is the only way, and
     reaching into it is the point rather than a shortcut, because the state is
@@ -682,7 +659,7 @@ def test_a_confirm_on_a_disabled_row_is_swallowed() -> None:
         RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD)
     ), "the guard claims the press"
 
-    assert scene.game.settings == before, "and the display mode is untouched"
+    assert scene.game.settings == before, "and no setting was touched"
 
 
 # --- the two rows that were reported dead -----------------------------------
@@ -798,9 +775,7 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
 
     assert "panel_scale" not in actions
     assert actions == [
-        "display",
-        "monitor",
-        "resolution",
+        "size",
         "fit",
         "vsync",
         "frame_limit",

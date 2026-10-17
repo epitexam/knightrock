@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3154%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3126%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3154 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3126 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -122,7 +122,7 @@ that owns it. Reachable from the main menu and from the pause screen.
 
 | Screen | Owns |
 |---|---|
-| **Video** | Display mode, the screen to play on (multi-monitor), the window size or fullscreen mode (whichever applies to the current mode), how the picture fits the window (bars / whole-pixel / zoom), VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. Settings with more than a few values open a **list** rather than cycling on ←/→, and each entry says what it does. |
+| **Video** | The window's size, how the picture fits the window (bars / whole-pixel / zoom), VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. Settings with more than a few values open a **list** rather than cycling on ←/→, and each entry says what it does. |
 | **Controls → Menu controls** | Key/button rebinding and the menu stick Y inversion. |
 | **Controls → Gameplay controls** | Key/button rebinding. |
 
@@ -242,7 +242,7 @@ uv run python tests/benchmarks/contact_benchmark.py
 
 > **The camera shows a fixed rectangle of the world: 1152×648 world units**
 > (`src/core/display/framing.py`). It is render-only, and **the simulation reads
-> it and nothing else** — window size, DPI, display mode and desktop dimensions
+> it and nothing else** — window size, DPI and desktop dimensions
 > are not observable from it.
 
 It is deliberately tight: the player sees 45 % of the width and 34 % of the
@@ -253,9 +253,9 @@ than mapped from the menu.
 |---|---|
 | `Framing` | the visible rectangle of the world, in world units. Fixed. |
 | `Viewport` | the surface everything is drawn into: the window's fitted rect |
-| `Stage` | the OS window: mode, monitor, position, DPI, vsync |
+| `Stage` | the OS window: size, monitor, DPI, vsync |
 | `Presentation` | window onto target, and the pointer back. Scales nothing. |
-| `monitors` | what this machine has, and which one the player meant |
+| `monitors` | what this machine has, and which panel holds the window |
 | `sdl_probe` | the libSDL2 pygame already links, for what pygame cannot say |
 
 How large the world is *drawn* is a separate question, answered by the window: a
@@ -284,28 +284,15 @@ was never initialised, and it answers with plausible numbers describing nothing.
 When it cannot be reached the game runs on what pygame can say, which is what it
 did before.
 
-**A monitor is stored by name, never by index.** Indices are reordered by the
-platform between boots, so an index in a settings file is a claim about a machine
-nobody can check. A name is resolved against the live topology on every launch,
-and a name that is not found is *reported* — the menu says "that screen is gone"
-and the window moves to the primary — rather than silently landing somewhere else
-and rewriting the file.
+**The game is a window, full stop.** There is no display mode, no exclusive
+fullscreen, no borderless and no screen picker: the window is the render target
+and the player chooses how big it is. Three rules replace all of that:
 
-**The window is the only source of truth about the window.** No `size_mode`, no
-render scale, no smoothing flag: none of those describes a screen. Five rules
-replace them:
-
-- the **display mode** defaults to *auto* — borderless when the screen already has
-  the shape of the framing, a window otherwise, re-evaluated on every launch. A
-  chosen mode is never re-resolved;
-- **borderless means borderless**: `FULLSCREEN | NOFRAME` at the monitor's *usable*
-  size, so no display mode is changed and there is nothing to restore when a
-  hybrid-GPU laptop switches GPUs mid-session. Plain fullscreen does ask the
-  driver for a mode change, at a resolution taken from `list_modes()` rather than
-  from a list this project wrote down;
-- a **windowed** game opens as large as fits on the monitor it opens on, restores
-  the size and position the player left it at — clamped, never overwritten — and
-  refuses to be dragged smaller than the interface can be read at;
+- the window opens **centred on the primary display**, at the size the player
+  chose or as large as fits the panel when they have not chosen one, and the
+  player drags it from there. Where the window sits belongs to the window
+  manager, which is why there is no row claiming a screen: a placement the game
+  cannot guarantee is a setting it must not offer;
 - the **render target is the window** — more precisely the fitted rectangle of the
   window that carries the picture at the framing's aspect. The finished frame is
   blitted **1:1**, so presenting costs a copy rather than a resample;
@@ -315,7 +302,7 @@ replace them:
   so a video setting can never show more level than another.
 
 Resizing the window rebuilds the render target, re-reads the pixel density and
-re-lays out the interface — the same cascade as a display change, which is why it
+re-lays out the interface — the same cascade as a window rebuild, which is why it
 is one piece of code. What resizing never changes is **how much world you see**.
 
 A resize is **read off the window, not off an event**: pygame-ce turns one SDL
@@ -331,26 +318,24 @@ disagreed — measured, by 244 px, so a click landed on a neighbour or on nothin
 see coming: a change the game performs *while* handling an input, with a second
 input already queued behind it in the same frame.
 
-The screen the game reports — the placement notice, the VSync row's rate — is the
-screen **the window is actually on**, found from its position rather than from what
-the settings asked for, which stays a request the platform is free to refuse. When
-the window's screen cannot be established, the row says nothing rather than the
+The screen the game reports — the VSync row's rate — is the screen **the window
+is actually on**, found from its position rather than from the primary. When the
+window's screen cannot be established, the row says nothing rather than the
 primary's rate: a missing hint is recoverable, a wrong number is a fact.
 
 Plugging a screen in or out mid-session is noticed: pygame-ce surfaces no event
 for a display appearing or disappearing, so the display list is re-read on a timer
-and a window whose screen has gone moves to the primary and says so.
+and a window whose screen has gone is rebuilt on the primary and says so.
 
 <details>
-<summary><b>Why the fullscreen mode list comes from the driver, and the framing is not derived from the window</b></summary>
+<summary><b>Why the window's size is only a request, and why the framing is not derived from the window</b></summary>
 
-**The mode list is asked, not written down.** A hardcoded resolution list is a
-claim about the player's monitor that the game cannot check — offering
-2560×1440 to a 1366×768 laptop is what that costs. The fullscreen picker reads
-`pygame.display.list_modes()`, which is the driver answering for *this* panel
-right now, and a stored mode the driver no longer reports is dropped rather than
-asked for. The same reasoning keeps a hardcoded resolution list out of the file:
-it is the catalogue that was deleted, rebuilt from a source that can be asked.
+**A size is asked for, not asserted.** A hardcoded list of window sizes is a
+claim about the player's monitor the game cannot check — offering 2560×1440 to a
+1366×768 laptop is what that costs. The sizes the menu offers are derived from
+the panel in force and filtered to what it can hold, and the choice is only ever
+*asked for*: the window manager grants it and the stage measures back what it
+actually got, so the row reports the window rather than the request.
 
 **The window's remembered size is a request, not an assertion.** It is honoured
 where it fits and clamped where it does not, and the file keeps what the player
@@ -722,9 +707,9 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3154 tests · 94 % instruction coverage · 91 % branch
-> coverage · Ruff clean · mypy clean (176 files across `src main.py tools`;
-> `mypy src` alone is 173).[^coverage]
+> **Current baseline:** 3126 tests · 94 % instruction coverage · 91 % branch
+> coverage · Ruff clean · mypy clean (182 files across `src main.py tools`;
+> `mypy src` alone is 179).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:
@@ -748,7 +733,7 @@ uv run mypy src main.py tools                         # types
 ```
 
 `C901` has no standalone CI step — it is enforced because it sits in the ruff
-`select` list consumed by the lint step. Ruff covers all four paths, 328 files.
+`select` list consumed by the lint step. Ruff covers all four paths, 349 files.
 
 `tests/` is **deliberately not type-checked**, which is why the mypy command omits
 it.[^mypy-tests] The suite pins behaviour, not annotations, and test doubles are

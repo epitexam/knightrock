@@ -30,15 +30,9 @@ import logging
 import pygame
 
 from . import sdl_probe
-from .framing import Framing
-from .mode import DisplayMode
 from .monitors import Monitor, Topology, degraded
 
 logger = logging.getLogger(__name__)
-
-#: How far the desktop's aspect may sit from the framing's before the letterbox
-#: stops being invisible and starts being two black stripes.
-ASPECT_TOLERANCE = 0.05
 
 
 def desktop_sizes() -> tuple[tuple[int, int], ...]:
@@ -118,19 +112,3 @@ def initial_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
     from .monitors import Monitor, opening_size
 
     return opening_size(Monitor(index=0, name="", bounds=(0, 0, *desktop), usable=(0, 0, *desktop)))
-
-
-def auto_display_mode(framing: Framing, desktop: tuple[int, int]) -> DisplayMode:
-    """Resolve ``DisplayMode.AUTO`` for this machine. Never returns AUTO.
-
-    Borderless when the desktop already has the shape of the framing, because
-    then the letterbox collapses to nothing and the game fills the screen with
-    nothing to configure. Otherwise a window, sized generously: on a screen
-    whose shape does not match, the player should be able to *see* the bars and
-    the desktop around them, which reads as deliberate rather than broken.
-    """
-    if desktop[0] <= 0 or desktop[1] <= 0:
-        return DisplayMode.WINDOW
-    if abs(desktop[0] / desktop[1] - framing.aspect) / framing.aspect < ASPECT_TOLERANCE:
-        return DisplayMode.BORDERLESS
-    return DisplayMode.WINDOW

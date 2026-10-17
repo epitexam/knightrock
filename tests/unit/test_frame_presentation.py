@@ -158,11 +158,10 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     path and a full re-decode of the art on the next frame that touched a new
     animation.
 
-    There is no resolution to change any more, so the display *mode* is what
+    There is no display mode to change any more, so the *window size* is what
     rebuilds the window, and this is the path that has to carry it.
     """
     from src.core.asset_library import shared_library
-    from src.core.display.mode import DisplayMode
 
     game = game_runtime
     game.initialize_display()
@@ -172,7 +171,7 @@ def test_a_display_change_drops_the_converted_art(game_runtime) -> None:
     particles._puff_cache[(3, 0.0)] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
     particles._vortex_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
 
-    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+    game.apply_settings(replace(game.settings, window_size=(1400, 900)))
 
     assert library._cache == {}
     assert library._frame_cache == {}
@@ -233,14 +232,12 @@ def test_the_fx_ladders_are_dropped_when_the_display_format_changes(game_runtime
     library, which ``AssetLibrary`` drops for us. Painted here, they are
     cached surfaces of our own and nothing else would clear them.
     """
-    from src.core.display.mode import DisplayMode
-
     game = game_runtime
     game.initialize_display()
     particles._puff_cache[(3, 0.0)] = [pygame.Surface((1, 1), pygame.SRCALPHA)]
     particles._vortex_cache = [pygame.Surface((1, 1), pygame.SRCALPHA)]
 
-    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+    game.apply_settings(replace(game.settings, window_size=(1400, 900)))
 
     assert particles._puff_cache == {}
     assert particles._vortex_cache == []

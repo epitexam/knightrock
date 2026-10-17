@@ -18,7 +18,6 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
-from src.core.display.mode import DisplayMode
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
@@ -84,7 +83,7 @@ def test_opening_a_screen_and_coming_back_are_two_distinct_effects(
 
 def test_a_value_change_in_place_is_a_confirmation(manager: SceneManager, feedback) -> None:
     """→ on a value row adjusts the setting without leaving the screen."""
-    manager.game.settings = manager.game.settings.with_video(display=DisplayMode.WINDOW)
+    manager.game.settings = manager.game.settings.with_video(pixel_perfect=True)
     manager.switch(VideoScene(manager.game))
     before = manager.game.settings.vsync
 

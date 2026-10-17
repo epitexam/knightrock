@@ -16,12 +16,19 @@ the next launch.
 
 The window is now the only source of truth (:mod:`src.core.display.letterbox`),
 and the picture is derived from it, so the settings that survive are the ones
-that were never about the screen: a display mode, whole-pixel art, vsync, a
-frame limit, an interface scale, and the bindings.
+that were never about the screen: whole-pixel art, vsync, a frame limit, an
+interface scale, the size the player wants the window at, and the bindings.
 
-Schema v3 dropped the window keys. A v2 or v1 file still loads: unknown keys
-are ignored rather than rejected, because the bindings are the expensive half
-to rebuild and must not be lost over a video key that no longer means anything.
+A display mode and a chosen screen lived here too, and both are gone. The game is
+a window now, with one set of flags; the player chooses its size and the window
+manager owns where it sits. Each was a claim about the screen the game could not
+keep -- it cannot move a window the compositor has decided to pin, and a mode
+that asks the driver for a change is the thing that blanks a hybrid-GPU laptop.
+
+Schema v3 dropped the window keys, and v4 still reads the keys that remain. A
+removed key is ignored rather than rejected, because the bindings are the
+expensive half to rebuild and must not be lost over a video key that no longer
+means anything.
 """
 
 import json
@@ -35,7 +42,6 @@ from pathlib import Path
 from typing import Any
 
 from src.core.display.letterbox import FitPolicy
-from src.core.display.mode import DisplayMode
 from src.core.input.bindings_repository import (
     bindings_from_dict,
     bindings_to_dict,
@@ -44,8 +50,10 @@ from src.core.input.input_bindings import InputBindings
 
 logger = logging.getLogger(__name__)
 
-#: v1 had a boolean, v2 a window and a render scale, v3 only choices, v4 adds
-#: the monitor the player picked and the window they left it at. All are read.
+#: v1 had a boolean, v2 a window and a render scale, v3 only choices, v4 the
+#: window size the player chose. All are read. The v4 keys that named a screen or
+#: a display mode were dropped without a new version: they are simply not read
+#: any more, and a file that still carries them loads unchanged.
 SETTINGS_FORMAT_VERSION = 4
 LEGACY_FORMAT_VERSIONS = (1, 2)
 
@@ -102,30 +110,18 @@ class UserSettings:
 
     What is left is a list of choices, and each one is really a choice:
 
-    - **display**: how to occupy the screen. ``AUTO`` is re-evaluated every
-      launch, which is the honest answer for "I have never seen this machine".
     - **pixel_perfect**: give up filling the window to get whole-pixel art.
     - **vsync**, **frame_limit**: how often to present.
     - **ui_scale**: the interface's own size, independent of the density.
     - **panel_scale**: the debug panels' size, down to 0.4 so the full stack fits
       a small window. Offered in the video menu only when the game is running
       with the debug overlay on, since there is nothing for it to size otherwise.
+    - **window_size**: the window size the player chose, or ``None`` to keep
+      whatever size they last dragged the window to.
     - **bindings**: what the buttons do.
     """
 
     bindings: InputBindings = field(default_factory=InputBindings)
-    display: DisplayMode = DisplayMode.AUTO
-    #: The monitor the player picked, by the name the platform gives it.
-    #:
-    #: A name and not an index, and that is the whole reason this can be stored
-    #: at all. An index is a claim about a machine that cannot be checked: the
-    #: platform's enumeration order is not stable across boots, so "1" from a
-    #: three-monitor desk can be a different panel afterwards. A name is
-    #: resolved against the topology on every launch and, when it is not found,
-    #: the game says so on the menu and uses the primary rather than silently
-    #: landing somewhere else. ``None`` means "whatever the primary is", which is
-    #: a first launch and a reset rather than a preference anyone expressed.
-    monitor: str | None = None
     pixel_perfect: bool = False
     #: How the picture meets the window: bars, whole-pixel blocks, or zoom to
     #: fill with the overflow cropped. All three show *at most* the framing, so
@@ -135,36 +131,23 @@ class UserSettings:
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
     panel_scale: float = 1.0
-    #: The window geometry to restore, in window mode only. Remembered from what
-    #: the player dragged the window to, and clamped to the monitor it opens on
-    #: rather than overwritten -- see :func:`src.core.display.monitors.fit_size`.
+    #: The window size to open at, or ``None`` to keep the size the player last
+    #: dragged the window to. Clamped to the monitor it opens on rather than
+    #: overwritten -- see :func:`src.core.display.monitors.fit_size`.
     window_size: tuple[int, int] | None = None
-    window_position: tuple[int, int] | None = None
-    #: The mode to ask the driver for in *exclusive* fullscreen, as a pair.
-    #:
-    #: Only meaningful in that one mode, and only honoured when the driver still
-    #: reports it -- a mode list is what the platform says this panel supports
-    #: today, so a mode that disappeared with a cable change cannot be asked for.
-    #: ``None`` means "whatever the display is already running", which is the
-    #: safe default and the one a first launch gets.
-    fullscreen_mode: tuple[int, int] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
             "version": SETTINGS_FORMAT_VERSION,
             "bindings": bindings_to_dict(self.bindings),
             "video": {
-                "display": self.display.value,
-                "monitor": self.monitor,
                 "pixel_perfect": self.pixel_perfect,
                 "fit": self.fit.value,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
-                "fullscreen_mode": (list(self.fullscreen_mode) if self.fullscreen_mode else None),
             },
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
-                "position": list(self.window_position) if self.window_position else None,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
             # screen, like the scale above it, and the ``video`` section is held
@@ -221,7 +204,6 @@ class UserSettings:
 
         return cls(
             bindings=bindings,
-            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
@@ -231,18 +213,18 @@ class UserSettings:
 
     @classmethod
     def _from_v4(cls, data: dict[str, Any]) -> UserSettings:
-        """Read a v4 file: a chosen screen and a chosen window, plus v3's choices.
+        """Read a v4 file: a chosen window size, plus v3's choices.
 
-        The window keys are read as *requests*. Nothing here decides whether they
+        The window key is read as a *request*. Nothing here decides whether it
         can be honoured -- that needs the topology, which is not known until the
-        window is opened -- so they are carried through and clamped by
+        window is opened -- so it is carried through and clamped by
         :mod:`src.core.display.monitors` at launch. What is decided here is only
         whether the file is well formed, because a settings file that fails to
         parse takes the player's bindings down with it.
 
-        A v3 file loads through this too: the keys it lacks are simply absent, so
-        ``monitor``, ``fit`` and the window geometry all take their defaults and
-        the player keeps their controls and their choices.
+        A v3 file loads through this too, and so does a v4 file written before
+        the display mode and the chosen screen were removed: the keys it no
+        longer has, and the keys that no longer exist, are simply ignored.
         """
         bindings = cls._bindings(data)
         video = data.get("video", {})
@@ -267,14 +249,8 @@ class UserSettings:
                 frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
             )
 
-        monitor = video.get("monitor")
-        if monitor is not None and not isinstance(monitor, str):
-            raise ValueError("video.monitor must be a string or null")
-
         return cls(
             bindings=bindings,
-            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
-            monitor=monitor or None,
             pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
             fit=_enum(FitPolicy, video.get("fit", FitPolicy.BARS), "fit"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
@@ -282,8 +258,6 @@ class UserSettings:
             ui_scale=scale,
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
-            window_position=_placement(window, "position"),
-            fullscreen_mode=_placement(video, "fullscreen_mode"),
         )
 
     @classmethod
@@ -323,10 +297,6 @@ class UserSettings:
 
         return cls(
             bindings=bindings,
-            # v2 defaulted a missing mode to borderless, having just invented
-            # the mode; v3 defaults it to auto, which is the honest answer for a
-            # file that never expressed a preference.
-            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             frame_limit=frame_limit,
             panel_scale=panel_scale,
@@ -337,23 +307,18 @@ class UserSettings:
     def _from_v1(cls, data: dict[str, Any]) -> UserSettings:
         """Read a v1 file.
 
-        One mapping, and it is a mode rather than a size: ``fullscreen: true``
-        becomes **borderless**, not exclusive fullscreen. A v1 player who asked
-        for fullscreen asked not to have a window, and borderless is the way to
-        give them that without asking the driver for a mode change -- which is
-        what makes v1 fullscreen the thing that blacks out a hybrid-GPU laptop.
-
-        The size v1 stored is dropped rather than honoured. It came off a fixed
-        catalogue, so it was a guess about the player's monitor, and honouring
-        it would mean being the only component left that believes in a window
-        size.
+        Only the bindings and the two scales survive. v1 stored a boolean
+        ``fullscreen`` and a window size off a fixed catalogue, and both were
+        claims about the player's monitor: the size could be offered to a screen
+        too small to hold it, and the boolean asked the driver for a mode change,
+        which is what blacked out a hybrid-GPU laptop. The game is a window now,
+        so a v1 player keeps their controls and takes the default window.
         """
         bindings = cls._bindings(data)
         video = data.get("video", {})
         ui = data.get("ui", {})
         if not isinstance(video, dict) or not isinstance(ui, dict):
             raise ValueError("settings sections must be objects")
-        fullscreen = _bounded_bool(video.get("fullscreen", False), "video.fullscreen")
         scale = ui.get("scale", 1.0)
         if scale not in UI_SCALES:
             raise ValueError(f"ui.scale must be one of {UI_SCALES}")
@@ -365,7 +330,6 @@ class UserSettings:
             raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
         return cls(
             bindings=bindings,
-            display=DisplayMode.BORDERLESS if fullscreen else DisplayMode.WINDOW,
             panel_scale=panel_scale,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             ui_scale=scale,
@@ -392,8 +356,6 @@ class UserSettings:
         coerced = dict(changes)
         if isinstance(coerced.get("fit"), str):
             coerced["fit"] = FitPolicy(str(coerced["fit"]))
-        if isinstance(coerced.get("display"), str):
-            coerced["display"] = DisplayMode(str(coerced["display"]))
         return replace(self, **coerced)  # type: ignore[arg-type]
 
 

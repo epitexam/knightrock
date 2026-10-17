@@ -33,14 +33,13 @@ import pygame
 import pytest
 
 from src.application.scenes.option_screen import OptionScreen
-from src.application.scenes.video_scene import DISPLAY_VALUES, VideoScene
+from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import (
     SETTINGS_FORMAT_VERSION,
     SettingsStore,
     UserSettings,
 )
 from src.core.display.letterbox import FitPolicy
-from src.core.display.mode import DisplayMode
 from src.core.game import Game
 from src.core.input.input_actions import InputAction
 
@@ -60,8 +59,8 @@ def _debug_on(monkeypatch: pytest.MonkeyPatch) -> None:
 pytestmark = pytest.mark.usefixtures("_video_display", "_debug_on")
 
 #: The rows that carry a value, and how to read it back out of the settings.
-#: ``AUTO`` is excluded: it is resolved at launch against the machine, so what
-#: persists is the player's *request* for that, which is a separate test below.
+#: Every row on the screen except the two that open a list, each of which is
+#: covered by a test of its own further down.
 VALUE_ROWS = {
     "vsync": lambda settings: settings.vsync,
     "frame_limit": lambda settings: settings.frame_limit,
@@ -196,9 +195,9 @@ def _rebound_bindings(game: Game):
 def _relaunch(store: SettingsStore, tmp_path: Path) -> UserSettings:
     """A second runtime, reading the file the first one wrote.
 
-    ``_initialize`` and not ``load`` alone, because the launch is where three of
-    the historical bugs lived: it resolved ``AUTO``, re-derived a sharpness and
-    rewrote a size. Reading the file is not enough to catch those.
+    ``_initialize`` and not ``load`` alone, because the launch is where the
+    historical bugs lived: it used to resolve ``AUTO``, re-derive a sharpness and
+    rewrite a size. Reading the file is not enough to catch those.
     """
     game = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
     game._initialize()
@@ -240,50 +239,38 @@ def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
     assert written["version"] == SETTINGS_FORMAT_VERSION
 
 
-def test_the_display_mode_survives_a_relaunch(tmp_path: Path) -> None:
-    """A mode is the one row whose value the launch used to overwrite.
+def test_the_window_size_survives_a_relaunch(tmp_path: Path) -> None:
+    """The size is a request the player made, and the launch honours it.
 
-    ``AUTO`` resolves against the machine every launch, which is the point of it.
-    A *chosen* mode must not be re-resolved, or the row would answer once and
-    then quietly go back to whatever the desktop looks like today.
+    A chosen size is asked for as it stands, clamped to the panel it opens on and
+    never written back -- so a size from a 4K desk survives arriving at a laptop
+    instead of being overwritten, which is what a size in the file always used to
+    get wrong.
     """
     game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(display=DisplayMode.WINDOW))
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
     scene.draw(game.presentation.surface)
 
-    # Cycle to whatever is not WINDOW, whichever end of the ladder that is.
-    for _ in range(len(DISPLAY_VALUES)):
-        _click(scene, _row_index(scene, "display"))
-        if game.settings.display is not DisplayMode.WINDOW:
-            break
-    chosen = game.settings.display
-    assert chosen is not DisplayMode.WINDOW
-    game.step()
-
-    assert _relaunch(store, tmp_path).display is chosen
-
-
-def test_auto_is_still_auto_on_the_next_launch(tmp_path: Path) -> None:
-    """The opposite contract, and it is the reason ``AUTO`` exists.
-
-    ``AUTO`` says "decide again next time, on whatever machine I am on", so the
-    file has to keep saying it. A launch that wrote the resolved mode back would
-    freeze the answer on the first machine the file ever met -- which is exactly
-    what a window size was, and it is why a docked laptop came back wrong.
-    """
-    game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(display=DisplayMode.AUTO))
+    _click(scene, _row_index(scene, "size"))
+    list_scene = game.scene_manager.current
+    assert isinstance(list_scene, OptionScreen)
+    entry = next(
+        (i for i, option in enumerate(list_scene.options) if isinstance(option.value, tuple)),
+        None,
+    )
+    assert entry is not None, "the window-size list offers no size"
+    wanted = list_scene.options[entry].value
+    _click_list(list_scene, entry)
+    assert game.settings.window_size == wanted
     game.step()
 
     written = json.loads(store.path.read_text(encoding="utf-8"))
-    assert written["video"]["display"] == "auto"
+    assert written["window"]["size"] == list(wanted)
 
     relaunched = _relaunch(store, tmp_path)
-    assert relaunched.display.is_concrete, "the launch has to resolve it to build a window"
-    assert json.loads(store.path.read_text(encoding="utf-8"))["video"]["display"] == "auto"
+    assert relaunched.window_size == wanted
 
 
 def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path) -> None:
@@ -315,18 +302,18 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:
     """The structural version of the same claim, restated against what survives it.
 
-    A setting that *is* the window is a claim the game cannot check, and the three
+    A setting that *is* the window is a claim the game cannot check, and the ones
     that used to be here were all wrong in practice: the size was rewritten at
-    launch whenever it did not fit, the render scale was written back once and
-    then believed forever, and in borderless the window was the desktop's size
-    while the menu displayed the stored one.
+    launch whenever it did not fit, the render scale was written back once and then
+    believed forever, and in borderless the window was the desktop's size while the
+    menu displayed the stored one.
 
-    Three window keys are back and none of them can go stale, because none of them
-    is asserted about the window. ``monitor`` is a name resolved against the live
-    topology with the outcome reported; ``window.size`` and ``window.position``
-    are requests the stage clamps to the panel it opened on and never writes
-    back. The genuinely uncheckable ones stay gone, and the assertion below is
-    that they are gone.
+    One window key is back and it cannot go stale, because it is not an assertion
+    about the window: ``window.size`` is a request the stage clamps to the panel it
+    opens on and never writes back. The genuinely uncheckable ones stay gone -- the
+    screen picker and the display mode among them, because a window manager owns
+    where the window sits and which mode the driver runs -- and the assertion below
+    is that they are gone.
     """
     game, store = _runtime(tmp_path)
 
@@ -341,18 +328,23 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
     written = json.loads(store.path.read_text(encoding="utf-8"))
     video, window = written["video"], written["window"]
     assert set(video) == {
-        "display",
-        "monitor",
         "pixel_perfect",
         "fit",
         "vsync",
         "frame_limit",
-        "fullscreen_mode",
     }
-    assert set(window) == {"size", "position"}
-    # A window position may be negative -- a monitor left of the primary sits at a
-    # negative origin -- so these are not "no size keys", they are a request.
-    assert not {"width", "height", "size_mode", "render_scale", "smoothing"} & set(video)
+    assert set(window) == {"size"}
+    assert not {
+        "width",
+        "height",
+        "size_mode",
+        "render_scale",
+        "smoothing",
+        "display",
+        "monitor",
+        "fullscreen_mode",
+        "position",
+    } & (set(video) | set(window))
 
     # And the settings object agrees with the file, field for field.
     fresh = UserSettings.from_dict(written)
@@ -476,13 +468,10 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
     written = json.loads(store.path.read_text())
 
     assert set(written["video"]) == {
-        "display",
-        "monitor",
         "pixel_perfect",
         "fit",
         "vsync",
         "frame_limit",
-        "fullscreen_mode",
     }
     assert "panel_scale" in written["ui"]
 

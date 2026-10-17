@@ -8,7 +8,8 @@ Four objects with four jobs, kept apart on purpose:
 ``Viewport``
     The surface everything is drawn into, at the window's own size.
 ``Stage``
-    The OS window. Mode, position, DPI, vsync. It has no opinion about size.
+    The OS window: size, position, DPI, vsync. It does not decide what is
+    drawn into it.
 ``Presentation``
     Window and target, and the pointer back. The only place that reconciles
     them, and it does not scale: the picture is blitted 1:1.

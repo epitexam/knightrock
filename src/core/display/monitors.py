@@ -1,25 +1,20 @@
-"""What the machine's displays are, and which one the player meant.
+"""What the machine's displays are: their bounds, their usable area, their rate.
 
 Pure on purpose. The queries that find out need a display to exist
 (:mod:`src.core.display.detection`); everything that *decides* is a function of
 a :class:`Topology` and can therefore be exercised on a desk with one monitor, or
 none, or four, from a table.
 
-The rule the rest of the subsystem inherits: **a monitor is identified by its
-name, and a name that cannot be found is reported, never rewritten.** Storing an
-index would look simpler and would be the old mistake again -- indices are
-reordered by the platform between boots, so a settings file carrying "1" is a
-claim about a machine nobody can check. Carrying ``DP-1 27"`` and answering
-"that screen is gone, using the primary" is a claim the game can settle every
-launch, and the answer reaches the player as a line on the menu instead of as a
-window on the wrong monitor.
+There is no "which screen did the player pick" here any more. The game is a
+window; the player moves it, and the platform owns where it sits. The one
+question the rest of the game still asks of this module is *which panel is the
+window on*, so the VSync row can report that panel's rate rather than the
+primary's.
 """
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
-from enum import StrEnum
 
 from .sdl_probe import DisplayGeometry
 
@@ -90,56 +85,6 @@ class Monitor:
     def usable_origin(self) -> tuple[int, int]:
         return (self.usable[0], self.usable[1])
 
-    @property
-    def origin(self) -> tuple[int, int]:
-        """Where this display sits on the virtual desktop.
-
-        May be negative: a Linux desktop whose primary is not leftmost puts the
-        left monitor there, and assuming otherwise is what once placed a window
-        on the wrong panel.
-        """
-        return (self.bounds[0], self.bounds[1])
-
-    @property
-    def detail(self) -> str:
-        """The resolution and rate, for a menu row that has a column for it."""
-        rate = f" @ {self.refresh_rate} Hz" if self.refresh_rate > 0 else ""
-        return f"{self.size[0]}x{self.size[1]}{rate}"
-
-
-class ResolutionReason(StrEnum):
-    """Why a stored monitor name resolved to the monitor it did.
-
-    Carried rather than logged and discarded, because "the screen you chose is
-    gone" is the one outcome a player has to be told about: it is the difference
-    between the game adapting and the game being wrong.
-    """
-
-    MATCHED = "matched"
-    NONE_CHOSEN = "none chosen"
-    MISSING = "that screen is gone"
-    UNNAMED = "this setup reports no screen names"
-    AMBIGUOUS = "two screens share that name"
-
-
-@dataclass(frozen=True)
-class Resolution:
-    """The monitor to use, and what it cost to choose it."""
-
-    monitor: Monitor
-    reason: ResolutionReason
-    fallback: Monitor
-
-    @property
-    def honoured(self) -> bool:
-        """Whether the player's own choice is what got used.
-
-        False whenever the game decided, which is the case the menu reports and
-        the case a test asserts against. ``NONE_CHOSEN`` counts as honoured
-        because nothing was overridden: the player never expressed a preference.
-        """
-        return self.reason in (ResolutionReason.MATCHED, ResolutionReason.NONE_CHOSEN)
-
 
 @dataclass(frozen=True)
 class Topology:
@@ -172,48 +117,6 @@ class Topology:
     @property
     def has_geometry(self) -> bool:
         return bool(self.monitors)
-
-    def label_for(self, monitor: Monitor) -> str:
-        """A name to show, made unambiguous when the machine has two of a kind.
-
-        Two identical panels both report the same EDID name, and picking
-        between two rows reading ``DP-1`` would be a coin toss presented as a
-        menu. The index is appended only when it has to be.
-        """
-        if not monitor.name:
-            return f"Screen {monitor.index + 1}"
-        duplicates = Counter(m.name for m in self.monitors)[monitor.name]
-        return monitor.name if duplicates < 2 else f"{monitor.name} ({monitor.index + 1})"
-
-    def resolve(self, wanted: str | None) -> Resolution:
-        """The monitor a stored name means, and why it is that one.
-
-        A name is matched exactly and then, so a monitor the platform renames
-        is a miss rather than a near-miss. Near-matching would let ``DP-1``
-        quietly become ``DP-2`` after a cable moves, which is the same silent
-        substitution this module exists to prevent.
-
-        ``wanted`` is never written back here. The caller keeps the player's
-        name, and re-asks every launch, so a screen that comes back is used
-        again without the player doing anything.
-        """
-        primary = self.primary
-        if wanted is None:
-            return Resolution(primary, ResolutionReason.NONE_CHOSEN, primary)
-        if not self.named:
-            # The names a player picked came from a file written on a machine
-            # that could read them. Nothing here can be matched against.
-            return Resolution(primary, ResolutionReason.UNNAMED, primary)
-        matches = [monitor for monitor in self.monitors if monitor.name == wanted]
-        if len(matches) == 1:
-            return Resolution(matches[0], ResolutionReason.MATCHED, primary)
-        if len(matches) > 1:
-            # Two panels reporting one EDID name. Taking the first would be a
-            # coin toss that reads as a decision, and it would not be stable:
-            # the platform's enumeration order can swap between boots. The
-            # primary is as good a guess as any and at least it is a named one.
-            return Resolution(primary, ResolutionReason.AMBIGUOUS, primary)
-        return Resolution(primary, ResolutionReason.MISSING, primary)
 
     def containing(self, position: tuple[int, int]) -> Monitor | None:
         """Which display holds a point of the virtual desktop.
@@ -293,25 +196,6 @@ def fit_size(size: tuple[int, int], monitor: Monitor) -> tuple[int, int]:
     )
 
 
-def fit_position(
-    position: tuple[int, int], size: tuple[int, int], monitor: Monitor
-) -> tuple[int, int]:
-    """A remembered position, moved until the window's title bar is reachable.
-
-    Measured on the window's *top* edge rather than its whole rectangle: a
-    window taller than the panel is a legitimate thing for a player to ask for,
-    and refusing it because it cannot fit would be the game overriding a choice
-    the player can see they made. What has to stay true is that the window can
-    be grabbed and dragged back.
-    """
-    origin_x, origin_y = monitor.usable_origin
-    left, top = position
-    return (
-        max(origin_x, min(left, origin_x + monitor.usable_size[0] - min(size[0], 64))),
-        max(origin_y, min(top, origin_y + monitor.usable_size[1] - 32)),
-    )
-
-
 def centre_on(monitor: Monitor, size: tuple[int, int]) -> tuple[int, int]:
     """The top-left corner that centres ``size`` on ``monitor``."""
     origin_x, origin_y = monitor.usable_origin
@@ -326,8 +210,8 @@ def degraded(sizes: tuple[tuple[int, int], ...] = ()) -> Topology:
 
     Sizes and count, no origin and no name -- which is exactly what the game had
     before any of this, and what every caller still receives when the SDL probe
-    cannot be reached. ``named`` is False, and :meth:`Topology.resolve` then
-    refuses every stored name with a reason rather than pretending to match.
+    cannot be reached. ``named`` is False, so nothing downstream claims to know
+    a panel's name.
     """
     return Topology(
         monitors=tuple(

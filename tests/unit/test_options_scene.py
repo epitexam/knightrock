@@ -33,9 +33,8 @@ def _game(topology=None) -> SimpleNamespace:
             density=1.0,
         ),
         # The video screen asks the runtime what displays exist, so a stand-in
-        # has to answer. One screen with no names by default: enough for the rows
-        # about pacing and scaling, and it keeps the screen picker out of a test
-        # that is about navigation.
+        # has to answer. One screen by default: enough for the rows about pacing
+        # and scaling, and it keeps the desk out of a test about navigation.
         topology=lambda: desk,
         # The screen the window is on, which is what the VSync row reports -- the
         # primary's rate is a claim about a screen the window may not be on.
@@ -121,21 +120,20 @@ def test_video_menu_owns_every_display_setting() -> None:
 
     The rows that stayed away are the ones that could not be honoured: a
     hardcoded resolution list is a claim about a monitor the game cannot measure,
-    and a render scale and a smoothing flag described a fixed target that no
-    longer exists -- the sharpness was also the setting that went stale, written
-    back once at launch and then believed forever.
+    a render scale and a smoothing flag described a fixed target that no longer
+    exists -- the sharpness was also the setting that went stale, written back
+    once at launch and then believed forever -- and a display mode asked the
+    driver for a mode change that can blank out a hybrid-GPU laptop.
 
-    The resolution that came back is the one the game can check. The fullscreen
-    mode list is read from the driver on this machine rather than written down
-    here, and the screen row lists the displays SDL actually reports. Both can
-    be wrong about a machine, which is why they are re-read rather than stored.
+    The one display choice that came back is the window size, and it is the one
+    the game can check: it is a request the stage clamps to the panel it opens on
+    and never writes back.
 
-    The single-screen stand-in here has no names, so the screen row is absent --
-    the row that only means something with a choice to make.
+    The single-screen stand-in here has no names, and there is no screen row to
+    miss either way -- where the window sits is the window manager's business.
     """
     expected = [
-        "display",
-        "resolution",
+        "size",
         "fit",
         "vsync",
         "frame_limit",
@@ -151,12 +149,15 @@ def test_video_menu_owns_every_display_setting() -> None:
     assert _actions(VideoScene(_game())) == expected
 
 
-def test_the_screen_picker_appears_only_where_there_is_a_choice() -> None:
-    """One display means nothing to pick, so the row is not offered.
+def test_there_is_no_screen_picker_however_many_screens_there_are() -> None:
+    """Where the window sits is the window manager's business, not a row.
 
-    A row that always reads "Screen 1" and cannot be acted on is the dead-row
-    failure this screen has already produced once, six rows of which highlighted
-    on click and changed nothing.
+    There used to be a screen row whenever the desktop had more than one panel,
+    and it was the only display setting that could claim something the game could
+    not keep: a window manager can refuse a move, and the row would then read a
+    screen the window was not on. The game opens centred on the primary and the
+    player drags it from there, which is a request the desktop cannot silently
+    refuse -- so there is no row to go stale.
     """
     assert "monitor" not in _actions(VideoScene(_game()))
 
@@ -167,4 +168,4 @@ def test_the_screen_picker_appears_only_where_there_is_a_choice() -> None:
         ),
         named=True,
     )
-    assert "monitor" in _actions(VideoScene(_game(topology=desk)))
+    assert "monitor" not in _actions(VideoScene(_game(topology=desk)))

@@ -1,4 +1,4 @@
-"""Video settings: how to occupy the screen, and how it is presented.
+"""Video settings: the window's size, and how the picture is presented.
 
 Sole owner of the display settings. They used to be duplicated in the Options
 hub, which let the player change the same value from two places; the Options
@@ -6,24 +6,19 @@ screen is now navigation only.
 
 This screen is a hub. Every setting with more than a handful of values opens a
 list (:class:`~src.application.scenes.option_screen.OptionScreen`), because
-cycling is only a reasonable control for two to four values and some of these
-are not: the driver reports 28 fullscreen modes on this panel, so a cycle took up
-to 27 presses and offered no way to discover the value existed. The lists
-themselves live in :mod:`src.application.scenes.video_options`, so what a setting
-*offers* is decided without a screen in the way.
+cycling is only a reasonable control for two to four values. The lists themselves
+live in :mod:`src.application.scenes.video_options`, so what a setting *offers*
+is decided without a screen in the way.
 
-Left as direct ←/→ cycling, on purpose, are the rows that really are two or three
-states: the display mode, VSync, and the whole-pixel question -- which is no
-longer its own row, because it is the same setting as the integer fit policy and
-sitting next to it as a separate toggle produced a row that changed its label and
-changed nothing on screen. It is an entry inside the fit list now, where the
-sentence explaining what whole-pixel art is has room to be read.
+Left as direct ←/→ cycling, on purpose, is the one row that really is two states:
+VSync. The display mode and the chosen screen lived here too, and both are gone.
+The game is a window, so there is one set of flags; the player chooses its size
+and the window manager owns where it sits.
 
 Still no resolution *catalogue*. A hardcoded list of window sizes is a claim
 about the player's monitor the game cannot check -- offering 2560x1440 to a
-1366x768 laptop is what that costs. The fullscreen list is the opposite: it is
-read from the driver on this machine and then filtered to modes the chosen panel
-can actually display, which is what makes it a claim the game can stand behind.
+1366x768 laptop is what that costs. The sizes offered are derived from the panel
+in force and filtered to what it can hold, which is what keeps them checkable.
 """
 
 import logging
@@ -38,8 +33,6 @@ from src.application.scenes.option_screen import Option, OptionScreen
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for, picture
-from src.core.display.mode import DisplayMode
-from src.core.display.monitors import Resolution, ResolutionReason, Topology
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug
@@ -57,19 +50,9 @@ if TYPE_CHECKING:
 #: structure here would need a class for one use.
 #:
 #: Generic in the value type, because each builder knows exactly what its options
-#: carry -- a monitor name, a ``FitPolicy``, an ``int | None`` -- and an alias
-#: that erased that would force every caller to cast what it just built.
+#: carry -- a ``FitPolicy``, an ``int | None`` -- and an alias that erased that
+#: would force every caller to cast what it just built.
 Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
-
-#: The modes offered as a cycle, ``AUTO`` first: it is a real choice -- "decide
-#: again next launch, on whatever machine I am on" -- and the row shows what it
-#: resolves to until the player picks something else.
-DISPLAY_VALUES = (
-    DisplayMode.AUTO,
-    DisplayMode.BORDERLESS,
-    DisplayMode.WINDOW,
-    DisplayMode.FULLSCREEN,
-)
 
 #: The fit policies, in the order the row steps through them. Bars first because
 #: it is the only one that is never surprising, and zoom last because it is the
@@ -90,8 +73,7 @@ class VideoScene(Scene):
     #: cannot reference them -- and a table of names is what the row lists can be
     #: checked against, which is the check that catches a row with no list.
     SUBMENUS = (
-        "monitor",
-        "resolution",
+        "size",
         "fit",
         "frame_limit",
         "scale",
@@ -118,74 +100,37 @@ class VideoScene(Scene):
         """The settings this screen renders, used to skip redundant rebuilds."""
         settings = self.game.settings
         return (
-            settings.display,
             settings.pixel_perfect,
             settings.vsync,
             settings.frame_limit,
             settings.ui_scale,
             settings.panel_scale,
             settings.fit,
-            settings.monitor,
-            settings.fullscreen_mode,
             # The debug row is conditional on this, and the rebuild is skipped
             # when the signature is unchanged -- so without the flag in the
             # signature, flipping DEBUG mid-session would leave the menu
             # describing a set of rows the model does not have.
             Debug.is_enabled(),
+            # The rate the window is actually on, so the VSync row follows the
+            # window from one panel to another.
             self._screen_refresh_rate(),
             self._window_size(),
-            # The monitor rows are conditional on how many displays exist, and so
-            # is the rebuild guard. Without this in the signature, plugging in a
-            # second screen while the menu is open would leave it describing rows
-            # the model does not have.
-            len(self._topology().monitors),
         )
 
     def _rebuild(self, selected_action: str | None = None) -> None:
         settings = self.game.settings
-        topology = self._topology()
-        resolution = self._topology().resolve(settings.monitor)
         items = (
-            MenuItem("display", "Display mode", self._display_label()),
-            # Only where there is a choice to make. On a single-screen machine
-            # there is nothing to pick and a row that always reads "Screen 1"
-            # would be a row that cannot be acted on -- which is the dead-row
-            # failure this screen has already produced once.
-            *(
-                (
-                    MenuItem(
-                        "monitor",
-                        "Screen",
-                        self._monitor_label(topology, resolution),
-                    ),
-                )
-                if len(topology.monitors) > 1
-                else ()
-            ),
-            # One row, three modes, and it is always live. It was a disabled
-            # "Fullscreen mode" outside fullscreen, which is worse than it
-            # sounds: the focus walk skips a disabled row and a click on one
-            # does nothing, so the row was drawn, aimable, and inert -- the
-            # dead-row failure this screen has produced twice.
+            # The one row that says anything about the window, and it is always
+            # live. It was a disabled "Fullscreen mode" outside fullscreen, which
+            # is worse than it sounds: the focus walk skips a disabled row and a
+            # click on one does nothing, so the row was drawn, aimable and inert
+            # -- the dead-row failure this screen has produced twice.
             #
-            # It was then hidden in borderless, on the grounds that there is
-            # nothing to choose. That was wrong twice over. A borderless window is
-            # a real window and SDL will give it a size other than the panel's --
-            # measured: FULLSCREEN|NOFRAME at 1600x900 yields a 1600x900
-            # borderless window, positioned and draggable. And `auto` resolves to
-            # borderless on any 16:9 desktop, so hiding the row took it away from
-            # most players by default, on the first launch, with no setting of
-            # theirs involved.
-            #
-            # So the row asks the question that is real in every mode: what size
-            # should the window be. In exclusive fullscreen it means the mode the
-            # driver is asked for; otherwise it means the window's own size, and
-            # borderless is a window like any other.
-            MenuItem(
-                "resolution",
-                self._resolution_label(settings.display),
-                self._resolution_value(settings.display),
-            ),
+            # The value it reports is the size the window *actually has*, not the
+            # one remembered for next launch -- those differ after the player
+            # drags it, and a row reporting the remembered value while the window
+            # is another size is the lie this menu used to tell about a resolution.
+            MenuItem("size", "Window size", self._size_label()),
             MenuItem("fit", "Picture fit", self._fit_label()),
             MenuItem("vsync", "VSync", self._vsync_label()),
             MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
@@ -215,87 +160,19 @@ class VideoScene(Scene):
         )
         self.model.set_items(items, selected)
 
-    def _topology(self) -> Topology:
-        """The machine's displays, as the runtime last read them.
-
-        From the game rather than from the detection module directly, because the
-        runtime owns the cache: it is what notices a screen being plugged in, and
-        a menu reading behind that would keep offering a display that is no longer
-        attached. A screen that arrives is picked up by the poll, which this
-        shares.
-        """
-        return self.game.topology()
-
-    def _monitor_label(self, topology: Topology, resolution: Resolution) -> str:
-        """The screen in use, and *why* it is that one when it is not the choice.
-
-        The reason is the point of the row. A player who picked ``DP-1`` and
-        unplugs it comes back to a menu reading "Screen 2" with no way to tell
-        whether the game honoured them, ignored them, or guessed. Showing the
-        reason turns a silent substitution into something the player can see and
-        act on -- and it is why the stored name is never rewritten, so
-        reconnecting that screen uses it again with no further action.
-        """
-        label = topology.label_for(resolution.monitor)
-        if resolution.reason is ResolutionReason.NONE_CHOSEN:
-            return f"{label} (auto)"
-        if resolution.honoured:
-            return label
-        return f"{label} ({resolution.reason})"
-
     def _fit_label(self) -> str:
         return self.game.settings.fit.value
 
-    def _resolution_label(self, mode: DisplayMode) -> str:
-        """What the row is called, which depends on the mode it applies to.
+    def _size_label(self) -> str:
+        """The size the window has right now.
 
-        Naming it for the mode rather than for the setting is the point: a row
-        called "Fullscreen mode" that is greyed out in windowed mode is a row
-        asking the player to work out why, and one called "Window size" in
-        fullscreen is asking the same question the other way.
+        The size the window *actually has*, not the one remembered for next
+        launch -- those differ after the player drags it, and a row reporting the
+        remembered value while the window is another size is the lie this menu
+        used to tell about a resolution.
         """
-        return "Fullscreen mode" if mode is DisplayMode.FULLSCREEN else "Window size"
-
-    def _resolution_value(self, mode: DisplayMode) -> str:
-        """The row's value: the fullscreen mode, or the size the window has.
-
-        In windowed mode this reads the size the window *actually has*, not the
-        one remembered for next launch -- those differ after the player drags it,
-        and a row reporting the remembered value while the window is another size
-        is the lie this menu used to tell about a resolution.
-        """
-        if mode is not DisplayMode.FULLSCREEN:
-            granted = self._window_size()
-            return f"{granted[0]} x {granted[1]}"
-        stored = self.game.settings.fullscreen_mode
-        if stored is None:
-            return "the display's own mode"
-        found = f"{stored[0]}x{stored[1]}"
-        monitor = self._topology().resolve(self.game.settings.monitor).monitor
-        if stored[0] > monitor.size[0] or stored[1] > monitor.size[1]:
-            return f"{found} (unavailable)"
-        return found
-
-    @staticmethod
-    def fullscreen_modes() -> tuple[tuple[int, int], ...]:
-        """Every mode the driver says this display supports, largest first.
-
-        The driver's own answer rather than a catalogue. A hardcoded list is a
-        claim about the player's panel that the game cannot check -- offering
-        2560x1440 to a 1366x768 laptop is what that costs -- and this is the list
-        that was removed for exactly that reason, now rebuilt from a source that
-        can actually be asked.
-        """
-        try:
-            return tuple(sorted(set(pygame.display.list_modes()), reverse=True))
-        except pygame.error:
-            return ()
-
-    def _display_label(self) -> str:
-        mode = self.game.settings.display
-        if mode is DisplayMode.AUTO:
-            return f"auto ({detection_resolution(self)})"
-        return mode.value
+        granted = self._window_size()
+        return f"{granted[0]} x {granted[1]}"
 
     def _window_size(self) -> tuple[int, int]:
         """The window the picture is actually in.
@@ -434,8 +311,8 @@ class VideoScene(Scene):
         return action
 
     #: Rows whose value a press -- or a click -- steps, because there are only
-    #: two or three of them and a list would be a worse control.
-    CYCLING_ROWS = ("display", "vsync")
+    #: two of them and a list would be a worse control.
+    CYCLING_ROWS = ("vsync",)
 
     def _open(self, action: str) -> None:
         """Push the list a row owns.
@@ -463,16 +340,6 @@ class VideoScene(Scene):
             )
         )
 
-    def _submenu_monitor(self) -> Submenu:
-        topology = self._topology()
-        resolution = topology.resolve(self.game.settings.monitor)
-        return (
-            "SCREEN",
-            video_options.screen_options(topology, resolution),
-            resolution.monitor.name or None,
-            lambda name: self._apply(self.game.settings.with_video(monitor=name)),
-        )
-
     def _submenu_fit(self) -> Submenu:
         return (
             "PICTURE FIT",
@@ -492,32 +359,15 @@ class VideoScene(Scene):
             self.game.settings.with_video(fit=policy, pixel_perfect=policy is FitPolicy.INTEGER)
         )
 
-    def _submenu_resolution(self) -> Submenu:
-        """The list behind the one resolution row, whichever mode is in force.
+    def _submenu_size(self) -> Submenu:
+        """The list behind the window-size row.
 
-        Two settings behind one row, because only one of them is ever the live
-        one: the mode the driver is asked for while the game has taken the panel
-        over, and the window's own size in every other mode -- including
-        borderless, where the window is still a window with a size.
-
-        That inclusion is the point of this row existing at all. Hiding it in
-        borderless removed it from the default on any 16:9 screen, because
-        ``auto`` resolves to borderless there, and a player who never touched the
-        display mode would have had one fewer setting than a player who did.
+        The window is the only thing the display settings produce now, so this
+        list is the only display choice on the screen: how big to open, on the
+        panel the game is on. ``None`` is "the size I dragged it to", which keeps
+        the window following the player rather than the file.
         """
-        topology = self._topology()
-        monitor = topology.resolve(self.game.settings.monitor).monitor
-        if self.game.settings.display is DisplayMode.FULLSCREEN:
-            return (
-                "FULLSCREEN MODE",
-                video_options.fullscreen_mode_options(
-                    self.fullscreen_modes(),
-                    monitor,
-                    self.game.settings.fullscreen_mode,
-                ),
-                self.game.settings.fullscreen_mode,
-                lambda mode: self._apply(self.game.settings.with_video(fullscreen_mode=mode)),
-            )
+        monitor = self.game.topology().primary
         return (
             "WINDOW SIZE",
             video_options.window_size_options(
@@ -568,12 +418,12 @@ class VideoScene(Scene):
         Every value row acts on all three, so a gamepad never lands on a row it
         cannot use.
 
-        A row that is *not* usable -- the whole-pixel art on a window too small
-        to hold one, the window read-out -- swallows the press instead of
-        passing it on. The alternative was worse than a dead key: the menu model
-        answers an action on a disabled row by activating the nearest enabled
-        one, so Enter on the read-out line silently changed the display mode. A
-        row that cannot be used has to do nothing, visibly.
+        A row that is *not* usable -- the read-out of the window -- swallows the
+        press instead of passing it on. The alternative was worse than a dead
+        key: the menu model answers an action on a disabled row by activating
+        the nearest enabled one, so Enter on the read-out line silently changed
+        the setting on the row next to it. A row that cannot be used has to do
+        nothing, visibly.
         """
         current = self.model.current_item
         if current is None:
@@ -592,28 +442,17 @@ class VideoScene(Scene):
         return self._cycle(current.action, routed.action)
 
     def _cycle(self, name: str, action: InputAction, *, click: bool = False) -> bool:
-        """Step one row's value: forwards on a click and on →, back on ←.
+        """Step the one row that cycles: forwards on a click and on →, back on ←.
 
         One implementation for both paths, deliberately. The two used to be
         separate lists naming the same rows, which is exactly how a click ended
         up wired to three of them and a key to six. A row the pointer cannot
         reach is a row the pointer cannot use.
         """
-        cyclers = {
-            "display": lambda: self._cycle_enum(action, DISPLAY_VALUES, "display"),
-            "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
-        }
-        cycler = cyclers.get(name)
-        if cycler is None:
+        if name != "vsync":
             return False
-        cycler()
+        self._cycle_bool(action, "vsync", click=click)
         return True
-
-    def _cycle_enum(self, action: InputAction, values: tuple, name: str) -> None:
-        current = getattr(self.game.settings, name)
-        index = values.index(current) if current in values else 0
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(self.game.settings.with_video(**{name: values[(index + step) % len(values)]}))
 
     def _cycle_bool(self, action: InputAction, name: str, *, click: bool = False) -> None:
         # A left/right press sets the value rather than toggling it: toggling
@@ -650,7 +489,6 @@ class VideoScene(Scene):
         defaults = UserSettings()
         self._apply(
             self.game.settings.with_video(
-                display=defaults.display,
                 pixel_perfect=defaults.pixel_perfect,
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
@@ -683,15 +521,3 @@ class VideoScene(Scene):
             highlighted=self._flash_row,
             footers=(self.FOOTER,),
         )
-
-
-def detection_resolution(scene: VideoScene) -> str:
-    """What AUTO resolves to on this machine, for the row that has not been decided.
-
-    Read from the platform rather than remembered, which is the difference
-    between a label that is right and one that is right until the player moves
-    the window to another screen.
-    """
-    from src.core.display.detection import auto_display_mode, desktop_size
-
-    return auto_display_mode(DEFAULT_FRAMING, desktop_size()).value

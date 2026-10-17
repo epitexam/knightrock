@@ -307,11 +307,13 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
             scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
         assert scene.model.current_index == row(name)
 
-    focus("display")
-    assert game.settings.display is not None
-    first_mode = game.settings.display
-    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
-    assert game.settings.display is not first_mode
+    # The window size is a list, and the row that owns it has to be reachable by
+    # the same walk every other row is: the display row this replaced is gone,
+    # and nothing may go with it. The list's own contents are checked in the
+    # video-screen tests; what this pins is that the row is live and opens.
+    focus("size")
+    size_list = _open_list(scene, "size")
+    assert size_list.options, "the window-size row opened an empty list"
 
     # A press sets the value rather than toggling it: left is off, right is on,
     # so the two directions cannot behave identically.
@@ -344,7 +346,6 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
     _move_to_video(scene, "reset")
     scene.handle_routed(_confirm())
     defaults = UserSettings()
-    assert game.settings.display is defaults.display
     assert game.settings.pixel_perfect == defaults.pixel_perfect
     assert game.settings.frame_limit == defaults.frame_limit
     assert game.settings.ui_scale == defaults.ui_scale
@@ -598,13 +599,13 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
 def test_the_window_row_only_reports_and_opens_nothing() -> None:
     """The read-out line is inert, and the rows that do open lists are the others.
 
-    The window's size used to be a setting with a picker behind it, and that
-    picker was the only place in the game that could claim what the player's
-    screen was. The fullscreen list is the opposite case -- read from the driver
-    and filtered to what the panel can show -- and it hangs off its own row.
+    The window's size is a *choice* now and it lives on its own row with a list
+    behind it; the read-out at the bottom is the opposite case -- a report of what
+    the game derived from the window, which the player can change. It is drawn
+    disabled on purpose: a report row that opened something would be reporting a
+    choice it does not make.
 
-    What this pins is that the read-out stays inert while the lists exist: a
-    report row that opened something would be reporting a choice it does not make.
+    What this pins is that the report stays inert while the lists exist.
     """
     pushed: list[object] = []
     game = _game()
@@ -618,11 +619,16 @@ def test_the_window_row_only_reports_and_opens_nothing() -> None:
     assert "2.00x" in report.value
 
     # The model refuses to put the selection on a disabled row, so the press
-    # that would have opened a picker cannot be aimed at it in the first place.
+    # that would have opened something cannot be aimed at it in the first place:
+    # the selection lands on the nearest row that is usable, which is the point.
     scene.model.set_items(scene.model.items, scene.model.items.index(report))
     assert scene.model.current_item is not report
     assert scene.model.current_item.enabled  # type: ignore[union-attr]
-    scene.handle_routed(_confirm())
+
+    # And the read-out owns no list at all -- a direct open is a no-op, not a
+    # push that happens to be unreachable from the model.
+    pushed.clear()
+    scene._open("info")
     assert pushed == [], "the read-out row opened something"
 
     # Every other row that can be reached either cycles a value or opens a

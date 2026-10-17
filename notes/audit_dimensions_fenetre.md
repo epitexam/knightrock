@@ -1115,4 +1115,83 @@ dans `video_scene.py` : l'import a disparu, la donnée est lue là où elle est 
 
 La suite est à **3154 tests**, avec et sans `DEBUG=1`.
 
-Dernière mise à jour : 2026-10-15, branche `fix/remediation`.
+## 21. La fenêtre stricte : ce qui a été supprimé, et pourquoi
+
+*(Une section 20 a été écrite sur un chemin de travail abandonné — un repli
+fenêtré avec notice de refus et chien de garde — qui a été mis de côté et n'est
+plus dans l'arbre. Le numéro n'est pas réutilisé, pour que l'historique ne se
+réécrive pas ; ce qui suit est ce qui a été retenu à la place.)*
+
+**La demande.** Dégraisser la codebase, rendre le jeu **toujours fenêtré**, laisser
+le joueur choisir la taille de la fenêtre, supprimer la machinerie de mode
+d'affichage et de choix d'écran. Rien de plus.
+
+**La règle qui a tranché les cas.** *Un réglage que le jeu ne peut pas garantir ne
+doit pas être proposé.* C'est la même règle que §14.3 avait déjà fait tomber sur
+`render_scale` et `smoothing` ; ici elle emporte les deux derniers réglages de la
+famille :
+
+- le **choix d'un écran** est une requête qu'un gestionnaire de fenêtres a le
+  droit de refuser. Mesuré en §17 : la fenêtre demandée sur la dalle principale
+  restait sur l'autre, `set_mode` répondait « succès », et le fichier gardait
+  l'écran que le joueur venait de quitter — le menu affichait donc un écran où le
+  jeu n'était pas. Un réglage qui peut mentir sur sa propre valeur est exactement
+  ce que la règle interdit ;
+- le **mode d'affichage** (`auto` / fenêtré / sans bordure / plein écran) est le
+  mode qui *demande au pilote un changement de mode* : c'est la seule chose de tout
+  le sous-système qui puisse éteindre l'écran d'un portable bi-GPU au milieu d'une
+  session, et c'est pour cette raison que `borderless` existait — pour l'éviter
+  sans renoncer au plein. Trois noms pour deux drapeaux, et la façon la plus simple
+  de garantir qu'aucun ne sera jamais plus demandé est de retirer les trois.
+
+**Ce qui a été supprimé, et le test part avec.**
+
+| Retiré | Où |
+|---|---|
+| `DisplayMode` et le module entier | `src/core/display/mode.py` (fichier supprimé), `detection.auto_display_mode`, `ASPECT_TOLERANCE` |
+| `ResolutionReason`, `Resolution`, `Topology.resolve`, `Topology.label_for` | `src/core/display/monitors.py` |
+| `Monitor.origin`, `Monitor.detail`, `fit_position` | `src/core/display/monitors.py` |
+| drapeaux de mode, `_flags`, `_mode_for`, `_supported_modes`, `_fullscreen_size`, `_display_index`, `Stage.on_monitor`, `_reported_position`, `PLACE_ATTEMPTS`, `TITLE_BAR_KEEP` | `src/core/display/stage.py` |
+| champs `display`, `monitor`, `window_position`, `fullscreen_mode` | `src/application/settings_store.py` |
+| lignes `screen_options`, `display_options`, `fullscreen_mode_options`, `_submenu_monitor`, `_submenu_resolution`, `_cycle_enum`, `DISPLAY_VALUES` | `src/application/scenes/video_options.py`, `video_scene.py` |
+| `_resolve_display_settings`, `_window_notice`, `_say_where_the_window_landed`, `_withdraw_the_window_notice` | `src/core/game.py` |
+
+Le format de fichier **ne bouge pas** : `SETTINGS_FORMAT_VERSION` reste à 4. Les
+clés retirées ne sont simplement plus lues — le lecteur tolérant les ignore au lieu
+de rejeter le fichier, ce qui préserve les bindings d'un joueur qui ne les a pas
+redemandés.
+
+**Ce qui reste, une fois la poussière.** La fenêtre est le seul objet :
+
+- `WindowSpec` se réduit à `{vsync, size}` ; l'écran n'en fait plus partie et vient
+  de `Stage(spec, monitor)`, où `monitor` est le **primaire** que
+  `_monitor()` rend ;
+- `_place` fait **une** requête — centrée sur la dalle d'ouverture — sans
+  vérification, sans réessai, sans `on_monitor`. Il n'y a plus de requête à refuser,
+  donc plus rien à quoi un refus serait faux ;
+- `SIZE_ATTEMPTS = 2` reste : c'est la seule re-demande qui garde un sens (le
+  gestionnaire peut rogner la taille demandée) ;
+- `Stage._window_size` reste la source : taille choisie si elle existe, taille
+  d'ouverture de la dalle sinon ;
+- `Topology.nearest` / `containing` restent, parce que `window_monitor()` les
+  utilise pour dire sur **quelle** dalle la fenêtre est posée — c'est le taux de
+  rafraîchissement de la ligne VSync, et cette lecture reste exacte.
+
+Les lignes du menu vidéo sont, dans l'ordre : **Window size · Picture fit · VSync ·
+Frame limit · UI scale · (Debug panel scale, sous `DEBUG=1`) · Reset video
+settings · Back · Window**. Le read-out est désactivé et n'ouvre rien.
+
+**Les tests qui sont partis avec le code.** Les tests de mode, de placement
+mémorisé, de refus et de notice d'écran ont été supprimés plutôt que réécrits : ils
+affirmaient l'existence d'un mécanisme, et un test qui survit à la suppression de
+son sujet est un test qui ne teste plus rien. Là où une propriété avait un sens
+encore, elle a été **réécrite sur le nouveau sujet** — `nearest`/`containing`
+gardent une propriété sur grille, la nouvelle ligne « Window size » a le test
+d'existence et d'ouverture que l'ancienne ligne de résolution avait, et la taille
+mémorisée garde son test de non-réécriture.
+
+**Conséquence sur le compte.** La suite passe de 3154 à **3126 tests** : 28 tests
+en moins, aucune couverture perdue en échange — chaque test parti décrivait un
+mécanisme qui n'est plus là, et chacun des invariants qui restaient a son test.
+
+Dernière mise à jour : 2026-10-16, branche `fix/remediation`.

@@ -1,16 +1,16 @@
 """A screen that lists options and applies one on selection.
 
 Every settings choice with more than a handful of values gets one of these
-rather than a ←/→ cycle, and the reason is arithmetic rather than taste. The
-driver reports 28 fullscreen modes on the development panel, so a cycle needs up
-to 27 presses to reach one -- and a player who does not know the value exists
-has no way to learn it exists at all. A list shows every option, marks the one in
-force, and takes one press.
+rather than a ←/→ cycle, and the reason is arithmetic rather than taste. Thirteen
+window sizes are worth offering on the development panel, so a cycle needs twelve
+presses to reach one -- and a player who does not know the value exists has no
+way to learn it exists at all. A list shows every option, marks the one in force,
+and takes one press.
 
 **Apply on selection, not on highlight.** Moving the highlight through the list
 changes nothing; picking an entry applies it and closes. The alternative --
 applying as the highlight moves -- looks better and is a trap: scrolling through
-28 resolutions would rebuild the window 28 times, and a player browsing would
+the ladder would rebuild the window on every step, and a player browsing would
 leave the game in whatever they happened to scroll past. Highlight is a cursor,
 selection is a choice, and only the second one is a decision the player made.
 

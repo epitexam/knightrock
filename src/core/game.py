@@ -22,7 +22,6 @@ from src.core.audio import AudioBus
 from src.core.display import detection
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for
-from src.core.display.mode import DisplayMode
 from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
@@ -124,10 +123,6 @@ class Game:
         #: the loop owns, which is why there is exactly one.
         self._notice: tuple[str, ...] = ()
         self._notice_ttl = 0.0
-        #: The notice this module put up about the window's placement, so it can
-        #: take it back when a later rebuild does land. See
-        #: :meth:`_say_where_the_window_landed`.
-        self._window_notice: tuple[str, ...] = ()
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -160,7 +155,6 @@ class Game:
         # must still reach the menu (audit UI, lot 5).
         self.audio.initialize()
 
-        self._resolve_display_settings()
         self.initialize_display()
         pygame.display.set_caption(Display.TITLE)
 
@@ -253,10 +247,8 @@ class Game:
         Ignored for a resize the game itself asked for. SDL announces its own
         ``set_mode`` as a ``VIDEORESIZE``, and treating that as a drag would
         clear the preference the menu had just set, one event after applying it.
-        Windowed only: a borderless or fullscreen window is sized by the display
-        and is not the player's to move.
         """
-        if self.stage is None or self.settings.display is not DisplayMode.WINDOW:
+        if self.stage is None:
             return
         # Off the presentation, like :meth:`_follow_the_window`, and for the same
         # reason: the stage's surface and the presentation's are one object in
@@ -268,79 +260,44 @@ class Game:
         if self.settings.window_size is None:
             return  # Already following the window: nothing to forget.
         logger.info("The window moved to %s; the stored window size no longer applies", window)
-        self.settings = self.settings.with_video(window_size=None, window_position=None)
+        self.settings = self.settings.with_video(window_size=None)
         self._persist_settings()
 
     def _window_spec(self) -> WindowSpec:
         """The window the settings currently ask for.
 
-        The monitor is passed as its index into the topology the settings' name
-        resolved against, and the stage validates it before it reaches
-        ``set_mode``.
-
-        A windowed size the player has not chosen is the window's *own* size.
-        That is the one place the two readings of "no preference" meet: with no
-        size in the file, a rebuild used to re-open the window as large as the
-        frame allowed, so any display setting undone a drag. Keeping the live
-        geometry instead means the file never has to describe the window, and the
-        window still survives every rebuild after a drag.
+        A size the player has not chosen is the window's *own* size. That is the
+        one place the two readings of "no preference" meet: with no size in the
+        file, a rebuild used to re-open the window as large as the frame allowed,
+        so any display setting undid a drag. Keeping the live geometry instead
+        means the file never has to describe the window, and the window still
+        survives every rebuild after a drag.
         """
         return WindowSpec(
-            mode=self.settings.display,
-            monitor=self._monitor().index,
             vsync=self.settings.vsync,
             size=self._asked_window_size(),
-            position=self.settings.window_position,
-            fullscreen_mode=self.settings.fullscreen_mode,
         )
 
     def _asked_window_size(self) -> tuple[int, int] | None:
         """The size to ask for, and the fallback that follows the player.
 
-        Three readings, in order:
+        Two readings, in order:
 
         - a size the player chose is asked for as it stands;
-        - otherwise, a rebuild of a window that is *already* windowed keeps the
-          size the player has it at, which is what makes a drag survive the next
-          display setting rather than being undone by it;
-        - otherwise the stage asks for itself, and a first launch gets
-          ``opening_size`` -- as does a change of mode, where the player has just
-          asked for a different kind of window and the honest size is the one that
-          fits the panel rather than the one the old window happened to be.
+        - otherwise, a rebuild keeps the size the window currently has, which is
+          what makes a drag survive the next display setting rather than being
+          undone by it. A first launch has no window yet, so the stage asks for
+          itself and gets ``opening_size``.
         """
         if self.settings.window_size is not None:
             return self.settings.window_size
-        if (
-            self.stage is not None
-            and self.settings.display is DisplayMode.WINDOW
-            and self.stage.spec.mode is DisplayMode.WINDOW
-        ):
+        if self.stage is not None and self.presentation is not None:
             # The window the picture is drawn onto, for the same reason as
             # everywhere else in this file: the stage's surface is that surface in
             # production, and asking the presentation keeps the two readings of
             # "the window" from drifting apart.
-            return self.presentation.window_size if self.presentation is not None else None
+            return self.presentation.window_size
         return None
-
-    def _resolve_display_settings(self) -> None:
-        """Turn ``AUTO`` into a mode the window can be built from.
-
-        The only resolution left at launch, and it is a *mode*, not a size: how
-        to occupy a screen whose dimensions the game does not know. It is
-        re-evaluated every launch, which is what ``AUTO`` is for, and it is not
-        written back -- the file keeps saying "auto" so the next launch on
-        another machine answers again.
-
-        Resolved against the *chosen* monitor rather than the desktop, because on
-        a two-screen desk the two differ: a laptop panel at 16:10 next to a 16:9
-        monitor means AUTO should pick a borderless on the monitor the player
-        asked for and a window on the one it did not.
-        """
-        if self.settings.display is not DisplayMode.AUTO:
-            return
-        self.settings = self.settings.with_video(
-            display=detection.auto_display_mode(DEFAULT_FRAMING, self._monitor().usable_size)
-        )
 
     def topology(self, *, refresh: bool = False) -> Topology:
         """The machine's displays, read on launch and on every poll.
@@ -361,8 +318,13 @@ class Game:
         return self._topology
 
     def _monitor(self) -> Monitor:
-        """The monitor the settings' name resolves to, right now."""
-        return self.topology().resolve(self.settings.monitor).monitor
+        """The display the game is built on, which is the primary.
+
+        The game is a window and the window manager owns where it sits, so there
+        is no screen to pick and none to resolve a name against. The window opens
+        on the primary and the player moves it.
+        """
+        return self.topology().primary
 
     def initialize_display(self) -> None:
         """Build the window and the presentation, once.
@@ -380,10 +342,10 @@ class Game:
             fit=self._fit_policy(),
             convert=True,
         )
-        # And the launch is checked too, not only the changes: measured, a window
-        # opened on the panel the player asked for can land on the other one, and
-        # the first moment the player could be told is the one they see it.
-        self._say_where_the_window_landed()
+        # Nothing is announced about where the window landed. The game used to
+        # check which panel it ended up on and tell the player when it was not the
+        # one they asked for -- but there is nothing asked for any more, so there
+        # is nothing to be wrong about.
 
     def _fit_policy(self) -> FitPolicy:
         """The picture's fit, with the older whole-pixel flag folded in.
@@ -436,62 +398,18 @@ class Game:
         self._invalidate_assets()
         self.scene_manager.set_surface(self.presentation.surface)
         self.scene_manager.set_ui_scale(self.ui_scale)
-        self._say_where_the_window_landed()
-
-    def _say_where_the_window_landed(self) -> None:
-        """Tell the player when the window is not on the screen they asked for.
-
-        The window manager has the last word on placement and does not always
-        give it to us: measured, a window asked for the primary panel on this
-        machine's two-display desk stayed on the other one, clamped to its left
-        edge, while ``set_mode`` reported success and the settings file kept the
-        screen the player had chosen. The video menu then showed that screen as
-        selected, and the game was somewhere else -- the exact "it changed the
-        label and nothing else" this subsystem is supposed to have closed.
-
-        So the check the game can actually make -- *which panel is the window on*
-        -- is made after every rebuild, and a mismatch is announced. Not an
-        error: some window managers simply refuse, and the player can move the
-        window by hand. What must not happen is the game pretending it moved.
-
-        Announced **until it stops being true**: the notice is withdrawn on the
-        first rebuild that does land, because a warning about the last failure is
-        a lie about the present one.
-        """
-        if self.stage is None:
-            return
-        try:
-            position = tuple(pygame.display.get_window_position())
-        except pygame.error:
-            return
-        wanted = self.stage.monitor
-        if Stage.on_monitor(wanted, position):  # type: ignore[arg-type]
-            self._withdraw_the_window_notice()
-            return
-        topology = self.topology()
-        landed = topology.nearest(position)  # type: ignore[arg-type]
-        label = topology.label_for(landed)
-        logger.info("The window is on %s rather than the requested %s", label, wanted.name)
-        logger.info("The window is on %s rather than the requested %s", label, wanted.name)
-        self._window_notice = (
-            f"The window stayed on {label}.",
-            f"{wanted.name or 'That screen'} could not be used.",
-        )
-        if self._notice != self._window_notice:
-            self.notice(*self._window_notice)
 
     def window_monitor(self) -> Monitor | None:
         """The monitor the window is *actually* on, and ``None`` when nobody can say.
 
-        Not the one the settings name, which is a request: on a two-screen desk the
-        two differ whenever the platform refuses to move the window, and the
-        settings are then a claim about a screen the game is not on. The video
+        Not the primary, which is where the game *opened*: on a two-screen desk
+        the two differ as soon as the player drags the window across. The video
         menu's VSync row reads this rather than the primary display's rate, which
         is what made it report 60Hz while the window sat on a 180Hz panel.
 
-        The top-left corner is what decides it, for the same reason placement does:
-        a window may legitimately be larger than the panel, and ``nearest`` gives
-        the closest panel when the corner falls in a gap between two of them.
+        The top-left corner is what decides it: a window may legitimately be
+        larger than the panel, and ``nearest`` gives the closest panel when the
+        corner falls in a gap between two of them.
 
         ``None`` where the desktop has no readable geometry at all -- a degraded
         topology knows sizes and no origins, so there is nothing to be honest
@@ -507,21 +425,10 @@ class Game:
             return None
         return topology.nearest(position)  # type: ignore[arg-type]
 
-    def _withdraw_the_window_notice(self) -> None:
-        """Take back this module's own notice, and only this module's.
-
-        The notice channel is shared, so a placement that succeeds must not clear
-        a message about a display that was plugged in -- and one that fails must
-        not leave its warning standing over a later, successful rebuild.
-        """
-        if self._window_notice and self._notice == self._window_notice:
-            self._notice = ()
-        self._window_notice = ()
-
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change actually touches.
 
-        A display mode or a vsync flag changes the window, and therefore the
+        A chosen window size or a vsync flag changes the window, and therefore the
         picture, because the picture *is* the window's size. ``pixel_perfect``
         changes the letterbox, and therefore the target, without the window
         moving at all. A frame limit touches neither. The interface scale goes
@@ -583,18 +490,14 @@ class Game:
     def _window_signature(settings: UserSettings) -> tuple[object, ...]:
         """The settings that require a new ``pygame.display.set_mode`` call.
 
-        A mode and a vsync flag, and nothing else. Pixel-perfect art changes the
-        target without the window moving, the frame limit touches neither, and
-        the interface scale is a multiplier on a density the window already
-        decided.
+        A chosen window size and a vsync flag, and nothing else. Pixel-perfect art
+        changes the target without the window moving, the frame limit touches
+        neither, and the interface scale is a multiplier on a density the window
+        already decided.
         """
         return (
-            settings.display,
             settings.vsync,
-            settings.monitor,
             settings.window_size,
-            settings.window_position,
-            settings.fullscreen_mode,
         )
 
     def _persist_settings(self) -> None:
@@ -644,7 +547,7 @@ class Game:
     def apply_bindings(self, bindings: InputBindings) -> None:
         """Update the bindings without rebuilding the window (in-game rebinding).
 
-        ``apply_settings`` rebuilds the window (UI scale, fullscreen...), which
+        ``apply_settings`` rebuilds the window (a new size, a vsync flag), which
         is unacceptable on every key capture in the controls screen. This
         persists the bindings and re-arms the router and provider only.
         """
@@ -670,11 +573,12 @@ class Game:
         again, which is what this does.
 
         What it does about it is the part that matters. Losing the screen the
-        window is on would otherwise leave a fullscreen window on a display that
-        no longer exists, which on some drivers is a black screen with a running
-        game behind it. So the window is moved to the primary, and the player is
-        told, because a silent move is indistinguishable from the game deciding
-        to ignore them.
+        window is on would otherwise leave the window on a display that no longer
+        exists, which on some drivers is a black screen with a running game behind
+        it. So the window is rebuilt on the new primary, and the player is told,
+        because a silent move is indistinguishable from the game deciding to ignore
+        them. A screen *arriving* is worth saying too, since the list the game
+        reads has changed.
         """
         self._topology_age += frame_delta
         if self.stage is None or self._topology_age < self.DISPLAY_POLL_SECONDS:
@@ -684,17 +588,17 @@ class Game:
         if current == self._topology:
             return
 
-        vanished = self._topology.primary.index if self._topology else 0
         self._topology = current
-        if self.stage is not None and self.stage.monitor.index not in current.indices:
-            logger.info("Display %d is gone; moving the window to the primary", vanished)
-            self.settings = self.settings.with_video(monitor=None)
+        if self.stage.monitor.index not in current.indices:
+            logger.info(
+                "Display %d is gone; moving the window to the primary", self.stage.monitor.index
+            )
             self.notice("That screen is no longer connected.", "The game moved to the main one.")
             self._rebuild_display()
         else:
             self.notice(
                 f"{len(current.monitors)} screen(s) connected.",
-                "The video menu lists them.",
+                "The window stays where it is.",
             )
 
     def run(self) -> None:

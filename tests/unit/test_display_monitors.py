@@ -47,7 +47,6 @@ from src.core.display.monitors import (  # noqa: E402
     Monitor,
     Topology,
     centre_on,
-    fit_position,
     fit_size,
     opening_size,
 )
@@ -356,57 +355,46 @@ def test_an_oversized_window_is_clamped_and_the_choice_is_kept(desk: Topology) -
 
 
 @pytest.mark.parametrize("desk", DESKS, ids=lambda d: f"{len(d.monitors)}screen")
-def test_an_off_screen_position_is_pulled_back_into_reach(desk: Topology) -> None:
-    """A window whose position is nowhere is placed somewhere the player can get.
+def test_the_panel_under_a_point_is_the_panel_under_a_point(desk: Topology) -> None:
+    """Which display the window is on, decided from its top-left corner.
 
-    A remembered coordinate can land off every panel: a monitor was removed, the
-    layout changed, a second one was plugged in beside the first. The test that
-    matters is not that the position is exact -- it cannot be, the panel is gone
-    -- but that the window's title bar ends up inside the usable area, because
-    otherwise there is nothing to grab and the player cannot bring it back.
+    The one question the display subsystem still answers: the VSync row reads the
+    rate off the panel the window is *on*, and this is how that is decided. A
+    window may legitimately be larger than the panel, so the corner is what
+    counts. When the corner is inside a panel there is nothing to guess, and
+    ``nearest`` must agree with ``containing`` rather than approximate.
     """
     for monitor in desk.monitors:
-        for asked in [(99999, 99999), (-99999, -99999), (0, 0)]:
-            size = fit_size((1600, 900), monitor)
-            position = fit_position(asked, size, monitor)
-            origin_x, origin_y = monitor.usable_origin
+        for point in (
+            (monitor.bounds[0], monitor.bounds[1]),
+            (monitor.bounds[0] + monitor.bounds[2] - 1, monitor.bounds[1] + monitor.bounds[3] - 1),
+        ):
+            holder = desk.containing(point)
+            if holder is None:
+                continue
+            assert desk.nearest(point) is holder, (
+                f"{point} is on {holder.name} but reported otherwise"
+            )
 
-            assert origin_x <= position[0] <= origin_x + monitor.usable_size[0]
-            assert origin_y <= position[1] <= origin_y + monitor.usable_size[1]
 
+def test_a_point_off_every_panel_gets_the_closest_one() -> None:
+    """A monitor was unplugged; the window is now somewhere no panel is.
 
-def test_a_name_is_resolved_and_a_missing_one_is_reported_not_rewritten() -> None:
-    """The whole reason a monitor can be stored at all.
-
-    Three cases on one desk: the name that is there, the name that is not, and
-    the name that matches two panels. The third is why matching is exact and
-    reports ambiguity rather than taking the first -- the platform's enumeration
-    order is not stable across boots, so "the first match" is a coin toss that
-    would read as a decision.
+    The fallback is the nearest panel rather than the primary, because the window
+    did not move and the panel closest to where it is is the one the player is
+    looking at. The centre-point distance is restated here rather than trusted, so
+    the test says what "closest" means.
     """
     desk = DESKS[2]
+    far = (99999, 99999)
+    assert desk.containing(far) is None
 
-    found = desk.resolve("DP-2")
-    assert found.honoured
-    assert found.monitor.index == 1
+    def centre(monitor: Monitor) -> tuple[int, int]:
+        left, top, width, height = monitor.bounds
+        return (left + width // 2, top + height // 2)
 
-    gone = desk.resolve("DP-9")
-    assert not gone.honoured
-    assert gone.reason is not found.reason
-    assert gone.monitor is desk.primary, "a missing name falls back to the primary"
-
-    twin = Topology(
-        (
-            Monitor(0, "DP-1", (0, 0, 2560, 1440), (0, 0, 2560, 1440), 144),
-            Monitor(1, "DP-1", (2560, 0, 1920, 1080), (2560, 0, 1920, 1080), 60),
-        ),
-        named=True,
+    closest = min(
+        desk.monitors,
+        key=lambda monitor: (centre(monitor)[0] - far[0]) ** 2 + (centre(monitor)[1] - far[1]) ** 2,
     )
-    assert twin.label_for(twin.monitors[0]) != twin.label_for(twin.monitors[1]), (
-        "two panels reporting one name must not be listed identically"
-    )
-    assert not twin.resolve("DP-1").honoured, "an ambiguous name is not honoured"
-
-    # And nothing above rewrote anything: the file keeps whatever was in it.
-    stored = "DP-9"
-    assert desk.resolve(stored).monitor.name != stored
+    assert desk.nearest(far) is closest
