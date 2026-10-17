@@ -161,12 +161,21 @@ def window_size_options(
     return (options[0], *entries)
 
 
-def frame_limit_options() -> tuple[Option, ...]:
+def frame_limit_options(vsync: bool) -> tuple[Option, ...]:
+    """The frame-limit ladder, with what it is worth under the current pacing.
+
+    With vsync active the present is the pacer and the clock never bites -- the
+    ceiling it is ticked against is above every value here, by construction, so
+    the whole ladder is inert. Repeating "saves power" under vsync would be the
+    promise that made the row read as broken, so the note says the one thing that
+    is true about every entry in that state.
+    """
+    note = "ignored while VSync is on" if vsync else ""
     return tuple(
         Option(
             "uncapped" if value is None else str(value),
             value,
-            _FRAME_LIMIT_NOTES.get(value, ""),
+            note if vsync else _FRAME_LIMIT_NOTES.get(value, ""),
         )
         for value in FRAME_LIMITS
     )

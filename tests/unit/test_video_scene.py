@@ -665,45 +665,87 @@ def test_a_confirm_on_a_disabled_row_is_swallowed() -> None:
 # --- the two rows that were reported dead -----------------------------------
 
 
-def test_the_vsync_row_reports_the_setting_when_the_driver_refuses(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The row must answer the setting, with the driver's refusal as the caveat.
+def test_the_vsync_row_says_the_setting_was_requested() -> None:
+    """VSync is a request, and the row says so, instead of claiming an effect.
 
-    It read ``off (unavailable)`` -- which answers "off" to a player who had just
-    pressed something that did land, and is the same "the row is dead" symptom
-    the confirm bug produced by a second route. Saying the driver refused is
-    worth keeping; replacing the setting with the driver's opinion is not.
+    The row used to compare the request against ``pygame.display.is_vsync()`` --
+    and measured, that call returns the flag ``set_mode`` was handed, ``True``
+    under the dummy driver where no swap interval can exist. The comparison
+    could not detect anything, so the branch was unreachable, and the test for
+    it monkeypatched the function it claimed to test.
+
+    What the game actually knows is three facts: the flag was sent, the window
+    was rebuilt for it, and the rate the panel reports. The label carries those
+    and nothing else. It still starts with "on", because a row that reads "off"
+    after an "on" press is the dead-row failure this screen has produced twice.
     """
     game = _game()
     game.settings = game.settings.with_video(vsync=True)
     scene = VideoScene(game)
-    monkeypatch.setattr(VideoScene, "_vsync_is_active", staticmethod(lambda: False))
 
     label = scene._vsync_label()
 
     assert label.startswith("on"), f"the setting is on and the row says {label!r}"
-    assert "not honoured" in label, "and still says the driver refused it"
+    assert "requested" in label, f"but the flag is a request, not a promise: {label!r}"
+    assert "not honoured" not in label, (
+        f"nothing in the game can know the driver's opinion, so {label!r} would be invented"
+    )
 
 
-def test_the_vsync_row_carries_no_caveat_when_it_is_off(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Nothing was refused, because nothing was asked for.
+def test_the_vsync_row_carries_no_caveat_when_it_is_off() -> None:
+    """Nothing was requested, so nothing could be refused.
 
-    The caveat is a note about a request the driver ignored. On an off row there
-    is no request, and a row that always carries the parenthetical stops reading
-    it as a warning at all.
+    The label has no qualification to make on an off row: there is no flag in
+    flight, no present for the refresh to pace, and a parenthetical on a row the
+    player has just switched off would read as a complaint about something they
+    did not do.
     """
     game = _game()
     game.settings = game.settings.with_video(vsync=False)
     scene = VideoScene(game)
-    monkeypatch.setattr(VideoScene, "_vsync_is_active", staticmethod(lambda: False))
 
     label = scene._vsync_label()
 
-    assert label.startswith("off")
-    assert "not honoured" not in label, f"but there was no request to ignore: {label!r}"
+    assert label.startswith("off"), f"the setting is off and the row says {label!r}"
+    assert "requested" not in label, f"but there was no request: {label!r}"
+
+
+def test_the_frame_limit_row_says_it_is_ignored_under_vsync() -> None:
+    """Both pacing rows on the screen see the same pacing, and say the same thing.
+
+    The ceiling the clock is ticked against with vsync on sits above every value
+    the ladder offers, so the frame limit is inert across the whole menu -- not
+    for one value, not on one build. Two rows that each read as a working
+    setting when one does nothing is exactly how a player ends up pressing both
+    and concluding the screen is broken.
+    """
+    game = _game()
+    game.settings = game.settings.with_video(vsync=True, frame_limit=30)
+    scene = VideoScene(game)
+    row = next(item for item in scene.model.items if item.action == "frame_limit")
+
+    label = scene._frame_limit_label()
+
+    assert label.startswith("30"), f"the value is still 30 and the row says {label!r}"
+    assert "ignored" in label, f"it is inert under vsync and the row must say so: {label!r}"
+    assert row.value == label, "the row the player reads is the row from the model"
+
+
+def test_the_frame_limit_row_says_nothing_when_vsync_is_off() -> None:
+    """With vsync off the clock is the pacer, and the limit is what it paces to.
+
+    The caveat is one condition. Stating it on every row the setting *is* honoured
+    on would drown it: a player who reads 30, switches VSync off and looks again
+    must see the row become simple, or they have no way of trusting that the
+    first row ever meant anything.
+    """
+    game = _game()
+    game.settings = game.settings.with_video(vsync=False, frame_limit=30)
+    scene = VideoScene(game)
+
+    label = scene._frame_limit_label()
+
+    assert label == "30", f"the row reads {label!r}, and nothing more should be said"
 
 
 def test_the_vsync_rate_is_the_rate_of_the_screen_the_window_is_on() -> None:

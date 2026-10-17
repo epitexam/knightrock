@@ -46,6 +46,15 @@ logger = logging.getLogger(__name__)
 #: for, with vsync on and nothing on screen to say so. The multiplier is
 #: generous on purpose, clearing any real refresh rate by a wide margin, so
 #: the only thing it ever catches is a present that does not block at all.
+#:
+#: ``MAX_FRAME_LIMIT`` is deliberately *below* this number, and the video menu
+#: says so rather than hiding it: the ladder tops out at 500, so with vsync on
+#: every one of its values sits under the ceiling and is ignored. That is the
+#: contract -- the present paces, and the ladder is what runs when nothing
+#: does -- and it is why the frame-limit row reads "ignored while VSync is
+#: on" rather than promising a rate it does not deliver. Raising the ladder
+#: past this ceiling would silently re-introduce the double pacer that the
+#: comment above describes.
 DISPLAY_SAFETY_CEILING_FPS = max(Display.FPS * 4, MAX_FRAME_LIMIT)
 
 #: SDL environment set before ``pygame.init()``.

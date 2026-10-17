@@ -217,26 +217,47 @@ class VideoScene(Scene):
         return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
 
     def _vsync_label(self) -> str:
+        """What the row reports about vertical synchronisation: a *request*.
+
+        The game can pass the flag and can recreate the window for it, and it
+        cannot find out whether the driver honoured it. pygame-ce's
+        ``is_vsync()`` looks like that check and is not one: it returns the flag
+        the game itself passed to ``set_mode`` -- measured, it answers ``True``
+        under the dummy driver where no swap interval can exist, and ``True``
+        under X11 without any context to query. Reading the driver's opinion
+        would need ``SDL_GL_GetSwapInterval`` through ``ctypes`` against a
+        context pygame does not expose as its own, which is the fragile
+        half-answer the probe module exists to avoid.
+
+        So the label qualifies the request instead of claiming an effect, and
+        the honest headline is ``on · requested`` rather than ``on``: the player
+        reads that the flag was sent, and that the rate they get is the panel's
+        -- which is also the one shown here, for the panel the window is on.
+        A row that read ``off`` after an ``on`` press was one of the two dead
+        rows this screen produced; a row that claims an honoured vsync the
+        driver dropped is a lie in the other direction.
+        """
         rate = self._screen_refresh_rate()
         suffix = f" {rate} Hz screen" if rate else ""
-        if self.game.settings.vsync and not self._vsync_is_active():
-            # The driver did not honour the request, and saying so is the whole
-            # point of checking: the setting looks alive either way, and the only
-            # symptom otherwise is a frame rate that never settles.
-            #
-            # What it must not do is answer "off". The player asked for on, the
-            # player pressed something that visibly did land, and a row that
-            # reads "off" after an "on" press is a row that reads as broken --
-            # which is the same symptom the sentence was supposed to prevent, and
-            # the exact reason these two rows were reported as dead. So the
-            # setting is reported first and the driver's refusal is the caveat
-            # on it, not the headline in place of it.
-            return f"on (not honoured){suffix}"
-        return f"{self._on_off(self.game.settings.vsync)}{suffix}"
+        if self.game.settings.vsync:
+            return f"on · requested{suffix}"
+        return f"off{suffix}"
 
     def _frame_limit_label(self) -> str:
+        """The frame limit, with the one condition it is subject to made visible.
+
+        The limit is what the clock paces to, and the clock only paces when
+        vsync is not already doing it: :meth:`Game._frame_delta` ticks against
+        a ceiling no menu value can bite, precisely so a working present is the
+        only pacer. With vsync on, then, every ladder value is ignored -- and a
+        row reading ``60`` with ``on · requested`` above it is a row that reads
+        as two working settings when one is inert. Saying it is cheap.
+        """
         limit = self.game.settings.frame_limit
-        return "Uncapped" if limit is None else str(limit)
+        label = "Uncapped" if limit is None else str(limit)
+        if self.game.settings.vsync:
+            label += " (ignored while VSync is on)"
+        return label
 
     @staticmethod
     def _on_off(value: bool) -> str:
@@ -256,12 +277,6 @@ class VideoScene(Scene):
         """
         monitor = self.game.window_monitor()
         return monitor.refresh_rate if monitor is not None else 0
-
-    def _vsync_is_active(self) -> bool:
-        try:
-            return bool(pygame.display.is_vsync())
-        except pygame.error:
-            return False
 
     # --------------------------------------------------------------- cycling
 
@@ -390,7 +405,7 @@ class VideoScene(Scene):
     def _submenu_frame_limit(self) -> Submenu:
         return (
             "FRAME LIMIT",
-            video_options.frame_limit_options(),
+            video_options.frame_limit_options(self.game.settings.vsync),
             self.game.settings.frame_limit,
             lambda value: self._apply(self.game.settings.with_video(frame_limit=value)),
         )
