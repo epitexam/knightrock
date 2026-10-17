@@ -42,7 +42,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame
 
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
+from src.core.display.letterbox import picture
 from src.core.display.presentation import Presentation
 from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
@@ -72,7 +72,7 @@ def measure_world_draw(window: tuple[int, int], repeats: int) -> tuple[float, in
     Returns the cost and the density, because the second explains the first: the
     draw scales with the pixels, and the pixels are the window.
     """
-    size = letterbox(window, DEFAULT_FRAMING).size
+    size = picture(window, DEFAULT_FRAMING).dest.size
     viewport = pygame.Surface(size)
     level = Level(viewport, LevelManager(LEVEL_PATHS).get(0), InputManager())
     for _ in range(10):
@@ -138,7 +138,7 @@ def measure_level_load() -> str:
         data = LevelManager(LEVEL_PATHS).get(0)
     except (OSError, FileNotFoundError, KeyError) as error:
         return f"unavailable ({type(error).__name__})"
-    viewport = pygame.Surface(letterbox((1280, 720), DEFAULT_FRAMING).size)
+    viewport = pygame.Surface(picture((1280, 720), DEFAULT_FRAMING).dest.size)
     Level(viewport, data, InputManager())
     return f"{data.width}x{data.height} tiles, {data.pixel_width:.0f}x{data.pixel_height:.0f} px"
 
@@ -260,7 +260,7 @@ def main() -> None:
     for window in windows:
         draw, density = measure_world_draw(window, arguments.repeats)
         present = measure_present(window, arguments.repeats)
-        size = letterbox(window, DEFAULT_FRAMING).size
+        size = picture(window, DEFAULT_FRAMING).dest.size
         total = draw + present
         whole = measure_frame(window, arguments.repeats, pixel_perfect=True)
         print(
@@ -269,7 +269,7 @@ def main() -> None:
             f"{whole:>10.2f}{100 * whole / FRAME_BUDGET_MS:>5.0f}%"
         )
 
-    viewport = pygame.Surface(letterbox((1280, 720), DEFAULT_FRAMING).size)
+    viewport = pygame.Surface(picture((1280, 720), DEFAULT_FRAMING).dest.size)
     level = Level(viewport, LevelManager(LEVEL_PATHS).get(0), InputManager())
     for _ in range(10):
         level.update(Simulation.TIMESTEP)

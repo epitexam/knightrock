@@ -36,7 +36,7 @@ from src.core.display.letterbox import (
     density_for,
     effective_fit,
     fits_whole_pixel,
-    letterbox,
+    picture,
 )
 from src.core.display.presentation import Presentation
 from src.core.display.viewport import Viewport
@@ -103,10 +103,10 @@ def test_the_target_is_the_windows_own_letterbox_rect() -> None:
     the same shape want the same picture.
     """
     for window in WINDOWS:
-        rect = letterbox(window, DEFAULT_FRAMING)
+        rect = picture(window, DEFAULT_FRAMING).dest
         target = Viewport(DEFAULT_FRAMING, rect.size)
         assert target.size == rect.size
-        assert rect.size == letterbox(window, DEFAULT_FRAMING).size
+        assert rect.size == picture(window, DEFAULT_FRAMING).dest.size
 
 
 @pytest.mark.parametrize("window", WINDOWS)
@@ -117,13 +117,13 @@ def test_a_bigger_window_never_shrinks_the_picture(window: tuple[int, int]) -> N
     the reason a window and a screen of the same shape agree above is not a
     coincidence of the list.
     """
-    rect = letterbox(window, DEFAULT_FRAMING)
+    rect = picture(window, DEFAULT_FRAMING).dest
     for wider in (window[0] + 1, window[0] * 2, window[0] + 400):
-        grown = letterbox((wider, window[1]), DEFAULT_FRAMING)
+        grown = picture((wider, window[1]), DEFAULT_FRAMING).dest
         assert grown.width >= rect.width
         assert grown.height >= rect.height
     for taller in (window[1] + 1, window[1] * 2, window[1] + 400):
-        grown = letterbox((window[0], taller), DEFAULT_FRAMING)
+        grown = picture((window[0], taller), DEFAULT_FRAMING).dest
         assert grown.width >= rect.width
         assert grown.height >= rect.height
 
@@ -138,7 +138,7 @@ def test_the_camera_shows_the_framing_at_every_window(window: tuple[int, int]) -
     it: the density is now read off the target instead of chosen, and it is a
     fraction on most displays rather than a whole number.
     """
-    target = Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size)
+    target = Viewport(DEFAULT_FRAMING, picture(window, DEFAULT_FRAMING).dest.size)
     camera = Camera.for_target(target.surface)
     assert (camera.viewport_width, camera.viewport_height) == DEFAULT_FRAMING.size
     assert camera.density == pytest.approx(target.density)
@@ -152,7 +152,7 @@ def test_the_density_agrees_with_both_axes_of_the_target(window: tuple[int, int]
     two axes always differ a little. A little is the claim; a pixel and a half
     is the tolerance, expressed in pixels because that is a thing you can check.
     """
-    size = letterbox(window, DEFAULT_FRAMING).size
+    size = picture(window, DEFAULT_FRAMING).dest.size
     horizontal = size[0] / DEFAULT_FRAMING.width
     vertical = size[1] / DEFAULT_FRAMING.height
     assert abs(horizontal - vertical) * max(DEFAULT_FRAMING.size) < 1.5
@@ -170,7 +170,7 @@ def _level_blit_mismatches(window: tuple[int, int]) -> set[tuple[int, int]]:
     Returns the disagreements instead of asserting on them, so "never" and "does
     not depend on the window" can be two separate claims about the same walk.
     """
-    size = letterbox(window, DEFAULT_FRAMING).size
+    size = picture(window, DEFAULT_FRAMING).dest.size
     level = Level(
         Viewport(DEFAULT_FRAMING, size).surface, LevelManager(LEVEL_PATHS).get(0), InputManager()
     )
@@ -396,12 +396,12 @@ def test_a_window_with_the_frames_own_aspect_has_no_bars(window: tuple[int, int]
 
 @pytest.mark.parametrize("window", WINDOWS)
 def test_whole_pixel_art_is_a_whole_density_inside_the_window(window: tuple[int, int]) -> None:
-    rect = letterbox(window, DEFAULT_FRAMING, pixel_perfect=True)
+    rect = picture(window, DEFAULT_FRAMING, FitPolicy.INTEGER).dest
     assert rect.width <= window[0] and rect.height <= window[1]
     if not fits_whole_pixel(window, DEFAULT_FRAMING):
         # Nothing to snap to, so the fitted rectangle is offered unchanged and
         # the row says so rather than pretending.
-        assert rect.size == letterbox(window, DEFAULT_FRAMING).size
+        assert rect.size == picture(window, DEFAULT_FRAMING).dest.size
         return
     density = density_for(rect.size)
     assert density == int(density)
@@ -414,7 +414,7 @@ def test_whole_pixel_art_is_a_whole_density_inside_the_window(window: tuple[int,
 @pytest.mark.parametrize("window", WHOLE_PIXEL_WINDOWS)
 def test_whole_pixel_art_keeps_the_framing_exactly(window: tuple[int, int]) -> None:
     """At a whole density the visible world is still the framing, bars and all."""
-    rect = letterbox(window, DEFAULT_FRAMING, pixel_perfect=True)
+    rect = picture(window, DEFAULT_FRAMING, FitPolicy.INTEGER).dest
     assert rect.width / rect.height == pytest.approx(DEFAULT_FRAMING.aspect, abs=1e-3)
     assert rect.width % round(DEFAULT_FRAMING.width) == 0
 
@@ -451,8 +451,8 @@ def test_a_window_that_is_not_whole_has_work_to_do(window: tuple[int, int]) -> N
         f"{window} is not a whole multiple of the framing"
     )
     assert (
-        letterbox(window, DEFAULT_FRAMING).size
-        != letterbox(window, DEFAULT_FRAMING, pixel_perfect=True).size
+        picture(window, DEFAULT_FRAMING).dest.size
+        != picture(window, DEFAULT_FRAMING, FitPolicy.INTEGER).dest.size
     )
 
 
@@ -551,9 +551,9 @@ def test_a_target_that_is_not_the_framing_at_one_density_is_refused(
 @pytest.mark.parametrize("window", [(640, 360), (2176, 1224), (2560, 1440)])
 def test_the_camera_adopts_the_density_of_a_new_target(window: tuple[int, int]) -> None:
     """``set_surface`` has to tell the camera, or the rectangles lag behind."""
-    first = Viewport(DEFAULT_FRAMING, letterbox((1152, 648), DEFAULT_FRAMING).size)
+    first = Viewport(DEFAULT_FRAMING, picture((1152, 648), DEFAULT_FRAMING).dest.size)
     renderer = Renderer(first.surface, Camera.for_target(first.surface))
-    bigger = Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size).surface
+    bigger = Viewport(DEFAULT_FRAMING, picture(window, DEFAULT_FRAMING).dest.size).surface
 
     renderer.set_surface(bigger)
 

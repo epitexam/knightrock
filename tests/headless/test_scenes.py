@@ -368,13 +368,13 @@ def test_the_camera_viewport_ignores_the_window(manager: SceneManager):
     of it is shown.
     """
     from src.core.display.framing import DEFAULT_FRAMING
-    from src.core.display.letterbox import letterbox
+    from src.core.display.letterbox import picture
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
     for window in ((640, 360), (1280, 720), (1920, 1080), (2560, 1440), (1000, 1000)):
-        size = letterbox(window, DEFAULT_FRAMING).size
+        size = picture(window, DEFAULT_FRAMING).dest.size
         surface = Viewport(DEFAULT_FRAMING, size).surface
         gameplay.set_surface(surface)
 

@@ -79,36 +79,26 @@ def topology() -> Topology:
 
 
 def desktop_refresh_rates() -> tuple[int, ...]:
-    """The refresh rates a display reports, in Hz, best first.
+    """One rate per display the driver answers about, best first.
 
-    ``pygame.display.get_current_refresh_rate`` looks like the obvious call and
-    is not usable here: it raises ``error: No open window`` before the display
-    exists, and it only ever reports the *current* display. This one works
-    before the window is created.
+    False friends, in order. ``pygame.display.get_current_refresh_rate`` looks
+    like the obvious call and is not usable here -- it raises ``error: No open
+    window`` before the display exists, and it only ever reports the *current*
+    display. This one works before the window is created, by asking
+    ``get_desktop_refresh_rates``, which takes no arguments in pygame 2.5.
 
-    The rates are the **primary** display's, and there is no way to ask for
-    another's: ``get_desktop_refresh_rates`` takes no arguments in pygame 2.5,
-    while ``get_desktop_sizes`` does. So this is a single display's answer
-    wearing a plural name. Per-display rates come from the SDL probe instead,
-    and a display the game is actually on has its own in
-    :attr:`src.core.display.monitors.Monitor.refresh_rate`.
+    And that call is the plural **name** the trap is built on: it answers one
+    rate *per display*, not one rate per *mode* -- the rates a desktop reports
+    for the desktop itself, which is why the answer is what the acceptance run
+    prints and not a ladder to write back. Names from upstream, one rate each,
+    reversed; per-display rates that the game can attribute to *its own* window
+    come from the SDL probe, kept per-panel in
+    :attr:`src.core.display.monitors.Monitor.refresh_rate`, and that is the
+    number the VSync row reads, because it is the one about the panel the
+    window is actually on.
     """
     try:
         rates = pygame.display.get_desktop_refresh_rates()
     except pygame.error:
         return ()
     return tuple(sorted((int(rate) for rate in rates), reverse=True))
-
-
-def initial_window_size(desktop: tuple[int, int]) -> tuple[int, int]:
-    """The size to open a windowed game at, from a bare desktop size.
-
-    A thin wrapper kept for the callers that only have sizes -- headless tests
-    and the degraded topology. The real answer comes from
-    :func:`src.core.display.monitors.opening_size`, which knows about the taskbar
-    and the panel's origin and can therefore place the window rather than only
-    size it.
-    """
-    from .monitors import Monitor, opening_size
-
-    return opening_size(Monitor(index=0, name="", bounds=(0, 0, *desktop), usable=(0, 0, *desktop)))

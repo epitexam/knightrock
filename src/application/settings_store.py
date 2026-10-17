@@ -3,21 +3,25 @@
 What a setting is allowed to be
 -------------------------------
 A choice the player can make and the game can honour, or nothing. That rule is
-what this file is down to, and it is why there is no window size here any more.
+what this file is down to.
 
-The size used to be here, with a ``size_mode`` to say whether it was the
-player's or the machine's, and a ``render_scale`` on top to say how sharply to
-draw a fixed target. All three were claims about the player's screen, and the
-game could check none of them: it could not tell whether a remembered size still
-fit, and in borderless the window is the desktop's size whatever the file says,
-so the menu displayed a number the game was not using. A player who set a
-resolution watched the menu disagree with the screen and the number change on
-the next launch.
+The *mode* keys used to be here -- a fixed ``width``/``height``, a ``size_mode``
+to say whether it was the player's or the machine's, and a ``render_scale`` on
+top to say how sharply to draw a fixed target. All three were claims about the
+player's screen, and the game could check none of them: it could not tell
+whether a remembered size still fit, and in borderless the window is the
+desktop's size whatever the file says, so the menu displayed a number the game
+was not using. A player who set a resolution watched the menu disagree with the
+screen and the number change on the next launch.
 
 The window is now the only source of truth (:mod:`src.core.display.letterbox`),
-and the picture is derived from it, so the settings that survive are the ones
-that were never about the screen: whole-pixel art, vsync, a frame limit, an
-interface scale, the size the player wants the window at, and the bindings.
+and the picture is derived from it. What survives is of two shapes, and the
+difference is worth naming: the settings that were never about the screen --
+whole-pixel art, vsync, a frame limit, an interface scale, the bindings -- and
+**one** size key, ``window_size``, which is a *preference* and not a claim. It
+is asked for as it stands where the panel can take it, clamped where it cannot,
+and never written back -- so the file never again carries a number the window
+disagrees with (:func:`src.core.display.monitors.fit_size`).
 
 A display mode and a chosen screen lived here too, and both are gone. The game is
 a window now, with one set of flags; the player chooses its size and the window
@@ -100,24 +104,28 @@ MAX_FRAME_LIMIT = 500
 class UserSettings:
     """Everything the player is allowed to have an opinion about.
 
-    Notice what is not here: a window size, a "size mode", a render scale or a
-    smoothing flag. Every one of them was a claim about the player's screen
-    that the game could not check, and the two that mattered most were also
-    wrong in practice -- the window is either the desktop's size (borderless) or
-    whatever the player dragged it to, while the file and the menu carried a
-    third number that nobody wrote back. The picture is derived from the window
-    instead, so there is nothing to store and nothing to get wrong.
+    Notice what is not here: the fixed ``width``/``height`` the window used to
+    be opened *as*, a "size mode", a render scale or a smoothing flag. Every one
+    of them was a claim about the player's screen that the game could not check,
+    and the two that mattered most were also wrong in practice -- the window is
+    either the desktop's size (borderless) or whatever the player dragged it to,
+    while the file and the menu carried a third number that nobody wrote back.
+    The picture is derived from the window instead, so there is nothing to store
+    and nothing to get wrong.
 
     What is left is a list of choices, and each one is really a choice:
 
     - **pixel_perfect**: give up filling the window to get whole-pixel art.
+    - **fit**: how the picture meets the window -- see the field, and
+      :meth:`src.core.game.Game.effective_fit` for how the two reconcile.
     - **vsync**, **frame_limit**: how often to present.
     - **ui_scale**: the interface's own size, independent of the density.
     - **panel_scale**: the debug panels' size, down to 0.4 so the full stack fits
       a small window. Offered in the video menu only when the game is running
       with the debug overlay on, since there is nothing for it to size otherwise.
-    - **window_size**: the window size the player chose, or ``None`` to keep
-      whatever size they last dragged the window to.
+    - **window_size**: the *only* size key left, and a preference rather than a
+      claim -- the one size the player chose, asked for as-is where the panel can
+      take it, clamped where it cannot, never overwritten.
     - **bindings**: what the buttons do.
     """
 

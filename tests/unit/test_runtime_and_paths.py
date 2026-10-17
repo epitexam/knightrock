@@ -15,7 +15,7 @@ import pytest
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import FitPolicy, letterbox
+from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
@@ -545,7 +545,7 @@ def test_a_snap_is_a_drag_and_forgets_the_chosen_size_the_same_way(
 
     assert game.settings.window_size is None, "a snap is the player choosing to follow the window"
     assert game.presentation.window_size == snapped, "and the picture is the window"
-    assert game.presentation.surface.get_size() == letterbox(snapped, DEFAULT_FRAMING).size
+    assert game.presentation.surface.get_size() == picture(snapped, DEFAULT_FRAMING).dest.size
 
     with _recording_requests() as requested:
         game.apply_settings(replace(game.settings, vsync=not game.settings.vsync))
@@ -632,6 +632,84 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         "panel_scale",
         "window_size",
     }
+
+
+def test_a_failed_rebuild_leaves_the_stage_describing_the_window_it_has(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The stage's three fields survive a ``set_mode`` that never produced a window.
+
+    ``rebuild`` committed ``spec`` and ``monitor`` *before* creating the window:
+    a driver refusing the flag -- measured here, the only failure a set_mode has
+    that a test can raise on purpose -- left the stage saying "the window is
+    this spec, on this panel, drawn into this surface" about a window that was
+    never created, with the surface pointing at the one the platform had
+    already taken from us. Three fields from two generations is exactly the
+    state where the next frame draws into memory nothing presents, which is the
+    shape of a crash that only shows the frame after the one that caused it.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    assert game.stage is not None
+    before = (game.stage.spec, game.stage.monitor, game.stage.surface)
+
+    def refuses(_size, flags=0, depth=0, display=0, vsync=0):
+        raise pygame.error("vsync is not available on this driver")
+
+    monkeypatch.setattr(pygame.display, "set_mode", refuses)
+
+    with pytest.raises(pygame.error):
+        game.stage.rebuild(WindowSpec(vsync=True), game.stage.monitor)
+
+    rebuilt = (game.stage.spec, game.stage.monitor, game.stage.surface)
+    assert rebuilt == before, "a failed rebuild left the stage half-described"
+
+
+def test_a_failed_apply_leaves_the_file_describing_the_window_that_took_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Settings are written only after the window accepted them.
+
+    The write used to be queued *before* the window work, so a ``set_mode``
+    that refused left the flush -- which arrives a moment later, from the loop
+    -- flushing a state no window honoured: every menu row read from it and
+    agreed with it, and the game claimed a setting the player never got. Two
+    things hold here, at the two places they can be seen: the dirty flag was
+    never set (so nothing flushes the refused state later, which is the gap a
+    mere ordering change would leave open when the caller does not queue an
+    immediate write) and the file on disk still says what it said before --
+    measured on the bytes, because that is the claim.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+    before = game.settings
+    file_on_disk = tmp_path / "settings.json"
+    # Nothing has saved yet, _initialize only reads -- which is itself part of
+    # the claim here: a failed apply must not have *created* the file either.
+    before_on_disk = file_on_disk.read_text() if file_on_disk.exists() else None
+
+    def refuses(_size, flags=0, depth=0, display=0, vsync=0):
+        raise pygame.error("vsync is not available on this driver")
+
+    monkeypatch.setattr(pygame.display, "set_mode", refuses)
+
+    with pytest.raises(pygame.error):
+        game.apply_settings(before.with_video(vsync=not before.vsync))
+
+    assert game.settings == before, "a refused apply left the runtime changed"
+    assert game._settings_dirty is False, "and something queued the refused state for a flush"
+    if before_on_disk is None:
+        assert not file_on_disk.exists(), "and the file appeared out of nowhere"
+    else:
+        assert file_on_disk.read_text() == before_on_disk, (
+            "and the file changed behind everyone's back"
+        )
 
 
 def test_a_remembered_window_size_is_clamped_and_not_rewritten(tmp_path: Path) -> None:
@@ -958,7 +1036,7 @@ def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     So nothing is posted here at all. The window is resized and a frame runs; the
     target, the density, the interface scale and every view follow.
     """
-    from src.core.display.letterbox import letterbox
+    from src.core.display.letterbox import picture
 
     game = Game(
         save_path=tmp_path / "savegame.json",
@@ -978,14 +1056,14 @@ def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     start = game.presentation.surface.get_size()
 
     for size in ((1920, 1080), (1024, 768), (800, 600)):
-        assert letterbox(size, DEFAULT_FRAMING).size != start
+        assert picture(size, DEFAULT_FRAMING).dest.size != start
         window.resize(size)
 
         game.step()
 
-        assert game.presentation.surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        assert game.presentation.surface.get_size() == picture(size, DEFAULT_FRAMING).dest.size
         assert game.presentation.density == pytest.approx(
-            letterbox(size, DEFAULT_FRAMING).width / DEFAULT_FRAMING.width
+            picture(size, DEFAULT_FRAMING).dest.width / DEFAULT_FRAMING.width
         )
         assert game.ui_scale == pytest.approx(game.settings.ui_scale * game.presentation.density)
 
@@ -994,10 +1072,10 @@ def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     assert notified.call_count == 3, "the views were never told about the new target"
     handed = [call.args[0] for call in notified.call_args_list]
     assert handed == [
-        Viewport(DEFAULT_FRAMING, letterbox(size, DEFAULT_FRAMING).size).surface
+        Viewport(DEFAULT_FRAMING, picture(size, DEFAULT_FRAMING).dest.size).surface
         for size in ((1920, 1080), (1024, 768), (800, 600))
     ] or all(
-        surface.get_size() == letterbox(size, DEFAULT_FRAMING).size
+        surface.get_size() == picture(size, DEFAULT_FRAMING).dest.size
         for surface, size in zip(handed, ((1920, 1080), (1024, 768), (800, 600)), strict=True)
     )
 

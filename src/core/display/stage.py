@@ -92,10 +92,26 @@ class Stage:
         return self.surface.get_size()
 
     def rebuild(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
-        """Recreate the window for a new specification and return its surface."""
-        self.spec = spec
-        self.monitor = monitor
-        self.surface = self._create(spec, monitor)
+        """Recreate the window for a new specification and return its surface.
+
+        The three fields this touches -- ``spec``, ``monitor``, ``surface`` --
+        are committed together or not at all. ``set_mode`` is the one call that
+        can fail in the middle of a rebuild -- a driver refusing the vsync flag,
+        a panel that vanished between the topology poll and the request -- and
+        without the rollback, the stage would be left explaining a window that
+        was never created, with ``self.surface`` still pointing at the one the
+        platform has just taken away. Restoring the previous triple on failure
+        is the difference between an error the caller can handle and a frame
+        that Blits into memory the display no longer presents.
+        """
+        previous = (self.spec, self.monitor, self.surface)
+        try:
+            self.spec = spec
+            self.monitor = monitor
+            self.surface = self._create(spec, monitor)
+        except Exception:
+            self.spec, self.monitor, self.surface = previous
+            raise
         return self.surface
 
     def _create(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:

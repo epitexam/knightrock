@@ -71,16 +71,6 @@ class FitPolicy(StrEnum):
     INTEGER = "integer"
     ZOOM = "zoom"
 
-    @property
-    def covers_window(self) -> bool:
-        """Whether this policy leaves any part of the window uncovered.
-
-        Only zoom does, and that is why :class:`Picture` needs a source
-        rectangle at all: a policy that fits inside the window has bars, and the
-        presentation paints them.
-        """
-        return self is FitPolicy.ZOOM
-
 
 class Picture:
     """Where the picture sits, where it comes from, and what surrounds it.
@@ -196,23 +186,6 @@ def _zoom(window: tuple[int, int], framing: Framing) -> Picture:
     crop = pygame.Rect((target_w - width) // 2, (target_h - height) // 2, width, height)
     dest = pygame.Rect(0, 0, width, height)
     return Picture(pygame.Rect(0, 0, target_w, target_h), crop, dest, window)
-
-
-def letterbox(
-    window: tuple[int, int],
-    framing: Framing = DEFAULT_FRAMING,
-    *,
-    pixel_perfect: bool = False,
-) -> pygame.Rect:
-    """The rectangle of ``window`` that carries the picture, centred.
-
-    A thin compatibility wrapper over :func:`picture` for the callers that only
-    need where the picture lands -- the camera, the overlay, the menu readout --
-    and not where it comes from. ``pixel_perfect`` is the older name for the
-    integer policy; it is kept because a whole-pixel picture is still a real
-    thing to ask for and the two are the same request.
-    """
-    return picture(window, framing, FitPolicy.INTEGER if pixel_perfect else FitPolicy.BARS).dest
 
 
 def fits_whole_pixel(window: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> bool:

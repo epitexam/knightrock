@@ -27,7 +27,7 @@ import pytest
 
 from src.core.display.detection import desktop_size
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
+from src.core.display.letterbox import picture
 from src.core.display.viewport import Viewport
 from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
@@ -161,8 +161,8 @@ def test_the_render_target_follows_the_window_and_nothing_else() -> None:
     seen = set()
     for window in WINDOWS:
         pygame.display.set_mode(window)
-        seen.add(Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size).size)
-    assert seen == {letterbox(window, DEFAULT_FRAMING).size for window in WINDOWS}, (
+        seen.add(Viewport(DEFAULT_FRAMING, picture(window, DEFAULT_FRAMING).dest.size).size)
+    assert seen == {picture(window, DEFAULT_FRAMING).dest.size for window in WINDOWS}, (
         "the target must be each window's own letterbox rectangle"
     )
     assert len(seen) > 1, "a target that ignores the window is the regression"
@@ -178,6 +178,6 @@ def test_a_desktop_smaller_than_the_framing_still_gets_a_target() -> None:
     """
     assert desktop_size()[0] > 0
     for window in ((800, 600), (640, 360), (500, 400), (100, 80)):
-        target = Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size)
+        target = Viewport(DEFAULT_FRAMING, picture(window, DEFAULT_FRAMING).dest.size)
         assert target.size[0] > 0 and target.size[1] > 0
         assert target.density > 0.0

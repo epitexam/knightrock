@@ -1244,7 +1244,18 @@ toute la suite (3166 tests collectés, mypy strict, Ruff). Ce qui a été fait, 
   de la hauteur est déjà floored), et le prédicat `sits_within` sur six coins, panneau avec
   taskbar et origine négative.
 
-Phase 4 (atomicité `Stage.rebuild`, ordre de `apply_settings`, code mort
-`covers_window`/`letterbox()`/`initial_window_size`, docstrings restantes) reste à faire.
+Phase 4 est fait : `Stage.rebuild` s'engage en un seul bloc (le trio spec/monitor/surface est
+restauré si `set_mode` échoue) ; `apply_settings` n'arme l'écriture **qu'après** que la fenêtre
+a pris les réglages, et toute exception annule d'abord les réglages et les bindings en mémoire
+— le fichier ne décrit jamais une fenêtre qui n'a pas existé. Le code mort est parti avec son
+vote : `FitPolicy.covers_window` (0 appel), le wrapper de compatibilité `letterbox()` (0 appel
+en production ; ses 33 sites de test et de banc sont passés sur `picture(...).dest`), et
+`detection.initial_window_size` (0 appel, son unique référence était dans un docstring corrige
+de `src/core/settings.py`). Les docstrings mensongères de `UserSettings` (« a window size »
+n'existe plus ici alors que `window_size` si), du module `settings_store`, et de
+`desktop_refresh_rates` (un taux **par dalle**, pas « celui du primaire » ; l'attente plafonnée
+par l'acceptance, la source de la ligne VSync reste `Monitor.refresh_rate`) sont réécrites.
+
+Phases 5 (recette manuelle, E1 : VSync au-dessus de 60 Hz sur dalle 144/180 Hz) reste à faire.
 
 Dernière mise à jour : 2026-10-17, branche `fix/remediation`.

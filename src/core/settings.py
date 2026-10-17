@@ -10,11 +10,11 @@ class Display:
     """The window's title, and the refresh rate this build targets.
 
     The starting window size used to live here too, as ``WIDTH``/``HEIGHT``. It
-    does not any more: it is derived from the desktop at launch
-    (:func:`src.core.display.detection.initial_window_size`), and the window
-    manager owns the geometry from then on -- there is no size left for the game
-    to hold an opinion about. What the game draws into is a separate question
-    again, answered by ``src.core.display.framing``.
+    does not any more: it is derived from the desktop at launch -- as large as
+    the first panel allows (:func:`src.core.display.monitors.opening_size`), and
+    the window manager owns the geometry from then on -- there is no size left
+    for the game to hold an opinion about. What the game draws into is a
+    separate question again, answered by ``src.core.display.framing``.
 
     ``FPS`` is the refresh rate this build is written against, and nothing more.
     It is **not** the default frame limit: that is

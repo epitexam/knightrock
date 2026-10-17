@@ -19,7 +19,7 @@ import pytest
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
+from src.core.display.letterbox import FitPolicy, picture
 from src.core.game import Game
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
@@ -395,8 +395,8 @@ def test_the_letterbox_setting_and_the_letterbox_itself_cannot_disagree(manager)
     """
     game = manager.game
     manager.switch(VideoScene(game))
-    fitted = letterbox((2560, 1440), DEFAULT_FRAMING).size
-    whole = letterbox((2560, 1440), DEFAULT_FRAMING, pixel_perfect=True).size
+    fitted = picture((2560, 1440), DEFAULT_FRAMING).dest.size
+    whole = picture((2560, 1440), DEFAULT_FRAMING, FitPolicy.INTEGER).dest.size
     assert fitted != whole, "this test needs a window where the two answers differ"
 
     for pixel_perfect in (False, True):

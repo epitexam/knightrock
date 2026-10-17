@@ -463,15 +463,26 @@ class Game:
         moving at all. A frame limit touches neither. The interface scale goes
         last, and always as the player's preference times the density -- which
         is why it is not a number read straight out of the settings.
+
+        The file is written *last*, for the same reason the stage's rebuild is
+        atomic: a ``set_mode`` that fails between the write and the call would
+        leave the file describing a window that was never there, with every menu
+        row agreeing with it -- the state the settings screen visualised in
+        reverse, where the game claims a setting the player never got. Which is
+        also why the in-memory state is rolled back on the way out: a raise
+        unwound bindings and scales that no window reapplied, and leaving those
+        set is a file-without-a-window by the frame after.
         """
         previous = self.settings
         self.settings = settings
         self.input_bindings = settings.bindings
         self.input_router.set_bindings(self.input_bindings)
         self.input_provider.set_bindings(self.input_bindings)
-        self._persist_settings()
         self._apply_panel_scale(settings)
         if self.stage is None or self.presentation is None:
+            # Nothing to change the window, so there is nothing to fail first:
+            # the write is the whole application.
+            self._persist_settings()
             return
         # Before anything else, and unconditionally: the letterbox belongs to
         # the presentation, and a rebuild reads it. Setting it only on the branch
@@ -480,11 +491,19 @@ class Game:
         # snapping to whole pixels with the setting saying otherwise, which the
         # acceptance run caught and nothing else did.
         self.presentation.fit = self.effective_fit()
-        if self._window_signature(previous) != self._window_signature(settings):
-            self._rebuild_display()
-        elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
-            self._retarget()
-        self.scene_manager.set_ui_scale(self.ui_scale)
+        try:
+            if self._window_signature(previous) != self._window_signature(settings):
+                self._rebuild_display()
+            elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
+                self._retarget()
+            self.scene_manager.set_ui_scale(self.ui_scale)
+        except Exception:
+            self.settings = previous
+            self.input_bindings = previous.bindings
+            self.input_router.set_bindings(previous.bindings)
+            self.input_provider.set_bindings(previous.bindings)
+            raise
+        self._persist_settings()
 
     def _apply_panel_scale(self, settings: UserSettings) -> None:
         """Hand the debug-panel scale to the overlay, if one has been built.
