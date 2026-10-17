@@ -92,6 +92,24 @@ def fit_options(window: tuple[int, int], current: FitPolicy) -> tuple[Option, ..
     return tuple(options)
 
 
+def _largest_fitting(monitor: Monitor) -> tuple[int, int]:
+    """The largest window that fits: what "as large as fits" has to mean here.
+
+    :func:`opening_size` is the game's own answer, and it is normally *below*
+    the usable area by the title bar -- that margin is the entire reason it
+    exists. It can also overshoot: on a panel below the interface floor whose
+    report the guard refuses, it answers ``FALLBACK_WINDOW``, a size chosen for
+    use on a panel that gave nothing to derive from -- bigger than the panel,
+    and unbeholdable as a list entry. Clamping per axis here is what keeps the
+    head of the ladder honest on any panel: on a normal desk the margin decides
+    (the clamps do not bite), and on a report bad enough to answer a fallback,
+    the ladder tops out at the panel rather than at the fiction.
+    """
+    opening = opening_size(monitor)
+    usable = monitor.usable_size
+    return (min(opening[0], usable[0]), min(opening[1], usable[1]))
+
+
 def window_size_options(
     monitor: Monitor,
     current: tuple[int, int] | None,
@@ -127,7 +145,7 @@ def window_size_options(
     unable to see that something they chose is not available here.
     """
     usable = monitor.usable_size
-    widest = opening_size(monitor)
+    widest = _largest_fitting(monitor)
     options: list[Option] = [
         Option(
             "the size I dragged it to",
@@ -147,25 +165,40 @@ def window_size_options(
             note = f"{note} · current" if note else "current"
         options.append(Option(f"{size[0]} x {size[1]}", size, note))
 
-    offer(widest, "as large as the screen allows")
-    offer((monitor.size[0], monitor.size[1]), "the screen's own resolution")
+    # The panel's *own* resolution is deliberately absent, and the reason is the
+    # one thing a windowed list must not promise. That entry used to sit under
+    # "the screen's own resolution", and it was a borderless request wearing a
+    # windowed label: asking for the panel's exact size is the mode change the
+    # windowed game does not make, and measured, the window manager grants it
+    # short -- it subtracts the title bar -- so the size the player chose was
+    # never the size the window had. The largest entry is the largest *window*
+    # that fits: measured so it does not hide behind the taskbar.
+    offer(widest, "as large as fits, measured with the title bar in mind")
     # A ladder rather than everything the panel supports, and it only goes
-    # downwards: `widest` is already as large as the frame allows, so a
-    # "three quarters" rung would land above it and be filtered out as too big.
-    # These are derived from the panel rather than written down, so a 4K desk
-    # gets a 4K ladder and a laptop gets a laptop's.
-    for denominator, note in ((2, "half the screen"), (3, "a third of the screen")):
-        offer(
-            (
-                max(MIN_WINDOW[0], widest[0] // denominator),
-                max(MIN_WINDOW[1], widest[1] // denominator),
-            ),
-            note,
+    # downwards: ``widest`` is already as large as fits, so a "three quarters"
+    # rung would land above it and be filtered out as too big. The notes name
+    # what the rung is relative to -- the largest window this panel allows --
+    # rather than the screen, because the largest window and the screen are
+    # different numbers on every panel with reserved chrome, and the old notes
+    # ("half the screen") described a size the list did not offer.
+    for denominator, note in (
+        (2, "half of the largest"),
+        (3, "a third of the largest"),
+    ):
+        rung = (
+            max(MIN_WINDOW[0], widest[0] // denominator),
+            max(MIN_WINDOW[1], widest[1] // denominator),
         )
+        if rung != (widest[0] // denominator, widest[1] // denominator):
+            # The floor is part of what the rung is: on a 1920x1080 panel the
+            # "third" rung is 480 tall where a literal third is 360, and a note
+            # that only said "a third" would describe a size the window is not
+            # going to have -- the same read-out bug this file exists to keep
+            # out, one row lower.
+            note = f"{note} · floored at the readable minimum"
+        offer(rung, note)
     # Largest first, so the list reads as a scale rather than as an accident of
-    # the order the sizes were thought up in. On a 1366x768 laptop the panel's
-    # own resolution is *bigger* than the widest window that fits under its
-    # taskbar, and offering the smaller one first read as backwards.
+    # the order the sizes were thought up in.
     entries = sorted(options[1:], key=lambda option: (-option.value[0] * option.value[1], option))
     if current is not None and tuple(current) not in offered:
         entries.append(

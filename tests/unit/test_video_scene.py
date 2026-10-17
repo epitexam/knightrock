@@ -101,6 +101,10 @@ def _game(topology: Topology | None = None) -> SimpleNamespace:
     # about a screen, and a test that took one from the machine would be testing
     # the machine.
     game.window_monitor = lambda: (topology or DESK).monitors[0]
+    # Rule W's answer for the stand-in: the panel the window is on, which the
+    # size list is derived from. Same panel as the VSync row -- the window has
+    # not moved anywhere a stand-in could disagree about.
+    game.monitor = lambda: (topology or DESK).monitors[0]
 
     # The fit policy the runtime would draw with, resolved by the same pure rule
     # the runtime uses. A stand-in that answered ``settings.fit`` would read as

@@ -16,7 +16,7 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, letterbox
-from src.core.display.monitors import centre_on, fit_size, opening_size
+from src.core.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
 from src.core.game import Game
@@ -363,27 +363,72 @@ def test_a_refused_window_size_is_asked_for_again(monkeypatch: pytest.MonkeyPatc
     assert stage.size == opening_size(monitor)
 
 
-def test_the_window_is_centred_on_the_panel_it_opens_on(
+def test_the_window_is_centred_when_where_it_sits_would_leave_the_panel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The window opens in the middle of the panel it was built for.
+    """Centring is the fallback the window's own position does not grant.
 
-    One request and no verification. The retry loop and the ``on_monitor``
-    check existed because the menu could ask for a *specific* screen and the
-    window manager sometimes refused; there is no such request any more, so a
-    refusal has nothing to be wrong about and nothing to retry for.
+    Placement ran after every ``set_mode``, and a size change is one, so the
+    window walked back to the opening panel's centre on every resize of the
+    menu: on a two-panel desk the player resized and the window teleported
+    across, to a panel the size list went on describing. The rule now is that a
+    window is moved only when where it is would leave the panel with the new
+    size -- and the fallback case is exactly what this stands in: the platform
+    put the fresh window off the panel, so there is nothing the game knows about
+    it that is worth keeping.
 
-    The setter is the seam, because that is the whole of what the stage does to
-    the window it places: it sets ``position`` and nothing else.
+    One request and no verification. The retry loop existed because the menu
+    could ask for a *specific* screen and the window manager sometimes refused;
+    there is no such request any more, so a refusal has nothing to be wrong
+    about. The setter is the seam, because that is the whole of what the stage
+    does to the window it places: it sets ``position`` and nothing else.
     """
     monitor = _panel(1920, 1080)
+    # A window whose reported position is off the panel: the fresh-window state
+    # nothing may be assumed about. A position that fits is the other test.
     window = _RecordingWindow()
+    window.position = (-500, -500)
+    window.asked.clear()
     monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: window))
-    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (0, 0))
 
     stage = Stage(WindowSpec(), monitor)
 
     assert window.asked == [centre_on(monitor, stage.size)]
+
+
+def test_a_position_the_new_size_can_still_hold_is_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Half of D6, and the half players actually touch: a resize does not move the window.
+
+    Measured on the development machine: every ``set_mode`` that replaced the
+    window ran placement, so toggling VSync -- or changing the size from the
+    list -- pulled the window back to wherever the opening panel's centre was,
+    even though the player had dragged it to the corner of another panel
+    hours ago. The menu did not announce a move; the window simply moved.
+
+    Under the rule, the window's own report is the record of where it is: the
+    new rectangle at the old top-left still fits inside its panel, so the
+    position is kept and the stage makes *no* request at all -- asserted on the
+    stand-in's emptiness, because the claim is that nothing asked, not merely
+    that nothing asked *that position*.
+    """
+    monitor = _panel(1920, 1080)
+    # The opening size for this panel is 1840x984 (usable less the title-bar
+    # margin), and a top-left of (50, 50) holds that rectangle whole inside the
+    # panel -- which is the premise the rule reads, so the test keeps it up to
+    # date with arithmetic instead of a magic pair of coordinates.
+    window = _RecordingWindow()
+    window.position = (50, 50)
+    window.asked.clear()
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: window))
+
+    stage = Stage(WindowSpec(), monitor)
+
+    assert 50 + stage.size[0] <= 1920 and 50 + stage.size[1] <= 1080, (
+        "the premise drifted: this position no longer fits"
+    )
+    assert window.asked == [], "the window was moved although its position held"
 
 
 def test_a_resize_no_longer_undoes_the_players_own_drag(tmp_path: Path) -> None:
@@ -663,6 +708,73 @@ def test_the_game_and_the_settings_agree_about_the_fit_in_force(
     for chosen in (FitPolicy.INTEGER, FitPolicy.ZOOM):
         game.settings = game.settings.with_video(fit=chosen, pixel_perfect=True)
         assert game.effective_fit() is chosen, f"{chosen.value} must keep its choice"
+
+
+DESK_WITH_A_SECOND_PANEL = Topology(
+    (
+        Monitor(0, "DP-1", (0, 0, 1920, 1080), (0, 0, 1920, 1080), 60),
+        Monitor(1, "DP-2", (1920, 0, 2560, 1440), (1920, 0, 2560, 1440), 165),
+    ),
+    named=True,
+)
+
+
+def test_everything_anchors_on_the_panel_the_window_is_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Rule W, at the runtime level: the window's panel is the anchor.
+
+    Every panel-derived answer -- the size list, the clamp a rebuild asks with,
+    the placement centre -- used to read the *primary*, and measured on a real
+    two-panel desk that is wrong three times over when the window has moved:
+    each ``set_mode`` that replaces the window re-centred on the primary, so a
+    size change teleported the window back across the desk and then the size
+    list described the panel the game had just left. Three readers, three
+    answers, and the one the player sees was the least reliable.
+
+    The window is the record of where it is, so the anchor is the panel its
+    position says. The desk here has the second panel to the right and
+    *different* refresh rates, so an answer of "the primary" cannot pass by
+    accident: the anchor test and the rate test would disagree.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (2500, 100))
+
+    held = game.monitor()
+
+    assert held is DESK_WITH_A_SECOND_PANEL.monitors[1]
+    assert game.window_monitor() is held, "the anchor and the row read the same panel"
+    assert held.refresh_rate == 165, "and the panel is the one the window reports"
+
+
+def test_with_no_position_to_read_the_anchor_falls_back_to_the_primary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The fallback half of Rule W: no window, no fact, primary.
+
+    The two states where no fact exists are a first launch -- which has no
+    window yet -- and a degraded topology, which knows sizes and no origins, so
+    :meth:`Game.window_monitor` answers ``None`` rather than a guess. Between
+    them there is no difference worth coding: both are "nobody can say where
+    the window is", and the best answer a machine with one report can give is
+    the primary -- which is what the game opened on when it opened at all.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
+
+    def raises():  # noqa: ANN202
+        raise pygame.error("window does not exist")
+
+    monkeypatch.setattr(pygame.display, "get_window_position", raises)
+
+    assert game.monitor() is DESK_WITH_A_SECOND_PANEL.primary
 
 
 class FakeWindow:

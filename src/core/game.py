@@ -326,13 +326,31 @@ class Game:
             self._topology_age = 0.0
         return self._topology
 
-    def _monitor(self) -> Monitor:
-        """The display the game is built on, which is the primary.
+    def monitor(self) -> Monitor:
+        """The panel the game is built on: the one holding the window.
 
-        The game is a window and the window manager owns where it sits, so there
-        is no screen to pick and none to resolve a name against. The window opens
-        on the primary and the player moves it.
+        One rule decides it (**Rule W**), and it is the only anchor this game has
+        left. Everything the menu derives from a panel -- the size ladder, the
+        clamp a rebuild asks with, the centre a new window is placed at -- used to
+        read the *primary*, and that answer is only right where one answer cannot
+        be: measured on a real two-panel desk, every ``set_mode`` that replaces
+        the window runs :meth:`Stage._place`, which re-centred on the primary -- so
+        a size change teleported the window back to a panel the player had moved
+        off, and then the size list opened describing the very panel the game had
+        just left. Three readers, three answers, and the one the player sees was
+        the least reliable of them.
+
+        Reading the panel the *window* is on closes that triangle: the window did
+        the moving, so the window is the record of where it is, and every reader
+        that anchored on the primary was anchoring on a default instead of a fact.
+        The fallbacks are the only two states where no fact exists -- a first
+        launch, which has no window yet, and a degraded topology, which knows no
+        geometry -- and both fall back to the primary, which is the best answer a
+        machine with one report can give.
         """
+        held = self.window_monitor()
+        if held is not None:
+            return held
         return self.topology().primary
 
     def effective_fit(self) -> FitPolicy:
@@ -358,7 +376,7 @@ class Game:
         Public because the headless fixtures need the same construction the loop
         does, rather than half of it.
         """
-        self.stage = Stage(self._window_spec(), self._monitor())
+        self.stage = Stage(self._window_spec(), self.monitor())
         self._built_window_size = self.stage.size
         # The window exists, so the picture can be drawn at its size: the target
         # is the window's fitted rectangle and the density is read back off it.
@@ -403,7 +421,7 @@ class Game:
         """
         assert self.stage is not None
         assert self.presentation is not None
-        self.stage.rebuild(self._window_spec(), self._monitor())
+        self.stage.rebuild(self._window_spec(), self.monitor())
         self._built_window_size = self.stage.size
         self.presentation.retarget(self.stage.surface)
         self._invalidate_assets()

@@ -31,6 +31,7 @@ from .monitors import (
     centre_on,
     fit_size,
     opening_size,
+    sits_within,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,17 +170,37 @@ class Stage:
         return opening_size(monitor)
 
     def _place(self, spec: WindowSpec, monitor: Monitor) -> None:
-        """Centre the window on the display it was built for.
+        """Re-centre the window on the panel, and only when it has nowhere left.
 
-        One request, and no verification. The game used to re-issue the placement
-        until the window was on the panel the player had picked, because the menu
-        could ask for a specific screen and the window manager sometimes refused.
-        There is no such request any more: the window opens on the primary and the
-        player moves it, so the only thing left to do is put it somewhere sensible
-        the first time.
+        One request, and no verification -- that half did not change. What changed
+        is *when* the request happens. A windowed placement ran after every
+        ``set_mode``, and ``set_mode`` runs for every size change, so a size
+        -- change walked the window back to the opening panel's centre: on a
+        two-panel desk the player resizes and the window teleports across, which
+        is both a surprise the menu did not announce and the exact mismatch that
+        made the size list describe a panel the window had just left.
+
+        The rule now (D6): keep the position the window already has whenever the
+        new rectangle still fits inside the panel (Rule W's monitor is the one
+        holding the window, so "fits" is tested against the panel the player
+        put it on), and re-centre only when it does not -- first launch, a
+        platform that moved the window under us, and a window the new size puts
+        partly off its panel. A keep is a no-op by construction, which is also
+        why there is no attempt to *preserve* a position across the panel: the
+        window never left its panel, and a move the player never asked for is
+        the bug, not the cure.
         """
         window = self._window_handle()
         if window is None:
+            return
+        try:
+            position = window.position
+            current = (int(position[0]), int(position[1]))
+        except pygame.error, AttributeError:
+            logger.debug("No window position readable; centring")
+            window.position = centre_on(monitor, self.size)
+            return
+        if sits_within(current, monitor, self.size):
             return
         window.position = centre_on(monitor, self.size)
 

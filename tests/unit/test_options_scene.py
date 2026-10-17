@@ -40,6 +40,10 @@ def _game(topology=None) -> SimpleNamespace:
         # The screen the window is on, which is what the VSync row reports -- the
         # primary's rate is a claim about a screen the window may not be on.
         window_monitor=lambda: desk.primary,
+        # Rule W's answer for the stand-in: the panel the window is on, which the
+        # size list is derived from; see test_video_scene for why it mirrors the
+        # VSync row here.
+        monitor=lambda: desk.primary,
         # The fit policy the runtime would draw with, resolved by the same pure
         # rule the runtime reads; see test_video_scene for why.
         effective_fit=lambda: letterbox.effective_fit(

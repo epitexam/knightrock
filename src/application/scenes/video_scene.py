@@ -377,11 +377,14 @@ class VideoScene(Scene):
         """The list behind the window-size row.
 
         The window is the only thing the display settings produce now, so this
-        list is the only display choice on the screen: how big to open, on the
-        panel the game is on. ``None`` is "the size I dragged it to", which keeps
-        the window following the player rather than the file.
+        list is the only display choice on the screen: how big to open. The panel
+        the sizes are measured against is the one :meth:`Game.monitor` anchors
+        (Rule W) -- the panel the *window* is on, primary until there is a window
+        -- because a list derived from a panel the window is not on would describe
+        a screen the player is not looking at, which is exactly the mismatch the
+        read-out bug made.
         """
-        monitor = self.game.topology().primary
+        monitor = self.game.monitor()
         return (
             "WINDOW SIZE",
             video_options.window_size_options(

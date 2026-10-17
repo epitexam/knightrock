@@ -43,12 +43,14 @@ from src.core.display.letterbox import (  # noqa: E402
     density_for,
 )
 from src.core.display.monitors import (  # noqa: E402
+    FALLBACK_WINDOW,
     MIN_WINDOW,
     Monitor,
     Topology,
     centre_on,
     fit_size,
     opening_size,
+    sits_within,
 )
 from src.core.display.presentation import Presentation  # noqa: E402
 
@@ -293,6 +295,15 @@ DESKS: list[Topology] = [
         ),
         named=True,
     ),
+    # A panel below the interface floor of 640x480: the arithmetic still has to
+    # answer, with the largest window that genuinely fits -- which is *below*
+    # that floor on purpose, because inventing a comfortable one would ask for a
+    # window partly off the panel, and cause is worse than consequence here.
+    Topology((Monitor(0, "LVDS-1", (0, 0, 640, 400), (0, 0, 640, 400), 60),), named=True),
+    # An ultra-wide panel, where the ladder's height rungs floor out long before
+    # the width ones do -- the shape that shows a "half" rung is not literally
+    # half of anything once the floor is applied.
+    Topology((Monitor(0, "DP-1", (0, 0, 3440, 1440), (0, 0, 3440, 1440), 165),), named=True),
 ]
 
 
@@ -336,6 +347,89 @@ def test_a_centred_window_is_centred_on_the_panel_it_opens_on(desk: Topology) ->
         assert position[1] + size[1] <= monitor.usable_origin[1] + monitor.usable_size[1]
 
 
+@pytest.mark.parametrize(
+    "report",
+    [
+        # A panel with no width at all: a broken probe's idea of a screen.
+        Monitor(0, "?", (0, 0, 0, 1080), (0, 0, 0, 1080), 60),
+        # No height, and no usable area either.
+        Monitor(0, "?", (0, 0, 1920, 0), (0, 0, 1920, 0), 60),
+        # A panel that answers, behind a degenerate usable area -- the shape the
+        # guard catches *before* the usable_size fallback papered over it.
+        Monitor(0, "?", (0, 0, 1920, 1080), (0, 0, 0, 0), 60),
+    ],
+)
+def test_a_report_that_dedicates_to_nothing_gets_the_fallback_size(report: Monitor) -> None:
+    """A monitor with no arithmetic answer is answered out of policy, not arithmetic.
+
+    The guard used to test ``usable_size`` -- the property that *falls back* to
+    the panel when the usable area is degenerate -- and so could never fire: dead
+    code wearing the one comment that claimed it did the protecting. It now tests
+    the raw report, where a failure is still telling the truth, and every entry
+    here is measured below-floor fiction that would otherwise have derived a
+    zero-sized window: a size no menu fits into, from a code path whose whole
+    job is handing back a window somebody can work with.
+    """
+    assert opening_size(report) == FALLBACK_WINDOW
+
+
+def test_the_fabricated_fallback_panel_is_answered_by_the_arithmetic() -> None:
+    """The 1x1 fiction in ``Topology.primary`` passes the guard, and that is written down.
+
+    A panel of one pixel is a real report -- a panel that *answers*, with a
+    size -- unlike the zeros above, and the arithmetic answers it as such: with
+    a one-pixel window. The docstring used to claim such a monitor received
+    ``FALLBACK_WINDOW``, and the code never kept that: this is that claim
+    written as a test instead, so the gap between them has a name. Floors come
+    from elsewhere -- ``Stage._limit_size`` for real windows, ``recompute``'s
+    refusal for the drawing -- and neither is this function's job.
+    """
+    fabricated = Topology().primary
+
+    assert fabricated.size == (1, 1)
+    assert opening_size(fabricated) == (1, 1)
+
+
+def test_keeping_a_position_is_decided_by_the_whole_rectangle() -> None:
+    """The predicate D6 was decided by, over the shapes panelling into a corner.
+
+    ``sits_within`` is what separates "the window is where it is, and it still
+    fits" from "the window just left the panel", and both halves have to be
+    tested against the same shapes the desktops use: a panel with a taskbar
+    reserves its top, panels to the left have negative origins, and a window
+    that hangs over either edge is *not* kept -- a moved window is the bug this
+    predicate is the guard for, so the refusals are half the contract.
+    """
+    panel = Monitor(0, "DP-1", (-1920, 0, 1920, 1080), (-1920, 32, 1920, 1048), 60)
+    # 1600x900 fits everywhere on a 1920x1080 usable area; what changes is the
+    # corner it sits at.
+    cases = [
+        ((-1900, 40), True, "inside, with room at the negative origin"),
+        ((-1920, 32), True, "exactly at the usable origin: on the panel, not past it"),
+        ((-1921, 32), False, "one pixel past the left edge"),
+        ((-1920, 31), False, "one pixel under the taskbar"),
+        ((-320, 32), False, "fully on the panel, but the width overhangs the right edge"),
+        ((-1920, 200), False, "200 plus 900 clears the panel's bottom by 20 px"),
+    ]
+    for (x, y), expected, why in cases:
+        assert sits_within((x, y), panel, (1600, 900)) is expected, why
+
+
+def test_keeping_a_size_is_decided_per_axis_not_by_area() -> None:
+    """The predicate is a rectangle test, and an avoided look-alike is named here.
+
+    A size half as tall as a panel "fits" by area and hangs off it by width;
+    both axes have to hold. Asserted directly rather than trusted to the
+    placement tests, because a reading of "it mostly fits" would come back from
+    those green while being wrong on every narrow window.
+    """
+    panel = Monitor(0, "DP-1", (0, 0, 1920, 1080), (0, 0, 1920, 1080), 60)
+
+    assert sits_within((0, 0), panel, (1920, 1080)), "the whole panel still fits it"
+    assert not sits_within((500, 0), panel, (1480, 1080)), "width alone is enough to refuse"
+    assert not sits_within((0, 181), panel, (1920, 900)), "as is height alone"
+
+
 @pytest.mark.parametrize("desk", DESKS, ids=lambda d: f"{len(d.monitors)}screen")
 def test_an_oversized_window_is_clamped_and_the_choice_is_kept(desk: Topology) -> None:
     """A 4K window arriving at a laptop fits, and the file keeps saying 4K.
@@ -349,9 +443,17 @@ def test_an_oversized_window_is_clamped_and_the_choice_is_kept(desk: Topology) -
     oversized = (7680, 4320)
     for monitor in desk.monitors:
         clamped = fit_size(oversized, monitor)
-        assert clamped[0] <= monitor.usable_size[0]
-        assert clamped[1] <= monitor.usable_size[1]
-        assert clamped[0] >= MIN_WINDOW[0] and clamped[1] >= MIN_WINDOW[1]
+        usable = monitor.usable_size
+        # Both halves of the contract, and where they collide on a panel below
+        # the interface floor -- the 640x400 desk in this file -- the floor wins
+        # and the result overflows its usable area on purpose: a window under
+        # ``MIN_WINDOW`` cannot be laid out, so "smaller than the panel" loses
+        # to "large enough to draw in". The ceiling below is the same word the
+        # function itself uses, so a panel that can hold the floor gets exact
+        # containment and one that cannot gets exactly the floor.
+        for axis in (0, 1):
+            assert clamped[axis] >= MIN_WINDOW[axis]
+            assert clamped[axis] <= max(MIN_WINDOW[axis], usable[axis])
 
 
 @pytest.mark.parametrize("desk", DESKS, ids=lambda d: f"{len(d.monitors)}screen")

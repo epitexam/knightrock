@@ -165,16 +165,36 @@ def opening_size(monitor: Monitor) -> tuple[int, int]:
     settles it. ``MIN_WINDOW`` is what the interface needs to be usable, and the
     usable area is what the player can actually reach -- so the area wins, and a
     window is opened exactly as large as the screen rather than partly off it.
+    Measured: on a 640x400 report the arithmetic answers 640x400, *below* the
+    floor and against its own margin -- on purpose. Below the floor,
+    :meth:`Presentation.recompute` refuses the window and keeps the last
+    drawable target, which is a rule about resizing that an opening size borrows
+    honestly: a platform this small gets the largest window that genuinely fits
+    rather than one invented to be comfortable.
 
-    A monitor that reports no size at all gets ``FALLBACK_WINDOW`` instead of
-    being run through the same arithmetic. That is the headless case and a driver
-    that answered nothing, and the arithmetic would hand it a 1x1 window: a
-    window no menu fits into and no player can use, from a code path whose whole
-    job is to produce a window someone can work with.
+    The guard is on the raw *report* -- the panel's own size and the raw usable
+    rectangle -- rather than on :attr:`usable_size`, and the reason is in that
+    property: it falls back to the panel when the usable area is degenerate, so
+    a guard in front of it can never fire -- dead code wearing a comment. The
+    rows the guard still catches are the fiction a broken driver can produce: a
+    panel that reports zero width or height, raw or usable, has no arithmetic
+    answer and gets ``FALLBACK_WINDOW``, which is a size chosen for use rather
+    than derived from junk.
+
+    The *fabricated* fallback that lives in :attr:`Topology.primary` -- a 1x1
+    panel built when no list at all came back -- passes this guard, with one
+    pixel on each axis, and no correction is coming: the arithmetic gives it
+    back a request of 1x1, which a real window manager floors through
+    :meth:`Stage._limit_size` and a headless call shrugs at. The docstring used
+    to claim such a monitor received the fallback size; it never did, and
+    writing what the code does is worth more here than keeping a promise the
+    code never kept.
     """
-    available = monitor.usable_size
-    if available[0] <= 0 or available[1] <= 0:
+    panel = monitor.size
+    raw_usable = (monitor.usable[2], monitor.usable[3])
+    if (panel[0] < 1 or panel[1] < 1) or (raw_usable[0] < 1 or raw_usable[1] < 1):
         return FALLBACK_WINDOW
+    available = monitor.usable_size
     return tuple(  # type: ignore[return-value]
         max(1, min(available[axis], max(MIN_WINDOW[axis], available[axis] - WINDOW_MARGIN[axis])))
         for axis in (0, 1)
@@ -187,7 +207,10 @@ def fit_size(size: tuple[int, int], monitor: Monitor) -> tuple[int, int]:
     A remembered size from a 4K desk has to survive arriving at a laptop, and
     the two rules here are different. Below the usable area, the request is
     clamped to it -- a window wider than its screen cannot be moved. At or above
-    it, the request is honoured, and the floor is only ever raised.
+    it, the request is honoured, and the floor is only ever raised. On a panel
+    that cannot hold ``MIN_WINDOW`` at all the two collide, and the floor wins:
+    a window under the interface floor is a window nothing can be drawn in, and
+    the tension is resolved in favour of the drawing.
     """
     available = monitor.usable_size
     return (
@@ -202,6 +225,33 @@ def centre_on(monitor: Monitor, size: tuple[int, int]) -> tuple[int, int]:
     return (
         origin_x + max(0, (monitor.usable_size[0] - size[0]) // 2),
         origin_y + max(0, (monitor.usable_size[1] - size[1]) // 2),
+    )
+
+
+def sits_within(position: tuple[int, int], monitor: Monitor, size: tuple[int, int]) -> bool:
+    """Whether a window at ``position`` would sit wholly inside the panel.
+
+    The rectangle the window occupies at ``size``, from its top-left corner at
+    ``position``, tested against the area the player can reach -- not the panel's
+    bounds, because a window squatting on the taskbar or under the frame
+    reservation is a window the player would have to drag out, and the one thing
+    re-centring exists to prevent. Origins are honoured, because a left-hand
+    panel's usable area starts at a negative ``x`` -- the virtual desktop's
+    origin is wherever the compositor put it.
+
+    It answers what a placement is about to do, which is why it takes the *new*
+    size and the *current* position: a resized window can be kept where it was
+    when the new rectangle still fits, which is every shrink and most sideways
+    grows on a panel with room to the right.
+    """
+    x, y = position
+    origin_x, origin_y = monitor.usable_origin
+    width, height = monitor.usable_size
+    return (
+        origin_x <= x
+        and origin_y <= y
+        and x + size[0] <= origin_x + width
+        and y + size[1] <= origin_y + height
     )
 
 

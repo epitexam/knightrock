@@ -36,6 +36,10 @@ def _game() -> SimpleNamespace:
         # The screen the window is on, which is what the VSync row reports: the
         # primary's rate would be a claim about a screen the window may not be on.
         window_monitor=lambda: degraded(((2304, 1296),)).primary,
+        # Rule W's answer for the stand-in: the panel the window is on, which the
+        # size list is derived from -- same panel as the VSync row, since a
+        # stand-in has nothing to disagree with itself about.
+        monitor=lambda: degraded(((2304, 1296),)).primary,
         # The fit policy the runtime would draw with, resolved by the same pure
         # rule the runtime reads -- see the video-screen stand-in for why a
         # stand-in that answered ``settings.fit`` instead would read as

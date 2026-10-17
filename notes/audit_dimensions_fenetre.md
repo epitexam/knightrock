@@ -1194,4 +1194,57 @@ mémorisée garde son test de non-réécriture.
 en moins, aucune couverture perdue en échange — chaque test parti décrivait un
 mécanisme qui n'est plus là, et chacun des invariants qui restaient a son test.
 
-Dernière mise à jour : 2026-10-16, branche `fix/remediation`.
+## 22. Le chemin de remédiation, exécuté (2026-10-17)
+
+La table de décision de l'audit (D1–D7) a été implémentée en trois commits, chacun vert sur
+toute la suite (3166 tests collectés, mypy strict, Ruff). Ce qui a été fait, et ce qui a dévié :
+
+- **D1/D2** — `_vsync_is_active()` supprimé ; la ligne dit « on · requested » / « off » et le
+  test qui monkeypatchait la fonction qu'il testait est parti avec le bras qu'il prétendait
+  couvrir. La limite d'images dit « ignored while VSync is on » sur la ligne et sur chaque
+  entrée de l'échelle, et `DISPLAY_SAFETY_CEILING_FPS` documente le contrat inverse
+  (`MAX_FRAME_LIMIT` *sous* le plafond, volontairement — le présent c'est la requête, l'échelle
+  est ce qui tourne quand rien ne bloque).
+- **D3** — `Game.effective_fit()` est l'unique définition de la politique en vigueur ; la règle
+  de réconciliation (`pixel_perfect` → `integer` sauf choix explicite) vit dans
+  `letterbox.effective_fit()`, fonction pure, lue par le rendu, par le read-out et par les
+  stand-ins de test. Le test d'invariant du rendu (`bars`/`integer`/`zoom`) a demandé une
+  fenêtre qui n'est pas déjà un multiple : le standard du fichier de test (2304×1296) en est un
+  exact, et c'est précisément un des deux no-ops ci-dessous.
+- **D4** — `_reset()` remet `fit`+`pixel_perfect` ensemble et ne touche pas à `window_size`
+  (la taille est là où le joueur a posé la fenêtre ; la défaire n'est pas ce qu'un reset vidéo
+  veut dire).
+- **D5 (Règle W)** — `Game.monitor()` (ex-`_monitor()`, passée publique) rend **la dalle qui
+  tient la fenêtre**, repli primaire au premier lancement et en topologie dégradée ;
+  `_submenu_size` ancre l'échelle de tailles dessus. Vérifié sur la session réelle
+  (`rdp-0`/`rdp-2`) : l'ancre suit la fenêtre.
+- **D6** — `Stage._place` ne déplace la fenêtre que si le **rectangle actuel ne tient plus**
+  dans la dalle ancrée : `monitors.sits_within` est le prédicat, testé par rectangle (axe par
+  axe, origines négatives comprises). Mesuré sur la session réelle : un changement de taille ne
+  téléporte plus la fenêtre ; la dérive résiduelle de quelques pixels est le placement en
+  cascade du gestionnaire de fenêtres, pas le nôtre.
+- **D7** — l'entrée « the screen's own resolution » est **supprimée** (c'était une requête
+  sans bordure déguisée : le gestionnaire la rogne de la barre de titre) ; la tête de l'échelle
+  est « as large as fits, measured with the title bar in mind », bornée par
+  `_largest_fitting` (un `min` par axe de `opening_size` et de l'aire utile) ; les notes des
+  échelons sont relatives au **plus grand offert** (« half of the largest »), et un échelon
+  relevé au plancher l'écrit (« · floored at the readable minimum »).
+- **B8 — dévié de l'écrit.** La garde « `< 1` » telle qu'enregistrée ne peut pas rattraper la
+  dalle 1×1 fabriquée (1 n'est pas `< 1`), et la garde d'origine (`<= 0` sur `usable_size`)
+  était du code mort : `usable_size` retombe sur la dalle quand l'aire est dégénérée, donc une
+  garde sur *elle* ne tire jamais. La garde teste maintenant le **rapport brut** (la propre
+  taille de la dalle et le rectangle utile brut, `< 1` par axe), ce qui attrape les rapports
+  sans pixel ; la dalle 1×1 fabriquée **passe** et reçoit une requête de 1×1, et c'est le
+  docstring — qui promettait `FALLBACK_WINDOW` à une dalle qui ne l'a jamais reçu — qui a été
+  corrigé plutôt que le code forcé à tenir un mensonge. Les planchers qui restent ont chacun
+  un endroit écrit : `Stage._limit_size` pour une fenêtre réelle, le refus de
+  `Presentation.recompute` pour le dessin.
+- **Bancs d'essai ajoutés** : dalle sous plancher (640×400 — l'échelle dérivée devient
+  honnêtement vide au lieu d'offrir des tailles illisibles), ultra-large (3440×1440 — un tiers
+  de la hauteur est déjà floored), et le prédicat `sits_within` sur six coins, panneau avec
+  taskbar et origine négative.
+
+Phase 4 (atomicité `Stage.rebuild`, ordre de `apply_settings`, code mort
+`covers_window`/`letterbox()`/`initial_window_size`, docstrings restantes) reste à faire.
+
+Dernière mise à jour : 2026-10-17, branche `fix/remediation`.

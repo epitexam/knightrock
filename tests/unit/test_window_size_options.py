@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.application.scenes.video_options import window_size_options
+from src.application.scenes.video_options import _largest_fitting, window_size_options
 from src.core.display.monitors import MIN_WINDOW, Monitor, opening_size
 
 #: The panels worth checking, as ``(size, usable rect)``: the development
@@ -31,6 +31,12 @@ PANELS = [
     ((1366, 768), (0, 0, 1366, 768)),
     ((3840, 2160), (0, 40, 3840, 2080)),
     ((1024, 600), (0, 0, 1024, 600)),
+    # A panel below the interface floor: the ladder's first rung already sits
+    # under the readable minimum, so the honest list has nothing derived in it.
+    ((640, 400), (0, 0, 640, 400)),
+    # An ultra-wide panel, where a fraction of the width is miles of pixels and
+    # the same fraction of the height is already floored.
+    ((3440, 1440), (0, 0, 3440, 1440)),
 ]
 
 
@@ -117,15 +123,25 @@ def test_the_largest_entry_is_what_the_game_opens_at(
 ) -> None:
     """The top rung and the opening size are the same number, by construction.
 
-    They have to be: the game opens at ``opening_size`` and this list's largest
-    entry is what the player gets back by choosing "as large as the screen
-    allows". Two different numbers would make the menu unable to return the game
-    to the state it starts in.
+    They have to be: the game opens at :func:`opening_size` and this list's
+    largest entry is what the player gets back by choosing the head of the
+    ladder. Two different numbers would make the menu unable to return the game
+    to the state it starts in. On the panel below the interface floor the claim
+    reverses on purpose: :func:`opening_size` derives its fallback there -- a
+    size bigger than the panel -- and the list's per-axis clamp is what keeps
+    the head of the ladder a size the panel can hold, so the assertions say
+    which of the two numbers a panel like this is using.
     """
     monitor, options = _ladder(panel)
     sizes = [option.value for option in options if option.value is not None]
 
-    assert opening_size(monitor) in sizes
+    if not sizes:
+        assert panel[0][0] < MIN_WINDOW[0] or panel[0][1] < MIN_WINDOW[1], (
+            "a derived ladder went empty on a panel the floor cannot explain"
+        )
+        return
+
+    assert _largest_fitting(monitor) in sizes
 
 
 @pytest.mark.parametrize("panel", PANELS, ids=lambda p: f"{p[0]}x{p[1]}")
@@ -154,6 +170,25 @@ def test_the_current_size_is_marked_where_it_is_offered() -> None:
     marked = [option for option in options if "current" in option.detail]
     assert len(marked) == 1, f"{len(marked)} entries claim to be the current size"
     assert marked[0].value == granted
+
+
+def test_a_floored_rung_says_so() -> None:
+    """A rung the readable minimum changed is described as the size it is.
+
+    On a usable area of 2480x1344, "a third of the largest" is a rung 448 tall
+    -- below the 480 the interface needs -- so the code raises it and the note
+    has to follow, or the list once again describes a size the window is not
+    going to have. The head of the ladder is exempt: it sits above the floor by
+    construction, so no note on it, and the "half" rung here clears the floor
+    without help on both axes -- which is why they are asserted side by side.
+    """
+    _, options = _ladder(((2560, 1440), (0, 0, 2560, 1440)))
+
+    thirds = [option for option in options if option.value == (826, 480)]
+    halves = [option for option in options if option.value == (1240, 672)]
+
+    assert halves and "floored" not in halves[0].detail, "the half rung was never floored"
+    assert thirds and "floored at the readable minimum" in thirds[0].detail
 
 
 def test_choosing_to_follow_the_drag_clears_the_preference() -> None:
