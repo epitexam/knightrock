@@ -31,8 +31,10 @@ import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import (
+    FitPolicy,
     already_a_whole_multiple,
     density_for,
+    effective_fit,
     fits_whole_pixel,
     letterbox,
 )
@@ -468,6 +470,40 @@ def test_a_window_too_small_for_one_is_not_reported_as_already_whole() -> None:
     assert not already_a_whole_multiple((800, 600), DEFAULT_FRAMING), (
         "it is a refusal, not a job already done"
     )
+
+
+# --------------------------------------------------------------------------
+# 5b. The flag from v3 and the policy from v4 must reconcile to one answer.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("fit", "pixel_perfect", "expected"),
+    [
+        (FitPolicy.BARS, False, FitPolicy.BARS),
+        (FitPolicy.INTEGER, False, FitPolicy.INTEGER),
+        (FitPolicy.ZOOM, False, FitPolicy.ZOOM),
+        # The migration shape, and the whole reason the rule is order-sensitive:
+        # the flag carried in by a v3 file, with the policy left at its default.
+        (FitPolicy.BARS, True, FitPolicy.INTEGER),
+        # A player choice always wins over the leftover flag.
+        (FitPolicy.INTEGER, True, FitPolicy.INTEGER),
+        (FitPolicy.ZOOM, True, FitPolicy.ZOOM),
+    ],
+)
+def test_the_two_names_of_whole_pixel_reconcile_to_one_policy(
+    fit: FitPolicy, pixel_perfect: bool, expected: FitPolicy
+) -> None:
+    """The two readers of the file must agree, whatever shape the file arrives in.
+
+    ``settings.fit`` and ``pixel_perfect`` used to be read independently, and
+    they disagree on exactly one file: one migrated from v3, which carries the
+    flag and no policy. The render drew at whole pixels while the menu reported
+    bars, and both were reading the same file correctly. One resolution rule,
+    stated once and used by both readers, is the fix; these are its boundaries,
+    including the two player choices a naive "flag overrides" rule would betray.
+    """
+    assert effective_fit(fit, pixel_perfect) is expected
 
 
 # --------------------------------------------------------------------------

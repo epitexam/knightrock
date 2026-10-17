@@ -259,6 +259,36 @@ def already_a_whole_multiple(window: tuple[int, int], framing: Framing = DEFAULT
     )
 
 
+def effective_fit(fit: FitPolicy, pixel_perfect: bool) -> FitPolicy:
+    """Resolve the fit policy a file's two names describe into the one in force.
+
+    Whole-pixel art used to be its own row, stored as a boolean, and the fit
+    picker is its successor: three named policies. A file written before the
+    picker existed carries the flag and no policy, and the flag has to mean
+    the integer policy rather than be lost -- a player who asked for whole pixels
+    and opens a game that resamples their art has not been told anything, they
+    have just been given a picture they did not ask for.
+
+    The reconciliation is order-sensitive, and the order is the escaping clause:
+    a file that *has* chosen a policy keeps it. The boolean is honoured only
+    where the policy is still the default, so ``zoom`` from a v4 file is never
+    overridden by a flag a v3 migration carried in. Only then does the flag
+    promote ``bars`` to ``integer``.
+
+    It is a free function rather than a method of :class:`Game` because both
+    sides of the reconciliation need it at different times -- the runtime to
+    draw with, and the menu read-out to describe with -- and the mixup between
+    the two readers is exactly the bug this exists to close. A pure function of
+    the two stored names can be handed to a test stand-in as-is, so the stand-in
+    follows the same rule the runtime does.
+    """
+    if fit is not FitPolicy.BARS and pixel_perfect:
+        return fit
+    if pixel_perfect:
+        return FitPolicy.INTEGER
+    return fit
+
+
 def density_for(size: tuple[int, int], framing: Framing = DEFAULT_FRAMING) -> float:
     """Target pixels per world unit, read off a target of ``size``.
 

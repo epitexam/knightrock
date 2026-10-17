@@ -32,6 +32,7 @@ import pytest
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import PANEL_SCALES, UserSettings
+from src.core.display import letterbox
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.monitors import Monitor, Topology
@@ -100,6 +101,14 @@ def _game(topology: Topology | None = None) -> SimpleNamespace:
     # about a screen, and a test that took one from the machine would be testing
     # the machine.
     game.window_monitor = lambda: (topology or DESK).monitors[0]
+
+    # The fit policy the runtime would draw with, resolved by the same pure rule
+    # the runtime uses. A stand-in that answered ``settings.fit`` would read as
+    # identical and be wrong for exactly the migration case the read-out exists
+    # to describe correctly.
+    game.effective_fit = lambda: letterbox.effective_fit(
+        game.settings.fit, game.settings.pixel_perfect
+    )
 
     def apply_settings(settings: UserSettings) -> None:
         game.settings = settings
@@ -370,6 +379,35 @@ def test_the_reset_row_resets() -> None:
     assert scene.game.settings.panel_scale == 1.0
 
 
+def test_reset_restores_the_fit_ladder_and_not_the_window() -> None:
+    """Reset answers the fit, and leaves the player's window alone.
+
+    Two halves, and only the first was true before this. The fit row resets to
+    bars *together with* the whole-pixel flag -- they are one setting carried
+    under two names since the flag was folded into the ladder, and resetting one
+    while keeping the other leaves a file where the flag says ``integer`` and
+    ``settings.fit`` says ``bars``. That file is the shape the read-out bug drew
+    the wrong picture for, and reset used to be the road back to it rather than
+    the road out.
+
+    ``window_size`` is deliberately absent, and the reason is the difference
+    between the two kinds of preference in this menu. Fit, vsync and the scales
+    are choices about the picture; the window's size is where the player put the
+    window, chosen by dragging, and a reset that shrank it would undo their last
+    gesture with a menu press called "Reset".
+    """
+    scene = _drawn()
+    scene.game.settings = scene.game.settings.with_video(fit=FitPolicy.ZOOM, pixel_perfect=True)
+    window_size = scene.game.settings.window_size
+
+    _click(scene, _row(scene, "reset"))
+
+    settings = scene.game.settings
+    assert settings.fit is UserSettings().fit, "the ladder did not come back to bars"
+    assert settings.pixel_perfect is False, "the flag did not come back with it"
+    assert settings.window_size == window_size, "reset shrank the player's window"
+
+
 def test_reset_puts_the_panel_scale_back_to_the_default_one() -> None:
     """The reset row is the only way back from the smallest rung.
 
@@ -435,7 +473,16 @@ def test_the_whole_pixel_flag_always_agrees_with_the_fit_policy(policy: FitPolic
     the row look broken to a player and pass every test written with the
     arrow keys.
     """
-    scene = _drawn()
+    game = _game()
+    if policy is FitPolicy.INTEGER:
+        # A window that can hold a whole multiple without already being one:
+        # 1728x972 is 1.5x the framing, so ``integer`` does something here. The
+        # standard window is an exact 2x multiple, and on it the entry is offered
+        # disabled -- a press there would move nothing, which is the exact
+        # "row that reads as dead" this list refuses to imitate.
+        game.presentation.window_size = (1728, 972)
+        game.stage = SimpleNamespace(size=(1728, 972))
+    scene = VideoScene(game)
     screen = _list_for(scene, "fit")
     wanted = f"option:{next(i for i, o in enumerate(screen.options) if o.value is policy)}"
     assert _focus_action(screen, wanted), f"{policy.value} was not reachable in the fit list"
@@ -462,6 +509,48 @@ def test_the_fit_list_says_so_on_a_window_too_small_for_whole_pixel() -> None:
     screen = _list_for(scene, "fit")
     integer = next(option for option in screen.options if option.value is FitPolicy.INTEGER)
     assert "too small" in integer.detail
+    assert not integer.enabled
+
+
+def test_the_fit_list_says_so_on_a_window_already_at_a_whole_multiple() -> None:
+    """The second class of no-op: nothing to snap to because it already snapped.
+
+    An exact multiple of the framing gets the same rectangle under bars and under
+    integer -- ``picture`` cannot shrink anything when there is nothing to
+    shrink. The setting is honoured and the picture does not move, which is
+    correct, but a row that flips its selected mark while the screen sits still
+    is indistinguishable from a dead one, and this screen has produced dead rows
+    twice. So the entry is offered, marked with the reason, and refused: the
+    player sees *why* nothing happens instead of concluding it worked and the
+    picture is broken.
+
+    The standard window of this file -- 2304x1296 against a 1152x648 framing --
+    is exactly this case, quietly: every one of its rows has been read on a
+    window where the fit ladder's middle rung counted as a change and did not
+    make one.
+    """
+    game = _game()
+    scene = VideoScene(game)
+    scene.draw(pygame.Surface((1152, 648)))
+
+    screen = _list_for(scene, "fit")
+    integer = next(option for option in screen.options if option.value is FitPolicy.INTEGER)
+    assert not integer.enabled
+    assert "already is a whole multiple" in integer.detail
+
+    # And the refusal is a real one: confirming on the entry leaves the file the
+    # way it arrived, because OptionScreen ignores a disabled entry rather than
+    # closing as if it had been applied. The selection has to be put there by
+    # hand -- the focus walk skips the entry, which is the same unreachable
+    # state the row-level guard is for (see the swallow test below).
+    popped: list[int] = []
+    before = game.settings
+    index = next(i for i, o in enumerate(screen.options) if o.value is FitPolicy.INTEGER)
+    screen.model._current = index
+    scene.game.scene_manager.pop = popped.append
+    screen.handle_routed(RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD))
+    assert game.settings is before, "a refused entry must not write anything"
+    assert popped == [], "and the list must not close as if it had worked"
 
 
 # --- the keyboard half ------------------------------------------------------
@@ -612,6 +701,33 @@ def test_the_window_read_out_describes_the_picture_that_is_drawn() -> None:
         assert ("+ bars" in scene.model.items[row].value) is not fitted.covered, (
             f"{policy.value} reports bars the picture does not have"
         )
+
+
+def test_the_window_read_out_follows_the_migrated_flag() -> None:
+    """The one player where the settings' policy and the drawn one diverge.
+
+    A file migrated from v3 carries ``pixel_perfect`` and no ``fit`` of its own,
+    so ``settings.fit`` answers *bars* while the game draws at whole pixels --
+    :meth:`Game.effective_fit` reconciles the flag into the integer policy. The
+    read-out used ``settings.fit`` directly, and on a window that is not an exact
+    multiple it reported the bars picture when the window held none.
+
+    The window here is deliberately not a whole multiple: at 2304x1296 both
+    policies agree and the check would pass whatever the read-out read.
+    """
+    scene = _drawn()
+    scene.game.settings = scene.game.settings.with_video(pixel_perfect=True)
+    scene.game.presentation.window_size = (1440, 900)  # not the framing's shape
+    scene._rebuild()
+
+    bars = picture((1440, 900), DEFAULT_FRAMING, FitPolicy.BARS)
+    integer = picture((1440, 900), DEFAULT_FRAMING, FitPolicy.INTEGER)
+    assert bars.target.size != integer.target.size, "the pair must disagree here"
+
+    row = _row(scene, "info")
+    assert scene.model.items[row].value.startswith(
+        f"{integer.target.width}x{integer.target.height}"
+    ), "the read-out reported the bars picture the game is not drawing"
 
 
 def test_the_window_read_out_can_never_be_focused() -> None:

@@ -12,6 +12,7 @@ from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
+from src.core.display import letterbox
 from src.core.display.monitors import Monitor, Topology, degraded
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -39,6 +40,11 @@ def _game(topology=None) -> SimpleNamespace:
         # The screen the window is on, which is what the VSync row reports -- the
         # primary's rate is a claim about a screen the window may not be on.
         window_monitor=lambda: desk.primary,
+        # The fit policy the runtime would draw with, resolved by the same pure
+        # rule the runtime reads; see test_video_scene for why.
+        effective_fit=lambda: letterbox.effective_fit(
+            game.settings.fit, game.settings.pixel_perfect
+        ),
     )
 
     def apply_settings(settings: UserSettings) -> None:

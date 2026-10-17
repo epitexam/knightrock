@@ -17,7 +17,11 @@ from __future__ import annotations
 
 from src.application.scenes.option_screen import Option
 from src.application.settings_store import FRAME_LIMITS, PANEL_SCALES, UI_SCALES
-from src.core.display.letterbox import FitPolicy, fits_whole_pixel
+from src.core.display.letterbox import (
+    FitPolicy,
+    already_a_whole_multiple,
+    fits_whole_pixel,
+)
 from src.core.display.monitors import (
     MIN_WINDOW,
     Monitor,
@@ -62,13 +66,29 @@ def fit_options(window: tuple[int, int], current: FitPolicy) -> tuple[Option, ..
     byte-identical. Folding it in here removes the contradiction instead of
     labelling it -- and the note on ``integer`` is where a player actually reads
     what "whole-pixel" means.
+
+    ``integer`` is offered **disabled** when it would change nothing, and there
+    are two classes of window where it does not. A window too small to hold a
+    whole multiple has nothing to snap to. A window *already* sized to a whole
+    multiple is a subtler case: bars and integer hand back the same rectangle,
+    so selecting it is a press that moves nothing -- and a row that flips its
+    label while the screen sits still is indistinguishable from a dead one,
+    which is the failure this screen has produced twice. Both are refused with
+    their reason, which is the difference between an unavailable choice and one
+    that quietly does nothing.
     """
     options = []
     for policy in (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM):
         note = _FIT_NOTES[policy]
-        if policy is FitPolicy.INTEGER and not fits_whole_pixel(window):
-            note = "not on this window: too small to hold a whole block"
-        options.append(Option(policy.value, policy, note))
+        enabled = True
+        if policy is FitPolicy.INTEGER:
+            if not fits_whole_pixel(window):
+                note = "not on this window: too small to hold a whole block"
+                enabled = False
+            elif already_a_whole_multiple(window):
+                note = "no change: this window already is a whole multiple"
+                enabled = False
+        options.append(Option(policy.value, policy, note, enabled=enabled))
     return tuple(options)
 
 

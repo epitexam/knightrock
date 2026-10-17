@@ -6,6 +6,7 @@ from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
+from src.core.display import letterbox
 from src.core.display.letterbox import FitPolicy
 from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
@@ -35,6 +36,13 @@ def _game() -> SimpleNamespace:
         # The screen the window is on, which is what the VSync row reports: the
         # primary's rate would be a claim about a screen the window may not be on.
         window_monitor=lambda: degraded(((2304, 1296),)).primary,
+        # The fit policy the runtime would draw with, resolved by the same pure
+        # rule the runtime reads -- see the video-screen stand-in for why a
+        # stand-in that answered ``settings.fit`` instead would read as
+        # identical and be wrong for the migration the read-out exists for.
+        effective_fit=lambda: letterbox.effective_fit(
+            game.settings.fit, game.settings.pixel_perfect
+        ),
         # The views are laid out at the preference times the density; a stand-in
         # has to hand them something, and 1.0 keeps the assertions readable.
         ui_scale=1.0,
@@ -646,9 +654,9 @@ def test_the_window_row_only_reports_and_opens_nothing() -> None:
 
     for screen in pushed:
         assert isinstance(screen, OptionScreen), f"a row pushed a {type(screen).__name__}"
-        assert all(option.enabled or option.label == "" for option in screen.options), (
-            "a list offered an entry it could not apply without saying so"
-        )
+        assert all(
+            option.enabled or option.detail or option.label == "" for option in screen.options
+        ), "a list offered an entry it could not apply without saying so"
 
 
 def test_one_stick_press_moves_exactly_one_row() -> None:

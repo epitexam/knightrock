@@ -19,7 +19,7 @@ from src.application.settings_store import (
 from src.core import fx
 from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
-from src.core.display import detection
+from src.core.display import detection, letterbox
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for
 from src.core.display.monitors import Monitor, Topology
@@ -335,6 +335,23 @@ class Game:
         """
         return self.topology().primary
 
+    def effective_fit(self) -> FitPolicy:
+        """The picture's fit, as the runtime draws it and the menu reports it.
+
+        The single definition of the policy in force, and it is read by the
+        presentation -- which draws with it -- and by the video menu's read-out,
+        which describes it. Reading :attr:`settings.fit` directly was the
+        bug: two readers that looked identical and were not, so with
+        ``pixel_perfect`` set and no remembered policy the settings answers
+        "bars" while the game draws at whole pixels, and the menu describes a
+        target size nothing is drawn at.
+
+        The rule lives in :func:`src.core.display.letterbox.effective_fit`,
+        which is a pure function of the two stored names, so the migration
+        case is its own decision and not a property of this runtime.
+        """
+        return letterbox.effective_fit(self.settings.fit, self.settings.pixel_perfect)
+
     def initialize_display(self) -> None:
         """Build the window and the presentation, once.
 
@@ -348,28 +365,13 @@ class Game:
         self.presentation = Presentation(
             self.stage.surface,
             DEFAULT_FRAMING,
-            fit=self._fit_policy(),
+            fit=self.effective_fit(),
             convert=True,
         )
         # Nothing is announced about where the window landed. The game used to
         # check which panel it ended up on and tell the player when it was not the
         # one they asked for -- but there is nothing asked for any more, so there
         # is nothing to be wrong about.
-
-    def _fit_policy(self) -> FitPolicy:
-        """The picture's fit, with the older whole-pixel flag folded in.
-
-        ``pixel_perfect`` and the integer policy are the same request and it
-        predates it, so it is honoured as that policy rather than as a fourth
-        one -- and only when the player has not chosen a policy of their own, so
-        a v4 file that says ``zoom`` is not overridden by a leftover flag from
-        v3.
-        """
-        if self.settings.fit is not FitPolicy.BARS and self.settings.pixel_perfect:
-            return self.settings.fit
-        if self.settings.pixel_perfect:
-            return FitPolicy.INTEGER
-        return self.settings.fit
 
     def _retarget(self) -> None:
         """Re-point everything at the render target after it changed size.
@@ -459,7 +461,7 @@ class Game:
         # change and a sharpness change applied together left the presentation
         # snapping to whole pixels with the setting saying otherwise, which the
         # acceptance run caught and nothing else did.
-        self.presentation.fit = self._fit_policy()
+        self.presentation.fit = self.effective_fit()
         if self._window_signature(previous) != self._window_signature(settings):
             self._rebuild_display()
         elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:

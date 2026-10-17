@@ -197,21 +197,20 @@ class VideoScene(Scene):
         the picture is, how many pixels a world unit gets there, and whether
         anything around it is a bar.
 
-        Derived through :func:`picture` **with the policy in force**, which is the
-        whole of this fix: it used to call ``letterbox(..., pixel_perfect=)`` and
-        so described the picture under *bars* whatever the player had selected.
-        Under zoom -- which fills the window and crops the edges -- a window of
-        any other shape than the framing's was therefore reported with bars it did
-        not have, at a size it was not drawn at. A read-out that does not read out
-        is the same defect as the row that showed a number the game was not using,
-        which is what this line replaced.
+        Derived through :func:`picture` **with the policy in force** -- the one
+        the game draws with (:meth:`Game.effective_fit`), not the one the settings
+        file holds. The two differ for exactly one player, and it is the one this
+        row exists for: a file migrated from v3 with whole-pixel art on and no
+        ``fit`` key of its own has ``settings.fit`` answering "bars" while the
+        game is drawing at whole pixels, so reading the setting here would report
+        a target size nothing is drawn at.
 
         The presentation is not asked, and that is deliberate rather than a
         shortcut: it computes this from the window size and the same policy, so
         the two agree by construction, and a pure function of two settings can be
         read without a window existing.
         """
-        fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.settings.fit)
+        fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.effective_fit())
         density = density_for(fitted.target.size, DEFAULT_FRAMING)
         bars = "" if fitted.covered else " + bars"
         return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
@@ -500,11 +499,26 @@ class VideoScene(Scene):
 
         The bindings are carried over untouched: this is the video screen, and
         a player who resets it should not lose the controls they just rebound.
+
+        ``fit`` and ``pixel_perfect`` go together, as they do in
+        :meth:`_apply_fit`: those two names have described one setting since the
+        whole-pixel row was folded into the fit picker, and resetting one and
+        leaving the other would leave a file where the flag said bars and the
+        policy said integer. Reset is when that pairing is easiest to forget,
+        which is why the pairing is stated here and not only there.
+
+        ``window_size`` is *not* reset, on purpose, and the difference is what
+        the two kinds of preference are. Fit, vsync and the scales are choices
+        about the picture; the window's size is where the player put the window,
+        which they chose by dragging, not by selecting -- resetting it would
+        undo their last gesture with a menu press. The row is named for what it
+        resets, and this is why the list above it is the list it is.
         """
         defaults = UserSettings()
         self._apply(
             self.game.settings.with_video(
                 pixel_perfect=defaults.pixel_perfect,
+                fit=defaults.fit,
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
                 ui_scale=defaults.ui_scale,

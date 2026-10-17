@@ -15,7 +15,7 @@ import pytest
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
+from src.core.display.letterbox import FitPolicy, letterbox
 from src.core.display.monitors import centre_on, fit_size, opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
@@ -623,6 +623,46 @@ def test_a_remembered_window_size_is_clamped_and_not_rewritten(tmp_path: Path) -
     assert game.stage.size[1] <= granted[1]
     assert game.stage.size[0] > 0 and game.stage.size[1] > 0
     assert game.settings.window_size == oversized, "the player's choice must survive"
+
+
+def test_the_game_and_the_settings_agree_about_the_fit_in_force(
+    tmp_path: Path,
+) -> None:
+    """One reader rule, at the runtime level, on the file the migration writes.
+
+    The settings file can reach this runtime in exactly the shape where two
+    readers of ``fit`` diverge: migrated from v3, which carries the whole-pixel
+    flag and no fit key of its own. ``settings.fit`` then answers *bars* while
+    the render draws at whole pixels, and the video menu -- which reads
+    ``Game.effective_fit`` now, as the render does -- described a target size
+    nothing was drawn at.
+
+    The Game method is the assertion that the pure rule in ``letterbox`` is the
+    one the runtime actually hands to the presentation, rather than a definition
+    only the tests believe. A file that *has* chosen a policy keeps it, so the
+    mixed case is also asserted: the same flag must not reach back out of the
+    file and override ``zoom``.
+    """
+    game = Game(
+        save_path=tmp_path / "savegame.json",
+        bindings_path=tmp_path / "settings.json",
+    )
+    game._initialize()
+
+    # The v3 migration shape, written the way the reader writes it: flag on,
+    # policy untouched.
+    game.settings = game.settings.with_video(pixel_perfect=True)
+    assert game.settings.fit is FitPolicy.BARS, "the file's policy is the default"
+    assert game.effective_fit() is FitPolicy.INTEGER, "and the flag promotes it"
+
+    # A player who chose a policy keeps it, flag or no flag -- and only zoom and
+    # integer are distinguishable from the migration artefact, because a file
+    # saying ``fit: bars`` plus the flag *is* the migration shape; the row itself
+    # never writes that pair (it stores the pair coherently), so bars plus a live
+    # flag has exactly one honest reading.
+    for chosen in (FitPolicy.INTEGER, FitPolicy.ZOOM):
+        game.settings = game.settings.with_video(fit=chosen, pixel_perfect=True)
+        assert game.effective_fit() is chosen, f"{chosen.value} must keep its choice"
 
 
 class FakeWindow:
