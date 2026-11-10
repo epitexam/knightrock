@@ -165,7 +165,8 @@ class VideoScene(Scene):
         self.model.set_items(items, selected)
 
     def _fit_label(self) -> str:
-        return self.game.settings.fit.value
+        """The policy the game draws with, which is not always the stored one."""
+        return self.game.effective_fit().value
 
     def _size_label(self) -> str:
         """The size the window has right now.
@@ -354,15 +355,16 @@ class VideoScene(Scene):
                 apply,
                 selected=selected,
                 footer=self.SUBMENU_FOOTER,
-                on_back=self._rebuild,
+                # Back on the row that opened the list, not on the first row.
+                on_back=lambda: self._rebuild(action),
             )
         )
 
     def _submenu_fit(self) -> Submenu:
         return (
             "PICTURE FIT",
-            video_options.fit_options(self._window_size(), self.game.settings.fit),
-            self.game.settings.fit,
+            video_options.fit_options(self._window_size()),
+            self.game.effective_fit(),
             self._apply_fit,
         )
 

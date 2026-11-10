@@ -78,6 +78,9 @@ class MenuScene(Scene):
         return None
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
+        if routed_input.variant == "device_removed":
+            # A controller dropping out is not the player asking to quit.
+            return None
         if self._confirming:
             return self._handle_confirm(routed_input)
         action, _ = self.model.handle_routed(

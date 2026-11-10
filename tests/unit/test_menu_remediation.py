@@ -1,6 +1,7 @@
 """Regressions from the display/menu audit: stack drawing, panel width, focus, fit label."""
 
 import os
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pygame
@@ -8,8 +9,14 @@ import pytest
 
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
+from src.application.scenes.option_screen import OptionScreen
+from src.application.scenes.video_scene import VideoScene
+from src.core.display.letterbox import FitPolicy
+from src.core.input.event_router import InputDevice, RoutedInput
+from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
+from tests.unit.test_video_scene import _game
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -117,3 +124,30 @@ def test_an_overlay_is_still_drawn_over_the_game() -> None:
     manager.draw(pygame.Surface((64, 36)))
 
     assert log == ["world", "pause"]
+
+
+def test_the_focus_comes_back_to_the_row_that_opened_the_list() -> None:
+    game = _game()
+    pushed: list = []
+    game.scene_manager = SimpleNamespace(push=pushed.append, pop=lambda: None)
+    scene = VideoScene(game)
+    scene.draw(pygame.Surface((2304, 1296)))
+    while scene.model.current_item.action != "frame_limit":
+        scene.model.move(1)
+    scene.handle_routed(RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD))
+    screen = pushed[-1]
+    assert isinstance(screen, OptionScreen)
+
+    screen._choose(0)
+
+    assert scene.model.current_item.action == "frame_limit"
+
+
+def test_the_fit_row_reports_the_policy_in_force() -> None:
+    """A migrated file with whole-pixel art on and no policy draws in integer."""
+    game = _game()
+    game.settings = replace(game.settings, pixel_perfect=True, fit=FitPolicy.BARS)
+    scene = VideoScene(game)
+    fit = next(item for item in scene.model.items if item.action == "fit")
+
+    assert fit.value == FitPolicy.INTEGER.value

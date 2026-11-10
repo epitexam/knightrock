@@ -57,7 +57,7 @@ _PANEL_SCALE_NOTES: dict[float, str] = {
 }
 
 
-def fit_options(window: tuple[int, int], current: FitPolicy) -> tuple[Option, ...]:
+def fit_options(window: tuple[int, int]) -> tuple[Option, ...]:
     """The three fit policies, each saying what it does to the picture.
 
     Whole-pixel art used to be a separate row on the parent screen, and it was

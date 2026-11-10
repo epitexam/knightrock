@@ -24,7 +24,7 @@ same behaviour because there is only one implementation of it.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -75,7 +75,6 @@ class Option:
             return False
 
 
-@dataclass
 class OptionScreen(Scene):
     """A list of options; picking one applies it and returns.
 
@@ -84,20 +83,11 @@ class OptionScreen(Scene):
     honest -- and this screen does not wait for it or check its result. A setting
     that cannot be honoured says so in its own row, which is a better place for
     that than a modal would be.
+
+    ``subtitle`` is shown above the list, for the two or three words of
+    orientation a settings list benefits from.
     """
 
-    game: Game
-    title: str
-    options: Sequence[Option]
-    apply: Callable[[Any], None]
-    selected: Any = None
-    footer: str = "↑↓ row · Enter select · Esc back"
-    #: Shown above the list, for the two or three words of orientation a
-    #: settings list benefits from ("what this setting does").
-    subtitle: str = ""
-    on_back: Callable[[], None] | None = None
-    view: MenuView = field(init=False)
-    model: MenuModel = field(init=False)
     covers_panels_below = True
 
     def __init__(
@@ -271,9 +261,8 @@ class OptionScreen(Scene):
         """Pop, unless the opener asked to be told instead.
 
         ``on_back`` exists for the case where the submenu's result matters to
-        more than the submenu: picking a monitor has to reach the runtime, and
-        returning through the normal pop would leave the opener refreshing against
-        a settings object the runtime never saw.
+        more than the submenu: the opener rebuilds its rows against the settings
+        the choice just produced, and keeps its focus on the row that opened it.
         """
         if self.on_back is not None:
             self.on_back()
