@@ -21,8 +21,11 @@ about the player's monitor the game cannot check -- offering 2560x1440 to a
 in force and filtered to what it can hold, which is what keeps them checkable.
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -59,6 +62,38 @@ Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
 
 
+@dataclass(frozen=True)
+class Row:
+    """One row of the Video screen: what it reads, and what pressing it does.
+
+    A row does exactly one thing -- opens a list, toggles a setting, runs an
+    action, or only reports -- and the one row allowed to do none of them is
+    Back. A row with nothing to do is refused when the table is built, which is
+    what makes the "dead row" this screen produced twice impossible.
+    """
+
+    action: str
+    label: str
+    value: Callable[[VideoScene], str] | None = None
+    #: Builds the list the row opens.
+    submenu: Callable[[VideoScene], Submenu] | None = None
+    #: The boolean setting the row toggles.
+    toggle: str | None = None
+    #: What the row does when pressed.
+    run: Callable[[VideoScene], None] | None = None
+    #: A read-out: shown, never focused.
+    readout: bool = False
+    #: Only shown with ``DEBUG`` on.
+    debug_only: bool = False
+
+    def __post_init__(self) -> None:
+        jobs = sum(
+            (self.submenu is not None, self.toggle is not None, self.run is not None, self.readout)
+        )
+        if jobs > 1 or (jobs == 0 and self.action != "back"):
+            raise ValueError(f"The {self.action!r} row must do exactly one thing")
+
+
 class VideoScene(MenuPage):
     scrollable = True
     TITLE = "VIDEO"
@@ -67,18 +102,6 @@ class VideoScene(MenuPage):
     #: Where a list row goes when it is opened, and what it says on the way out.
     #: The picker draws its own footer, so it does not inherit this one.
     SUBMENU_FOOTER = "↑↓ row · Enter select · Esc back"
-
-    #: Which list each row owns. Named rather than bound to the builders here,
-    #: because the builders are methods defined further down and a class body
-    #: cannot reference them -- and a table of names is what the row lists can be
-    #: checked against, which is the check that catches a row with no list.
-    SUBMENUS = (
-        "size",
-        "fit",
-        "frame_limit",
-        "scale",
-        "panel_scale",
-    )
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -111,47 +134,30 @@ class VideoScene(MenuPage):
         )
 
     def _rebuild(self, selected_action: str | None = None) -> None:
-        settings = self.game.settings
-        items = (
-            # The one row that says anything about the window, and it is always
-            # live. It was a disabled "Fullscreen mode" outside fullscreen, which
-            # is worse than it sounds: the focus walk skips a disabled row and a
-            # click on one does nothing, so the row was drawn, aimable and inert
-            # -- the dead-row failure this screen has produced twice.
-            #
-            # The value it reports is the size the window *actually has*, not the
-            # one remembered for next launch -- those differ after the player
-            # drags it, and a row reporting the remembered value while the window
-            # is another size is the lie this menu used to tell about a resolution.
-            MenuItem("size", "Window size", self._size_label()),
-            MenuItem("fit", "Picture fit", self._fit_label()),
-            MenuItem("vsync", "VSync", self._vsync_label()),
-            MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
-            MenuItem("scale", "UI scale", f"{settings.ui_scale:.1f}x"),
-            # Debug only, because it is the one row here the game cannot honour
-            # for a player who never sees the overlay: without ``DEBUG`` there
-            # are no panels to size. Gated on ``Debug.is_enabled()`` rather than
-            # a stored flag, since ``--debug`` is nothing but the environment
-            # variable and this screen is built after the game is up.
-            *(
-                (
-                    MenuItem(
-                        "panel_scale",
-                        "Debug panel scale",
-                        f"{settings.panel_scale:g}x",
-                    ),
-                )
-                if Debug.is_enabled()
-                else ()
-            ),
-            MenuItem("reset", "Reset video settings"),
-            MenuItem("back", "Back"),
-            MenuItem("info", "Window", self._window_label(), enabled=False),
+        """The rows from :attr:`ROWS`, focus kept on ``selected_action``."""
+        items = tuple(
+            MenuItem(
+                row.action,
+                row.label,
+                row.value(self) if row.value is not None else "",
+                enabled=not row.readout,
+            )
+            for row in self.ROWS
+            if not row.debug_only or Debug.is_enabled()
         )
         selected = next(
             (index for index, item in enumerate(items) if item.action == selected_action), 0
         )
         self.model.set_items(items, selected)
+
+    def _row(self, action: str) -> Row | None:
+        return next((row for row in self.ROWS if row.action == action), None)
+
+    def _ui_scale_label(self) -> str:
+        return f"{self.game.settings.ui_scale:.1f}x"
+
+    def _panel_scale_label(self) -> str:
+        return f"{self.game.settings.panel_scale:g}x"
 
     def _fit_label(self) -> str:
         """The policy the game draws with, which is not always the stored one."""
@@ -291,32 +297,24 @@ class VideoScene(MenuPage):
         return MenuAction.ACTIVATE if self._handle_row_value_navigation(routed) else None
 
     def act(self, action: str) -> None:
-        if action in self.SUBMENUS:
+        row = self._row(action)
+        if row is None:
+            return
+        if row.submenu is not None:
             # A click on a list row opens the list, the same as → and as Enter.
             self._open(action)
-        elif action in self.CYCLING_ROWS:
-            self._cycle(action, InputAction.UI_RIGHT, click=True)
-        elif action == "reset":
-            self._reset()
-
-    #: Rows whose value a press -- or a click -- steps, because there are only
-    #: two of them and a list would be a worse control.
-    CYCLING_ROWS = ("vsync",)
+        elif row.toggle is not None:
+            self._cycle_bool(InputAction.UI_RIGHT, row.toggle, click=True)
+        elif row.run is not None:
+            row.run(self)
 
     def _open(self, action: str) -> None:
-        """Push the list a row owns.
-
-        The builder is looked up by name because the builders are methods and a
-        class-body table cannot reference one. A row with no builder is the
-        dead-row bug, so it is logged rather than swallowed: a row that refuses
-        every press is indistinguishable from a broken key, and the log is the
-        only thing that says which one.
-        """
-        builder = getattr(self, f"_submenu_{action}", None)
-        if builder is None:
+        """Push the list a row owns."""
+        row = self._row(action)
+        if row is None or row.submenu is None:
             logger.warning("The %r row has no list to open", action)
             return
-        title, options, selected, apply = builder()
+        title, options, selected, apply = row.submenu(self)
         self.game.scene_manager.push(
             OptionScreen(
                 self.game,
@@ -429,23 +427,16 @@ class VideoScene(MenuPage):
             return False
         if not current.enabled:
             return True
-        if current.action in self.SUBMENUS:
+        row = self._row(current.action)
+        if row is None:
+            return False
+        if row.submenu is not None:
             self._open(current.action)
             return True
-        return self._cycle(current.action, routed.action)
-
-    def _cycle(self, name: str, action: InputAction, *, click: bool = False) -> bool:
-        """Step the one row that cycles: forwards on a click and on →, back on ←.
-
-        One implementation for both paths, deliberately. The two used to be
-        separate lists naming the same rows, which is exactly how a click ended
-        up wired to three of them and a key to six. A row the pointer cannot
-        reach is a row the pointer cannot use.
-        """
-        if name != "vsync":
-            return False
-        self._cycle_bool(action, "vsync", click=click)
-        return True
+        if row.toggle is not None:
+            self._cycle_bool(routed.action, row.toggle)
+            return True
+        return False
 
     def _cycle_bool(self, action: InputAction, name: str, *, click: bool = False) -> None:
         # A left/right press sets the value rather than toggling it: toggling
@@ -527,3 +518,28 @@ class VideoScene(MenuPage):
             focused = self.model.current_item.action if self.model.current_item else None
             self._rebuild(focused)
         super().draw(surface)
+
+    # ------------------------------------------------------------- the table
+
+    #: Every row on this screen, in order. The single place a row is declared.
+    ROWS: tuple[Row, ...] = (
+        Row("size", "Window size", _size_label, submenu=_submenu_size),
+        Row("fit", "Picture fit", _fit_label, submenu=_submenu_fit),
+        Row("vsync", "VSync", _vsync_label, toggle="vsync"),
+        Row("frame_limit", "Frame limit", _frame_limit_label, submenu=_submenu_frame_limit),
+        Row("scale", "UI scale", _ui_scale_label, submenu=_submenu_scale),
+        Row(
+            "panel_scale",
+            "Debug panel scale",
+            _panel_scale_label,
+            submenu=_submenu_panel_scale,
+            # No overlay without DEBUG, so nothing to size.
+            debug_only=True,
+        ),
+        Row("reset", "Reset video settings", run=_reset),
+        Row("back", "Back"),
+        Row("info", "Window", _window_label, readout=True),
+    )
+    #: The rows that open a list, and the rows that toggle, read off the table.
+    SUBMENUS = tuple(row.action for row in ROWS if row.submenu is not None)
+    CYCLING_ROWS = tuple(row.action for row in ROWS if row.toggle is not None)

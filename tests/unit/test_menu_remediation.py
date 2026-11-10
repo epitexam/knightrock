@@ -160,3 +160,20 @@ def test_two_sizes_of_the_same_area_sort_without_error() -> None:
     options = window_size_options(monitor, (1500, 1000), (1500, 1000))
 
     assert options[0].value is None
+
+
+def test_a_row_that_does_nothing_is_refused_when_declared() -> None:
+    """The dead row: drawn, aimable, and inert. The table refuses to hold one."""
+    from src.application.scenes.video_scene import Row
+
+    with pytest.raises(ValueError):
+        Row("nothing", "Does nothing")
+    with pytest.raises(ValueError):
+        Row("both", "Two jobs", toggle="vsync", readout=True)
+
+
+def test_every_video_row_is_declared_once() -> None:
+    actions = [row.action for row in VideoScene.ROWS]
+
+    assert len(actions) == len(set(actions))
+    assert set(VideoScene.SUBMENUS) <= set(actions)
