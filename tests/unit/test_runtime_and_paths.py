@@ -648,6 +648,9 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         "ui_scale",
         "panel_scale",
         "window_size",
+        # Where the next launch opens when no size is chosen: written once, on
+        # the way out, and never read as a choice.
+        "last_window_size",
     }
 
 

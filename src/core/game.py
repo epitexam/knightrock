@@ -267,8 +267,9 @@ class Game:
         - a size the player chose is asked for as it stands;
         - otherwise, a rebuild keeps the size the window currently has, which is
           what makes a drag survive the next display setting rather than being
-          undone by it. A first launch has no window yet, so the stage asks for
-          itself and gets ``opening_size``.
+          undone by it;
+        - a launch opens at the size the last session closed at, and the very
+          first one has nothing and gets ``opening_size``.
         """
         if self.settings.window_size is not None:
             return self.settings.window_size
@@ -278,7 +279,8 @@ class Game:
             # production, and asking the presentation keeps the two readings of
             # "the window" from drifting apart.
             return self.presentation.window_size
-        return None
+        # A first launch opens where the last session closed, if it left a size.
+        return self.settings.last_window_size
 
     def topology(self, *, refresh: bool = False) -> Topology:
         """The machine's displays, cached between polls (see :class:`WindowWatch`)."""
@@ -530,6 +532,19 @@ class Game:
             return 1.0
         return self._accumulator / Simulation.TIMESTEP
 
+    def _remember_the_window(self) -> None:
+        """On the way out, note the window's size for the next launch.
+
+        Only with no size chosen: a chosen size is what the next launch opens at
+        anyway. Written once, at the end, so a session of resizes is one write.
+        """
+        if self.presentation is None or self.settings.window_size is not None:
+            return
+        size = self.presentation.window_size
+        if size != self.settings.last_window_size:
+            self.settings = self.settings.with_video(last_window_size=size)
+            self._persist_settings()
+
     def flush_settings(self) -> None:
         """Write the pending settings immediately, if any."""
         if not self._settings_dirty:
@@ -584,6 +599,7 @@ class Game:
             self._handle_fatal_error(error)
             raise SystemExit(1) from error
         finally:
+            self._remember_the_window()
             self.flush_settings()
             pygame.quit()
 

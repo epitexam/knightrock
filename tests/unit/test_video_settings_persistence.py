@@ -333,7 +333,7 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "vsync",
         "frame_limit",
     }
-    assert set(window) == {"size"}
+    assert set(window) == {"size", "last"}
     assert not {
         "width",
         "height",
@@ -586,3 +586,35 @@ def test_a_panel_scale_that_is_not_positive_is_refused_at_construction_too(
         PanelRenderer(pygame.Surface((640, 480)), panel_scale=0.0)
     with pytest.raises(ValueError, match="panel scale must be positive"):
         PanelRenderer(pygame.Surface((640, 480)), panel_scale=-1.0)
+
+
+def test_a_free_window_reopens_at_the_size_it_closed_at(tmp_path: Path) -> None:
+    """With no size chosen, the next launch opens where the last one closed.
+
+    Written once, on the way out -- so a session of resizes does not rewrite the
+    file, which :func:`test_a_window_that_moves_does_not_rewrite_the_settings`
+    still holds -- and only as where to open, never as a choice.
+    """
+    game, store = _runtime(tmp_path)
+    assert game.settings.window_size is None
+    game.presentation.retarget(pygame.Surface((1280, 720)))  # type: ignore[union-attr]
+    game._retarget()
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched.settings.last_window_size == (1280, 720)
+    assert relaunched.settings.window_size is None, "remembered, not chosen"
+    assert relaunched._asked_window_size() == (1280, 720)
+
+
+def test_a_chosen_size_is_not_shadowed_by_the_last_one(tmp_path: Path) -> None:
+    game, store = _runtime(tmp_path)
+    game.apply_settings(game.settings.with_video(window_size=(1600, 900)))
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched._asked_window_size() == (1600, 900)

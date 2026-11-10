@@ -126,6 +126,8 @@ class UserSettings:
     - **window_size**: the *only* size key left, and a preference rather than a
       claim -- the one size the player chose, asked for as-is where the panel can
       take it, clamped where it cannot, never overwritten.
+    - **last_window_size**: the size the window had when the game last closed
+      with no size chosen -- where the next launch opens, nothing more.
     - **bindings**: what the buttons do.
     """
 
@@ -143,6 +145,10 @@ class UserSettings:
     #: dragged the window to. Clamped to the monitor it opens on rather than
     #: overwritten -- see :func:`src.core.display.monitors.fit_size`.
     window_size: tuple[int, int] | None = None
+    #: The size the window had when the game last closed, with no size chosen.
+    #: Used only to open at it next time; never a preference, and written only
+    #: on the way out, so a resize mid-session does not rewrite the file.
+    last_window_size: tuple[int, int] | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -156,6 +162,7 @@ class UserSettings:
             },
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
+                "last": list(self.last_window_size) if self.last_window_size else None,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
             # screen, like the scale above it, and the ``video`` section is held
@@ -266,6 +273,7 @@ class UserSettings:
             ui_scale=scale,
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
+            last_window_size=_placement(window, "last"),
         )
 
     @classmethod

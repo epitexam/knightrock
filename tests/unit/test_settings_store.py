@@ -117,7 +117,7 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
         "vsync",
         "frame_limit",
     }
-    assert set(payload["window"]) == {"size"}
+    assert set(payload["window"]) == {"size", "last"}
     for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
         assert not hasattr(UserSettings(), dead), f"{dead} is gone and cannot come back"
         assert dead not in payload["video"], f"{dead} has nothing left to describe"
