@@ -142,6 +142,7 @@ class VideoScene(MenuPage):
                 row.label,
                 row.value(self) if row.value is not None else "",
                 enabled=not row.readout,
+                kind="list" if row.submenu else "toggle" if row.toggle else "",
             )
             for row in self.ROWS
             if not row.debug_only or Debug.is_enabled()

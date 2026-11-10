@@ -29,8 +29,8 @@ class OptionsScene(MenuPage):
         super().__init__(
             game,
             (
-                MenuItem("video", "Video settings"),
-                MenuItem("controls", "Controls"),
+                MenuItem("video", "Video settings", kind="page"),
+                MenuItem("controls", "Controls", kind="page"),
                 MenuItem("back", "Back"),
             ),
         )

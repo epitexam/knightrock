@@ -33,8 +33,8 @@ class MenuScene(MenuPage):
             items = (
                 MenuItem("continue", f"Continue (level {save.last_level_id})"),
                 MenuItem("new_game", "New game"),
-                MenuItem("levels", "Level select"),
-                MenuItem("options", "Options"),
+                MenuItem("levels", "Level select", kind="page"),
+                MenuItem("options", "Options", kind="page"),
                 MenuItem("quit", "Quit"),
             )
             self.options = (
@@ -47,8 +47,8 @@ class MenuScene(MenuPage):
         else:
             items = (
                 MenuItem("play", "Play"),
-                MenuItem("levels", "Level select"),
-                MenuItem("options", "Options"),
+                MenuItem("levels", "Level select", kind="page"),
+                MenuItem("options", "Options", kind="page"),
                 MenuItem("quit", "Quit"),
             )
             self.options = ("ENTER: play", "ESC: quit")

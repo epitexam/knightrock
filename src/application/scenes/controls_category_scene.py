@@ -19,8 +19,8 @@ class ControlsCategoryScene(MenuPage):
         super().__init__(
             game,
             (
-                MenuItem("menu", "Menu controls"),
-                MenuItem("gameplay", "Gameplay controls"),
+                MenuItem("menu", "Menu controls", kind="page"),
+                MenuItem("gameplay", "Gameplay controls", kind="page"),
                 MenuItem("back", "Back"),
             ),
         )

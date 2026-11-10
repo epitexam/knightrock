@@ -31,7 +31,7 @@ class VictoryScene(MenuPage):
             game,
             (
                 MenuItem("retry", "Retry"),
-                MenuItem("levels", "Level select"),
+                MenuItem("levels", "Level select", kind="page"),
                 MenuItem("menu", "Main menu"),
             ),
         )

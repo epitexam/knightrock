@@ -5,11 +5,11 @@ from src.core.colors import Colors
 
 PANEL_BG = Colors.panel_bg
 PANEL_BORDER = Colors.panel_border
-#: The outline around the row the pointer is on, when that is not the row a key
-#: press would act on. A different device's claim, so a different mark: the `>`
-#: and the amber text both say "a key press acts here", and nothing used to say
-#: "the cursor is here".
-POINTER_OUTLINE = Colors.gold
+#: The one selection mark: a bar behind the row a press acts on, whichever
+#: device put it there, and the colour it flashes after a change.
+SELECTION_BG = Colors.gold
+SELECTION_FLASH = (255, 240, 170)
+SELECTION_TEXT = (20, 22, 26)
 TEXT_MUTED = Colors.text_muted
 TEXT_TITLE = Colors.text_title
 TEXT_WARN = Colors.text_warn

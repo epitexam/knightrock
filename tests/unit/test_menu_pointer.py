@@ -35,7 +35,6 @@ pygame.display.set_mode((1152, 648))
 from src.core.input.input_actions import InputAction  # noqa: E402
 from src.ui.menu_model import MenuItem, MenuModel  # noqa: E402
 from src.ui.menu_view import MenuView  # noqa: E402
-from src.ui.styles import GOLD  # noqa: E402
 
 ROW = 40
 
@@ -174,72 +173,37 @@ def test_a_rebuild_to_a_different_list_still_hovers() -> None:
     assert model.current_index == 2
 
 
-# --- the pointer has to be visible -------------------------------------------
+# --- one selection mark ------------------------------------------------------
 
 
-def test_the_pointed_row_is_drawn_distinctly_from_the_selected_one() -> None:
-    """The visual half of the fix.
+def _bar_rows(view: MenuView, surface: pygame.Surface) -> list[int]:
+    """The rows painted with the selection bar, read off the pixels."""
+    from src.ui.styles import SELECTION_BG
 
-    Two devices disagreeing on screen with no mark between them is what made the
-    navigation feel wrong without being identifiable: the player saw a highlight
-    on one row, aimed at another, and nothing accounted for the difference.
+    return [
+        index
+        for index, rect in enumerate(view.item_rects)
+        if rect.width and surface.get_at((rect.x + 1, rect.y + 1))[:3] == SELECTION_BG
+    ]
+
+
+def test_the_selection_is_one_bar_whichever_device_moved_it() -> None:
+    """Hover selects, so the pointer and the keyboard share the one mark.
+
+    There used to be four signals -- a ``>``, amber text, a gold outline for the
+    pointer and a gold flash -- and three yellows saying different things.
     """
-    view = MenuView(1.0)
     surface = pygame.Surface((1152, 648))
-    model = _menu(4)
-    rects = _rects(4)
+    view = MenuView(1.0)
 
-    # Point at row 2, then drive the selection to row 3 with the keyboard.
-    _hover(model, rects, 2)
+    model, rects = _menu(), _rects()
+    _hover(model, rects, 1)
+    view.draw(surface, "MENU", model, top=100)
+    assert _bar_rows(view, surface) == [1]
+
     _key(model, InputAction.UI_DOWN)
     view.draw(surface, "MENU", model, top=100)
-
-    # The outline is drawn on the pointed row's left edge, so the border band is
-    # sampled rather than the row body -- the body carries the text, which is
-    # there on both rows. Sampled with get_at because this project has no numpy,
-    # and a test that needs one would not run in CI.
-    def border(rect: pygame.Rect) -> set[tuple[int, int, int]]:
-        band = surface.subsurface(pygame.Rect(rect.x - 3, rect.y, rect.width + 6, rect.height))
-        return {
-            band.get_at((x, y))[:3]
-            for x in range(band.get_width())
-            for y in (1, 2, band.get_height() - 3, band.get_height() - 2)
-        }
-
-    pointed = border(view.item_rects[2])
-    selected = border(view.item_rects[3])
-    assert pointed != selected, "the pointed row is drawn exactly like the selected one"
-    assert any(abs(colour[0] - GOLD[0]) < 24 for colour in pointed), (
-        f"the pointed row's border has no accent in it: {sorted(pointed)[:4]}"
-    )
-
-
-def test_the_outline_is_not_drawn_on_the_selected_row() -> None:
-    """One mark per row. Outlining the selected row too would say nothing."""
-    view = MenuView(1.0)
-    surface = pygame.Surface((1152, 648))
-    model, rects = _menu(), _rects()
-    _hover(model, rects, 1)  # hover alone selects the row too
-
-    view.draw(surface, "MENU", model, top=100)
-    drawn_with_pointer = pygame.image.tobytes(surface.subsurface(view.item_rects[1]), "RGB")
-
-    model2 = _menu()
-    _key(model2, InputAction.UI_DOWN)  # row 1 selected with no pointer on it
-    view.set_scale(1.0)
-    view.draw(surface, "MENU", model2, top=100)
-    drawn_without = pygame.image.tobytes(surface.subsurface(view.item_rects[1]), "RGB")
-
-    assert drawn_with_pointer != drawn_without, (
-        "the selected row looks the same with and without the pointer on it"
-    )
-
-
-def test_the_outline_colour_is_the_shared_accent() -> None:
-    """One gold in the interface, not a second yellow nobody else uses."""
-    from src.ui.styles import POINTER_OUTLINE
-
-    assert POINTER_OUTLINE == GOLD
+    assert _bar_rows(view, surface) == [2], "the bar follows the keyboard, alone"
 
 
 # --- clicking ----------------------------------------------------------------

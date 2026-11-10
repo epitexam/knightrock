@@ -23,6 +23,9 @@ class MenuItem:
     label: str
     value: str = ""
     enabled: bool = True
+    #: What pressing the row does, for the view to say: ``"list"`` or
+    #: ``"page"`` opens something, ``"toggle"`` flips a value, ``""`` acts.
+    kind: str = ""
 
 
 class MenuAction(StrEnum):

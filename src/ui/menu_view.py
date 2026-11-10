@@ -4,22 +4,32 @@ import pygame
 
 from src.core.display.framing import DEFAULT_FRAMING
 from src.ui.fonts import ui_font
-from src.ui.menu_model import MenuModel
+from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.metrics import Metrics
 from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale, font_size
 from src.ui.styles import (
     GOLD,
     PANEL_BG,
     PANEL_BORDER,
-    POINTER_OUTLINE,
+    SELECTION_BG,
+    SELECTION_FLASH,
+    SELECTION_TEXT,
     TEXT_MUTED,
-    TEXT_OK,
     TEXT_TITLE,
-    TEXT_WARN,
 )
 
-#: The selection marker, painted in a gutter every row reserves.
-MARKER = "> "
+
+def _decorated(item: MenuItem, selected: bool) -> str:
+    """A row's value with what pressing it does: ``›`` opens, ``◀ ▶`` changes.
+
+    The arrows are drawn on the selected row only, and spaces stand in for them
+    elsewhere, so the column keeps its width as the selection moves.
+    """
+    if item.kind in ("list", "page"):
+        return f"{item.value} ›" if item.value else "›"
+    if item.kind == "toggle":
+        return f"◀ {item.value} ▶" if selected else f"  {item.value}  "
+    return item.value
 
 
 class MenuView:
@@ -183,11 +193,13 @@ class MenuView:
         top = self.scaled_top(top, surface)
         scale = self._scale
         title_font, item_font, footer_font = self._fonts_for(scale)
-        # The labels carry no marker: the ``>`` is painted in a gutter every row
-        # reserves, so moving the selection never changes the panel's width.
+        # The selection is a bar behind the row, not a character in front of
+        # it, so moving it never changes a width.
         labels = [item.label for item in model.items]
-        marker_width = item_font.size(MARKER)[0]
-        values = [item.value for item in model.items]
+        marker_width = 0
+        values = [
+            _decorated(item, index == model.current_index) for index, item in enumerate(model.items)
+        ]
         # How much of the list fits, decided before anything is painted rather
         # than after -- the cache key, the rows and the panel height all have to
         # agree on it, and computing it once up front is what makes them agree.
@@ -258,7 +270,7 @@ class MenuView:
             else None
             for offset in range(len(painted))
         ]
-        footer_surfaces = [self._render_cached(footer_font, text, TEXT_WARN) for text in footers]
+        footer_surfaces = [self._render_cached(footer_font, text, TEXT_MUTED) for text in footers]
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
         # The description is fitted before the panel is measured, and to
@@ -328,14 +340,6 @@ class MenuView:
             (panel_x + (panel_width - title_surface.get_width()) // 2, panel_y + padding),
         )
         item_top = panel_y + padding + title_surface.get_height() + title_gap
-        # A row under the pointer is outlined, whether or not it is the selected
-        # one. The `>` marker and the amber text both say "this is the one a key
-        # press will act on"; nothing said "this is where the cursor is", so the
-        # two devices disagreed on screen without the disagreement being visible.
-        # A player who moved the mouse to a row and then pressed an arrow key
-        # could not tell why the highlight had left them -- which is the whole of
-        # what made the navigation feel broken.
-        pointer_row = self._pointer_row(model)
         # Index-aligned with ``model.items``: the rows scrolled out of view keep
         # their place with an empty rect, so a pointer hit-test and a key press
         # both address the same row number.
@@ -348,6 +352,12 @@ class MenuView:
                 panel_width - padding * 2,
                 item_height,
             )
+            if index == model.current_index:
+                # One mark for "a press acts here", whichever device moved it:
+                # hovering a row selects it, so the bar is also where the
+                # pointer is. The flash after a change is the same bar, lit.
+                bar = rect.inflate(padding // 2, 0)
+                surface.fill(SELECTION_FLASH if index == highlighted else SELECTION_BG, bar)
             if label_surface is not None:
                 surface.blit(
                     label_surface,
@@ -365,14 +375,6 @@ class MenuView:
                     ),
                 )
             self._item_rects[index] = rect
-            if index == pointer_row and index != model.current_index:
-                # Outlined rather than filled, so it reads as "the cursor is here"
-                # and not as "a key press will act here" -- the two are different
-                # claims and the keyboard's is the one that changes something.
-                pygame.draw.rect(
-                    surface, POINTER_OUTLINE, rect, max(1, metrics.px(2)), border_radius=3
-                )
-        self._paint_marker(surface, model, item_font, highlighted, highlight_color)
         # The rail is painted into the right padding gutter, which is
         # wide enough to hold it without a row's label or value ever
         # reaching it, so nothing has to make room for it.
@@ -407,24 +409,6 @@ class MenuView:
             )
             footer_y += footer_step
         return pygame.Rect(panel_x, panel_y, panel_width, panel_height)
-
-    def _paint_marker(
-        self,
-        surface: pygame.Surface,
-        model: MenuModel,
-        item_font: pygame.font.Font,
-        highlighted: int,
-        highlight_color: tuple[int, int, int],
-    ) -> None:
-        """The ``>`` in front of the selected row, in the gutter every row reserves."""
-        index = model.current_index
-        if not 0 <= index < len(self._item_rects) or self._item_rects[index].width == 0:
-            return
-        rect = self._item_rects[index]
-        marker = self._render_cached(
-            item_font, MARKER, self._color(index, model, highlighted, highlight_color)
-        )
-        surface.blit(marker, (rect.x, rect.centery - marker.get_height() // 2))
 
     def _panel_width(
         self, natural: int, model: MenuModel, title: str, surface: pygame.Surface
@@ -501,12 +485,12 @@ class MenuView:
         should land on the former while scanning a menu and on the latter while
         changing one.
         """
-        if index == highlighted:
-            return highlight_color
         if not model.items[index].enabled:
             return TEXT_MUTED
         if index == model.current_index:
-            return TEXT_WARN
+            return SELECTION_TEXT
+        if index == highlighted:
+            return highlight_color
         return TEXT_MUTED
 
     def _color(
@@ -519,9 +503,11 @@ class MenuView:
         item = model.items[index]
         if not item.enabled:
             return TEXT_MUTED
+        if index == model.current_index:
+            return SELECTION_TEXT
         if index == highlighted:
             return highlight_color
-        return TEXT_WARN if index == model.current_index else TEXT_OK
+        return TEXT_TITLE
 
     def _render_cached(
         self, font: pygame.font.Font, text: str, color: tuple[int, int, int]
@@ -669,17 +655,6 @@ class MenuView:
     @staticmethod
     def _valid_scale(scale: float) -> float:
         return checked_ui_scale(scale)
-
-    @staticmethod
-    def _pointer_row(model: MenuModel) -> int:
-        """The row the pointer is on, or -1.
-
-        Read from the model rather than tracked here, so there is one answer to
-        "where is the cursor" rather than two that can disagree. ``hovered_index``
-        is -1 once the pointer has left the rows, which is what makes the outline
-        disappear rather than stick to whatever it was on.
-        """
-        return model.hovered_index
 
     def reset_cache(self) -> None:
         """Drop the cached fonts and surfaces (display changed)."""

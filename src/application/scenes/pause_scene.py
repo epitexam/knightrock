@@ -27,7 +27,7 @@ class PauseScene(MenuPage):
             game,
             (
                 MenuItem("resume", "Resume"),
-                MenuItem("options", "Options"),
+                MenuItem("options", "Options", kind="page"),
                 MenuItem("menu", "Back to menu"),
             ),
         )
