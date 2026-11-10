@@ -27,8 +27,8 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.application.scene import Scene
 from src.application.scenes import video_options
+from src.application.scenes.menu_page import MenuPage
 from src.application.scenes.option_screen import Option, OptionScreen
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
@@ -36,8 +36,7 @@ from src.core.display.letterbox import FitPolicy, density_for, picture
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.ui.menu_model import MenuAction, MenuItem
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +59,8 @@ Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
 
 
-class VideoScene(Scene):
-    covers_panels_below = True
+class VideoScene(MenuPage):
+    scrollable = True
     TITLE = "VIDEO"
     VALUE_FLASH_SECONDS = 0.5
     FOOTER = "↑↓ row · ←→ change · Esc back"
@@ -83,14 +82,9 @@ class VideoScene(Scene):
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
-        self.model = MenuModel()
-        self.view: MenuView = MenuView(game.ui_scale)
         self._signature = self._current_signature()
         self._flash_row = -1
         self._flash_remaining = 0.0
-        #: The first row drawn, and how many the last draw fitted.
-        self._scroll = 0
-        self._visible: int | None = None
         self._rebuild()
 
     # ------------------------------------------------------------------ rows
@@ -293,32 +287,17 @@ class VideoScene(Scene):
         self._flash_row = self.model.current_index if current is not None else -1
         self._flash_remaining = self.VALUE_FLASH_SECONDS if self._flash_row >= 0 else 0.0
 
-    def handle_routed(self, routed: RoutedInput) -> str | None:
-        if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
-            if routed.variant != "device_removed":
-                self.game.scene_manager.pop()
-                return MenuAction.BACK
-            return None
-        if self._handle_row_value_navigation(routed):
-            return MenuAction.ACTIVATE
-        action, _ = self.model.handle_routed(
-            routed.action, routed.position, self.view.item_rects, routed.variant
-        )
+    def handle_value_keys(self, routed: RoutedInput) -> str | None:
+        return MenuAction.ACTIVATE if self._handle_row_value_navigation(routed) else None
+
+    def act(self, action: str) -> None:
         if action in self.SUBMENUS:
             # A click on a list row opens the list, the same as → and as Enter.
-            # It used to step the value instead, which is a control that only
-            # makes sense for two or three states -- and on a 28-entry list it
-            # was a click that moved a value one step somewhere the player was
-            # not looking.
             self._open(action)
         elif action in self.CYCLING_ROWS:
             self._cycle(action, InputAction.UI_RIGHT, click=True)
         elif action == "reset":
             self._reset()
-        elif action == "back":
-            self.game.scene_manager.pop()
-            return MenuAction.BACK
-        return action
 
     #: Rows whose value a press -- or a click -- steps, because there are only
     #: two of them and a list would be a worse control.
@@ -539,45 +518,12 @@ class VideoScene(Scene):
         self._signature = self._current_signature()
         self._flash_value_change()
 
-    def set_ui_scale(self, scale: float) -> None:
-        self.view.set_scale(scale)
+    def highlighted(self) -> int:
+        return self._flash_row
 
     def draw(self, surface: pygame.Surface) -> None:
         if self._current_signature() != self._signature:
             self._signature = self._current_signature()
             focused = self.model.current_item.action if self.model.current_item else None
             self._rebuild(focused)
-        self.view.set_scale(self.game.ui_scale)
-        self._scroll = self._scroll_for(self.model.current_index)
-        self.view.draw(
-            surface,
-            self.TITLE,
-            self.model,
-            top=150,
-            highlighted=self._flash_row,
-            footers=(self.FOOTER,),
-            scroll=self._scroll,
-            scrollable=True,
-        )
-        self._visible = sum(1 for rect in self.view.item_rects if rect.width > 0) or None
-
-    def _scroll_for(self, focused: int) -> int:
-        """The first row to show: the least scroll that keeps the focus visible.
-
-        On a window too short for every row. The pointer can only land on a row
-        that is drawn, so following the focus never chases it. On the last row a
-        key can reach, the list is scrolled to its end, so the read-out under it
-        is shown too.
-        """
-        count = len(self.model.items)
-        visible = self._visible or count
-        if focused < 0 or visible >= count:
-            return 0
-        enabled = [i for i, item in enumerate(self.model.items) if item.enabled]
-        if enabled and focused == enabled[-1]:
-            return count - visible
-        if focused < self._scroll:
-            return focused
-        if focused >= self._scroll + visible:
-            return focused - visible + 1
-        return self._scroll
+        super().draw(surface)

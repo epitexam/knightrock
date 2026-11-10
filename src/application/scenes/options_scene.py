@@ -15,45 +15,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pygame
-
-from src.application.scene import Scene
-from src.core.input.event_router import RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.application.scenes.menu_page import MenuPage
+from src.ui.menu_model import MenuItem
 
 if TYPE_CHECKING:
     from src.core.game import Game
 
 
-class OptionsScene(Scene):
-    covers_panels_below = True
+class OptionsScene(MenuPage):
     TITLE = "OPTIONS"
 
     def __init__(self, game: Game) -> None:
-        super().__init__(game)
-        self.model = MenuModel(
+        super().__init__(
+            game,
             (
                 MenuItem("video", "Video settings"),
                 MenuItem("controls", "Controls"),
                 MenuItem("back", "Back"),
-            )
+            ),
         )
-        self.view: MenuView = MenuView(game.ui_scale)
 
-    def update(self, delta_time: float) -> None:
-        return None
-
-    def handle_routed(self, routed_input: RoutedInput) -> str | None:
-        if routed_input.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
-            if routed_input.variant != "device_removed":
-                self.game.scene_manager.pop()
-                return MenuAction.BACK
-            return None
-        action, _ = self.model.handle_routed(
-            routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
-        )
+    def act(self, action: str) -> None:
         if action == "video":
             from src.application.scenes.video_scene import VideoScene
 
@@ -62,11 +44,3 @@ class OptionsScene(Scene):
             from src.application.scenes.controls_category_scene import ControlsCategoryScene
 
             self.game.scene_manager.push(ControlsCategoryScene(self.game))
-        elif action == "back":
-            self.game.scene_manager.pop()
-            return MenuAction.BACK
-        return action
-
-    def draw(self, surface: pygame.Surface) -> None:
-        self.view.set_scale(self.game.ui_scale)
-        self.view.draw(surface, self.TITLE, self.model, top=220)

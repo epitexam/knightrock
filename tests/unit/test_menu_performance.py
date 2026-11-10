@@ -16,7 +16,6 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, picture
@@ -304,23 +303,24 @@ class _CountingSurface(pygame.Surface):
 
 
 def test_pause_overlay_is_not_refilled_per_frame(manager) -> None:
-    """The overlay is a constant colour, so refilling it per frame is wasted.
+    """The veil under a menu page is a constant colour, so refilling it per frame is wasted.
 
     A full-screen ``SRCALPHA`` fill was the most expensive operation in the
-    pause frame, and the result was pixel-identical every time.
+    pause frame, and the result was pixel-identical every time. The veil is the
+    scene stack's now, cached per target size.
     """
-    scene = PauseScene(manager.game, level_id=0)
-    manager.switch(scene)
-    scene.draw(pygame.display.get_surface())
-    overlay = _CountingSurface(scene._overlay.get_size(), pygame.SRCALPHA)
-    overlay.fill(scene._overlay_color)
-    scene._overlay = overlay
+    surface = pygame.display.get_surface()
+    first = manager._veil_for(surface.get_size())
+    overlay = _CountingSurface(first.get_size(), pygame.SRCALPHA)
+    overlay.fill(manager.VEIL)
+    manager._veil = overlay
     overlay.fills = 0
 
-    scene.draw(pygame.display.get_surface())
-    scene.draw(pygame.display.get_surface())
+    manager._veil_for(surface.get_size())
+    manager._veil_for(surface.get_size())
 
     assert overlay.fills == 0
+    assert manager._veil is overlay
 
 
 def test_applying_only_the_ui_scale_keeps_the_window(manager, counter) -> None:

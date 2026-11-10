@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from src.application.scene import Scene
 from src.application.scenes.gameplay_scene import GameplayScene
+from src.application.scenes.menu_page import MenuPage
 from src.core.colors import Colors
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
@@ -16,14 +16,15 @@ if TYPE_CHECKING:
     from src.core.game import Game
 
 
-class MenuScene(Scene):
+class MenuScene(MenuPage):
     opaque = True
+    covers_panels_below = False
+    BACKGROUND = Colors.dark_grey
     TITLE = "KNIGHTROCK"
     CONFIRM_TITLE = "QUIT?"
     CONFIRM_ITEMS = (MenuItem("no", "No, go back"), MenuItem("yes", "Yes, quit"))
 
     def __init__(self, game: Game) -> None:
-        super().__init__(game)
         save = game.save_game
         has_progress = save.last_level_id != 0 or len(save.unlocked_levels) > 1
         items: tuple[MenuItem, ...]
@@ -51,10 +52,9 @@ class MenuScene(Scene):
                 MenuItem("quit", "Quit"),
             )
             self.options = ("ENTER: play", "ESC: quit")
-        self.model = MenuModel(items)
-        self.view: MenuView = MenuView()
+        super().__init__(game, items)
         self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
-        self.confirm_view = MenuView()
+        self.confirm_view = MenuView(game.ui_scale)
         self._confirming = False
 
     @property
@@ -73,9 +73,6 @@ class MenuScene(Scene):
 
     def _disarm_quit(self) -> None:
         self._confirming = False
-
-    def update(self, delta_time: float) -> None:
-        return None
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if routed_input.variant == "device_removed":
@@ -132,10 +129,9 @@ class MenuScene(Scene):
         self.view.set_scale(scale)
         self.confirm_view.set_scale(scale)
 
-    def draw(self, surface: pygame.Surface) -> None:
-        surface.fill(Colors.dark_grey)
-        panel = self.view.draw(surface, self.TITLE, self.model, top=180)
+    def draw_over(self, surface: pygame.Surface, panel: pygame.Rect) -> None:
         if self._confirming:
+            self.confirm_view.set_scale(self.game.ui_scale)
             self.confirm_view.draw(
                 surface,
                 self.CONFIRM_TITLE,

@@ -25,13 +25,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import pygame
-
-from src.application.scene import Scene
-from src.core.input.event_router import InputDevice, RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.application.scenes.menu_page import MenuPage
+from src.ui.menu_model import MenuItem
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -73,7 +68,7 @@ class Option:
             return False
 
 
-class OptionScreen(Scene):
+class OptionScreen(MenuPage):
     """A list of options; picking one applies it and returns.
 
     ``apply`` is called with the chosen option's ``value``. It is expected to do
@@ -82,11 +77,11 @@ class OptionScreen(Scene):
     that cannot be honoured says so in its own row, which is a better place for
     that than a modal would be.
 
-    ``subtitle`` is shown above the list, for the two or three words of
-    orientation a settings list benefits from.
+    ``on_back`` is called before the screen closes, by a choice or by Back, so
+    the opener can rebuild its rows and keep its focus on the row that opened it.
     """
 
-    covers_panels_below = True
+    scrollable = True
 
     def __init__(
         self,
@@ -100,28 +95,14 @@ class OptionScreen(Scene):
         subtitle: str = "",
         on_back: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(game)
-        self.title = title
         self.options = tuple(options)
-        self.apply = apply
         self.selected = selected
+        super().__init__(game, self._items(), selected=self._index_of(selected))
+        self.title = title
+        self.apply = apply
         self.footer = footer
         self.subtitle = subtitle
         self.on_back = on_back
-        self.view = MenuView(game.ui_scale)
-        self.model = MenuModel(self._items(), selected=self._index_of(selected))
-        #: How many rows the last draw actually painted, and the panel it made.
-        #: Read back rather than recomputed, so the scroll arithmetic and the
-        #: layout arithmetic cannot disagree about how tall a row is.
-        self._last_visible: int | None = None
-        #: The pointer's last y, and the scroll in force. Both are in target
-        #: coordinates and belong to the same measurement, so they are kept
-        #: together: the scroll decision reads one and writes the other.
-        self._pointer_y: int | None = None
-        self._scroll = 0
-        #: The panel the last draw produced, for the rail's hit strip.
-        self._panel: pygame.Rect | None = None
-        self.set_ui_scale(game.ui_scale)
 
     # ------------------------------------------------------------------ rows
 
@@ -130,8 +111,7 @@ class OptionScreen(Scene):
 
         The mark is a leading ``●`` on the label rather than a column, because
         the value column is right-aligned and a right-aligned checkmark reads as
-        the end of a long value at a glance. The label is where the eye already
-        is.
+        the end of a long value at a glance.
         """
         rows = [
             MenuItem(
@@ -145,11 +125,7 @@ class OptionScreen(Scene):
         return tuple(rows)
 
     def _index_of(self, selected: Any) -> int:
-        """Where the cursor starts: on the option in force.
-
-        Opening a list with the cursor at the top makes the player hunt for where
-        they already were, which is the one fact the list is showing them.
-        """
+        """Where the cursor starts: on the option in force."""
         for index, option in enumerate(self.options):
             if option.matches(selected):
                 return index
@@ -163,298 +139,36 @@ class OptionScreen(Scene):
 
     # --------------------------------------------------------------- routing
 
-    def update(self, delta_time: float) -> None:
-        return None
-
-    def handle_routed(self, routed: RoutedInput) -> str | None:
-        if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
-            # A controller losing a connection means "this input is gone", not
-            # "leave this screen" -- the same reading every other screen takes.
-            if routed.variant == "device_removed":
-                return None
-            self._leave()
-            return MenuAction.BACK
-
-        if routed.action in (InputAction.UI_SCROLL, InputAction.UI_SCROLL_UP):
-            return self._wheel(routed)
-
-        if routed.action is InputAction.UI_POINTER_DOWN and routed.position is not None:
-            paged = self._page_from_rail(routed.position)
-            if paged is not None:
-                return paged
-
-        self._note_pointer(routed)
-        performed, _ = self.model.handle_routed(
-            routed.action, routed.position, self.view.item_rects, routed.variant
-        )
-        return self._report(performed)
-
-    def _wheel(self, routed: RoutedInput) -> str:
-        """The wheel navigates, one row per notch, and takes the list.
-
-        Navigating rather than selecting: a selection would change a
-        setting per notch, and a trackpad's fractional ``y`` would
-        apply half a value. The pointer's remembered row is cleared,
-        because the wheel moved the list too.
-        """
-        steps = max(1, int(routed.value or 1))
-        self._pointer_y = None
-        for _ in range(steps):
-            self.model.move(-1 if routed.action is InputAction.UI_SCROLL_UP else 1)
-        return (
-            MenuAction.MOVE_UP
-            if routed.action is InputAction.UI_SCROLL_UP
-            else MenuAction.MOVE_DOWN
-        )
-
-    def _note_pointer(self, routed: RoutedInput) -> None:
-        """Remember the pointer's row, and forget it for anything else.
-
-        The remembered y is what the scroll decision reads, so a key or
-        a button clears it: left in place it would outvote the row the
-        player just walked to and scroll the list straight back -- the
-        cursor moving up one line while the list slides down.
-        """
-        if routed.action is InputAction.UI_POINTER_MOVE and routed.position is not None:
-            self._pointer_y = routed.position[1]
-        elif routed.device is not InputDevice.MOUSE:
-            self._pointer_y = None
-
-    def _report(self, performed: str | None) -> str | None:
-        """Turn the model's report into the screen's.
-
-        ``back`` closes this screen and ``option:n`` applies row ``n``;
-        everything else is passed through as it came.
-        """
-        if performed is None:
-            return None
-        if performed == "back":
-            self._leave()
-            return MenuAction.BACK
-        if performed.startswith("option:"):
-            self._choose(int(performed.partition(":")[2]))
-        return performed
+    def act(self, action: str) -> None:
+        if action.startswith("option:"):
+            self._choose(int(action.partition(":")[2]))
 
     def _choose(self, index: int) -> None:
         """Apply the option and go back to the screen that opened this one.
 
-        Applied *before* the pop, so the caller sees the change while it is still
-        on the stack and can refresh itself against it -- which is what keeps the
-        row the player came from reading correctly the moment they land back on
-        it, rather than one frame later.
+        Applied *before* the pop, so the opener sees the change while it is still
+        on the stack. A disabled entry refuses, visibly, rather than closing.
         """
         if not 0 <= index < len(self.options):
             return
         option = self.options[index]
         if not option.enabled:
-            # Silently ignored rather than closing: an entry that cannot be used
-            # is one the player should see refuse, not one that looks like it
-            # worked.
             return
         self.apply(option.value)
-        self._leave()
+        self.leave()
 
-    def _leave(self) -> None:
-        """Pop, unless the opener asked to be told instead.
-
-        ``on_back`` exists for the case where the submenu's result matters to
-        more than the submenu: the opener rebuilds its rows against the settings
-        the choice just produced, and keeps its focus on the row that opened it.
-        """
+    def leave(self) -> str | None:
         if self.on_back is not None:
             self.on_back()
-        self.game.scene_manager.pop()
+        return super().leave()
 
     # ------------------------------------------------------------------ draw
 
-    def set_ui_scale(self, scale: float) -> None:
-        self.view.set_scale(scale)
-
-    def _scroll_for(self, focused: int) -> int:
-        """The first row to show, decided by the pointer when there is one.
-
-        This is the fix for the "one mouse position selects four rows"
-        bug, and the cause is worth writing down. The scroll used to
-        follow the keyboard cursor with a row of margin above it, so
-        when the pointer hovered the last drawn row the list jumped
-        down, which changed the row under the pointer, which jumped the
-        list again -- a hand moving steadily down selected rows 7, 13,
-        19, 25 in turn without the cursor moving at all.
-
-        Now the pointer's own y is the input, and the rule is
-        deliberately minimal: the list scrolls only to keep a row that
-        the pointer is *on* on screen, and by the smallest amount that
-        does it. There is deliberately no scrolling towards a pointer
-        parked in the gap above or below the rows -- the list would
-        keep moving, the gap would keep stay at the edge, and the
-        pointer would chase it to the end of the list, which is the
-        failure above with extra steps. The wheel is the way to move a
-        list the pointer is not on.
-
-        A keyboard walk still works: ``focused`` decides which row the
-        list moves to when the pointer is not over the rows, and any
-        non-pointer input clears the remembered y so the cursor cannot
-        be outvoted by a position the player left behind.
-        """
-        visible = self._visible_rows()
-        count = len(self.model.items)
-        if count <= visible:
-            # Everything fits; nothing to scroll. The keyboard's margin is
-            # meaningless here and would have pushed rows off the top.
-            return 0
-
-        if self._pointer_y is not None:
-            # The pointed-at row, from the geometry of the last draw.
-            row = self._row_at(self._pointer_y)
-            if row is not None:
-                current = self._scroll
-                if row < current:
-                    # Push only far enough to bring it in, and only when it is
-                    # entirely off -- nudging one row at a time makes the list
-                    # crawl under a stationary cursor.
-                    return max(0, row)
-                if row >= current + visible:
-                    return row - visible + 1
-                return current
-
-        # No pointer, or it is outside the rows: follow the keyboard, with the
-        # cursor one row from the edge rather than pinned to it.
-        return max(0, min(focused - 1, count - visible))
-
-    def _visible_rows(self) -> int:
-        """How many rows the window shows at this scale.
-
-        Measured once per draw from the panel the view produced last frame,
-        which is the same measurement the view made. A first frame has no panel
-        yet, so the full list is assumed and the scroll is clamped again on the
-        next one.
-        """
-        return max(1, self._last_visible or len(self.model.items))
-
-    def _row_at(self, y: int) -> int | None:
-        """The row a y coordinate lands on, in terms of the row the view drew.
-
-        Uses the geometry of the last draw rather than the model's, because the
-        view is what painted them and it is the only holder of the row height
-        that is on screen. Returns ``None`` when y is outside the painted rows --
-        over the title, the gap, or below the last row -- and ``None`` means "the
-        pointer is not asking for anything", which is what keeps the list still.
-        """
-        first = self._scroll
-        visible = self._visible_rows()
-        for offset in range(visible):
-            index = first + offset
-            if not 0 <= index < len(self.model.items):
-                break
-            rect = self.view.item_rects[index]
-            if rect.width > 0 and rect.top <= y < rect.bottom:
-                return index
-        return None
-
-    def draw(self, surface: pygame.Surface) -> None:
-        self.view.set_scale(self.game.ui_scale)
-        focused_index = self.model.current_index
-        focused = self.model.current_item
-        # Decided once and kept: the view paints from it this frame, and
-        # the next frame's decision reads it as "where the list is".
-        # Not keeping it meant the scene's scroll stayed at zero while
-        # the view moved, so every later question -- which row is the
-        # pointer on, is this row on screen -- was answered about a list
-        # that was no longer the one drawn.
-        scroll = self._scroll_for(focused_index)
-        self._scroll = scroll
-        panel = self.view.draw(
-            surface,
-            self.title,
-            self.model,
-            top=140 if self.subtitle else 180,
-            description=self._description_for(focused),
-            footers=(self._footer(),) if self.footer else (),
-            scroll=scroll,
-            scrollable=True,
-        )
-        # Remembered for the next frame's scroll decision, so the arithmetic that
-        # decided what is on screen lives in exactly one place: the count drawn,
-        # the panel's height, and the band the rows occupy.
-        drawn = sum(1 for rect in self.view.item_rects if rect.width > 0)
-        self._last_visible = drawn
-        # Kept for the rail's hit strip, which runs from the rail to the
-        # panel's edge: the rail is painted inside the gutter and the
-        # gutter is inside the panel, so the panel is what bounds the
-        # strip on the right.
-        self._panel = panel
-
-    def _rail_strip(self) -> pygame.Rect | None:
-        """The clickable strip beside the rows, or ``None`` when no rail.
-
-        The rail is painted inside the padding gutter, and the gutter
-        is inside the panel, so the strip runs from the rail's left
-        edge to the panel's right one -- wider than the painted rail,
-        because a four-pixel target is not a target.
-        """
-        rail = self.view.scroll_rail
-        if rail is None or self._panel is None:
-            return None
-        return pygame.Rect(rail.left, rail.top, self._panel.right - rail.left, rail.height)
-
-    def _page_from_rail(self, position: tuple[int, int]) -> str | None:
-        """Page from a press in the rail's strip, or ``None`` if it isn't one.
-
-        The strip is dead space today: no row is clickable there, so a
-        press in it does nothing at all. It is also where a scrollbar
-        has lived in every interface anyone has used, and a player
-        who has clicked one will click this one.
-
-        Above the thumb pages back, below pages forward. On the thumb
-        it does nothing, deliberately: dragging the thumb is a
-        separate interaction, and a press that both grabbed and paged
-        would jump the list the moment it was caught.
-        """
-        strip = self._rail_strip()
-        thumb = self.view.scroll_thumb
-        if strip is None or thumb is None or not strip.collidepoint(position):
-            return None
-        if thumb.top <= position[1] <= thumb.bottom:
-            return None
-        return self._page(-1 if position[1] < thumb.top else 1)
-
-    def _page(self, direction: int) -> str | None:
-        """Move by a page, through the model's own page move.
-
-        The model reads the visible-row count from the rects the view
-        painted, which is the same measurement the scroll uses --
-        asking the view for it here would be a second copy of that
-        arithmetic.
-        """
-        action = InputAction.UI_PAGE_DOWN if direction > 0 else InputAction.UI_PAGE_UP
-        performed, _ = self.model.handle_routed(action, None, self.view.item_rects, None)
-        return performed
-
-    def _footer(self) -> str:
-        """The hint line, with the page keys when the list needs them.
-
-        A short list has nothing to page through, so the keys
-        would be a mystery with no answer; a long one is where
-        they earn their place, and the only place a player
-        looks for how to move a list.
-
-        The hint lags the rail by a frame: the hint is decided
-        from the last draw's row count, the rail during this
-        one. Seventeen milliseconds, on the first frame of a
-        screen -- the alternative is a query on the view with
-        five parameters that mirror ``draw``'s own, which is
-        more machinery than the defect is worth.
-        """
-        if self._last_visible is None or self._last_visible >= len(self.model.items):
-            return self.footer
-        return f"{self.footer} · PgDn page"
+    def description(self) -> str:
+        return self._description_for(self.model.current_item)
 
     def _description_for(self, focused: MenuItem | None) -> str:
-        """The one description to show: the focused row's, if it has one.
-
-        Only the focused row. A block of text under every row is a wall of text,
-        and the one a player needs is the one they are looking at.
-        """
+        """The focused option's note: one line, for the row being looked at."""
         if focused is None or not focused.action.startswith("option:"):
             return ""
         index = int(focused.action.partition(":")[2])
