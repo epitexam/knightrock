@@ -194,12 +194,12 @@ class Presentation:
         its own present. The strips are simply the part of that assumption that
         is not rewritten every frame.
 
-        That holds while the window is a software surface, which is all this
-        game can ask for -- :meth:`Stage._flags` requests ``FULLSCREEN`` or
-        ``RESIZABLE`` and never ``OPENGL``, so ``flip`` is an update rather than
-        a buffer exchange. An accelerated path would have to paint every frame
-        again, because each buffer would then arrive holding the other's
-        contents.
+        That holds because the window surface is pygame's own and persists
+        between frames: the stage asks for ``RESIZABLE`` and never ``OPENGL``, so
+        ``flip`` either updates the window from it or -- with vsync requested,
+        where pygame-ce presents through an ``SDL_Renderer`` -- uploads it as a
+        texture. Neither hands back a different buffer. An ``OPENGL`` window
+        would have to paint the strips every frame again.
         """
         if self._painted != self.rect:
             for bar in self.picture.bars:

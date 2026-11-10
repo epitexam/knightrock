@@ -1,11 +1,9 @@
 """A screen that lists options and applies one on selection.
 
 Every settings choice with more than a handful of values gets one of these
-rather than a ←/→ cycle, and the reason is arithmetic rather than taste. Thirteen
-window sizes are worth offering on the development panel, so a cycle needs twelve
-presses to reach one -- and a player who does not know the value exists has no
-way to learn it exists at all. A list shows every option, marks the one in force,
-and takes one press.
+rather than a ←/→ cycle: a cycle hides every value but the current one, and
+needs a press per step to reach the one wanted. A list shows every option, marks
+the one in force, and takes one press.
 
 **Apply on selection, not on highlight.** Moving the highlight through the list
 changes nothing; picking an entry applies it and closes. The alternative --
@@ -116,7 +114,6 @@ class OptionScreen(Scene):
         #: Read back rather than recomputed, so the scroll arithmetic and the
         #: layout arithmetic cannot disagree about how tall a row is.
         self._last_visible: int | None = None
-        self._last_panel_height = 0
         #: The pointer's last y, and the scroll in force. Both are in target
         #: coordinates and belong to the same measurement, so they are kept
         #: together: the scroll decision reads one and writes the other.
@@ -381,20 +378,11 @@ class OptionScreen(Scene):
         # the panel's height, and the band the rows occupy.
         drawn = sum(1 for rect in self.view.item_rects if rect.width > 0)
         self._last_visible = drawn
-        self._last_panel_height = panel.height
         # Kept for the rail's hit strip, which runs from the rail to the
         # panel's edge: the rail is painted inside the gutter and the
         # gutter is inside the panel, so the panel is what bounds the
         # strip on the right.
         self._panel = panel
-        if drawn:
-            first_rect = next(rect for rect in self.view.item_rects if rect.width > 0)
-            last_rect = next(rect for rect in reversed(self.view.item_rects) if rect.width > 0)
-            # The difference between where the rows stop and where the pointer is
-            # is what makes an edge press scroll by one rather than by a panel.
-            self._rows_top = first_rect.top
-            self._rows_bottom = last_rect.bottom
-            self._row_height = max(1, first_rect.height)
 
     def _rail_strip(self) -> pygame.Rect | None:
         """The clickable strip beside the rows, or ``None`` when no rail.

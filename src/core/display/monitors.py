@@ -40,7 +40,7 @@ class Monitor:
     ``y`` may be negative -- the leftmost monitor is not at the origin of a
     Linux desktop whose primary is elsewhere, which is what put a window on the
     wrong screen the last time this was computed by hand. ``usable`` is bounds
-    less whatever the desktop reserves, and is what a borderless window should
+    less whatever the desktop reserves, and is what a window should
     fill so it does not sit under a taskbar.
 
     ``scale`` is the compositor's own scale factor, 1.0 when it reports none.
@@ -72,7 +72,7 @@ class Monitor:
 
     @property
     def usable_size(self) -> tuple[int, int]:
-        """The area a borderless window may fill.
+        """The area a window may fill.
 
         Falls back to the panel when the driver reported a usable area smaller
         than nothing -- a usable rectangle of zero would size a window to zero,

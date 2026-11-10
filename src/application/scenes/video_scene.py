@@ -80,11 +80,6 @@ class VideoScene(Scene):
         "scale",
         "panel_scale",
     )
-    #: Kept as the older name for the callers that read it, and as the one place
-    #: a row's fate is decided: every row on this screen is in this tuple, in
-    #: ``CYCLING_ROWS``, or in ``handle_routed``'s named branches, and a row in
-    #: none of the three is the dead row this screen has produced twice.
-    SUBMENU_ROWS = SUBMENUS
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -263,10 +258,6 @@ class VideoScene(Scene):
             label += " · ignored (VSync)"
         return label
 
-    @staticmethod
-    def _on_off(value: bool) -> str:
-        return "on" if value else "off"
-
     def _screen_refresh_rate(self) -> int:
         """The refresh rate of the screen the window is *on*, or 0 when nobody can say.
 
@@ -313,7 +304,7 @@ class VideoScene(Scene):
         action, _ = self.model.handle_routed(
             routed.action, routed.position, self.view.item_rects, routed.variant
         )
-        if action in self.SUBMENU_ROWS:
+        if action in self.SUBMENUS:
             # A click on a list row opens the list, the same as → and as Enter.
             # It used to step the value instead, which is a control that only
             # makes sense for two or three states -- and on a 28-entry list it
@@ -459,7 +450,7 @@ class VideoScene(Scene):
             return False
         if not current.enabled:
             return True
-        if current.action in self.SUBMENU_ROWS:
+        if current.action in self.SUBMENUS:
             self._open(current.action)
             return True
         return self._cycle(current.action, routed.action)
