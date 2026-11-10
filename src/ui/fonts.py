@@ -52,3 +52,29 @@ def ui_fonts(size: int) -> tuple[pygame.font.Font, pygame.font.Font]:
 
 def ui_font(size: int, *, bold: bool = False) -> pygame.font.Font:
     return ui_fonts(size)[1 if bold else 0]
+
+
+#: The player-facing menus' font: Press Start 2P (SIL OFL 1.1, licence in
+#: ``assets/fonts/PressStart2P-OFL.txt``). A pixel font drawn on an 8px grid, so
+#: it is sharp only at multiples of 8 and only without antialiasing -- see
+#: :func:`menu_font_size`. The debug layer keeps the monospace above.
+_MENU = _FONTS_DIR / "PressStart2P-Regular.ttf"
+
+#: The font's pixel grid.
+MENU_FONT_GRID = 8
+
+_MENU_CACHE: dict[int, pygame.font.Font] = {}
+
+
+def menu_font_size(design: float, scale: float) -> int:
+    """A design size at ``scale``, snapped to the font's grid and never below it."""
+    return max(MENU_FONT_GRID, round(design * scale / MENU_FONT_GRID) * MENU_FONT_GRID)
+
+
+def menu_font(size: int) -> pygame.font.Font:
+    """The menu font at ``size`` pixels, built once. It has a single weight."""
+    cached = _MENU_CACHE.get(size)
+    if cached is None:
+        cached = _load(_MENU, size)
+        _MENU_CACHE[size] = cached
+    return cached

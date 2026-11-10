@@ -355,7 +355,7 @@ def test_scrolled_out_rows_keep_their_place_in_the_rect_list() -> None:
     pointer path would index a shifted list and answer the wrong row.
     """
     game = FakeGame()
-    screen = _screen(game, _options(28), selected=0)
+    screen = _screen(game, _options(60), selected=0)
     surface = pygame.Surface((640, 480))
     screen.draw(surface)
 
@@ -371,7 +371,7 @@ def test_scrolled_out_rows_keep_their_place_in_the_rect_list() -> None:
     screen.draw(surface)
     assert screen.view.item_rects[0].width == 0, "row 0 is above the fold"
     assert screen.view.item_rects[10].width > 0, "row 10 is the cursor"
-    assert screen.view.item_rects[27].width == 0, "row 27 is below the fold"
+    assert screen.view.item_rects[59].width == 0, "row 59 is below the fold"
 
 
 # --- the value comparison ---------------------------------------------------

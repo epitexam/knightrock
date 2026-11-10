@@ -189,8 +189,13 @@ def test_a_short_description_is_untouched() -> None:
     long_note = note + " and a great many more words than any panel on this screen can hold"
     footer_font = view._fonts_for(1.0)[2]
 
+    view.draw(surface, "TITLE", model, top=120, description="black bars")
+    assert view.description_width == footer_font.size("black bars")[0], "the short note was cut"
+
+    # A note too wide for one line is wrapped onto two rather than cut.
     view.draw(surface, "TITLE", model, top=120, description=note)
-    assert view.description_width == footer_font.size(note)[0], "the short note was cut"
+    assert view.description_width < footer_font.size(note)[0]
+    assert view.description_width >= footer_font.size(note)[0] // 2
 
     raw = footer_font.size(long_note)[0]
     view.draw(surface, "TITLE", model, top=120, description=long_note)

@@ -3,10 +3,10 @@ from collections.abc import Sequence
 import pygame
 
 from src.core.display.framing import DEFAULT_FRAMING
-from src.ui.fonts import ui_font
+from src.ui.fonts import menu_font, menu_font_size
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.metrics import Metrics
-from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale, font_size
+from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale
 from src.ui.styles import (
     GOLD,
     PANEL_BG,
@@ -17,6 +17,13 @@ from src.ui.styles import (
     TEXT_MUTED,
     TEXT_TITLE,
 )
+
+#: The menu's text sizes, in design pixels of a 648-tall picture.
+DESIGN_TITLE = 32
+DESIGN_ITEM = 16
+DESIGN_SMALL = 12
+#: How many lines a row's description may take.
+DESCRIPTION_LINES = 2
 
 
 def _decorated(item: MenuItem, selected: bool) -> str:
@@ -211,7 +218,9 @@ class MenuView:
         # the window less its margins. Measuring from ``top`` cut rows that fit.
         available_height = max(metrics.px(120), surface.get_height() - metrics.margin * 2)
         footer_step = footer_font.get_linesize() + metrics.gap // 2
-        description_step = footer_font.get_linesize() + metrics.gap // 2
+        # Two lines, always reserved: the pixel font is wide, and a note that
+        # needs two lines must not make the panel's height follow its length.
+        description_step = footer_font.get_linesize() * DESCRIPTION_LINES + metrics.gap // 2
         description_height = description_step if description else 0
         # The title's own height, measured rather than estimated: it is bold and
         # its rasterised linesize is not the design size the rest of the table is
@@ -278,7 +287,7 @@ class MenuView:
         # is sized partly from the description, so fitting it to the
         # panel would be fitting it to a number that depends on it.
         description_surface = (
-            self._fit_text(
+            self._wrap_text(
                 footer_font,
                 description,
                 TEXT_MUTED,
@@ -515,9 +524,36 @@ class MenuView:
         key = (id(font), text, color)
         cached = self._text_cache.get(key)
         if cached is None:
-            cached = font.render(text, True, color)
+            # No antialiasing: a pixel font blurred at its edges is not one.
+            cached = font.render(text, False, color)
             self._text_cache[key] = cached
         return cached
+
+    def _wrap_text(
+        self,
+        font: pygame.font.Font,
+        text: str,
+        color: tuple[int, int, int],
+        max_width: int,
+    ) -> pygame.Surface:
+        """``text`` on up to :data:`DESCRIPTION_LINES` lines, the last one cut if it must."""
+        words = text.split()
+        lines: list[str] = []
+        while words and len(lines) < DESCRIPTION_LINES - 1:
+            line = words.pop(0)
+            while words and font.size(f"{line} {words[0]}")[0] <= max_width:
+                line = f"{line} {words.pop(0)}"
+            lines.append(line)
+        if words:
+            lines.append(" ".join(words))
+        rendered = [self._fit_text(font, line, color, max_width) for line in lines]
+        if len(rendered) == 1:
+            return rendered[0]
+        width = max(line.get_width() for line in rendered)
+        block = pygame.Surface((width, font.get_linesize() * len(rendered)), pygame.SRCALPHA)
+        for row, line in enumerate(rendered):
+            block.blit(line, ((width - line.get_width()) // 2, row * font.get_linesize()))
+        return block
 
     def _fit_text(
         self,
@@ -570,14 +606,14 @@ class MenuView:
         # three font objects per frame of the drag and never gives them back.
         # The sizes are quantised, so a drag that does not move a font size by a
         # whole pixel reuses the fonts it already has.
-        key = (font_size(48, scale), font_size(32, scale), font_size(18, scale))
+        key = (
+            menu_font_size(DESIGN_TITLE, scale),
+            menu_font_size(DESIGN_ITEM, scale),
+            menu_font_size(DESIGN_SMALL, scale),
+        )
         cached = self._fonts.get(key)
         if cached is None:
-            cached = (
-                ui_font(key[0], bold=True),
-                ui_font(key[1]),
-                ui_font(key[2]),
-            )
+            cached = (menu_font(key[0]), menu_font(key[1]), menu_font(key[2]))
             if len(self._fonts) >= FONT_CACHE_ENTRIES:
                 # A drag through a hundred densities is not a thing to keep.
                 self._fonts.clear()

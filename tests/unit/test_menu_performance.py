@@ -24,7 +24,7 @@ from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
 from src.core.settings import Input as InputSettings
 from src.ui.controls_view import BindingCell, BindingRow, ControlsView
-from src.ui.fonts import ui_font  # noqa: F401 (patched by the font-build counter)
+from src.ui.fonts import menu_font
 from src.ui.grid_view import GridView
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
@@ -83,9 +83,9 @@ def counter(monkeypatch):
 def _count_font_builds(monkeypatch):
     """Count font constructions, returning a counter."""
     made: list[tuple] = []
-    original = ui_font
+    original = menu_font
     monkeypatch.setattr(
-        "src.ui.menu_view.ui_font", lambda *a, **k: made.append(a) or original(*a, **k)
+        "src.ui.menu_view.menu_font", lambda *a, **k: made.append(a) or original(*a, **k)
     )
     return lambda: len(made)
 
