@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from src.application.scenes.option_screen import Option
 from src.application.settings_store import FRAME_LIMITS, PANEL_SCALES, UI_SCALES
+from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import (
     FitPolicy,
     already_a_whole_multiple,
@@ -115,48 +116,35 @@ def window_size_options(
     current: tuple[int, int] | None,
     granted: tuple[int, int],
 ) -> tuple[Option, ...]:
-    """Sizes worth offering a window, on this panel.
+    """Sizes worth offering a window, on this panel. Five at most, largest first.
 
-    **Not the driver's mode list**, and the difference is the point. A *mode* is
-    a resolution the panel is driven at, and the whole of them was the right
-    answer only for exclusive fullscreen -- which is gone. If you are taking the
-    panel over, it is being run at one of these or nothing else.
+    Not the driver's mode list: a window is not driven at a mode, and that list
+    ran to 26 entries down to 320x240. Offered instead:
 
-    A *window* is not driven at anything. It floats on the panel, it can be any
-    size the player drags it to, and the driver has no opinion. Feeding it the
-    mode list produced 26 entries on this machine -- down to 320x240 -- which is
-    not a list of choices, it is a list to scroll through, and offering somebody
-    a 320x240 window as a deliberate option is an insult to the screen it is on.
+    - "free size" (``None``): no stored size, the window keeps what it is dragged to;
+    - the largest window that fits with its title bar -- :func:`opening_size`,
+      the size the game opens at. The usable area itself is not offered: the
+      window manager grants it short by the frame;
+    - up to four sizes under it: the framing's whole multiples (the only sizes
+      the integer fit fills) and the usual 16:9 sizes.
 
-    So the sizes are the useful ones, filtered to what this panel can hold: the
-    largest the frame allows, the panel's own resolution, and a ladder that
-    shrinks. Every one is checkable -- they are all either derived from the
-    monitor or refused if it cannot take them -- which is what keeps this from
-    being the catalogue the resolution picker used to be.
-
-    The frame matters and is measured, not assumed: requesting the usable area
-    exactly comes back short, because the window manager subtracts the title bar.
-    The largest entry is therefore :func:`opening_size`, which leaves that room,
-    and it is the size the game already opens at.
-
-    ``current`` is the remembered preference, which may be a size this panel
-    cannot take -- a 4K window arriving at a laptop. It is listed and disabled
-    rather than dropped, because silently forgetting it would leave the player
-    unable to see that something they chose is not available here.
+    ``current`` is the remembered preference. If it is not in the list it is
+    added: choosable when the panel can hold it, disabled and explained when it
+    cannot (a 4K window arriving at a laptop).
     """
     usable = monitor.usable_size
     widest = _largest_fitting(monitor)
     options: list[Option] = [
         Option(
-            "the size I dragged it to",
+            "free size",
             None,
-            "follow the window wherever you put it",
+            "no stored size: the window keeps whatever size you drag it to",
         ),
     ]
     offered: list[tuple[int, int]] = []
 
-    def offer(size: tuple[int, int], note: str = "") -> None:
-        if size in offered or size[0] > usable[0] or size[1] > usable[1]:
+    def offer(size: tuple[int, int], note: str) -> None:
+        if size in offered or size[0] > widest[0] or size[1] > widest[1]:
             return
         if size[0] < MIN_WINDOW[0] or size[1] < MIN_WINDOW[1]:
             return
@@ -165,53 +153,62 @@ def window_size_options(
             note = f"{note} · current" if note else "current"
         options.append(Option(f"{size[0]} x {size[1]}", size, note))
 
-    # The panel's *own* resolution is deliberately absent, and the reason is the
-    # one thing a windowed list must not promise. That entry used to sit under
-    # "the screen's own resolution", and it was a borderless request wearing a
-    # windowed label: asking for the panel's exact size is the mode change the
-    # windowed game does not make, and measured, the window manager grants it
-    # short -- it subtracts the title bar -- so the size the player chose was
-    # never the size the window had. The largest entry is the largest *window*
-    # that fits: measured so it does not hide behind the taskbar.
-    offer(widest, "as large as fits, measured with the title bar in mind")
-    # A ladder rather than everything the panel supports, and it only goes
-    # downwards: ``widest`` is already as large as fits, so a "three quarters"
-    # rung would land above it and be filtered out as too big. The notes name
-    # what the rung is relative to -- the largest window this panel allows --
-    # rather than the screen, because the largest window and the screen are
-    # different numbers on every panel with reserved chrome, and the old notes
-    # ("half the screen") described a size the list did not offer.
-    for denominator, note in (
-        (2, "half of the largest"),
-        (3, "a third of the largest"),
-    ):
-        rung = (
-            max(MIN_WINDOW[0], widest[0] // denominator),
-            max(MIN_WINDOW[1], widest[1] // denominator),
-        )
-        if rung != (widest[0] // denominator, widest[1] // denominator):
-            # The floor is part of what the rung is: on a 1920x1080 panel the
-            # "third" rung is 480 tall where a literal third is 360, and a note
-            # that only said "a third" would describe a size the window is not
-            # going to have -- the same read-out bug this file exists to keep
-            # out, one row lower.
-            note = f"{note} · floored at the readable minimum"
-        offer(rung, note)
-    # Largest first, so the list reads as a scale rather than as an accident of
-    # the order the sizes were thought up in.
-    entries = sorted(options[1:], key=lambda option: (-option.value[0] * option.value[1], option))
+    # The largest window that fits with its frame: the size the game opens at.
+    offer(widest, "as large as fits, title bar included")
+    # Then the few sizes below it worth choosing: whole multiples of the
+    # framing first -- the only sizes where the integer fit fills the window --
+    # and the usual 16:9 sizes. Nothing above ``widest``: the window manager
+    # would shrink it, and the row would describe a size nobody gets.
+    candidates = [
+        (size, "whole multiple: sharpest with the integer fit") for size in _whole_multiples()
+    ] + [(size, "") for size in STANDARD_SIZES]
+    fitting = sorted(
+        (c for c in candidates if c[0][0] <= widest[0] and c[0][1] <= widest[1]),
+        key=lambda c: (-c[0][0] * c[0][1], -c[0][0]),
+    )
+    for size, note in fitting:
+        if len(offered) > LADDER_RUNGS:
+            break
+        offer(size, note)
+    entries = sorted(
+        options[1:], key=lambda option: (-option.value[0] * option.value[1], -option.value[0])
+    )
     if current is not None and tuple(current) not in offered:
+        too_large = current[0] > usable[0] or current[1] > usable[1]
         entries.append(
             Option(
                 f"{current[0]} x {current[1]}",
                 current,
                 f"too large for this screen ({usable[0]}x{usable[1]})"
-                if current[0] > usable[0] or current[1] > usable[1]
-                else "not one of the sizes offered here",
-                enabled=False,
+                if too_large
+                else "the size you chose earlier",
+                enabled=not too_large,
             )
         )
     return (options[0], *entries)
+
+
+#: How many sizes are offered under the largest one.
+LADDER_RUNGS = 4
+
+#: The usual 16:9 window sizes, offered when they fit.
+STANDARD_SIZES: tuple[tuple[int, int], ...] = (
+    (960, 540),
+    (1024, 576),
+    (1280, 720),
+    (1600, 900),
+    (1920, 1080),
+    (2560, 1440),
+    (3200, 1800),
+    (3840, 2160),
+)
+
+
+def _whole_multiples() -> tuple[tuple[int, int], ...]:
+    """The framing at x1, x2, x3: the window sizes integer scaling fills."""
+    return tuple(
+        (round(DEFAULT_FRAMING.width * k), round(DEFAULT_FRAMING.height * k)) for k in (1, 2, 3)
+    )
 
 
 def frame_limit_options(vsync: bool) -> tuple[Option, ...]:

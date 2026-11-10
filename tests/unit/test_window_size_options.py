@@ -172,23 +172,24 @@ def test_the_current_size_is_marked_where_it_is_offered() -> None:
     assert marked[0].value == granted
 
 
-def test_a_floored_rung_says_so() -> None:
-    """A rung the readable minimum changed is described as the size it is.
+def test_the_whole_multiples_of_the_framing_are_offered_when_they_fit() -> None:
+    """The integer fit only fills a window that is a whole multiple of the framing.
 
-    On a usable area of 2480x1344, "a third of the largest" is a rung 448 tall
-    -- below the 480 the interface needs -- so the code raises it and the note
-    has to follow, or the list once again describes a size the window is not
-    going to have. The head of the ladder is exempt: it sits above the floor by
-    construction, so no note on it, and the "half" rung here clears the floor
-    without help on both axes -- which is why they are asserted side by side.
+    So the list offers those sizes where the panel can hold them -- otherwise the
+    integer policy has nothing to be chosen for.
     """
     _, options = _ladder(((2560, 1440), (0, 0, 2560, 1440)))
+    sizes = {option.value for option in options}
 
-    thirds = [option for option in options if option.value == (826, 480)]
-    halves = [option for option in options if option.value == (1240, 672)]
+    assert (2304, 1296) in sizes
 
-    assert halves and "floored" not in halves[0].detail, "the half rung was never floored"
-    assert thirds and "floored at the readable minimum" in thirds[0].detail
+
+def test_a_remembered_size_that_fits_is_choosable() -> None:
+    """A size chosen earlier that this panel can hold is not shown as refused."""
+    _, options = _ladder(((1920, 1080), (0, 32, 1920, 1048)), current=(1000, 700))
+
+    remembered = [option for option in options if option.value == (1000, 700)]
+    assert remembered and remembered[0].enabled
 
 
 def test_choosing_to_follow_the_drag_clears_the_preference() -> None:

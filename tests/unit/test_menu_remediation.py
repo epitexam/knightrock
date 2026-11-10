@@ -10,8 +10,10 @@ import pytest
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
 from src.application.scenes.option_screen import OptionScreen
+from src.application.scenes.video_options import window_size_options
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.letterbox import FitPolicy
+from src.core.display.monitors import Monitor
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuItem, MenuModel
@@ -151,3 +153,10 @@ def test_the_fit_row_reports_the_policy_in_force() -> None:
     fit = next(item for item in scene.model.items if item.action == "fit")
 
     assert fit.value == FitPolicy.INTEGER.value
+
+
+def test_two_sizes_of_the_same_area_sort_without_error() -> None:
+    monitor = Monitor(0, "", (0, 0, 3840, 2160), (0, 0, 3840, 2160))
+    options = window_size_options(monitor, (1500, 1000), (1500, 1000))
+
+    assert options[0].value is None
