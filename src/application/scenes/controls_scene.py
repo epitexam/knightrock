@@ -42,6 +42,7 @@ class RebindSpec:
 
 
 class ControlsScene(Scene):
+    covers_panels_below = True
     MENU_SECTION: str = "menu"
     GAMEPLAY_SECTION: str = "gameplay"
     _key_names: ClassVar[dict[int, str]] = {}

@@ -98,6 +98,7 @@ class OptionScreen(Scene):
     on_back: Callable[[], None] | None = None
     view: MenuView = field(init=False)
     model: MenuModel = field(init=False)
+    covers_panels_below = True
 
     def __init__(
         self,

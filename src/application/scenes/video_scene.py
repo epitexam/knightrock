@@ -61,6 +61,7 @@ FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
 
 
 class VideoScene(Scene):
+    covers_panels_below = True
     TITLE = "VIDEO"
     VALUE_FLASH_SECONDS = 0.5
     FOOTER = "↑↓ row · ←→ change · Esc back"

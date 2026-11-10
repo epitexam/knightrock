@@ -32,6 +32,16 @@ class Scene(ABC):
     ``AttributeError`` on the ones that do not.
     """
 
+    #: Paints every pixel of the target, so nothing below it needs drawing.
+    opaque: bool = False
+    #: A full menu page: the menu panels under it are not drawn, only the
+    #: backdrop (the world, if there is one) under a veil. Without this, a page
+    #: pushed over another menu was drawn over that menu's panel, and the two
+    #: panels -- different widths, different heights -- showed through.
+    covers_panels_below: bool = False
+    #: What a covering page is drawn over: the world, not another menu.
+    is_backdrop: bool = False
+
     def __init__(self, game: Game) -> None:
         self.game = game
 

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 
 class LevelSelectScene(Scene):
+    opaque = True
+    covers_panels_below = True
     TITLE = "SELECT LEVEL"
 
     def __init__(self, game: Game) -> None:

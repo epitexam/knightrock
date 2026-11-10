@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 
 class OptionsScene(Scene):
+    covers_panels_below = True
     TITLE = "OPTIONS"
 
     def __init__(self, game: Game) -> None:

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 class ControlsCategoryScene(Scene):
+    covers_panels_below = True
     TITLE = "CONTROLS"
 
     def __init__(self, game: Game) -> None:

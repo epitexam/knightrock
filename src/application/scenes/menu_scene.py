@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 
 class MenuScene(Scene):
+    opaque = True
     TITLE = "KNIGHTROCK"
     CONFIRM_TITLE = "QUIT?"
     CONFIRM_ITEMS = (MenuItem("no", "No, go back"), MenuItem("yes", "Yes, quit"))

@@ -69,6 +69,9 @@ class GameplayScene(Scene):
     whole set.
     """
 
+    opaque = True
+    is_backdrop = True
+
     def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
         """``level`` allows injecting a Level in tests (no TMX)."""
         super().__init__(game)

@@ -15,6 +15,7 @@ import pygame
 
 from src.application.input_dispatcher import InputDispatcher
 from src.application.scene import Scene
+from src.core.colors import Colors
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -26,6 +27,7 @@ class SceneManager:
     def __init__(self, game: Game) -> None:
         self.game = game
         self._stack: list[Scene] = []
+        self._veil: pygame.Surface | None = None
         self.input_dispatcher = InputDispatcher(game.input_router, game.events)
 
     @property
@@ -111,19 +113,45 @@ class SceneManager:
         if self.current is not None:
             self.current.update(delta_time)
 
-    def draw(self, surface: pygame.Surface) -> None:
-        """Draw the whole stack into the render target.
+    #: The veil a covering menu page is drawn over, on top of the world.
+    VEIL = (8, 10, 14, 190)
 
-        Every scene in the stack is drawn whenever there is more than one: a
-        pause overlay sits on top of a frozen gameplay scene and has to repaint
-        the pixels that scene owns. With no stack there is nothing to draw and
-        the target keeps whatever the previous frame left, which is correct --
-        the loop presents it unchanged.
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the stack into the render target, bottom to top.
+
+        Only what is visible is drawn. Drawing starts at the highest opaque
+        scene, since everything below it is painted over anyway. A menu page
+        that covers the panels below it (Options, Video, a list...) is drawn on
+        its own, over the world if there is one -- under a veil -- or over a
+        plain background otherwise, so two menu panels never overlap.
         """
         if not self._stack:
             return
-        for scene in self._stack:
+        cover = next(
+            (i for i in range(len(self._stack) - 1, -1, -1) if self._stack[i].covers_panels_below),
+            None,
+        )
+        if cover is None:
+            base = next(
+                (i for i in range(len(self._stack) - 1, -1, -1) if self._stack[i].opaque), 0
+            )
+            for scene in self._stack[base:]:
+                scene.draw(surface)
+            return
+        backdrop = next((i for i in range(cover - 1, -1, -1) if self._stack[i].is_backdrop), None)
+        if backdrop is None:
+            surface.fill(Colors.dark_grey)
+        else:
+            self._stack[backdrop].draw(surface)
+            surface.blit(self._veil_for(surface.get_size()), (0, 0))
+        for scene in self._stack[cover:]:
             scene.draw(surface)
+
+    def _veil_for(self, size: tuple[int, int]) -> pygame.Surface:
+        if self._veil is None or self._veil.get_size() != size:
+            self._veil = pygame.Surface(size, pygame.SRCALPHA)
+            self._veil.fill(self.VEIL)
+        return self._veil
 
     def _push(self, scene: Scene) -> None:
         self._stack.append(scene)
