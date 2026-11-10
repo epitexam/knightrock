@@ -27,6 +27,10 @@ from .viewport import Viewport
 
 logger = logging.getLogger(__name__)
 
+#: The letterbox strips: the darkest shade of the menus' background, so a
+#: wide screen reads as a frame around the picture rather than a broken one.
+BAR_COLOR = (10, 11, 15)
+
 
 class Presentation:
     """Puts the picture on the window, and maps the pointer back.
@@ -203,7 +207,7 @@ class Presentation:
         """
         if self._painted != self.rect:
             for bar in self.picture.bars:
-                self.stage.fill((0, 0, 0), bar)
+                self.stage.fill(BAR_COLOR, bar)
             # A copy, not the rect itself: the window being resized must not be
             # able to move the one this comparison is made against.
             self._painted = pygame.Rect(self.rect)

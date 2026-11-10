@@ -26,6 +26,26 @@ DESIGN_SMALL = 12
 DESCRIPTION_LINES = 2
 
 
+#: The panel's outline, darker than its fill.
+FRAME_OUTLINE = (8, 9, 12)
+
+
+def _pixel_frame(width: int, height: int, unit: int) -> pygame.Surface:
+    """A panel of ``width`` x ``height``: fill, outline and rim, corners cut."""
+    frame = pygame.Surface((width, height), pygame.SRCALPHA)
+    frame.fill((0, 0, 0, 0))
+    u = max(1, unit)
+    # The outline: the whole panel less its four corner units.
+    frame.fill(FRAME_OUTLINE, pygame.Rect(u, 0, width - 2 * u, height))
+    frame.fill(FRAME_OUTLINE, pygame.Rect(0, u, width, height - 2 * u))
+    # The rim, one unit in, corners cut the same way.
+    frame.fill(PANEL_BORDER, pygame.Rect(2 * u, u, width - 4 * u, height - 2 * u))
+    frame.fill(PANEL_BORDER, pygame.Rect(u, 2 * u, width - 2 * u, height - 4 * u))
+    # The fill, inside the rim.
+    frame.fill((*PANEL_BG[:3], 240), pygame.Rect(2 * u, 2 * u, width - 4 * u, height - 4 * u))
+    return frame
+
+
 def _decorated(item: MenuItem, selected: bool) -> str:
     """A row's value with what pressing it does: ``›`` opens, ``◀ ▶`` changes.
 
@@ -46,7 +66,7 @@ class MenuView:
         self._item_rects: list[pygame.Rect] = []
         self._fonts: dict[tuple[int, int, int], tuple[pygame.font.Font, ...]] = {}
         self._panel_cache: pygame.Surface | None = None
-        self._panel_cache_size: tuple[int, int] = (0, 0)
+        self._panel_cache_size: tuple[int, ...] = (0, 0)
         self._surface_size: tuple[int, int] = (0, 0)
         # The scroll rail's geometry from the last draw, or None when
         # the list fit and nothing scrolls. Kept rather than painted
@@ -338,9 +358,7 @@ class MenuView:
         panel_y = min(
             top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin)
         )
-        panel = self._panel_for(panel_width, panel_height)
-        panel.fill((*PANEL_BG[:3], 230))
-        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), metrics.border)
+        panel = self._panel_for(panel_width, panel_height, max(1, item_font.get_height() // 8))
         surface.blit(panel, (panel_x, panel_y))
         # Centred, like the grid's title and the HUD's: a left-aligned title
         # above a right-aligned value column reads as two unrelated screens.
@@ -681,11 +699,17 @@ class MenuView:
         self._scroll_rail = rail
         self._scroll_thumb = thumb
 
-    def _panel_for(self, width: int, height: int) -> pygame.Surface:
-        """Reuse the panel surface instead of allocating one per frame."""
-        if self._panel_cache is None or self._panel_cache_size != (width, height):
-            self._panel_cache = pygame.Surface((width, height), pygame.SRCALPHA)
-            self._panel_cache_size = (width, height)
+    def _panel_for(self, width: int, height: int, unit: int = 1) -> pygame.Surface:
+        """The panel, painted once per size: a pixel-art frame on the font's grid.
+
+        ``unit`` is one pixel of the font's grid, so the frame's lines are as
+        thick as a stroke of a letter: corners cut by one unit, a dark outline,
+        and a light rim just inside it. Reused until the size changes.
+        """
+        key = (width, height, unit)
+        if self._panel_cache is None or self._panel_cache_size != key:
+            self._panel_cache = _pixel_frame(width, height, unit)
+            self._panel_cache_size = key
         return self._panel_cache
 
     @staticmethod

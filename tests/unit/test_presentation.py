@@ -26,7 +26,7 @@ from src.application.settings_store import UI_SCALES  # noqa: E402
 from src.core.display.framing import Framing  # noqa: E402
 from src.core.display.letterbox import density_for, picture  # noqa: E402
 from src.core.display.monitors import MIN_WINDOW  # noqa: E402
-from src.core.display.presentation import Presentation  # noqa: E402
+from src.core.display.presentation import BAR_COLOR, Presentation  # noqa: E402
 from src.ui.scale import MIN_UI_SCALE, checked_ui_scale  # noqa: E402
 
 FRAMING = Framing(1152.0, 648.0)
@@ -176,7 +176,7 @@ def test_present_writes_the_viewport_and_flips() -> None:
     assert pixel[:3] == (10, 20, 30)
 
 
-def test_the_bars_are_black_and_the_stale_frame_does_not_survive_a_resize() -> None:
+def test_the_bars_are_painted_and_the_stale_frame_does_not_survive_a_resize() -> None:
     """After a shrink, the old image must not linger in the new bars."""
     stage = FakeStage((2560, 1440))
     presentation: Any = Presentation(stage.surface, FRAMING)
@@ -190,7 +190,7 @@ def test_the_bars_are_black_and_the_stale_frame_does_not_survive_a_resize() -> N
 
     for bar in presentation.bars:
         assert bar.width > 0 and bar.height > 0
-        assert stage.surface.get_at((bar.centerx, bar.centery))[:3] == (0, 0, 0)
+        assert stage.surface.get_at((bar.centerx, bar.centery))[:3] == BAR_COLOR
 
 
 @pytest.mark.parametrize("window", WINDOWS)
@@ -292,7 +292,7 @@ def test_the_bars_are_repainted_when_the_rect_moves_but_its_size_does_not() -> N
     assert presentation.rect.size == (1920, 1080), "the fitted size is what must not change"
     assert presentation.rect.y > 0, "a taller window slides the picture down"
     assert presentation.bars, "a taller window has strips"
-    assert grown.get_at((960, 1))[:3] == (0, 0, 0), (
+    assert grown.get_at((960, 1))[:3] == BAR_COLOR, (
         "the strip kept the frame the window had before the drag"
     )
     assert grown.get_at((960, presentation.rect.centery))[:3] == (200, 100, 50), (
