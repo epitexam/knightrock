@@ -554,6 +554,23 @@ def test_a_snap_is_a_drag_and_forgets_the_chosen_size_the_same_way(
     )
 
 
+def test_the_window_manager_settling_a_new_window_is_not_a_drag(tmp_path: Path) -> None:
+    """A size change right after a rebuild is the window manager, not the player.
+
+    A tiling or clamping window manager resizes the window *after* ``set_mode``
+    returns. Read as a drag, it cleared the size the player had just picked.
+    """
+    game = _game_in_a_window(tmp_path, window_size=(1400, 900))
+    game._resize_grace_until = float("inf")
+    window = game.presentation.stage
+    assert isinstance(window, FakeWindow)
+    window.resize((1380, 870))
+    game.step()
+
+    assert game.settings.window_size == (1400, 900)
+    assert game.presentation.window_size == (1380, 870), "the picture still follows the window"
+
+
 def test_the_own_resize_of_a_rebuild_is_not_read_as_a_drag(tmp_path: Path) -> None:
     """The window the game just built is not the player moving it.
 
@@ -994,10 +1011,15 @@ def frames(game: Game, count: int = 2) -> None:
 
 
 def _resize(game: Game, size: tuple[int, int]) -> None:
-    """The window changed size, by whatever gesture -- and no event is posted."""
+    """The player changed the window's size, by whatever gesture -- and no event is posted.
+
+    Long after the window was built: the grace period in which a size change is
+    the window manager settling the window is over.
+    """
     assert game.presentation is not None
     window = game.presentation.stage
     assert isinstance(window, FakeWindow), "this test drives a window it can resize"
+    game._resize_grace_until = 0.0
     window.resize(size)
 
 

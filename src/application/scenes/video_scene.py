@@ -537,7 +537,13 @@ class VideoScene(Scene):
 
     def _apply(self, settings: UserSettings) -> None:
         selected_action = self.model.current_item.action if self.model.current_item else None
-        self.game.apply_settings(settings)
+        try:
+            self.game.apply_settings(settings)
+        except pygame.error as error:
+            # The platform refused the window. ``apply_settings`` rolled back, so
+            # the game is still in the state it was in: say so rather than crash.
+            logger.warning("The display refused the new settings: %s", error)
+            self.game.notice("The display refused that setting.", "Nothing was changed.")
         self._rebuild(selected_action)
         self._signature = self._current_signature()
         self._flash_value_change()

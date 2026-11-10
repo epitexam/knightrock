@@ -87,6 +87,8 @@ class Game:
         #: The size the window was last built at, so SDL's own announcement of
         #: it can be told from a drag. See :meth:`_forget_the_window_preference`.
         self._built_window_size: tuple[int, int] | None = None
+        #: Until when a size change is the window manager's, not a drag.
+        self._resize_grace_until = 0.0
         self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
@@ -266,6 +268,10 @@ class Game:
         window = self.presentation.window_size if self.presentation is not None else self.stage.size
         if window == self._built_window_size:
             return  # The window the game just built, not a drag.
+        if perf_counter() < self._resize_grace_until:
+            # The window manager settling the window the game just asked for
+            # (a tiling WM, a clamp, a late "forced" resize), not the player.
+            return
         if self.settings.window_size is None:
             return  # Already following the window: nothing to forget.
         logger.info("The window moved to %s; the stored window size no longer applies", window)
@@ -378,6 +384,7 @@ class Game:
         """
         self.stage = Stage(self._window_spec(), self.monitor())
         self._built_window_size = self.stage.size
+        self._resize_grace_until = perf_counter() + self.RESIZE_GRACE_SECONDS
         # The window exists, so the picture can be drawn at its size: the target
         # is the window's fitted rectangle and the density is read back off it.
         self.presentation = Presentation(
@@ -423,6 +430,7 @@ class Game:
         assert self.presentation is not None
         self.stage.rebuild(self._window_spec(), self.monitor())
         self._built_window_size = self.stage.size
+        self._resize_grace_until = perf_counter() + self.RESIZE_GRACE_SECONDS
         self.presentation.retarget(self.stage.surface)
         self._invalidate_assets()
         self.scene_manager.set_surface(self.presentation.surface)
@@ -436,9 +444,8 @@ class Game:
         menu's VSync row reads this rather than the primary display's rate, which
         is what made it report 60Hz while the window sat on a 180Hz panel.
 
-        The top-left corner is what decides it: a window may legitimately be
-        larger than the panel, and ``nearest`` gives the closest panel when the
-        corner falls in a gap between two of them.
+        The window's centre decides it, and ``nearest`` gives the closest panel
+        when the centre falls in a gap between two of them.
 
         ``None`` where the desktop has no readable geometry at all -- a degraded
         topology knows sizes and no origins, so there is nothing to be honest
@@ -446,13 +453,16 @@ class Game:
         wrong one.
         """
         try:
-            position = tuple(pygame.display.get_window_position())
+            x, y = pygame.display.get_window_position()
         except pygame.error:
             return None
         topology = self.topology()
         if not topology.has_geometry:
             return None
-        return topology.nearest(position)  # type: ignore[arg-type]
+        # The window's centre, not its corner: a window mostly on one panel
+        # whose corner pokes onto the next one is on the first.
+        width, height = self.presentation.window_size if self.presentation is not None else (0, 0)
+        return topology.nearest((int(x) + width // 2, int(y) + height // 2))
 
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change actually touches.
@@ -490,6 +500,7 @@ class Game:
         # change and a sharpness change applied together left the presentation
         # snapping to whole pixels with the setting saying otherwise, which the
         # acceptance run caught and nothing else did.
+        previous_fit = self.presentation.fit
         self.presentation.fit = self.effective_fit()
         try:
             if self._window_signature(previous) != self._window_signature(settings):
@@ -499,6 +510,7 @@ class Game:
             self.scene_manager.set_ui_scale(self.ui_scale)
         except Exception:
             self.settings = previous
+            self.presentation.fit = previous_fit
             self.input_bindings = previous.bindings
             self.input_router.set_bindings(previous.bindings)
             self.input_provider.set_bindings(previous.bindings)
@@ -605,6 +617,10 @@ class Game:
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
 
+    #: How long after the game builds its window a size change is still taken
+    #: for the window manager adjusting it rather than the player dragging it.
+    RESIZE_GRACE_SECONDS = 1.0
+
     #: Seconds between two display-list reads. Long enough that the poll is not
     #: a per-frame cost (a read is ~0.005ms but is not free), short enough that
     #: unplugging a screen is noticed while the player is still looking at it.
@@ -636,14 +652,17 @@ class Game:
         if current == self._topology:
             return
 
+        # Asked of the old topology: the panel the window was on before the change.
+        held = self.window_monitor() or self.stage.monitor
+        previous_count = len(self._topology.monitors) if self._topology is not None else 0
         self._topology = current
-        if self.stage.monitor.index not in current.indices:
-            logger.info(
-                "Display %d is gone; moving the window to the primary", self.stage.monitor.index
-            )
+        if not any(_same_panel(held, monitor) for monitor in current.monitors):
+            logger.info("Display %r is gone; moving the window to the primary", held.name)
             self.notice("That screen is no longer connected.", "The game moved to the main one.")
             self._rebuild_display()
-        else:
+        elif len(current.monitors) != previous_count:
+            # Only a screen arriving or leaving is news. A taskbar or a refresh
+            # rate changing also changes the topology, and says nothing.
             self.notice(
                 f"{len(current.monitors)} screen(s) connected.",
                 "The window stays where it is.",
@@ -1019,6 +1038,11 @@ class Game:
             target.blit(font.render(message, True, (255, 0, 0)), (10, 10))
             return
         self.ui.renderer.draw_panel(10, 10, [message], title="FATAL ERROR")
+
+
+def _same_panel(a: Monitor, b: Monitor) -> bool:
+    """Whether two reports describe the same panel. SDL renumbers on a hotplug."""
+    return a.name == b.name and a.bounds == b.bounds
 
 
 def _elapsed_ms(started: float) -> float:
