@@ -137,7 +137,7 @@ class UserSettings:
     #: How the picture meets the window: bars, whole-pixel blocks, or zoom to
     #: fill with the overflow cropped. All three show *at most* the framing, so
     #: none of them can turn a video setting into a gameplay advantage.
-    fit: FitPolicy = FitPolicy.BARS
+    fit: FitPolicy = FitPolicy.AUTO
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0

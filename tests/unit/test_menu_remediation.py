@@ -177,3 +177,28 @@ def test_every_video_row_is_declared_once() -> None:
 
     assert len(actions) == len(set(actions))
     assert set(VideoScene.SUBMENUS) <= set(actions)
+
+
+def test_auto_takes_whole_pixels_when_they_keep_most_of_the_picture() -> None:
+    from src.core.display.letterbox import picture
+
+    # 2400x1350 holds a 2x picture (2304x1296): 92% of the bars picture, exact pixels.
+    auto = picture((2400, 1350), policy=FitPolicy.AUTO)
+    assert auto.dest.size == picture((2400, 1350), policy=FitPolicy.INTEGER).dest.size
+
+
+def test_auto_takes_bars_when_whole_pixels_would_leave_a_small_box() -> None:
+    from src.core.display.letterbox import picture
+
+    # 2200x1238 only holds 1x (1152x648): a quarter of the window.
+    auto = picture((2200, 1238), policy=FitPolicy.AUTO)
+    assert auto.dest.size == picture((2200, 1238), policy=FitPolicy.BARS).dest.size
+
+
+def test_auto_is_the_default_and_an_old_whole_pixel_flag_still_wins() -> None:
+    from src.application.settings_store import UserSettings
+    from src.core.display.letterbox import effective_fit
+
+    assert UserSettings().fit is FitPolicy.AUTO
+    assert effective_fit(FitPolicy.AUTO, pixel_perfect=True) is FitPolicy.INTEGER
+    assert effective_fit(FitPolicy.ZOOM, pixel_perfect=True) is FitPolicy.ZOOM

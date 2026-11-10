@@ -70,6 +70,14 @@ class FitPolicy(StrEnum):
     BARS = "bars"
     INTEGER = "integer"
     ZOOM = "zoom"
+    #: Whole pixels when they cost little, bars otherwise. See :func:`picture`.
+    AUTO = "auto"
+
+
+#: How much of the bars picture a whole-pixel picture must keep for ``AUTO`` to
+#: take it. Below this the whole-pixel picture is a small box in a big frame,
+#: and uneven pixels on a picture that fills the window are the better trade.
+AUTO_MIN_COVERAGE = 0.85
 
 
 class Picture:
@@ -150,7 +158,26 @@ def picture(
         return Picture(rect, pygame.Rect(0, 0, 1, 1), rect, (1, 1))
     if chosen is FitPolicy.ZOOM:
         return _zoom(window, framing)
+    if chosen is FitPolicy.AUTO:
+        return _auto(window, framing)
     return _fit_inside(window, framing, chosen is FitPolicy.INTEGER)
+
+
+def _auto(window: tuple[int, int], framing: Framing) -> Picture:
+    """Whole pixels if they keep most of the picture, bars otherwise.
+
+    The game draws at the window's own density, so under bars a world unit is
+    some fraction of pixels and the art's pixels come out of uneven sizes -- on
+    a 13-colour tileset that shows. A whole multiple of the framing is exact,
+    but it can be much smaller than the window. This takes it when it keeps at
+    least :data:`AUTO_MIN_COVERAGE` of the bars picture's area.
+    """
+    bars = _fit_inside(window, framing, whole_multiples=False)
+    if not fits_whole_pixel(window, framing):
+        return bars
+    whole = _fit_inside(window, framing, whole_multiples=True)
+    kept = (whole.dest.width * whole.dest.height) / max(1, bars.dest.width * bars.dest.height)
+    return whole if kept >= AUTO_MIN_COVERAGE else bars
 
 
 def _fit_inside(window: tuple[int, int], framing: Framing, whole_multiples: bool) -> Picture:
@@ -255,9 +282,8 @@ def effective_fit(fit: FitPolicy, pixel_perfect: bool) -> FitPolicy:
     the two stored names can be handed to a test stand-in as-is, so the stand-in
     follows the same rule the runtime does.
     """
-    if fit is not FitPolicy.BARS and pixel_perfect:
-        return fit
-    if pixel_perfect:
+    if pixel_perfect and fit in (FitPolicy.BARS, FitPolicy.AUTO):
+        # BARS was the default before AUTO was; both mean "never chosen".
         return FitPolicy.INTEGER
     return fit
 

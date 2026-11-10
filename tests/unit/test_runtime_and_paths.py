@@ -797,7 +797,7 @@ def test_the_game_and_the_settings_agree_about_the_fit_in_force(
     # The v3 migration shape, written the way the reader writes it: flag on,
     # policy untouched.
     game.settings = game.settings.with_video(pixel_perfect=True)
-    assert game.settings.fit is FitPolicy.BARS, "the file's policy is the default"
+    assert game.settings.fit is UserSettings().fit, "the file's policy is the default"
     assert game.effective_fit() is FitPolicy.INTEGER, "and the flag promotes it"
 
     # A player who chose a policy keeps it, flag or no flag -- and only zoom and

@@ -56,11 +56,6 @@ if TYPE_CHECKING:
 #: would force every caller to cast what it just built.
 Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 
-#: The fit policies, in the order the row steps through them. Bars first because
-#: it is the only one that is never surprising, and zoom last because it is the
-#: one that costs the player some of the picture.
-FIT_POLICIES = (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM)
-
 
 @dataclass(frozen=True)
 class Row:

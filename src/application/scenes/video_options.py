@@ -30,6 +30,7 @@ from src.core.display.monitors import (
 )
 
 _FIT_NOTES: dict[FitPolicy, str] = {
+    FitPolicy.AUTO: "sharp pixels when the bars stay small, black bars otherwise",
     FitPolicy.BARS: "shows the whole picture; black bars on the sides",
     FitPolicy.INTEGER: "sharpest: every art pixel is an exact square block",
     FitPolicy.ZOOM: "fills the window, cropping the edges of the picture",
@@ -79,7 +80,7 @@ def fit_options(window: tuple[int, int]) -> tuple[Option, ...]:
     that quietly does nothing.
     """
     options = []
-    for policy in (FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM):
+    for policy in (FitPolicy.AUTO, FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM):
         note = _FIT_NOTES[policy]
         enabled = True
         if policy is FitPolicy.INTEGER:
