@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pygame
+import pytest
 
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.option_screen import OptionScreen
@@ -399,6 +400,8 @@ def test_every_video_row_reports_its_value_in_its_own_column() -> None:
     scene = VideoScene(_game())
 
     for item in scene.model.items:
+        if item.kind == "header":
+            continue  # A section heading is a title, not a setting.
         if item.action in ("reset", "back"):
             assert item.value == ""
         else:
@@ -608,7 +611,7 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
     assert "Press a key…" not in keyboard
 
 
-def test_the_window_row_only_reports_and_opens_nothing() -> None:
+def test_the_window_row_only_reports_and_opens_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     """The read-out line is inert, and the rows that do open lists are the others.
 
     The window's size is a *choice* now and it lives on its own row with a list
@@ -619,6 +622,8 @@ def test_the_window_row_only_reports_and_opens_nothing() -> None:
 
     What this pins is that the report stays inert while the lists exist.
     """
+    # The read-out is a diagnostic, shown with the debug overlay on.
+    monkeypatch.setenv("DEBUG", "1")
     pushed: list[object] = []
     game = _game()
     game.scene_manager.push = pushed.append

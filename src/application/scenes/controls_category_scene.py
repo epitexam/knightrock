@@ -7,21 +7,22 @@ from typing import TYPE_CHECKING
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.menu_page import MenuPage
 from src.ui.menu_model import MenuItem
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
 
 
 class ControlsCategoryScene(MenuPage):
-    TITLE = "CONTROLS"
+    TITLE = t("title.controls")
 
     def __init__(self, game: Game) -> None:
         super().__init__(
             game,
             (
-                MenuItem("menu", "Menu controls", kind="page"),
-                MenuItem("gameplay", "Gameplay controls", kind="page"),
-                MenuItem("back", "Back"),
+                MenuItem("menu", t("row.menu_controls"), kind="page"),
+                MenuItem("gameplay", t("row.gameplay_controls"), kind="page"),
+                MenuItem("back", t("row.back")),
             ),
         )
 

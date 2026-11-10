@@ -9,13 +9,14 @@ from src.application.scenes.menu_scene import MenuScene
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem
 from src.ui.styles import TEXT_WARN
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
 
 
 class PauseScene(MenuPage):
-    TITLE = "PAUSE"
+    TITLE = t("title.pause")
     TITLE_COLOR = TEXT_WARN
     #: The world stops; see ``Scene.halts_simulation`` for why saying so
     #: is not the same as simply not updating. The world stays visible under
@@ -26,9 +27,9 @@ class PauseScene(MenuPage):
         super().__init__(
             game,
             (
-                MenuItem("resume", "Resume"),
-                MenuItem("options", "Options", kind="page"),
-                MenuItem("menu", "Back to menu"),
+                MenuItem("resume", t("row.resume")),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("menu", t("row.to_menu")),
             ),
         )
         self.level_id = level_id

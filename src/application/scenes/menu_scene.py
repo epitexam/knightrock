@@ -11,6 +11,7 @@ from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -20,9 +21,9 @@ class MenuScene(MenuPage):
     opaque = True
     covers_panels_below = False
     BACKGROUND = Colors.dark_grey
-    TITLE = "KNIGHTROCK"
-    CONFIRM_TITLE = "QUIT?"
-    CONFIRM_ITEMS = (MenuItem("no", "No, go back"), MenuItem("yes", "Yes, quit"))
+    TITLE = t("title.game")
+    CONFIRM_TITLE = t("title.quit")
+    CONFIRM_ITEMS = (MenuItem("no", t("row.quit_no")), MenuItem("yes", t("row.quit_yes")))
 
     def __init__(self, game: Game) -> None:
         save = game.save_game
@@ -31,11 +32,11 @@ class MenuScene(MenuPage):
         self.options: tuple[str, ...]
         if has_progress:
             items = (
-                MenuItem("continue", f"Continue (level {save.last_level_id})"),
-                MenuItem("new_game", "New game"),
-                MenuItem("levels", "Level select", kind="page"),
-                MenuItem("options", "Options", kind="page"),
-                MenuItem("quit", "Quit"),
+                MenuItem("continue", t("row.continue", level=save.last_level_id)),
+                MenuItem("new_game", t("row.new_game")),
+                MenuItem("levels", t("row.levels"), kind="page"),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("quit", t("row.quit")),
             )
             self.options = (
                 f"ENTER: continue (level {save.last_level_id})",
@@ -46,10 +47,10 @@ class MenuScene(MenuPage):
             )
         else:
             items = (
-                MenuItem("play", "Play"),
-                MenuItem("levels", "Level select", kind="page"),
-                MenuItem("options", "Options", kind="page"),
-                MenuItem("quit", "Quit"),
+                MenuItem("play", t("row.play")),
+                MenuItem("levels", t("row.levels"), kind="page"),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("quit", t("row.quit")),
             )
             self.options = ("ENTER: play", "ESC: quit")
         super().__init__(game, items)

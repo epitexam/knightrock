@@ -143,19 +143,25 @@ def test_video_menu_owns_every_display_setting() -> None:
     miss either way -- where the window sits is the window manager's business.
     """
     expected = [
+        "section:window",
         "size",
         "fullscreen",
+        "section:picture",
         "fit",
+        "section:performance",
         "vsync",
         "frame_limit",
+        "section:interface",
         "scale",
     ]
-    # The debug row is conditional on the overlay being on, and this file is run
-    # both with and without DEBUG=1 -- so it is placed by where it belongs in the
-    # order rather than asserted absent, which would fail the debug run outright.
+    # The debug rows are conditional on the overlay being on, and this file is run
+    # both with and without DEBUG=1 -- so they are placed by where they belong in
+    # the order rather than asserted absent, which would fail the debug run.
     if Debug.is_enabled():
         expected.append("panel_scale")
-    expected += ["reset", "back", "info"]
+    expected += ["reset", "back"]
+    if Debug.is_enabled():
+        expected.append("info")
 
     assert _actions(VideoScene(_game())) == expected
 

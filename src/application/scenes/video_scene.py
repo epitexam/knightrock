@@ -40,6 +40,7 @@ from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug
 from src.ui.menu_model import MenuAction, MenuItem
+from src.ui.text import t
 
 logger = logging.getLogger(__name__)
 
@@ -78,25 +79,45 @@ class Row:
     run: Callable[[VideoScene], None] | None = None
     #: A read-out: shown, never focused.
     readout: bool = False
+    #: A section heading: shown, never focused.
+    header: bool = False
     #: Only shown with ``DEBUG`` on.
     debug_only: bool = False
+    #: The line shown under the list while the row is focused.
+    note: Callable[[VideoScene], str] | None = None
 
     def __post_init__(self) -> None:
         jobs = sum(
-            (self.submenu is not None, self.toggle is not None, self.run is not None, self.readout)
+            (
+                self.submenu is not None,
+                self.toggle is not None,
+                self.run is not None,
+                self.readout,
+                self.header,
+            )
         )
         if jobs > 1 or (jobs == 0 and self.action != "back"):
             raise ValueError(f"The {self.action!r} row must do exactly one thing")
 
 
+def _kind(row: Row) -> str:
+    """What the view says a press on ``row`` does."""
+    if row.header:
+        return "header"
+    if row.submenu is not None:
+        return "list"
+    if row.toggle is not None:
+        return "toggle"
+    return ""
+
+
 class VideoScene(MenuPage):
     scrollable = True
-    TITLE = "VIDEO"
+    TITLE = t("title.video")
     VALUE_FLASH_SECONDS = 0.5
-    FOOTER = "↑↓ row · ←→ change · Esc back"
-    #: Where a list row goes when it is opened, and what it says on the way out.
-    #: The picker draws its own footer, so it does not inherit this one.
-    SUBMENU_FOOTER = "↑↓ row · Enter select · Esc back"
+    FOOTER = "footer.values"
+    #: The help line of the lists this screen opens.
+    SUBMENU_FOOTER = "footer.page"
 
     def __init__(self, game: Game) -> None:
         super().__init__(game)
@@ -134,10 +155,10 @@ class VideoScene(MenuPage):
         items = tuple(
             MenuItem(
                 row.action,
-                row.label,
+                t(row.label),
                 row.value(self) if row.value is not None else "",
-                enabled=not row.readout,
-                kind="list" if row.submenu else "toggle" if row.toggle else "",
+                enabled=not (row.readout or row.header),
+                kind=_kind(row),
             )
             for row in self.ROWS
             if not row.debug_only or Debug.is_enabled()
@@ -150,29 +171,39 @@ class VideoScene(MenuPage):
     def _row(self, action: str) -> Row | None:
         return next((row for row in self.ROWS if row.action == action), None)
 
+    def description(self) -> str:
+        """The focused row's note, in the player's words."""
+        current = self.model.current_item
+        row = self._row(current.action) if current is not None else None
+        return row.note(self) if row is not None and row.note is not None else ""
+
+    def _on_off(self, value: bool) -> str:
+        return t("value.on") if value else t("value.off")
+
     def _fullscreen_label(self) -> str:
-        return "on · Alt+Enter" if self.game.settings.fullscreen else "off · Alt+Enter"
+        return self._on_off(self.game.settings.fullscreen)
 
     def _ui_scale_label(self) -> str:
         return f"{self.game.settings.ui_scale:.1f}x"
+
+    def _ui_scale_note(self) -> str:
+        density = 1.0 if self.game.presentation is None else self.game.presentation.density
+        return t("note.ui_scale", effective=self.game.settings.ui_scale * density)
 
     def _panel_scale_label(self) -> str:
         return f"{self.game.settings.panel_scale:g}x"
 
     def _fit_label(self) -> str:
         """The policy the game draws with, which is not always the stored one."""
-        return self.game.effective_fit().value
+        return t(f"fit.{self.game.effective_fit().value}")
+
+    def _fit_note(self) -> str:
+        return t(f"fit.note.{self.game.effective_fit().value}")
 
     def _size_label(self) -> str:
-        """The size the window has right now.
-
-        The size the window *actually has*, not the one remembered for next
-        launch -- those differ after the player drags it, and a row reporting the
-        remembered value while the window is another size is the lie this menu
-        used to tell about a resolution.
-        """
-        granted = self._window_size()
-        return f"{granted[0]} x {granted[1]}"
+        """The size the window has right now, not the one remembered for next launch."""
+        width, height = self._window_size()
+        return t("value.size", width=width, height=height)
 
     def _window_size(self) -> tuple[int, int]:
         """The window the picture is actually in.
@@ -216,47 +247,29 @@ class VideoScene(MenuPage):
         return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
 
     def _vsync_label(self) -> str:
-        """What the row reports about vertical synchronisation: a *request*.
+        """On or off. Whether the driver honoured it is in the note: a request."""
+        return self._on_off(self.game.settings.vsync)
 
-        The game can pass the flag and can recreate the window for it, and it
-        cannot find out whether the driver honoured it. pygame-ce's
-        ``is_vsync()`` looks like that check and is not one: it returns the flag
-        the game itself passed to ``set_mode`` -- measured, it answers ``True``
-        under the dummy driver where no swap interval can exist, and ``True``
-        under X11 without any context to query. Reading the driver's opinion
-        would need ``SDL_GL_GetSwapInterval`` through ``ctypes`` against a
-        context pygame does not expose as its own, which is the fragile
-        half-answer the probe module exists to avoid.
+    def _vsync_note(self) -> str:
+        """What VSync does here, and of which screen's rate.
 
-        So the label qualifies the request instead of claiming an effect, and
-        the honest headline is ``on · requested`` rather than ``on``: the player
-        reads that the flag was sent, and that the rate they get is the panel's
-        -- which is also the one shown here, for the panel the window is on.
-        A row that read ``off`` after an ``on`` press was one of the two dead
-        rows this screen produced; a row that claims an honoured vsync the
-        driver dropped is a lie in the other direction.
+        The game sends the flag and cannot ask the driver whether it was
+        honoured -- pygame-ce's ``is_vsync()`` returns the flag it was given -- so
+        the note says "requested", never "on" as a fact. The rate is the screen
+        the window is on, and is left out when nobody can say which one that is.
         """
+        if not self.game.settings.vsync:
+            return t("note.vsync.off")
         rate = self._screen_refresh_rate()
-        suffix = f" {rate} Hz screen" if rate else ""
-        if self.game.settings.vsync:
-            return f"on · requested{suffix}"
-        return f"off{suffix}"
+        return t("note.vsync.on", rate=rate) if rate else t("note.vsync.on.unknown")
 
     def _frame_limit_label(self) -> str:
-        """The frame limit, with the one condition it is subject to made visible.
-
-        The limit is what the clock paces to, and the clock only paces when
-        vsync is not already doing it: :meth:`Game._frame_delta` ticks against
-        a ceiling no menu value can bite, precisely so a working present is the
-        only pacer. With vsync on, then, every ladder value is ignored -- and a
-        row reading ``60`` with ``on · requested`` above it is a row that reads
-        as two working settings when one is inert. Saying it is cheap.
-        """
         limit = self.game.settings.frame_limit
-        label = "Uncapped" if limit is None else str(limit)
-        if self.game.settings.vsync:
-            label += " · ignored (VSync)"
-        return label
+        return t("value.uncapped") if limit is None else str(limit)
+
+    def _frame_limit_note(self) -> str:
+        """The limit is inert under VSync: the present paces, and the row says so."""
+        return t("note.frame_limit.vsync" if self.game.settings.vsync else "note.frame_limit")
 
     def _screen_refresh_rate(self) -> int:
         """The refresh rate of the screen the window is *on*, or 0 when nobody can say.
@@ -330,7 +343,7 @@ class VideoScene(MenuPage):
 
     def _submenu_fit(self) -> Submenu:
         return (
-            "PICTURE FIT",
+            t("title.fit"),
             video_options.fit_options(self._window_size()),
             self.game.effective_fit(),
             self._apply_fit,
@@ -360,7 +373,7 @@ class VideoScene(MenuPage):
         """
         monitor = self.game.monitor()
         return (
-            "WINDOW SIZE",
+            t("title.window_size"),
             video_options.window_size_options(
                 monitor, self.game.settings.window_size, self._window_size()
             ),
@@ -380,7 +393,7 @@ class VideoScene(MenuPage):
 
     def _submenu_frame_limit(self) -> Submenu:
         return (
-            "FRAME LIMIT",
+            t("title.frame_limit"),
             video_options.frame_limit_options(self.game.settings.vsync),
             self.game.settings.frame_limit,
             lambda value: self._apply(self.game.settings.with_video(frame_limit=value)),
@@ -389,7 +402,7 @@ class VideoScene(MenuPage):
     def _submenu_scale(self) -> Submenu:
         density = 1.0 if self.game.presentation is None else self.game.presentation.density
         return (
-            "UI SCALE",
+            t("title.ui_scale"),
             video_options.ui_scale_options(self.game.settings.ui_scale, density),
             self.game.settings.ui_scale,
             lambda value: self._apply(self.game.settings.with_video(ui_scale=value)),
@@ -397,7 +410,7 @@ class VideoScene(MenuPage):
 
     def _submenu_panel_scale(self) -> Submenu:
         return (
-            "DEBUG PANEL SCALE",
+            t("title.panel_scale"),
             video_options.panel_scale_options(),
             self.game.settings.panel_scale,
             lambda value: self._apply(self.game.settings.with_video(panel_scale=value)),
@@ -523,23 +536,54 @@ class VideoScene(MenuPage):
 
     #: Every row on this screen, in order. The single place a row is declared.
     ROWS: tuple[Row, ...] = (
-        Row("size", "Window size", _size_label, submenu=_submenu_size),
-        Row("fullscreen", "Fullscreen", _fullscreen_label, toggle="fullscreen"),
-        Row("fit", "Picture fit", _fit_label, submenu=_submenu_fit),
-        Row("vsync", "VSync", _vsync_label, toggle="vsync"),
-        Row("frame_limit", "Frame limit", _frame_limit_label, submenu=_submenu_frame_limit),
-        Row("scale", "UI scale", _ui_scale_label, submenu=_submenu_scale),
+        Row("section:window", "section.window", header=True),
+        Row(
+            "size",
+            "video.size",
+            _size_label,
+            submenu=_submenu_size,
+            note=lambda scene: t("note.size"),
+        ),
+        Row(
+            "fullscreen",
+            "video.fullscreen",
+            _fullscreen_label,
+            toggle="fullscreen",
+            note=lambda scene: t("note.fullscreen"),
+        ),
+        Row("section:picture", "section.picture", header=True),
+        Row("fit", "video.fit", _fit_label, submenu=_submenu_fit, note=_fit_note),
+        Row("section:performance", "section.performance", header=True),
+        Row("vsync", "video.vsync", _vsync_label, toggle="vsync", note=_vsync_note),
+        Row(
+            "frame_limit",
+            "video.frame_limit",
+            _frame_limit_label,
+            submenu=_submenu_frame_limit,
+            note=_frame_limit_note,
+        ),
+        Row("section:interface", "section.interface", header=True),
+        Row(
+            "scale", "video.ui_scale", _ui_scale_label, submenu=_submenu_scale, note=_ui_scale_note
+        ),
         Row(
             "panel_scale",
-            "Debug panel scale",
+            "video.panel_scale",
             _panel_scale_label,
             submenu=_submenu_panel_scale,
             # No overlay without DEBUG, so nothing to size.
             debug_only=True,
         ),
-        Row("reset", "Reset video settings", run=_reset),
-        Row("back", "Back"),
-        Row("info", "Window", _window_label, readout=True),
+        Row("reset", "video.reset", run=_reset, note=lambda scene: t("note.reset")),
+        Row("back", "row.back"),
+        # A diagnostic, in the debug overlay's terms: the target, its density, bars.
+        Row(
+            "info",
+            "video.readout",
+            _window_label,
+            readout=True,
+            debug_only=True,
+        ),
     )
     #: The rows that open a list, and the rows that toggle, read off the table.
     SUBMENUS = tuple(row.action for row in ROWS if row.submenu is not None)

@@ -17,21 +17,22 @@ from typing import TYPE_CHECKING
 
 from src.application.scenes.menu_page import MenuPage
 from src.ui.menu_model import MenuItem
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
 
 
 class OptionsScene(MenuPage):
-    TITLE = "OPTIONS"
+    TITLE = t("title.options")
 
     def __init__(self, game: Game) -> None:
         super().__init__(
             game,
             (
-                MenuItem("video", "Video settings", kind="page"),
-                MenuItem("controls", "Controls", kind="page"),
-                MenuItem("back", "Back"),
+                MenuItem("video", t("row.video"), kind="page"),
+                MenuItem("controls", t("row.controls"), kind="page"),
+                MenuItem("back", t("row.back")),
             ),
         )
 

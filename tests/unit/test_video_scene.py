@@ -38,6 +38,7 @@ from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.monitors import Monitor, Topology
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
+from src.ui.text import t
 
 #: Rows that do something of their own rather than cycling a value.
 ACTION_ROWS = frozenset({"reset", "back"})
@@ -288,7 +289,14 @@ def test_every_row_does_something() -> None:
     be in one of them.
     """
     scene = _drawn()
-    reachable = set(VideoScene.CYCLING_ROWS) | set(VideoScene.SUBMENUS) | ACTION_ROWS | REPORT_ROWS
+    headers = {row.action for row in VideoScene.ROWS if row.header}
+    reachable = (
+        set(VideoScene.CYCLING_ROWS)
+        | set(VideoScene.SUBMENUS)
+        | ACTION_ROWS
+        | REPORT_ROWS
+        | headers
+    )
 
     assert {item.action for item in scene.model.items} <= reachable
     # And the sets are disjoint, so a row cannot be quietly claimed by two of
@@ -297,8 +305,8 @@ def test_every_row_does_something() -> None:
     assert not set(VideoScene.CYCLING_ROWS) & ACTION_ROWS
     assert not REPORT_ROWS & (set(VideoScene.CYCLING_ROWS) | set(VideoScene.SUBMENUS) | ACTION_ROWS)
     for item in scene.model.items:
-        if item.action in REPORT_ROWS:
-            assert not item.enabled, "a read-out row must not be actionable"
+        if item.action in REPORT_ROWS | headers:
+            assert not item.enabled, "a read-out or a heading must not be actionable"
 
 
 def test_every_list_row_really_has_a_list() -> None:
@@ -462,9 +470,9 @@ def test_the_whole_pixel_setting_is_an_entry_in_the_fit_list_not_a_row() -> None
     assert "pixel_perfect" not in {item.action for item in scene.model.items}
 
     screen = _list_for(scene, "fit")
-    labels = {option.label: option for option in screen.options}
-    assert "integer" in labels, "the whole-pixel choice has to live somewhere"
-    assert labels["integer"].detail, "and it has to explain itself"
+    by_value = {option.value: option for option in screen.options}
+    assert FitPolicy.INTEGER in by_value, "the whole-pixel choice has to live somewhere"
+    assert by_value[FitPolicy.INTEGER].detail, "and it has to explain itself"
 
 
 @pytest.mark.parametrize("policy", list(FitPolicy))
@@ -803,12 +811,12 @@ def test_the_vsync_row_says_the_setting_was_requested() -> None:
     game.settings = game.settings.with_video(vsync=True)
     scene = VideoScene(game)
 
-    label = scene._vsync_label()
+    label, note = scene._vsync_label(), scene._vsync_note()
 
-    assert label.startswith("on"), f"the setting is on and the row says {label!r}"
-    assert "requested" in label, f"but the flag is a request, not a promise: {label!r}"
-    assert "not honoured" not in label, (
-        f"nothing in the game can know the driver's opinion, so {label!r} would be invented"
+    assert label == t("value.on"), f"the setting is on and the row says {label!r}"
+    assert "Requested" in note, f"but the flag is a request, not a promise: {note!r}"
+    assert "not honoured" not in note, (
+        f"nothing in the game can know the driver's opinion, so {note!r} would be invented"
     )
 
 
@@ -824,10 +832,10 @@ def test_the_vsync_row_carries_no_caveat_when_it_is_off() -> None:
     game.settings = game.settings.with_video(vsync=False)
     scene = VideoScene(game)
 
-    label = scene._vsync_label()
+    label, note = scene._vsync_label(), scene._vsync_note()
 
-    assert label.startswith("off"), f"the setting is off and the row says {label!r}"
-    assert "requested" not in label, f"but there was no request: {label!r}"
+    assert label == t("value.off"), f"the setting is off and the row says {label!r}"
+    assert "Requested" not in note, f"but there was no request: {note!r}"
 
 
 def test_the_frame_limit_row_says_it_is_ignored_under_vsync() -> None:
@@ -844,10 +852,10 @@ def test_the_frame_limit_row_says_it_is_ignored_under_vsync() -> None:
     scene = VideoScene(game)
     row = next(item for item in scene.model.items if item.action == "frame_limit")
 
-    label = scene._frame_limit_label()
+    label, note = scene._frame_limit_label(), scene._frame_limit_note()
 
     assert label.startswith("30"), f"the value is still 30 and the row says {label!r}"
-    assert "ignored" in label, f"it is inert under vsync and the row must say so: {label!r}"
+    assert "Ignored" in note, f"it is inert under vsync and the row must say so: {note!r}"
     assert row.value == label, "the row the player reads is the row from the model"
 
 
@@ -888,7 +896,7 @@ def test_the_vsync_rate_is_the_rate_of_the_screen_the_window_is_on() -> None:
         game.window_monitor = lambda index=index: DESK.monitors[index]
         game.settings = game.settings.with_video(vsync=True)
         scene = VideoScene(game)
-        seen.append(scene._vsync_label())
+        seen.append(scene._vsync_note())
 
     for index, label in zip((0, 1, 2), seen, strict=True):
         assert f"{DESK.monitors[index].refresh_rate} Hz" in label, (
@@ -911,10 +919,10 @@ def test_the_vsync_rate_is_silent_when_the_windows_screen_is_unknown() -> None:
     game.settings = game.settings.with_video(vsync=True)
     scene = VideoScene(game)
 
-    label = scene._vsync_label()
+    label, note = scene._vsync_label(), scene._vsync_note()
 
-    assert label.startswith("on"), label
-    assert "Hz" not in label, f"a rate was reported for a screen nobody can name: {label!r}"
+    assert label == t("value.on"), label
+    assert "Hz" not in note, f"a rate was reported for a screen nobody can name: {note!r}"
 
 
 # --- the debug-only row -----------------------------------------------------
@@ -937,16 +945,19 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
 
     assert "panel_scale" not in actions
     assert actions == [
+        "section:window",
         "size",
         "fullscreen",
+        "section:picture",
         "fit",
+        "section:performance",
         "vsync",
         "frame_limit",
+        "section:interface",
         "scale",
         "reset",
         "back",
-        "info",
-    ]
+    ], "the read-out is a diagnostic: debug only, like the panel scale"
 
 
 def test_the_panel_scale_row_appears_with_the_overlay() -> None:

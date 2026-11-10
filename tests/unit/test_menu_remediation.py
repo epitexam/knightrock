@@ -18,6 +18,7 @@ from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
+from src.ui.text import t
 from tests.unit.test_video_scene import _game
 
 
@@ -152,7 +153,7 @@ def test_the_fit_row_reports_the_policy_in_force() -> None:
     scene = VideoScene(game)
     fit = next(item for item in scene.model.items if item.action == "fit")
 
-    assert fit.value == FitPolicy.INTEGER.value
+    assert fit.value == t("fit.integer")
 
 
 def test_two_sizes_of_the_same_area_sort_without_error() -> None:
@@ -202,3 +203,37 @@ def test_auto_is_the_default_and_an_old_whole_pixel_flag_still_wins() -> None:
     assert UserSettings().fit is FitPolicy.AUTO
     assert effective_fit(FitPolicy.AUTO, pixel_perfect=True) is FitPolicy.INTEGER
     assert effective_fit(FitPolicy.ZOOM, pixel_perfect=True) is FitPolicy.ZOOM
+
+
+def test_a_translation_is_a_table_and_a_missing_key_falls_back(monkeypatch) -> None:
+    from src.ui import text
+
+    monkeypatch.setitem(text.LANGUAGES, "fr", {"row.back": "Retour"})
+    text.set_language("fr")
+    try:
+        assert text.t("row.back") == "Retour"
+        assert text.t("row.quit") == "Quit", "an untranslated key reads in English"
+    finally:
+        text.set_language("en")
+    with pytest.raises(ValueError):
+        text.set_language("xx")
+
+
+def test_the_help_line_names_the_keys_of_the_device_in_use() -> None:
+    game = _game()
+    scene = VideoScene(game)
+    assert "Esc" in scene.footers()[0]
+
+    scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
+
+    footer = scene.footers()[0]
+    assert "B back" in footer and "Esc" not in footer
+
+
+def test_the_video_screen_is_in_sections_that_cannot_be_focused() -> None:
+    scene = VideoScene(_game())
+    headers = [item for item in scene.model.items if item.kind == "header"]
+
+    assert [item.label for item in headers] == ["WINDOW", "PICTURE", "PERFORMANCE", "INTERFACE"]
+    assert all(not item.enabled for item in headers)
+    assert scene.model.current_item is not None and scene.model.current_item.kind != "header"

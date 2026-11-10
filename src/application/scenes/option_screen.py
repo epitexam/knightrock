@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.application.scenes.menu_page import MenuPage
 from src.ui.menu_model import MenuItem
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -91,7 +92,7 @@ class OptionScreen(MenuPage):
         apply: Callable[[Any], None],
         *,
         selected: Any = None,
-        footer: str = "↑↓ row · Enter select · Esc back",
+        footer: str = "footer.page",
         subtitle: str = "",
         on_back: Callable[[], None] | None = None,
     ) -> None:
@@ -121,7 +122,7 @@ class OptionScreen(MenuPage):
             )
             for index, option in enumerate(self.options)
         ]
-        rows.append(MenuItem("back", "Back"))
+        rows.append(MenuItem("back", t("row.back")))
         return tuple(rows)
 
     def _index_of(self, selected: Any) -> int:

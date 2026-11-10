@@ -28,13 +28,7 @@ from src.core.display.monitors import (
     Monitor,
     opening_size,
 )
-
-_FIT_NOTES: dict[FitPolicy, str] = {
-    FitPolicy.AUTO: "sharp pixels when the bars stay small, black bars otherwise",
-    FitPolicy.BARS: "shows the whole picture; black bars on the sides",
-    FitPolicy.INTEGER: "sharpest: every art pixel is an exact square block",
-    FitPolicy.ZOOM: "fills the window, cropping the edges of the picture",
-}
+from src.ui.text import t
 
 #: Every ladder value gets a note where one is useful, and a bare value where one
 #: is not. An entry whose description is only restating its own label ("uncapped"
@@ -81,16 +75,16 @@ def fit_options(window: tuple[int, int]) -> tuple[Option, ...]:
     """
     options = []
     for policy in (FitPolicy.AUTO, FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM):
-        note = _FIT_NOTES[policy]
+        note = t(f"fit.note.{policy.value}")
         enabled = True
         if policy is FitPolicy.INTEGER:
             if not fits_whole_pixel(window):
-                note = "not on this window: too small to hold a whole block"
+                note = t("fit.note.integer.small")
                 enabled = False
             elif already_a_whole_multiple(window):
-                note = "no change: this window already is a whole multiple"
+                note = t("fit.note.integer.same")
                 enabled = False
-        options.append(Option(policy.value, policy, note, enabled=enabled))
+        options.append(Option(t(f"fit.{policy.value}"), policy, note, enabled=enabled))
     return tuple(options)
 
 

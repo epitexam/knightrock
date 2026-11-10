@@ -29,6 +29,7 @@ from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
 from src.ui.menu_view import MenuView
 from src.ui.styles import TEXT_TITLE
+from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -48,8 +49,9 @@ class MenuPage(Scene):
     TITLE_COLOR: tuple[int, int, int] = TEXT_TITLE
     #: A colour the page fills the target with before drawing, or ``None``.
     BACKGROUND: tuple[int, int, int] | None = None
-    #: A help line under the rows, or ``""``.
-    FOOTER = ""
+    #: The help line under the rows: a key of :mod:`src.ui.text`, filled with
+    #: the keys of the device the player last used, or ``""`` for none.
+    FOOTER = "footer.page"
     #: Whether a list taller than the window scrolls rather than running off it.
     scrollable = False
     covers_panels_below = True
@@ -67,6 +69,8 @@ class MenuPage(Scene):
         self._panel: pygame.Rect | None = None
         #: The pointer's last y, which the scroll follows while it is on a row.
         self._pointer_y: int | None = None
+        #: The device the player last used, which the help line names keys for.
+        self._device = InputDevice.KEYBOARD
 
     # -------------------------------------------------------------- hooks
 
@@ -94,15 +98,16 @@ class MenuPage(Scene):
         return ""
 
     def footers(self) -> tuple[str, ...]:
-        footer = self.footer
-        if not footer:
+        if not self.footer:
             return ()
+        keys = DEVICE_KEYS["gamepad" if self._device is InputDevice.GAMEPAD else "keyboard"]
+        footer = t(self.footer, **keys)
         if (
             self.scrollable
             and self._last_visible is not None
             and self._last_visible < len(self.model.items)
         ):
-            footer = f"{footer} · PgDn page"
+            footer = f"{footer} · {t('footer.page_keys')}"
         return (footer,)
 
     def highlighted(self) -> int:
@@ -122,6 +127,8 @@ class MenuPage(Scene):
     def handle_routed(self, routed: RoutedInput) -> str | None:
         if routed.variant == "device_removed":
             return self.on_device_removed()
+        if routed.device is not None:
+            self._device = routed.device
         if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
             return self.on_back_key(routed.action)
         if self.scrollable:

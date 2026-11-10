@@ -16,14 +16,16 @@ from src.ui.styles import (
     SELECTION_TEXT,
     TEXT_MUTED,
     TEXT_TITLE,
+    TEXT_WARN,
 )
 
 #: The menu's text sizes, in design pixels of a 648-tall picture.
 DESIGN_TITLE = 32
 DESIGN_ITEM = 16
 DESIGN_SMALL = 12
-#: How many lines a row's description may take.
+#: How many lines a row's description may take, and the narrowest it wraps at.
 DESCRIPTION_LINES = 2
+DESCRIPTION_MIN_WIDTH = 480
 
 
 #: The panel's outline, darker than its fill.
@@ -44,6 +46,11 @@ def _pixel_frame(width: int, height: int, unit: int) -> pygame.Surface:
     # The fill, inside the rim.
     frame.fill((*PANEL_BG[:3], 240), pygame.Rect(2 * u, 2 * u, width - 4 * u, height - 4 * u))
     return frame
+
+
+def _line_step(font: pygame.font.Font) -> int:
+    """One line of small text and its leading: the pixel font has none of its own."""
+    return font.get_linesize() + max(2, font.get_linesize() // 2)
 
 
 def _decorated(item: MenuItem, selected: bool) -> str:
@@ -237,10 +244,10 @@ class MenuView:
         # up towards the margin (see ``panel_y``), so the room it really has is
         # the window less its margins. Measuring from ``top`` cut rows that fit.
         available_height = max(metrics.px(120), surface.get_height() - metrics.margin * 2)
-        footer_step = footer_font.get_linesize() + metrics.gap // 2
+        footer_step = _line_step(footer_font) + metrics.gap // 2
         # Two lines, always reserved: the pixel font is wide, and a note that
         # needs two lines must not make the panel's height follow its length.
-        description_step = footer_font.get_linesize() * DESCRIPTION_LINES + metrics.gap // 2
+        description_step = _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2
         description_height = description_step if description else 0
         # The title's own height, measured rather than estimated: it is bold and
         # its rasterised linesize is not the design size the rest of the table is
@@ -302,23 +309,6 @@ class MenuView:
         footer_surfaces = [self._render_cached(footer_font, text, TEXT_MUTED) for text in footers]
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        # The description is fitted before the panel is measured, and to
-        # the widest the panel can be rather than to the panel: the panel
-        # is sized partly from the description, so fitting it to the
-        # panel would be fitting it to a number that depends on it.
-        description_surface = (
-            self._wrap_text(
-                footer_font,
-                description,
-                TEXT_MUTED,
-                surface.get_width() - metrics.margin * 2 - padding * 2,
-            )
-            if description
-            else None
-        )
-        self._description_width = (
-            description_surface.get_width() if description_surface is not None else 0
-        )
         label_width = max(
             [marker_width + rendered.get_width() for rendered in label_surfaces if rendered]
             + [title_surface.get_width()]
@@ -326,12 +316,29 @@ class MenuView:
         value_width = max(
             (rendered.get_width() for rendered in value_surfaces if rendered), default=0
         )
+        rows_width = label_width + (metrics.value_gap + value_width if value_width else 0)
+        # The description wraps to the rows' width (never narrower than a
+        # readable column), so a long note takes two lines instead of stretching
+        # the panel across the window -- and never wider than the window.
+        description_surface = (
+            self._wrap_text(
+                footer_font,
+                description,
+                TEXT_MUTED,
+                min(
+                    surface.get_width() - metrics.margin * 2 - padding * 2,
+                    max(rows_width, metrics.px(DESCRIPTION_MIN_WIDTH)),
+                ),
+            )
+            if description
+            else None
+        )
+        self._description_width = (
+            description_surface.get_width() if description_surface is not None else 0
+        )
         footer_height = footer_step * len(footer_surfaces)
         description_width = description_surface.get_width() if description_surface else 0
-        content_width = max(
-            label_width + (metrics.value_gap + value_width if value_width else 0),
-            description_width,
-        )
+        content_width = max(rows_width, description_width)
         panel_width = self._panel_width(content_width + padding * 2, model, title, surface)
         self._cut_rows_to_fit(
             label_surfaces,
@@ -528,6 +535,8 @@ class MenuView:
         highlight_color: tuple[int, int, int] = GOLD,
     ) -> tuple[int, int, int]:
         item = model.items[index]
+        if item.kind == "header":
+            return TEXT_WARN
         if not item.enabled:
             return TEXT_MUTED
         if index == model.current_index:
@@ -568,9 +577,10 @@ class MenuView:
         if len(rendered) == 1:
             return rendered[0]
         width = max(line.get_width() for line in rendered)
-        block = pygame.Surface((width, font.get_linesize() * len(rendered)), pygame.SRCALPHA)
+        step = _line_step(font)
+        block = pygame.Surface((width, step * len(rendered)), pygame.SRCALPHA)
         for row, line in enumerate(rendered):
-            block.blit(line, ((width - line.get_width()) // 2, row * font.get_linesize()))
+            block.blit(line, ((width - line.get_width()) // 2, row * step))
         return block
 
     def _fit_text(

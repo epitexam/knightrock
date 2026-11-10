@@ -11,13 +11,14 @@ from src.application.scenes.menu_scene import MenuScene
 from src.core.input.input_actions import InputAction
 from src.ui.menu_model import MenuAction, MenuItem
 from src.ui.styles import TEXT_OK
+from src.ui.text import t
 
 if TYPE_CHECKING:
     from src.core.game import Game
 
 
 class VictoryScene(MenuPage):
-    TITLE = "VICTORY"
+    TITLE = t("title.victory")
     TITLE_COLOR = TEXT_OK
     BACKGROUND = (12, 20, 14)
     opaque = True
@@ -30,9 +31,9 @@ class VictoryScene(MenuPage):
         super().__init__(
             game,
             (
-                MenuItem("retry", "Retry"),
-                MenuItem("levels", "Level select", kind="page"),
-                MenuItem("menu", "Main menu"),
+                MenuItem("retry", t("row.retry")),
+                MenuItem("levels", t("row.levels"), kind="page"),
+                MenuItem("menu", t("row.main_menu")),
             ),
         )
         self.level_id = level_id
