@@ -19,12 +19,13 @@ from src.application.settings_store import (
 from src.core import fx
 from src.core.asset_library import shared_library
 from src.core.audio import AudioBus
-from src.core.display import detection, letterbox
+from src.core.display import letterbox
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for
 from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
+from src.core.display.window_watch import DisplayChange, WindowWatch, monitor_at
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -84,11 +85,9 @@ class Game:
         for name, value in SDL_HINTS.items():
             os.environ[name] = value
         self.stage: Stage | None = None
-        #: The size the window was last built at, so SDL's own announcement of
-        #: it can be told from a drag. See :meth:`_forget_the_window_preference`.
-        self._built_window_size: tuple[int, int] | None = None
-        #: Until when a size change is the window manager's, not a drag.
-        self._resize_grace_until = 0.0
+        #: The window's last known size and the display list, and the rules
+        #: that turn their changes into decisions.
+        self.window = WindowWatch()
         self.presentation: Presentation | None = None
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
@@ -122,10 +121,6 @@ class Game:
         #: See :meth:`world_overlay`.
         self.ui: UIManager | None = None
         self.running = True
-        #: The display list, read once at launch and re-read on a poll. See
-        #: :meth:`topology`.
-        self._topology: Topology | None = None
-        self._topology_age = 0.0
         self.clock: pygame.time.Clock | None = None
         self._accumulator = 0.0
         self._settings_dirty = False
@@ -237,44 +232,15 @@ class Game:
         return self.ui
 
     def _forget_the_window_preference(self) -> None:
-        """A drag is the player's last word: stop the menu's stored size overriding it.
+        """The player resized the window: their size wins over the stored one.
 
-        The menu says it plainly -- "a normal window; drag it, and its size is
-        remembered" -- and it used to be false. Nothing ever wrote the geometry a
-        drag produced, so the preference the player had *chosen earlier* went on
-        overriding them: pick 1600x900, drag the window to 1200x800, toggle VSync,
-        and the window snapped back to 1600x900. Every setting that touched the
-        window was a way to throw away their own last word.
-
-        **What is remembered is the choice, not the measurement.** The stored
-        size goes back to ``None``, which now means "follow the window" rather
-        than "open as large as fits" -- see :meth:`_window_spec`. That is what
-        makes the file stop being a description of the machine: it records that
-        the player stopped choosing a size, not how big their panel happened to
-        be the day the window moved. A file that grew a width on every launch
-        would describe the hardware, and the first launch on another machine
-        would be a lie the next one had to be rewritten around.
-
-        Ignored for a resize the game itself asked for. SDL announces its own
-        ``set_mode`` as a ``VIDEORESIZE``, and treating that as a drag would
-        clear the preference the menu had just set, one event after applying it.
+        The stored size goes back to ``None`` -- "follow the window" -- rather
+        than to the measured size, so the file records that the player stopped
+        choosing a size, not how big their panel was that day.
         """
-        if self.stage is None:
-            return
-        # Off the presentation, like :meth:`_follow_the_window`, and for the same
-        # reason: the stage's surface and the presentation's are one object in
-        # production, and asking the one that keeps the window is what makes the
-        # two agree in a test that owns its own window.
-        window = self.presentation.window_size if self.presentation is not None else self.stage.size
-        if window == self._built_window_size:
-            return  # The window the game just built, not a drag.
-        if perf_counter() < self._resize_grace_until:
-            # The window manager settling the window the game just asked for
-            # (a tiling WM, a clamp, a late "forced" resize), not the player.
-            return
         if self.settings.window_size is None:
-            return  # Already following the window: nothing to forget.
-        logger.info("The window moved to %s; the stored window size no longer applies", window)
+            return
+        logger.info("The window was resized; the stored window size no longer applies")
         self.settings = self.settings.with_video(window_size=None)
         self._persist_settings()
 
@@ -315,22 +281,8 @@ class Game:
         return None
 
     def topology(self, *, refresh: bool = False) -> Topology:
-        """The machine's displays, read on launch and on every poll.
-
-        Cached, because it is asked on every menu rebuild and every window
-        rebuild and neither is a reason to walk the display list. Invalidated by
-        ``refresh``, which is how a plugged-in screen is noticed: the platform
-        does not report one arriving, so it has to be asked again (see
-        :meth:`_poll_displays`).
-
-        The cache is a snapshot and not a promise. It goes stale the moment a cable
-        changes, which is why the poll exists and why every decision that depends
-        on it resolves a *name* rather than trusting an index.
-        """
-        if self._topology is None or refresh:
-            self._topology = detection.topology()
-            self._topology_age = 0.0
-        return self._topology
+        """The machine's displays, cached between polls (see :class:`WindowWatch`)."""
+        return self.window.topology(refresh=refresh)
 
     def monitor(self) -> Monitor:
         """The panel the game is built on: the one holding the window.
@@ -383,8 +335,7 @@ class Game:
         does, rather than half of it.
         """
         self.stage = Stage(self._window_spec(), self.monitor())
-        self._built_window_size = self.stage.size
-        self._resize_grace_until = perf_counter() + self.RESIZE_GRACE_SECONDS
+        self.window.built(self.stage.size)
         # The window exists, so the picture can be drawn at its size: the target
         # is the window's fitted rectangle and the density is read back off it.
         self.presentation = Presentation(
@@ -429,40 +380,25 @@ class Game:
         assert self.stage is not None
         assert self.presentation is not None
         self.stage.rebuild(self._window_spec(), self.monitor())
-        self._built_window_size = self.stage.size
-        self._resize_grace_until = perf_counter() + self.RESIZE_GRACE_SECONDS
+        self.window.built(self.stage.size)
         self.presentation.retarget(self.stage.surface)
         self._invalidate_assets()
         self.scene_manager.set_surface(self.presentation.surface)
         self.scene_manager.set_ui_scale(self.ui_scale)
 
     def window_monitor(self) -> Monitor | None:
-        """The monitor the window is *actually* on, and ``None`` when nobody can say.
+        """The screen the window is on, or ``None`` when nobody can say.
 
-        Not the primary, which is where the game *opened*: on a two-screen desk
-        the two differ as soon as the player drags the window across. The video
-        menu's VSync row reads this rather than the primary display's rate, which
-        is what made it report 60Hz while the window sat on a 180Hz panel.
-
-        The window's centre decides it, and ``nearest`` gives the closest panel
-        when the centre falls in a gap between two of them.
-
-        ``None`` where the desktop has no readable geometry at all -- a degraded
-        topology knows sizes and no origins, so there is nothing to be honest
-        about, and a caller that has to print a rate would otherwise print the
-        wrong one.
+        Not the primary: on a two-screen desk the two differ as soon as the
+        player drags the window across, and the VSync row reports this screen's
+        rate.
         """
         try:
             x, y = pygame.display.get_window_position()
         except pygame.error:
             return None
-        topology = self.topology()
-        if not topology.has_geometry:
-            return None
-        # The window's centre, not its corner: a window mostly on one panel
-        # whose corner pokes onto the next one is on the first.
-        width, height = self.presentation.window_size if self.presentation is not None else (0, 0)
-        return topology.nearest((int(x) + width // 2, int(y) + height // 2))
+        size = self.presentation.window_size if self.presentation is not None else (0, 0)
+        return monitor_at(self.topology(), (int(x), int(y)), size)
 
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change actually touches.
@@ -617,54 +553,24 @@ class Game:
         self.input_provider.set_bindings(self.input_bindings)
         self._persist_settings()
 
-    #: How long after the game builds its window a size change is still taken
-    #: for the window manager adjusting it rather than the player dragging it.
-    RESIZE_GRACE_SECONDS = 1.0
-
-    #: Seconds between two display-list reads. Long enough that the poll is not
-    #: a per-frame cost (a read is ~0.005ms but is not free), short enough that
-    #: unplugging a screen is noticed while the player is still looking at it.
-    DISPLAY_POLL_SECONDS = 0.75
-
     def _poll_displays(self, frame_delta: float) -> None:
         """Notice a screen arriving or leaving, and cope with it.
 
-        pygame-ce surfaces ``WINDOWDISPLAYCHANGED`` -- the window moving to
-        another display -- but no event at all for a display being *added* or
-        *removed*: SDL keeps those two internal and translates neither. Measured
-        against the event constants pygame actually exports. So there is no
-        callback to hook and the only way to see a second screen arrive is to ask
-        again, which is what this does.
-
-        What it does about it is the part that matters. Losing the screen the
-        window is on would otherwise leave the window on a display that no longer
-        exists, which on some drivers is a black screen with a running game behind
-        it. So the window is rebuilt on the new primary, and the player is told,
-        because a silent move is indistinguishable from the game deciding to ignore
-        them. A screen *arriving* is worth saying too, since the list the game
-        reads has changed.
+        Losing the screen the window is on can leave a black screen with a
+        running game behind it on some drivers, so the window is rebuilt on the
+        primary and the player is told.
         """
-        self._topology_age += frame_delta
-        if self.stage is None or self._topology_age < self.DISPLAY_POLL_SECONDS:
+        if self.stage is None:
             return
-        self._topology_age = 0.0
-        current = detection.topology()
-        if current == self._topology:
-            return
-
-        # Asked of the old topology: the panel the window was on before the change.
-        held = self.window_monitor() or self.stage.monitor
-        previous_count = len(self._topology.monitors) if self._topology is not None else 0
-        self._topology = current
-        if not any(_same_panel(held, monitor) for monitor in current.monitors):
-            logger.info("Display %r is gone; moving the window to the primary", held.name)
+        stage = self.stage
+        change = self.window.poll(frame_delta, lambda: self.window_monitor() or stage.monitor)
+        if change is DisplayChange.WINDOW_SCREEN_GONE:
+            logger.info("The window's display is gone; moving the window to the primary")
             self.notice("That screen is no longer connected.", "The game moved to the main one.")
             self._rebuild_display()
-        elif len(current.monitors) != previous_count:
-            # Only a screen arriving or leaving is news. A taskbar or a refresh
-            # rate changing also changes the topology, and says nothing.
+        elif change is DisplayChange.SCREEN_COUNT_CHANGED:
             self.notice(
-                f"{len(current.monitors)} screen(s) connected.",
+                f"{len(self.topology().monitors)} screen(s) connected.",
                 "The window stays where it is.",
             )
 
@@ -765,56 +671,21 @@ class Game:
                 self._notice = ()
 
     def _follow_the_window(self) -> bool:
-        """Refit the picture when the window is no longer the size it was built at.
+        """Refit the picture when the window changed size since the last frame.
 
-        **Read off the window, not off an event.** This started as a
-        ``VIDEORESIZE`` handler and it was the wrong seam: pygame-ce translates
-        SDL's window events into seven events of its own, and which one a resize
-        arrives as depends on the platform and on the gesture. Measured on the
-        development machine:
-
-            Super+Left/Right (a snap)     WINDOWSIZECHANGED
-            maximise, restore             WINDOWSIZECHANGED + VIDEORESIZE + WINDOWRESIZED
-            a plain drag                  VIDEORESIZE
-
-        So a snap -- the gesture that produces the most resizes of all -- told
-        the game nothing at all, while a maximise happened to work. The symptom
-        was the picture keeping the size it had: a 1000x562 frame blitted into a
-        640x500 window is clipped at the right and the bottom, and a 1000x562
-        frame in a 1600x1100 window leaves the new area holding whatever was
-        there before. Both measured, both reproduced by the acceptance run.
-
-        The window's own size is the one fact that holds whether or not SDL felt
-        like mentioning it: with every event thrown away, the surface still
-        reported 700x600 within a frame. One ``get_size`` per frame is 0.07
-        microseconds, and :meth:`_retarget` decides for itself whether anything
-        actually moved -- so this costs a comparison, not a cascade.
-
-        Returns whether the window moved, which is the one thing the caller has to
-        know: a frame in which it did has to lay the scenes out before it reads
-        the input, or the click is measured against rectangles from a geometry
-        that no longer exists.
+        Returns whether it did: a frame in which the window moved has to lay the
+        scenes out before reading the input, or a click is hit-tested against
+        rectangles from a geometry that no longer exists.
         """
         if self.stage is None or self.presentation is None:
             return False
-        # Off the presentation rather than the stage: they are the same surface in
-        # production, and the presentation is the one that keeps it -- so this
-        # asks the object that owns the window what shape it is now, which is also
-        # the only question a caller can ask about a window it did not build.
-        live = self.presentation.window_size
-        if live == self._built_window_size:
+        resize = self.window.resized(self.presentation.window_size)
+        if resize is None:
             return False
-        logger.info(
-            "The window is now %sx%s (it was built at %s)",
-            live[0],
-            live[1],
-            self._built_window_size,
-        )
-        # In that order: forgetting compares the window against the size the game
-        # built it at, so the build size has to still be the old one here.
-        self._forget_the_window_preference()
+        logger.info("The window is now %sx%s", *resize.size)
+        if resize.by_player:
+            self._forget_the_window_preference()
         self._retarget()
-        self._built_window_size = live
         return True
 
     def _run_ticks(self) -> None:
@@ -1038,11 +909,6 @@ class Game:
             target.blit(font.render(message, True, (255, 0, 0)), (10, 10))
             return
         self.ui.renderer.draw_panel(10, 10, [message], title="FATAL ERROR")
-
-
-def _same_panel(a: Monitor, b: Monitor) -> bool:
-    """Whether two reports describe the same panel. SDL renumbers on a hotplug."""
-    return a.name == b.name and a.bounds == b.bounds
 
 
 def _elapsed_ms(started: float) -> float:

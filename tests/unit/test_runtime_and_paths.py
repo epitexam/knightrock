@@ -561,7 +561,7 @@ def test_the_window_manager_settling_a_new_window_is_not_a_drag(tmp_path: Path) 
     returns. Read as a drag, it cleared the size the player had just picked.
     """
     game = _game_in_a_window(tmp_path, window_size=(1400, 900))
-    game._resize_grace_until = float("inf")
+    game.window.grace_until = float("inf")
     window = game.presentation.stage
     assert isinstance(window, FakeWindow)
     window.resize((1380, 870))
@@ -960,7 +960,7 @@ def _game_in_a_window(tmp_path: Path, *, window_size: tuple[int, int]) -> Game:
     window = FakeWindow(window_size)
     game.presentation.stage = window  # type: ignore[assignment]
     game.presentation.recompute()
-    game._built_window_size = window.get_size()
+    game.window.built_size = window.get_size()
     return game
 
 
@@ -1019,7 +1019,7 @@ def _resize(game: Game, size: tuple[int, int]) -> None:
     assert game.presentation is not None
     window = game.presentation.stage
     assert isinstance(window, FakeWindow), "this test drives a window it can resize"
-    game._resize_grace_until = 0.0
+    game.window.grace_until = 0.0
     window.resize(size)
 
 
@@ -1072,7 +1072,7 @@ def test_the_target_is_the_window_so_a_resize_reaches_the_views(
     window = FakeWindow((1600, 900))
     game.presentation.stage = window  # type: ignore[assignment]
     game.presentation.recompute()
-    game._built_window_size = window.get_size()
+    game.window.built_size = window.get_size()
     notified = Mock()
     game.scene_manager.set_surface = notified  # type: ignore[method-assign]
     start = game.presentation.surface.get_size()
