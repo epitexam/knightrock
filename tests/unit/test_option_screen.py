@@ -25,7 +25,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame.init()
 pygame.display.set_mode((1152, 648))
 
-from src.application.scenes.option_screen import Option, OptionScreen  # noqa: E402
+from src.application.scenes.option_screen import SELECTED_MARK, Option, OptionScreen  # noqa: E402
 from src.core.input.event_router import InputDevice, RoutedInput  # noqa: E402
 from src.core.input.input_actions import InputAction  # noqa: E402
 from src.core.settings import Input as InputSettings  # noqa: E402
@@ -98,7 +98,7 @@ def test_the_option_in_force_is_marked() -> None:
     """The check is a leading mark on the label, so the eye lands on it."""
     screen = _screen(FakeGame(), _options(5), selected=3)
 
-    marked = [i.action for i in screen.model.items if i.label.startswith("●")]
+    marked = [i.action for i in screen.model.items if i.label.startswith(SELECTED_MARK)]
     assert marked == ["option:3"]
 
 

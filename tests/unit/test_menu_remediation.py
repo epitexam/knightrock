@@ -237,3 +237,32 @@ def test_the_video_screen_is_in_sections_that_cannot_be_focused() -> None:
     assert [item.label for item in headers] == ["WINDOW", "PICTURE", "PERFORMANCE", "INTERFACE"]
     assert all(not item.enabled for item in headers)
     assert scene.model.current_item is not None and scene.model.current_item.kind != "header"
+
+
+def test_every_character_the_menus_say_is_in_the_menu_font() -> None:
+    """A glyph the pixel font lacks is drawn as an empty box -- it had no "●".
+
+    Checked by rendering, against the font's own missing-glyph box: the font's
+    metrics answered for the missing characters too.
+    """
+    from src.application.scenes.option_screen import SELECTED_MARK
+    from src.ui import text
+    from src.ui.fonts import menu_font
+
+    font = menu_font(16)
+    missing = pygame.image.tobytes(font.render("\U0010ffff", False, (255, 255, 255)), "RGB")
+    used = "".join(text.ENGLISH.values()) + "".join(
+        "".join(keys.values()) for keys in text.DEVICE_KEYS.values()
+    )
+    # The marks the view adds itself: the toggle arrows, the list arrow, the cut.
+    used += SELECTED_MARK + "◀▶›…"
+    absent = sorted(
+        {
+            ch
+            for ch in used
+            if not ch.isspace()
+            and pygame.image.tobytes(font.render(ch, False, (255, 255, 255)), "RGB") == missing
+        }
+    )
+
+    assert not absent, f"the menu font has no glyph for {absent}"

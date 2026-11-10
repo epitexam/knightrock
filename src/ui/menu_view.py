@@ -306,7 +306,15 @@ class MenuView:
             else None
             for offset in range(len(painted))
         ]
-        footer_surfaces = [self._render_cached(footer_font, text, TEXT_MUTED) for text in footers]
+        footer_surfaces = [
+            self._fit_text(
+                footer_font,
+                text,
+                TEXT_MUTED,
+                surface.get_width() - metrics.margin * 2 - metrics.panel_padding * 2,
+            )
+            for text in footers
+        ]
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
         label_width = max(
@@ -327,7 +335,13 @@ class MenuView:
                 TEXT_MUTED,
                 min(
                     surface.get_width() - metrics.margin * 2 - padding * 2,
-                    max(rows_width, metrics.px(DESCRIPTION_MIN_WIDTH)),
+                    max(
+                        rows_width,
+                        metrics.px(DESCRIPTION_MIN_WIDTH),
+                        # Wide enough for the note to fit on its lines.
+                        footer_font.size(description)[0] // DESCRIPTION_LINES
+                        + footer_font.size("M" * 6)[0],
+                    ),
                 ),
             )
             if description
@@ -338,7 +352,8 @@ class MenuView:
         )
         footer_height = footer_step * len(footer_surfaces)
         description_width = description_surface.get_width() if description_surface else 0
-        content_width = max(rows_width, description_width)
+        footer_width = max((footer.get_width() for footer in footer_surfaces), default=0)
+        content_width = max(rows_width, description_width, footer_width)
         panel_width = self._panel_width(content_width + padding * 2, model, title, surface)
         self._cut_rows_to_fit(
             label_surfaces,

@@ -69,6 +69,10 @@ class Option:
             return False
 
 
+#: The mark on the option in force. A glyph the menu font has: it has no "●".
+SELECTED_MARK = "•"
+
+
 class OptionScreen(MenuPage):
     """A list of options; picking one applies it and returns.
 
@@ -110,14 +114,14 @@ class OptionScreen(MenuPage):
     def _items(self) -> tuple[MenuItem, ...]:
         """The options as rows, plus a Back row.
 
-        The mark is a leading ``●`` on the label rather than a column, because
+        The mark is a leading :data:`SELECTED_MARK` on the label rather than a column, because
         the value column is right-aligned and a right-aligned checkmark reads as
         the end of a long value at a glance.
         """
         rows = [
             MenuItem(
                 f"option:{index}",
-                ("● " if option.matches(self.selected) else "") + option.label,
+                (f"{SELECTED_MARK} " if option.matches(self.selected) else "") + option.label,
                 enabled=option.enabled,
             )
             for index, option in enumerate(self.options)
