@@ -118,6 +118,7 @@ class VideoScene(MenuPage):
         return (
             settings.pixel_perfect,
             settings.vsync,
+            settings.fullscreen,
             settings.frame_limit,
             settings.ui_scale,
             settings.panel_scale,
@@ -152,6 +153,9 @@ class VideoScene(MenuPage):
 
     def _row(self, action: str) -> Row | None:
         return next((row for row in self.ROWS if row.action == action), None)
+
+    def _fullscreen_label(self) -> str:
+        return "on · Alt+Enter" if self.game.settings.fullscreen else "off · Alt+Enter"
 
     def _ui_scale_label(self) -> str:
         return f"{self.game.settings.ui_scale:.1f}x"
@@ -524,6 +528,7 @@ class VideoScene(MenuPage):
     #: Every row on this screen, in order. The single place a row is declared.
     ROWS: tuple[Row, ...] = (
         Row("size", "Window size", _size_label, submenu=_submenu_size),
+        Row("fullscreen", "Fullscreen", _fullscreen_label, toggle="fullscreen"),
         Row("fit", "Picture fit", _fit_label, submenu=_submenu_fit),
         Row("vsync", "VSync", _vsync_label, toggle="vsync"),
         Row("frame_limit", "Frame limit", _frame_limit_label, submenu=_submenu_frame_limit),

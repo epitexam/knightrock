@@ -333,7 +333,7 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "vsync",
         "frame_limit",
     }
-    assert set(window) == {"size", "last"}
+    assert set(window) == {"size", "last", "fullscreen"}
     assert not {
         "width",
         "height",
@@ -618,3 +618,37 @@ def test_a_chosen_size_is_not_shadowed_by_the_last_one(tmp_path: Path) -> None:
 
     relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
     assert relaunched._asked_window_size() == (1600, 900)
+
+
+def test_fullscreen_covers_the_screen_and_gives_the_window_back(tmp_path: Path) -> None:
+    """Desktop fullscreen, then back: the window returns to its own size.
+
+    No ``set_mode``: the desktop keeps its mode, so there is nothing for a driver
+    to refuse. And the windowed size is what the next launch keeps.
+    """
+    game, store = _runtime(tmp_path)
+    game.apply_settings(game.settings.with_video(window_size=None))
+    game.presentation.retarget(pygame.display.get_surface())  # type: ignore[union-attr]
+    game._retarget()
+    windowed = game.presentation.window_size  # type: ignore[union-attr]
+
+    with patch.object(pygame.display, "set_mode", side_effect=AssertionError("a mode change")):
+        game.toggle_fullscreen()
+    assert game.settings.fullscreen is True
+    assert game.stage.fullscreen and game.stage.windowed_size == windowed  # type: ignore[union-attr]
+    assert game._asked_window_size() == windowed, "the window's size is the windowed one"
+
+    game.toggle_fullscreen()
+    assert game.settings.fullscreen is False
+    assert game.presentation.window_size == windowed  # type: ignore[union-attr]
+    assert game.settings.window_size is None, "the toggle is not a drag"
+
+
+def test_alt_enter_is_the_fullscreen_key() -> None:
+    from src.core.game import Game
+
+    alt_enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=pygame.KMOD_LALT)
+    enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)
+
+    assert Game._is_fullscreen_key(alt_enter)
+    assert not Game._is_fullscreen_key(enter)

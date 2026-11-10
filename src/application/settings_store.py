@@ -128,6 +128,7 @@ class UserSettings:
       take it, clamped where it cannot, never overwritten.
     - **last_window_size**: the size the window had when the game last closed
       with no size chosen -- where the next launch opens, nothing more.
+    - **fullscreen**: the window covers its screen, without a mode change.
     - **bindings**: what the buttons do.
     """
 
@@ -149,6 +150,8 @@ class UserSettings:
     #: Used only to open at it next time; never a preference, and written only
     #: on the way out, so a resize mid-session does not rewrite the file.
     last_window_size: tuple[int, int] | None = None
+    #: Desktop fullscreen: the window covers its screen, with no mode change.
+    fullscreen: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -163,6 +166,7 @@ class UserSettings:
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
                 "last": list(self.last_window_size) if self.last_window_size else None,
+                "fullscreen": self.fullscreen,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
             # screen, like the scale above it, and the ``video`` section is held
@@ -274,6 +278,7 @@ class UserSettings:
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
             last_window_size=_placement(window, "last"),
+            fullscreen=_bounded_bool(window.get("fullscreen", False), "window.fullscreen"),
         )
 
     @classmethod

@@ -55,7 +55,7 @@ REPORT_ROWS = frozenset({"info"})
 #: Whole-pixel art is not a row any more. It is the integer entry inside the fit
 #: list, because it is that same setting and having both was a row that changed
 #: its label and changed nothing on screen.
-BOOLEAN_ROWS = frozenset({"vsync"})
+BOOLEAN_ROWS = frozenset({"vsync", "fullscreen"})
 LIST_ROWS = frozenset(VideoScene.SUBMENUS)
 
 #: A window with room for a whole multiple of the framing, so every row that can
@@ -938,6 +938,7 @@ def test_the_panel_scale_row_is_absent_without_the_overlay() -> None:
     assert "panel_scale" not in actions
     assert actions == [
         "size",
+        "fullscreen",
         "fit",
         "vsync",
         "frame_limit",

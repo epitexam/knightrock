@@ -64,6 +64,9 @@ class WindowSpec:
 
     vsync: bool = False
     size: tuple[int, int] | None = None
+    #: Desktop fullscreen: the window covers its screen without a mode change.
+    #: ``size`` is still the windowed size, the one it returns to.
+    fullscreen: bool = False
 
 
 class Stage:
@@ -84,6 +87,9 @@ class Stage:
     def __init__(self, spec: WindowSpec, monitor: Monitor) -> None:
         self.spec = spec
         self.monitor = monitor
+        #: Whether the window covers its screen, and the size it had before.
+        self.fullscreen = False
+        self.windowed_size: tuple[int, int] | None = None
         self.surface = self._create(spec, monitor)
 
     @property
@@ -104,14 +110,37 @@ class Stage:
         is the difference between an error the caller can handle and a frame
         that Blits into memory the display no longer presents.
         """
-        previous = (self.spec, self.monitor, self.surface)
+        previous = (self.spec, self.monitor, self.surface, self.fullscreen, self.windowed_size)
         try:
             self.spec = spec
             self.monitor = monitor
+            self.fullscreen = False
             self.surface = self._create(spec, monitor)
         except Exception:
-            self.spec, self.monitor, self.surface = previous
+            (self.spec, self.monitor, self.surface, self.fullscreen, self.windowed_size) = previous
             raise
+        return self.surface
+
+    def set_fullscreen(self, on: bool) -> pygame.Surface:
+        """Cover the screen, or go back to the window -- without a mode change.
+
+        Desktop fullscreen keeps the desktop's own mode, so nothing is asked of
+        the driver: no black screen on a hybrid-GPU laptop, nothing to restore.
+        The windowed size is kept, since the window returns to it and the next
+        launch should open at it, not at the screen's size.
+        """
+        if on == self.fullscreen:
+            return self.surface
+        window = self._window_handle()
+        if window is None:
+            raise pygame.error("This platform has no window to make fullscreen")
+        if on:
+            self.windowed_size = self.size
+            window.set_fullscreen(desktop=True)
+        else:
+            window.set_windowed()
+        self.fullscreen = on
+        self.surface = pygame.display.get_surface() or self.surface
         return self.surface
 
     def _create(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
@@ -149,7 +178,10 @@ class Stage:
         self.surface = surface
         self._place(spec, monitor)
         self._limit_size()
-        return surface
+        if spec.fullscreen:
+            self.set_fullscreen(True)
+            self.windowed_size = asked
+        return self.surface
 
     def _set_mode(
         self, spec: WindowSpec, monitor: Monitor, size: tuple[int, int]

@@ -257,6 +257,7 @@ class Game:
         return WindowSpec(
             vsync=self.settings.vsync,
             size=self._asked_window_size(),
+            fullscreen=self.settings.fullscreen,
         )
 
     def _asked_window_size(self) -> tuple[int, int] | None:
@@ -273,6 +274,10 @@ class Game:
         """
         if self.settings.window_size is not None:
             return self.settings.window_size
+        if self.stage is not None and self.stage.fullscreen and self.stage.windowed_size:
+            # Fullscreen covers the screen; the window's own size is the one it
+            # had before, and the one it goes back to.
+            return self.stage.windowed_size
         if self.stage is not None and self.presentation is not None:
             # The window the picture is drawn onto, for the same reason as
             # everywhere else in this file: the stage's surface is that surface in
@@ -388,6 +393,21 @@ class Game:
         self.scene_manager.set_surface(self.presentation.surface)
         self.scene_manager.set_ui_scale(self.ui_scale)
 
+    def _set_fullscreen(self, on: bool) -> None:
+        """Cover the screen or leave it, and refit the picture to the result."""
+        assert self.stage is not None
+        assert self.presentation is not None
+        surface = self.stage.set_fullscreen(on)
+        # The size change that follows is the game's, not the player's.
+        self.window.built(self.stage.size)
+        self.presentation.retarget(surface)
+        self.scene_manager.set_surface(self.presentation.surface)
+        self.scene_manager.set_ui_scale(self.ui_scale)
+
+    def toggle_fullscreen(self) -> None:
+        """Alt+Enter, and the Video screen's row."""
+        self.apply_settings(self.settings.with_video(fullscreen=not self.settings.fullscreen))
+
     def window_monitor(self) -> Monitor | None:
         """The screen the window is on, or ``None`` when nobody can say.
 
@@ -443,6 +463,8 @@ class Game:
         try:
             if self._window_signature(previous) != self._window_signature(settings):
                 self._rebuild_display()
+            elif previous.fullscreen != settings.fullscreen:
+                self._set_fullscreen(settings.fullscreen)
             elif previous.pixel_perfect != settings.pixel_perfect or previous.fit != settings.fit:
                 self._retarget()
             self.scene_manager.set_ui_scale(self.ui_scale)
@@ -540,7 +562,9 @@ class Game:
         """
         if self.presentation is None or self.settings.window_size is not None:
             return
-        size = self.presentation.window_size
+        size = self._asked_window_size()
+        if size is None:
+            return
         if size != self.settings.last_window_size:
             self.settings = self.settings.with_video(last_window_size=size)
             self._persist_settings()
@@ -765,6 +789,10 @@ class Game:
             # be over before the simulation ever looks at it.
             self.input_provider.note_event(event)
 
+            if self._is_fullscreen_key(event):
+                self.toggle_fullscreen()
+                continue
+
             if event.type in self._WINDOW_SIZE_EVENTS:
                 # Not scene input, and not the trigger either: the reaction to a
                 # resize is read off the window every frame by
@@ -814,6 +842,15 @@ class Game:
     _WINDOW_SIZE_EVENTS = frozenset(
         {pygame.VIDEORESIZE, pygame.WINDOWRESIZED, pygame.WINDOWSIZECHANGED}
     )
+
+    @staticmethod
+    def _is_fullscreen_key(event: pygame.event.Event) -> bool:
+        """Alt+Enter: the desktop's own fullscreen shortcut. F11 is the debug layout's."""
+        return (
+            event.type == pygame.KEYDOWN
+            and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)
+            and bool(getattr(event, "mod", 0) & pygame.KMOD_ALT)
+        )
 
     @staticmethod
     def _is_a_real_pointer_move(event: pygame.event.Event) -> bool:
