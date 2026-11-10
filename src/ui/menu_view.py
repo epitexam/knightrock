@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 import pygame
 
+from src.core.display.framing import DEFAULT_FRAMING
 from src.ui.fonts import ui_font
 from src.ui.menu_model import MenuModel
 from src.ui.metrics import Metrics
@@ -16,6 +17,9 @@ from src.ui.styles import (
     TEXT_TITLE,
     TEXT_WARN,
 )
+
+#: The selection marker, painted in a gutter every row reserves.
+MARKER = "> "
 
 
 class MenuView:
@@ -35,6 +39,10 @@ class MenuView:
         self._scroll_thumb: pygame.Rect | None = None
         # The description's width after being fitted, from the last draw.
         self._description_width = 0
+        # The widest the panel has been for the rows it is showing, so it only
+        # ever grows while the same screen is up. See ``draw``.
+        self._width_key: tuple[object, ...] | None = None
+        self._sticky_width = 0
         # Rendered-text cache. One .render() per frame per item allocates a
         # Surface and triggers GC, which shows up as micro-freezes at 60fps.
         # Keyed by (font id, text, colour); invalidated on selection change.
@@ -82,6 +90,21 @@ class MenuView:
         note was cut.
         """
         return self._description_width
+
+    @staticmethod
+    def scaled_top(top: int, surface: pygame.Surface) -> int:
+        """A panel's ``top``, given in design pixels of a 648-tall picture.
+
+        Scaled with the target's height, so a menu sits at the same place on a
+        640x360 picture and on a 3840x2160 one instead of eating half of the first
+        and hugging the top of the second.
+        """
+        return round(top * surface.get_height() / DEFAULT_FRAMING.height)
+
+    @staticmethod
+    def design_y(y: int, surface: pygame.Surface) -> int:
+        """The inverse of :meth:`scaled_top`: a target y in design pixels."""
+        return round(y * DEFAULT_FRAMING.height / max(1, surface.get_height()))
 
     def set_scale(self, scale: float) -> None:
         """Set the UI scale, discarding caches only when it really changed.
@@ -157,19 +180,24 @@ class MenuView:
         if self._surface_size != surface.get_size():
             self._surface_size = surface.get_size()
             self.reset_cache()
+        top = self.scaled_top(top, surface)
         scale = self._scale
         title_font, item_font, footer_font = self._fonts_for(scale)
-        labels = [
-            f"> {item.label}" if index == model.current_index else item.label
-            for index, item in enumerate(model.items)
-        ]
+        # The labels carry no marker: the ``>`` is painted in a gutter every row
+        # reserves, so moving the selection never changes the panel's width.
+        labels = [item.label for item in model.items]
+        marker_width = item_font.size(MARKER)[0]
         values = [item.value for item in model.items]
         # How much of the list fits, decided before anything is painted rather
         # than after -- the cache key, the rows and the panel height all have to
         # agree on it, and computing it once up front is what makes them agree.
         metrics = self._metrics
         padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        available_height = max(metrics.px(120), surface.get_height() - top - metrics.margin)
+        # Measured against the whole window, not from ``top`` down: ``top`` is
+        # where the panel prefers to sit, and a panel too tall for that is pulled
+        # up towards the margin (see ``panel_y``), so the room it really has is
+        # the window less its margins. Measuring from ``top`` cut rows that fit.
+        available_height = max(metrics.px(120), surface.get_height() - metrics.margin * 2)
         footer_step = footer_font.get_linesize() + metrics.gap // 2
         description_step = footer_font.get_linesize() + metrics.gap // 2
         description_height = description_step if description else 0
@@ -251,7 +279,7 @@ class MenuView:
             description_surface.get_width() if description_surface is not None else 0
         )
         label_width = max(
-            [rendered.get_width() for rendered in label_surfaces if rendered]
+            [marker_width + rendered.get_width() for rendered in label_surfaces if rendered]
             + [title_surface.get_width()]
         )
         value_width = max(
@@ -263,9 +291,19 @@ class MenuView:
             label_width + (metrics.value_gap + value_width if value_width else 0),
             description_width,
         )
-        panel_width = min(
-            content_width + padding * 2,
-            max(metrics.panel_min_width, surface.get_width() - metrics.margin * 2),
+        panel_width = self._panel_width(content_width + padding * 2, model, title, surface)
+        self._cut_rows_to_fit(
+            label_surfaces,
+            value_surfaces,
+            labels,
+            values,
+            first,
+            panel_width - padding * 2,
+            marker_width,
+            item_font,
+            model,
+            highlighted,
+            highlight_color,
         )
         panel_height = (
             padding * 2
@@ -313,7 +351,7 @@ class MenuView:
             if label_surface is not None:
                 surface.blit(
                     label_surface,
-                    (rect.x, rect.centery - label_surface.get_height() // 2),
+                    (rect.x + marker_width, rect.centery - label_surface.get_height() // 2),
                 )
             value_surface = value_surfaces[offset]
             if value_surface is not None:
@@ -334,6 +372,7 @@ class MenuView:
                 pygame.draw.rect(
                     surface, POINTER_OUTLINE, rect, max(1, metrics.px(2)), border_radius=3
                 )
+        self._paint_marker(surface, model, item_font, highlighted, highlight_color)
         # The rail is painted into the right padding gutter, which is
         # wide enough to hold it without a row's label or value ever
         # reaching it, so nothing has to make room for it.
@@ -368,6 +407,86 @@ class MenuView:
             )
             footer_y += footer_step
         return pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+
+    def _paint_marker(
+        self,
+        surface: pygame.Surface,
+        model: MenuModel,
+        item_font: pygame.font.Font,
+        highlighted: int,
+        highlight_color: tuple[int, int, int],
+    ) -> None:
+        """The ``>`` in front of the selected row, in the gutter every row reserves."""
+        index = model.current_index
+        if not 0 <= index < len(self._item_rects) or self._item_rects[index].width == 0:
+            return
+        rect = self._item_rects[index]
+        marker = self._render_cached(
+            item_font, MARKER, self._color(index, model, highlighted, highlight_color)
+        )
+        surface.blit(marker, (rect.x, rect.centery - marker.get_height() // 2))
+
+    def _panel_width(
+        self, natural: int, model: MenuModel, title: str, surface: pygame.Surface
+    ) -> int:
+        """The panel's width: its content's, floored, sticky, and capped by the window.
+
+        Sticky while the same rows are on the same target: a value that changes
+        length (VSync, Frame limit) must not make the panel breathe and slide the
+        rows out from under the pointer.
+        """
+        metrics = self._metrics
+        natural = max(natural, metrics.panel_min_width)
+        key = (tuple(item.action for item in model.items), title, surface.get_size(), self._scale)
+        if key == self._width_key:
+            natural = max(natural, self._sticky_width)
+        self._width_key = key
+        self._sticky_width = natural
+        return min(natural, max(1, surface.get_width() - metrics.margin * 2))
+
+    def _cut_rows_to_fit(
+        self,
+        label_surfaces: list[pygame.Surface],
+        value_surfaces: list[pygame.Surface | None],
+        labels: list[str],
+        values: list[str],
+        first: int,
+        inner_width: int,
+        marker_width: int,
+        item_font: pygame.font.Font,
+        model: MenuModel,
+        highlighted: int,
+        highlight_color: tuple[int, int, int],
+    ) -> None:
+        """Cut, value first, every row too wide for the panel, in place.
+
+        Rather than painting its label and its value over each other.
+        """
+        gap = self._metrics.value_gap
+        for offset, label_surface in enumerate(label_surfaces):
+            index = first + offset
+            value_surface = value_surfaces[offset]
+            value_w = value_surface.get_width() + gap if value_surface else 0
+            if marker_width + label_surface.get_width() + value_w <= inner_width:
+                continue
+            if value_surface is not None:
+                room = max(
+                    inner_width // 3, inner_width - marker_width - label_surface.get_width() - gap
+                )
+                value_surface = self._fit_text(
+                    item_font,
+                    values[index],
+                    self._value_color(index, model, highlighted, highlight_color),
+                    room,
+                )
+                value_surfaces[offset] = value_surface
+                value_w = value_surface.get_width() + gap
+            label_surfaces[offset] = self._fit_text(
+                item_font,
+                labels[index],
+                self._color(index, model, highlighted, highlight_color),
+                max(1, inner_width - marker_width - value_w),
+            )
 
     def _value_color(
         self,

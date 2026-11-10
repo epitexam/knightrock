@@ -93,6 +93,9 @@ class VideoScene(Scene):
         self._signature = self._current_signature()
         self._flash_row = -1
         self._flash_remaining = 0.0
+        #: The first row drawn, and how many the last draw fitted.
+        self._scroll = 0
+        self._visible: int | None = None
         self._rebuild()
 
     # ------------------------------------------------------------------ rows
@@ -256,7 +259,7 @@ class VideoScene(Scene):
         limit = self.game.settings.frame_limit
         label = "Uncapped" if limit is None else str(limit)
         if self.game.settings.vsync:
-            label += " (ignored while VSync is on)"
+            label += " · ignored (VSync)"
         return label
 
     @staticmethod
@@ -546,6 +549,7 @@ class VideoScene(Scene):
             focused = self.model.current_item.action if self.model.current_item else None
             self._rebuild(focused)
         self.view.set_scale(self.game.ui_scale)
+        self._scroll = self._scroll_for(self.model.current_index)
         self.view.draw(
             surface,
             self.TITLE,
@@ -553,4 +557,28 @@ class VideoScene(Scene):
             top=150,
             highlighted=self._flash_row,
             footers=(self.FOOTER,),
+            scroll=self._scroll,
+            scrollable=True,
         )
+        self._visible = sum(1 for rect in self.view.item_rects if rect.width > 0) or None
+
+    def _scroll_for(self, focused: int) -> int:
+        """The first row to show: the least scroll that keeps the focus visible.
+
+        On a window too short for every row. The pointer can only land on a row
+        that is drawn, so following the focus never chases it. On the last row a
+        key can reach, the list is scrolled to its end, so the read-out under it
+        is shown too.
+        """
+        count = len(self.model.items)
+        visible = self._visible or count
+        if focused < 0 or visible >= count:
+            return 0
+        enabled = [i for i, item in enumerate(self.model.items) if item.enabled]
+        if enabled and focused == enabled[-1]:
+            return count - visible
+        if focused < self._scroll:
+            return focused
+        if focused >= self._scroll + visible:
+            return focused - visible + 1
+        return self._scroll

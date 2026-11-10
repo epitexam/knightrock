@@ -8,6 +8,8 @@ import pytest
 
 from src.application.scene import Scene
 from src.application.scene_manager import SceneManager
+from src.ui.menu_model import MenuItem, MenuModel
+from src.ui.menu_view import MenuView
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -16,6 +18,49 @@ def _headless_display() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.init()
     pygame.display.set_mode((1280, 720))
+
+
+def test_moving_the_selection_does_not_move_the_panel() -> None:
+    """The ``>`` marker sits in a reserved gutter, so the panel keeps its place."""
+    surface = pygame.Surface((1280, 720))
+    model = MenuModel(
+        [MenuItem("a", "A"), MenuItem("long", "A much longer label"), MenuItem("b", "B")]
+    )
+    view = MenuView()
+    first = view.draw(surface, "TITLE", model, top=150)
+    model.move(1)
+    second = view.draw(surface, "TITLE", model, top=150)
+
+    assert first == second
+
+
+def test_a_value_getting_shorter_does_not_shrink_the_panel() -> None:
+    surface = pygame.Surface((1280, 720))
+    view = MenuView()
+    wide = view.draw(
+        surface, "T", MenuModel([MenuItem("v", "VSync", "on · requested 144 Hz")]), top=150
+    )
+    narrow = view.draw(surface, "T", MenuModel([MenuItem("v", "VSync", "off")]), top=150)
+
+    assert narrow.width == wide.width
+
+
+def test_a_row_too_wide_for_the_window_stays_inside_the_panel() -> None:
+    surface = pygame.Surface((640, 360))
+    model = MenuModel([MenuItem("v", "Frame limit", "a value far too long " * 6)])
+    view = MenuView()
+    panel = view.draw(surface, "T", model, top=150)
+
+    assert panel.right <= surface.get_width()
+    assert all(panel.contains(rect) for rect in view.item_rects if rect.width)
+
+
+def test_the_top_follows_the_picture_height() -> None:
+    model = MenuModel([MenuItem("a", "A")])
+    small = MenuView().draw(pygame.Surface((1152, 648)), "T", model, top=150)
+    large = MenuView().draw(pygame.Surface((2304, 1296)), "T", model, top=150)
+
+    assert large.top == 2 * small.top
 
 
 class _Panel(Scene):

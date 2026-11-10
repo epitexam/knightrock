@@ -134,5 +134,8 @@ class MenuScene(Scene):
         panel = self.view.draw(surface, self.TITLE, self.model, top=180)
         if self._confirming:
             self.confirm_view.draw(
-                surface, self.CONFIRM_TITLE, self.confirm_model, top=panel.bottom + 24
+                surface,
+                self.CONFIRM_TITLE,
+                self.confirm_model,
+                top=MenuView.design_y(panel.bottom, surface) + 24,
             )
