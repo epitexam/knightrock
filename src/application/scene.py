@@ -1,4 +1,4 @@
-"""Shared base of the application scenes (audit F8.1, Phase 2 #4)."""
+"""Shared base of the application scenes."""
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -15,29 +15,22 @@ if TYPE_CHECKING:
 class Scene(ABC):
     """Application state: Menu, Gameplay, Pause, Game Over.
 
-    A scene owns its lifecycle (``enter``/``exit``), receives Pygame events,
-    advances the simulation at a fixed step via ``update`` and produces its
-    rendering via ``draw``, which paints into the render target it is handed.
-    Nothing is reported back: every frame is a complete repaint, so there is no
-    partial presentation for a scene to take part in.
+    A scene owns its lifecycle (``enter``/``exit``), receives events, advances
+    at a fixed step in ``update`` and repaints the whole target in ``draw``.
     """
 
     view: ScaledView | None = None
-    """The scene's view, when it has one.
+    """The scene's view, or ``None`` for a scene that draws the world.
 
-    A class-level ``None`` rather than something every subclass sets, because
-    the gameplay scene has no view at all: it draws the world. The scene stack
-    pushes a new target and a new scale through every scene on it, and it has
-    to be able to ask "does this scene have a view" without the answer being an
-    ``AttributeError`` on the ones that do not.
+    The stack pushes new targets and scales through every scene, and asks this
+    rather than catching an ``AttributeError``.
     """
 
     #: Paints every pixel of the target, so nothing below it needs drawing.
     opaque: bool = False
     #: A full menu page: the menu panels under it are not drawn, only the
-    #: backdrop (the world, if there is one) under a veil. Without this, a page
-    #: pushed over another menu was drawn over that menu's panel, and the two
-    #: panels -- different widths, different heights -- showed through.
+    #: backdrop (the world, if there is one) under a veil, so two panels never
+    #: show through each other.
     covers_panels_below: bool = False
     #: What a covering page is drawn over: the world, not another menu.
     is_backdrop: bool = False
@@ -49,46 +42,24 @@ class Scene(ABC):
         """Called when the scene becomes active."""
 
     def set_surface(self, surface: pygame.Surface) -> None:  # noqa: B027
-        """Adopt a new render target, after a resize or a render-scale change.
+        """Adopt a new render target after a resize.
 
-        A no-op here, exactly like ``enter`` and ``exit``: a scene that draws
-        through a view gets the target through :attr:`view`, and one that draws
-        the world is handed the target on every :meth:`draw` anyway.
-
-        Declared rather than discovered. It used to be found with
-        ``getattr(scene, "set_surface", None)`` and called if it turned out to
-        be callable, which meant a scene that forgot to implement it was
-        *skipped in silence* -- no error, no log, just a window resize that left
-        half the interface drawn for the old target size.
+        A no-op here: a scene with a view gets the target through :attr:`view`,
+        and the world is handed the target on every :meth:`draw`. Declared, not
+        looked up with ``getattr``, so a scene cannot skip it in silence.
         """
 
     def set_ui_scale(self, scale: float) -> None:  # noqa: B027
-        """Adopt a new interface scale, after the player changed the setting.
-
-        A no-op for the same reason and with the same consequence as
-        :meth:`set_surface`.
-        """
+        """Adopt a new interface scale. A no-op, like :meth:`set_surface`."""
 
     @property
     def halts_simulation(self) -> bool:
         """Whether this scene stops the world while it is on top.
 
-        A scene that overrides ``update`` to do nothing does not merely freeze
-        the picture -- it breaks an assumption the renderer relies on. The
-        camera interpolates between the position the last tick started from and
-        the one it ended at, and only a tick can close that gap. With no ticks,
-        the gap stays open and every frame re-blends it with a *different*
-        fraction, so the world does not stand still: it slides.
-
-        That reads as the game trembling behind the pause menu, and it is
-        invisible to any test that checks the pause screen's own pixels, because
-        the moving part is the scene underneath it.
-
-        So a scene that stops the world says so here, and the loop stops
-        interpolating: the picture is then exactly where the simulation is, and
-        it stays there. A scene that forgets to declare this gets the sliding
-        world back, which is why this is one property rather than a special case
-        for the pause screen.
+        The camera interpolates between the last two ticks, and only a tick
+        closes that gap: with no ticks, every frame re-blends it with another
+        fraction and the frozen world slides behind the menu. A scene that
+        stops the world says so here, and the loop stops interpolating.
         """
         return False
 
@@ -99,19 +70,13 @@ class Scene(ABC):
         """Process a single Pygame event."""
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:  # noqa: B027
-        """Process a routed input action; report what was performed.
+        """Process a routed input action and report what was performed.
 
-        The report is the scene's own truth about itself, and it is the only
-        thing the interface layer needs: ``None`` means *this screen did not
-        act*, and that is what makes the silence structural rather than a
-        setting. The gameplay scene answers ``None`` to the arrows it shares
-        with the menus, and the controls screen answers ``None`` to a press
-        swallowed by a rebinding capture — neither has to know that anything is
-        listening.
-
-        A screen returns ``MenuAction.BACK`` when it dismissed itself, a
-        ``MenuAction`` movement value when the focus moved, and the
-        ``MenuItem`` action otherwise.
+        ``None`` means the screen did not act, which keeps the interface quiet
+        (a capture swallowing a press, gameplay ignoring a menu arrow).
+        Otherwise: ``MenuAction.BACK`` when the screen dismissed itself, a
+        ``MenuAction`` movement when the focus moved, or the ``MenuItem``
+        action.
         """
 
     @abstractmethod
@@ -120,10 +85,8 @@ class Scene(ABC):
 
     @abstractmethod
     def draw(self, surface: pygame.Surface) -> None:
-        """Draw the scene into ``surface``, the fixed-size render target.
+        """Draw the scene into ``surface``, the render target it is handed.
 
-        The surface is handed in rather than fetched from
-        ``pygame.display.get_surface()``: the window is not what anything is
-        drawn into any more, and a scene that reached for it would be drawing
-        into a surface whose size depends on the player's video settings.
+        Never into ``pygame.display.get_surface()``: the window is not the
+        render target.
         """

@@ -1,21 +1,15 @@
 """The display subsystem: framing, letterbox, window and presentation.
 
-Four objects with four jobs, kept apart on purpose:
-
 ``Framing``
-    How much of the world is visible. Fixed, in world units. The only display
+    How much of the world is visible, in world units. The only display
     quantity the simulation may read.
 ``Viewport``
-    The surface everything is drawn into, at the window's own size.
+    The surface everything is drawn into, at the letterbox's size.
 ``Stage``
-    The OS window: size, position, DPI, vsync. It does not decide what is
-    drawn into it.
+    The OS window: size, position, fullscreen, vsync.
 ``Presentation``
-    Window and target, and the pointer back. The only place that reconciles
-    them, and it does not scale: the picture is blitted 1:1.
+    Reconciles window and target, and maps the pointer back. The picture is
+    blitted 1:1, never scaled.
 
-Nothing is re-exported. ``window_watch.py``, ``tools/display_acceptance.py`` and
-two tests import the *module* ``detection`` (``from src.core.display import
-detection``) because they want the whole detection pass, not one function; every
-other name is imported from the module that defines it.
+Nothing is re-exported: import each name from the module that defines it.
 """
