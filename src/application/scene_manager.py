@@ -28,6 +28,11 @@ class SceneManager:
         self.game = game
         self._stack: list[Scene] = []
         self._veil: pygame.Surface | None = None
+        #: The target the last draw painted, and the frame a transition fades
+        #: out of with how far it is through. See :meth:`_begin_transition`.
+        self._target: pygame.Surface | None = None
+        self._leaving: pygame.Surface | None = None
+        self._fade = 0.0
         self.input_dispatcher = InputDispatcher(game.input_router, game.events)
 
     @property
@@ -49,6 +54,8 @@ class SceneManager:
 
     def switch(self, scene: Scene) -> None:
         """Replace the whole stack with ``scene``."""
+        if self._stack:
+            self._begin_transition()
         for scene_ in reversed(self._stack):
             scene_.exit()
         self._stack.clear()
@@ -57,6 +64,7 @@ class SceneManager:
 
     def push(self, scene: Scene) -> None:
         """Suspend the current scene and start ``scene`` on top."""
+        self._begin_transition()
         self.input_dispatcher.router.reset()
         self._push(scene)
 
@@ -64,6 +72,8 @@ class SceneManager:
         """Remove the top scene; the scene below resumes (or the game ends)."""
         if not self._stack:
             return
+        if len(self._stack) > 1:
+            self._begin_transition()
         self._stack.pop().exit()
         self.input_dispatcher.router.reset()
         if not self._stack:
@@ -110,11 +120,44 @@ class SceneManager:
 
     def update(self, delta_time: float) -> None:
         """Advance only the active scene (scenes below stay frozen)."""
+        if self._leaving is not None:
+            self._fade += delta_time
+            if self._fade >= self.TRANSITION_SECONDS:
+                self._leaving = None
         if self.current is not None:
             self.current.update(delta_time)
 
     #: The veil a covering menu page is drawn over, on top of the world.
     VEIL = (8, 10, 14, 190)
+    #: How long the last frame takes to fade out when the stack changes.
+    TRANSITION_SECONDS = 0.15
+    #: The old frame's opacity on the first frame of a fade: below full, so the
+    #: new page shows on the very frame after the press.
+    TRANSITION_START_ALPHA = 192
+
+    def _begin_transition(self) -> None:
+        """Keep the frame on screen now, to fade it out over the next one.
+
+        A page that replaces another in one frame reads as a flicker; a short
+        cross-fade reads as a page turning. Nothing to fade before the first
+        draw, so a stack built before anything was shown just appears.
+        """
+        if self._target is None:
+            return
+        self._leaving = self._target.copy()
+        self._fade = 0.0
+
+    def _draw_transition(self, surface: pygame.Surface) -> None:
+        leaving = self._leaving
+        if leaving is None:
+            return
+        if leaving.get_size() != surface.get_size():
+            # The window changed mid-fade: that frame no longer lines up.
+            self._leaving = None
+            return
+        remaining = 1.0 - self._fade / self.TRANSITION_SECONDS
+        leaving.set_alpha(max(0, min(255, round(self.TRANSITION_START_ALPHA * remaining))))
+        surface.blit(leaving, (0, 0))
 
     def draw(self, surface: pygame.Surface) -> None:
         """Draw the stack into the render target, bottom to top.
@@ -125,8 +168,13 @@ class SceneManager:
         its own, over the world if there is one -- under a veil -- or over a
         plain background otherwise, so two menu panels never overlap.
         """
+        self._target = surface
         if not self._stack:
             return
+        self._draw_stack(surface)
+        self._draw_transition(surface)
+
+    def _draw_stack(self, surface: pygame.Surface) -> None:
         cover = next(
             (i for i in range(len(self._stack) - 1, -1, -1) if self._stack[i].covers_panels_below),
             None,

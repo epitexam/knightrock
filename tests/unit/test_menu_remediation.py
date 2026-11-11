@@ -288,3 +288,33 @@ def test_the_layout_paints_nothing_and_the_paint_decides_nothing() -> None:
     drawn = blank.copy()
     MenuView(1.0).draw(drawn, "VIDEO", model, top=170, footers=("help",), description="note")
     assert pygame.image.tobytes(target, "RGB") == pygame.image.tobytes(drawn, "RGB")
+
+
+def test_a_page_change_fades_the_last_frame_out(tmp_path) -> None:
+    """The frame before a push shows through the next one, then is gone."""
+    from src.application.scenes.menu_scene import MenuScene
+    from src.application.scenes.options_scene import OptionsScene
+    from src.core.game import Game
+
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    game._initialize()
+    assert game.presentation is not None
+    game.presentation.retarget(pygame.Surface((640, 360)))
+    game._retarget()
+    surface = game.presentation.surface
+    manager = game.scene_manager
+    manager.switch(MenuScene(game))
+    manager.draw(surface)
+    title = pygame.image.tobytes(surface, "RGB")
+
+    manager.push(OptionsScene(game))
+    manager.draw(surface)
+    fading = pygame.image.tobytes(surface, "RGB")
+    manager.update(manager.TRANSITION_SECONDS)
+    manager.draw(surface)
+    settled = pygame.image.tobytes(surface, "RGB")
+    manager.draw(surface)
+
+    assert fading not in (title, settled)
+    assert pygame.image.tobytes(surface, "RGB") == settled
+
