@@ -7,7 +7,7 @@ simulation (Phase 2 #5).  The one-shot latches (``player_dead_emitted`` /
 captured by the rollback snapshots so a rewind re-arms them.
 """
 
-from src.application.events import EventBus, LevelCompleted, PlayerDied
+from src.core.events import EventBus, LevelCompleted, PlayerDied
 from src.core.level.level_data import LevelData
 from src.entities.player import Player
 

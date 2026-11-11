@@ -7,7 +7,6 @@ from time import perf_counter
 import pygame
 from pygame.joystick import JoystickType
 
-from src.application.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
@@ -26,6 +25,7 @@ from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.window_watch import DisplayChange, WindowWatch, monitor_at
+from src.core.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager

@@ -26,39 +26,24 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 #: The layers this file reasons about.
 LAYERS = ("application", "combat", "core", "data", "entities", "physics", "states", "ui")
 
-#: The layers a module may import, beyond its own. Everything not listed here
-#: is a violation, so widening a rule is a deliberate edit to this table.
-#: What `core` may reach outside itself. Everything absent is a violation, so
-#: widening a rule is a deliberate edit to this table rather than an addition
-#: to a list of exceptions.
+#: What a layer may reach outside itself, per layer and per module. Everything
+#: absent is a violation, so widening a rule is a deliberate edit here.
 #:
-#: Only two entries. The layers are *not* a strict
-#: hierarchy -- `physics` imports `core.settings`, `states` imports `core` --
-#: and pretending otherwise here would be a rule about an architecture this
-#: project does not have and is not claiming.
+#: Only `core` has a rule: it is the simulation and its drawing, and the two
+#: layers above it -- the interface and the application -- reach it by
+#: injection and by subscription, never the other way round. The other layers
+#: are not a strict hierarchy (`physics` reads `core.settings`, `states` reads
+#: `core`), and a rule about an architecture the project does not have would be
+#: noise.
 ALLOWED_MODULES: dict[str, dict[str, frozenset[str]]] = {
     "core": {
-        # The interface reaches `core` by injection
-        # (src.core.rendering.overlay), never the other way round.
+        # The interface reaches `core` through src.core.rendering.overlay.
         "ui": frozenset(),
-        # The simulation's one channel to the application, checked per module
-        # rather than per layer: `application.scene_manager` is as forbidden to
-        # a level as `application` is.
-        "application": frozenset({"events"}),
+        # The simulation publishes facts on src.core.events and holds no
+        # reference to the application.
+        "application": frozenset(),
     },
 }
-
-#: The one module of `application` the simulation is allowed to import, and
-#: why it is not a violation.
-#:
-#: `NotificationSystem` publishes the player's death and the level completion
-#: from inside the fixed tick, and the bus is the only channel available to it
-#: -- which is the point: the tick holds no reference to the application, so a
-#: rewind cannot re-emit a fact the player already saw. The contract is
-#: genuinely shared, and the alternative -- moving the bus -- would put a
-#: notification channel inside the simulation, which is worse: the simulation
-#: would then own a concept that only the application has a use for.
-APPLICATION_EVENTS = "application.events"
 
 
 #: Modules exempt from their layer's rule, with the reason.
@@ -149,18 +134,15 @@ def test_core_does_not_import_the_interface_layer() -> None:
     )
 
 
-def test_the_simulation_only_imports_the_event_bus_from_the_application() -> None:
-    """The simulation's one channel to the application is the notification bus.
+def test_the_simulation_does_not_import_the_application() -> None:
+    """The simulation talks to the application through src.core.events only.
 
-    It publishes facts and holds no reference to the application, which is what
-    keeps a rewind from re-emitting something the player already saw. Checked
-    per module and not per layer: `application.scene_manager` is as forbidden
-    to a level as `application` is.
+    The level publishes facts on the bus and holds no reference to the
+    application, which also keeps a rewind from re-emitting something the
+    player already saw.
     """
     offenders = [line for line in _violations("core") if "-> application" in line]
-    assert offenders == [], (
-        f"core may import {APPLICATION_EVENTS}, and nothing else from application"
-    )
+    assert offenders == [], "core must not import application: publish on src.core.events"
 
 
 def test_the_renderer_names_no_ui_module() -> None:

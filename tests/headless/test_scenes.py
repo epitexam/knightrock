@@ -470,7 +470,7 @@ def test_game_over_retry_restarts_the_level(manager: SceneManager):
 
 def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
     """LevelCompleted → unlock level_unlock + JSON write (Phase 2 #6)."""
-    from src.application.events import LevelCompleted
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
 
@@ -482,7 +482,7 @@ def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
 
 
 def test_completed_level_without_unlock_value_still_persists_last_level(game_runtime):
-    from src.application.events import LevelCompleted
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0))
 
@@ -491,8 +491,8 @@ def test_completed_level_without_unlock_value_still_persists_last_level(game_run
 
 
 def test_menu_offers_continue_when_progress_exists(game_runtime):
-    from src.application.events import LevelCompleted
     from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
     game_runtime.scene_manager.switch(MenuScene(game_runtime))
@@ -510,8 +510,8 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
 
 
 def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
-    from src.application.events import LevelCompleted
     from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.events import LevelCompleted
     from tests.headless.conftest import make_programmatic_level_data
 
     # Level 1 has no TMX yet: stub the manager loading.

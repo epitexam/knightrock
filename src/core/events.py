@@ -1,4 +1,7 @@
-"""Typed event bus for UI/combat decoupling (audit F8.1, Phase 2 #5).
+"""The typed event bus: facts the simulation and the interface publish.
+
+It lives in ``core`` because the simulation is its main producer: the level
+emits its milestones from the fixed tick, and the application subscribes.
 
 The bus is **synchronous and strictly ordered**: ``emit`` invokes subscribers
 immediately, in subscription order, on the simulation thread.  It therefore

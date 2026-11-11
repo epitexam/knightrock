@@ -2,8 +2,8 @@ from types import MappingProxyType
 
 import pygame
 
-from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.input_dispatcher import InputDispatcher
+from src.core.events import EventBus, UiEffect, UiFeedback
 from src.core.input.event_router import (
     REPEATABLE_UI_ACTIONS,
     EventRouter,

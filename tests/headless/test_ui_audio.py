@@ -10,7 +10,6 @@ did not ask for one.
 import pygame
 import pytest
 
-from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.scene_manager import SceneManager
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.gameplay_scene import GameplayScene
@@ -18,6 +17,7 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
+from src.core.events import EventBus, UiEffect, UiFeedback
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
@@ -365,7 +365,7 @@ def test_the_simulation_reports_do_not_reach_the_interface_feedback(
     manager.switch(OptionsScene(manager.game))
 
     game_runtime.events.emit(
-        __import__("src.application.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
+        __import__("src.core.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
     )
 
     assert feedback.cues == []

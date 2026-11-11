@@ -12,7 +12,8 @@ import os
 import pygame
 import pytest
 
-from src.application.events import (
+from src.core.audio import SOUNDS, AudioBus, AudioCategory, SoundId, SoundSpec, cue_for
+from src.core.events import (
     EventBus,
     LevelCompleted,
     LevelStarted,
@@ -20,7 +21,6 @@ from src.application.events import (
     UiEffect,
     UiFeedback,
 )
-from src.core.audio import SOUNDS, AudioBus, AudioCategory, SoundId, SoundSpec, cue_for
 
 
 @pytest.fixture(scope="module", autouse=True)

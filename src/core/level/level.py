@@ -8,7 +8,7 @@ from typing import Any
 
 import pygame
 
-from src.application.events import EventBus, LevelStarted
+from src.core.events import EventBus, LevelStarted
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
 from src.core.level.scene_host import SceneHost
