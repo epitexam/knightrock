@@ -2,7 +2,7 @@ from collections import deque
 from collections.abc import Callable, Iterable
 from itertools import chain
 from time import perf_counter
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
@@ -11,9 +11,12 @@ from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash, ParryFlash, Turn
+from src.core.settings import Afterimage, HitFlash, ParryFlash
 from src.core.sprite_groups import SpriteGroups
 from src.states import state_names
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 DASH_STRETCH_X = 1.6
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
@@ -22,12 +25,11 @@ DASH_STRETCH_Y = 0.6
 """Vertical squash paired with the dash stretch (render-only)."""
 
 
-def is_player_dashing(sprite: object) -> bool:
-    """Whether the sprite is a player currently in its dash state."""
-    if getattr(sprite, "faction", None) != "player":
-        return False
-    state_machine = getattr(sprite, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == state_names.DASH
+def is_player_dashing(sprite: Entity) -> bool:
+    """Whether the entity is a player currently in its dash state."""
+    return (
+        sprite.faction == "player" and sprite.state_machine.current_state_name == state_names.DASH
+    )
 
 
 def dash_frame(
@@ -43,10 +45,10 @@ def dash_frame(
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
-def turn_offset_px(sprite: object) -> float:
+def turn_offset_px(sprite: Entity) -> float:
     """The trailing draw offset a pivoting fighter gets, in pixels.
 
-    Read off ``turn_ratio``, which :class:`PlayerTurnState` publishes and
+    Read off ``render_hints.turn_ratio``, which :class:`PlayerTurnState` publishes and
     clears: the ratio is the hold's own countdown, so the offset reaches zero
     on the same tick the facing lands and the flip has nothing left to correct.
 
@@ -64,27 +66,25 @@ def turn_offset_px(sprite: object) -> float:
     mark in the direction its own feet are already travelling, which is the one
     direction the eye is not reading.
     """
-    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    ratio = sprite.render_hints.turn_ratio
     if ratio <= 0.0:
         return 0.0
-    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
-    lead = float(getattr(sprite, "turn_lead_px", Turn.LEAD_PX) or 0.0)
-    return travel * lead * ratio
+    travel = -1.0 if sprite.facing_right else 1.0
+    return travel * sprite.turn_lead_px * ratio
 
 
-def turn_skew_px(sprite: object) -> float:
+def turn_skew_px(sprite: Entity) -> float:
     """The lean a pivoting fighter gets, in pixels at the top of the sprite.
 
     Signed like :func:`turn_offset_px`, and for the same stability reason, so
     the figure is dragged as one piece: the body goes over *and* the top of it
     leads further than the feet do.
     """
-    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    ratio = sprite.render_hints.turn_ratio
     if ratio <= 0.0:
         return 0.0
-    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
-    skew = float(getattr(sprite, "turn_skew_px", Turn.SKEW_PX) or 0.0)
-    return travel * skew * ratio
+    travel = -1.0 if sprite.facing_right else 1.0
+    return travel * sprite.turn_skew_px * ratio
 
 
 def turn_frame(
@@ -328,8 +328,8 @@ class Renderer:
         # Flash silhouettes, keyed by ``(id(image), tint)`` like
         # ``_scaled_cache`` and holding the source for the same reason.
         self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
-        self._dashing_player: object | None = None
-        self._turning_player: object | None = None
+        self._dashing_player: Entity | None = None
+        self._turning_player: Entity | None = None
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
         #: a renderer that was handed a bare group (every test that draws a
@@ -507,7 +507,7 @@ class Renderer:
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
-    def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
+    def _find_dashing_player(self, groups: SpriteGroups) -> Entity | None:
         """The one sprite that can be a dashing player, or None.
 
         ``is_player_dashing`` needs three attribute lookups to answer, and
@@ -517,19 +517,19 @@ class Renderer:
         """
         for sprite in groups.entity_sprites:
             if is_player_dashing(sprite):
-                return cast("pygame.sprite.Sprite", sprite)
+                return sprite
         return None
 
-    def _find_turning_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
+    def _find_turning_player(self, groups: SpriteGroups) -> Entity | None:
         """The one sprite mid-pivot, or None.
 
         The same shape and the same reason as :meth:`_find_dashing_player`:
-        ``turn_ratio`` is one attribute lookup on the entity, asked once here
+        the pivot ratio is one lookup on the entity, asked once here
         instead of of every visible sprite in the blit loop.
         """
         for sprite in groups.entity_sprites:
-            if float(getattr(sprite, "turn_ratio", 0.0) or 0.0) > 0.0:
-                return cast("pygame.sprite.Sprite", sprite)
+            if sprite.render_hints.turn_ratio > 0.0:
+                return sprite
         return None
 
     def _collect_visible_blits(
@@ -655,9 +655,10 @@ class Renderer:
         # over every tile of the level.
         if self._dashing_player is not None and sprite is self._dashing_player:
             image, screen_rect = dash_frame(image, screen_rect)
-        if self._turning_player is not None and sprite is self._turning_player:
+        turning = self._turning_player
+        if turning is not None and sprite is turning:
             image, screen_rect = turn_frame(
-                image, screen_rect, turn_offset_px(sprite), turn_skew_px(sprite)
+                image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)
             )
         blits.append((image, screen_rect))
 
@@ -676,8 +677,8 @@ class Renderer:
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            hurt = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
-            parried = float(getattr(sprite, "parry_flash_timer", 0.0) or 0.0)
+            hurt = sprite.render_hints.flash_timer
+            parried = sprite.render_hints.parry_flash_timer
             if hurt <= 0.0 and parried <= 0.0:
                 continue
             if not self.camera.is_visible(sprite.rect):

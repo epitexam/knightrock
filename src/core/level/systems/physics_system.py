@@ -192,7 +192,7 @@ class PhysicsSystem:
         dizzy_ids: set[int],
         stepping_ids: set[int],
     ) -> None:
-        impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+        impact = entity.render_hints.landed_impact
         landed = impact >= Dust.MIN_FALL_SPEED
         if landed:
             spawn_landing_dust(self.groups.fx_sprites, entity, impact)
@@ -220,8 +220,7 @@ class PhysicsSystem:
             stepping_ids.add(id(entity))
             if not dashing and not landed:
                 self._tick_footsteps(entity, delta_time, tier)
-        if hasattr(entity, "landed_impact"):
-            entity.landed_impact = 0.0
+        entity.render_hints.landed_impact = 0.0
 
     def _cleanup_timers(
         self,

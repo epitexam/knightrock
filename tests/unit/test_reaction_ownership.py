@@ -7,6 +7,7 @@ import pygame
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
+from src.core.rendering.render_hints import RenderHints
 from src.entities.components.reaction import (
     ReactionComponent,
     ReactionOwner,
@@ -23,7 +24,7 @@ def _narrow_owner(**overrides) -> SimpleNamespace:
         "stagger_timer": 0.0,
         "super_armor": False,
         "super_armor_count": 0,
-        "reaction_age": 0.0,
+        "render_hints": RenderHints(),
         "combat": SimpleNamespace(
             is_hurt=False,
             hurt_timer=0.0,

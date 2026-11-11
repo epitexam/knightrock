@@ -31,6 +31,7 @@ from src.core.settings import CameraFollow, ParryFlash, Simulation
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Physics as PhysicsSettings
 from src.core.sprite_groups import SpriteGroups
+from tests.fakes import FighterSprite
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -390,13 +391,13 @@ def test_a_snapped_rect_always_reaches_the_exact_extent(density: float, framing:
         assert neighbour.left <= got.right
 
 
-class _FlashingEntity(pygame.sprite.Sprite):
+class _FlashingEntity(FighterSprite):
     def __init__(self) -> None:
         super().__init__()
         self.faction = "enemy"
         self.image = pygame.Surface((8, 8), pygame.SRCALPHA)
         self.rect = pygame.FRect(4.0, 4.0, 8, 8)
-        self.flash_timer = 0.05
+        self.render_hints.flash_timer = 0.05
 
 
 #: Densities worth exercising: below one (a window smaller than the framing),
@@ -612,8 +613,8 @@ def test_a_parry_washes_the_fighter_gold_and_not_white() -> None:
     groups = SpriteGroups()
     entity = _FlashingEntity()
     entity.image.fill((120, 120, 120))
-    entity.flash_timer = 0.0
-    entity.parry_flash_timer = ParryFlash.DURATION
+    entity.render_hints.flash_timer = 0.0
+    entity.render_hints.parry_flash_timer = ParryFlash.DURATION
     groups.entity_sprites.add(entity)
     renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)
@@ -632,7 +633,7 @@ def test_a_parry_on_top_of_a_hit_reads_as_the_hit_it_is() -> None:
     groups = SpriteGroups()
     entity = _FlashingEntity()
     entity.image.fill((120, 120, 120))
-    entity.parry_flash_timer = ParryFlash.DURATION
+    entity.render_hints.parry_flash_timer = ParryFlash.DURATION
     groups.entity_sprites.add(entity)
     renderer = _renderer(1.0)
     renderer.camera.begin_frame(1.0)

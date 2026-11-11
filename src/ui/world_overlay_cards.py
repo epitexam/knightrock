@@ -37,7 +37,13 @@ from src.ui.world_overlay_metrics import (
     MetricsCache,
     WorldOverlayMetrics,
 )
-from src.ui.world_overlay_shared import AnnotationSink, display_name, faction, label_color
+from src.ui.world_overlay_shared import (
+    AnnotationSink,
+    display_name,
+    faction,
+    label_color,
+    reaction_age,
+)
 
 #: One label row: ``(text, color)`` tokens laid out left to right.
 Segments = list[list[tuple[str, Color]]]
@@ -467,7 +473,7 @@ class CardLayer:
         reaction = getattr(sprite, "reaction_status", None)
         if not isinstance(reaction, ReactionStatus):
             return None
-        age = float(getattr(sprite, "reaction_age", 0.0) or 0.0)
+        age = reaction_age(sprite)
         if age > 0:
             return f"HIT {reaction.kind.value} {age:.2f}s"
         return f"HIT {reaction.kind.value} (old)"
@@ -508,11 +514,7 @@ class CardLayer:
         colors: dict[str, Color] = {}
         reaction = CardLayer.reaction_flag(sprite)
         if reaction is not None:
-            colors[reaction] = (
-                Colors.red
-                if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0
-                else Colors.dark_red
-            )
+            colors[reaction] = Colors.red if reaction_age(sprite) > 0 else Colors.dark_red
         stagger = float(getattr(sprite, "stagger_timer", 0.0) or 0.0)
         if stagger > 0:
             colors[f"STAG {stagger:.2f}s"] = Colors.orange

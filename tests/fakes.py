@@ -10,6 +10,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pygame
+
+from src.core.rendering.render_hints import RenderHints
+
 #: Where the real Player keeps each controller field: flat test name -> attribute
 #: on the controller. Flat names keep the tests short; the stand-in stores them
 #: where the game reads them.
@@ -53,3 +57,22 @@ def player_shape(**fields: Any) -> SimpleNamespace:
             if flat in fields:
                 setattr(controllers[name], attribute, fields.pop(flat))
     return SimpleNamespace(**fields, **controllers)
+
+
+class FighterSprite(pygame.sprite.Sprite):
+    """A sprite with what the renderer and the FX pass read on every ``Entity``.
+
+    ``entity_sprites`` holds entities, so the code that walks it reads these
+    fields directly. A stand-in put in that group starts from this shape and
+    overrides what its test is about.
+    """
+
+    faction = "enemy"
+    facing_right = True
+    turn_lead_px = 0.0
+    turn_skew_px = 0.0
+
+    def __init__(self, *groups: Any) -> None:
+        super().__init__(*groups)
+        self.render_hints = RenderHints()
+        self.state_machine = SimpleNamespace(current_state_name=None)

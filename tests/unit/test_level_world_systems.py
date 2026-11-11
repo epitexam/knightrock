@@ -19,6 +19,7 @@ from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.settings import Respawn
+from tests.fakes import FighterSprite
 
 
 class RecordingGroup(list):
@@ -61,7 +62,7 @@ class PlayerStub:
         self.is_dead = True
 
 
-class RiderStub(pygame.sprite.Sprite):
+class RiderStub(FighterSprite):
     """Entity double for the platform carry: geometry plus the carry hooks."""
 
     def __init__(self, pos: tuple[float, float], *, on_floor: bool = True) -> None:

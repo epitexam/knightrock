@@ -176,7 +176,7 @@ def test_the_hold_covers_the_plant_and_not_the_whole_turn() -> None:
     # because it is the frame the plant is reached on.
     assert abs(player.velocity.x) <= Turn.PLANT_PX_S, "the flip lands at the plant"
     assert player.facing_right is False, "the flip lands as the push begins"
-    assert player.turn_ratio == 0.0, "and the lean is over with it"
+    assert player.render_hints.turn_ratio == 0.0, "and the lean is over with it"
 
 
 def test_the_fighter_keeps_moving_through_the_hold() -> None:
@@ -240,7 +240,7 @@ def test_a_held_key_does_not_re_enter_after_the_hold_lands() -> None:
     _run(player, input_manager, frames=8, axis=-1.0)
 
     assert _state(player) != PlayerState.TURN.value
-    assert player.turn_ratio == 0.0
+    assert player.render_hints.turn_ratio == 0.0
 
 
 # --- The four ways not to ---------------------------------------------------
@@ -413,11 +413,11 @@ def test_the_ratio_falls_to_zero_exactly_as_the_facing_lands() -> None:
     _run_at_full_speed(player, input_manager, 1.0)
 
     _run(player, input_manager, frames=1, axis=-1.0)
-    assert player.turn_ratio > 0.0
+    assert player.render_hints.turn_ratio > 0.0
 
     _run(player, input_manager, frames=int(Turn.DELAY_S / TICK) + 2, axis=-1.0)
 
-    assert player.turn_ratio == 0.0
+    assert player.render_hints.turn_ratio == 0.0
     assert player.facing_right is False
 
 
@@ -429,7 +429,7 @@ def test_the_ratio_is_cleared_by_every_exit() -> None:
 
     _run(player, input_manager, frames=2, axis=-1.0, attack=True)
 
-    assert player.turn_ratio == 0.0
+    assert player.render_hints.turn_ratio == 0.0
 
 
 def test_a_fighter_who_is_not_pivoting_reports_nothing() -> None:
@@ -437,7 +437,7 @@ def test_a_fighter_who_is_not_pivoting_reports_nothing() -> None:
     player = _player(input_manager)
     _run(player, input_manager, frames=4)
 
-    assert player.turn_ratio == 0.0
+    assert player.render_hints.turn_ratio == 0.0
     assert turn_offset_px(player) == 0.0
     assert turn_skew_px(player) == 0.0
 
@@ -812,7 +812,7 @@ def test_the_renderer_resolves_the_pivoting_fighter_once() -> None:
     player = _player()
     groups.all_sprites.add(player)
     groups.entity_sprites.add(player)
-    player.turn_ratio = 0.5
+    player.render_hints.turn_ratio = 0.5
 
     renderer.draw(groups, dt=TICK)
 
@@ -837,9 +837,9 @@ def test_a_flash_lands_on_the_pivoting_body_and_not_where_it_was() -> None:
     player.sync_rects()
     groups.all_sprites.add(player)
     groups.entity_sprites.add(player)
-    player.flash_timer = 0.05
+    player.render_hints.flash_timer = 0.05
     player.facing_right = True
-    player.turn_ratio = 0.5
+    player.render_hints.turn_ratio = 0.5
 
     renderer.draw(groups, dt=TICK)
     flashed = renderer._collect_flashes(groups)
@@ -963,7 +963,7 @@ def test_an_enemy_pivots_when_it_opts_in() -> None:
 
     assert enemy.state_machine.current_state_name != Turn.STATE
     assert enemy.facing_right is False, "the pivot committed on the way out"
-    assert enemy.turn_ratio == 0.0
+    assert enemy.render_hints.turn_ratio == 0.0
 
 
 # --- Leaving the hold early -------------------------------------------------
@@ -993,7 +993,7 @@ def test_walking_off_a_ledge_mid_pivot_goes_to_fall() -> None:
 
     assert _state(player) == PlayerState.FALL.value
     assert player.facing_right is False, "the pivot still committed"
-    assert player.turn_ratio == 0.0
+    assert player.render_hints.turn_ratio == 0.0
 
 
 def test_an_enemy_that_loses_the_floor_just_resumes() -> None:

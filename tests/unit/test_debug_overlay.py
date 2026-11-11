@@ -11,6 +11,7 @@ from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
+from src.core.rendering.render_hints import RenderHints
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
@@ -76,6 +77,7 @@ def _entity(**overrides) -> SimpleNamespace:
         "gravity_scale": 1.0,
         "on_surface": {"floor": True, "left": False, "right": False},
         "state_machine": SimpleNamespace(current_state_name="idle"),
+        "render_hints": RenderHints(),
         "combat": SimpleNamespace(
             state=SimpleNamespace(attack_name=None, sub_state=None, phase_index=0, frame_counter=0),
             targets_hit=set(),
@@ -333,7 +335,7 @@ def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
 
@@ -357,7 +359,7 @@ def test_guarded_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Ca
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.GUARDED, magnitude=90.0, direction=1.0
     )
-    entity.reaction_age = 0.4
+    entity.render_hints.reaction_age = 0.4
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
 
@@ -367,7 +369,7 @@ def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PARRIED, magnitude=0.0, direction=1.0)
-    entity.reaction_age = 0.4
+    entity.render_hints.reaction_age = 0.4
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.gold
 
@@ -380,7 +382,7 @@ def test_expired_reaction_status_keeps_the_locomotion_color(
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
@@ -400,7 +402,7 @@ def test_knockback_state_keeps_the_vector_red_after_the_freshness_window(
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.0  # freshness expired, still being launched
+    entity.render_hints.reaction_age = 0.0  # freshness expired, still being launched
     entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
@@ -416,7 +418,7 @@ def test_resolved_knockback_falls_back_to_the_locomotion_color(
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     entity.state_machine = SimpleNamespace(current_state_name="chase")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
@@ -428,7 +430,7 @@ def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Cam
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
@@ -440,7 +442,7 @@ def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Ca
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
@@ -450,7 +452,7 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     segments = world_ui._cards.label_segments(entity)
     lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
@@ -461,7 +463,7 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
 def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> None:
     entity = _entity()
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     segments = world_ui._cards.label_segments(entity)
     lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None

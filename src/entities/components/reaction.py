@@ -21,6 +21,7 @@ import pygame
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
+from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
@@ -128,9 +129,9 @@ class ReactionOwner(Protocol):
     stagger_timer: float
     super_armor: bool
     super_armor_count: int
-    # Render-only freshness of the last reaction; decayed in Entity.update,
-    # armed here and never snapshotted.
-    reaction_age: float
+    # Its ``reaction_age`` is the render-only freshness of the last reaction:
+    # armed here, decayed in Entity.update and never snapshotted.
+    render_hints: RenderHints
 
     @property
     def combat(self) -> ReactionCombatPort: ...
@@ -159,7 +160,7 @@ class ReactionComponent:
     def _arm(self, kind: ReactionKind, magnitude: float, direction: float) -> None:
         """Record the reaction cause and refresh the render-only freshness age."""
         self.status = ReactionStatus(kind=kind, magnitude=magnitude, direction=direction)
-        self._owner.reaction_age = ReactionMark.DURATION
+        self._owner.render_hints.reaction_age = ReactionMark.DURATION
 
     def apply_knockback(
         self,

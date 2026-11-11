@@ -50,7 +50,7 @@ def test_apply_knockback_arms_push_status() -> None:
         magnitude=pytest.approx(Vector2(300.0, -100.0).length()),
         direction=1.0,
     )
-    assert owner.reaction_age == pytest.approx(ReactionMark.DURATION)
+    assert owner.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION)
 
 
 def test_apply_knockback_direction_follows_the_source_side() -> None:
@@ -84,7 +84,7 @@ def test_zero_power_knockback_does_not_arm() -> None:
     component.apply_knockback(KnockbackConfig(power=(0.0, 0.0)), source_center_x=None)
 
     assert component.status is None
-    assert owner.reaction_age == 0.0
+    assert owner.render_hints.reaction_age == 0.0
 
 
 def test_heavy_knockback_arms_launch_and_drives_the_state_machine() -> None:
@@ -188,11 +188,11 @@ def test_reaction_age_decays_in_entity_update() -> None:
     entity = make_entity()
     entity._reaction.apply_knockback(KnockbackConfig(power=(300.0, 0.0)), source_center_x=None)
 
-    assert entity.reaction_age == pytest.approx(ReactionMark.DURATION)
+    assert entity.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION)
     entity.update(0.1)
-    assert entity.reaction_age == pytest.approx(ReactionMark.DURATION - 0.1)
+    assert entity.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION - 0.1)
     entity.update(ReactionMark.DURATION)
-    assert entity.reaction_age == 0.0
+    assert entity.render_hints.reaction_age == 0.0
     # The cause itself survives the freshness window; only freshness expires.
     assert entity.reaction_status is not None
     assert entity.reaction_status.kind is ReactionKind.PUSH
@@ -214,9 +214,9 @@ def test_rollback_round_trip_without_the_field() -> None:
     entity._reaction.apply_knockback(KnockbackConfig(power=(300.0, 0.0)), source_center_x=None)
     snapshot = entity.save_state()
 
-    entity.reaction_age = 0.123
+    entity.render_hints.reaction_age = 0.123
     entity.load_state(snapshot)
 
-    assert entity.reaction_age == pytest.approx(0.123)
+    assert entity.render_hints.reaction_age == pytest.approx(0.123)
     assert entity.reaction_status is not None
     assert entity.reaction_status.kind is ReactionKind.PUSH

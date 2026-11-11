@@ -19,6 +19,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
+from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import (
     EnemyJump,
@@ -112,6 +113,9 @@ class Entity(Sprite):
         Collision grid shared with the level; queried by ``move`` for O(1)
         neighbor lookups. Assigned by the level after the world is built.
     """
+
+    # A fighter always has a picture; ``Sprite`` alone allows none.
+    image: pygame.Surface
 
     # Kinematic state is owned by ``self._movement`` (MovementComponent) and
     # exposed through the ``velocity`` / ``on_surface`` delegating properties
@@ -324,15 +328,9 @@ class Entity(Sprite):
         """State the drawing reads and the simulation never does: never snapshotted.
 
         Kept on the entity so the renderer reads a sprite and not its state
-        machine: the damage and parry flashes, the freshness of the last hit
-        reaction, the hard-landing speed the dust reads, and how far through a
-        pivot the fighter is (1 at the start, 0 when the facing lands).
+        machine, and in one object so what a rollback skips is a type.
         """
-        self.flash_timer: float = 0.0
-        self.parry_flash_timer: float = 0.0
-        self.reaction_age: float = 0.0
-        self.landed_impact: float = 0.0
-        self.turn_ratio: float = 0.0
+        self.render_hints: RenderHints = RenderHints()
 
     def _setup_state_machine(self) -> None:
         """Initialize the state machine. Override in subclasses for specific states."""
@@ -1008,7 +1006,7 @@ class Entity(Sprite):
         actual_damage = self._apply_damage(amount)
 
         if actual_damage > 0:
-            self.flash_timer = HitFlash.DURATION
+            self.render_hints.flash_timer = HitFlash.DURATION
 
         if actual_damage > 0 and knockback is not None:
             self._apply_knockback(knockback, source_center_x)
@@ -1115,12 +1113,7 @@ class Entity(Sprite):
 
         self.old_hitbox = self.hitbox.copy()
         self.vitals.tick_timers(delta_time)
-        if self.flash_timer > 0.0:
-            self.flash_timer = max(0.0, self.flash_timer - delta_time)
-        if self.parry_flash_timer > 0.0:
-            self.parry_flash_timer = max(0.0, self.parry_flash_timer - delta_time)
-        if self.reaction_age > 0.0:
-            self.reaction_age = max(0.0, self.reaction_age - delta_time)
+        self.render_hints.tick(delta_time)
 
         self._pre_update(delta_time)
         self._update_state_machine(delta_time)
@@ -1131,7 +1124,7 @@ class Entity(Sprite):
         now_grounded = bool(self.on_surface.get("floor", False))
         # Landing edge with the pre-move fall speed: hard landings become
         # dust puffs in PhysicsSystem; anything else zeroes the hint.
-        self.landed_impact = fall_speed if now_grounded and not was_grounded else 0.0
+        self.render_hints.landed_impact = fall_speed if now_grounded and not was_grounded else 0.0
         self._tick_juggle(delta_time, was_grounded)
         self.combat.sync_attack_box()
         self._post_update(delta_time)

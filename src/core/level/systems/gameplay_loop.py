@@ -286,7 +286,7 @@ class GameplayLoop:
         self,
         effective_delta: float,
         combat_sprites: Iterable[Combatant],
-        entity_sprites: pygame.sprite.Group[pygame.sprite.Sprite],
+        entity_sprites: pygame.sprite.Group[Entity],
     ) -> None:
         if effective_delta <= 0.0:
             return

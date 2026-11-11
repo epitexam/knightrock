@@ -27,6 +27,7 @@ from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
 from src.ui.hud import HUD
+from tests.fakes import FighterSprite
 from tests.unit.helpers import make_overlay
 
 pytestmark = pytest.mark.usefixtures("_staleness_display")
@@ -43,7 +44,7 @@ def _staleness_display() -> None:
     pygame.display.set_mode((WIDTH, HEIGHT))
 
 
-class Enemy(pygame.sprite.Sprite):
+class Enemy(FighterSprite):
     """A damageable enemy: the only kind of sprite that carries a world bar."""
 
     faction = "enemy"

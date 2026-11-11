@@ -26,6 +26,7 @@ from collections.abc import Iterable
 import pygame
 
 from src.core.colors import Color, Colors
+from src.core.rendering.render_hints import RenderHints
 from src.ui.world_overlay_metrics import ANNOTATION_MAX_DODGES
 
 __all__ = [
@@ -37,7 +38,18 @@ __all__ = [
     "faction",
     "hitbox_color",
     "label_color",
+    "reaction_age",
 ]
+
+
+def reaction_age(sprite: pygame.sprite.Sprite) -> float:
+    """Seconds for which the sprite's last hit reaction is still fresh; 0 without one.
+
+    The overlay is handed every sprite of the level, so the hints are looked up
+    rather than assumed -- once, here, and by their type.
+    """
+    hints = getattr(sprite, "render_hints", None)
+    return hints.reaction_age if isinstance(hints, RenderHints) else 0.0
 
 
 def debug_reference(sprite: pygame.sprite.Sprite) -> pygame.FRect | None:

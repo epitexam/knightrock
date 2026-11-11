@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pygame
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 
 @dataclass
@@ -34,7 +38,9 @@ class SpriteGroups:
     collision_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     moving_platforms: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     combat_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
-    entity_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
+    entity_sprites: pygame.sprite.Group[Entity] = field(default_factory=pygame.sprite.Group)
+    """The fighters -- the player and the enemies -- and nothing else, so a
+    system that walks it reads an ``Entity`` and not a sprite it has to probe."""
     fx_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     hazard_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     projectile_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)

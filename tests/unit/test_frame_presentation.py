@@ -20,6 +20,7 @@ from src.core.level.level import Level
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from tests.fakes import FighterSprite
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 from tests.unit.helpers import make_overlay
 
@@ -41,7 +42,7 @@ def _renderer_display() -> None:
     pygame.display.set_mode((320, 240))
 
 
-class _Sprite(pygame.sprite.Sprite):
+class _Sprite(FighterSprite):
     """Minimal sprite: a fixed image, a world rect, and a camera-cullable size."""
 
     def __init__(self, topleft: tuple[float, float] = (8.0, 8.0), size: int = 40) -> None:

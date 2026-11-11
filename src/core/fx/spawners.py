@@ -748,11 +748,11 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
 def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:
     """Yield ``(entity, impact)`` for entities that just landed hard.
 
-    ``Entity.update`` records the pre-move fall speed into ``landed_impact`` on
+    ``Entity.update`` records the pre-move fall speed into its render hints on
     the landing tick and zeroes it otherwise; this filters on
     ``Dust.MIN_FALL_SPEED`` so light hops stay clean.
     """
     for entity in entities:
-        impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+        impact = entity.render_hints.landed_impact
         if impact >= Dust.MIN_FALL_SPEED:
             yield entity, impact

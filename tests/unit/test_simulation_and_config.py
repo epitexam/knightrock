@@ -14,6 +14,7 @@ from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
+from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Guard, Physics
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController, GuardController
@@ -160,6 +161,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         hitbox=pygame.FRect(0, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
         dash_started_this_frame=False,
+        render_hints=RenderHints(),
         respawn=Mock(),
         die=Mock(),
     )
@@ -168,6 +170,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         hitbox=pygame.FRect(200, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
         kill=Mock(),
+        render_hints=RenderHints(),
     )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),

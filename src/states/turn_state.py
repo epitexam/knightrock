@@ -128,7 +128,7 @@ class TurnState(State):
         self.held = self.entity.facing_right
         self.timer = self.entity.turn_delay_s
         self.commit = True
-        self.entity.turn_ratio = 1.0
+        self.entity.render_hints.turn_ratio = 1.0
 
     def exit(self, next_state: str | None = None) -> None:
         """Release the mirror, applying the pivot unless it was abandoned.
@@ -141,7 +141,7 @@ class TurnState(State):
         """
         if self.commit:
             self.entity.facing_right = self.target
-        self.entity.turn_ratio = 0.0
+        self.entity.render_hints.turn_ratio = 0.0
 
     def update(self, delta_time: float) -> str | None:
         """Keep rolling, hold the facing, and hand back to the fighter's own
@@ -163,7 +163,7 @@ class TurnState(State):
         # Published as a ratio rather than recomputed by the renderer from the
         # timer: this is the one place that knows both ends of it.
         delay = self.entity.turn_delay_s
-        self.entity.turn_ratio = max(0.0, self.timer / delay) if delay > 0.0 else 0.0
+        self.entity.render_hints.turn_ratio = max(0.0, self.timer / delay) if delay > 0.0 else 0.0
         if self.timer <= 0.0:
             return self.resume_state()
         return None

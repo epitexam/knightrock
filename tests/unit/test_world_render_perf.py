@@ -16,6 +16,7 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from tests.fakes import FighterSprite
 
 pytestmark = pytest.mark.usefixtures("_world_render_display")
 
@@ -35,7 +36,7 @@ def make_renderer(zoom: float = 1.0) -> tuple[Renderer, SpriteGroups]:
     return Renderer(surface, camera), SpriteGroups()
 
 
-class FlashingEntity(pygame.sprite.Sprite):
+class FlashingEntity(FighterSprite):
     """A damageable entity: the only kind of thing that flashes."""
 
     def __init__(self, flash_timer: float = 0.05) -> None:
@@ -43,7 +44,7 @@ class FlashingEntity(pygame.sprite.Sprite):
         self.faction = "enemy"
         self.image = pygame.Surface((8, 8), pygame.SRCALPHA)
         self.rect = pygame.FRect(4.0, 4.0, 8, 8)
-        self.flash_timer = flash_timer
+        self.render_hints.flash_timer = flash_timer
 
 
 class Tile(pygame.sprite.Sprite):
@@ -55,7 +56,7 @@ class Tile(pygame.sprite.Sprite):
         self.rect = pygame.FRect(topleft, (32, 32))
 
 
-class DashingPlayer(pygame.sprite.Sprite):
+class DashingPlayer(FighterSprite):
     """An entity that both flashes and dashes, i.e. the worst case."""
 
     def __init__(self, flash_timer: float = 0.05) -> None:
@@ -64,7 +65,7 @@ class DashingPlayer(pygame.sprite.Sprite):
         self.state_machine = SimpleNamespace(current_state_name="dash")
         self.image = pygame.Surface((20, 30), pygame.SRCALPHA)
         self.rect = pygame.FRect(10.0, 10.0, 20, 30)
-        self.flash_timer = flash_timer
+        self.render_hints.flash_timer = flash_timer
 
 
 def test_the_dashing_player_is_resolved_once_not_per_sprite(

@@ -38,6 +38,7 @@ from src.core.fx.tuning import Sweat as SweatSettings
 from src.core.level.systems import physics_system
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.rendering.camera import Camera
+from src.core.rendering.render_hints import RenderHints
 from src.core.rendering.renderer import (
     DASH_STRETCH_X,
     DASH_STRETCH_Y,
@@ -50,6 +51,7 @@ from src.core.settings import Afterimage, HitFlash, Locomotion, Physics, Simulat
 from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
 from src.states.player_states import PlayerState
+from tests.fakes import FighterSprite
 from tests.unit.helpers import make_entity
 
 
@@ -89,7 +91,7 @@ def test_damage_arms_a_short_white_flash() -> None:
 
     entity.receive_damage(10.0)
 
-    assert entity.flash_timer == pytest.approx(HitFlash.DURATION)
+    assert entity.render_hints.flash_timer == pytest.approx(HitFlash.DURATION)
 
 
 def test_flash_ticks_down_and_never_enters_snapshots() -> None:
@@ -98,12 +100,12 @@ def test_flash_ticks_down_and_never_enters_snapshots() -> None:
 
     entity.update(1 / 60)
 
-    assert 0.0 <= entity.flash_timer < HitFlash.DURATION
+    assert 0.0 <= entity.render_hints.flash_timer < HitFlash.DURATION
     snapshot = entity.save_state()
     assert "flash_timer" not in snapshot.extra
-    entity.flash_timer = 0.123
+    entity.render_hints.flash_timer = 0.123
     entity.load_state(snapshot)
-    assert entity.flash_timer == pytest.approx(0.123)
+    assert entity.render_hints.flash_timer == pytest.approx(0.123)
 
 
 def test_immune_hit_arms_no_flash() -> None:
@@ -113,13 +115,13 @@ def test_immune_hit_arms_no_flash() -> None:
     result = entity.receive_damage(10.0)
 
     assert not result.applied
-    assert entity.flash_timer == pytest.approx(0.0)
+    assert entity.render_hints.flash_timer == pytest.approx(0.0)
 
 
 # --- Dash afterimages -----------------------------------------------------
 
 
-class DashSprite(pygame.sprite.Sprite):
+class DashSprite(FighterSprite):
     """Minimal player-like sprite with a switchable state name."""
 
     def __init__(self, state: str = "dash") -> None:
@@ -254,18 +256,18 @@ def test_hard_landing_records_impact_while_hops_stay_clean() -> None:
     entity.update(1 / 60)
 
     assert entity.on_surface["floor"]
-    assert entity.landed_impact == pytest.approx(600.0)
-    assert entity.landed_impact >= Dust.MIN_FALL_SPEED
+    assert entity.render_hints.landed_impact == pytest.approx(600.0)
+    assert entity.render_hints.landed_impact >= Dust.MIN_FALL_SPEED
 
     entity.update(1 / 60)
 
-    assert entity.landed_impact == pytest.approx(0.0)
+    assert entity.render_hints.landed_impact == pytest.approx(0.0)
 
 
 def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     groups = SpriteGroups()
     lander = make_entity(pos=(50.0, 100.0))
-    lander.landed_impact = Dust.MIN_FALL_SPEED + 100.0
+    lander.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(lander)
     system = PhysicsSystem(groups)
 
@@ -482,7 +484,7 @@ def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
     """
     groups = SpriteGroups()
     dasher = _dasher()
-    dasher.landed_impact = Dust.MIN_FALL_SPEED + 100.0
+    dasher.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(dasher)
     for _ in range(FX_FAMILY_BUDGETS["dash_dust"]):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
@@ -501,7 +503,7 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
     groups = SpriteGroups()
     dasher = make_entity(pos=(200.0, 100.0))
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    dasher.landed_impact = Dust.MIN_FALL_SPEED + 100.0
+    dasher.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(dasher)
     for _ in range(MAX_FX_SPRITES):
         groups.fx_sprites.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
@@ -511,7 +513,7 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
 
     assert len(groups.fx_sprites) == MAX_FX_SPRITES
     # The landing hint is still consumed: no debt for later ticks.
-    assert dasher.landed_impact == pytest.approx(0.0)
+    assert dasher.render_hints.landed_impact == pytest.approx(0.0)
 
 
 def test_afterimage_ghosts_carry_the_speed_tint() -> None:
@@ -581,7 +583,6 @@ def test_is_player_dashing_only_matches_dashing_players() -> None:
     enemy = DashSprite(state="dash")
     enemy.faction = "enemy"
     assert not is_player_dashing(enemy)
-    assert not is_player_dashing(SimpleNamespace())
 
 
 def test_dash_cycles_the_run_animation_instead_of_freezing() -> None:
@@ -686,8 +687,13 @@ def test_a_puff_billows_through_its_ladder_and_snaps_its_radius() -> None:
 
 
 def test_light_impacts_spawn_no_dust() -> None:
-    assert list(iter_landing_entities([SimpleNamespace(landed_impact=100.0)])) == []
-    entity = SimpleNamespace(landed_impact=Dust.MIN_FALL_SPEED)
+    assert (
+        list(
+            iter_landing_entities([SimpleNamespace(render_hints=RenderHints(landed_impact=100.0))])
+        )
+        == []
+    )
+    entity = SimpleNamespace(render_hints=RenderHints(landed_impact=Dust.MIN_FALL_SPEED))
     assert list(iter_landing_entities([entity])) == [(entity, Dust.MIN_FALL_SPEED)]
 
 
@@ -1094,7 +1100,7 @@ def test_the_tick_a_landing_fires_carries_no_footstep() -> None:
     """
     groups = SpriteGroups()
     entity = _walker()
-    entity.landed_impact = Dust.MIN_FALL_SPEED + 100.0
+    entity.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(entity)
     system = PhysicsSystem(groups)
 
@@ -1162,7 +1168,7 @@ class DashStateStub:
 _NO_DASH = object()
 
 
-class PenaltySprite(pygame.sprite.Sprite):
+class PenaltySprite(FighterSprite):
     """Minimal player-like sprite with a switchable dash resource."""
 
     def __init__(

@@ -358,7 +358,7 @@ class Player(Entity):
         if outcome == "parry":
             self.parries_given += 1
             self._reaction.note_guard_push(_kb, source_center_x, parried=True)
-            self.parry_flash_timer = ParryFlash.DURATION
+            self.render_hints.parry_flash_timer = ParryFlash.DURATION
             return DamageResult(guarded=True, parried=True)
         direction = compute_knockback_direction(
             self.hitbox.centerx, source_center_x, self.facing_right
@@ -372,7 +372,7 @@ class Player(Entity):
         self._reaction.note_guard_push(_kb, source_center_x)
         if chip > 0:
             self._apply_damage(chip)
-            self.flash_timer = HitFlash.DURATION
+            self.render_hints.flash_timer = HitFlash.DURATION
         if outcome == "break":
             self.stagger(GuardSettings.BREAK_STAGGER)
             return DamageResult(guarded=True, guard_broken=True, applied=True, actual_damage=chip)
@@ -402,7 +402,7 @@ class Player(Entity):
                     self._reaction.note_guard_push(
                         knockback or NULL_KNOCKBACK, source_center_x, parried=True
                     )
-                    self.parry_flash_timer = ParryFlash.DURATION
+                    self.render_hints.parry_flash_timer = ParryFlash.DURATION
                     return DamageResult(guarded=True, parried=True)
 
             if self.is_guarding and self._faces_source(source_center_x):
