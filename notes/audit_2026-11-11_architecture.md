@@ -326,6 +326,23 @@ complète, mypy et Ruff.
 | `3c922f4` | B7 (partiel) | Une seule `collider_box()` remplace onze copies de `getattr(sprite, "hitbox", getattr(sprite, "rect", None))`. |
 | `1bdbac9` | B5 / B8 (partiel) | `Entity.__init__` passe de 174 à 53 lignes, découpé en étapes nommées ; mêmes 61 attributs, valeurs identiques. |
 
+**Reprise de la dette (même jour, seconde session) :**
+
+| Commit | Problème | Changement |
+|---|---|---|
+| `8c96b95` | B5 | L'état de rendu sort d'`Entity` dans `RenderHints` (`src/core/rendering/render_hints.py`), porté par `entity.render_hints`. `SpriteGroups.entity_sprites` est déclaré `Group[Entity]` : le renderer, la poussière et la passe physique lisent les champs par leur nom. Les faux sprites des tests partent d'une forme unique, `tests/fakes.py:FighterSprite`. |
+| `b1a15c3` | `@runtime_checkable` | Retiré des six protocoles (aucun `isinstance` en production). `test_source_conventions.py` interdit d'en remettre sous `src`. |
+| `8e80ba1` | B7 (physique) | `move_entity` et `resolve_collisions` lisent `crushed`, `carry_backup`, `move_axis`, `spatial_hash` et le nom d'état par leur nom, déclarés dans les protocoles. `is_one_way()` devient le seul lecteur du drapeau, à côté de `collider_box()`. |
+| `d704b65` | B7 (systèmes) | Poussière et sueur, séparation, faucheur de chutes, banc de debug et balayage des morts lisent un `Entity`. `Entity.dash` est déclaré (`None` sauf pour qui sait dasher). |
+| `4b81bee` | B7 (états) | Saut des ennemis, locomotion et dash du joueur, dérive du knockback, `Entity.reset` et `is_invincible` lisent leurs propres champs déclarés. |
+| `ab2c354` | B7 (HUD) | Les panneaux STATE et STATS prennent un `Player` : dix-sept `getattr` en moins, et les branches « sans combat » et « sans machine à états » disparaissent. |
+| `ca878a0` | B7 (scène) | La scène de jeu appelle `level.spawn_system` par son nom. |
+
+`getattr`/`hasattr` dans `src` : 362 au début de l'audit, 336 avant cette
+reprise, **239** après. Deux tests ont été supprimés parce qu'ils vérifiaient un
+cas que le type exclut (un joueur avec `combat=None`, un joueur avec
+`state_machine=None`) ; un test a été ajouté.
+
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 
 - `core` n'importe plus rien de `application` ni de `ui`. Il importait
@@ -335,8 +352,8 @@ complète, mypy et Ruff.
 - `test_layer_boundaries.py` n'a plus aucune exception : la règle
   « `core` n'importe ni `application` ni `ui` » vaut pour tous les fichiers.
 
-**Aucun comportement de jeu n'a changé.** Seule la correction de B0 en
-changerait un ; elle attend une décision.
+**Comportement de jeu :** un seul changement, la correction de B0 (`93d29e4`).
+Tout le reste est de la structure.
 
 ---
 
@@ -374,10 +391,10 @@ surfaces de substitution, faute des fichiers d'origine.
 
 | Vérification | Résultat |
 |---|---|
-| `pytest` complet, **avec les assets** (revenus sur le poste en cours de session) | **3 373 réussis, 0 échec**, 1 ignoré. |
+| `pytest` complet, **avec les assets** (revenus sur le poste en cours de session) | **3 396 réussis, 0 échec**, 1 ignoré. |
 | Couverture (pytest-cov) | 94 % des instructions, 86 % des branches. |
-| `mypy src main.py tools` | Aucune erreur sur 186 fichiers. |
-| `ruff check` / `ruff format --check` | Propres. |
+| `mypy src main.py tools` | Aucune erreur sur 190 fichiers. |
+| `ruff check` / `ruff format --check` | Propres pour le code. `ruff format --check` signale `notes/design_matrice_niveaux.md`, qui l'était déjà avant. |
 | Captures de référence des menus | Identiques au pixel. |
 
 **Non vérifié** (demande un écran et une manette) :
@@ -402,18 +419,35 @@ mort, et un usage du typage dynamique qui a fini par cacher un bug de gameplay.
 
 **Dette restante, par priorité :**
 
-1. **B5 — Moyen.** Sortir l'état de rendu d'`Entity` dans un composant
-   (`RenderHints`). Préalable : typer ce que le renderer et l'overlay lisent
-   sur un sprite. Aujourd'hui, ils lisent ces champs par `getattr` avec une
-   valeur par défaut : un renommage manqué dégraderait un effet visuel sans
-   aucune erreur.
-2. **B7 — Moyen.** Les groupes de sprites restent hétérogènes (tuiles,
-   plateformes, entités), d'où les `getattr` restants dans la physique, le
-   rendu et l'overlay. Un `Protocol` par rôle (collider, sprite dessiné)
-   permettrait de les typer.
-3. **Contenu.** Seul le niveau 0 est déclaré dans `levels_manifest.json` ;
-   la carte du niveau 0 contient un objet `water` sans fabrique, ignoré au
-   chargement.
+1. **B7, overlay de debug — Faible.** `world_overlay_geo.py` (42),
+   `world_overlay_cards.py` (36) et leurs voisins portent à eux seuls plus du
+   tiers des 239 lectures dynamiques restantes. L'overlay reçoit *tous* les
+   sprites du niveau (tuiles, hazards, projectiles, entités) et ses tests
+   reposent sur des stand-ins `SimpleNamespace`. La correction propre est un
+   aiguillage `isinstance(sprite, Entity)` à l'entrée, suivi d'accès typés ;
+   elle demande de réécrire ces tests. Un défaut y est sans effet sur le jeu.
+2. **B7, combat et effets — choix assumé, pas une dette à solder d'office.**
+   `contact_system.py`, `contact_damage.py`, `hit_resolver.py` et
+   `fx/spawners.py` gardent leurs `getattr`. Le code y documente le duck-typing
+   comme voulu (hazards et projectiles n'ont ni `id` ni `faction` ; un spawner
+   rend une liste vide pour un objet sans `hitbox`) et des tests le
+   verrouillent. Une tentative de lecture directe des membres déclarés par
+   `Combatant` a cassé 14 tests à base de stubs et a été annulée. À reprendre
+   seulement si le propriétaire décide de changer ce contrat.
+3. **B7, évènements pygame — à laisser.** `event_router.py` (21),
+   `controls_scene.py` et `game.py` lisent des attributs d'évènements pygame,
+   qui varient selon le type d'évènement : c'est le bon usage de `getattr`.
+4. **B7, colliders — Faible.** Le décor reste un mélange de tuiles (`rect`
+   seul) et de plateformes (`hitbox`, `old_hitbox`, `one_way`), lu par
+   `collider_box()` et `is_one_way()`. Donner un `hitbox` aux tuiles
+   supprimerait ces deux lectures, mais l'overlay et la séparation se servent
+   aujourd'hui de la présence de `hitbox` pour reconnaître un fighter.
+5. **Contenu — décision de design.** L'objet `water` (un rectangle au bas des
+   niveaux 0, 1, 3, 5, 6 et `omni`) n'a pas de fabrique : il est ignoré au chargement,
+   avec un avertissement dans les logs. Il faut décider ce que l'eau fait
+   (décor, zone mortelle, nage) avant d'écrire quoi que ce soit. Le manifeste
+   déclare désormais tous les niveaux ; ce point de la première version du
+   rapport est clos.
 
 **Pour garder ce niveau dans le temps :**
 

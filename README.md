@@ -716,7 +716,7 @@ uv run pytest
 ```
 
 > **Current baseline:** 3397 tests · 94 % instruction coverage · 86 % branch
-> coverage · Ruff clean · mypy clean (186 files across `src main.py tools`;
+> coverage · Ruff clean · mypy clean (190 files across `src main.py tools`;
 > `mypy src` alone is 183).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
