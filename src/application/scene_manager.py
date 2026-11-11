@@ -41,6 +41,11 @@ class SceneManager:
         return self._stack[-1] if self._stack else None
 
     @property
+    def transitioning(self) -> bool:
+        """Whether the last frame before a stack change is still fading out."""
+        return self._leaving is not None
+
+    @property
     def halts_simulation(self) -> bool:
         """Whether anything on the stack is holding the world still.
 
