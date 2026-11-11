@@ -139,7 +139,7 @@ class KnockbackState(State):
 
     def _apply_directional_influence(self, delta_time: float) -> None:
         """Steer an airborne launch toward the held direction (DI)."""
-        move_axis = float(getattr(self.entity, "move_axis", 0.0) or 0.0)
+        move_axis = float(self.entity.move_axis)
         if move_axis == 0.0 or Combat.KNOCKBACK_DI_ACCEL <= 0:
             return
         cap = abs(self._launch_vx) + Combat.KNOCKBACK_DI_CAP

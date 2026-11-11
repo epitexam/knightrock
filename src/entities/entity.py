@@ -869,8 +869,7 @@ class Entity(Sprite):
 
         self.combat.reset()
 
-        if hasattr(self.state_machine, "change_state"):
-            self.state_machine.change_state("idle", force=True)
+        self.state_machine.change_state("idle", force=True)
 
         self._on_reset()
 
@@ -885,10 +884,7 @@ class Entity(Sprite):
     @property
     def is_invincible(self) -> bool:
         """Whether the entity is currently invincible (e.g., dashing, hurt, knockback)."""
-        state_machine = getattr(self, "state_machine", None)
-        if state_machine is None:
-            return False
-        return bool(state_machine.has_tag("invincible"))
+        return bool(self.state_machine.has_tag("invincible"))
 
     def _apply_damage(self, amount: float) -> float:
         """Subtract health points and return actual damage dealt.

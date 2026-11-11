@@ -88,9 +88,10 @@ def test_resolve_locomotion_hysteresis_walk_slow_to_walk() -> None:
     assert resolve_locomotion_state(_locomotion_entity(0.49, "walk_slow")) == "walk_slow"
 
 
-def test_resolve_locomotion_walk_slow_from_idle_without_speed_attr() -> None:
+def test_resolve_locomotion_walk_slow_from_idle_with_no_speed_of_its_own() -> None:
     entity = SimpleNamespace(
         velocity=pygame.Vector2(0, 0),
+        speed=0.0,
         state_machine=SimpleNamespace(current_state_name=None),
     )
     assert resolve_locomotion_state(entity) == "walk_slow"

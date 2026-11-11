@@ -15,6 +15,7 @@ def make_entity(*, is_hurt: bool = False, stagger: float = 0.0) -> SimpleNamespa
         combat=SimpleNamespace(is_hurt=is_hurt),
         stagger_timer=stagger,
         dash_requested=True,
+        move_axis=0.0,
     )
 
 

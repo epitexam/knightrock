@@ -349,7 +349,7 @@ class Player(Entity):
         )
         if outcome == "none":
             result = super().receive_damage(amount, source_center_x, knockback)
-            if hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
+            if self.combat.hurt_timer > 0:
                 self.combat.hurt_timer = min(
                     self.combat.hurt_timer,
                     CombatSettings.PLAYER_HURT_DURATION,
@@ -412,7 +412,7 @@ class Player(Entity):
 
         result = super().receive_damage(amount, source_center_x, knockback, interrupt)
 
-        if interrupt and hasattr(self.combat, "hurt_timer") and self.combat.hurt_timer > 0:
+        if interrupt and self.combat.hurt_timer > 0:
             self.combat.hurt_timer = min(
                 self.combat.hurt_timer,
                 CombatSettings.PLAYER_HURT_DURATION,

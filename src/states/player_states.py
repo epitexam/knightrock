@@ -31,14 +31,12 @@ def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
     to continue from.
     """
     vx = abs(float(entity.velocity.x))
-    base = float(getattr(entity, "speed", 0.0) or 0.0) or Physics.PLAYER_SPEED
+    base = float(entity.speed) or Physics.PLAYER_SPEED
     if base <= 0.0:
         return PlayerState.WALK_SLOW.value
     ratio = vx / base
     if from_state is None:
-        from_state = str(
-            getattr(getattr(entity, "state_machine", None), "current_state_name", "") or ""
-        )
+        from_state = str(entity.state_machine.current_state_name or "")
     if from_state in (PlayerState.RUN.value, PlayerState.RUN):
         if ratio < Locomotion.WALK_DEMOTE:
             return PlayerState.WALK.value
@@ -439,8 +437,8 @@ class PlayerDashState(PlayerBaseState):
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
         # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
-        request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
-        move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
+        request_axis = self.entity.dash.request_move_axis
+        move_axis = request_axis if request_axis != 0.0 else self.entity.move_axis
         direction = (
             1.0
             if move_axis > 0
@@ -466,7 +464,7 @@ class PlayerDashState(PlayerBaseState):
         """Update the current state, applying dash friction and air control."""
         self.entity.dash.duration_timer -= delta_time
         # Full directional control: input directly influences velocity for snappy changes
-        move_axis = getattr(self.entity, "move_axis", 0.0)
+        move_axis = self.entity.move_axis
         if move_axis != 0.0:
             target_vx = self.entity.dash.speed * move_axis
             # Strong acceleration toward target velocity for instant direction response (Brawlhalla-style)
@@ -644,7 +642,7 @@ def _can_attack_interrupt(player: Any) -> bool:
 
 
 def _wants_crouch(player: Any) -> bool:
-    down = bool(getattr(player, "down_held", False))
+    down = bool(player.down_held)
     grounded = bool(player.on_surface.get("floor", False))
     return down and grounded
 
@@ -655,7 +653,7 @@ def _is_fully_stood(player: Any) -> bool:
     Never true under a low ceiling, which is the point: the posture is left once
     there is room to leave it, not on the tick the button came up.
     """
-    return bool(getattr(getattr(player, "crouch", None), "is_fully_stood", True))
+    return bool(player.crouch.is_fully_stood)
 
 
 def _can_crouch(player: Any) -> bool:

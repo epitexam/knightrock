@@ -210,8 +210,8 @@ class EnemyChaseState(State):
         self.jump_cooldown_timer = max(0.0, self.jump_cooldown_timer - delta_time)
         entity = self.entity
         if (
-            not getattr(entity, "can_jump", False)
-            or float(getattr(entity, "jump_height", 0.0) or 0.0) <= 0.0
+            not entity.can_jump
+            or entity.jump_height <= 0.0
             or not entity.on_surface.get("floor", False)
             or self.jump_cooldown_timer > 0.0
         ):
@@ -228,7 +228,7 @@ class EnemyChaseState(State):
         if not (wall_ahead or player_above):
             return False
         entity.velocity.y = -entity.jump_height
-        self.jump_cooldown_timer = float(getattr(entity, "jump_cooldown", 1.0) or 0.0)
+        self.jump_cooldown_timer = entity.jump_cooldown
         return True
 
     def _try_gap_jump(self) -> bool:
@@ -269,8 +269,8 @@ class EnemyChaseState(State):
         """
         entity = self.entity
         if (
-            not getattr(entity, "can_jump", False)
-            or float(getattr(entity, "jump_height", 0.0) or 0.0) <= 0.0
+            not entity.can_jump
+            or entity.jump_height <= 0.0
             or self.jump_cooldown_timer > 0.0
             or entity.move_axis == 0.0
             or not entity.on_surface.get("floor", False)
@@ -282,7 +282,7 @@ class EnemyChaseState(State):
     @staticmethod
     def _sight_range(entity: Any) -> float:
         """How far ahead the leap cares about the player: vision, else SEEK."""
-        return float(getattr(entity, "vision_range", 0.0) or 0.0) or EnemyJump.SEEK_RANGE_PX
+        return entity.vision_range or EnemyJump.SEEK_RANGE_PX
 
     def _leap(self, entity: Any, direction: float) -> None:
         """Fire the leap: vertical impulse plus a sprint boost forward.
@@ -293,10 +293,8 @@ class EnemyChaseState(State):
         brain only attempts leaps the legs can actually finish.
         """
         entity.velocity.y = -entity.jump_height
-        entity.velocity.x = (
-            direction * entity.speed * float(getattr(entity, "leap_speed_mult", 1.0) or 0.0)
-        )
-        self.jump_cooldown_timer = float(getattr(entity, "jump_cooldown", 1.0) or 0.0)
+        entity.velocity.x = direction * entity.speed * entity.leap_speed_mult
+        self.jump_cooldown_timer = entity.jump_cooldown
         self.leap_glide_timer = float(entity.leap_air_time())
 
     def _try_risky_jump(self) -> bool:
@@ -341,7 +339,7 @@ class EnemyChaseState(State):
         player = entity.player
         if (
             player is None
-            or not getattr(entity, "can_jump", False)
+            or not entity.can_jump
             or entity.move_axis == 0.0
             or not entity.on_surface.get("floor", False)
         ):
