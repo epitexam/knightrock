@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from src.core.display.letterbox import FitPolicy
-from src.core.input.bindings_repository import (
+from src.core.input.bindings_codec import (
     bindings_from_dict,
     bindings_to_dict,
 )

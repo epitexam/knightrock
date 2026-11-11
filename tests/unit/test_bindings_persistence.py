@@ -4,13 +4,28 @@ from types import MappingProxyType
 
 import pygame
 
-from src.core.input.bindings_repository import BindingsRepository, bindings_to_dict
+from src.application.settings_store import SettingsStore
+from src.core.input.bindings_codec import bindings_to_dict
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings, MenuBindings
 
 
-def test_bindings_roundtrip_through_versioned_repository(tmp_path: Path) -> None:
-    repository = BindingsRepository(tmp_path / "settings.json")
+class _Bindings:
+    """The bindings as the game reads and writes them: through the settings file."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def load(self) -> InputBindings:
+        return SettingsStore(self.path).load().bindings
+
+    def save(self, bindings: InputBindings) -> None:
+        store = SettingsStore(self.path)
+        store.save(store.load().with_bindings(bindings))
+
+
+def test_bindings_roundtrip_through_the_settings_file(tmp_path: Path) -> None:
+    repository = _Bindings(tmp_path / "settings.json")
     bindings = InputBindings()
 
     repository.save(bindings)
@@ -22,7 +37,7 @@ def test_bindings_roundtrip_through_versioned_repository(tmp_path: Path) -> None
 
 
 def test_custom_bindings_roundtrip_after_schema_validation(tmp_path: Path) -> None:
-    repository = BindingsRepository(tmp_path / "settings.json")
+    repository = _Bindings(tmp_path / "settings.json")
     menu = MenuBindings(
         gamepad_axes=MappingProxyType(
             {
@@ -43,14 +58,14 @@ def test_custom_bindings_roundtrip_after_schema_validation(tmp_path: Path) -> No
 
 
 def test_missing_bindings_file_uses_defaults(tmp_path: Path) -> None:
-    repository = BindingsRepository(tmp_path / "settings.json")
+    repository = _Bindings(tmp_path / "settings.json")
 
     assert repository.load() == InputBindings()
 
 
 def test_corrupted_or_unknown_bindings_fall_back_to_defaults(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
 
     path.write_text("not-json", encoding="utf-8")
     assert repository.load() == InputBindings()
@@ -62,7 +77,7 @@ def test_corrupted_or_unknown_bindings_fall_back_to_defaults(tmp_path: Path) -> 
 def test_legacy_file_without_back_button_mirrors_cancel_binding(tmp_path: Path) -> None:
     """A file written before universal back: the B button becomes ui_back."""
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     buttons = payload["bindings"]["menu"]["gamepad_buttons"]
@@ -77,7 +92,7 @@ def test_legacy_file_without_back_button_mirrors_cancel_binding(tmp_path: Path) 
 
 
 def test_back_button_can_be_bound_apart_from_cancel(tmp_path: Path) -> None:
-    repository = BindingsRepository(tmp_path / "settings.json")
+    repository = _Bindings(tmp_path / "settings.json")
     buttons = MappingProxyType({**InputBindings().menu.gamepad_buttons, InputAction.UI_CANCEL: 8})
 
     repository.save(InputBindings(menu=MenuBindings(gamepad_buttons=buttons)))
@@ -89,7 +104,7 @@ def test_back_button_can_be_bound_apart_from_cancel(tmp_path: Path) -> None:
 
 def test_legacy_conflicting_menu_arrows_are_repaired(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     menu = payload["bindings"]["menu"]
@@ -103,7 +118,7 @@ def test_legacy_conflicting_menu_arrows_are_repaired(tmp_path: Path) -> None:
     assert keyboard[InputAction.UI_RIGHT] == pygame.K_RIGHT
 
 
-def test_repository_keeps_ui_actions_out_of_gameplay_context(tmp_path: Path) -> None:
+def test_ui_actions_stay_out_of_the_gameplay_context(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     path.write_text(
         json.dumps(
@@ -116,7 +131,7 @@ def test_repository_keeps_ui_actions_out_of_gameplay_context(tmp_path: Path) -> 
         encoding="utf-8",
     )
 
-    assert BindingsRepository(path).load() == InputBindings()
+    assert _Bindings(path).load() == InputBindings()
 
 
 def test_a_file_from_before_the_list_keys_gets_their_defaults(
@@ -131,7 +146,7 @@ def test_a_file_from_before_the_list_keys_gets_their_defaults(
     one of them would otherwise have a dead page-down key.
     """
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     keyboard = payload["bindings"]["menu"]["keyboard"]
@@ -158,7 +173,7 @@ def test_a_file_with_one_list_key_is_left_alone(tmp_path: Path) -> None:
     and left page up unbound meant exactly that.
     """
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     keyboard = payload["bindings"]["menu"]["keyboard"]
@@ -195,7 +210,7 @@ def test_a_file_from_before_the_shoulders_gets_them(tmp_path: Path) -> None:
     the keyboard, so the set that migrates is the two that do.
     """
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     buttons = payload["bindings"]["menu"]["gamepad_buttons"]
@@ -215,7 +230,7 @@ def test_a_file_with_one_shoulder_is_left_alone(tmp_path: Path) -> None:
     keeps exactly that.
     """
     path = tmp_path / "settings.json"
-    repository = BindingsRepository(path)
+    repository = _Bindings(path)
     repository.save(InputBindings())
     payload = json.loads(path.read_text(encoding="utf-8"))
     buttons = payload["bindings"]["menu"]["gamepad_buttons"]

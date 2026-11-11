@@ -1,5 +1,10 @@
-import os
-from pathlib import Path
+"""Bindings to and from the JSON the settings file stores them in.
+
+Reading repairs what older files lack (the universal Back button, the list
+keys, conflicting menu arrows) so the rest of the game only ever sees a
+complete set. The file itself is :class:`~src.application.settings_store.SettingsStore`'s.
+"""
+
 from types import MappingProxyType
 from typing import cast
 
@@ -350,25 +355,3 @@ def bindings_from_dict(data: object) -> InputBindings:
         invert_y=invert_y,
     )
     return InputBindings(gameplay=gameplay, menu=menu)
-
-
-class BindingsRepository:
-    def __init__(self, path: Path | None = None) -> None:
-        self.path = path or default_bindings_path()
-
-    def load(self) -> InputBindings:
-        from src.application.settings_store import SettingsStore
-
-        return SettingsStore(self.path).load().bindings
-
-    def save(self, bindings: InputBindings) -> None:
-        from src.application.settings_store import SettingsStore
-
-        store = SettingsStore(self.path)
-        store.save(store.load().with_bindings(bindings))
-
-
-def default_bindings_path() -> Path:
-    """Where bindings live when nothing overrides it: beside the settings, not in the user config."""
-    base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
-    return base / ".knightrock" / "settings.json"

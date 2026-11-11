@@ -32,7 +32,7 @@ LAYERS = ("application", "combat", "core", "data", "entities", "physics", "state
 #: widening a rule is a deliberate edit to this table rather than an addition
 #: to a list of exceptions.
 #:
-#: Only two entries, and both are the audit's. The layers are *not* a strict
+#: Only two entries. The layers are *not* a strict
 #: hierarchy -- `physics` imports `core.settings`, `states` imports `core` --
 #: and pretending otherwise here would be a rule about an architecture this
 #: project does not have and is not claiming.
@@ -44,7 +44,7 @@ ALLOWED_MODULES: dict[str, dict[str, frozenset[str]]] = {
         # The simulation's one channel to the application, checked per module
         # rather than per layer: `application.scene_manager` is as forbidden to
         # a level as `application` is.
-        "application": frozenset({"events", "settings_store"}),
+        "application": frozenset({"events"}),
     },
 }
 
@@ -60,14 +60,6 @@ ALLOWED_MODULES: dict[str, dict[str, frozenset[str]]] = {
 #: would then own a concept that only the application has a use for.
 APPLICATION_EVENTS = "application.events"
 
-#: The other `application` module `core` is allowed to import, and why it is
-#: not a violation.
-#:
-#: `core/input/bindings_repository.py` persists the player's key bindings, and
-#: that is the same kind of thing `application.events` is: a contract the
-#: simulation reads and the application configures. Neither is the scene stack,
-#: the dispatcher or the event flow, and neither lets a level reach a screen.
-APPLICATION_SETTINGS = "application.settings_store"
 
 #: Modules exempt from their layer's rule, with the reason.
 #:
@@ -167,8 +159,7 @@ def test_the_simulation_only_imports_the_event_bus_from_the_application() -> Non
     """
     offenders = [line for line in _violations("core") if "-> application" in line]
     assert offenders == [], (
-        f"core may import {APPLICATION_EVENTS} and {APPLICATION_SETTINGS}, "
-        "and nothing else from application"
+        f"core may import {APPLICATION_EVENTS}, and nothing else from application"
     )
 
 
