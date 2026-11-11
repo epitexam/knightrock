@@ -95,6 +95,29 @@ class MenuLayout:
     footers: list[tuple[pygame.Surface, tuple[int, int]]] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _Bands:
+    """The vertical budget of one layout: row height, shown rows, footer bands."""
+
+    item_height: int
+    first: int
+    visible: int
+    footer_step: int
+    description_height: int
+
+
+@dataclass(frozen=True)
+class _Content:
+    """The rendered text of one layout and the panel width that holds it."""
+
+    title: pygame.Surface
+    labels: list[pygame.Surface]
+    values: list[pygame.Surface | None]
+    description: pygame.Surface | None
+    footers: list[pygame.Surface]
+    panel_width: int
+
+
 class MenuView:
     def __init__(self, scale: float = 1.0) -> None:
         self._metrics = Metrics.for_scale(scale)
@@ -280,49 +303,93 @@ class MenuView:
             self._surface_size = surface.get_size()
             self.reset_cache()
         top = self.scaled_top(top, surface)
+        bands = self._bands(surface, model, footers, description, scroll, scrollable)
+        content = self._content(
+            surface,
+            title,
+            title_color,
+            model,
+            bands,
+            highlighted,
+            highlight_color,
+            footers,
+            description,
+        )
+        return self._place(surface, top, model, bands, content, highlighted)
+
+    def _bands(
+        self,
+        surface: pygame.Surface,
+        model: MenuModel,
+        footers: tuple[str, ...],
+        description: str,
+        scroll: int,
+        scrollable: bool,
+    ) -> _Bands:
+        """The vertical budget: how tall a row is and which rows are shown.
+
+        Measured against the whole window, not from ``top`` down: a panel too
+        tall for ``top`` is pulled up towards the margin.
+        """
         title_font, item_font, footer_font = self._fonts_for(self._scale)
         metrics = self._metrics
-        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        labels = [item.label for item in model.items]
-        values = [
-            _decorated(item, index == model.current_index) for index, item in enumerate(model.items)
-        ]
-
-        # -- vertical budget: how many rows fit, and how tall each is.
-        # Measured against the whole window, not from ``top`` down: a panel too
-        # tall for ``top`` is pulled up towards the margin.
-        available_height = max(metrics.px(120), surface.get_height() - metrics.margin * 2)
+        row_count = len(model.items)
         footer_step = _line_step(footer_font) + metrics.gap // 2
         # Always two lines when there is a note, whatever its length, so the
         # panel's height does not follow the note from row to row.
-        description_step = _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2
-        description_height = description_step if description else 0
+        description_height = (
+            _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2 if description else 0
+        )
         row_budget = (
-            available_height
-            - padding * 2
+            max(metrics.px(120), surface.get_height() - metrics.margin * 2)
+            - metrics.panel_padding * 2
             - title_font.get_linesize()
-            - title_gap
+            - metrics.panel_title_gap
             - description_height
             - footer_step * len(footers)
         )
         item_height = max(
             item_font.get_linesize(),
-            min(metrics.panel_row, row_budget // max(1, len(labels))),
+            min(metrics.panel_row, row_budget // max(1, row_count)),
         )
-        visible_rows = len(labels)
+        visible = row_count
         if scrollable:
-            visible_rows = max(1, min(len(labels), row_budget // max(1, item_height)))
-        first = max(0, min(scroll, len(labels) - visible_rows)) if scrollable else 0
-        painted = range(first, first + visible_rows)
+            visible = max(1, min(row_count, row_budget // max(1, item_height)))
+        first = max(0, min(scroll, row_count - visible)) if scrollable else 0
+        return _Bands(item_height, first, visible, footer_step, description_height)
 
-        # -- the text, rendered once and cached on what is shown.
+    def _content(
+        self,
+        surface: pygame.Surface,
+        title: str,
+        title_color: tuple[int, int, int],
+        model: MenuModel,
+        bands: _Bands,
+        highlighted: int,
+        highlight_color: tuple[int, int, int],
+        footers: tuple[str, ...],
+        description: str,
+    ) -> _Content:
+        """Every piece of text, rendered once, and the panel width that holds it.
+
+        The content decides the width and the window caps it; a row still too
+        wide is cut, value first.
+        """
+        title_font, item_font, footer_font = self._fonts_for(self._scale)
+        metrics = self._metrics
+        padding = metrics.panel_padding
+        labels = [item.label for item in model.items]
+        values = [
+            _decorated(item, index == model.current_index) for index, item in enumerate(model.items)
+        ]
+        shown = range(bands.first, bands.first + bands.visible)
         cache_key = (
-            tuple(labels[first : first + visible_rows]),
-            tuple(values[first : first + visible_rows]),
+            tuple(labels[bands.first : bands.first + bands.visible]),
+            tuple(values[bands.first : bands.first + bands.visible]),
             model.current_index,
             self._scale,
             description,
-            first,
+            bands.first,
         )
         if cache_key != self._text_cache_key:
             self._text_cache.clear()
@@ -332,7 +399,7 @@ class MenuView:
             self._render_cached(
                 item_font, labels[index], self._color(index, model, highlighted, highlight_color)
             )
-            for index in painted
+            for index in shown
         ]
         value_surfaces: list[pygame.Surface | None] = [
             self._render_cached(
@@ -342,14 +409,12 @@ class MenuView:
             )
             if values[index]
             else None
-            for index in painted
+            for index in shown
         ]
         window_text_width = surface.get_width() - metrics.margin * 2 - padding * 2
         footer_surfaces = [
             self._fit_text(footer_font, text, TEXT_MUTED, window_text_width) for text in footers
         ]
-
-        # -- horizontal: the content decides the width, the window caps it.
         label_width = max(
             [rendered.get_width() for rendered in label_surfaces] + [title_surface.get_width()]
         )
@@ -385,22 +450,43 @@ class MenuView:
             value_surfaces,
             labels,
             values,
-            first,
+            bands.first,
             panel_width - padding * 2,
             item_font,
             model,
             highlighted,
             highlight_color,
         )
+        return _Content(
+            title_surface,
+            label_surfaces,
+            value_surfaces,
+            description_surface,
+            footer_surfaces,
+            panel_width,
+        )
 
-        # -- placement.
-        footer_height = footer_step * len(footer_surfaces)
+    def _place(
+        self,
+        surface: pygame.Surface,
+        top: int,
+        model: MenuModel,
+        bands: _Bands,
+        content: _Content,
+        highlighted: int,
+    ) -> MenuLayout:
+        """Position the panel and every piece in it, and publish the hit-test rects."""
+        _, item_font, footer_font = self._fonts_for(self._scale)
+        metrics = self._metrics
+        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
+        title_surface, panel_width = content.title, content.panel_width
+        footer_height = bands.footer_step * len(content.footers)
         panel_height = (
             padding * 2
             + title_surface.get_height()
             + title_gap
-            + item_height * visible_rows
-            + description_height
+            + bands.item_height * bands.visible
+            + bands.description_height
             + footer_height
         )
         panel = pygame.Rect(
@@ -412,12 +498,13 @@ class MenuView:
         item_top = panel.y + padding + title_surface.get_height() + title_gap
         self._item_rects = [pygame.Rect(0, 0, 0, 0) for _ in model.items]
         rows: list[PlacedRow] = []
-        for offset, index in enumerate(painted):
+        for offset in range(bands.visible):
+            index = bands.first + offset
             rect = pygame.Rect(
                 panel.x + padding,
-                item_top + offset * item_height,
+                item_top + offset * bands.item_height,
                 panel_width - padding * 2,
-                item_height,
+                bands.item_height,
             )
             self._item_rects[index] = rect
             bar = None
@@ -425,27 +512,27 @@ class MenuView:
                 # One mark for "a press acts here", whichever device moved it;
                 # the flash after a change is the same bar, lit.
                 bar = SELECTION_FLASH if index == highlighted else SELECTION_BG
-            rows.append(PlacedRow(rect, label_surfaces[offset], value_surfaces[offset], bar))
+            rows.append(PlacedRow(rect, content.labels[offset], content.values[offset], bar))
         self._scroll_rail, self._scroll_thumb = self._rail_geometry(
             panel.right - padding,
             padding,
             item_top,
-            item_height * visible_rows,
-            first,
-            visible_rows,
-            len(labels),
+            bands.item_height * bands.visible,
+            bands.first,
+            bands.visible,
+            len(model.items),
         )
         footer_y = panel.bottom - padding - footer_height
         # A help line's leading goes above it, between it and the rows, rather
         # than below it, where the padding already is.
-        footer_leading = footer_step - footer_font.get_linesize()
+        footer_leading = bands.footer_step - footer_font.get_linesize()
         placed_description = None
-        if description_surface is not None:
+        if content.description is not None:
             placed_description = (
-                description_surface,
+                content.description,
                 (
-                    panel.x + (panel_width - description_surface.get_width()) // 2,
-                    footer_y - description_height + footer_leading + metrics.gap // 4,
+                    panel.x + (panel_width - content.description.get_width()) // 2,
+                    footer_y - bands.description_height + footer_leading + metrics.gap // 4,
                 ),
             )
         placed_footers = [
@@ -453,10 +540,10 @@ class MenuView:
                 footer,
                 (
                     panel.x + (panel_width - footer.get_width()) // 2,
-                    footer_y + footer_leading + n * footer_step,
+                    footer_y + footer_leading + n * bands.footer_step,
                 ),
             )
-            for n, footer in enumerate(footer_surfaces)
+            for n, footer in enumerate(content.footers)
         ]
         return MenuLayout(
             panel=panel,
