@@ -1,7 +1,7 @@
 # Performance pass: the shield-break arc
 
 Measured 2026-09-30, after the dust rework. Every figure here is a median of
-unprofiled runs, per the rule in `audit_p1_measured.md`: profiling charges a
+unprofiled runs: profiling charges a
 Python-level call far more than it costs, and every line the FX plane draws with
 is one, so a cProfile of this code is the wrong instrument.
 
@@ -115,9 +115,9 @@ They are here so the next pass does not spend a day on them.
 
 | Hypothesis | Measured | Verdict |
 |---|---|---|
-| Pool the FX particles (`refacto.md` m3) | `Surface(3,3)` costs **0.39 us**; a whole `GrainParticle` is 9.6 us of which 2.4 is its surface | Wrong fix. The allocation is not the cost. |
+| Pool the FX particles (earlier audit, item m3) | `Surface(3,3)` costs **0.39 us**; a whole `GrainParticle` is 9.6 us of which 2.4 is its surface | Wrong fix. The allocation is not the cost. |
 | Put the FX plane back through the magnification cache | 19 live sheets on a landing are **19 distinct surfaces** — grains build their own and `tint` is continuous per grain — so there is nothing to share. `transform.scale` on them is 1-9 us, *less than the dict lookup a cache would cost* | Saves 0-4 us/frame. Measured 167.7 us either way. |
-| Rebuild the physics timer dicts (`refacto.md` m6) | already measured by the project at 0.69 us, 0.3 % of the tick, explicitly reclassified as readability | Not a performance item. |
+| Rebuild the physics timer dicts (earlier audit, item m6) | already measured by the project at 0.69 us, 0.3 % of the tick, explicitly reclassified as readability | Not a performance item. |
 | The tile cull | `TileChunkIndex` is 0.06 ms flat from 1 000 to 22 000 tiles against 3.5 ms for the scan; worth 17-21 % of a 0.26 ms cull on the shipped level | Already done. |
 
 And the dust specifically, since it was the change immediately before this: a

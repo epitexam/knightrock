@@ -13,7 +13,7 @@
 > sous 10 fps tronque le delta et met le jeu au ralenti. C'est exact, et c'est
 > ce qui a fait ajouter `Simulation.MAX_TICKS_PER_FRAME` — parce que tronquer le
 > delta borne une frame, alors qu'une surcharge *soutenue* se solde par une
-> dette qui, elle, ne l'était pas. Voir `notes/audit_dimensions_fenetre.md` §3.
+> dette qui, elle, ne l'était pas.
 
 ## 0. Objet et contraintes
 

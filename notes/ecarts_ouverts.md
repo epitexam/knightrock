@@ -1,6 +1,6 @@
 # Écarts hitbox — état de conformité 2026-09-26
 
-> Synthèse courante des écarts O1–O10. La source historique détaillée reste `notes/hitbox_amelioration.md`.
+> Synthèse courante des écarts O1–O10. L'historique détaillé est dans git.
 > Cette version décrit uniquement le code présent sur `feat/display-cadrage-system` au `c679234`.
 > O1–O9 sont des écarts hitbox ; O10 est un écart de recette, ajouté le 2026-09-26.
 
@@ -94,7 +94,7 @@ renvoyait des rects partiels, et le test exigeait les deux.
 n’existe plus.** La cible de rendu a une taille fixe, donc la frame terminée est
 mise à l’échelle d’un bloc sur la fenêtre et il n’y a plus de chemin partiel à
 emprunter. L’appareil de dirty rects a été supprimé avec le besoin qu’il
-servait (voir `notes/audit_dimensions_fenetre.md` §3).
+servait.
 
 Le test lui-même a disparu, remplacé par
 `test_level_draw_paints_the_health_bars_over_the_world`, qui vérifie ce qui

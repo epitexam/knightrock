@@ -1,4 +1,4 @@
-"""P2 reception: push / hurt / hit + multi-hurtbox (hitbox_amelioration.md).
+"""P2 reception: push / hurt / hit + multi-hurtbox.
 
 - zone 0 (defaut legacy) : contact byte-identique au pipeline mono-box.
 - tete x1.2 : `hurtbox_mult` localise via le resolver `zone_mult`.

@@ -1148,8 +1148,7 @@ def puff_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pyga
     moment of landing.
 
     A continuous radius would mean a surface per particle, which is the
-    allocation ``notes/refacto.md`` already flags as the FX plane's main
-    remaining cost, and a landing is exactly when four of them happen at once.
+    allocation that is the FX plane's main remaining cost, and a landing is exactly when four of them happen at once.
     A display format change invalidates the cache along with everything else.
     """
     key = (_puff_bucket(radius), round(tint, 3), variant % max(1, Dust.PUFF_VARIANTS))
@@ -1266,8 +1265,8 @@ def dash_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pyga
     The landing ladder's contract, and the reason for it applies twice over
     here. A dash lays puffs on a cadence rather than in a single fan, so there
     are more of them alive at once, and a continuous radius would mean a
-    surface per particle -- exactly the allocation ``notes/refacto.md``
-    flags as the plane's main remaining cost. Keyed on the discrete radii in
+    surface per particle -- exactly the allocation that is the plane's main
+    remaining cost. Keyed on the discrete radii in
     ``DashDust.BUCKETS``, the discrete tones in ``DashDust.TINT`` and the
     discrete silhouettes in ``DashDust.VARIANTS``, and built once per session.
 

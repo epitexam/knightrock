@@ -1,4 +1,4 @@
-"""P1 sweep CCD tests (hitbox_amelioration.md, reception P1).
+"""P1 sweep CCD tests (reception P1).
 
 Cas (b), (b') et (b'') : ordre de tick REEL verifie code — capture,
 `start_attack` (seed pool+prev), `update`, mouvement (lunge), sync,

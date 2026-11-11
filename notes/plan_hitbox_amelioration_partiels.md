@@ -2,7 +2,7 @@
 
 ## 0. Objet et contraintes
 
-Ce plan traite les écarts partiellement conformes ou non conformes identifiés lors de l’audit de `notes/hitbox_amelioration.md`.
+Ce plan traite les écarts partiellement conformes ou non conformes identifiés lors de l’audit hitbox (historique dans git).
 
 Contraintes :
 
@@ -35,7 +35,7 @@ Contraintes :
 
 ### A.1 Compteurs et recette
 
-Fichiers : `notes/hitbox_amelioration.md`, `notes/ecarts_ouverts.md`.
+Fichiers : `notes/ecarts_ouverts.md`.
 
 Actions :
 
@@ -47,7 +47,7 @@ Actions :
 
 ### A.2 Actualiser P5
 
-Fichier : `notes/hitbox_amelioration.md`.
+Fichier : `notes/ecarts_ouverts.md`.
 
 Actions :
 
@@ -60,7 +60,7 @@ Actions :
 
 ### A.3 Corriger O1–O9
 
-Fichiers : `notes/hitbox_amelioration.md`, `notes/ecarts_ouverts.md`.
+Fichiers : `notes/ecarts_ouverts.md`.
 
 Actions :
 

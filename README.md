@@ -371,7 +371,7 @@ target with `pygame.transform.smoothscale`:
 | 1280×720 | ~0.38 ms | ~3.95 ms |
 | 2560×1440 | ~1.33 ms | ~7.46 ms |
 
-Sources: `notes/perf_shatter_arc.md`, `notes/audit_dimensions_fenetre.md`.
+Source: `notes/perf_shatter_arc.md`.
 
 </details>
 
@@ -780,16 +780,12 @@ Written in French unless stated otherwise.
 
 | File | Contents |
 |---|---|
-| `notes/audit_consolide.md` | Consolidated code audit. |
-| `notes/audit_ui.md`, `notes/audit_controles.md` | UI and input audits, with the delivery matrix and acceptance checklist. |
 | `notes/ecarts_ouverts.md` | Open gaps and the measured reference baseline. |
-| `notes/hitbox_amelioration.md` | Hitbox and advanced-combat work, with `notes/plan_hitbox_amelioration_partiels.md` for the partial-compliance follow-up. |
+| `notes/audit_2026-11-11_architecture.md` | The architecture and quality audit: findings, what was refactored, measurements, remaining debt. |
+| `notes/plan_hitbox_amelioration_partiels.md` | Hitbox partial-compliance follow-up. |
 | `notes/plan_limit_frames_video.md` | Planned frame-limit setting for the video menu, with the measurements that bound it. |
-| `notes/audit_p1_measured.md` | Measured rendering baselines behind the tile-chunk index numbers. |
-| `notes/audit_dimensions_fenetre.md` | Window and sizing audit, with the `smoothscale` measurements. |
 | `notes/perf_debug_overlay.md` | The overlay pass cost, with and without the static layer. |
 | `notes/perf_shatter_arc.md` | Particle construction cost and the 1:1 present measurement. |
-| `notes/refacto.md` | Refactoring plans and open threads. |
 
 ---
 

@@ -24,7 +24,7 @@ Run it from the repo root::
 
     uv run python tests/benchmarks/fx_benchmark.py
 
-Medians of unprofiled runs, per the rule in ``notes/audit_p1_measured.md``:
+Medians of unprofiled runs:
 profiling charges a Python-level call far more than it costs, and every line
 this plane draws with is one.
 """

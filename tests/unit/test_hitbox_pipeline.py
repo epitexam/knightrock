@@ -333,7 +333,7 @@ def test_invalid_frame_data_fails_fast() -> None:
         entity_at(0.0, definition=attack(invalid_cancel))
 
 
-# ── P0.1 golden trajectoires + recensement (hitbox_amelioration.md) ─────────
+# ── P0.1 golden trajectoires + recensement ─────────
 #
 # The trajectories below freeze the prediction geometry frame by frame
 # (`attack_state.animation_frame`), owner fixed at x=0. Any change to these

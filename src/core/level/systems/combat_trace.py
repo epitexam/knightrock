@@ -1,4 +1,4 @@
-"""Per-tick combat contact dump (Axe G, hitbox_amelioration.md).
+"""Per-tick combat contact dump (Axe G).
 
 Records one :class:`HitCandidate` per landed contact (and per tick summary)
 into a bounded ring buffer, optionally flushed as JSON lines for replaying a

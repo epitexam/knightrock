@@ -3,8 +3,7 @@
 Opens the game on the real session, reports what it decided about the machine,
 and walks the display states on its own so the window can be watched. Nothing
 here is a test: under the dummy driver every one of these questions is
-unanswerable, which is why ``notes/audit_dimensions_fenetre.md`` §8 lists it as
-still owed.
+unanswerable, which is why it is a manual run.
 
 Run it from the repo root::
 
