@@ -40,6 +40,7 @@ from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
 from src.physics.movement import WallJumpLock
+from src.states import state_names
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
 from src.states.turn_state import FACING_LOCKED
@@ -500,6 +501,10 @@ class Entity(Sprite):
     @on_surface.setter
     def on_surface(self, value: dict[str, bool]) -> None:
         self._movement.on_surface = value
+
+    @property
+    def is_dashing(self) -> bool:
+        return self.state_machine.current_state_name == state_names.DASH
 
     def _handle_death(self) -> None:
         """Entity-level cleanup triggered when health reaches zero."""

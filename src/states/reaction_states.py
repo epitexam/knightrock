@@ -27,14 +27,15 @@ from typing import Any, Final
 
 from src.core.settings import Combat, Physics
 from src.physics import lerp_velocity
+from src.states import state_names
 from src.states.state_machine import State
 
 #: Shared reaction-state vocabulary: ``ReactionComponent`` drives the state
 #: machine with these names, and both state-name enums carry the same values
 #: (``PlayerState``/``EnemyState``). Kept in sync by ``test_reaction_status``.
-KNOCKBACK_STATE: Final[str] = "knockback"
-STAGGER_STATE: Final[str] = "stagger"
-DIZZY_STATE: Final[str] = "dizzy"
+KNOCKBACK_STATE: Final[str] = state_names.KNOCKBACK
+STAGGER_STATE: Final[str] = state_names.STAGGER
+DIZZY_STATE: Final[str] = state_names.DIZZY
 # Horizontal speed (px/s) below which knockback is considered resolved.
 KNOCKBACK_STOP_SPEED = 20.0
 # Vertical speed (px/s) below which the launch is considered landed.

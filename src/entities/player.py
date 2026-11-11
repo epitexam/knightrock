@@ -393,7 +393,7 @@ class Player(Entity):
             return DamageResult()
 
         if not unblockable:
-            if self.state_machine.current_state_name == "dash":
+            if self.is_dashing:
                 dash_elapsed = self.dash.duration - self.dash.duration_timer
                 if dash_elapsed <= Physics.DASH_PARRY_WINDOW:
                     self.guard.posture = self.guard.max_posture

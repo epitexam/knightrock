@@ -13,6 +13,7 @@ from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.settings import Afterimage, HitFlash, ParryFlash, Turn
 from src.core.sprite_groups import SpriteGroups
+from src.states import state_names
 
 DASH_STRETCH_X = 1.6
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
@@ -26,7 +27,7 @@ def is_player_dashing(sprite: object) -> bool:
     if getattr(sprite, "faction", None) != "player":
         return False
     state_machine = getattr(sprite, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "dash"
+    return getattr(state_machine, "current_state_name", None) == state_names.DASH
 
 
 def dash_frame(

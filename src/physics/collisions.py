@@ -6,6 +6,7 @@ from pygame.math import Vector2
 
 from src.core.settings import Collision, Combat, GameFeel, Separation
 from src.physics.spatial_hash import SpatialHash
+from src.states import state_names
 
 
 class CollisionSprite(Protocol):
@@ -163,7 +164,7 @@ def _flag_crushed(entity: CollisionEntity) -> None:
 def _is_knocked(entity: CollisionEntity) -> bool:
     """Whether the entity is flying in its knockback reaction state."""
     state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "knockback"
+    return getattr(state_machine, "current_state_name", None) == state_names.KNOCKBACK
 
 
 def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:

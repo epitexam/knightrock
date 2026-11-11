@@ -21,6 +21,7 @@ from src.core.fx import (
 from src.core.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
 from src.core.sprite_groups import SpriteGroups
 from src.physics.movement import apply_moving_platform
+from src.states import state_names
 
 __all__ = ["PhysicsSystem"]
 
@@ -58,13 +59,13 @@ def _is_dizzy(entity: object) -> bool:
     """Whether the entity is currently in a dizzy state."""
     state_machine = getattr(entity, "state_machine", None)
     current = getattr(state_machine, "current_state_name", None)
-    return current is not None and "dizzy" in current
+    return current is not None and state_names.DIZZY in current
 
 
 def _is_dashing(entity: object) -> bool:
     """Whether the entity is currently in a dash state."""
     state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "dash"
+    return getattr(state_machine, "current_state_name", None) == state_names.DASH
 
 
 def _is_grounded(entity: object) -> bool:
