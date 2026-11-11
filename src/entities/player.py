@@ -58,14 +58,11 @@ class Player(ControllerView, Entity):
         # Jump controller (physics protocols JumpEntity/WallJumpLock, debug UI)
         "jump_buffer_timer": ("jump", "jump_buffer_timer"),
         "coyote_timer": ("jump", "coyote_timer"),
-        "wall_jump_lock_timer": ("jump", "wall_jump_lock_timer"),
         "midair_jumps_left": ("jump", "midair_jumps_left"),
         "wall_jumps_left": ("jump", "wall_jumps_left"),
         "jump_height": ("jump", "jump_height"),
         "wall_jump_height": ("jump", "wall_jump_height"),
         "wall_jump_push_multiplier": ("jump", "wall_jump_push_multiplier"),
-        "wall_jump_lock_duration": ("jump", "wall_jump_lock_duration"),
-        "wall_jump_min_lock": ("jump", "wall_jump_min_lock"),
         # Guard controller (debug UI, hit resolver)
         "guard_posture": ("guard", "posture"),
         "guard_posture_max": ("guard", "max_posture"),
@@ -182,6 +179,28 @@ class Player(ControllerView, Entity):
 
     def _setup_interrupts(self) -> None:
         super()._setup_interrupts()
+
+    # The wall-jump lock is three real properties, not CONTROLLER_VIEWS entries:
+    # ``apply_horizontal_movement`` finds the lock with
+    # ``isinstance(entity, WallJumpLock)``, which reads the class statically and
+    # does not see what ``__getattr__`` serves. Served from there, the lock never
+    # applied to the player.
+
+    @property
+    def wall_jump_lock_timer(self) -> float:
+        return self.jump.wall_jump_lock_timer
+
+    @wall_jump_lock_timer.setter
+    def wall_jump_lock_timer(self, value: float) -> None:
+        self.jump.wall_jump_lock_timer = value
+
+    @property
+    def wall_jump_lock_duration(self) -> float:
+        return self.jump.wall_jump_lock_duration
+
+    @property
+    def wall_jump_min_lock(self) -> float:
+        return self.jump.wall_jump_min_lock
 
     @property
     def is_guarding(self) -> bool:

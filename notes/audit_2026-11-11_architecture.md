@@ -98,10 +98,11 @@ non démontré ; **opportunité** = amélioration sans défaut actuel.
   objets de substitution avec de vrais attributs.
 - **Coût annexe :** environ 18 µs par appel, soit 0,18 ms par tick (7 % de la
   frame mesurée) pour un test qui répond toujours non.
-- **Correction :** remplacer le test de protocole par un test explicite. **Cela
-  change le ressenti du saut mural** (le verrou conçu se remet à fonctionner) :
-  la décision appartient au propriétaire du jeu. Non corrigé tant qu'elle n'est
-  pas prise.
+- **Corrigé** (décision du propriétaire) : `Player` déclare les trois membres
+  du verrou comme de vraies propriétés au lieu de les servir par
+  `__getattr__`. **Cela change le ressenti du saut mural** : le verrou conçu
+  s'applique désormais. Testé par `tests/unit/test_wall_jump_lock.py` avec le
+  vrai `Player` (qui échouait avant la correction).
 - **Leçon générale :** `@runtime_checkable` + `__getattr__` est un piège ; voir B7.
 
 ### B1 — `Game` est à la fois racine de composition, boucle et gestionnaire de fenêtre — **Élevé, avéré**
@@ -365,6 +366,9 @@ surfaces de substitution, faute des fichiers d'origine.
   des cartes ;
 - lancer le jeu, charger une carte Tiled, jouer un niveau ;
 - `uv run python main.py --debug` : l'overlay de debug ;
+- **sauter contre un mur et essayer de revenir tout de suite vers lui** :
+  depuis la correction de B0, le contrôle est réduit pendant 0,18 s
+  (`wall_jump_lock_duration`, réglable dans `data/gameplay/player.json`) ;
 - reconstruire le paquet PyInstaller (`knightrock.spec`), qui ne référence pas
   les modules déplacés mais n'a pas été construit ici.
 
@@ -380,9 +384,7 @@ mort, et un usage du typage dynamique qui a fini par cacher un bug de gameplay.
 
 **Dette restante, par priorité :**
 
-1. **B0 — Critique.** Le verrou du saut mural ne s'applique pas au joueur.
-   Décision de gameplay à prendre ; correction d'une ligne et un test avec le
-   vrai `Player`.
+1. **B0 — corrigé.** Reste à ressentir en jeu (voir F).
 2. **B7 — Moyen.** `ControllerView` (`__getattr__`/`__setattr__` sur `Player`)
    est la cause racine de B0 : ses attributs sont invisibles pour mypy et pour
    `inspect`. Remplacer la table `CONTROLLER_VIEWS` par des propriétés
