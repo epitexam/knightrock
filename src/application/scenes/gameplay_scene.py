@@ -34,6 +34,9 @@ _OVERLAY_TOGGLES = {
 
 #: Debug-only freeze key (F6): holds the simulation still so floating
 #: label cards can be read, while rendering keeps running.
+#: The window lost the keyboard, or was put away: the player is not looking.
+_AWAY_EVENTS = frozenset({pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED})
+
 _FREEZE_KEY = pygame.K_F6
 
 #: Debug-only single-step key (F7): while frozen, advance exactly one tick
@@ -134,14 +137,32 @@ class GameplayScene(Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if self._route_to_panels(event):
             return
+        if event.type in _AWAY_EVENTS:
+            self._pause_while_away()
+            return
         if event.type == pygame.KEYDOWN and self.level is not None:
             self._handle_gameplay_key(event.key)
 
+    def _pause_while_away(self) -> None:
+        """The player left the window: stop the level on the pause page.
+
+        A level that keeps running behind another window is one the player comes
+        back to dead. Not in debug mode, where looking away -- at a log, at an
+        editor -- is half of what the session is, and coming back to a pause
+        page every time would be the tool getting in the way.
+        """
+        if self.level is None or Debug.is_enabled():
+            return
+        self._pause()
+
+    def _pause(self) -> None:
+        from src.application.scenes.pause_scene import PauseScene
+
+        self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if self._pauses(routed_input):
-            from src.application.scenes.pause_scene import PauseScene
-
-            self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+            self._pause()
             return MenuAction.BACK
         # Everything else the router sends here is None, and that is the whole
         # point: the menu keys are the player keys (the arrows, Space, Escape

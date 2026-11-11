@@ -70,6 +70,15 @@ class WindowWatch:
         self.built_size = size
         self.grace_until = self._clock() + self.RESIZE_GRACE_SECONDS
 
+    @property
+    def settling(self) -> bool:
+        """Whether the game rebuilt the window moments ago.
+
+        What the window reports in that time -- a size, a focus lost and found
+        again -- is the platform settling the game's own request, not the player.
+        """
+        return self._clock() < self.grace_until
+
     def resized(self, live: tuple[int, int]) -> Resize | None:
         """Compare the window's live size with the last one known.
 

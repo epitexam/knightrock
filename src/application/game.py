@@ -651,15 +651,7 @@ class Game:
                 self.toggle_fullscreen()
                 continue
 
-            if event.type in self._WINDOW_SIZE_EVENTS:
-                # Not scene input, and not the trigger either: the reaction to a
-                # resize is read off the window every frame by
-                # :meth:`_follow_the_window`, because which of these events a
-                # resize arrives as is the platform's business, not the game's.
-                continue
-
-            if event.type == pygame.WINDOWDISPLAYCHANGED:
-                self.screen.window.moved_to_display(int(event.display_index))
+            if self._is_window_business(event):
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
@@ -693,6 +685,30 @@ class Game:
     _WINDOW_SIZE_EVENTS = frozenset(
         {pygame.VIDEORESIZE, pygame.WINDOWRESIZED, pygame.WINDOWSIZECHANGED}
     )
+
+    def _is_window_business(self, event: pygame.event.Event) -> bool:
+        """Whether an event is about the window itself and stops here.
+
+        A size change is not scene input, and not the trigger either: the
+        reaction to a resize is read off the window every frame by
+        :meth:`_follow_the_window`, because which of these events a resize
+        arrives as is the platform's business, not the game's.
+        """
+        if event.type in self._WINDOW_SIZE_EVENTS:
+            return True
+        if event.type in self._AWAY_EVENTS:
+            # The game's own doing: rebuilding the window or toggling fullscreen
+            # can take the focus away and hand it straight back, and that must
+            # not read as the player leaving. Otherwise a scene decides.
+            return self.screen.window.settling
+        if event.type == pygame.WINDOWDISPLAYCHANGED:
+            self.screen.window.moved_to_display(int(event.display_index))
+            return True
+        return False
+
+    #: The window lost the keyboard or was minimised. A scene decides what that
+    #: means; here they are only held back while the window is settling.
+    _AWAY_EVENTS = frozenset({pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED})
 
     @staticmethod
     def _is_fullscreen_key(event: pygame.event.Event) -> bool:

@@ -906,3 +906,57 @@ def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
         assert isinstance(view_type.set_surface, type(MenuView.set_surface))
         assert isinstance(view_type.set_scale, type(MenuView.set_scale))
     assert ScaledView is not None
+
+
+# -- leaving the window -------------------------------------------------------
+
+
+@pytest.mark.parametrize("away", [pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED])
+def test_leaving_the_window_pauses_the_level(manager: SceneManager, monkeypatch, away: int):
+    """A level left running behind another window is one the player returns to dead."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(away))
+
+    assert isinstance(manager.current, PauseScene)
+
+
+def test_leaving_the_window_twice_stacks_one_pause(manager: SceneManager, monkeypatch):
+    """Minimising sends both events; the second reaches the pause page, not the level."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+    manager.handle_event(pygame.event.Event(pygame.WINDOWMINIMIZED))
+    manager.pop()
+
+    assert manager.current is gameplay
+
+
+def test_leaving_the_window_in_debug_mode_changes_nothing(manager: SceneManager, monkeypatch):
+    """Looking away at a log is half of a debug session."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: True))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+
+    assert manager.current is gameplay
+
+
+def test_leaving_the_window_on_a_menu_changes_nothing(manager: SceneManager):
+    manager.switch(MenuScene(manager.game))
+    menu = manager.current
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+
+    assert manager.current is menu

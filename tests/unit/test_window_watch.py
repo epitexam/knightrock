@@ -175,3 +175,44 @@ def test_the_game_hands_the_display_event_to_the_watch(tmp_path, monkeypatch) ->
     game._handle_events()
 
     assert game.screen.window.display_index == 1
+
+
+# -- the focus the game's own rebuild takes away -------------------------------
+
+
+def test_the_window_is_settling_right_after_a_build_and_not_later() -> None:
+    watch, clock = _watch()
+    assert not watch.settling
+
+    watch.built((1600, 900))
+    assert watch.settling
+
+    clock.now += WindowWatch.RESIZE_GRACE_SECONDS + 0.1
+    assert not watch.settling
+
+
+def test_a_focus_lost_while_the_window_settles_never_reaches_the_scenes(
+    tmp_path, monkeypatch
+) -> None:
+    """Toggling fullscreen can take the focus and hand it back: not the player leaving."""
+    import pygame
+
+    from src.application.game import Game
+
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    pygame.display.init()
+    pygame.display.set_mode((320, 240))
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    seen: list[int] = []
+    monkeypatch.setattr(game.scene_manager, "handle_event", lambda event: seen.append(event.type))
+
+    game.screen.window.built((320, 240))
+    pygame.event.clear()
+    pygame.event.post(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+    game._handle_events()
+    assert pygame.WINDOWFOCUSLOST not in seen
+
+    game.screen.window.grace_until = 0.0
+    pygame.event.post(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+    game._handle_events()
+    assert pygame.WINDOWFOCUSLOST in seen
