@@ -305,6 +305,15 @@ complète, mypy et Ruff.
 | `35a2fa5` | B7 (partiel) | `GameplayLoop` lit ses systèmes par leurs types ; l'attribut privé non déclaré `_dash_started_this_frame` devient un attribut public déclaré dans `Player.__init__`. |
 | `c21725c` | B8 (partiel) | `MenuView.layout` (196 lignes) découpé en `_bands`, `_content` et `_place`. Captures de référence identiques au pixel. |
 
+**Suite, après la première version de ce rapport :**
+
+| Commit | Problème | Changement |
+|---|---|---|
+| `93d29e4` | B0 | Le verrou du saut mural s'applique au joueur (**changement de gameplay**, décidé par le propriétaire). |
+| `7ac5d7f` | B7 (cause racine de B0) | `ControllerView` supprimé. Les lecteurs passent par `player.jump`/`.guard`/`.dash` ; le verrou est un attribut déclaré `Entity.wall_jump_lock` ; plus aucun `Protocol` testé par `isinstance`. Les faux joueurs des tests deviennent une fabrique unique, `tests/fakes.py:player_shape`. |
+| `607f5da` | Régression de la session précédente | Le fondu entre pages (`4468f7e`) faisait échouer `test_a_halted_scene_repaints_identical_pixels`, invisible tant que les assets manquaient. Le test attend désormais la fin du fondu (`SceneManager.transitioning`) avant la même assertion exacte. |
+| `2334a09` | README faux | Nombre de tests, couverture et fichiers mypy, mesurés. |
+
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 
 - `core` n'importe plus rien de `application` ni de `ui`. Il importait
@@ -353,17 +362,14 @@ surfaces de substitution, faute des fichiers d'origine.
 
 | Vérification | Résultat |
 |---|---|
-| `pytest` (hors `test_levels_manifest`, qui exige les `.tmx`) | **3 244 réussis**, 100 échecs et 16 erreurs, identiques à la base, tous dus aux assets absents. Aucun test qui passait n'échoue. |
-| `mypy src main.py tools` | Aucune erreur sur 187 fichiers (il y en avait 3 au début de l'audit). |
+| `pytest` complet, **avec les assets** (revenus sur le poste en cours de session) | **3 373 réussis, 0 échec**, 1 ignoré. |
+| Couverture (pytest-cov) | 94 % des instructions, 86 % des branches. |
+| `mypy src main.py tools` | Aucune erreur sur 186 fichiers. |
 | `ruff check` / `ruff format --check` | Propres. |
 | Captures de référence des menus | Identiques au pixel. |
-| `import main` | OK. |
-| Tests ajoutés ou modifiés | Le test de couches est resserré (plus d'exemption, plus d'import de `application` toléré). Les tests de persistance des contrôles passent par `SettingsStore`. Deux doubles de test complétés. |
 
-**Non vérifié sur ce poste**, à faire sur une machine qui a les assets :
+**Non vérifié** (demande un écran et une manette) :
 
-- lancer `uv run pytest` complet : les 116 tests qui dépendent des sprites et
-  des cartes ;
 - lancer le jeu, charger une carte Tiled, jouer un niveau ;
 - `uv run python main.py --debug` : l'overlay de debug ;
 - **sauter contre un mur et essayer de revenir tout de suite vers lui** :
@@ -385,12 +391,9 @@ mort, et un usage du typage dynamique qui a fini par cacher un bug de gameplay.
 **Dette restante, par priorité :**
 
 1. **B0 — corrigé.** Reste à ressentir en jeu (voir F).
-2. **B7 — Moyen.** `ControllerView` (`__getattr__`/`__setattr__` sur `Player`)
-   est la cause racine de B0 : ses attributs sont invisibles pour mypy et pour
-   `inspect`. Remplacer la table `CONTROLLER_VIEWS` par des propriétés
-   générées sur la classe (ou un accès explicite `player.jump.x`) rendrait les
-   attributs réels. Ensuite, un `Protocol` `Collider` pour le décor dans
-   `physics/collisions.py`.
+2. **B7 — Moyen.** `ControllerView` est supprimé. Reste un `Protocol`
+   `Collider` pour le décor dans `physics/collisions.py`, à la place des
+   `getattr(sprite, "hitbox", getattr(sprite, "rect", None))`.
 3. **B1.2 — Moyen.** Extraire l'affichage de `Game` dans un objet dédié
    (`stage`, `presentation`, `window`, plein écran, suivi des écrans). `Game`
    garderait `game.presentation` et `game.stage` comme attributs, donc les
