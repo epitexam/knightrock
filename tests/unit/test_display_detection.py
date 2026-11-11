@@ -208,3 +208,80 @@ def test_the_queries_answer_under_a_headless_driver() -> None:
     assert detection.desktop_size(7) == sizes[0]
     assert detection.desktop_size(-1) == sizes[0]
     assert all(rate > 0 for rate in detection.desktop_refresh_rates())
+
+
+# -- without the SDL probe -----------------------------------------------------
+#
+# The probe reaches into libSDL2 through ctypes. A pygame built on another SDL,
+# or a libSDL2 that cannot be found, leaves pygame's own answers: sizes and
+# refresh rates, no origins, no names.
+
+
+def test_a_desk_known_by_size_alone_keeps_its_refresh_rates() -> None:
+    desk = monitors.degraded(((2560, 1440), (1920, 1080)), (180, 144))
+
+    assert [monitor.refresh_rate for monitor in desk.monitors] == [180, 144]
+    assert not desk.named
+
+
+def test_a_missing_rate_reads_as_unknown() -> None:
+    desk = monitors.degraded(((2560, 1440), (1920, 1080)), (180,))
+
+    assert [monitor.refresh_rate for monitor in desk.monitors] == [180, 0]
+
+
+def test_two_screens_known_by_size_alone_cannot_place_a_point() -> None:
+    """Both claim the origin, so a lookup by position would always name the first.
+
+    ``monitor_at`` then answers ``None`` and the caller falls back to the
+    primary, instead of reporting the first screen's rate for a window sitting
+    on the second.
+    """
+    from src.core.display.window_watch import monitor_at
+
+    desk = monitors.degraded(((2560, 1440), (1920, 1080)))
+
+    assert not desk.has_geometry
+    assert monitor_at(desk, (3000, 200), (640, 360)) is None
+
+
+def test_one_screen_known_by_size_alone_is_still_the_screen() -> None:
+    from src.core.display.window_watch import monitor_at
+
+    desk = monitors.degraded(((1920, 1080),))
+
+    assert desk.has_geometry
+    assert monitor_at(desk, (100, 100), (640, 360)) == desk.primary
+
+
+def test_the_probe_refuses_a_pygame_built_on_another_sdl(monkeypatch, caplog) -> None:
+    """SDL 3 renamed the display calls: the SDL 2 bindings must not be tried on it."""
+    import logging
+
+    from src.core.display import sdl_probe
+
+    monkeypatch.setattr(sdl_probe, "_bindings_searched", False)
+    monkeypatch.setattr(sdl_probe, "_bindings_cache", None)
+    monkeypatch.setattr(pygame, "get_sdl_version", lambda: (3, 2, 0))
+    searched: list[object] = []
+    monkeypatch.setattr(sdl_probe, "_libraries", lambda: searched.append(1) or iter(()))
+
+    with caplog.at_level(logging.INFO, logger=sdl_probe.__name__):
+        assert sdl_probe.probe() == ()
+
+    assert searched == [], "no library may be opened for an SDL the bindings do not speak"
+    assert "SDL 3" in caplog.text
+
+
+def test_the_topology_falls_back_to_pygame_when_the_probe_is_silent(monkeypatch) -> None:
+    from src.core.display import sdl_probe
+
+    monkeypatch.setattr(sdl_probe, "probe", lambda: ())
+    monkeypatch.setattr(pygame.display, "get_desktop_sizes", lambda: [(2560, 1440), (1920, 1080)])
+    monkeypatch.setattr(pygame.display, "get_desktop_refresh_rates", lambda: [180, 144])
+
+    desk = detection.topology()
+
+    assert [monitor.size for monitor in desk.monitors] == [(2560, 1440), (1920, 1080)]
+    assert [monitor.refresh_rate for monitor in desk.monitors] == [180, 144]
+    assert not desk.named

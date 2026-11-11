@@ -46,7 +46,15 @@ def topology() -> Topology:
     geometry = sdl_probe.probe()
     if geometry:
         return Topology(tuple(Monitor.from_geometry(found) for found in geometry), named=True)
-    return degraded(desktop_sizes())
+    return degraded(desktop_sizes(), _rates_in_display_order())
+
+
+def _rates_in_display_order() -> tuple[int, ...]:
+    """One refresh rate per display, in pygame's display order; empty when unknown."""
+    try:
+        return tuple(max(0, int(rate)) for rate in pygame.display.get_desktop_refresh_rates())
+    except pygame.error:
+        return ()
 
 
 def desktop_refresh_rates() -> tuple[int, ...]:

@@ -40,6 +40,11 @@ import pygame
 
 logger = logging.getLogger(__name__)
 
+#: The SDL this module's calls and structures belong to. SDL 3 renamed the
+#: display calls and identifies displays by id rather than by index, so the
+#: bindings below are not merely missing there -- they would be wrong.
+SDL_MAJOR = 2
+
 #: DPI the platform calls 100%, which is the divisor for a display scale.
 BASE_DPI = 96.0
 
@@ -287,6 +292,19 @@ def _bindings() -> _Bindings | None:
     if _bindings_searched:
         return _bindings_cache
     _bindings_searched = True
+    major = pygame.get_sdl_version()[0]
+    if major != SDL_MAJOR:
+        # Said once and plainly, because the search below would otherwise go
+        # looking for a libSDL2 next to a pygame that runs on another SDL and,
+        # finding a stray one, describe displays from a video system nobody
+        # initialised. The game runs on pygame's own answers instead.
+        logger.info(
+            "pygame runs on SDL %s and the display probe speaks SDL %s; "
+            "monitor names, origins and usable areas are unavailable",
+            major,
+            SDL_MAJOR,
+        )
+        return None
     for lib in _libraries():
         try:
             _bindings_cache = _Bindings(lib)

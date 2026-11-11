@@ -85,7 +85,14 @@ class Topology:
 
     @property
     def has_geometry(self) -> bool:
-        return bool(self.monitors)
+        """Whether a point of the desktop can be attributed to one of the displays.
+
+        True with real origins (the SDL probe answered), and with a single
+        display, where there is nothing to tell apart. False for several displays
+        known by size alone: they all claim the origin, so a lookup by position
+        would name the first one whatever the window is on.
+        """
+        return bool(self.monitors) and (self.named or len(self.monitors) == 1)
 
     def containing(self, position: tuple[int, int]) -> Monitor | None:
         """Which display holds a point of the virtual desktop, if any."""
@@ -169,12 +176,20 @@ def sits_within(position: tuple[int, int], monitor: Monitor, size: tuple[int, in
     )
 
 
-def degraded(sizes: tuple[tuple[int, int], ...] = ()) -> Topology:
-    """A topology from pygame alone: sizes, no origins, no names (``named=False``)."""
+def degraded(sizes: tuple[tuple[int, int], ...] = (), rates: tuple[int, ...] = ()) -> Topology:
+    """A topology from pygame alone: sizes and rates, no origins, no names (``named=False``).
+
+    ``rates`` is one refresh rate per display, in display order; a display past
+    its end reports 0, which every reader takes for "unknown".
+    """
     return Topology(
         monitors=tuple(
             Monitor(
-                index=index, name="", bounds=(0, 0, width, height), usable=(0, 0, width, height)
+                index=index,
+                name="",
+                bounds=(0, 0, width, height),
+                usable=(0, 0, width, height),
+                refresh_rate=rates[index] if index < len(rates) else 0,
             )
             for index, (width, height) in enumerate(sizes)
         ),
