@@ -10,7 +10,7 @@ from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.player_ui import PlayerUI
-from tests.fakes import player_shape
+from tests.fakes import combat_shape, player_shape
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -81,11 +81,6 @@ def _make_full_player(**overrides) -> SimpleNamespace:
 
 def test_draw_state_panel_none_player(player_ui: PlayerUI) -> None:
     assert player_ui.draw_state_panel(0, 0, None) == 0
-
-
-def test_draw_state_panel_no_state_machine(player_ui: PlayerUI) -> None:
-    player = _make_player(state_machine=None)
-    assert player_ui.draw_state_panel(0, 0, player) == 0
 
 
 def test_draw_state_panel_draws(player_ui: PlayerUI) -> None:
@@ -228,7 +223,8 @@ def test_stats_prints_the_dash_constants_on_one_line() -> None:
     the source yields four matches and not one, and a test that has to guess at
     quoting can pass without testing anything.
     """
-    lines = PlayerUI._stats_lines(_make_full_player(), None, compact=False)
+    player = _make_full_player()
+    lines = PlayerUI._stats_lines(player, player.combat, compact=False)
     dash = [line for line in lines if line.startswith("Dash") or line.startswith("      pen")]
 
     assert len(dash) == 2, dash
@@ -279,14 +275,18 @@ def test_state_no_longer_prints_the_attack_name_or_the_cooldowns() -> None:
     next test pins.
     """
     player = _make_full_player()
-    player.combat = SimpleNamespace(
-        state=SimpleNamespace(attack_name="light_attack", phase_index=0, current_attack_def=None),
-        attack_shapes=(),
-        attack_anchors=(),
-        hurt_timer=0.0,
-        is_hurt=False,
-        charging=None,
-        cooldowns={"light_attack": 1.2, "air_rise": 0.5},
+    player.combat = combat_shape(
+        SimpleNamespace(
+            state=SimpleNamespace(
+                attack_name="light_attack", phase_index=0, current_attack_def=None
+            ),
+            attack_shapes=(),
+            attack_anchors=(),
+            hurt_timer=0.0,
+            is_hurt=False,
+            charging=None,
+            cooldowns={"light_attack": 1.2, "air_rise": 0.5},
+        )
     )
 
     text = "\n".join(_state_panel_lines(player))
@@ -308,13 +308,17 @@ def test_state_still_prints_the_hitbox_geometry() -> None:
     ``Vel`` and ``Floor``. The *name* of the move does not.
     """
     player = _make_full_player()
-    player.combat = SimpleNamespace(
-        state=SimpleNamespace(attack_name="light_attack", phase_index=0, current_attack_def=None),
-        attack_shapes=(SimpleNamespace(kind=SimpleNamespace(value="AABB")),),
-        attack_anchors=((26.0, -38.0),),
-        hurt_timer=0.0,
-        is_hurt=False,
-        charging=None,
+    player.combat = combat_shape(
+        SimpleNamespace(
+            state=SimpleNamespace(
+                attack_name="light_attack", phase_index=0, current_attack_def=None
+            ),
+            attack_shapes=(SimpleNamespace(kind=SimpleNamespace(value="AABB")),),
+            attack_anchors=((26.0, -38.0),),
+            hurt_timer=0.0,
+            is_hurt=False,
+            charging=None,
+        )
     )
 
     text = "\n".join(_state_panel_lines(player))

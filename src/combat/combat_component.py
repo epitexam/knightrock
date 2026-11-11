@@ -695,6 +695,8 @@ class _NullHitboxManager:
 class _NullChargeHandler:
     is_charging = False
     movement_multiplier = 1.0
+    charge_timer = 0.0
+    attack_name: MoveId | None = None
 
     def cancel(self) -> None:
         """No-op."""

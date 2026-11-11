@@ -1,5 +1,7 @@
 from typing import Any
 
+from src.combat.combat_component import CombatComponent, NullCombatComponent
+from src.entities.player import Player
 from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 
@@ -36,7 +38,7 @@ class PlayerUI:
         self.renderer = renderer
 
     @staticmethod
-    def _state_lines(player: Any, state_machine: Any, compact: bool) -> list[str]:
+    def _state_lines(player: Player, state_machine: Any, compact: bool) -> list[str]:
         if compact:
             return [
                 f"State  {state_machine.current_state_name or 'None'}",
@@ -66,54 +68,53 @@ class PlayerUI:
         self,
         x: int,
         y: int,
-        player: Any,
+        player: Player | None,
         layout: PanelLayout | None = None,
         panel_id: str | None = None,
         compact: bool = False,
     ) -> int:
         if panel_id is not None and self.renderer.interaction.is_closed(panel_id):
             return 0
-        if not player or not getattr(player, "state_machine", None):
+        if player is None:
             return 0
 
         sm = player.state_machine
         lines = self._state_lines(player, sm, compact)
 
         line_colors = {}
-        combat = getattr(player, "combat", None)
+        combat = player.combat
 
-        if combat:
-            # Geometry only, and the reason no attack name appears here: see the
-            # class docstring. The label card already prints it on the fighter.
-            shapes = tuple(getattr(combat, "attack_shapes", ()))
-            anchors = tuple(getattr(combat, "attack_anchors", ()))
-            if shapes:
-                anchor = anchors[0] if anchors else (0.0, 0.0)
-                lines.append(
-                    f"Hitbox {shapes[0].kind.value} x{len(shapes)}"
-                    f"  anchor ({anchor[0]:.0f},{anchor[1]:.0f})"
-                )
+        # Geometry only, and the reason no attack name appears here: see the
+        # class docstring. The label card already prints it on the fighter.
+        shapes = combat.attack_shapes
+        anchors = combat.attack_anchors
+        if shapes:
+            anchor = anchors[0] if anchors else (0.0, 0.0)
+            lines.append(
+                f"Hitbox {shapes[0].kind.value} x{len(shapes)}"
+                f"  anchor ({anchor[0]:.0f},{anchor[1]:.0f})"
+            )
 
-            hurt_idx = len(lines)
-            hurt_timer = getattr(combat, "hurt_timer", 0.0)
-            is_hurt = getattr(combat, "is_hurt", False)
-            lines.append(f"Hurt   {_yes(is_hurt)} {hurt_timer:.2f}s")
-            if is_hurt:
-                line_colors[hurt_idx] = TEXT_CRIT
+        hurt_idx = len(lines)
+        hurt_timer = combat.hurt_timer
+        is_hurt = combat.is_hurt
+        lines.append(f"Hurt   {_yes(is_hurt)} {hurt_timer:.2f}s")
+        if is_hurt:
+            line_colors[hurt_idx] = TEXT_CRIT
 
-            charging = getattr(combat, "charging", None)
-            if charging and getattr(charging, "is_charging", False) and charging.attack_name:
-                idx = len(lines)
-                lines.append(f"Charge {charging.attack_name} {charging.charge_timer:.2f}s")
-                line_colors[idx] = TEXT_WARN
+        charging = combat.charging
+        if charging.is_charging and charging.attack_name:
+            idx = len(lines)
+            lines.append(f"Charge {charging.attack_name} {charging.charge_timer:.2f}s")
+            line_colors[idx] = TEXT_WARN
 
-        stagger_timer = getattr(player, "stagger_timer", 0.0)
+        stagger_timer = player.stagger_timer
         if stagger_timer > 0:
             idx = len(lines)
             lines.append(f"Stagger {stagger_timer:.2f}s")
             line_colors[idx] = TEXT_WARN
 
-        inv_timer = getattr(player, "invincibility_timer", 0.0)
+        inv_timer = player.invincibility_timer
         if inv_timer > 0:
             idx = len(lines)
             lines.append(f"Invincible {inv_timer:.2f}s")
@@ -130,7 +131,9 @@ class PlayerUI:
         )
 
     @staticmethod
-    def _stats_lines(player: Any, combat: Any, compact: bool) -> list[str]:
+    def _stats_lines(
+        player: Player, combat: CombatComponent | NullCombatComponent, compact: bool
+    ) -> list[str]:
         """The constants of a fighter, and nothing that runs down on its own.
 
         A mirror of :meth:`_state_lines`, for the same reason: the dash was
@@ -168,36 +171,31 @@ class PlayerUI:
                 f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
                 f"Jump   h {player.jump.jump_height:.0f}  wall {player.jump.wall_jump_height:.0f}",
             ]
-        if combat:
-            lines.append(
-                f"Combo  x{getattr(combat, 'combo_count', 0)}"
-                f" (air x{getattr(combat, 'air_combo_count', 0)})"
-                f"   {getattr(combat, 'combo_timer', 0.0):.2f}s"
-            )
-        else:
-            lines.append("Combo  x0   0.00s")
+        lines.append(
+            f"Combo  x{combat.combo_count} (air x{combat.air_combo_count})   {combat.combo_timer:.2f}s"
+        )
         return lines
 
     def draw_stats_panel(
         self,
         x: int,
         y: int,
-        player: Any,
+        player: Player | None,
         layout: PanelLayout | None = None,
         panel_id: str | None = None,
         compact: bool = False,
     ) -> int:
         if panel_id is not None and self.renderer.interaction.is_closed(panel_id):
             return 0
-        if not player:
+        if player is None:
             return 0
 
         hp_ratio = player.health / player.max_health if player.max_health else 0
         hp_color = TEXT_OK if hp_ratio > 0.5 else TEXT_WARN if hp_ratio > 0.25 else TEXT_CRIT
 
-        lines = self._stats_lines(player, getattr(player, "combat", None), compact)
+        lines = self._stats_lines(player, player.combat, compact)
 
-        gravity_scale = getattr(player, "gravity_scale", 1.0)
+        gravity_scale = player.gravity_scale
         line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
         posture_ratio = (
             player.guard.posture / player.guard.max_posture if player.guard.max_posture else 0
@@ -212,12 +210,10 @@ class PlayerUI:
             line_colors[idx] = TEXT_OK
         if gravity_scale != 1.0:
             idx = len(lines)
-            lines.append(
-                f"Juggle grav x{gravity_scale:.2f} {getattr(player, 'juggle_timer', 0.0):.2f}s"
-            )
+            lines.append(f"Juggle grav x{gravity_scale:.2f} {player.juggle_timer:.2f}s")
             line_colors[idx] = TEXT_WARN
 
-        otg_timer = getattr(player, "otg_timer", 0.0)
+        otg_timer = player.otg_timer
         if otg_timer > 0:
             idx = len(lines)
             lines.append(f"OTG guard {otg_timer:.2f}s")

@@ -12,6 +12,7 @@ from typing import Any
 
 import pygame
 
+from src.combat.combat_component import NullCombatComponent
 from src.core.rendering.render_hints import RenderHints
 
 #: Where the real Player keeps each controller field: flat test name -> attribute
@@ -56,7 +57,39 @@ def player_shape(**fields: Any) -> SimpleNamespace:
         for flat, attribute in mapping.items():
             if flat in fields:
                 setattr(controllers[name], attribute, fields.pop(flat))
-    return SimpleNamespace(**fields, **controllers)
+    fields["combat"] = combat_shape(fields.get("combat"))
+    return SimpleNamespace(**{**_ENTITY_DEFAULTS, **fields}, **controllers)
+
+
+#: Timers every real Entity carries, at rest. A test that cares sets its own.
+_ENTITY_DEFAULTS: dict[str, Any] = {
+    "stagger_timer": 0.0,
+    "invincibility_timer": 0.0,
+    "gravity_scale": 1.0,
+    "juggle_timer": 0.0,
+    "otg_timer": 0.0,
+}
+
+
+def combat_shape(combat: Any) -> Any:
+    """A combat component with every member the real one has.
+
+    No Entity is without one: a fighter with no attacks carries a
+    ``NullCombatComponent``. So ``None`` becomes that, and a partial stand-in
+    gets the members it left out from it.
+    """
+    null = NullCombatComponent()
+    if combat is None:
+        return null
+    if getattr(combat, "charging", None) is None:
+        combat.charging = null.charging
+    for member in ("attack_shapes", "attack_anchors", "hurt_timer", "is_hurt"):
+        if not hasattr(combat, member):
+            setattr(combat, member, getattr(null, member))
+    for member in ("combo_count", "air_combo_count", "combo_timer"):
+        if not hasattr(combat, member):
+            setattr(combat, member, 0)
+    return combat
 
 
 class FighterSprite(pygame.sprite.Sprite):
