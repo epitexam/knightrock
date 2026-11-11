@@ -15,7 +15,7 @@ from src.ui.text import t
 from src.ui.title_backdrop import TitleBackdrop
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 class MenuScene(MenuPage):

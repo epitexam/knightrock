@@ -583,7 +583,7 @@ def test_the_target_the_camera_and_the_interface_all_read_the_same_density(
     existed. Here the same window is driven through ``Game`` and all three are
     read back off the one object that owns them.
     """
-    from src.core.game import Game
+    from src.application.game import Game
 
     game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     game.initialize_display()

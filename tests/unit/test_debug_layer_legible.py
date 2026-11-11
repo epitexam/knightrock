@@ -25,7 +25,7 @@ import os
 import pygame
 import pytest
 
-from src.core.game import Game
+from src.application.game import Game
 from src.core.settings import Debug
 from src.ui.panel_renderer import PanelRenderer, close_box_rect
 from src.ui.styles import TEXT_MUTED

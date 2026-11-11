@@ -88,7 +88,7 @@ def build_level(mock_input_manager):
 @pytest.fixture()
 def game_runtime(tmp_path):
     """An initialized ``Game`` (dummy display) without running the loop."""
-    from src.core.game import Game
+    from src.application.game import Game
 
     game = Game(
         save_path=tmp_path / "savegame.json",

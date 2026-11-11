@@ -18,7 +18,7 @@ from src.ui.menu_model import MenuItem
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 @dataclass(frozen=True)

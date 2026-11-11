@@ -20,11 +20,11 @@ from pathlib import Path
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
-from src.core.game import Game
 
 GOLDEN = Path(__file__).resolve().parent.parent / "golden"
 SIZES = ((1152, 648), (1920, 1080))

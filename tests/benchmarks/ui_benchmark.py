@@ -174,7 +174,7 @@ def _menu_samples(size: tuple[int, int], iterations: int) -> dict[str, float]:
     dummy SDL driver has no fast renderer, so these are CPU-only figures and
     the absolute values are not representative of a real window.
     """
-    from src.core.game import Game
+    from src.application.game import Game
 
     game = Game()
     game.initialize_display()

@@ -20,7 +20,7 @@ from src.ui.ui_manager import UIManager
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 #: Debug overlay layers toggled by function keys (F1-F5).

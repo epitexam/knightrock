@@ -16,10 +16,10 @@ from dataclasses import replace
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, picture
-from src.core.game import Game
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
 from src.core.settings import Input as InputSettings

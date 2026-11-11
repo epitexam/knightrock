@@ -9,7 +9,7 @@ from src.core.input.event_router import RoutedInput
 from src.ui.scale import ScaledView
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 class Scene(ABC):

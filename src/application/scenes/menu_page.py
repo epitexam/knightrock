@@ -32,7 +32,7 @@ from src.ui.styles import TEXT_TITLE
 from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 #: What the model reports when only the focus moved.
 _NAVIGATION = frozenset({MenuAction.MOVE_UP, MenuAction.MOVE_DOWN, MenuAction.HOVER})

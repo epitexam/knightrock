@@ -12,10 +12,10 @@ from dataclasses import replace
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.viewport import Viewport
 from src.core.fx import particles
-from src.core.game import Game
 from src.core.level.level import Level
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer

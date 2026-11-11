@@ -32,7 +32,7 @@ from src.ui.text import t
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 #: What a submenu builder returns: a title, the options, the value in force,
 #: and what to call with the one picked.

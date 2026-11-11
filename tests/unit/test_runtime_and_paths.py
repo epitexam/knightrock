@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.menu_scene import MenuScene
 from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
@@ -19,7 +20,6 @@ from src.core.display.letterbox import FitPolicy, picture
 from src.core.display.monitors import Monitor, Topology, centre_on, fit_size, opening_size
 from src.core.display.stage import Stage, WindowSpec
 from src.core.display.viewport import Viewport
-from src.core.game import Game
 from src.core.input.input_actions import InputAction
 from src.core.level.level_manager import LevelManager, UnknownLevelError
 from src.core.paths import PROJECT_ROOT, resource_path

@@ -608,12 +608,12 @@ data problem.
 
 ```
 src/
-├── application/   Scene stack, event bus, save game, settings store
+├── application/   Composition root (game.py), scene stack, save game, settings store
 │   └── scenes/    menu · level select · options · video · controls category ·
 │                  controls · gameplay · pause · game over · victory
 ├── combat/        Frame data, hit resolver, knockback, charge and combo
 │                  tracking (CombatSystem lives in core/level/systems/)
-├── core/          Bootstrap (game.py), settings, paths, colors, object pool,
+├── core/          Event bus, settings, paths, colors, object pool,
 │                  hazards, sprites, sprite groups, asset library, audio
 │   ├── animation/ Animator
 │   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, monitors, detection, sdl_probe
@@ -642,7 +642,7 @@ notes/             Refactoring plans, audit reports, measurements, open gaps
 
 | Module | Owns |
 |---|---|
-| `src/core/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
+| `src/application/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
 | `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. Each system stays independently testable. |
 | `src/core/events.py` | A synchronous, strictly ordered event bus with two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`, `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no reference to the application) and interface feedback (`UiFeedback`, emitted by the input dispatcher from what a screen reports). Subscribers must never mutate the simulation. |
 | `src/core/audio.py` | The only module that touches `pygame.mixer`, and it is a **consumer**: it never asks who did something and imports neither the input router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole policy — one effect, one cue — and `attach(bus)` subscribes to the facts it answers. It loads each sound once, caches it, applies the cue's category volume and never raises: no sound card, no asset and an undecodable file all end with a warning and a silent cue, which is also the CI path. |

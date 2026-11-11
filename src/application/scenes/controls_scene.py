@@ -30,7 +30,7 @@ from src.ui.menu_view import MenuView
 from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 T = TypeVar("T")
 

@@ -32,6 +32,7 @@ from unittest.mock import patch
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import (
@@ -40,7 +41,6 @@ from src.application.settings_store import (
     UserSettings,
 )
 from src.core.display.letterbox import FitPolicy
-from src.core.game import Game
 from src.core.input.input_actions import InputAction
 
 
@@ -645,7 +645,7 @@ def test_fullscreen_covers_the_screen_and_gives_the_window_back(tmp_path: Path) 
 
 
 def test_alt_enter_is_the_fullscreen_key() -> None:
-    from src.core.game import Game
+    from src.application.game import Game
 
     alt_enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=pygame.KMOD_LALT)
     enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)

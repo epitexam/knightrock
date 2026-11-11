@@ -46,17 +46,6 @@ ALLOWED_MODULES: dict[str, dict[str, frozenset[str]]] = {
 }
 
 
-#: Modules exempt from their layer's rule, with the reason.
-#:
-#: `core/game.py` is the composition root. It builds the scene stack, the event
-#: bus and the audio bus, and hands them to the layers below; that is the one
-#: job it has. It is named `core` for historical reasons and sits at the top of
-#: the dependency graph, not the bottom.
-EXEMPT: dict[str, str] = {
-    "core/game.py": "the composition root: it wires the layers together",
-}
-
-
 def _layer_of(path: Path) -> str:
     return path.relative_to(SRC).parts[0]
 
@@ -105,8 +94,6 @@ def _violations(layer: str) -> list[str]:
     offenders: list[str] = []
     for path in sorted((SRC / layer).rglob("*.py")):
         relative = str(path.relative_to(SRC))
-        if relative in EXEMPT:
-            continue
         for target in sorted(_imported_layers(path) - {layer}):
             permitted_modules = ALLOWED_MODULES.get(layer, {}).get(target)
             if permitted_modules is not None:
@@ -169,10 +156,14 @@ def test_the_interface_satisfies_the_overlay_port() -> None:
             )
 
 
-def test_the_composition_root_is_exempt_on_purpose() -> None:
-    """An exemption nobody notices is a hole; this one is asserted."""
-    assert "application" in _imported_layers(SRC / "core/game.py")
-    assert "core/game.py" in EXEMPT
+def test_the_composition_root_lives_in_the_application() -> None:
+    """`Game` wires every layer together, so it sits at the top: no exemption needed.
+
+    It used to live in `core` and be exempted from `core`'s rule, which made the
+    rule false for the module everything starts from.
+    """
+    assert not (SRC / "core/game.py").exists()
+    assert {"core", "ui"} <= _imported_layers(SRC / "application/game.py")
 
 
 def test_the_layer_walk_actually_finds_the_modules() -> None:

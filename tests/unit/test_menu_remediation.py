@@ -292,9 +292,9 @@ def test_the_layout_paints_nothing_and_the_paint_decides_nothing() -> None:
 
 def test_a_page_change_fades_the_last_frame_out(tmp_path) -> None:
     """The frame before a push shows through the next one, then is gone."""
+    from src.application.game import Game
     from src.application.scenes.menu_scene import MenuScene
     from src.application.scenes.options_scene import OptionsScene
-    from src.core.game import Game
 
     game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
     game._initialize()

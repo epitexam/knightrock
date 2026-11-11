@@ -12,7 +12,7 @@ from src.ui.styles import TEXT_WARN
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 class PauseScene(MenuPage):

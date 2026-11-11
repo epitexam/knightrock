@@ -170,4 +170,4 @@ def test_the_file_walk_actually_finds_the_package() -> None:
     """Guard the guard: an empty walk would make the check vacuously true."""
     found = _python_files()
     assert len(found) > 100
-    assert REPO_ROOT / "src" / "core" / "game.py" in found
+    assert REPO_ROOT / "src" / "application" / "game.py" in found

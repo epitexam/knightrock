@@ -18,7 +18,7 @@ from src.application.scene import Scene
 from src.core.colors import Colors
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.game import Game
 
 
 class SceneManager:

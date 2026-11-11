@@ -21,8 +21,8 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.core import game as game_module
-from src.core.game import Game
+from src.application import game as game_module
+from src.application.game import Game
 from src.core.settings import Display, Simulation
 
 pytestmark = pytest.mark.usefixtures("_pacing_display")

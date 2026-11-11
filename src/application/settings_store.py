@@ -117,7 +117,7 @@ class UserSettings:
 
     - **pixel_perfect**: give up filling the window to get whole-pixel art.
     - **fit**: how the picture meets the window -- see the field, and
-      :meth:`src.core.game.Game.effective_fit` for how the two reconcile.
+      :meth:`src.application.game.Game.effective_fit` for how the two reconcile.
     - **vsync**, **frame_limit**: how often to present.
     - **ui_scale**: the interface's own size, independent of the density.
     - **panel_scale**: the debug panels' size, down to 0.4 so the full stack fits
