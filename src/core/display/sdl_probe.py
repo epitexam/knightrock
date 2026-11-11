@@ -109,7 +109,7 @@ class _Bindings:
         lib.SDL_GetDisplayUsableBounds.argtypes = [ctypes.c_int, ctypes.POINTER(_SdlRect)]
         lib.SDL_GetDisplayName.restype = ctypes.c_char_p
         lib.SDL_GetDisplayName.argtypes = [ctypes.c_int]
-        lib.SDL_GetDesktopDisplayMode.restype = ctypes.POINTER(_SdlDisplayMode)
+        lib.SDL_GetDesktopDisplayMode.restype = ctypes.c_int
         lib.SDL_GetDesktopDisplayMode.argtypes = [ctypes.c_int, ctypes.POINTER(_SdlDisplayMode)]
         self.lib = lib
 
@@ -127,12 +127,14 @@ class _Bindings:
             usable = bounds
         name = self.lib.SDL_GetDisplayName(index)
         mode = _SdlDisplayMode()
-        # The return value is not the test. SDL returns the pointer it was
-        # handed, and ctypes pointer instances do not agree with truthiness --
-        # measured here, a call that filled refresh_rate with 60 compared
-        # false -- so the mode is checked by its contents instead.
-        self.lib.SDL_GetDesktopDisplayMode(index, ctypes.byref(mode))
-        refresh = max(0, int(mode.refresh_rate)) if mode.width > 0 and mode.height > 0 else 0
+        # An int like the calls above: 0 on success, negative on failure
+        # (measured: 0 for a real display, -1 for an index past the last). It
+        # was declared as returning a pointer, which made the result unusable
+        # and left the mode to be judged by its contents alone; those are still
+        # checked, because a driver can succeed and fill in nothing.
+        answered = self.lib.SDL_GetDesktopDisplayMode(index, ctypes.byref(mode)) == 0
+        known = answered and mode.width > 0 and mode.height > 0
+        refresh = max(0, int(mode.refresh_rate)) if known else 0
         return DisplayGeometry(
             index=index,
             name=_decode(name),

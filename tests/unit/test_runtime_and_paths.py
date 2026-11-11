@@ -431,6 +431,71 @@ def test_a_position_the_new_size_can_still_hold_is_kept(
     assert window.asked == [], "the window was moved although its position held"
 
 
+def test_a_failed_rebuild_asks_for_the_previous_window_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Restoring the fields is not restoring the window.
+
+    pygame returns the same surface object from every ``set_mode``, so a rebuild
+    that got as far as resizing the window and then failed left the stage
+    saying 1280x720 over a window that was no longer that. The previous window
+    has to be asked for again.
+    """
+    monitor = _panel(1920, 1080)
+    display = pygame.Surface((1, 1))
+    asked: list[tuple[int, int]] = []
+
+    def set_mode(size, flags=0, depth=0, display_index=0, vsync=0):
+        # One surface for every mode, resized in place: what pygame does.
+        nonlocal display
+        asked.append(tuple(size))
+        display = pygame.Surface(size)
+        if vsync:
+            raise pygame.error("vsync refused")
+        return display
+
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+    monkeypatch.setattr(pygame.display, "get_surface", lambda: display)
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (50, 50))
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: None))
+    stage = Stage(WindowSpec(size=(1280, 720)), monitor)
+    asked.clear()
+
+    with pytest.raises(pygame.error):
+        stage.rebuild(WindowSpec(size=(1600, 900), vsync=True), monitor)
+
+    assert asked[-1] == (1280, 720), "the previous window was never asked for again"
+    assert stage.size == (1280, 720)
+    assert stage.spec == WindowSpec(size=(1280, 720))
+    assert not stage.fullscreen
+
+
+def test_a_restore_that_fails_too_still_describes_the_real_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = _panel(1920, 1080)
+    live = pygame.Surface((1280, 720))
+    refuse = False
+
+    def set_mode(size, flags=0, depth=0, display_index=0, vsync=0):
+        if refuse:
+            raise pygame.error("no display")
+        return live
+
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+    monkeypatch.setattr(pygame.display, "get_surface", lambda: live)
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (50, 50))
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: None))
+    stage = Stage(WindowSpec(size=(1280, 720)), monitor)
+    refuse = True
+
+    with pytest.raises(pygame.error):
+        stage.rebuild(WindowSpec(size=(1600, 900)), monitor)
+
+    assert stage.surface is live
+    assert not stage.fullscreen
+
+
 def _no_window_handle(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
     """A pygame build without ``Window.from_display_module``; returns the modes asked."""
     modes: list[tuple] = []

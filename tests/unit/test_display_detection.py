@@ -300,3 +300,41 @@ def test_a_monitor_carries_no_scale() -> None:
     names = {field.name for field in dataclasses.fields(monitors.Monitor)}
 
     assert "scale" not in names
+
+
+def test_a_display_mode_sdl_refuses_reports_no_refresh_rate() -> None:
+    """``SDL_GetDesktopDisplayMode`` answers an int: 0 for success, negative otherwise.
+
+    It was declared as returning a pointer, so its answer could not be read and
+    a refused call was judged by whatever the structure happened to hold.
+    """
+    import ctypes
+
+    from src.core.display import sdl_probe
+
+    class _Lib:
+        def __init__(self, status: int) -> None:
+            self.status = status
+
+        def SDL_GetDisplayBounds(self, index, rect):  # noqa: N802 - SDL's name
+            rect._obj.w, rect._obj.h = 1920, 1080
+            return 0
+
+        def SDL_GetDisplayUsableBounds(self, index, rect):  # noqa: N802
+            return 0
+
+        def SDL_GetDisplayName(self, index):  # noqa: N802
+            return b"panel"
+
+        def SDL_GetDesktopDisplayMode(self, index, mode):  # noqa: N802
+            mode._obj.width, mode._obj.height, mode._obj.refresh_rate = 1920, 1080, 144
+            return self.status
+
+    def geometry(status: int):
+        bindings = sdl_probe._Bindings.__new__(sdl_probe._Bindings)
+        bindings.lib = _Lib(status)  # type: ignore[assignment]
+        return bindings.display_geometry(0)
+
+    assert ctypes.sizeof(ctypes.c_int) == 4
+    assert geometry(0).refresh_rate == 144
+    assert geometry(-1).refresh_rate == 0

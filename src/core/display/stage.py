@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pygame
 
@@ -73,19 +73,46 @@ class Stage:
     def rebuild(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
         """Recreate the window for a new specification and return its surface.
 
-        All or nothing: if ``set_mode`` fails (vsync refused, screen gone), the
-        previous state is restored and the error raised for the caller.
+        All or nothing: if it fails (vsync refused, screen gone), the previous
+        window is asked for again and the error raised for the caller.
+
+        Asked for again, not merely remembered. pygame hands back the *same*
+        surface object from every ``set_mode``, so putting the old fields back
+        left a stage describing one window while the platform showed whatever
+        the failed attempt got as far as: its size, its screen, its fullscreen.
         """
-        previous = (self.spec, self.monitor, self.surface, self.fullscreen, self.windowed_size)
+        previous_spec, previous_monitor = self.spec, self.monitor
+        # The window as it stands, which the spec alone does not say: a size
+        # left to the machine, a fullscreen toggled since.
+        standing = replace(
+            self.spec,
+            fullscreen=self.fullscreen,
+            size=(self.windowed_size if self.fullscreen else self.size) or self.spec.size,
+        )
         try:
             self.spec = spec
             self.monitor = monitor
             self.fullscreen = False
             self.surface = self._create(spec, monitor)
         except Exception:
-            (self.spec, self.monitor, self.surface, self.fullscreen, self.windowed_size) = previous
+            self.spec = previous_spec
+            self._restore(standing, previous_monitor)
             raise
         return self.surface
+
+    def _restore(self, standing: WindowSpec, monitor: Monitor) -> None:
+        """Get the previous window back after a failed rebuild. Never raises.
+
+        If the platform refuses that too, the stage at least describes what is
+        really on screen: the surface pygame holds, not fullscreen.
+        """
+        self.monitor = monitor
+        self.fullscreen = False
+        try:
+            self.surface = self._create(standing, monitor)
+        except Exception:
+            logger.exception("The previous window could not be restored either")
+            self.surface = pygame.display.get_surface() or self.surface
 
     def set_fullscreen(self, on: bool) -> pygame.Surface:
         """Cover the screen, or go back to the window, without a mode change.
