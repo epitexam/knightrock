@@ -91,6 +91,20 @@ class Topology:
         """
         return bool(self.monitors) and (self.named or len(self.monitors) == 1)
 
+    def called(self, name: str | None) -> Monitor | None:
+        """The display with this name, or ``None``.
+
+        ``None`` for no name, for a name nothing carries, and for a desk known
+        by size alone -- its displays are all called ``""``. The first match
+        wins; two panels with one name cannot be told apart by it anyway.
+        """
+        if not name or not self.named:
+            return None
+        for monitor in self.monitors:
+            if monitor.name == name:
+                return monitor
+        return None
+
     def containing(self, position: tuple[int, int]) -> Monitor | None:
         """Which display holds a point of the virtual desktop, if any."""
         x, y = position

@@ -106,6 +106,12 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
     target that no longer exists, ``smoothing`` described a per-frame resample
     that no longer happens, and the screen picker and the display mode described a
     request the window manager has the last word on. None has anything to say.
+
+    ``window.screen`` is not the screen picker coming back. It is the *name* of
+    the screen the window closed on, remembered and never chosen: at launch it
+    either matches a screen that is there or it matches nothing and the primary
+    is used. An index or a position could name the wrong panel on another
+    machine; a name that is absent can only be ignored.
     """
     store = SettingsStore(tmp_path / "settings.json")
     store.save(UserSettings())
@@ -117,7 +123,7 @@ def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> No
         "vsync",
         "frame_limit",
     }
-    assert set(payload["window"]) == {"size", "last", "fullscreen"}
+    assert set(payload["window"]) == {"size", "last", "screen", "fullscreen"}
     for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
         assert not hasattr(UserSettings(), dead), f"{dead} is gone and cannot come back"
         assert dead not in payload["video"], f"{dead} has nothing left to describe"

@@ -361,11 +361,18 @@ perte de focus. **Non essayé à la main :** glisser la fenêtre d'un écran à
 l'autre (l'évènement `WINDOWDISPLAYCHANGED` n'a pas pu être provoqué par
 script), débrancher un écran.
 
-**Laissé en attente d'une décision :** mémoriser la position, l'état maximisé
-et l'écran, et choisir l'écran dans le menu Vidéo. Le commit `9966093`
-(2026-10-17) a retiré exactement cela, sur choix du propriétaire (« écran
-primaire, fenêtre centrée, rien de persisté »), pour qu'un `settings.json`
-voyageur ne puisse pas faire planter la première frame sur une autre machine.
+**Écran mémorisé (décision du propriétaire, même jour).** Le commit `9966093`
+(2026-10-17) avait retiré l'écran choisi et la mémoire de position, pour
+qu'un `settings.json` voyageur ne puisse pas faire planter la première frame.
+Une partie revient, sous une forme qui garde cette garantie : `window.screen`
+est le **nom** de l'écran où la fenêtre a été fermée. Au lancement il
+correspond à un écran présent, ou à rien, et la fenêtre s'ouvre alors sur le
+principal. Essai réel : ouverture sur le 24 pouces demandé ; nom inconnu ou
+vide, ouverture sur le principal.
+
+Toujours absents, volontairement : la position mémorisée, l'état maximisé
+(non détectable ici : maximiser n'envoie pas `WINDOWMAXIMIZED`) et une ligne
+de choix d'écran dans le menu Vidéo.
 
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 

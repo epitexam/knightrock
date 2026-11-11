@@ -95,6 +95,13 @@ class Screen:
             return self.presentation.window_size
         return settings.last_window_size
 
+    def screen_name(self) -> str | None:
+        """The name of the screen the window is on, when the platform gives one."""
+        held = self.window_monitor()
+        if held is None or not self.topology().named:
+            return None
+        return held.name or None
+
     def spec(self, settings: UserSettings) -> WindowSpec:
         """The window the settings ask for, with an unchosen size kept as it is."""
         return WindowSpec(
@@ -105,9 +112,13 @@ class Screen:
 
     # --------------------------------------------------------------- changes
 
-    def open(self, spec: WindowSpec, fit: FitPolicy) -> None:
-        """Build the window and the picture drawn into it, once."""
-        self.stage = Stage(spec, self.monitor())
+    def open(self, spec: WindowSpec, fit: FitPolicy, screen_name: str | None = None) -> None:
+        """Build the window and the picture drawn into it, once.
+
+        On the screen called ``screen_name`` when there is one -- the screen the
+        last session closed on -- and on the primary otherwise.
+        """
+        self.stage = Stage(spec, self.topology().called(screen_name) or self.monitor())
         self.window.built(self.stage.size)
         self.presentation = Presentation(self.stage.surface, DEFAULT_FRAMING, fit=fit, convert=True)
 

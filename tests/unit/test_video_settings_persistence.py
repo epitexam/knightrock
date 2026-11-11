@@ -314,6 +314,10 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
     screen picker and the display mode among them, because a window manager owns
     where the window sits and which mode the driver runs -- and the assertion below
     is that they are gone.
+
+    ``window.screen`` is a remembered *name*, not a pick: matched against the
+    screens that are there at launch, ignored when none carries it. It cannot go
+    stale in the way an index or a position can, which is why it is allowed.
     """
     game, store = _runtime(tmp_path)
 
@@ -333,7 +337,7 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
         "vsync",
         "frame_limit",
     }
-    assert set(window) == {"size", "last", "fullscreen"}
+    assert set(window) == {"size", "last", "screen", "fullscreen"}
     assert not {
         "width",
         "height",
@@ -652,3 +656,77 @@ def test_alt_enter_is_the_fullscreen_key() -> None:
 
     assert Game._is_fullscreen_key(alt_enter)
     assert not Game._is_fullscreen_key(enter)
+
+
+# -- the screen the window closed on -------------------------------------------
+
+
+def test_the_screen_the_window_closed_on_is_remembered_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Written on the way out with the size, and read back by the next launch."""
+    game, store = _runtime(tmp_path)
+    monkeypatch.setattr(game.screen, "screen_name", lambda: 'DP-3 24"')
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched.settings.last_window_screen == 'DP-3 24"'
+
+
+def test_the_screen_is_remembered_even_with_a_chosen_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chosen size says how big, not where: the two are remembered apart."""
+    game, _store = _runtime(tmp_path)
+    game.settings = game.settings.with_video(window_size=(1600, 900))
+    monkeypatch.setattr(game.screen, "screen_name", lambda: "DP-2")
+
+    game._remember_the_window()
+
+    assert game.settings.last_window_screen == "DP-2"
+    assert game.settings.last_window_size is None
+
+
+def test_an_unnamed_screen_leaves_the_last_known_one_in_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, _store = _runtime(tmp_path)
+    game.settings = game.settings.with_video(last_window_screen="DP-2")
+    monkeypatch.setattr(game.screen, "screen_name", lambda: None)
+
+    game._remember_the_window()
+
+    assert game.settings.last_window_screen == "DP-2"
+
+
+def test_the_screen_name_round_trips_through_the_file() -> None:
+    from src.application.settings_store import UserSettings
+
+    settings = UserSettings().with_video(last_window_screen='DP-3 24"')
+
+    data = settings.to_dict()
+
+    assert data["window"]["screen"] == 'DP-3 24"'  # type: ignore[index]
+    assert UserSettings.from_dict(data).last_window_screen == 'DP-3 24"'
+
+
+@pytest.mark.parametrize("bad", [3, ["DP-2"], "x" * 500])
+def test_a_screen_that_is_not_a_name_is_rejected(bad: object) -> None:
+    from src.application.settings_store import UserSettings
+
+    data = UserSettings().to_dict()
+    data["window"]["screen"] = bad  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="window.screen"):
+        UserSettings.from_dict(data)
+
+
+def test_a_file_from_before_the_screen_was_remembered_still_loads() -> None:
+    from src.application.settings_store import UserSettings
+
+    data = UserSettings().to_dict()
+    del data["window"]["screen"]  # type: ignore[attr-defined]
+
+    assert UserSettings.from_dict(data).last_window_screen is None

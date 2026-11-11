@@ -799,6 +799,9 @@ def test_no_setting_survives_that_would_describe_the_window(tmp_path: Path) -> N
         # Where the next launch opens when no size is chosen: written once, on
         # the way out, and never read as a choice.
         "last_window_size",
+        # The screen that window was on, by name: matched or ignored, so a file
+        # carried to another machine opens on the primary there.
+        "last_window_screen",
         # Desktop fullscreen: no mode change, so nothing the driver can refuse.
         "fullscreen",
     }

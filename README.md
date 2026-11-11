@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3424%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3438%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3424 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3438 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -296,11 +296,14 @@ did before.
 fullscreen, no borderless and no screen picker: the window is the render target
 and the player chooses how big it is. Three rules replace all of that:
 
-- the window opens **centred on the primary display**, at the size the player
+- the window opens **centred on the screen the last session closed on**, or on
+  the primary display when that screen is not there, at the size the player
   chose or as large as fits the panel when they have not chosen one, and the
-  player drags it from there. Where the window sits belongs to the window
-  manager, which is why there is no row claiming a screen: a placement the game
-  cannot guarantee is a setting it must not offer;
+  player drags it from there. The screen is remembered by its name, so a
+  settings file carried to another machine matches nothing and falls back to the
+  primary. Where the window sits belongs to the window manager, which is why
+  there is still no row claiming a screen and no stored position: a placement
+  the game cannot guarantee is a setting it must not offer;
 - the **render target is the window** — more precisely the fitted rectangle of the
   window that carries the picture at the framing's aspect. The finished frame is
   blitted **1:1**, so presenting costs a copy rather than a resample;
@@ -715,7 +718,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3424 tests · 94 % instruction coverage · 86 % branch
+> **Current baseline:** 3438 tests · 94 % instruction coverage · 86 % branch
 > coverage · Ruff clean · mypy clean (190 files across `src main.py tools`;
 > `mypy src` alone is 183).[^coverage]
 

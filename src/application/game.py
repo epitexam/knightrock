@@ -260,7 +260,11 @@ class Game:
         Public because the headless fixtures need the same construction the loop
         does, rather than half of it.
         """
-        self.screen.open(self.screen.spec(self.settings), self.effective_fit())
+        self.screen.open(
+            self.screen.spec(self.settings),
+            self.effective_fit(),
+            self.settings.last_window_screen,
+        )
 
     def _retarget(self) -> None:
         """Refit the picture after the window changed size; follow it if the target is new."""
@@ -419,18 +423,24 @@ class Game:
         return self._accumulator / Simulation.TIMESTEP
 
     def _remember_the_window(self) -> None:
-        """On the way out, note the window's size for the next launch.
+        """On the way out, note the window's size and screen for the next launch.
 
-        Only with no size chosen: a chosen size is what the next launch opens at
-        anyway. Written once, at the end, so a session of resizes is one write.
+        The size only with none chosen: a chosen size is what the next launch
+        opens at anyway. The screen by its name, and only when the platform
+        gives one -- an unknown screen leaves the last known one in the file.
+        Written once, at the end, so a session of resizes is one write.
         """
-        if self.presentation is None or self.settings.window_size is not None:
+        if self.presentation is None:
             return
-        size = self._asked_window_size()
-        if size is None:
-            return
-        if size != self.settings.last_window_size:
-            self.settings = self.settings.with_video(last_window_size=size)
+        changes: dict[str, object] = {}
+        size = self._asked_window_size() if self.settings.window_size is None else None
+        if size is not None and size != self.settings.last_window_size:
+            changes["last_window_size"] = size
+        screen = self.screen.screen_name()
+        if screen is not None and screen != self.settings.last_window_screen:
+            changes["last_window_screen"] = screen
+        if changes:
+            self.settings = self.settings.with_video(**changes)
             self._persist_settings()
 
     def flush_settings(self) -> None:

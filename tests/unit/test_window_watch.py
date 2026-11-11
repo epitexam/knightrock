@@ -216,3 +216,73 @@ def test_a_focus_lost_while_the_window_settles_never_reaches_the_scenes(
     pygame.event.post(pygame.event.Event(pygame.WINDOWFOCUSLOST))
     game._handle_events()
     assert pygame.WINDOWFOCUSLOST in seen
+
+
+# -- the screen the last session closed on -------------------------------------
+
+
+def test_a_screen_is_found_by_its_name() -> None:
+    assert DESK.called("DP-2") == RIGHT
+    assert DESK.called("HDMI-9") is None
+    assert DESK.called(None) is None
+    assert DESK.called("") is None
+
+
+def test_a_desk_known_by_size_alone_has_no_names_to_match() -> None:
+    from src.core.display.monitors import degraded
+
+    assert degraded(((1920, 1080), (1280, 720))).called("") is None
+
+
+def _opened_on(monkeypatch, screen_name: str | None) -> int:
+    """Open a Screen over ``DESK`` and return the display index asked of ``set_mode``."""
+    import pygame
+
+    from src.application.screen import Screen
+    from src.core.display.letterbox import FitPolicy
+    from src.core.display.stage import Stage, WindowSpec
+
+    asked: list[int] = []
+
+    def set_mode(size, flags=0, depth=0, display=0, vsync=0):
+        asked.append(display)
+        return pygame.Surface(size)
+
+    def no_position():
+        raise pygame.error("no window yet")
+
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+    monkeypatch.setattr(pygame.display, "get_window_position", no_position)
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: None))
+    screen = Screen()
+    screen.window = _watch()[0]
+    screen.open(WindowSpec(size=(1280, 720)), FitPolicy.BARS, screen_name)
+    return asked[-1]
+
+
+def test_the_window_opens_on_the_screen_the_last_session_closed_on(monkeypatch) -> None:
+    assert _opened_on(monkeypatch, "DP-2") == RIGHT.index
+
+
+def test_a_remembered_screen_that_is_gone_opens_on_the_primary(monkeypatch) -> None:
+    """The file from another machine, or the screen unplugged since: no crash, no guess."""
+    assert _opened_on(monkeypatch, "HDMI-9") == DESK.primary.index
+
+
+def test_no_remembered_screen_opens_on_the_primary(monkeypatch) -> None:
+    assert _opened_on(monkeypatch, None) == DESK.primary.index
+
+
+def test_the_screen_name_is_only_given_when_the_platform_names_screens(monkeypatch) -> None:
+    import pygame
+
+    from src.application.screen import Screen
+    from src.core.display.monitors import degraded
+
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (3000, 100))
+    screen = Screen()
+    screen.window = _watch()[0]
+    assert screen.screen_name() == "DP-2"
+
+    screen.window = _watch([degraded(((1920, 1080),))])[0]
+    assert screen.screen_name() is None

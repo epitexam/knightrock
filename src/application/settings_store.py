@@ -128,6 +128,9 @@ class UserSettings:
       take it, clamped where it cannot, never overwritten.
     - **last_window_size**: the size the window had when the game last closed
       with no size chosen -- where the next launch opens, nothing more.
+    - **last_window_screen**: the name of the screen the window was on when the
+      game last closed -- where the next launch opens if that screen is still
+      there, and the primary otherwise.
     - **fullscreen**: the window covers its screen, without a mode change.
     - **bindings**: what the buttons do.
     """
@@ -150,6 +153,12 @@ class UserSettings:
     #: Used only to open at it next time; never a preference, and written only
     #: on the way out, so a resize mid-session does not rewrite the file.
     last_window_size: tuple[int, int] | None = None
+    #: The screen the window was on when the game last closed, by the name the
+    #: platform gives it. A name and not an index or a position: on another
+    #: machine, or with that screen unplugged, a name matches nothing and the
+    #: window opens on the primary -- an index would name another panel, or
+    #: none, which is the file that used to take the first frame down.
+    last_window_screen: str | None = None
     #: Desktop fullscreen: the window covers its screen, with no mode change.
     fullscreen: bool = False
 
@@ -166,6 +175,7 @@ class UserSettings:
             "window": {
                 "size": list(self.window_size) if self.window_size else None,
                 "last": list(self.last_window_size) if self.last_window_size else None,
+                "screen": self.last_window_screen,
                 "fullscreen": self.fullscreen,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
@@ -278,6 +288,7 @@ class UserSettings:
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
             last_window_size=_placement(window, "last"),
+            last_window_screen=_screen_name(window),
             fullscreen=_bounded_bool(window.get("fullscreen", False), "window.fullscreen"),
         )
 
@@ -399,6 +410,25 @@ def _bounded_int(value: object, field_name: str, minimum: int, maximum: int) -> 
 def _bounded_bool(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be boolean")
+    return value
+
+
+#: Longer than any name a platform gives a panel; past it the value is not one.
+MAX_SCREEN_NAME = 120
+
+
+def _screen_name(window: dict[str, Any]) -> str | None:
+    """The remembered screen's name, or ``None`` for none.
+
+    Only ever compared with the names of the screens that are there, so a name
+    that matches nothing costs nothing; the type and the length are still
+    checked so the file cannot carry something that is not a name.
+    """
+    value = window.get("screen")
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or len(value) > MAX_SCREEN_NAME:
+        raise ValueError("window.screen must be a screen name or null")
     return value
 
 
