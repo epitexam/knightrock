@@ -6,12 +6,13 @@ import pygame
 
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.menu_page import MenuPage
-from src.core.colors import Colors
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
+from src.ui.fonts import MENU_FONT_GRID, menu_font_size
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.ui.menu_view import DESIGN_ITEM, MenuView
 from src.ui.text import t
+from src.ui.title_backdrop import TitleBackdrop
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -20,7 +21,6 @@ if TYPE_CHECKING:
 class MenuScene(MenuPage):
     opaque = True
     covers_panels_below = False
-    BACKGROUND = Colors.dark_grey
     TITLE = t("title.game")
     CONFIRM_TITLE = t("title.quit")
     CONFIRM_ITEMS = (MenuItem("no", t("row.quit_no")), MenuItem("yes", t("row.quit_yes")))
@@ -54,6 +54,7 @@ class MenuScene(MenuPage):
             )
             self.options = ("ENTER: play", "ESC: quit")
         super().__init__(game, items)
+        self.backdrop = TitleBackdrop()
         self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
         self.confirm_view = MenuView(game.ui_scale)
         self._confirming = False
@@ -129,6 +130,15 @@ class MenuScene(MenuPage):
     def set_ui_scale(self, scale: float) -> None:
         self.view.set_scale(scale)
         self.confirm_view.set_scale(scale)
+
+    def update(self, delta_time: float) -> None:
+        self.backdrop.update(delta_time)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        # The embers are squares of the menu font's own pixel.
+        unit = menu_font_size(DESIGN_ITEM, self.game.ui_scale) // MENU_FONT_GRID
+        self.backdrop.draw(surface, unit)
+        super().draw(surface)
 
     def draw_over(self, surface: pygame.Surface, panel: pygame.Rect) -> None:
         if self._confirming:

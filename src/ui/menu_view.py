@@ -436,19 +436,25 @@ class MenuView:
             len(labels),
         )
         footer_y = panel.bottom - padding - footer_height
+        # A help line's leading goes above it, between it and the rows, rather
+        # than below it, where the padding already is.
+        footer_leading = footer_step - footer_font.get_linesize()
         placed_description = None
         if description_surface is not None:
             placed_description = (
                 description_surface,
                 (
                     panel.x + (panel_width - description_surface.get_width()) // 2,
-                    footer_y - description_height + metrics.gap // 4,
+                    footer_y - description_height + footer_leading + metrics.gap // 4,
                 ),
             )
         placed_footers = [
             (
                 footer,
-                (panel.x + (panel_width - footer.get_width()) // 2, footer_y + n * footer_step),
+                (
+                    panel.x + (panel_width - footer.get_width()) // 2,
+                    footer_y + footer_leading + n * footer_step,
+                ),
             )
             for n, footer in enumerate(footer_surfaces)
         ]

@@ -318,3 +318,16 @@ def test_a_page_change_fades_the_last_frame_out(tmp_path) -> None:
     assert fading not in (title, settled)
     assert pygame.image.tobytes(surface, "RGB") == settled
 
+
+def test_the_title_backdrop_is_the_same_picture_at_the_same_time() -> None:
+    from src.ui.title_backdrop import TitleBackdrop
+
+    def frame(time: float) -> bytes:
+        backdrop = TitleBackdrop()
+        backdrop.update(time)
+        surface = pygame.Surface((320, 180))
+        backdrop.draw(surface, 2)
+        return pygame.image.tobytes(surface, "RGB")
+
+    assert frame(3.0) == frame(3.0)
+    assert frame(3.0) != frame(0.0)
