@@ -126,6 +126,14 @@ class HUD:
         self._metrics = Metrics.for_scale(scale)
         self._scale = self._metrics.scale
 
+    def reserved_height(self) -> int:
+        """How much of the screen's bottom the gauges take, margin included.
+
+        The debug panels are laid out above it, so a tall panel never lands on
+        the health bar.
+        """
+        return self._px(HUD_MARGIN) * 2 + self._px(HUD_BAR_HEIGHT) * 2 + self._px(HUD_BAR_GAP)
+
     def _px(self, value: int) -> int:
         """A design size in target pixels, never below one.
 

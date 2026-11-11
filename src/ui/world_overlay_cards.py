@@ -25,6 +25,7 @@ from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
 from src.entities.components.reaction import ReactionStatus
 from src.ui.panel_renderer import PanelRenderer
+from src.ui.pixel import font_unit, pixel_frame
 from src.ui.styles import PANEL_BORDER
 from src.ui.world_overlay_bars import health_bar_rect, health_colour
 from src.ui.world_overlay_metrics import (
@@ -129,18 +130,16 @@ class CardLayer:
         screen_width: int,
     ) -> None:
         """Blit the card: panel, top faction edge, bold header, divider, rows."""
-        panel = pygame.Surface(background_rect.size, pygame.SRCALPHA)
-        pygame.draw.rect(panel, (18, 20, 24, 210), panel.get_rect())
-        pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), width=1)
+        unit = font_unit(self.renderer.world_label_font)
+        panel = pixel_frame(*background_rect.size, unit, (18, 20, 24, 210))
         self.surface.blit(panel, background_rect.topleft)
-        # A 2px rule just inside the top border, spanning the card width. It
-        # marks the faction at a glance without cutting through the card and
-        # its divider the way a full-height side stripe did.
+        # A rule just inside the top rim, spanning the card width: the faction
+        # at a glance, without cutting through the card and its divider.
         accent_edge = pygame.Rect(
-            background_rect.left + 1,
-            background_rect.top + 1,
-            background_rect.width - 2,
-            2,
+            background_rect.left + 2 * unit,
+            background_rect.top + unit,
+            background_rect.width - 4 * unit,
+            2 * unit,
         )
         self.surface.fill(accent, accent_edge)
         cursor_x = label_rect.left

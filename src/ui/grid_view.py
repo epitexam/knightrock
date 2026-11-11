@@ -17,12 +17,13 @@ from dataclasses import dataclass
 import pygame
 
 from src.ui.fonts import MENU_FONT_GRID, menu_font, menu_font_size
-from src.ui.menu_view import DESIGN_ITEM, DESIGN_SMALL, DESIGN_TITLE, _line_step, _pixel_frame
+from src.ui.menu_view import DESIGN_ITEM, DESIGN_SMALL, DESIGN_TITLE
 from src.ui.metrics import (
     MIN_ROW_RATIO,
     MIN_TEXT_RATIO,
     Metrics,
 )
+from src.ui.pixel import line_step, pixel_frame
 from src.ui.styles import (
     SELECTION_BG,
     SELECTION_FLASH,
@@ -240,7 +241,7 @@ class GridView:
 
         # The help line is muted like every menu's; a line above it is news
         # (a capture, a change) and is in the colour that asks to be read.
-        step = _line_step(small_font) + gap // 2
+        step = line_step(small_font) + gap // 2
         footer_y = panel_rect.bottom - padding - small_font.get_linesize()
         for offset, footer in enumerate(reversed(footers)):
             surface.blit(
@@ -529,7 +530,7 @@ class GridView:
             + row_height * row_count
             + section_gap * section_gaps
             + content.gap * (1 + footer_count)
-            + _line_step(small_font) * footer_count
+            + line_step(small_font) * footer_count
         )
 
     def _column_widths(
@@ -601,7 +602,7 @@ class GridView:
     def _panel_for(self, size: tuple[int, int], unit: int = 1) -> pygame.Surface:
         """The menus' pixel-art panel, rebuilt only when its size changes."""
         if self._panel_cache is None or self._panel_size != (*size, unit):
-            self._panel_cache = _pixel_frame(size[0], size[1], unit)
+            self._panel_cache = pixel_frame(size[0], size[1], unit)
             self._panel_size = (*size, unit)
         return self._panel_cache
 

@@ -56,10 +56,14 @@ GOLDEN_BARS = {
     "Rat": None,
 }
 
+# Re-recorded on 2026-11-11, when the debug text moved to the menus' pixel
+# font: the attack headers went from 32 to 24 px tall with their bottom edge
+# where it was, and the cards became shorter and wider. The placement code did
+# not change -- the same order, the same dodges, at the new sizes.
 GOLDEN_ANNOTATIONS = {
-    "Ooze": [(300, 70, 158, 32), (344, 24, 15, 15)],
-    "Slime": [(420, 250, 158, 32), (464, 314, 15, 15), (456, 348, 15, 15)],
-    "Ectoplasm": [(400, 250, 158, 32), (440, 310, 15, 15)],
+    "Ooze": [(300, 70, 158, 24), (344, 24, 15, 15)],
+    "Slime": [(420, 258, 158, 24), (464, 314, 15, 15), (456, 348, 15, 15)],
+    "Ectoplasm": [(400, 258, 158, 24), (440, 310, 15, 15)],
     "Goblin": [],
     "Rat": [],
 }
@@ -67,11 +71,11 @@ GOLDEN_ANNOTATIONS = {
 # Draw order is placement priority, not scene order: the player reads first,
 # then top to bottom. The Rat is last in the scene and first on screen.
 GOLDEN_PLACED = [
-    (680, 500, 80, 57),
-    (212, 106, 247, 78),
-    (310, 379, 247, 78),
-    (335, 479, 247, 78),
-    (468, 171, 104, 57),
+    (676, 516, 88, 41),
+    (195, 98, 280, 54),
+    (293, 200, 280, 54),
+    (318, 367, 280, 54),
+    (468, 159, 104, 41),
 ]
 
 # Every method ``WorldUI`` had before the split, and the one module each one is

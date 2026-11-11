@@ -200,7 +200,7 @@ def test_draw_combat_panel_flows_through_the_layout(
     # The first counter line lands inside the flow's first panel (top-left),
     # below the title block — not at the legacy fixed offset (10, 150).
     assert any(
-        surface.get_at((x, y))[:3] == TEXT_MUTED for x in range(14, 110) for y in range(56, 110)
+        surface.get_at((x, y))[:3] == TEXT_MUTED for x in range(14, 110) for y in range(30, 110)
     )
 
 

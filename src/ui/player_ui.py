@@ -4,6 +4,11 @@ from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 
 
+def _yes(flag: object) -> str:
+    """A flag as a reader says it, padded so the column after it stays put."""
+    return "yes" if flag else "no "
+
+
 class PlayerUI:
     """Collect and display player data.
 
@@ -45,7 +50,8 @@ class PlayerUI:
             f"State  {current}   (prev {previous})",
             f"Hist   {' > '.join(history)}",
             f"Vel    ({player.velocity.x:6.1f}, {player.velocity.y:6.1f})",
-            f"Floor {player.on_surface['floor']!s:5}  L {player.on_surface['left']!s:5}  R {player.on_surface['right']!s:5}",
+            f"Floor  {_yes(player.on_surface['floor'])}  L {_yes(player.on_surface['left'])}"
+            f"  R {_yes(player.on_surface['right'])}",
             f"Axis   {player.move_axis:+.2f}",
             # Timers and both jump budgets on one line: all four are live, all
             # four were about one ability, and two lines read as two subjects.
@@ -53,7 +59,7 @@ class PlayerUI:
             f"  mid {player.jump.midair_jumps_left}  wall {player.jump.wall_jumps_left}",
             # ``rem``, not ``dur``: the time left on the live dash, against the
             # ``dur`` constant STATS prints for the same ability.
-            f"Dash   req {player.dash.requested!s:5}  rem {player.dash.duration_timer:.2f}s",
+            f"Dash   req {_yes(player.dash.requested)}  rem {player.dash.duration_timer:.2f}s",
         ]
 
     def draw_state_panel(
@@ -91,7 +97,7 @@ class PlayerUI:
             hurt_idx = len(lines)
             hurt_timer = getattr(combat, "hurt_timer", 0.0)
             is_hurt = getattr(combat, "is_hurt", False)
-            lines.append(f"Hurt   {is_hurt!s:5} {hurt_timer:.2f}s")
+            lines.append(f"Hurt   {_yes(is_hurt)} {hurt_timer:.2f}s")
             if is_hurt:
                 line_colors[hurt_idx] = TEXT_CRIT
 

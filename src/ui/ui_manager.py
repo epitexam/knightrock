@@ -53,15 +53,11 @@ class UIManager:
         self.hud = HUD(self.renderer)
         self._compact_panel_focus = PANEL_STATE
 
+    #: The panels F10 steps through in the compact layout, in order.
+    COMPACT_ORDER = (PANEL_COMBAT, PANEL_STATE, PANEL_STATS, PANEL_SCENE, PANEL_KEYS, PANEL_LEGEND)
+
     def cycle_compact_panel(self) -> str:
-        order = (
-            PANEL_COMBAT,
-            PANEL_STATE,
-            PANEL_STATS,
-            PANEL_SCENE,
-            PANEL_KEYS,
-            PANEL_LEGEND,
-        )
+        order = self.COMPACT_ORDER
         for _ in order:
             self._compact_panel_focus = order[
                 (order.index(self._compact_panel_focus) + 1) % len(order)
@@ -69,6 +65,18 @@ class UIManager:
             if not self.renderer.interaction.is_closed(self._compact_panel_focus):
                 break
         return self._compact_panel_focus
+
+    def _panel_footers(self) -> dict[str, str]:
+        """How to get around the panels, said on the panel being looked at.
+
+        In the compact layout that is the one panel shown, with where it sits in
+        the F10 cycle; with every panel shown it is said once, on PERFORMANCE.
+        """
+        if not compact_panels():
+            return {PANEL_PERFORMANCE: "F11 one at a time"}
+        focus = self._compact_panel_focus
+        position = self.COMPACT_ORDER.index(focus) + 1
+        return {focus: f"F10 next {position}/{len(self.COMPACT_ORDER)} · F11 all"}
 
     def compact_panel_focus(self) -> str:
         return self._compact_panel_focus
@@ -80,6 +88,7 @@ class UIManager:
         scene_host: SceneHost | None = None,
     ) -> int:
         panel_id = self._compact_panel_focus
+        self.renderer.footers = self._panel_footers()
         if panel_id == PANEL_COMBAT:
             height = self.draw_combat_panel(layout)
             if height > 0:
@@ -284,37 +293,30 @@ class UIManager:
             return 0
         states = layers or {}
 
-        def mark(key: str) -> str:
+        def layer(key: str, name: str) -> str:
             if key not in states:
-                return ""
-            return " [ON]" if states[key] else " [OFF]"
+                return f"{name}"
+            return f"{name} {'on' if states[key] else 'off'}"
 
-        # The bench list is reference, identical every frame, and it was fifteen rows for
-        # a sentence's worth of facts -- F1 through F5 one per line, which is five
-        # rows to say there are five toggles. Merging it is what keeps the panel
-        # placeable at 640x480: the live block adds six rows, and this panel is the
-        # tallest in the stack, so every bench row it did not need was a row the
-        # column flow could not find a slot for.
-        # One range for the whole top row rather than ``1-6`` and ``7-0``: the
-        # split reads as two ranges, and a reader checking whether their key is
-        # listed has to work out which half it is in. The distinction that matters
-        # is in the note beside it, not in the range itself.
-        # ``1-6`` and ``7-0`` rather than one ``1-0``: two explicit ranges, because a
-        # range written high-to-low is a thing a reader has to work out, and
-        # "which half of the row is my key in" is not a question a legend should
-        # raise. Splitting it is also what let the legend drop the air half when
-        # the air kit landed -- one range would have covered it by accident.
+        # Every key with its name, and every layer with its state: a row that
+        # says "F1-F5 layers" leaves the reader to press each one to find out.
+        layer_rows = [
+            f"F1 {layer('boxes', 'boxes')} · F2 {layer('labels', 'labels')}"
+            f" · F3 {layer('velocities', 'speed')}",
+            f"F4 {layer('statics', 'statics')} · F5 {layer('panels', 'panels')}",
+        ]
         bench = [
             "1-6 showcase · 7-0 air kit (in the air)",
             "V/B shots · C dummy · G/P/T spawn",
-            f"F1-F5 layers{mark('boxes')}",
-            "F6-F9 sim · F10 next · F11 layout",
+            *layer_rows,
+            "F6 freeze · F7 step · F8 replay · F9 export",
             "× close · drag",
         ]
         if compact:
             bench = [
                 "1-0 attacks · V/B shots · G/P/T spawn",
-                "F1-F5 layers · F6-F11 tools · × close",
+                *layer_rows,
+                "F6 freeze · F7 step · F8 replay · F9 export",
             ]
 
         lines: list[str] = []
@@ -470,11 +472,9 @@ class UIManager:
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
         if compact_panels():
-            lines = [
-                lines[0],
-                lines[1],
-                f"F10 view  {self.compact_panel_focus().upper()}",
-            ]
+            # FPS and frame time; the way around the panels is on the panel
+            # being looked at, not here.
+            lines = lines[:2]
 
         if compact_panels():
             primary_ui_ms = world_ms + panels_ms
@@ -590,9 +590,11 @@ class UIManager:
         self.renderer.interaction.begin_frame()
         if not self.world_ui.layers.get("panels", True):
             return
+        self.renderer.footers = self._panel_footers()
         layout = PanelLayout(
             self.renderer.surface.get_width(),
-            self.renderer.surface.get_height(),
+            # Above the HUD's gauges, which are drawn on every frame.
+            self.renderer.surface.get_height() - self.hud.reserved_height(),
             scale=self.renderer.screen_scale,
         )
         self.draw_performance_panel(

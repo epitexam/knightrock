@@ -560,11 +560,10 @@ def test_labels_beyond_all_slots_are_dropped(
     """More labels than dodge room: extras vanish instead of overdrawing."""
     placed = _place_crowd(monkeypatch, world_ui, _crowd(12), camera)
 
-    # Compact world fonts: cards are ~57 px tall with padding at the
-    # default anchor, so more dodge slots fit than with the old panel-sized
-    # fonts — exactly 4 cards, all apart, the rest dropped.
+    # The pixel font's 8 px cards: more dodge slots fit than the 12 crowding
+    # entities need -- exactly 6 cards, all apart, the rest dropped.
     count = len(placed)
-    assert count == 4
+    assert count == 6
     assert all(
         not placed[i].colliderect(placed[j]) for i in range(count) for j in range(i + 1, count)
     )
@@ -702,9 +701,13 @@ def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera)
 
 
 def test_world_cards_use_compact_fonts(world_ui: WorldUI) -> None:
-    """Regression pin: entity cards stay smaller than the side debug panels."""
+    """Regression pin: entity cards are never larger than the side debug panels.
+
+    Equal at the design size: 8 px is the pixel font's smallest size, and both
+    are there. From a density of 1.25 the panels go to 16 px with the cards.
+    """
     assert (
-        world_ui.renderer.world_title_font.get_height() < world_ui.renderer.title_font.get_height()
+        world_ui.renderer.world_title_font.get_height() <= world_ui.renderer.title_font.get_height()
     )
     assert (
         world_ui.renderer.world_label_font.get_height() <= world_ui.renderer.label_font.get_height()

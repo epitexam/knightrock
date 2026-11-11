@@ -117,7 +117,7 @@ def test_positional_calls_stay_backward_compatible(renderer: PanelRenderer) -> N
 def test_debug_panels_signal_impossible_small_display_placement() -> None:
     from types import SimpleNamespace
 
-    ui = UIManager(pygame.Surface((640, 480)))
+    ui = UIManager(pygame.Surface((400, 200)))
     player = player_shape(
         state_machine=SimpleNamespace(
             current_state_name="idle", previous_state_name=None, history=[]
@@ -154,10 +154,13 @@ def test_debug_panels_signal_impossible_small_display_placement() -> None:
         gravity_scale=1.0,
         otg_timer=0.0,
     )
-    ui.renderer.surface = pygame.Surface((640, 480))
+    # A display too small for the stack. 640x480 used to be one; with the pixel
+    # font at its 8 px design size the whole stack fits there now, so the
+    # refusal is exercised on a smaller one.
+    ui.renderer.surface = pygame.Surface((400, 200))
     from src.ui.panel_renderer import PanelLayout as Layout
 
-    layout = Layout(640, 480)
+    layout = Layout(400, 200)
     with pytest.warns(RuntimeWarning, match="no free slot|cannot fit"):
         ui.draw_state_panel(10, 10, player, layout=layout)
         assert ui.draw_stats_panel(10, 10, player, layout=layout) == 0

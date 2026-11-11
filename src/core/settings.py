@@ -549,14 +549,17 @@ class Separation:
 class Debug:
     """Debug overlay settings."""
 
-    FONT_SIZE = 24
-    LABEL_FONT_SIZE = 16
+    #: Design sizes of the debug text, in the menu's pixel font: snapped to its
+    #: 8-pixel grid (``menu_font_size``), so 10 is 8 px at the design size and
+    #: 16 px from a density of 1.25.
+    FONT_SIZE = 10
+    TITLE_FONT_SIZE = 10
+    LABEL_FONT_SIZE = 10
 
-    #: World-space label cards floating above entities: much smaller than
-    #: the side debug panels, so a 2-row card stays compact next to a
-    #: ~48 px tall sprite instead of dwarfing it.
-    WORLD_TITLE_FONT_SIZE = 14
-    WORLD_LABEL_FONT_SIZE = 12
+    #: World-space label cards floating above entities: as small as the font
+    #: draws, so a card stays compact next to a ~48 px tall sprite.
+    WORLD_TITLE_FONT_SIZE = 8
+    WORLD_LABEL_FONT_SIZE = 8
 
     @staticmethod
     def is_enabled() -> bool:

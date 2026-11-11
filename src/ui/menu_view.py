@@ -7,10 +7,10 @@ from src.core.display.framing import DEFAULT_FRAMING
 from src.ui.fonts import menu_font, menu_font_size
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.metrics import Metrics
+from src.ui.pixel import line_step, pixel_frame
 from src.ui.scale import FONT_CACHE_ENTRIES, checked_ui_scale
 from src.ui.styles import (
     GOLD,
-    PANEL_BG,
     PANEL_BORDER,
     SELECTION_BG,
     SELECTION_FLASH,
@@ -27,31 +27,6 @@ DESIGN_SMALL = 12
 #: How many lines a row's description may take, and the narrowest it wraps at.
 DESCRIPTION_LINES = 2
 DESCRIPTION_MIN_WIDTH = 480
-
-
-#: The panel's outline, darker than its fill.
-FRAME_OUTLINE = (8, 9, 12)
-
-
-def _pixel_frame(width: int, height: int, unit: int) -> pygame.Surface:
-    """A panel of ``width`` x ``height``: fill, outline and rim, corners cut."""
-    frame = pygame.Surface((width, height), pygame.SRCALPHA)
-    frame.fill((0, 0, 0, 0))
-    u = max(1, unit)
-    # The outline: the whole panel less its four corner units.
-    frame.fill(FRAME_OUTLINE, pygame.Rect(u, 0, width - 2 * u, height))
-    frame.fill(FRAME_OUTLINE, pygame.Rect(0, u, width, height - 2 * u))
-    # The rim, one unit in, corners cut the same way.
-    frame.fill(PANEL_BORDER, pygame.Rect(2 * u, u, width - 4 * u, height - 2 * u))
-    frame.fill(PANEL_BORDER, pygame.Rect(u, 2 * u, width - 2 * u, height - 4 * u))
-    # The fill, inside the rim.
-    frame.fill((*PANEL_BG[:3], 240), pygame.Rect(2 * u, 2 * u, width - 4 * u, height - 4 * u))
-    return frame
-
-
-def _line_step(font: pygame.font.Font) -> int:
-    """One line of small text and its leading: the pixel font has none of its own."""
-    return font.get_linesize() + max(2, font.get_linesize() // 2)
 
 
 def _decorated(item: MenuItem, selected: bool) -> str:
@@ -342,11 +317,11 @@ class MenuView:
         title_font, item_font, footer_font = self._fonts_for(self._scale)
         metrics = self._metrics
         row_count = len(model.items)
-        footer_step = _line_step(footer_font) + metrics.gap // 2
+        footer_step = line_step(footer_font) + metrics.gap // 2
         # Always two lines when there is a note, whatever its length, so the
         # panel's height does not follow the note from row to row.
         description_height = (
-            _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2 if has_notes else 0
+            line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2 if has_notes else 0
         )
         row_budget = (
             max(metrics.px(120), surface.get_height() - metrics.margin * 2)
@@ -724,7 +699,7 @@ class MenuView:
         if len(rendered) == 1:
             return rendered[0]
         width = max(painted.get_width() for painted in rendered)
-        step = _line_step(font)
+        step = line_step(font)
         block = pygame.Surface((width, step * len(rendered)), pygame.SRCALPHA)
         for row, painted in enumerate(rendered):
             block.blit(painted, ((width - painted.get_width()) // 2, row * step))
@@ -821,7 +796,7 @@ class MenuView:
         """
         key = (width, height, unit)
         if self._panel_cache is None or self._panel_cache_size != key:
-            self._panel_cache = _pixel_frame(width, height, unit)
+            self._panel_cache = pixel_frame(width, height, unit)
             self._panel_cache_size = key
         return self._panel_cache
 
