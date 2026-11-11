@@ -343,6 +343,30 @@ reprise, **239** après. Deux tests ont été supprimés parce qu'ils vérifiaie
 cas que le type exclut (un joueur avec `combat=None`, un joueur avec
 `state_machine=None`) ; un test a été ajouté.
 
+**Fenêtrage (même jour, troisième passe).** Verdict : pas de rework, des
+correctifs ciblés.
+
+| Commit | Problème | Changement |
+|---|---|---|
+| `9e2f7e2` | Le plein écran dépendait de `Window.from_display_module`, déprécié | Repli par `set_mode` à la taille du bureau (mesuré sur deux écrans : aucun changement de mode) ; placement par `pygame.display`. Seule la taille minimale n'a pas de repli. |
+| `d487154` | Repli sans la sonde SDL2 | Les fréquences sont conservées ; plusieurs écrans connus par leur seule taille ne servent plus à deviner l'écran de la fenêtre ; la sonde refuse un SDL qui n'est pas le 2. |
+| `5b2b83d` | L'écran de la fenêtre était toujours déduit de sa position | `WINDOWDISPLAYCHANGED` est écouté et passe avant la position, qui reste le repli. |
+| `935d853` | `Monitor.scale` inutilisé et faux (DPI physique, pas l'échelle du bureau) | Supprimé avec sa lecture DPI. |
+| `1f73ab9` | Le niveau continuait fenêtre en arrière-plan | Perte de focus ou minimisation ouvre la pause, hors mode debug et hors fenêtre en cours de reconstruction. |
+| `30bedb9` | Rebuild raté mal restauré ; `SDL_GetDesktopDisplayMode` lié comme renvoyant un pointeur | La fenêtre précédente est redemandée ; le statut entier est lu. |
+
+Essai réel (pilote `x11`, deux écrans, réglages temporaires) : ouverture,
+plein écran avec et sans la poignée `Window`, retour en fenêtre, pause à la
+perte de focus. **Non essayé à la main :** glisser la fenêtre d'un écran à
+l'autre (l'évènement `WINDOWDISPLAYCHANGED` n'a pas pu être provoqué par
+script), débrancher un écran.
+
+**Laissé en attente d'une décision :** mémoriser la position, l'état maximisé
+et l'écran, et choisir l'écran dans le menu Vidéo. Le commit `9966093`
+(2026-10-17) a retiré exactement cela, sur choix du propriétaire (« écran
+primaire, fenêtre centrée, rien de persisté »), pour qu'un `settings.json`
+voyageur ne puisse pas faire planter la première frame sur une autre machine.
+
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 
 - `core` n'importe plus rien de `application` ni de `ui`. Il importait
