@@ -841,7 +841,7 @@ def test_everything_anchors_on_the_panel_the_window_is_on(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
-    game.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
+    game.screen.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
     monkeypatch.setattr(pygame.display, "get_window_position", lambda: (2500, 100))
 
     held = game.monitor()
@@ -867,7 +867,7 @@ def test_with_no_position_to_read_the_anchor_falls_back_to_the_primary(
         save_path=tmp_path / "savegame.json",
         bindings_path=tmp_path / "settings.json",
     )
-    game.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
+    game.screen.topology = lambda: DESK_WITH_A_SECOND_PANEL  # type: ignore[method-assign]
 
     def raises():  # noqa: ANN202
         raise pygame.error("window does not exist")
@@ -994,7 +994,7 @@ def test_the_game_can_name_the_screen_its_window_is_on(
         ),
         named=True,
     )
-    monkeypatch.setattr(game, "topology", lambda: desk)
+    monkeypatch.setattr(game.screen, "topology", lambda: desk)
 
     monkeypatch.setattr(pygame.display, "get_window_position", lambda: (2700, 100))
     on_the_second = game.window_monitor()

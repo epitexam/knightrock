@@ -10,6 +10,7 @@ from pygame.joystick import JoystickType
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
+from src.application.screen import Screen
 from src.application.settings_store import (
     MAX_FRAME_LIMIT,
     SettingsStore,
@@ -23,8 +24,8 @@ from src.core.display.framing import DEFAULT_FRAMING
 from src.core.display.letterbox import FitPolicy, density_for
 from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
-from src.core.display.stage import Stage, WindowSpec
-from src.core.display.window_watch import DisplayChange, WindowWatch, monitor_at
+from src.core.display.stage import Stage
+from src.core.display.window_watch import DisplayChange, WindowWatch
 from src.core.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
@@ -68,11 +69,8 @@ class Game:
     def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
         for name, value in SDL_HINTS.items():
             os.environ[name] = value
-        self.stage: Stage | None = None
-        #: The window's last known size and the display list, and the rules
-        #: that turn their changes into decisions.
-        self.window = WindowWatch()
-        self.presentation: Presentation | None = None
+        #: The window, the picture drawn into it and the screens around it.
+        self.screen = Screen()
         self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(bindings_path)
         self.settings = self.settings_store.load()
@@ -157,14 +155,32 @@ class Game:
         self.clock.tick(0)
         self.scene_manager.switch(MenuScene(self))
 
+    # The display, as the scenes and the tests read it. Owned by ``screen``.
+
+    @property
+    def stage(self) -> Stage | None:
+        return self.screen.stage
+
+    @stage.setter
+    def stage(self, value: Stage | None) -> None:
+        self.screen.stage = value
+
+    @property
+    def presentation(self) -> Presentation | None:
+        return self.screen.presentation
+
+    @presentation.setter
+    def presentation(self, value: Presentation | None) -> None:
+        self.screen.presentation = value
+
+    @property
+    def window(self) -> WindowWatch:
+        return self.screen.window
+
     @property
     def surface(self) -> pygame.Surface | None:
-        """The window's surface. For window-level work only.
-
-        Nothing is *drawn* here any more: the game draws into
-        ``self.presentation.surface``. Reaching for this to draw is how the
-        window and the visible world got tangled in the first place.
-        """
+        """The window's surface, for window-level work only; scenes draw into
+        ``presentation.surface``."""
         return None if self.stage is None else self.stage.surface
 
     @property
@@ -178,8 +194,7 @@ class Game:
 
     def _draw_target(self) -> pygame.Surface:
         """The surface every scene draws into."""
-        assert self.presentation is not None, "the display is not initialized"
-        return self.presentation.surface
+        return self.screen.target
 
     def world_overlay(self, target: pygame.Surface) -> UIManager:
         """The interface drawn over the world, built once and kept.
@@ -221,57 +236,16 @@ class Game:
         self.settings = self.settings.with_video(window_size=None)
         self._persist_settings()
 
-    def _window_spec(self) -> WindowSpec:
-        """The window the settings currently ask for.
-
-        A size the player has not chosen is the window's *own* size. That is the
-        one place the two readings of "no preference" meet: with no size in the
-        file, a rebuild used to re-open the window as large as the frame allowed,
-        so any display setting undid a drag. Keeping the live geometry instead
-        means the file never has to describe the window, and the window still
-        survives every rebuild after a drag.
-        """
-        return WindowSpec(
-            vsync=self.settings.vsync,
-            size=self._asked_window_size(),
-            fullscreen=self.settings.fullscreen,
-        )
-
     def _asked_window_size(self) -> tuple[int, int] | None:
-        """The size to ask for: the chosen size; else, on a rebuild, the size the
-        window has now (so a drag survives a settings change); else the size the
-        last session closed at; else ``opening_size``.
-        """
-        if self.settings.window_size is not None:
-            return self.settings.window_size
-        if self.stage is not None and self.stage.fullscreen and self.stage.windowed_size:
-            # Fullscreen covers the screen; the window's own size is the one it
-            # had before, and the one it goes back to.
-            return self.stage.windowed_size
-        if self.stage is not None and self.presentation is not None:
-            # The window the picture is drawn onto, for the same reason as
-            # everywhere else in this file: the stage's surface is that surface in
-            # production, and asking the presentation keeps the two readings of
-            # "the window" from drifting apart.
-            return self.presentation.window_size
-        # A first launch opens where the last session closed, if it left a size.
-        return self.settings.last_window_size
+        return self.screen.asked_size(self.settings)
 
     def topology(self, *, refresh: bool = False) -> Topology:
-        """The machine's displays, cached between polls (see :class:`WindowWatch`)."""
-        return self.window.topology(refresh=refresh)
+        """The machine's displays, cached between polls."""
+        return self.screen.topology(refresh=refresh)
 
     def monitor(self) -> Monitor:
-        """The panel the game is built on: the one holding the window (Rule W).
-
-        The size list, the clamp and the centring all read it, so they describe the
-        screen the player is looking at. Before there is a window, or without
-        geometry, it is the primary.
-        """
-        held = self.window_monitor()
-        if held is not None:
-            return held
-        return self.topology().primary
+        """The screen the game is built on: the window's, else the primary (Rule W)."""
+        return self.screen.monitor()
 
     def effective_fit(self) -> FitPolicy:
         """The fit in force, as the presentation draws it and the menu reports it.
@@ -286,67 +260,33 @@ class Game:
         Public because the headless fixtures need the same construction the loop
         does, rather than half of it.
         """
-        self.stage = Stage(self._window_spec(), self.monitor())
-        self.window.built(self.stage.size)
-        # The window exists, so the picture can be drawn at its size: the target
-        # is the window's fitted rectangle and the density is read back off it.
-        self.presentation = Presentation(
-            self.stage.surface,
-            DEFAULT_FRAMING,
-            fit=self.effective_fit(),
-            convert=True,
-        )
-        # Nothing is announced about where the window landed. The game used to
-        # check which panel it ended up on and tell the player when it was not the
-        # one they asked for -- but there is nothing asked for any more, so there
-        # is nothing to be wrong about.
+        self.screen.open(self.screen.spec(self.settings), self.effective_fit())
 
     def _retarget(self) -> None:
-        """Re-point everything at the render target after it changed size.
-
-        The single cascade for "the window is a different size now", and it is
-        reached from the two things that can cause one: a display setting
-        changing, and the player dragging the window. Both produce the same
-        three consequences -- a new surface to draw into, a new density for the
-        camera, a new interface scale -- and doing them in one place is what
-        keeps a resize from leaving one of the three behind.
-        """
-        assert self.presentation is not None
-        if not self.presentation.recompute():
-            return
-        # set_mode leaves every surface converted for the *previous* display
-        # format stale. AssetLibrary has no display to compare against, so it
-        # must be invalidated explicitly or the next frame blits through a
-        # software alpha path, then pays a full re-decode and re-conversion.
-        self._invalidate_assets()
-        self.scene_manager.set_surface(self.presentation.surface)
-        self.scene_manager.set_ui_scale(self.ui_scale)
+        """Refit the picture after the window changed size; follow it if the target is new."""
+        if self.screen.refit():
+            self._follow_the_target()
 
     def _rebuild_display(self) -> None:
-        """Recreate the window, then refit the picture to it.
-
-        The window is the only thing a display setting can replace, and the
-        picture follows it: the target is the window's letterbox rectangle, so
-        there is no separate "render target" setting left to keep in step.
-        """
-        assert self.stage is not None
-        assert self.presentation is not None
-        self.stage.rebuild(self._window_spec(), self.monitor())
-        self.window.built(self.stage.size)
-        self.presentation.retarget(self.stage.surface)
-        self._invalidate_assets()
-        self.scene_manager.set_surface(self.presentation.surface)
-        self.scene_manager.set_ui_scale(self.ui_scale)
+        """Recreate the window for the settings, then follow the new target."""
+        self.screen.rebuild(self.screen.spec(self.settings))
+        self._follow_the_target()
 
     def _set_fullscreen(self, on: bool) -> None:
-        """Cover the screen or leave it, and refit the picture to the result."""
-        assert self.stage is not None
-        assert self.presentation is not None
-        surface = self.stage.set_fullscreen(on)
-        # The size change that follows is the game's, not the player's.
-        self.window.built(self.stage.size)
-        self.presentation.retarget(surface)
-        self.scene_manager.set_surface(self.presentation.surface)
+        """Cover the screen or leave it, then follow the new target."""
+        self.screen.set_fullscreen(on)
+        self._follow_the_target(invalidate=False)
+
+    def _follow_the_target(self, *, invalidate: bool = True) -> None:
+        """The one cascade for "the render target is a different surface now".
+
+        A new window format leaves every converted surface stale, so the asset
+        caches go (not on a fullscreen toggle, which keeps the format); then the
+        scenes are pointed at the new target and the interface rescaled.
+        """
+        if invalidate:
+            self._invalidate_assets()
+        self.scene_manager.set_surface(self.screen.target)
         self.scene_manager.set_ui_scale(self.ui_scale)
 
     def toggle_fullscreen(self) -> None:
@@ -354,18 +294,8 @@ class Game:
         self.apply_settings(self.settings.with_video(fullscreen=not self.settings.fullscreen))
 
     def window_monitor(self) -> Monitor | None:
-        """The screen the window is on, or ``None`` when nobody can say.
-
-        Not the primary: on a two-screen desk the two differ as soon as the
-        player drags the window across, and the VSync row reports this screen's
-        rate.
-        """
-        try:
-            x, y = pygame.display.get_window_position()
-        except pygame.error:
-            return None
-        size = self.presentation.window_size if self.presentation is not None else (0, 0)
-        return monitor_at(self.topology(), (int(x), int(y)), size)
+        """The screen the window is on, or ``None`` when nobody can say."""
+        return self.screen.window_monitor()
 
     def apply_settings(self, settings: UserSettings) -> None:
         """Apply new settings, doing only what the change touches.
@@ -533,10 +463,7 @@ class Game:
         running game behind it on some drivers, so the window is rebuilt on the
         primary and the player is told.
         """
-        if self.stage is None:
-            return
-        stage = self.stage
-        change = self.window.poll(frame_delta, lambda: self.window_monitor() or stage.monitor)
+        change = self.screen.poll(frame_delta)
         if change is DisplayChange.WINDOW_SCREEN_GONE:
             logger.info("The window's display is gone; moving the window to the primary")
             self.notice("That screen is no longer connected.", "The game moved to the main one.")
@@ -651,9 +578,7 @@ class Game:
         scenes out before reading the input, or a click is hit-tested against
         rectangles from a geometry that no longer exists.
         """
-        if self.stage is None or self.presentation is None:
-            return False
-        resize = self.window.resized(self.presentation.window_size)
+        resize = self.screen.resized()
         if resize is None:
             return False
         logger.info("The window is now %sx%s", *resize.size)
@@ -708,9 +633,8 @@ class Game:
         return self._notice
 
     def _present(self) -> None:
-        """Put the finished frame on the screen. The only screen read in the loop."""
-        assert self.presentation is not None, "the display is not initialized"
-        self.presentation.present()
+        """Put the finished frame on the screen."""
+        self.screen.present()
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
@@ -756,17 +680,6 @@ class Game:
 
             self.scene_manager.handle_event(self._to_target_coordinates(event))
 
-    #: Pointer events whose position the interface hit-tests against.
-    _POINTER_EVENTS = frozenset(
-        {
-            pygame.MOUSEMOTION,
-            pygame.MOUSEBUTTONDOWN,
-            pygame.MOUSEBUTTONUP,
-        }
-    )
-    #: The subset that *acts*. A press on a letterbox bar is a press on nothing.
-    _POINTER_PRESSES = frozenset({pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP})
-
     #: The events a change of window size can arrive as, listed so they are kept
     #: out of the scenes rather than acted on. Which one is delivered depends on
     #: the platform and the gesture -- measured, a snap sends only
@@ -808,35 +721,8 @@ class Game:
         return tuple(getattr(event, "rel", (0, 0))) != (0, 0)
 
     def _to_target_coordinates(self, event: pygame.event.Event) -> pygame.event.Event | None:
-        """Rewrite a pointer event's position into render-target coordinates.
-
-        Every hit rect in the interface is expressed in the render target's
-        space, and the pointer arrives in the window's, so the position has to
-        come back through the inverse of the presentation. Doing it here, once,
-        is what keeps every scene from having to know a window exists.
-
-        A press that lands in a letterbox bar is dropped rather than clamped.
-        Clamping would fire whatever row happens to be nearest the edge of the
-        image, which is worse than doing nothing: the player clicked black and
-        the game answered. Motion is clamped instead of dropped, so the cursor
-        keeps a sensible position while it crosses a bar.
-        """
-        if self.presentation is None or event.type not in self._POINTER_EVENTS:
-            return event
-        position = getattr(event, "pos", None)
-        if position is None:
-            return event
-
-        if not self.presentation.pointer_in_viewport(position):
-            if event.type in self._POINTER_PRESSES:
-                return None
-            rect = self.presentation.rect
-            position = (
-                min(max(position[0], rect.left), rect.right - 1),
-                min(max(position[1], rect.top), rect.bottom - 1),
-            )
-        event.pos = self.presentation.pointer_to_viewport(position)
-        return event
+        """A pointer event in render-target coordinates; ``None`` for a press on a bar."""
+        return self.screen.to_target(event)
 
     def _handle_fatal_error(self, error: Exception) -> None:
         """Log the failure with its traceback, then try to show it.
