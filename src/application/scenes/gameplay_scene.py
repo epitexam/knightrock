@@ -198,10 +198,9 @@ class GameplayScene(Scene):
         if key == _EXPORT_KEY:
             from src.application.attack_authoring import export_attack
 
-            spawn = getattr(self.level, "spawn_system", None)
-            selected = getattr(spawn, "selected_attack", None)
-            if callable(selected) and selected():
-                export_attack(self.game.gameplay_data.attack_sets, selected())
+            selected = self.level.spawn_system.selected_attack()
+            if selected:
+                export_attack(self.game.gameplay_data.attack_sets, selected)
             return True
         if key == _PANEL_FOCUS_KEY:
             ui = self._ui
@@ -228,10 +227,7 @@ class GameplayScene(Scene):
             self._step_pending = True
             return
         if key == _REPLAY_KEY:
-            spawn = getattr(self.level, "spawn_system", None)
-            toggle = getattr(spawn, "toggle_attack_replay", None)
-            if callable(toggle):
-                toggle()
+            self.level.spawn_system.toggle_attack_replay()
             return
         if self._handle_panel_tools_key(key):
             return
