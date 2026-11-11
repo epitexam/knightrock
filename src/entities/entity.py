@@ -40,6 +40,7 @@ from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
 from src.physics.movement import WallJumpLock
+from src.physics.spatial_hash import collider_box
 from src.states import state_names
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
@@ -799,7 +800,7 @@ class Entity(Sprite):
             collision_sprites=self.collision_sprites,
         )
         for sprite in nearby:
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            box = collider_box(sprite)
             if box is not None and probe.colliderect(box):
                 return False
         return True
@@ -826,7 +827,7 @@ class Entity(Sprite):
             spatial_hash=self.spatial_hash,
             collision_sprites=self.collision_sprites,
         ):
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            box = collider_box(sprite)
             if box is not None:
                 boxes.append(box)
         step = EnemyJump.GAP_SCAN_STEP_PX

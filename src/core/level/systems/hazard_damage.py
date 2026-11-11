@@ -9,7 +9,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHashMember
+from src.physics.spatial_hash import SpatialHashMember, collider_box
 
 
 class HazardDamageSystem:
@@ -122,7 +122,7 @@ class HazardDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for hazard in hazard_sprites:
-            box = getattr(hazard, "hitbox", getattr(hazard, "rect", None))
+            box = collider_box(hazard)
             if box is None:
                 continue
             key = id(hazard)

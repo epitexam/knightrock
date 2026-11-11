@@ -5,7 +5,7 @@ import pygame
 from pygame.math import Vector2
 
 from src.core.settings import Collision, Combat, GameFeel, Separation
-from src.physics.spatial_hash import SpatialHash
+from src.physics.spatial_hash import SpatialHash, collider_box
 from src.states import state_names
 
 
@@ -60,7 +60,7 @@ def _shift_is_free(
     for other in nearby_sprites:
         if other is ignore:
             continue
-        box = getattr(other, "hitbox", getattr(other, "rect", None))
+        box = collider_box(other)
         if box is not None and shifted.colliderect(box):
             return False
     return True
@@ -68,8 +68,8 @@ def _shift_is_free(
 
 def hitbox_collide(a: CollisionSprite, b: CollisionSprite) -> bool:
     """Return whether the hitboxes of two sprites overlap."""
-    box_a = getattr(a, "hitbox", a.rect)
-    box_b = getattr(b, "hitbox", b.rect)
+    box_a = collider_box(a)
+    box_b = collider_box(b)
     if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
         box_b, (pygame.FRect, pygame.Rect)
     ):
@@ -102,8 +102,7 @@ def get_nearby_sprites(
     return [
         other
         for other in collision_sprites
-        if (box := getattr(other, "hitbox", getattr(other, "rect", None))) is not None
-        and search_area.colliderect(box)
+        if (box := collider_box(other)) is not None and search_area.colliderect(box)
     ]
 
 
@@ -131,7 +130,7 @@ def update_contact_state(
     on["floor"] = on["right"] = on["left"] = False
 
     for sprite in collision_sprites:
-        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        box = collider_box(sprite)
         if box is None:
             continue
         one_way = getattr(sprite, "one_way", False)

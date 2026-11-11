@@ -3,12 +3,14 @@ from typing import Any, cast
 
 import pygame
 
+from src.physics.spatial_hash import collider_box
+
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
 def _blocks(sprite: Any, candidate: pygame.Rect) -> bool:
     """Whether ``sprite``'s box overlaps ``candidate``."""
-    box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+    box = collider_box(sprite)
     return box is not None and box.colliderect(candidate)
 
 

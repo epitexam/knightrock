@@ -22,7 +22,7 @@ from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import Projectile, ProjectileConfig
 from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHash
+from src.physics.spatial_hash import SpatialHash, collider_box
 
 __all__ = ["ProjectileSystem"]
 
@@ -105,7 +105,7 @@ class ProjectileSystem:
             if self.spatial_hash is not None
             else self.groups.collision_sprites
         ):
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            box = collider_box(sprite)
             if box is None:
                 continue
             box = pygame.FRect(box)

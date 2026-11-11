@@ -40,6 +40,21 @@ import pygame
 
 from src.core.settings import World
 
+
+def collider_box(sprite: object) -> pygame.Rect | pygame.FRect | None:
+    """The box a sprite collides with: its ``hitbox``, else its ``rect``.
+
+    The one reading of a collider for the whole physics package. Collision
+    groups mix terrain tiles (a ``rect`` only), moving platforms and entities
+    (a ``hitbox`` that differs from the drawn ``rect``); ``None`` means the
+    sprite has no box and takes no part in the collision.
+    """
+    box = getattr(sprite, "hitbox", None)
+    if box is not None:
+        return box  # type: ignore[no-any-return]
+    return getattr(sprite, "rect", None)
+
+
 __all__ = [
     "QUERY_MARGIN_PX",
     "SpatialHash",
@@ -266,7 +281,7 @@ class SpatialHash:
     @staticmethod
     def _box_of(sprite: SpatialHashMember) -> pygame.Rect | pygame.FRect | None:
         """Return a sprite's hitbox, falling back to its rect."""
-        return getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        return collider_box(sprite)
 
     def _cells_for_box(self, box: pygame.Rect | pygame.FRect) -> tuple[tuple[int, int], ...]:
         """Return every cell the box overlaps, column-major.

@@ -21,7 +21,7 @@ from src.physics.collisions import (
     update_contact_state,
 )
 from src.physics.gravity import apply_entity_gravity
-from src.physics.spatial_hash import SpatialHash
+from src.physics.spatial_hash import SpatialHash, collider_box
 
 VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 
@@ -318,14 +318,14 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
     best: float | None = None
     for sprite in nearby_sprites:
         if getattr(sprite, "one_way", False):
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            box = collider_box(sprite)
             if box is None or entity.old_hitbox.bottom > box.top + Collision.CONTACT_SKIN_PX:
                 continue
             gap = box.top - entity.hitbox.bottom
             if 0 <= gap <= snap and (best is None or gap < best):
                 best = gap
             continue
-        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        box = collider_box(sprite)
         if box is None:
             continue
         overlap_x = min(entity.hitbox.right, box.right) - max(entity.hitbox.left, box.left)
