@@ -452,7 +452,7 @@ class PlayerDashState(PlayerBaseState):
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
         # Signal dash start for screen shake/trauma
-        self.entity._dash_started_this_frame = True
+        self.entity.dash_started_this_frame = True
 
     def exit(self, next_state: str | None = None) -> None:
         """Exit the state and restore the original hitbox width."""

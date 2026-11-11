@@ -159,6 +159,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         is_dead=False,
         hitbox=pygame.FRect(0, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
+        dash_started_this_frame=False,
         respawn=Mock(),
         die=Mock(),
     )

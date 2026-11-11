@@ -166,6 +166,9 @@ class Player(ControllerView, Entity):
         self.right_held = False
         self.guard_held = False
         self.down_held = False
+        #: Set by the dash state on the tick a dash starts; the gameplay loop
+        #: reads it for the screen shake and clears it the same tick.
+        self.dash_started_this_frame = False
 
         self.input_manager = input_manager
         self.input_handler = PlayerInputHandler(self)

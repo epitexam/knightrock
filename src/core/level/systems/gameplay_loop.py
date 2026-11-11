@@ -181,15 +181,15 @@ class GameplayLoop:
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
-            impact = float(getattr(self.combat_system, "impact", 0.0) or 0.0)
+            impact = self.combat_system.impact
             if impact >= CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
                 camera.add_trauma(impact / CameraShake.HEAVY_DIV)
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
             self._emit_guard_fx(groups, camera)
             # Dash start screen shake
-            if getattr(player, "_dash_started_this_frame", False):
-                player._dash_started_this_frame = False
+            if player.dash_started_this_frame:
+                player.dash_started_this_frame = False
                 camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
@@ -232,8 +232,8 @@ class GameplayLoop:
         Off-by-default (``DEBUG`` + ``DEBUG_COMBAT_DUMP``); the path lives
         under ``logs/`` next to the rotating handler configured in main.
         """
-        trace = getattr(self.contact_system, "trace", None)
-        if trace is None or not trace.enabled or len(trace) == 0:
+        trace = self.contact_system.trace
+        if not trace.enabled or len(trace) == 0:
             return
         from pathlib import Path  # local: keep import cost off the hot path
 
@@ -246,28 +246,23 @@ class GameplayLoop:
         self._spawn_guard_fx(events, groups, camera)
 
     def _collect_guard_events(self) -> list[GuardEvent]:
-        events = list(getattr(self.combat_system, "guard_events", None) or [])
-        if hasattr(self.combat_system, "guard_events"):
-            self.combat_system.guard_events.clear()
-        projectile_system = self.projectile_system
-        if projectile_system is not None:
-            events.extend(getattr(projectile_system, "guard_events", None) or [])
-            if hasattr(projectile_system, "guard_events"):
-                projectile_system.guard_events.clear()
+        """Take this tick's guard events from the melee and projectile systems."""
+        events = list(self.combat_system.guard_events)
+        self.combat_system.guard_events.clear()
+        if self.projectile_system is not None:
+            events.extend(self.projectile_system.guard_events)
+            self.projectile_system.guard_events.clear()
         return events
 
     def _spawn_guard_fx(
         self, events: list[GuardEvent], groups: SpriteGroups, camera: CameraSystem
     ) -> None:
-        fx_group = getattr(groups, "fx_sprites", None)
-        if fx_group is None:
-            return
-
+        fx_group = groups.fx_sprites
         trauma = 0.0
         for event in events:
             trauma = max(trauma, self._trauma_for_event(event))
             self._spawn_fx_for_event(event, fx_group)
-        if trauma > 0.0 and hasattr(camera, "add_trauma"):
+        if trauma > 0.0:
             camera.add_trauma(trauma)
 
     def _trauma_for_event(self, event: GuardEvent) -> float:

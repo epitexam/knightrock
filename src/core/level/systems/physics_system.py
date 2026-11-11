@@ -273,7 +273,7 @@ class PhysicsSystem:
         absence is the signal, and ``_cleanup_timers`` removes it again the
         moment the entity leaves the dash state. That is why the trail costs
         the simulation nothing: no new entity attribute, and no reader of
-        ``PlayerDashState._dash_started_this_frame``, which the gameplay
+        ``Player.dash_started_this_frame``, which the gameplay
         loop already owns for the dash's camera shake.
 
         A dash is 0.08s long, which at 60Hz is five ticks and one burst -- so

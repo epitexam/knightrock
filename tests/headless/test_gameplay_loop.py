@@ -148,6 +148,11 @@ def _noop_rollback() -> SimpleNamespace:
     return SimpleNamespace(record=lambda level: None)
 
 
+def _idle_player() -> SimpleNamespace:
+    """Player double: no dash started this tick."""
+    return SimpleNamespace(dash_started_this_frame=False)
+
+
 def _noop_level() -> SimpleNamespace:
     """Tick-owner double: rollback disabled, counter ignored, snapshot hook."""
     return SimpleNamespace(tick=0, rollback_enabled=False, save_state=lambda: SimpleNamespace())
@@ -178,11 +183,13 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
     )
     loop.combat_system = SimpleNamespace(
         in_hit_stop=False,
+        impact=0.0,
+        guard_events=[],
         update_timer=lambda delta_time: None,
         process_attacks=lambda combatants, grid=None: calls.append("combat"),
     )
 
-    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+    loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
     assert calls == [
         "spawn",
@@ -219,7 +226,7 @@ def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
     )
     loop.combat_system.hit_stop_timer = 0.05
 
-    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+    loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
     assert calls == ["spawn", "camera", "notifications", "tick"]
 
@@ -250,7 +257,7 @@ def test_update_with_invalid_wiring_mutates_nothing() -> None:
     groups = _empty_groups()
 
     with pytest.raises(RuntimeError, match="platform_system"):
-        loop.update(1 / 60, groups, None, level, rollback)
+        loop.update(1 / 60, groups, _idle_player(), level, rollback)
 
     assert spawn_calls == []
     assert tick_calls == []
@@ -262,7 +269,7 @@ def test_update_with_invalid_wiring_mutates_nothing() -> None:
 def test_combat_only_update_fails_before_mutation() -> None:
     loop = GameplayLoop.combat_only()
     with pytest.raises(RuntimeError):
-        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+        loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
 
 def test_update_without_the_world_stages_fails_fast() -> None:
@@ -275,7 +282,7 @@ def test_update_without_the_world_stages_fails_fast() -> None:
     )
 
     with pytest.raises(RuntimeError, match="platform_system"):
-        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+        loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
     assert calls == []
 
