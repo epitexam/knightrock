@@ -39,6 +39,7 @@ from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
+from src.physics.movement import WallJumpLock
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
 from src.states.turn_state import FACING_LOCKED
@@ -326,6 +327,8 @@ class Entity(Sprite):
         self.turn_skew_px: float = Turn.SKEW_PX
 
         self.moving_platforms: Iterable[Any] = []
+        # The lock that damps the run after a wall jump; only the player has one.
+        self.wall_jump_lock: WallJumpLock | None = None
         self.vitals = Vitals(
             health=health,
             max_health=max_health,

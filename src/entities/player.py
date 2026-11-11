@@ -1,7 +1,7 @@
 """Player entity with full state machine, input reading, and combat mechanics."""
 
 from collections.abc import Iterable, Sequence
-from typing import Any, ClassVar
+from typing import Any
 
 import pygame
 from pygame.sprite import Group
@@ -15,7 +15,6 @@ from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import HitFlash, ParryFlash, Physics
-from src.entities.controller_view import ControllerView
 from src.entities.crouch_posture import CrouchPosture
 from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
@@ -35,7 +34,7 @@ from src.states.player_states import (
 )
 
 
-class Player(ControllerView, Entity):
+class Player(Entity):
     """Playable character with movement, guard, dash, and frame-data attacks."""
 
     input_manager: InputManager
@@ -53,32 +52,6 @@ class Player(ControllerView, Entity):
     left_held: bool
     right_held: bool
     guard_held: bool
-
-    CONTROLLER_VIEWS: ClassVar[dict[str, tuple[str, str]]] = {
-        # Jump controller (physics protocols JumpEntity/WallJumpLock, debug UI)
-        "jump_buffer_timer": ("jump", "jump_buffer_timer"),
-        "coyote_timer": ("jump", "coyote_timer"),
-        "midair_jumps_left": ("jump", "midair_jumps_left"),
-        "wall_jumps_left": ("jump", "wall_jumps_left"),
-        "jump_height": ("jump", "jump_height"),
-        "wall_jump_height": ("jump", "wall_jump_height"),
-        "wall_jump_push_multiplier": ("jump", "wall_jump_push_multiplier"),
-        # Guard controller (debug UI, hit resolver)
-        "guard_posture": ("guard", "posture"),
-        "guard_posture_max": ("guard", "max_posture"),
-        "guard_lockout_timer": ("guard", "lockout_timer"),
-        "guard_parry_timer": ("guard", "parry_timer"),
-        "guard_riposte_timer": ("guard", "riposte_timer"),
-        # Dash controller (debug UI)
-        "dash_charges": ("dash", "charges"),
-        "max_dash_charges": ("dash", "max_charges"),
-        "dash_recharge_timer": ("dash", "recharge_timer"),
-        "dash_penalty_timer": ("dash", "penalty_timer"),
-        "dash_requested": ("dash", "requested"),
-        "dash_speed": ("dash", "speed"),
-        "dash_duration": ("dash", "duration"),
-        "dash_friction": ("dash", "friction"),
-    }
 
     def __init__(
         self,
@@ -153,6 +126,9 @@ class Player(ControllerView, Entity):
         self.apply_turn_profile()
 
         self.jump = JumpController(config)
+        # The jump controller is also the lock that damps the run after a wall
+        # jump; apply_horizontal_movement reads it from here.
+        self.wall_jump_lock = self.jump
         self.guard = GuardController(config)
         self.dash = DashController(config, original_hitbox_width=self.hitbox.width)
         self.crouch = CrouchPosture()
@@ -179,28 +155,6 @@ class Player(ControllerView, Entity):
 
     def _setup_interrupts(self) -> None:
         super()._setup_interrupts()
-
-    # The wall-jump lock is three real properties, not CONTROLLER_VIEWS entries:
-    # ``apply_horizontal_movement`` finds the lock with
-    # ``isinstance(entity, WallJumpLock)``, which reads the class statically and
-    # does not see what ``__getattr__`` serves. Served from there, the lock never
-    # applied to the player.
-
-    @property
-    def wall_jump_lock_timer(self) -> float:
-        return self.jump.wall_jump_lock_timer
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None:
-        self.jump.wall_jump_lock_timer = value
-
-    @property
-    def wall_jump_lock_duration(self) -> float:
-        return self.jump.wall_jump_lock_duration
-
-    @property
-    def wall_jump_min_lock(self) -> float:
-        return self.jump.wall_jump_min_lock
 
     @property
     def is_guarding(self) -> bool:

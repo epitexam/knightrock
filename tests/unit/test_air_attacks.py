@@ -288,7 +288,7 @@ def test_a_rising_aerial_never_slows_a_jump_that_already_carries_higher() -> Non
     """
     manager = InputManager()
     player = _player(manager)
-    jump_height = player.jump_height
+    jump_height = player.jump.jump_height
     _airborne(player, vertical=-jump_height)
     player.combat.start_attack(move_id("air_rise"))
     _hold(player, manager, frames=1)
@@ -307,7 +307,7 @@ def test_a_dive_does_not_catch_a_fighter_already_falling_faster_than_it() -> Non
     manager = InputManager()
     player = _player(manager)
     dive = PLAYER_ATTACKS["air_sweep"].vertical_lunge
-    plummet = -player.jump_height * dive * 3.0
+    plummet = -player.jump.jump_height * dive * 3.0
     _airborne(player, vertical=plummet)
     player.combat.start_attack(move_id("air_sweep"))
     _hold(player, manager, frames=1)
@@ -363,7 +363,7 @@ def test_no_aerial_out_lifts_the_fighter_harder_than_a_jump() -> None:
     well means the refusal and the shipped data are checked against each other,
     so a future bound change cannot quietly invalidate a move.
     """
-    jump_height = _player().jump_height
+    jump_height = _player().jump.jump_height
 
     offenders = {
         name: attack.vertical_lunge
@@ -581,7 +581,7 @@ def test_a_rise_cannot_be_chained_so_it_needs_no_claim_on_the_midair_jump() -> N
     """
     from src.core.settings import Physics
 
-    jump_height = _player().jump_height
+    jump_height = _player().jump.jump_height
 
     unclimbable = {
         name: (jump_height * attack.vertical_lunge / Physics.GRAVITY, attack.cooldown)

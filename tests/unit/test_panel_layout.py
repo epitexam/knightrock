@@ -7,6 +7,7 @@ import pytest
 
 from src.ui.panel_renderer import PanelLayout, PanelLayoutError, PanelRenderer
 from src.ui.ui_manager import UIManager
+from tests.fakes import player_shape
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -117,7 +118,7 @@ def test_debug_panels_signal_impossible_small_display_placement() -> None:
     from types import SimpleNamespace
 
     ui = UIManager(pygame.Surface((640, 480)))
-    player = SimpleNamespace(
+    player = player_shape(
         state_machine=SimpleNamespace(
             current_state_name="idle", previous_state_name=None, history=[]
         ),

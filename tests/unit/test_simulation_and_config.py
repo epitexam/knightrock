@@ -221,10 +221,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
 
 
 def test_wall_jump_uses_entity_configuration() -> None:
-    entity = SimpleNamespace(
-        velocity=pygame.Vector2(),
-        speed=320.0,
-        on_surface={"floor": False, "left": True, "right": False},
+    jump = SimpleNamespace(
         jump_buffer_timer=0.2,
         coyote_timer=0.0,
         jump_height=500.0,
@@ -236,14 +233,20 @@ def test_wall_jump_uses_entity_configuration() -> None:
         wall_jumps_left=2,
         midair_jumps_left=1,
     )
+    entity = SimpleNamespace(
+        velocity=pygame.Vector2(),
+        speed=320.0,
+        on_surface={"floor": False, "left": True, "right": False},
+        jump=jump,
+    )
 
     resolve_jump(entity)  # type: ignore[arg-type]
 
     assert entity.velocity.y == pytest.approx(-612.0)
     assert entity.velocity.x == pytest.approx(560.0)
-    assert entity.wall_jump_lock_timer == pytest.approx(0.27)
-    assert entity.wall_jumps_left == 1
-    assert entity.jump_buffer_timer == 0.0
+    assert jump.wall_jump_lock_timer == pytest.approx(0.27)
+    assert jump.wall_jumps_left == 1
+    assert jump.jump_buffer_timer == 0.0
 
 
 @pytest.mark.parametrize(

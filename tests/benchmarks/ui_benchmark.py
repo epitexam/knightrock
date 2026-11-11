@@ -44,10 +44,11 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.ui.ui_manager import UIManager
+from tests.fakes import player_shape
 
 
 def _player() -> SimpleNamespace:
-    return SimpleNamespace(
+    return player_shape(
         state_machine=SimpleNamespace(
             current_state_name="idle", previous_state_name=None, history=[]
         ),

@@ -44,8 +44,12 @@ def _hud(width: int = 1024, height: int = 768) -> HUD:
 
 
 def _player(**overrides) -> SimpleNamespace:
-    """Fake player with the stats the HUD reads (thresholds exercised below)."""
-    base = {
+    """Fake player with the stats the HUD reads (thresholds exercised below).
+
+    Overrides are flat for brevity (``guard_posture=40``) and land on the
+    controller the real player keeps them on.
+    """
+    stats = {
         "health": 100.0,
         "max_health": 100.0,
         "guard_posture": 100.0,
@@ -55,8 +59,18 @@ def _player(**overrides) -> SimpleNamespace:
         "max_dash_charges": 2,
         "combat": SimpleNamespace(combo_count=0, combo_timer=0.0),
     }
-    base.update(overrides)
-    return SimpleNamespace(**base)
+    stats.update(overrides)
+    return SimpleNamespace(
+        health=stats["health"],
+        max_health=stats["max_health"],
+        guard=SimpleNamespace(
+            posture=stats["guard_posture"],
+            max_posture=stats["guard_posture_max"],
+            lockout_timer=stats["guard_lockout_timer"],
+        ),
+        dash=SimpleNamespace(charges=stats["dash_charges"], max_charges=stats["max_dash_charges"]),
+        combat=stats["combat"],
+    )
 
 
 def _count(surface: pygame.Surface, rect: pygame.Rect, color: tuple[int, int, int]) -> int:

@@ -142,9 +142,7 @@ class HUD:
         screen_w, screen_h = self.renderer.surface.get_size()
         bar_w = int(bar_width_for(screen_w) * self._scale)
         health_ratio = _ratio(getattr(player, "health", 0.0), getattr(player, "max_health", 0.0))
-        posture_ratio = _ratio(
-            getattr(player, "guard_posture", 0.0), getattr(player, "guard_posture_max", 0.0)
-        )
+        posture_ratio = _ratio(player.guard.posture, player.guard.max_posture)
 
         # Both bars share a label gutter so they start on the same x.
         label_sizes = {
@@ -178,7 +176,7 @@ class HUD:
             posture_bar=posture_bar,
             posture_fill=_fill(posture_bar, posture_ratio),
             posture_label=posture_label,
-            posture_color=posture_color(posture_ratio, getattr(player, "guard_lockout_timer", 0.0)),
+            posture_color=posture_color(posture_ratio, player.guard.lockout_timer),
             dash_pips=pips,
             combo_text=combo_text,
             combo_pos=combo_pos,
@@ -195,8 +193,8 @@ class HUD:
         the charge count) but fills like the health bars: the charges left
         are the leftmost, full slots.
         """
-        total = max(0, int(getattr(player, "max_dash_charges", 0) or 0))
-        filled = max(0, min(total, int(getattr(player, "dash_charges", 0) or 0)))
+        total = max(0, int(player.dash.max_charges))
+        filled = max(0, min(total, int(player.dash.charges)))
         y = screen_h - self._px(HUD_MARGIN) - self._px(HUD_PIP_SIZE)
         left = (
             screen_w

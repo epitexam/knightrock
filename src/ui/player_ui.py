@@ -49,8 +49,8 @@ class PlayerUI:
             f"Axis   {player.move_axis:+.2f}",
             # Timers and both jump budgets on one line: all four are live, all
             # four were about one ability, and two lines read as two subjects.
-            f"Jump   buf {player.jump_buffer_timer:.2f}s  coy {player.coyote_timer:.2f}s"
-            f"  mid {player.midair_jumps_left}  wall {player.wall_jumps_left}",
+            f"Jump   buf {player.jump.jump_buffer_timer:.2f}s  coy {player.jump.coyote_timer:.2f}s"
+            f"  mid {player.jump.midair_jumps_left}  wall {player.jump.wall_jumps_left}",
             # ``rem``, not ``dur``: the time left on the live dash, against the
             # ``dur`` constant STATS prints for the same ability.
             f"Dash   req {player.dash.requested!s:5}  rem {player.dash.duration_timer:.2f}s",
@@ -138,14 +138,14 @@ class PlayerUI:
         if compact:
             lines = [
                 f"HP     {player.health:.0f}/{player.max_health:.0f}",
-                f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}",
+                f"Guard  {player.guard.posture:.0f}/{player.guard.max_posture:.0f}",
                 f"Move   spd {player.speed:.0f}",
             ]
         else:
             lines = [
                 f"HP     {player.health:.0f}/{player.max_health:.0f}",
-                f"Guard  {player.guard_posture:.0f}/{player.guard_posture_max:.0f}"
-                f"   lock {player.guard_lockout_timer:.2f}s",
+                f"Guard  {player.guard.posture:.0f}/{player.guard.max_posture:.0f}"
+                f"   lock {player.guard.lockout_timer:.2f}s",
                 # One dash line, not two. Both were constants of the same ability
                 # and STATE printed a third field of it, so the dash was the only
                 # subject in the debug view spread over three lines in two panels.
@@ -156,11 +156,11 @@ class PlayerUI:
                 # the widest one is what pushes the last panel out of the display
                 # entirely. Charges and speed stay together; the two timers drop
                 # to a second row that is only as wide as the first.
-                f"Dash   {player.dash_charges}/{player.max_dash_charges}"
-                f"  spd {player.dash_speed:.0f}  dur {player.dash_duration:.2f}s",
-                f"      pen {player.dash_penalty_timer:.2f}s  regen {player.dash_recharge_timer:.2f}s",
+                f"Dash   {player.dash.charges}/{player.dash.max_charges}"
+                f"  spd {player.dash.speed:.0f}  dur {player.dash.duration:.2f}s",
+                f"      pen {player.dash.penalty_timer:.2f}s  regen {player.dash.recharge_timer:.2f}s",
                 f"Move   spd {player.speed:.0f}  ctrl {player.floor_control:.1f}/{player.air_control:.1f}",
-                f"Jump   h {player.jump_height:.0f}  wall {player.wall_jump_height:.0f}",
+                f"Jump   h {player.jump.jump_height:.0f}  wall {player.jump.wall_jump_height:.0f}",
             ]
         if combat:
             lines.append(
@@ -194,15 +194,15 @@ class PlayerUI:
         gravity_scale = getattr(player, "gravity_scale", 1.0)
         line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
         posture_ratio = (
-            player.guard_posture / player.guard_posture_max if player.guard_posture_max else 0
+            player.guard.posture / player.guard.max_posture if player.guard.max_posture else 0
         )
-        if player.guard_lockout_timer > 0:
+        if player.guard.lockout_timer > 0:
             line_colors[1] = TEXT_CRIT
         elif posture_ratio <= 0.3:
             line_colors[1] = TEXT_WARN
-        if player.guard_riposte_timer > 0:
+        if player.guard.riposte_timer > 0:
             idx = len(lines)
-            lines.append(f"RIPOSTE {player.guard_riposte_timer:.2f}s")
+            lines.append(f"RIPOSTE {player.guard.riposte_timer:.2f}s")
             line_colors[idx] = TEXT_OK
         if gravity_scale != 1.0:
             idx = len(lines)

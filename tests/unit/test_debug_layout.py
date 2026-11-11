@@ -15,6 +15,7 @@ from src.core.rendering.camera import Camera
 from src.ui.panel_renderer import PanelLayout, PanelRenderer
 from src.ui.styles import TEXT_MUTED
 from src.ui.ui_manager import UIManager
+from tests.fakes import player_shape
 from tests.unit.helpers import make_overlay
 
 
@@ -205,7 +206,7 @@ def test_draw_combat_panel_flows_through_the_layout(
 
 def _full_player() -> SimpleNamespace:
     """Fake player feeding every debug panel (same fields as test_panel_layout)."""
-    return SimpleNamespace(
+    return player_shape(
         state_machine=SimpleNamespace(
             current_state_name="idle", previous_state_name=None, history=[]
         ),

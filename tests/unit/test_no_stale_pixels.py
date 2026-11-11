@@ -17,6 +17,7 @@ the erase again.
 """
 
 import os
+from types import SimpleNamespace
 
 import pygame
 import pytest
@@ -62,13 +63,8 @@ class Player:
 
     health = 100
     max_health = 100
-    guard_posture = 50
-    guard_posture_max = 100
-    guard_posture_lockout_timer = 0.0
-    guard_lockout_timer = 0.0
-    dash_charges = 2
-    max_dash_charges = 2
-    dash_recharge_timer = 0.0
+    guard = SimpleNamespace(posture=50, max_posture=100, lockout_timer=0.0)
+    dash = SimpleNamespace(charges=2, max_charges=2, recharge_timer=0.0)
     combo_count = 0
     combo_timer = 0.0
 

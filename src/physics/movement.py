@@ -1,6 +1,6 @@
 import math
 from collections.abc import Iterable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -31,6 +31,17 @@ class MovementCombat(Protocol):
     def movement_multiplier(self) -> float: ...
 
 
+class WallJumpLock(Protocol):
+    """The lock that damps the run after a wall jump (the player's jump controller).
+
+    ``wall_jump_lock_timer`` is counted down by :func:`apply_horizontal_movement`.
+    """
+
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    wall_jump_min_lock: float
+
+
 class HorizontalMovementEntity(Protocol):
     velocity: Vector2
     move_axis: float
@@ -41,85 +52,36 @@ class HorizontalMovementEntity(Protocol):
     turn_enabled: bool
     turn_brake_control: float
     turn_plant_px_s: float
+    #: ``None`` for a fighter that cannot wall jump.
+    wall_jump_lock: WallJumpLock | None
 
     @property
     def combat(self) -> MovementCombat: ...
 
 
-@runtime_checkable
-class WallJumpLock(Protocol):
-    """Surface consumed to damp horizontal control after a wall jump.
+class JumpState(Protocol):
+    """The jump resources :func:`resolve_jump` spends: the player's jump controller."""
 
-    ``wall_jump_lock_timer`` is mutated by :func:`apply_horizontal_movement`;
-    the two tuning mirrors are read-only.
-    """
-
-    @property
-    def wall_jump_lock_timer(self) -> float: ...
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_duration(self) -> float: ...
-
-    @property
-    def wall_jump_min_lock(self) -> float: ...
+    jump_buffer_timer: float
+    coyote_timer: float
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    jump_height: float
+    wall_jump_height: float
+    wall_jump_push_multiplier: float
+    wall_jumps_left: int | float
+    midair_jumps_left: int
 
 
 class JumpEntity(Protocol):
-    """Surface consumed by :func:`resolve_jump`.
-
-    Members the resolver mutates are declared as read/write properties;
-    tuning mirrors are read-only. Concrete entities expose them through
-    flat delegation properties backed by their controllers.
-    """
+    """Surface consumed by :func:`resolve_jump`: the body, and its jump resources."""
 
     velocity: Vector2
     speed: float
     on_surface: dict[str, bool]
 
     @property
-    def jump_buffer_timer(self) -> float: ...
-
-    @jump_buffer_timer.setter
-    def jump_buffer_timer(self, value: float) -> None: ...
-
-    @property
-    def coyote_timer(self) -> float: ...
-
-    @coyote_timer.setter
-    def coyote_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_timer(self) -> float: ...
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_duration(self) -> float: ...
-
-    @property
-    def jump_height(self) -> float: ...
-
-    @property
-    def wall_jump_height(self) -> float: ...
-
-    @property
-    def wall_jump_push_multiplier(self) -> float: ...
-
-    @property
-    def wall_jumps_left(self) -> float: ...
-
-    @wall_jumps_left.setter
-    def wall_jumps_left(self, value: float) -> None: ...
-
-    @property
-    def midair_jumps_left(self) -> int: ...
-
-    @midair_jumps_left.setter
-    def midair_jumps_left(self, value: int) -> None: ...
+    def jump(self) -> JumpState: ...
 
 
 class MovableEntity(Protocol):
@@ -190,16 +152,17 @@ def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: floa
     the arc, and the tighter air curve is what makes an air dash feel like an
     air dash.
     """
-    if isinstance(entity, WallJumpLock) and entity.wall_jump_lock_timer > 0:
-        elapsed = entity.wall_jump_lock_duration - entity.wall_jump_lock_timer
-        entity.wall_jump_lock_timer -= delta_time
+    lock = entity.wall_jump_lock
+    if lock is not None and lock.wall_jump_lock_timer > 0:
+        elapsed = lock.wall_jump_lock_duration - lock.wall_jump_lock_timer
+        lock.wall_jump_lock_timer -= delta_time
 
         opposing = (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0) or (
             entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0
         )
 
-        if elapsed >= entity.wall_jump_min_lock and opposing:
-            entity.wall_jump_lock_timer = 0.0
+        if elapsed >= lock.wall_jump_min_lock and opposing:
+            lock.wall_jump_lock_timer = 0.0
         else:
             damp_alpha = 1.0 - math.exp(-Locomotion.WALL_JUMP_DAMPING * delta_time)
             entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
@@ -256,25 +219,26 @@ def _braking(entity: HorizontalMovementEntity, target_speed: float) -> bool:
 
 
 def resolve_jump(entity: JumpEntity) -> None:
-    """Resolve a jump attempt for the entity."""
-    if entity.jump_buffer_timer <= 0:
+    """Resolve a jump attempt: from the ground or coyote time, off a wall, or in the air."""
+    jump = entity.jump
+    if jump.jump_buffer_timer <= 0:
         return
 
-    if entity.coyote_timer > 0:
-        entity.velocity.y = -entity.jump_height
-        entity.jump_buffer_timer = 0.0
-        entity.coyote_timer = 0.0
-    elif (entity.on_surface["left"] or entity.on_surface["right"]) and entity.wall_jumps_left > 0:
-        entity.velocity.y = -entity.wall_jump_height
-        push = entity.speed * entity.wall_jump_push_multiplier
+    if jump.coyote_timer > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.jump_buffer_timer = 0.0
+        jump.coyote_timer = 0.0
+    elif (entity.on_surface["left"] or entity.on_surface["right"]) and jump.wall_jumps_left > 0:
+        entity.velocity.y = -jump.wall_jump_height
+        push = entity.speed * jump.wall_jump_push_multiplier
         entity.velocity.x = push if entity.on_surface["left"] else -push
-        entity.wall_jump_lock_timer = entity.wall_jump_lock_duration
-        entity.wall_jumps_left -= 1
-        entity.jump_buffer_timer = 0.0
-    elif entity.midair_jumps_left > 0:
-        entity.velocity.y = -entity.jump_height
-        entity.midair_jumps_left -= 1
-        entity.jump_buffer_timer = 0.0
+        jump.wall_jump_lock_timer = jump.wall_jump_lock_duration
+        jump.wall_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
+    elif jump.midair_jumps_left > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.midair_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
 
 
 def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:

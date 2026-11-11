@@ -328,7 +328,7 @@ class PlayerAttackState(PlayerBaseState):
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * multiplier
         elif attack is not None and attack.vertical_lunge:
-            impulse = -self.entity.jump_height * attack.vertical_lunge
+            impulse = -self.entity.jump.jump_height * attack.vertical_lunge
             if impulse < 0.0:
                 self.entity.velocity.y = min(self.entity.velocity.y, impulse)
             else:

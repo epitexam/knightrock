@@ -44,6 +44,7 @@ def _runner(
         turn_enabled=turn_enabled,
         turn_brake_control=Turn.BRAKE_CONTROL if brake is None else brake,
         turn_plant_px_s=Turn.PLANT_PX_S,
+        wall_jump_lock=None,
     )
 
 

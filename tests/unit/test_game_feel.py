@@ -1,5 +1,7 @@
 """Game-feel assists: jump cut, ground snap, step-up, corner correction."""
 
+from types import SimpleNamespace
+
 import pygame
 import pytest
 
@@ -12,16 +14,20 @@ class FeelEntity:
 
     def __init__(self) -> None:
         self.velocity = pygame.math.Vector2(0, 0)
-        self.jump_buffer_timer = 0.0
-        self.coyote_timer = 0.0
-        self.jump_height = 750.0
-        self.wall_jump_height = 700.0
-        self.wall_jump_push_multiplier = 1.0
-        self.wall_jump_lock_timer = 0.0
-        self.wall_jump_lock_duration = 0.2
-        self.wall_jump_min_lock = 0.05
-        self.wall_jumps_left = 1
-        self.midair_jumps_left = 0
+        # Shaped like the player: the jump resources live on a controller.
+        self.jump = SimpleNamespace(
+            jump_buffer_timer=0.0,
+            coyote_timer=0.0,
+            jump_height=750.0,
+            wall_jump_height=700.0,
+            wall_jump_push_multiplier=1.0,
+            wall_jump_lock_timer=0.0,
+            wall_jump_lock_duration=0.2,
+            wall_jump_min_lock=0.05,
+            wall_jumps_left=1,
+            midair_jumps_left=0,
+        )
+        self.wall_jump_lock = self.jump
         self.speed = 450.0
         self.move_axis = 0.0
         self.on_surface = {"floor": False, "left": False, "right": False}
@@ -105,10 +111,10 @@ def test_jump_cut_ignores_falling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_jump_still_launches() -> None:
     entity = FeelEntity()
-    entity.jump_buffer_timer = 0.1
-    entity.coyote_timer = 0.1
+    entity.jump.jump_buffer_timer = 0.1
+    entity.jump.coyote_timer = 0.1
     resolve_jump(entity)
-    assert entity.velocity.y == -entity.jump_height
+    assert entity.velocity.y == -entity.jump.jump_height
 
 
 def test_ground_snap_off_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

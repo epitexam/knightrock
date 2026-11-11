@@ -10,6 +10,7 @@ from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.player_ui import PlayerUI
+from tests.fakes import player_shape
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -49,7 +50,7 @@ def _make_player(**overrides) -> SimpleNamespace:
         "dash": DashController(PlayerConfig()),
     }
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    return player_shape(**defaults)
 
 
 def _make_full_player(**overrides) -> SimpleNamespace:
