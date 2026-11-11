@@ -103,10 +103,10 @@ def test_down_uses_keyboard_then_analog_then_hat(
 
 def test_gamepad_buttons_dash_reset_and_combo(monkeypatch: pytest.MonkeyPatch) -> None:
     provider, joystick = _provider(monkeypatch)
-    joystick.buttons[0] = True
-    joystick.buttons[1] = True
-    joystick.buttons[3] = True
-    joystick.buttons[7] = True
+    joystick.buttons[0] = True  # A
+    joystick.buttons[2] = True  # X
+    joystick.buttons[3] = True  # Y
+    joystick.buttons[6] = True  # View
     joystick.axes[2] = 1.0
 
     actions = provider.poll().held_actions
@@ -114,9 +114,10 @@ def test_gamepad_buttons_dash_reset_and_combo(monkeypatch: pytest.MonkeyPatch) -
     assert InputAction.JUMP in actions
     assert InputAction.DASH in actions
     assert InputAction.RESET in actions
+    # X + Y is the special; the combo takes both buttons from their attacks.
     assert InputAction.SPECIAL_ATTACK in actions
     assert InputAction.ATTACK_1 not in actions
-    assert InputAction.ATTACK_3 not in actions
+    assert InputAction.ATTACK_2 not in actions
 
 
 def test_keyboard_and_gamepad_combos_are_logical_actions(

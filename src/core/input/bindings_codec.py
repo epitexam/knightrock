@@ -12,6 +12,8 @@ import pygame
 
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import (
+    XBOX_START,
+    XBOX_VIEW,
     ActionMap,
     AxisMap,
     ButtonMap,
@@ -152,6 +154,53 @@ def _fill_menu_page_button_defaults(bindings: ButtonMap) -> ButtonMap:
     return MappingProxyType({**bindings, **_MENU_PAGE_BUTTON_DEFAULTS})
 
 
+def _fill_menu_pause_default(bindings: ButtonMap) -> ButtonMap:
+    """Give the pause its button when a file predates it.
+
+    Before ``ui_pause`` the game paused on ``ui_back`` -- the B button, which is
+    also an attack in the game. A file without the action gets Start.
+    """
+    if InputAction.UI_PAUSE in bindings:
+        return bindings
+    return MappingProxyType({**bindings, InputAction.UI_PAUSE: XBOX_START})
+
+
+#: The gameplay pad layout every file had before the Xbox layout, by default.
+_OLD_DEFAULT_GAMEPLAY_BUTTONS: dict[InputAction, int] = {
+    InputAction.JUMP: 0,
+    InputAction.ATTACK_1: 1,
+    InputAction.ATTACK_2: 2,
+    InputAction.ATTACK_3: 3,
+    InputAction.GUARD: 4,
+    InputAction.ATTACK_4: 5,
+    InputAction.RESET: 7,
+}
+_OLD_DEFAULT_GAMEPAD_COMBOS: dict[InputAction, tuple[int, ...]] = {
+    InputAction.SPECIAL_ATTACK: (1, 3),
+}
+
+
+def _migrate_gameplay_pad(
+    buttons: ButtonMap, combos: ComboMap, pause_button: int | None
+) -> tuple[ButtonMap, ComboMap]:
+    """Move a pad left on the old defaults to the Xbox layout.
+
+    Only an untouched old default moves: a layout the player built is theirs.
+    Either way the reset leaves the pause button, or Start would pause and
+    teleport the fighter in one press.
+    """
+    if dict(buttons) == _OLD_DEFAULT_GAMEPLAY_BUTTONS:
+        defaults = GameplayBindings()
+        buttons = defaults.gamepad_buttons
+        if {action: tuple(keys) for action, keys in combos.items()} == _OLD_DEFAULT_GAMEPAD_COMBOS:
+            combos = defaults.gamepad_combos
+    if pause_button is not None and buttons.get(InputAction.RESET) == pause_button:
+        taken = {value for value in buttons.values() if isinstance(value, int)}
+        if XBOX_VIEW not in taken:
+            buttons = MappingProxyType({**buttons, InputAction.RESET: XBOX_VIEW})
+    return buttons, combos
+
+
 def _parse_action_map(
     data: object, allowed: set[InputAction], allow_pair: bool = False
 ) -> ActionMap:
@@ -282,6 +331,7 @@ def bindings_from_dict(data: object) -> InputBindings:
         InputAction.UI_CONFIRM,
         InputAction.UI_BACK,
         InputAction.UI_CANCEL,
+        InputAction.UI_PAUSE,
         InputAction.UI_PAGE_UP,
         InputAction.UI_PAGE_DOWN,
         InputAction.UI_HOME,
@@ -309,12 +359,17 @@ def bindings_from_dict(data: object) -> InputBindings:
     # difference between "page down scrolls" and "page down is dead"
     # for every player who never opened the controls screen.
     menu_keyboard = _fill_menu_defaults(menu_keyboard)
+    if InputAction.UI_PAUSE not in menu_keyboard:
+        # A file from before the pause action: the key that paused was Back's.
+        back = menu_keyboard.get(InputAction.UI_BACK, pygame.K_ESCAPE)
+        menu_keyboard = MappingProxyType({**menu_keyboard, InputAction.UI_PAUSE: back})
     menu_mouse = _parse_int_map(menu_data.get("mouse_buttons", {"ui_back": 3}), menu_actions)
     menu_buttons = _parse_int_map(menu_data["gamepad_buttons"], menu_actions)
     # The shoulders, by the same rule as the keyboard list keys: an
     # old file has none of them, and "missing means unbound" would
     # leave a gamepad player without the two keys that page a menu.
     menu_buttons = _fill_menu_page_button_defaults(menu_buttons)
+    menu_buttons = _fill_menu_pause_default(menu_buttons)
     menu_hats = _parse_int_map(menu_data["gamepad_hats"], menu_actions)
     menu_axes = cast(AxisMap, _parse_int_map(menu_data["gamepad_axes"], menu_actions))
     if InputAction.UI_BACK not in menu_buttons and InputAction.UI_CANCEL in menu_buttons:
@@ -337,6 +392,12 @@ def bindings_from_dict(data: object) -> InputBindings:
         raise ValueError("gameplay.keyboard_combos is missing special_attack")
     if InputAction.SPECIAL_ATTACK not in gameplay_gamepad_combos:
         raise ValueError("gameplay.gamepad_combos is missing special_attack")
+    pause_button = menu_buttons.get(InputAction.UI_PAUSE)
+    gameplay_buttons, gameplay_gamepad_combos = _migrate_gameplay_pad(
+        gameplay_buttons,
+        gameplay_gamepad_combos,
+        pause_button if isinstance(pause_button, int) else None,
+    )
     gameplay = GameplayBindings(
         keyboard=gameplay_keyboard,
         gamepad_buttons=gameplay_buttons,

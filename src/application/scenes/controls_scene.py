@@ -62,6 +62,7 @@ class ControlsScene(Scene):
             RebindSpec("controls.confirm", InputAction.UI_CONFIRM),
             RebindSpec("controls.back", InputAction.UI_BACK),
             RebindSpec("controls.cancel", InputAction.UI_CANCEL),
+            RebindSpec("controls.pause", InputAction.UI_PAUSE),
             RebindSpec("controls.page_up", InputAction.UI_PAGE_UP),
             RebindSpec("controls.page_down", InputAction.UI_PAGE_DOWN),
             RebindSpec("controls.first_row", InputAction.UI_HOME),

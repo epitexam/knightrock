@@ -9,7 +9,7 @@ import pygame
 
 from src.application.scene import Scene
 from src.core.colors import Colors
-from src.core.input.event_router import RoutedInput
+from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
@@ -138,7 +138,7 @@ class GameplayScene(Scene):
             self._handle_gameplay_key(event.key)
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
-        if routed_input.action is InputAction.UI_BACK:
+        if self._pauses(routed_input):
             from src.application.scenes.pause_scene import PauseScene
 
             self.game.scene_manager.push(PauseScene(self.game, self.level_id))
@@ -149,6 +149,20 @@ class GameplayScene(Scene):
         # being heard once per menu auto-repeat. The silence is its report, not
         # a mute it had to ask for.
         return None
+
+    @staticmethod
+    def _pauses(routed_input: RoutedInput) -> bool:
+        """Start on a pad; Escape or a right click otherwise.
+
+        Not the pad's Back button: B is an attack in the game, and pausing on it
+        stopped the game on the first light attack.
+        """
+        if routed_input.action is InputAction.UI_PAUSE:
+            return True
+        return (
+            routed_input.action is InputAction.UI_BACK
+            and routed_input.device is not InputDevice.GAMEPAD
+        )
 
     def set_surface(self, surface: pygame.Surface) -> None:
         """Adopt a new render target, after the render scale changed.

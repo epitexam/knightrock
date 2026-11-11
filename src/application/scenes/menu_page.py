@@ -10,6 +10,7 @@ Hooks a screen overrides:
 
 - :meth:`act` -- a row fired (anything but ``back``);
 - :meth:`leave` -- Back, Escape or the Back row (default: pop);
+- :meth:`on_pause_key` -- Start on a pad (default: nothing);
 - :meth:`on_device_removed` -- a controller was unplugged (default: nothing);
 - :meth:`handle_value_keys` -- ←/→/Enter on a value row, before the list sees them;
 - :meth:`description`, :meth:`notes`, :meth:`footers`, :meth:`highlighted` -- what the panel says;
@@ -86,6 +87,10 @@ class MenuPage(Scene):
         """Back or Cancel was pressed. Both leave by default."""
         return self.leave()
 
+    def on_pause_key(self) -> str | None:
+        """Start on a pad. Nothing by default; the pause menu resumes on it."""
+        return None
+
     def on_device_removed(self) -> str | None:
         """A controller was unplugged. That is not the player asking for anything."""
         return None
@@ -139,6 +144,8 @@ class MenuPage(Scene):
             self._device = routed.device
         if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
             return self.on_back_key(routed.action)
+        if routed.action is InputAction.UI_PAUSE:
+            return self.on_pause_key()
         if self.scrollable:
             if routed.action in (InputAction.UI_SCROLL, InputAction.UI_SCROLL_UP):
                 return self._wheel(routed)

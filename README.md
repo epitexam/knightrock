@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3391%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3398%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3391 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3398 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -86,23 +86,31 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Menu navigation | `Enter` / `N` |
 | Back in menus | `Esc` / right click |
 
-**Gamepad**
+**Gamepad** — the Xbox One layout, as SDL numbers its buttons
 
 | Action | Button / axis |
 |---|---|
 | Move | Left stick (axis `0`) or D-pad (`0`) |
 | Crouch / fast fall | Left stick (axis `1`) or D-pad (`0`) |
-| Jump | `0` |
-| Attack 1 | `1` |
-| Attack 2 | `2` |
-| Attack 3 | `3` |
-| Guard (tap = parry) | `4` |
-| Attack 4 | `5` |
-| Reset | `7` |
-| Dash | Axis `2` |
-| Special attack | `1` + `3` |
-| Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
-| Back in menus | `1` (`B`) |
+| Jump | `A` (`0`) |
+| Attack 1 — light | `X` (`2`) |
+| Attack 2 — heavy | `Y` (`3`) |
+| Attack 3 — uppercut | `B` (`1`) |
+| Guard (tap = parry) | `LB` (`4`) |
+| Attack 4 — dash attack | `RB` (`5`) |
+| Special attack | `X` + `Y` |
+| Dash | Axis `2` (left trigger on Linux) |
+| Reset position | `View` (`6`) |
+| Pause / resume | `Start` (`7`) |
+| Menu navigation / confirm | Left stick or D-pad / `A` |
+| Back in menus | `B` |
+
+`B` is *Back* in the menus and an attack in the game, so it never pauses: the
+pause is `Start` on the pad and `Esc` on the keyboard. A settings file still on
+the previous default layout is moved to this one when it is read; a layout the
+player built is kept, with the reset moved off `Start`. Axis numbers are the
+joystick API's and differ by platform: on Windows axis `2` is the right stick's
+X, and the dash can be rebound from *Options → Controls*.
 
 Three details of the menu navigation, all in `src/core/settings.py` under
 `Input`:
@@ -707,7 +715,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3391 tests · 94 % instruction coverage · 86 % branch
+> **Current baseline:** 3398 tests · 94 % instruction coverage · 86 % branch
 > coverage · Ruff clean · mypy clean (186 files across `src main.py tools`;
 > `mypy src` alone is 183).[^coverage]
 

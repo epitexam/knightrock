@@ -33,6 +33,7 @@ UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
     InputAction.UI_CONFIRM,
     InputAction.UI_BACK,
     InputAction.UI_CANCEL,
+    InputAction.UI_PAUSE,
 )
 
 # Only the navigation directions auto-repeat on the keyboard: repeating a
@@ -145,7 +146,13 @@ class EventRouter:
         if key == self._bindings.menu.new_game_key:
             self._arm_key(key, InputAction.UI_CONFIRM, repeatable=False)
             return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
-        for action, binding in self._bindings.menu.keyboard.items():
+        keyboard = self._bindings.menu.keyboard
+        # The fixed priority first, as for the pad: Escape is Back and Pause,
+        # and must route as Back whatever order the file lists them in.
+        ordered = [a for a in UI_BUTTON_PRIORITY if a in keyboard]
+        ordered += [a for a in keyboard if a not in UI_BUTTON_PRIORITY]
+        for action in ordered:
+            binding = keyboard[action]
             keys = binding if isinstance(binding, tuple) else (binding,)
             if key in keys:
                 self._arm_key(key, action, repeatable=action in REPEATABLE_UI_ACTIONS)

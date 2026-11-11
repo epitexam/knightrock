@@ -32,6 +32,12 @@ def _immutable_combos(values: dict[InputAction, tuple[int, ...]]) -> ComboMap:
     return MappingProxyType(values)
 
 
+#: An Xbox One pad's buttons as SDL's joystick API numbers them (Windows and
+#: Linux alike for these eight).
+XBOX_A, XBOX_B, XBOX_X, XBOX_Y = 0, 1, 2, 3
+XBOX_LB, XBOX_RB, XBOX_VIEW, XBOX_START = 4, 5, 6, 7
+
+
 @dataclass(frozen=True)
 class GameplayBindings:
     keyboard: ActionMap = field(
@@ -50,16 +56,20 @@ class GameplayBindings:
             }
         )
     )
+    #: An Xbox pad's layout, as SDL numbers it: A 0, B 1, X 2, Y 3, LB 4,
+    #: RB 5, View 6, Start 7. The action-game convention: A jumps, X is the
+    #: light attack, Y the heavy one, B the third; Start is left to the pause
+    #: (``MenuBindings.gamepad_buttons``), so the reset is on View.
     gamepad_buttons: ButtonMap = field(
         default_factory=lambda: _immutable(
             {
-                InputAction.JUMP: 0,
-                InputAction.ATTACK_1: 1,
-                InputAction.ATTACK_2: 2,
-                InputAction.ATTACK_3: 3,
-                InputAction.GUARD: 4,
-                InputAction.ATTACK_4: 5,
-                InputAction.RESET: 7,
+                InputAction.JUMP: XBOX_A,
+                InputAction.ATTACK_1: XBOX_X,
+                InputAction.ATTACK_2: XBOX_Y,
+                InputAction.ATTACK_3: XBOX_B,
+                InputAction.GUARD: XBOX_LB,
+                InputAction.ATTACK_4: XBOX_RB,
+                InputAction.RESET: XBOX_VIEW,
             }
         )
     )
@@ -86,7 +96,8 @@ class GameplayBindings:
         )
     )
     gamepad_combos: ComboMap = field(
-        default_factory=lambda: _immutable_combos({InputAction.SPECIAL_ATTACK: (1, 3)})
+        # The two attack buttons side by side on top of the pad: X + Y.
+        default_factory=lambda: _immutable_combos({InputAction.SPECIAL_ATTACK: (XBOX_X, XBOX_Y)})
     )
 
     def __post_init__(self) -> None:
@@ -122,6 +133,10 @@ class MenuBindings:
                 InputAction.UI_CONFIRM: (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE),
                 InputAction.UI_BACK: pygame.K_ESCAPE,
                 InputAction.UI_CANCEL: pygame.K_q,
+                # Escape is Back in the menus and the pause in the game; the
+                # router emits Back for it, and the game pauses on a keyboard
+                # Back. Listed so the controls screen says what pauses.
+                InputAction.UI_PAUSE: pygame.K_ESCAPE,
                 InputAction.UI_PAGE_UP: pygame.K_PAGEUP,
                 InputAction.UI_PAGE_DOWN: pygame.K_PAGEDOWN,
                 InputAction.UI_HOME: pygame.K_HOME,
@@ -133,9 +148,13 @@ class MenuBindings:
     gamepad_buttons: ButtonMap = field(
         default_factory=lambda: _immutable(
             {
-                InputAction.UI_CONFIRM: 0,
-                InputAction.UI_BACK: 1,
-                InputAction.UI_CANCEL: 1,
+                InputAction.UI_CONFIRM: XBOX_A,
+                InputAction.UI_BACK: XBOX_B,
+                InputAction.UI_CANCEL: XBOX_B,
+                # Start pauses the game and resumes it from the pause menu. B
+                # stays "back" in the menus, but it is an attack in the game,
+                # so it must not be what pauses.
+                InputAction.UI_PAUSE: XBOX_START,
                 # The shoulders page a menu, as they page a list anywhere
                 # else. Without them a gamepad player walks a 28-row list
                 # one row at a time while the keyboard gets two keys for it,

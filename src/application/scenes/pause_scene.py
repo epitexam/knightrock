@@ -42,6 +42,11 @@ class PauseScene(MenuPage):
             self.game.scene_manager.switch(MenuScene(self.game))
         return MenuAction.BACK
 
+    def on_pause_key(self) -> str | None:
+        """Start resumes, as it paused."""
+        self.game.scene_manager.pop()
+        return MenuAction.BACK
+
     def act(self, action: str) -> None:
         if action == "resume":
             self.game.scene_manager.pop()

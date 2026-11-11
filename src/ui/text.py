@@ -112,6 +112,7 @@ ENGLISH: dict[str, str] = {
     "controls.confirm": "Confirm",
     "controls.back": "Back",
     "controls.cancel": "Cancel",
+    "controls.pause": "Pause",
     "controls.page_up": "Page up",
     "controls.page_down": "Page down",
     "controls.first_row": "First row",
