@@ -9,6 +9,7 @@ a real mode change is what blacks out a hybrid-GPU laptop.
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass
 
 import pygame
@@ -95,16 +96,37 @@ class Stage:
         if on == self.fullscreen:
             return self.surface
         window = self._window_handle()
-        if window is None:
-            raise pygame.error("This platform has no window to make fullscreen")
         if on:
             self.windowed_size = self.size
-            window.set_fullscreen(desktop=True)
+        if window is None:
+            self.surface = self._fullscreen_by_mode(on)
         else:
-            window.set_windowed()
+            if on:
+                window.set_fullscreen(desktop=True)
+            else:
+                window.set_windowed()
+            self.surface = pygame.display.get_surface() or self.surface
         self.fullscreen = on
-        self.surface = pygame.display.get_surface() or self.surface
         return self.surface
+
+    def _fullscreen_by_mode(self, on: bool) -> pygame.Surface:
+        """The same toggle through ``set_mode``, for a build with no ``Window`` handle.
+
+        Asking for the screen's own desktop size is what keeps this a desktop
+        fullscreen: pygame only changes the video mode for a size the desktop
+        is not already at. Measured here on a two-screen desk: the desktop sizes
+        read the same before, during and after.
+        """
+        if on:
+            size, flags = self.monitor.size, WINDOW_FLAGS | pygame.FULLSCREEN
+        else:
+            size, flags = (
+                self.windowed_size or self._window_size(self.spec, self.monitor),
+                (WINDOW_FLAGS),
+            )
+        return pygame.display.set_mode(
+            size, flags, 0, self.monitor.index, 1 if self.spec.vsync else 0
+        )
 
     def _create(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
         """Open the window at the asked size (asking again once if refused), then place it.
@@ -159,31 +181,50 @@ class Stage:
         Re-centring on every size change made the window jump across a
         two-screen desk.
         """
-        window = self._window_handle()
-        if window is None:
+        current = self._position()
+        if current is not None and sits_within(current, monitor, self.size):
             return
-        try:
-            position = window.position
-            current = (int(position[0]), int(position[1]))
-        except pygame.error, AttributeError:
+        if current is None:
             logger.debug("No window position readable; centring")
-            window.position = centre_on(monitor, self.size)
-            return
-        if sits_within(current, monitor, self.size):
-            return
-        window.position = centre_on(monitor, self.size)
+        self._move_to(centre_on(monitor, self.size))
+
+    def _position(self) -> tuple[int, int] | None:
+        """Where the window is, from the handle or else from the display module."""
+        window = self._window_handle()
+        try:
+            x, y = window.position if window is not None else pygame.display.get_window_position()
+        except pygame.error, AttributeError, TypeError, ValueError:
+            return None
+        return (int(x), int(y))
+
+    def _move_to(self, position: tuple[int, int]) -> None:
+        """Put the window at ``position``. Best effort: the platform may refuse."""
+        window = self._window_handle()
+        try:
+            if window is not None:
+                window.position = position
+            else:
+                pygame.display.set_window_position(position)
+        except pygame.error, AttributeError:
+            logger.debug("The platform refused to move the window")
 
     @staticmethod
     def _window_handle() -> pygame.Window | None:
         """The window behind the display surface, when this build has one.
 
-        Deprecated in pygame-ce; without it the window stays where the window
-        manager put it, which is cosmetic.
+        The one place that asks for it. ``from_display_module`` is deprecated in
+        pygame-ce, so nothing may *depend* on the answer: fullscreen and placement
+        each have a path through the display module for a build that has dropped
+        it, and only the minimum size has none (it is then not enforced).
         """
         try:
-            return pygame.Window.from_display_module()
+            with warnings.catch_warnings():
+                # The deprecation is known and handled by the fallbacks above;
+                # repeating it on every placement says nothing new.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                return pygame.Window.from_display_module()
         except pygame.error, AttributeError:
-            logger.debug("No Window handle; leaving the window where the WM put it")
+            logger.debug("No Window handle; using the display module instead")
             return None
 
     def _limit_size(self) -> None:

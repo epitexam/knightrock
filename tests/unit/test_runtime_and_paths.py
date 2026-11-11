@@ -431,6 +431,89 @@ def test_a_position_the_new_size_can_still_hold_is_kept(
     assert window.asked == [], "the window was moved although its position held"
 
 
+def _no_window_handle(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
+    """A pygame build without ``Window.from_display_module``; returns the modes asked."""
+    modes: list[tuple] = []
+
+    def set_mode(size, flags=0, depth=0, display=0, vsync=0):
+        modes.append((tuple(size), flags, display))
+        return pygame.Surface(size)
+
+    monkeypatch.setattr(pygame.display, "set_mode", set_mode)
+    monkeypatch.setattr(Stage, "_window_handle", staticmethod(lambda: None))
+    return modes
+
+
+def test_fullscreen_works_on_a_build_with_no_window_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Window.from_display_module`` is deprecated; fullscreen must outlive it.
+
+    It used to be the only way in: without the handle the toggle raised, from
+    Alt+Enter, from the Video row and from a saved ``fullscreen`` at start-up.
+    The way round is a ``set_mode`` at the screen's own desktop size, which is
+    what keeps it a desktop fullscreen rather than a mode change.
+    """
+    monitor = _panel(1920, 1080)
+    modes = _no_window_handle(monkeypatch)
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (50, 50))
+    stage = Stage(WindowSpec(size=(1280, 720)), monitor)
+    modes.clear()
+
+    covered = stage.set_fullscreen(True)
+
+    assert stage.fullscreen and stage.windowed_size == (1280, 720)
+    assert covered.get_size() == monitor.size
+    size, flags, _display = modes[-1]
+    assert size == monitor.size, "any other size is a real mode change"
+    assert flags & pygame.FULLSCREEN
+
+    back = stage.set_fullscreen(False)
+
+    assert not stage.fullscreen
+    assert back.get_size() == (1280, 720)
+    assert not modes[-1][1] & pygame.FULLSCREEN
+
+
+def test_a_saved_fullscreen_opens_on_a_build_with_no_window_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = _panel(1920, 1080)
+    _no_window_handle(monkeypatch)
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (50, 50))
+
+    stage = Stage(WindowSpec(size=(1280, 720), fullscreen=True), monitor)
+
+    assert stage.fullscreen
+    assert stage.size == monitor.size
+    assert stage.windowed_size == (1280, 720)
+
+
+def test_the_window_is_still_placed_on_a_build_with_no_window_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Placement goes through the display module when there is no handle."""
+    monitor = _panel(1920, 1080)
+    _no_window_handle(monkeypatch)
+    moved: list[tuple[int, int]] = []
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (-500, -500))
+    monkeypatch.setattr(pygame.display, "set_window_position", moved.append)
+
+    stage = Stage(WindowSpec(), monitor)
+
+    assert moved == [centre_on(monitor, stage.size)]
+
+
+def test_asking_for_the_window_handle_raises_no_deprecation_warning() -> None:
+    """The deprecation is handled by the fallbacks; it is not repeated per call."""
+    import warnings
+
+    pygame.display.set_mode((640, 480))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        Stage._window_handle()
+
+
 def test_a_resize_no_longer_undoes_the_players_own_drag(tmp_path: Path) -> None:
     """A drag is the player's last word, and a settings change must not overrule it.
 
