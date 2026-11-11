@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 import pygame
 
@@ -64,6 +65,34 @@ def _decorated(item: MenuItem, selected: bool) -> str:
     if item.kind == "toggle":
         return f"◀ {item.value} ▶" if selected else f"  {item.value}  "
     return item.value
+
+
+@dataclass(frozen=True)
+class PlacedRow:
+    """One row as laid out: its rect, its text, and its bar colour if selected."""
+
+    rect: pygame.Rect
+    label: pygame.Surface
+    value: pygame.Surface | None
+    bar: tuple[int, int, int] | None
+
+
+@dataclass(frozen=True)
+class MenuLayout:
+    """Everything :meth:`MenuView.paint` blits, already placed.
+
+    Text pieces are ``(surface, topleft)`` pairs.
+    """
+
+    panel: pygame.Rect
+    frame: pygame.Surface
+    title: tuple[pygame.Surface, tuple[int, int]]
+    rows: list[PlacedRow]
+    bar_inflate: int
+    rail: pygame.Rect | None
+    thumb: pygame.Rect | None
+    description: tuple[pygame.Surface, tuple[int, int]] | None
+    footers: list[tuple[pygame.Surface, tuple[int, int]]] = field(default_factory=list)
 
 
 class MenuView:
@@ -188,70 +217,86 @@ class MenuView:
         scroll: int = 0,
         scrollable: bool = False,
     ) -> pygame.Rect:
-        """Draw the panel and return its rect.
+        """Lay the panel out, paint it, and return its rect.
 
-        ``highlighted`` paints one row in ``highlight_color`` for a limited
-        time, which is how a value row reports a change the player just made.
-        It is a separate colour because the selected row is already amber, so
-        reusing that would hide the flash on the very row that changed.
+        The two halves are :meth:`layout`, which measures and places everything
+        and paints nothing, and :meth:`paint`, which blits what the layout
+        placed and decides nothing. See :meth:`layout` for the arguments.
+        """
+        placed = self.layout(
+            surface,
+            title,
+            model,
+            top=top,
+            title_color=title_color,
+            highlighted=highlighted,
+            highlight_color=highlight_color,
+            footers=footers,
+            description=description,
+            scroll=scroll,
+            scrollable=scrollable,
+        )
+        self.paint(surface, placed)
+        return placed.panel
 
-        ``footers`` are hint lines under the last row, as on the grid panel.
+    def layout(
+        self,
+        surface: pygame.Surface,
+        title: str,
+        model: MenuModel,
+        *,
+        top: int,
+        title_color: tuple[int, int, int] = TEXT_TITLE,
+        highlighted: int = -1,
+        highlight_color: tuple[int, int, int] = GOLD,
+        footers: tuple[str, ...] = (),
+        description: str = "",
+        scroll: int = 0,
+        scrollable: bool = False,
+    ) -> MenuLayout:
+        """Measure and place the panel for ``surface``; paint nothing.
 
-        ``description`` is one line of prose under the list, in a dimmer colour
-        and a smaller font. One line, and it is *reserved* in the panel height
-        rather than painted over whatever happens to be below -- the panel
-        measures its own contents to size itself, so text added without being
-        accounted for lands on the footer or outside the border.
+        It also publishes what a hit-test needs -- :attr:`item_rects` and the
+        scroll rail -- because a click is measured against the layout, not
+        against the pixels.
 
-        ``scroll`` is the index of the first row to paint, for a list taller than
-        the window, and it only does anything when ``scrollable`` is set.
+        ``top`` is where the panel prefers to sit, in design pixels of a
+        648-tall picture; a panel too tall for that is pulled up.
 
-        That second flag is load-bearing. Clipping a list that does not fit is
-        right for a list the caller knows can scroll, and *catastrophic* for one
-        that cannot: the rows past the fold silently stop being drawn, get an
-        empty rect, and become unclickable -- so a menu whose Back row fell past
-        the bottom became a menu you could not leave with the mouse. Measured on
-        the video screen at 10 rows in a 648px window: rows 9 and 10 painted
-        nothing. Scrolling is therefore something a screen opts into rather than
-        something that happens to it.
+        ``highlighted`` lights one row in ``highlight_color`` for a moment,
+        which is how a value row reports a change the player just made.
 
-        Rows scrolled out of view keep their place in ``item_rects`` with an
-        empty rect rather than dropping out of the list, so the rects stay
-        index-aligned with ``model.items``. That matters because the pointer path
-        indexes both by the same number, and a list whose rects shifted would make
-        a click land on the wrong row.
+        ``footers`` are hint lines under the rows, and ``description`` is a note
+        of up to :data:`DESCRIPTION_LINES` lines above them. Both are reserved in
+        the panel's height, so they never land on a row.
+
+        ``scroll`` is the first row shown, and only counts when ``scrollable``
+        is set: a list that cannot scroll grows past the window rather than
+        losing its last rows -- a Back row cut off is a menu you cannot leave.
+        Rows out of view keep an empty rect in :attr:`item_rects`, so the rects
+        stay index-aligned with ``model.items``.
         """
         if self._surface_size != surface.get_size():
             self._surface_size = surface.get_size()
             self.reset_cache()
         top = self.scaled_top(top, surface)
-        scale = self._scale
-        title_font, item_font, footer_font = self._fonts_for(scale)
-        # The selection is a bar behind the row, not a character in front of
-        # it, so moving it never changes a width.
+        title_font, item_font, footer_font = self._fonts_for(self._scale)
+        metrics = self._metrics
+        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
         labels = [item.label for item in model.items]
-        marker_width = 0
         values = [
             _decorated(item, index == model.current_index) for index, item in enumerate(model.items)
         ]
-        # How much of the list fits, decided before anything is painted rather
-        # than after -- the cache key, the rows and the panel height all have to
-        # agree on it, and computing it once up front is what makes them agree.
-        metrics = self._metrics
-        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
-        # Measured against the whole window, not from ``top`` down: ``top`` is
-        # where the panel prefers to sit, and a panel too tall for that is pulled
-        # up towards the margin (see ``panel_y``), so the room it really has is
-        # the window less its margins. Measuring from ``top`` cut rows that fit.
+
+        # -- vertical budget: how many rows fit, and how tall each is.
+        # Measured against the whole window, not from ``top`` down: a panel too
+        # tall for ``top`` is pulled up towards the margin.
         available_height = max(metrics.px(120), surface.get_height() - metrics.margin * 2)
         footer_step = _line_step(footer_font) + metrics.gap // 2
-        # Two lines, always reserved: the pixel font is wide, and a note that
-        # needs two lines must not make the panel's height follow its length.
+        # Always two lines when there is a note, whatever its length, so the
+        # panel's height does not follow the note from row to row.
         description_step = _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2
         description_height = description_step if description else 0
-        # The title's own height, measured rather than estimated: it is bold and
-        # its rasterised linesize is not the design size the rest of the table is
-        # written in.
         row_budget = (
             available_height
             - padding * 2
@@ -264,25 +309,18 @@ class MenuView:
             item_font.get_linesize(),
             min(metrics.panel_row, row_budget // max(1, len(labels))),
         )
-        # A list that does not fit is clipped only when its caller asked for
-        # scrolling. Otherwise the panel simply grows past the bottom of the
-        # window, which is the behaviour every screen here was written against.
         visible_rows = len(labels)
         if scrollable:
             visible_rows = max(1, min(len(labels), row_budget // max(1, item_height)))
-        # Never scroll past the end: the last row is always reachable, and a
-        # window that cannot scroll all the way down is a window with rows in it
-        # that can never be seen.
         first = max(0, min(scroll, len(labels) - visible_rows)) if scrollable else 0
-        painted = labels[first : first + visible_rows]
-        # The text cache is keyed on what is painted, not on what exists. Keying
-        # it on the whole list would render 28 rows a frame for a window showing
-        # twelve of them, and the cache would hold surfaces nobody drew.
+        painted = range(first, first + visible_rows)
+
+        # -- the text, rendered once and cached on what is shown.
         cache_key = (
-            tuple(painted),
+            tuple(labels[first : first + visible_rows]),
             tuple(values[first : first + visible_rows]),
             model.current_index,
-            scale,
+            self._scale,
             description,
             first,
         )
@@ -292,49 +330,40 @@ class MenuView:
         title_surface = self._render_cached(title_font, title, title_color)
         label_surfaces = [
             self._render_cached(
-                item_font, label, self._color(first + offset, model, highlighted, highlight_color)
+                item_font, labels[index], self._color(index, model, highlighted, highlight_color)
             )
-            for offset, label in enumerate(painted)
+            for index in painted
         ]
-        value_surfaces = [
+        value_surfaces: list[pygame.Surface | None] = [
             self._render_cached(
                 item_font,
-                values[first + offset],
-                self._value_color(first + offset, model, highlighted, highlight_color),
+                values[index],
+                self._value_color(index, model, highlighted, highlight_color),
             )
-            if values[first + offset]
+            if values[index]
             else None
-            for offset in range(len(painted))
+            for index in painted
         ]
+        window_text_width = surface.get_width() - metrics.margin * 2 - padding * 2
         footer_surfaces = [
-            self._fit_text(
-                footer_font,
-                text,
-                TEXT_MUTED,
-                surface.get_width() - metrics.margin * 2 - metrics.panel_padding * 2,
-            )
-            for text in footers
+            self._fit_text(footer_font, text, TEXT_MUTED, window_text_width) for text in footers
         ]
-        metrics = self._metrics
-        padding, title_gap = metrics.panel_padding, metrics.panel_title_gap
+
+        # -- horizontal: the content decides the width, the window caps it.
         label_width = max(
-            [marker_width + rendered.get_width() for rendered in label_surfaces if rendered]
-            + [title_surface.get_width()]
+            [rendered.get_width() for rendered in label_surfaces] + [title_surface.get_width()]
         )
         value_width = max(
             (rendered.get_width() for rendered in value_surfaces if rendered), default=0
         )
         rows_width = label_width + (metrics.value_gap + value_width if value_width else 0)
-        # The description wraps to the rows' width (never narrower than a
-        # readable column), so a long note takes two lines instead of stretching
-        # the panel across the window -- and never wider than the window.
         description_surface = (
             self._wrap_text(
                 footer_font,
                 description,
                 TEXT_MUTED,
                 min(
-                    surface.get_width() - metrics.margin * 2 - padding * 2,
+                    window_text_width,
                     max(
                         rows_width,
                         metrics.px(DESCRIPTION_MIN_WIDTH),
@@ -347,13 +376,9 @@ class MenuView:
             if description
             else None
         )
-        self._description_width = (
-            description_surface.get_width() if description_surface is not None else 0
-        )
-        footer_height = footer_step * len(footer_surfaces)
-        description_width = description_surface.get_width() if description_surface else 0
+        self._description_width = description_surface.get_width() if description_surface else 0
         footer_width = max((footer.get_width() for footer in footer_surfaces), default=0)
-        content_width = max(rows_width, description_width, footer_width)
+        content_width = max(rows_width, self._description_width, footer_width)
         panel_width = self._panel_width(content_width + padding * 2, model, title, surface)
         self._cut_rows_to_fit(
             label_surfaces,
@@ -362,102 +387,111 @@ class MenuView:
             values,
             first,
             panel_width - padding * 2,
-            marker_width,
             item_font,
             model,
             highlighted,
             highlight_color,
         )
+
+        # -- placement.
+        footer_height = footer_step * len(footer_surfaces)
         panel_height = (
             padding * 2
             + title_surface.get_height()
             + title_gap
-            + item_height * len(painted)
+            + item_height * visible_rows
             + description_height
             + footer_height
         )
-        panel_x = (surface.get_width() - panel_width) // 2
-        panel_y = min(
-            top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin)
+        panel = pygame.Rect(
+            (surface.get_width() - panel_width) // 2,
+            min(top, max(metrics.margin, surface.get_height() - panel_height - metrics.margin)),
+            panel_width,
+            panel_height,
         )
-        panel = self._panel_for(panel_width, panel_height, max(1, item_font.get_height() // 8))
-        surface.blit(panel, (panel_x, panel_y))
-        # Centred, like the grid's title and the HUD's: a left-aligned title
-        # above a right-aligned value column reads as two unrelated screens.
-        surface.blit(
-            title_surface,
-            (panel_x + (panel_width - title_surface.get_width()) // 2, panel_y + padding),
-        )
-        item_top = panel_y + padding + title_surface.get_height() + title_gap
-        # Index-aligned with ``model.items``: the rows scrolled out of view keep
-        # their place with an empty rect, so a pointer hit-test and a key press
-        # both address the same row number.
+        item_top = panel.y + padding + title_surface.get_height() + title_gap
         self._item_rects = [pygame.Rect(0, 0, 0, 0) for _ in model.items]
-        for offset, label_surface in enumerate(label_surfaces):
-            index = first + offset
+        rows: list[PlacedRow] = []
+        for offset, index in enumerate(painted):
             rect = pygame.Rect(
-                panel_x + padding,
+                panel.x + padding,
                 item_top + offset * item_height,
                 panel_width - padding * 2,
                 item_height,
             )
-            if index == model.current_index:
-                # One mark for "a press acts here", whichever device moved it:
-                # hovering a row selects it, so the bar is also where the
-                # pointer is. The flash after a change is the same bar, lit.
-                bar = rect.inflate(padding // 2, 0)
-                surface.fill(SELECTION_FLASH if index == highlighted else SELECTION_BG, bar)
-            if label_surface is not None:
-                surface.blit(
-                    label_surface,
-                    (rect.x + marker_width, rect.centery - label_surface.get_height() // 2),
-                )
-            value_surface = value_surfaces[offset]
-            if value_surface is not None:
-                # Right-aligned against the panel's padding: the column of
-                # values lines up, which is the whole reason it is a column.
-                surface.blit(
-                    value_surface,
-                    (
-                        rect.right - value_surface.get_width(),
-                        rect.centery - value_surface.get_height() // 2,
-                    ),
-                )
             self._item_rects[index] = rect
-        # The rail is painted into the right padding gutter, which is
-        # wide enough to hold it without a row's label or value ever
-        # reaching it, so nothing has to make room for it.
-        self._paint_scroll_rail(
-            surface,
-            panel_x + panel_width - padding,
+            bar = None
+            if index == model.current_index:
+                # One mark for "a press acts here", whichever device moved it;
+                # the flash after a change is the same bar, lit.
+                bar = SELECTION_FLASH if index == highlighted else SELECTION_BG
+            rows.append(PlacedRow(rect, label_surfaces[offset], value_surfaces[offset], bar))
+        self._scroll_rail, self._scroll_thumb = self._rail_geometry(
+            panel.right - padding,
             padding,
             item_top,
-            item_height * len(painted),
+            item_height * visible_rows,
             first,
-            len(painted),
+            visible_rows,
             len(labels),
-            metrics,
         )
-        footer_y = panel_y + panel_height - padding - footer_height
+        footer_y = panel.bottom - padding - footer_height
+        placed_description = None
         if description_surface is not None:
-            # Directly above the footers, inside the panel: the band is already
-            # reserved in the height, so this paints into space that belongs to
-            # it rather than over the last row.
-            description_y = footer_y - description_height + metrics.gap // 4
-            surface.blit(
+            placed_description = (
                 description_surface,
                 (
-                    panel_x + (panel_width - description_surface.get_width()) // 2,
-                    description_y,
+                    panel.x + (panel_width - description_surface.get_width()) // 2,
+                    footer_y - description_height + metrics.gap // 4,
                 ),
             )
-        for footer_surface in footer_surfaces:
-            surface.blit(
-                footer_surface,
-                (panel_x + (panel_width - footer_surface.get_width()) // 2, footer_y),
+        placed_footers = [
+            (
+                footer,
+                (panel.x + (panel_width - footer.get_width()) // 2, footer_y + n * footer_step),
             )
-            footer_y += footer_step
-        return pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+            for n, footer in enumerate(footer_surfaces)
+        ]
+        return MenuLayout(
+            panel=panel,
+            frame=self._panel_for(panel_width, panel_height, max(1, item_font.get_height() // 8)),
+            title=(
+                title_surface,
+                (panel.x + (panel_width - title_surface.get_width()) // 2, panel.y + padding),
+            ),
+            rows=rows,
+            bar_inflate=padding // 2,
+            rail=self._scroll_rail,
+            thumb=self._scroll_thumb,
+            description=placed_description,
+            footers=placed_footers,
+        )
+
+    @staticmethod
+    def paint(surface: pygame.Surface, placed: MenuLayout) -> None:
+        """Blit a layout. Every decision was made by :meth:`layout`."""
+        surface.blit(placed.frame, placed.panel.topleft)
+        surface.blit(*placed.title)
+        for row in placed.rows:
+            if row.bar is not None:
+                surface.fill(row.bar, row.rect.inflate(placed.bar_inflate, 0))
+            surface.blit(row.label, (row.rect.x, row.rect.centery - row.label.get_height() // 2))
+            if row.value is not None:
+                # Right-aligned, so the values make a column.
+                surface.blit(
+                    row.value,
+                    (
+                        row.rect.right - row.value.get_width(),
+                        row.rect.centery - row.value.get_height() // 2,
+                    ),
+                )
+        if placed.rail is not None and placed.thumb is not None:
+            pygame.draw.rect(surface, PANEL_BORDER, placed.rail, border_radius=2)
+            pygame.draw.rect(surface, TEXT_MUTED, placed.thumb, border_radius=2)
+        if placed.description is not None:
+            surface.blit(*placed.description)
+        for footer in placed.footers:
+            surface.blit(*footer)
 
     def _panel_width(
         self, natural: int, model: MenuModel, title: str, surface: pygame.Surface
@@ -485,7 +519,6 @@ class MenuView:
         values: list[str],
         first: int,
         inner_width: int,
-        marker_width: int,
         item_font: pygame.font.Font,
         model: MenuModel,
         highlighted: int,
@@ -500,12 +533,10 @@ class MenuView:
             index = first + offset
             value_surface = value_surfaces[offset]
             value_w = value_surface.get_width() + gap if value_surface else 0
-            if marker_width + label_surface.get_width() + value_w <= inner_width:
+            if label_surface.get_width() + value_w <= inner_width:
                 continue
             if value_surface is not None:
-                room = max(
-                    inner_width // 3, inner_width - marker_width - label_surface.get_width() - gap
-                )
+                room = max(inner_width // 3, inner_width - label_surface.get_width() - gap)
                 value_surface = self._fit_text(
                     item_font,
                     values[index],
@@ -518,7 +549,7 @@ class MenuView:
                 item_font,
                 labels[index],
                 self._color(index, model, highlighted, highlight_color),
-                max(1, inner_width - marker_width - value_w),
+                max(1, inner_width - value_w),
             )
 
     def _value_color(
@@ -663,9 +694,8 @@ class MenuView:
             self._fonts[key] = cached
         return cached
 
-    def _paint_scroll_rail(
+    def _rail_geometry(
         self,
-        surface: pygame.Surface,
         gutter_left: int,
         gutter_width: int,
         rows_top: int,
@@ -673,56 +703,24 @@ class MenuView:
         first: int,
         visible: int,
         total: int,
-        metrics: Metrics,
-    ) -> None:
-        """Mark a list that scrolls, in the padding gutter beside it.
+    ) -> tuple[pygame.Rect | None, pygame.Rect | None]:
+        """The scroll rail and its thumb, or ``(None, None)`` when the list fits.
 
-        A list cut off with nothing to say so is a list whose last
-        visible row reads as the last row -- the player scrolls once,
-        finds more, and has to revise what the panel was telling them.
-        The rail answers "there is more" before that, and the thumb
-        answers "how much, and how far in": its height is the visible
-        fraction of the list and its place is the scrolled-to fraction.
-
-        It lives in the padding rather than over the rows because a
-        marker on a row competes with the row for the eye, and the
-        padding is wide enough to hold a rail that no label or value
-        can reach. Nothing is painted when the list fits, because a
-        rail next to a complete list is a lie about it.
+        The rail sits in the right padding gutter, which no label or value
+        reaches. The thumb's height is the visible fraction of the list and its
+        place the scrolled-to fraction. Nothing is shown for a list that fits:
+        a rail beside a complete list is a lie about it.
         """
-        self._scroll_rail = None
-        self._scroll_thumb = None
         if total <= visible or rows_height <= 0:
-            return
-
+            return None, None
+        metrics = self._metrics
         width = max(2, metrics.px(4))
-        # Centred in the gutter, whose left edge is the rows' right
-        # edge and whose right edge is the panel's own: the rail keeps
-        # its distance from both the text and the border.
-        rail = pygame.Rect(
-            gutter_left + (gutter_width - width) // 2,
-            rows_top,
-            width,
-            rows_height,
-        )
-        pygame.draw.rect(surface, PANEL_BORDER, rail, border_radius=2)
-
-        # The thumb's height is the visible fraction, floored so a
-        # nearly-whole list still shows a thumb and not a line.
-        thumb_height = max(
-            max(1, metrics.px(12)),
-            round(rail.height * visible / total),
-        )
-        # Where the thumb sits: the top when the list is at its start,
-        # the bottom when it is at its end, in between in proportion.
+        rail = pygame.Rect(gutter_left + (gutter_width - width) // 2, rows_top, width, rows_height)
+        # Floored, so a nearly whole list still shows a thumb and not a line.
+        thumb_height = max(max(1, metrics.px(12)), round(rail.height * visible / total))
         travel = max(0, rail.height - thumb_height)
-        span = max(1, total - visible)
-        thumb_y = rail.top + round(travel * first / span)
-        thumb = pygame.Rect(rail.x, thumb_y, rail.width, thumb_height)
-        pygame.draw.rect(surface, TEXT_MUTED, thumb, border_radius=2)
-
-        self._scroll_rail = rail
-        self._scroll_thumb = thumb
+        thumb_y = rail.top + round(travel * first / max(1, total - visible))
+        return rail, pygame.Rect(rail.x, thumb_y, rail.width, thumb_height)
 
     def _panel_for(self, width: int, height: int, unit: int = 1) -> pygame.Surface:
         """The panel, painted once per size: a pixel-art frame on the font's grid.

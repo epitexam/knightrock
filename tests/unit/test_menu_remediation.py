@@ -266,3 +266,25 @@ def test_every_character_the_menus_say_is_in_the_menu_font() -> None:
     )
 
     assert not absent, f"the menu font has no glyph for {absent}"
+
+
+def test_the_layout_paints_nothing_and_the_paint_decides_nothing() -> None:
+    """``layout`` leaves the target untouched; ``paint`` of it is ``draw``."""
+    from src.ui.menu_model import MenuItem, MenuModel
+    from src.ui.menu_view import MenuView
+
+    pygame.font.init()
+    model = MenuModel(
+        (MenuItem("a", "Window size", value="1152 x 648", kind="list"), MenuItem("back", "Back")),
+        selected=0,
+    )
+    blank = pygame.Surface((1152, 648))
+    target = blank.copy()
+    view = MenuView(1.0)
+    placed = view.layout(target, "VIDEO", model, top=170, footers=("help",), description="note")
+    assert pygame.image.tobytes(target, "RGB") == pygame.image.tobytes(blank, "RGB")
+
+    MenuView.paint(target, placed)
+    drawn = blank.copy()
+    MenuView(1.0).draw(drawn, "VIDEO", model, top=170, footers=("help",), description="note")
+    assert pygame.image.tobytes(target, "RGB") == pygame.image.tobytes(drawn, "RGB")
