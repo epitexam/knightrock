@@ -628,11 +628,11 @@ class MenuView:
         rendered = [self._fit_text(font, line, color, max_width) for line in lines]
         if len(rendered) == 1:
             return rendered[0]
-        width = max(line.get_width() for line in rendered)
+        width = max(painted.get_width() for painted in rendered)
         step = _line_step(font)
         block = pygame.Surface((width, step * len(rendered)), pygame.SRCALPHA)
-        for row, line in enumerate(rendered):
-            block.blit(line, ((width - line.get_width()) // 2, row * step))
+        for row, painted in enumerate(rendered):
+            block.blit(painted, ((width - painted.get_width()) // 2, row * step))
         return block
 
     def _fit_text(
