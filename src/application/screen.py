@@ -61,8 +61,12 @@ class Screen:
 
         Not the primary: on a two-screen desk the two differ as soon as the
         player drags the window across, and the VSync row reports this screen's
-        rate.
+        rate. The platform's own report wins when it has made one; the window's
+        position is the fallback.
         """
+        reported = self.window.reported_monitor()
+        if reported is not None:
+            return reported
         try:
             x, y = pygame.display.get_window_position()
         except pygame.error:

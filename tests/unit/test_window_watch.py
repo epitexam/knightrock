@@ -105,3 +105,73 @@ def test_the_window_is_on_the_screen_holding_its_centre() -> None:
 
 def test_no_geometry_names_no_screen() -> None:
     assert monitor_at(Topology(), (0, 0), (800, 600)) is None
+
+
+# -- the platform's own report of the window's display -------------------------
+
+
+def test_nothing_is_reported_until_the_platform_speaks() -> None:
+    watch, _ = _watch()
+
+    assert watch.reported_monitor() is None
+
+
+def test_the_reported_display_is_the_window_s_screen() -> None:
+    watch, _ = _watch()
+
+    watch.moved_to_display(1)
+
+    assert watch.reported_monitor() == RIGHT
+
+
+def test_a_report_naming_no_known_display_is_no_answer() -> None:
+    watch, _ = _watch()
+
+    watch.moved_to_display(7)
+
+    assert watch.reported_monitor() is None
+
+
+def test_a_hotplug_forgets_the_reported_index() -> None:
+    """SDL renumbers on a hotplug: index 1 of the old desk may be another panel now."""
+    watch, _ = _watch([DESK, Topology(monitors=(RIGHT,), named=True)])
+    watch.topology()
+    watch.moved_to_display(1)
+
+    watch.poll(WindowWatch.DISPLAY_POLL_SECONDS, lambda: RIGHT)
+
+    assert watch.display_index is None
+    assert watch.reported_monitor() is None
+
+
+def test_the_report_wins_over_the_window_s_position(monkeypatch) -> None:
+    """And it answers where a position cannot be read at all."""
+    import pygame
+
+    from src.application.screen import Screen
+
+    screen = Screen()
+    screen.window = _watch()[0]
+    monkeypatch.setattr(pygame.display, "get_window_position", lambda: (100, 100))
+    assert screen.window_monitor() == LEFT
+
+    screen.window.moved_to_display(1)
+
+    assert screen.window_monitor() == RIGHT
+
+
+def test_the_game_hands_the_display_event_to_the_watch(tmp_path, monkeypatch) -> None:
+    import pygame
+
+    from src.application.game import Game
+
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    pygame.display.init()
+    pygame.display.set_mode((320, 240))
+    game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")
+    pygame.event.clear()
+    pygame.event.post(pygame.event.Event(pygame.WINDOWDISPLAYCHANGED, display_index=1))
+
+    game._handle_events()
+
+    assert game.screen.window.display_index == 1

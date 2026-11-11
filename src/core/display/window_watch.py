@@ -57,6 +57,9 @@ class WindowWatch:
         self.built_size: tuple[int, int] | None = None
         #: Until when a size change is taken for the window manager's.
         self.grace_until = 0.0
+        #: The display the platform last said the window moved to, by index, or
+        #: ``None`` while it has said nothing. See :meth:`moved_to_display`.
+        self.display_index: int | None = None
         self._topology: Topology | None = None
         self._topology_age = 0.0
 
@@ -78,6 +81,26 @@ class WindowWatch:
             return None
         self.built_size = live
         return Resize(live, by_player=self._clock() >= self.grace_until)
+
+    def moved_to_display(self, index: int) -> None:
+        """The platform reported the window on another display (``WINDOWDISPLAYCHANGED``).
+
+        The platform's own word, so it is believed over the window's position:
+        a position cannot be read on every platform, and where it can the game
+        would be re-deriving what the platform already decided. Not every
+        platform sends it either, which is why the position stays as the
+        fallback rather than being replaced.
+        """
+        self.display_index = index
+
+    def reported_monitor(self) -> Monitor | None:
+        """The monitor the platform last reported the window on, if it still exists."""
+        if self.display_index is None:
+            return None
+        for monitor in self.topology().monitors:
+            if monitor.index == self.display_index:
+                return monitor
+        return None
 
     # ------------------------------------------------------------ displays
 
@@ -105,6 +128,10 @@ class WindowWatch:
             return None
         window_screen = held()
         self._topology = current
+        # SDL renumbers its displays on a hotplug, so an index reported against
+        # the old list may now name another panel. Forgotten until the platform
+        # reports again; the position answers meanwhile.
+        self.display_index = None
         if not any(same_panel(window_screen, monitor) for monitor in current.monitors):
             return DisplayChange.WINDOW_SCREEN_GONE
         if previous is None or len(current.monitors) != len(previous.monitors):

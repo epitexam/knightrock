@@ -658,6 +658,10 @@ class Game:
                 # resize arrives as is the platform's business, not the game's.
                 continue
 
+            if event.type == pygame.WINDOWDISPLAYCHANGED:
+                self.screen.window.moved_to_display(int(event.display_index))
+                continue
+
             if event.type == pygame.JOYDEVICEADDED:
                 should_assign = not self.joysticks
                 joy = pygame.joystick.Joystick(event.device_index)
