@@ -16,12 +16,13 @@ from src.core.settings import (
 )
 from src.physics.collisions import (
     CollisionSprite,
+    NamedState,
     get_nearby_sprites,
     resolve_collisions,
     update_contact_state,
 )
 from src.physics.gravity import apply_entity_gravity
-from src.physics.spatial_hash import SpatialHash, collider_box
+from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
 
 VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 
@@ -101,6 +102,12 @@ class MovableEntity(Protocol):
     fast_fall: bool
     drag_coefficient: float
     fall_drag_coefficient: float
+    move_axis: float
+    crushed: bool
+    carry_backup: tuple[float, float, float, float] | None
+
+    @property
+    def state_machine(self) -> NamedState: ...
 
     def is_wall_sliding(self) -> bool: ...
 
@@ -257,15 +264,12 @@ def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = 
     Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
     the original O(n) search if spatial_hash is not available.
     """
-    if hasattr(entity, "crushed"):
-        entity.crushed = False
+    entity.crushed = False
     # Use spatial hash if available, otherwise fall back to collision_sprites
-    spatial_hash = getattr(entity, "spatial_hash", None)
-    collision_sprites = getattr(entity, "collision_sprites", None)
-    if spatial_hash is not None:
-        nearby_sprites = get_nearby_sprites(entity, spatial_hash=spatial_hash)
+    if entity.spatial_hash is not None:
+        nearby_sprites = get_nearby_sprites(entity, spatial_hash=entity.spatial_hash)
     else:
-        nearby_sprites = get_nearby_sprites(entity, collision_sprites=collision_sprites)
+        nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
     move_x = entity.velocity.x * delta_time
     steps_x = min(
@@ -317,7 +321,7 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
 
     best: float | None = None
     for sprite in nearby_sprites:
-        if getattr(sprite, "one_way", False):
+        if is_one_way(sprite):
             box = collider_box(sprite)
             if box is None or entity.old_hitbox.bottom > box.top + Collision.CONTACT_SKIN_PX:
                 continue
@@ -342,11 +346,9 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
 
 def _revert_carry_crush(entity: MovableEntity) -> None:
     """Restore the pre-carry position when a platform crushed the entity."""
-    crushed = bool(getattr(entity, "crushed", False))
-    backup = getattr(entity, "carry_backup", None)
-    if hasattr(entity, "carry_backup"):
-        entity.carry_backup = None
-    if not crushed or backup is None:
+    backup = entity.carry_backup
+    entity.carry_backup = None
+    if not entity.crushed or backup is None:
         return
     entity.hitbox.x, entity.hitbox.y, entity.hitbox.width, entity.hitbox.height = backup
     entity.velocity.x = 0.0

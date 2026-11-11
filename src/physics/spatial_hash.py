@@ -55,7 +55,17 @@ def collider_box(sprite: object) -> pygame.Rect | pygame.FRect | None:
     return getattr(sprite, "rect", None)
 
 
+def is_one_way(sprite: object) -> bool:
+    """Whether a collider only holds what lands on its top (a jump-through pad).
+
+    Read here for the same reason as :func:`collider_box`: the collision group
+    mixes scenery, which declares the flag, with whatever a caller hands in.
+    """
+    return bool(getattr(sprite, "one_way", False))
+
+
 __all__ = [
+    "is_one_way",
     "QUERY_MARGIN_PX",
     "SpatialHash",
     "SpatialHashable",

@@ -18,6 +18,9 @@ class StubEntity:
         self.velocity = pygame.math.Vector2(0, 0)
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.collision_sprites = []
+        self.move_axis = 0.0
+        self.crushed = False
+        self.state_machine = SimpleNamespace(current_state_name=None)
         self.floor_contacts = 0
         self.wall_contacts = 0
 

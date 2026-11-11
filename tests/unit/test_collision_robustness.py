@@ -1,5 +1,7 @@
 """Collision robustness: slide-on-graze, bounded resolve, crush, sticky carry."""
 
+from types import SimpleNamespace
+
 import pygame
 import pytest
 
@@ -31,6 +33,7 @@ class RobustEntity:
         self.gravity_scale = 1.0
         self.fast_fall = False
         self.spatial_hash = None
+        self.state_machine = SimpleNamespace(current_state_name=None)
 
     def sync_rects(self) -> None:
         self.rect.midbottom = self.hitbox.midbottom
@@ -49,8 +52,6 @@ class RobustEntity:
 
 
 def _tile(box: pygame.FRect):
-    from types import SimpleNamespace
-
     return SimpleNamespace(rect=box, hitbox=box.copy(), old_hitbox=box.copy())
 
 

@@ -174,7 +174,7 @@ def test_move_entity_falls_back_without_spatial_hash(monkeypatch):
 
     monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
 
-    entity = make_entity()  # no spatial_hash attribute -> fallback path
+    entity = make_entity()  # spatial_hash is None -> fallback path
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]
 
     assert seen["spatial_hash"] is None

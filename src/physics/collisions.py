@@ -5,7 +5,7 @@ import pygame
 from pygame.math import Vector2
 
 from src.core.settings import Collision, Combat, GameFeel, Separation
-from src.physics.spatial_hash import SpatialHash, collider_box
+from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
 from src.states import state_names
 
 
@@ -17,6 +17,11 @@ class CollisionSprite(Protocol):
     def hitbox(self) -> pygame.Rect | pygame.FRect: ...
 
 
+class NamedState(Protocol):
+    @property
+    def current_state_name(self) -> str | None: ...
+
+
 class CollisionEntity(Protocol):
     rect: pygame.FRect
     hitbox: pygame.FRect
@@ -24,6 +29,11 @@ class CollisionEntity(Protocol):
     velocity: Vector2
     on_surface: dict[str, bool]
     collision_sprites: Iterable[CollisionSprite]
+    move_axis: float
+    crushed: bool
+
+    @property
+    def state_machine(self) -> NamedState: ...
 
     def sync_rects(self) -> None: ...
 
@@ -48,7 +58,7 @@ def _extract_collider(
     if old_box is None:
         rect = getattr(sprite, "rect", None)
         old_box = rect if rect is not None else box
-    return old_box, bool(getattr(sprite, "one_way", False))
+    return old_box, is_one_way(sprite)
 
 
 def _shift_is_free(
@@ -133,7 +143,7 @@ def update_contact_state(
         box = collider_box(sprite)
         if box is None:
             continue
-        one_way = getattr(sprite, "one_way", False)
+        one_way = is_one_way(sprite)
         # A one-way platform only supports an entity resting on its top:
         # an entity inside its body (jumping through) gets no contact.
         if floor_rect.colliderect(box) and (
@@ -155,15 +165,13 @@ def update_contact_state(
 
 
 def _flag_crushed(entity: CollisionEntity) -> None:
-    """Mark a deep-overlap correction (guarded for foreign test stubs)."""
-    if hasattr(entity, "crushed"):
-        entity.crushed = True
+    """Mark a deep-overlap correction."""
+    entity.crushed = True
 
 
 def _is_knocked(entity: CollisionEntity) -> bool:
     """Whether the entity is flying in its knockback reaction state."""
-    state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == state_names.KNOCKBACK
+    return entity.state_machine.current_state_name == state_names.KNOCKBACK
 
 
 def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:
@@ -205,8 +213,7 @@ def _try_corner_correct(
     corner = GameFeel.CORNER_CORRECT_PX
     if corner <= 0 or entity.velocity.y >= 0:
         return False
-    move_axis = float(getattr(entity, "move_axis", 0.0) or 0.0)
-    direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else 0.0
+    direction = 1.0 if entity.move_axis > 0 else -1.0 if entity.move_axis < 0 else 0.0
     if direction == 0.0:
         return False
     for offset in (direction * corner, -direction * corner):

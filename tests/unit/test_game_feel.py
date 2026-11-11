@@ -55,6 +55,9 @@ class WallEntity(FeelEntity):
         self.gravity_scale = 1.0
         self.fast_fall = False
         self.spatial_hash = None
+        self.crushed = False
+        self.carry_backup = None
+        self.state_machine = SimpleNamespace(current_state_name=None)
 
     def sync_rects(self) -> None:
         self.rect.midbottom = self.hitbox.midbottom
