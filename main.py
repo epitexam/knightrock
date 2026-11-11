@@ -4,7 +4,7 @@ import logging.config
 import os
 import sys
 
-from src.core.game import Game
+from src.application.game import Game
 
 LOGGING_CONFIG: dict = {
     "version": 1,
