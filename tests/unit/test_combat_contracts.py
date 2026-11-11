@@ -2,6 +2,8 @@
 
 import inspect
 
+import pygame
+
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.combatant_protocol import AttackerPort, Combatant, CombatPort
 from src.combat.frame_data import HitProperties
@@ -34,8 +36,11 @@ def test_attacker_view_is_narrow() -> None:
     for forbidden in ("health", "receive_damage", "stagger"):
         assert forbidden not in AttackerPort.__annotations__
         assert not hasattr(AttackerPort, forbidden)
-    assert isinstance(AttackerStub(), AttackerPort)
-    assert isinstance(Projectile(), AttackerPort)
+    # Checked member by member: the port is not runtime-checkable, on purpose.
+    for attacker in (AttackerStub(), Projectile()):
+        assert isinstance(attacker.hitbox, pygame.FRect)
+        assert isinstance(attacker.combat.air_combo_count, int)
+        assert callable(attacker.combat.record_hit_landed)
 
 
 def test_projectile_carries_neutral_combat() -> None:

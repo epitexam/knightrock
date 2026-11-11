@@ -160,6 +160,22 @@ def test_a_bare_multi_except_is_parsed_as_several_types() -> None:
         assert not headers[0].binds_a_name, source
 
 
+def test_no_protocol_of_the_game_is_runtime_checkable() -> None:
+    """A protocol is for mypy; `isinstance` against one is slow and can be wrong.
+
+    Since Python 3.12 that test reads attributes statically and so cannot see
+    one served by `__getattr__`. That is how the wall-jump lock was dead code
+    for the real player while every test with a stand-in passed. Without the
+    decorator the `isinstance` raises, which is the point.
+    """
+    offenders = [
+        str(path.relative_to(REPO_ROOT))
+        for path in (REPO_ROOT / "src").rglob("*.py")
+        if "runtime_checkable" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
 @pytest.mark.parametrize("root", SOURCE_ROOTS)
 def test_every_source_root_exists(root: str) -> None:
     """The file walk above is only meaningful while the roots are real."""

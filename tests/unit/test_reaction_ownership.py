@@ -55,7 +55,12 @@ def test_no_hasattr_no_direct_hurt_write() -> None:
 
 
 def test_narrow_owner_satisfies_protocol() -> None:
-    assert isinstance(_narrow_owner(), ReactionOwner)
+    """Member by member: the protocol is not runtime-checkable, on purpose."""
+    owner = _narrow_owner()
+    members = set(ReactionOwner.__annotations__) | {"combat", "state_machine"}
+    assert members >= {"velocity", "hitbox", "render_hints"}
+    for member in sorted(members):
+        assert hasattr(owner, member), member
 
 
 def test_heavy_knockback_clears_hurt_state_and_timer() -> None:

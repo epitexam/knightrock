@@ -1,11 +1,10 @@
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 import pygame
 
 from src.core.settings import GameFeel
 
 
-@runtime_checkable
 class GravityEntity(Protocol):
     """Surface consumed by :func:`apply_entity_gravity`.
 

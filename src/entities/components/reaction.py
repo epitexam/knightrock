@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, Final, Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -118,7 +118,6 @@ class ReactionStatePort(Protocol):
     def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None: ...
 
 
-@runtime_checkable
 class ReactionOwner(Protocol):
     """Narrow owner view operated on by ReactionComponent."""
 

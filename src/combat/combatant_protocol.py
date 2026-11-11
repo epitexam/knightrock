@@ -7,7 +7,7 @@ class.
 """
 
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import pygame
 
@@ -43,7 +43,6 @@ class AttackStatePort(Protocol):
     def targets_hit(self) -> set[str]: ...
 
 
-@runtime_checkable
 class AttackComboPort(Protocol):
     """Air-combo tracking consumed from an attacker's combat."""
 
@@ -53,7 +52,6 @@ class AttackComboPort(Protocol):
     def record_hit_landed(self, airborne: bool) -> None: ...
 
 
-@runtime_checkable
 class AttackerPort(Protocol):
     """Hit carrier: hitbox plus combo tracking, nothing else."""
 
@@ -63,7 +61,6 @@ class AttackerPort(Protocol):
     def combat(self) -> AttackComboPort: ...
 
 
-@runtime_checkable
 class CombatPort(AttackComboPort, Protocol):
     """Minimal combat component surface exposed by a combatant.
 
@@ -135,7 +132,6 @@ class CombatPort(AttackComboPort, Protocol):
     def reset(self) -> None: ...
 
 
-@runtime_checkable
 class Combatant(Protocol):
     """Protocol defining the minimal interface an entity must expose for combat.
 
