@@ -192,145 +192,26 @@ class Entity(Sprite):
 
         self.image = pygame.Surface(size)
         self.image.fill(color)
-
         self.rect: pygame.FRect = self.image.get_frect(topleft=pos)
-        # P2 (axe B): the physical collider is the pushbox, and `hitbox` is its
-        # public name -- 160-odd call sites, none of them migrated or
-        # scheduled to. `pushbox` survives in the vocabulary of its derived
-        # forms (`swept_pushbox`, the overlay legend) and on the private field,
-        # not as a second attribute.
-        self._pushbox = self.rect.inflate(*hitbox_inflate)
-        self._pushbox.midbottom = self.rect.midbottom
-        self.old_hitbox = self._pushbox.copy()
-        self._hurtbox_inflate: tuple[float, float] = (
-            float(hurtbox_inflate[0]),
-            float(hurtbox_inflate[1]),
-        )
-        # P2 multi-hurtbox: zones derive from the pushbox via ``sync_rects``
-        # (the single derivation point, preserving the dash-squish timing).
-        # ``None`` config = one legacy zone = exact pre-P2 behavior.
-        self._zones: tuple[HurtboxZoneDef, ...] = (
-            tuple(hurtbox_zones)
-            if hurtbox_zones is not None
-            else (HurtboxZoneDef(inflate=self._hurtbox_inflate),)
-        )
-        self._hurtbox_rects: list[pygame.FRect] = []
-        self._hurtbox_union: pygame.FRect = pygame.FRect(0, 0, 0, 0)
-        # P1 sweep origins, now per zone (P2: ``_prev_hurtbox`` -> tuple).
-        # Written only by ``capture_sweep_origin`` (tick frontier), reset by
-        # ``reset_position``/``load_state`` (no stale smear across a teleport
-        # or a rollback; re-derived at the next capture).
-        self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
-        self._prev_pushbox: pygame.FRect | None = None
-        self.contact_shape: ShapePose = ShapePose(
-            ShapeKind.AABB, self._pushbox.size, self._pushbox.center
-        )
-        self._previous_contact_shape: ShapePose | None = None
-        # Initial derivation (the legacy code built ``_hurtbox`` inline here).
-        self.sync_rects()
+        self._init_boxes(hitbox_inflate, hurtbox_inflate, hurtbox_zones)
 
         self.collision_sprites: Iterable[CollisionSprite] = cast(
             Iterable[CollisionSprite], collision_sprites
         )
-        # Shared collision grid (PERF-01), injected at construction so an
-        # entity cannot end up without one by being born after the level
-        # assembled its wiring. ``move_entity`` queries it for O(1) neighbour
-        # lookups; ``None`` stays legal for standalone/test entities and falls
-        # back to a linear scan (correct, just slow).
+        # Injected at construction: without it ``move_entity`` falls back to a
+        # linear scan of every collider (correct, measured 2.4x slower).
         self.spatial_hash: SpatialHash | None = spatial_hash
-        # Kinematic state (velocity, surface contacts) is owned by the
-        # MovementComponent (Phase 3 #2); ``Entity`` exposes it via delegating
-        # properties so the historical ``entity.velocity``/``entity.on_surface``
-        # API — and the pure ``src.physics`` functions that read them off the
-        # entity — keep working unchanged.
+        # Owns velocity and surface contacts, exposed by the properties below.
         self._movement = MovementComponent(self)
-
-        self.move_axis: float = 0.0
-        self.speed: float = 0.0
-        self.floor_control: float = Physics.FLOOR_CONTROL
-        self.air_control: float = Physics.AIR_CONTROL
-
-        self.normal_gravity: float = Physics.GRAVITY
-        self.fall_gravity: float = Physics.FALL_GRAVITY
-        self.slide_gravity: float = Physics.GRAVITY * 0.15
-        self.max_slide_speed: float = Physics.MAX_SLIDE_SPEED
-        self.max_fall_speed: float = Physics.MAX_FALL_SPEED
-        # Phase 5 #4 (juggle): gravity multiplier while juggled, OTG guard
-        # granted on landing from a juggle. Timers tick in ``update``.
-        self.gravity_scale: float = 1.0
-        # Fast fall: set from the down action while airborne (GameFeel).
-        self.fast_fall: bool = False
-        self.juggle_timer: float = 0.0
-        self.otg_timer: float = 0.0
-        # Render-only damage flash (never snapshotted, never in goldens).
-        self.flash_timer: float = 0.0
-        # Render-only gold wash for a parry (same exclusions as the flash).
-        self.parry_flash_timer: float = 0.0
-        # Render-only freshness of the last hit reaction (armed by
-        # ReactionComponent, decayed in ``update``); never snapshotted.
-        self.reaction_age: float = 0.0
-        # Render-only landing hint: pre-move fall speed captured on the
-        # landing tick (PhysicsSystem turns hard landings into dust puffs).
-        # Never snapshotted, never in goldens.
-        self.landed_impact: float = 0.0
-        # Render-only pivot hint: how much of the turn hold is left, 1 at the
-        # start and 0 when the facing lands. Written by ``PlayerTurnState`` and
-        # read by the renderer to slide and lean the frame. 0.0 whenever the
-        # fighter is not pivoting.
-        #
-        # Declared here, like ``flash_timer`` and ``landed_impact``, rather than
-        # on the state: the renderer must not have to reach into the state
-        # machine to ask a sprite how it wants to be drawn, and the alternative
-        # -- the renderer inspecting ``current_state_name`` and then the state
-        # object's own fields -- puts a per-sprite state lookup in the draw
-        # loop. It is render-only and so never snapshotted; the hold that
-        # decides it is not, being part of the turn state.
-        self.turn_ratio: float = 0.0
-        # Parry-stun counters (reset on rollback/load, consecutive logic).
-        self.parries_given: int = 0
-        self.parries_taken: int = 0
-        # Per-entity parry-stun config (copied from config on spawn).
-        self.parry_stun_threshold: int | None = None
-        self.parry_stun_duration: float = 0.0
-        # Physics robustness: crush flag set by the bounded resolver and
-        # pre-carry backup for crush revert (both tick in ``update``).
-        self.crushed: bool = False
-        self.carry_backup: tuple[float, float, float, float] | None = None
-
-        self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
-        self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
-
-        # Turn-around pivot, off by default. A fighter takes it -- the facing
-        # hold *and* the plant that goes with it -- only if it opts in here.
-        #
-        # The four knobs mirror :data:`settings.Turn` rather than reading it,
-        # for the reason ``floor_control`` is an attribute and not a constant:
-        # a goblin and a boss should not turn like each other, and the only
-        # way to say that is for each class to pick its own numbers where it
-        # already picks its speed and control. ``settings.Turn`` is the default,
-        # not the authority.
-        #
-        # ``apply_horizontal_movement`` is shared by every fighter, so the
-        # brake is too -- which is exactly why the flag gates the brake and not
-        # only the hold. Gating the hold alone would leave the plant running on
-        # enemies: they would stop and push differently without ever being
-        # turned around, which is a movement change nobody asked for.
-        self.turn_profile: str = "default"
-        self.turn_enabled: bool = False
-        self.turn_delay_s: float = Turn.DELAY_S
-        self.turn_brake_control: float = Turn.BRAKE_CONTROL
-        self.turn_plant_px_s: float = Turn.PLANT_PX_S
-        self.turn_min_speed_px_s: float = Turn.MIN_SPEED_PX_S
-        # The two drawing numbers live here rather than in the settings block
-        # for the same reason as the rest: a lean that reads for the player can
-        # read wrong for a heavy enemy, and the renderer is handed a sprite, not
-        # a settings class.
-        self.turn_lead_px: float = Turn.LEAD_PX
-        self.turn_skew_px: float = Turn.SKEW_PX
-
         self.moving_platforms: Iterable[Any] = []
         # The lock that damps the run after a wall jump; only the player has one.
         self.wall_jump_lock: WallJumpLock | None = None
+
+        self._init_motion()
+        self._init_combat_state()
+        self._init_turn_tuning()
+        self._init_render_hints()
+
         self.vitals = Vitals(
             health=health,
             max_health=max_health,
@@ -338,7 +219,6 @@ class Entity(Sprite):
             spawn_pos=Vector2(spawn_pos if spawn_pos is not None else pos),
             on_death=self._handle_death,
         )
-
         if combat is not None:
             self.combat: CombatComponent | NullCombatComponent = combat
         elif attacks:
@@ -353,13 +233,106 @@ class Entity(Sprite):
 
         self.state_machine: StateMachine | NullStateMachine = NullStateMachine()
         self.facing_right: bool = True
-        # Hit-reaction rules (knockback, heavy launch, stagger) live in the
-        # ReactionComponent (Phase 3 #2), wired in like ``vitals``/``combat``.
-        # It is built after them because it drives both on reaction.
+        # Built after vitals and combat: a reaction drives both.
         self._reaction = ReactionComponent(self)
-        # Optional sprite animation (Phase 2 #1): subclasses attach an
-        # Animator; entities without one keep their flat colored surface.
+        # Subclasses attach an Animator; without one the flat surface is drawn.
         self.animator: Animator | None = None
+
+    def _init_boxes(
+        self,
+        hitbox_inflate: Sequence[float],
+        hurtbox_inflate: Sequence[float],
+        hurtbox_zones: Sequence[HurtboxZoneDef] | None,
+    ) -> None:
+        """The pushbox (public name ``hitbox``), the hurtbox zones and the sweep origins.
+
+        The zones derive from the pushbox in :meth:`sync_rects`, the single
+        derivation point; no zone config means one zone, the legacy hurtbox.
+        The sweep origins are written by :meth:`capture_sweep_origin` and reset
+        on a teleport or a rollback.
+        """
+        self._pushbox = self.rect.inflate(*hitbox_inflate)
+        self._pushbox.midbottom = self.rect.midbottom
+        self.old_hitbox = self._pushbox.copy()
+        self._hurtbox_inflate: tuple[float, float] = (
+            float(hurtbox_inflate[0]),
+            float(hurtbox_inflate[1]),
+        )
+        self._zones: tuple[HurtboxZoneDef, ...] = (
+            tuple(hurtbox_zones)
+            if hurtbox_zones is not None
+            else (HurtboxZoneDef(inflate=self._hurtbox_inflate),)
+        )
+        self._hurtbox_rects: list[pygame.FRect] = []
+        self._hurtbox_union: pygame.FRect = pygame.FRect(0, 0, 0, 0)
+        self._prev_hurtboxes: tuple[pygame.FRect, ...] = ()
+        self._prev_pushbox: pygame.FRect | None = None
+        self.contact_shape: ShapePose = ShapePose(
+            ShapeKind.AABB, self._pushbox.size, self._pushbox.center
+        )
+        self._previous_contact_shape: ShapePose | None = None
+        self.sync_rects()
+
+    def _init_motion(self) -> None:
+        """Movement and gravity tuning, per fighter, defaulting to :class:`Physics`."""
+        self.move_axis: float = 0.0
+        self.speed: float = 0.0
+        self.floor_control: float = Physics.FLOOR_CONTROL
+        self.air_control: float = Physics.AIR_CONTROL
+        self.normal_gravity: float = Physics.GRAVITY
+        self.fall_gravity: float = Physics.FALL_GRAVITY
+        self.slide_gravity: float = Physics.GRAVITY * 0.15
+        self.max_slide_speed: float = Physics.MAX_SLIDE_SPEED
+        self.max_fall_speed: float = Physics.MAX_FALL_SPEED
+        self.drag_coefficient: float = Physics.DRAG_COEFFICIENT
+        self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
+        # Gravity multiplier while juggled; fast fall from the down action.
+        self.gravity_scale: float = 1.0
+        self.fast_fall: bool = False
+        # Physics robustness: the bounded resolver flags a crush, and the
+        # pre-carry backup lets it be reverted.
+        self.crushed: bool = False
+        self.carry_backup: tuple[float, float, float, float] | None = None
+
+    def _init_combat_state(self) -> None:
+        """Juggle and off-the-ground timers, and the parry-stun counters."""
+        self.juggle_timer: float = 0.0
+        self.otg_timer: float = 0.0
+        self.parries_given: int = 0
+        self.parries_taken: int = 0
+        # Per-entity parry-stun config, copied from the config on spawn.
+        self.parry_stun_threshold: int | None = None
+        self.parry_stun_duration: float = 0.0
+
+    def _init_turn_tuning(self) -> None:
+        """The turn-around pivot: off by default, tuned per fighter.
+
+        The knobs mirror :class:`settings.Turn` as defaults, not as authority, so
+        a goblin and a boss can turn differently. The flag gates the brake as
+        well as the hold: gating the hold alone would change how enemies stop.
+        """
+        self.turn_profile: str = "default"
+        self.turn_enabled: bool = False
+        self.turn_delay_s: float = Turn.DELAY_S
+        self.turn_brake_control: float = Turn.BRAKE_CONTROL
+        self.turn_plant_px_s: float = Turn.PLANT_PX_S
+        self.turn_min_speed_px_s: float = Turn.MIN_SPEED_PX_S
+        self.turn_lead_px: float = Turn.LEAD_PX
+        self.turn_skew_px: float = Turn.SKEW_PX
+
+    def _init_render_hints(self) -> None:
+        """State the drawing reads and the simulation never does: never snapshotted.
+
+        Kept on the entity so the renderer reads a sprite and not its state
+        machine: the damage and parry flashes, the freshness of the last hit
+        reaction, the hard-landing speed the dust reads, and how far through a
+        pivot the fighter is (1 at the start, 0 when the facing lands).
+        """
+        self.flash_timer: float = 0.0
+        self.parry_flash_timer: float = 0.0
+        self.reaction_age: float = 0.0
+        self.landed_impact: float = 0.0
+        self.turn_ratio: float = 0.0
 
     def _setup_state_machine(self) -> None:
         """Initialize the state machine. Override in subclasses for specific states."""
