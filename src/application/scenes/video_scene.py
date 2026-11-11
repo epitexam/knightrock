@@ -155,7 +155,13 @@ class VideoScene(MenuPage):
     def description(self) -> str:
         """The focused row's note, in the player's words."""
         current = self.model.current_item
-        row = self._row(current.action) if current is not None else None
+        return self._note_of(current.action) if current is not None else ""
+
+    def notes(self) -> tuple[str, ...]:
+        return tuple(self._note_of(item.action) for item in self.model.items)
+
+    def _note_of(self, action: str) -> str:
+        row = self._row(action)
         return row.note(self) if row is not None and row.note is not None else ""
 
     def _on_off(self, value: bool) -> str:

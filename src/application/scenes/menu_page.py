@@ -12,7 +12,7 @@ Hooks a screen overrides:
 - :meth:`leave` -- Back, Escape or the Back row (default: pop);
 - :meth:`on_device_removed` -- a controller was unplugged (default: nothing);
 - :meth:`handle_value_keys` -- ←/→/Enter on a value row, before the list sees them;
-- :meth:`description`, :meth:`footers`, :meth:`highlighted` -- what the panel says;
+- :meth:`description`, :meth:`notes`, :meth:`footers`, :meth:`highlighted` -- what the panel says;
 - :meth:`draw_over` -- anything painted over the panel.
 """
 
@@ -96,6 +96,14 @@ class MenuPage(Scene):
 
     def description(self) -> str:
         return ""
+
+    def notes(self) -> tuple[str, ...]:
+        """Every note this page can show under its rows, whichever row is focused.
+
+        The panel is sized for all of them, so moving the focus never changes
+        its size: a row with no note must not shrink the panel under the pointer.
+        """
+        return ()
 
     def footers(self) -> tuple[str, ...]:
         if not self.footer:
@@ -248,6 +256,7 @@ class MenuPage(Scene):
             highlighted=self.highlighted(),
             footers=self.footers(),
             description=self.description(),
+            notes=self.notes(),
             scroll=self._scroll,
             scrollable=self.scrollable,
         )

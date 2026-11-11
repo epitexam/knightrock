@@ -137,6 +137,9 @@ class OptionScreen(MenuPage):
     def description(self) -> str:
         return self._description_for(self.model.current_item)
 
+    def notes(self) -> tuple[str, ...]:
+        return tuple(option.detail for option in self.options)
+
     def _description_for(self, focused: MenuItem | None) -> str:
         """The focused option's note: one line, for the row being looked at."""
         if focused is None or not focused.action.startswith("option:"):

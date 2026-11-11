@@ -237,6 +237,7 @@ class MenuView:
         highlight_color: tuple[int, int, int] = GOLD,
         footers: tuple[str, ...] = (),
         description: str = "",
+        notes: Sequence[str] = (),
         scroll: int = 0,
         scrollable: bool = False,
     ) -> pygame.Rect:
@@ -256,6 +257,7 @@ class MenuView:
             highlight_color=highlight_color,
             footers=footers,
             description=description,
+            notes=notes,
             scroll=scroll,
             scrollable=scrollable,
         )
@@ -274,6 +276,7 @@ class MenuView:
         highlight_color: tuple[int, int, int] = GOLD,
         footers: tuple[str, ...] = (),
         description: str = "",
+        notes: Sequence[str] = (),
         scroll: int = 0,
         scrollable: bool = False,
     ) -> MenuLayout:
@@ -303,7 +306,11 @@ class MenuView:
             self._surface_size = surface.get_size()
             self.reset_cache()
         top = self.scaled_top(top, surface)
-        bands = self._bands(surface, model, footers, description, scroll, scrollable)
+        # Sized for every note the page can show, not the focused row's: a band
+        # that came and went with the focus moved every row under the pointer,
+        # which then focused another row, which brought the band back.
+        all_notes = tuple(note for note in notes if note) or ((description,) if description else ())
+        bands = self._bands(surface, model, footers, bool(all_notes), scroll, scrollable)
         content = self._content(
             surface,
             title,
@@ -314,6 +321,7 @@ class MenuView:
             highlight_color,
             footers,
             description,
+            all_notes,
         )
         return self._place(surface, top, model, bands, content, highlighted)
 
@@ -322,7 +330,7 @@ class MenuView:
         surface: pygame.Surface,
         model: MenuModel,
         footers: tuple[str, ...],
-        description: str,
+        has_notes: bool,
         scroll: int,
         scrollable: bool,
     ) -> _Bands:
@@ -338,7 +346,7 @@ class MenuView:
         # Always two lines when there is a note, whatever its length, so the
         # panel's height does not follow the note from row to row.
         description_height = (
-            _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2 if description else 0
+            _line_step(footer_font) * DESCRIPTION_LINES + metrics.gap // 2 if has_notes else 0
         )
         row_budget = (
             max(metrics.px(120), surface.get_height() - metrics.margin * 2)
@@ -369,6 +377,7 @@ class MenuView:
         highlight_color: tuple[int, int, int],
         footers: tuple[str, ...],
         description: str,
+        notes: tuple[str, ...],
     ) -> _Content:
         """Every piece of text, rendered once, and the panel width that holds it.
 
@@ -422,28 +431,27 @@ class MenuView:
             (rendered.get_width() for rendered in value_surfaces if rendered), default=0
         )
         rows_width = label_width + (metrics.value_gap + value_width if value_width else 0)
-        description_surface = (
-            self._wrap_text(
-                footer_font,
-                description,
-                TEXT_MUTED,
-                min(
-                    window_text_width,
-                    max(
-                        rows_width,
-                        metrics.px(DESCRIPTION_MIN_WIDTH),
-                        # Wide enough for the note to fit on its lines.
-                        footer_font.size(description)[0] // DESCRIPTION_LINES
-                        + footer_font.size("M" * 6)[0],
-                    ),
+        # One width for every note of the page, wide enough for the longest to
+        # fit on its lines, so the panel does not change width with the focus.
+        note_width = 0
+        if notes:
+            note_width = min(
+                window_text_width,
+                max(
+                    rows_width,
+                    metrics.px(DESCRIPTION_MIN_WIDTH),
+                    max(footer_font.size(note)[0] for note in notes) // DESCRIPTION_LINES
+                    + footer_font.size("M" * 6)[0],
                 ),
             )
+        description_surface = (
+            self._wrap_text(footer_font, description, TEXT_MUTED, note_width or window_text_width)
             if description
             else None
         )
         self._description_width = description_surface.get_width() if description_surface else 0
         footer_width = max((footer.get_width() for footer in footer_surfaces), default=0)
-        content_width = max(rows_width, self._description_width, footer_width)
+        content_width = max(rows_width, note_width, self._description_width, footer_width)
         panel_width = self._panel_width(content_width + padding * 2, model, title, surface)
         self._cut_rows_to_fit(
             label_surfaces,
