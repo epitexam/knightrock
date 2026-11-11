@@ -315,6 +315,17 @@ complète, mypy et Ruff.
 | `2334a09` | README faux | Nombre de tests, couverture et fichiers mypy, mesurés. |
 | `d74353e` | Erreur de ma part | `main.py` était resté hors du commit `239906e` : de `239906e` à `d74353e`, le point d'entrée committé importait `src.core.game`, qui n'existait plus. Démarrage vérifié depuis l'état committé, puis chargement du niveau 0 et 3 s de jeu à 60 ticks/s. |
 
+**Chantiers de suite :**
+
+| Commit | Problème | Changement |
+|---|---|---|
+| `4e8122c` | Documentation dispersée | Les huit anciens audits de `notes/` sont supprimés ; ce rapport les remplace. |
+| `b379053` | Bug de menu à la souris | La bande de note des menus suivait la ligne survolée : sur « Back » (sans note), le panneau changeait de taille et la sélection oscillait avec « Reset video settings ». Même défaut dans les listes « Picture fit » et « Frame limit ». Les pages déclarent toutes leurs notes (`MenuPage.notes()`), et la mise en page ne dépend plus de la ligne survolée. Testé par `test_menu_hover_is_still.py` (vrais évènements souris, 3 tailles). |
+| `3b652b9` | B1.2 | Fenêtre, présentation et suivi des écrans sortis de `Game` dans `Screen` (`src/application/screen.py`) ; une seule cascade « nouvelle cible » au lieu de trois copies. |
+| `f796100` | B6 | Les noms d'états interrogés hors des machines à états sont dans `src/states/state_names.py` ; plus aucune chaîne littérale comparée à un nom d'état hors de `src/states`. |
+| `3c922f4` | B7 (partiel) | Une seule `collider_box()` remplace onze copies de `getattr(sprite, "hitbox", getattr(sprite, "rect", None))`. |
+| `1bdbac9` | B5 / B8 (partiel) | `Entity.__init__` passe de 174 à 53 lignes, découpé en étapes nommées ; mêmes 61 attributs, valeurs identiques. |
+
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 
 - `core` n'importe plus rien de `application` ni de `ui`. Il importait
@@ -391,20 +402,18 @@ mort, et un usage du typage dynamique qui a fini par cacher un bug de gameplay.
 
 **Dette restante, par priorité :**
 
-1. **B0 — corrigé.** Reste à ressentir en jeu (voir F).
-2. **B7 — Moyen.** `ControllerView` est supprimé. Reste un `Protocol`
-   `Collider` pour le décor dans `physics/collisions.py`, à la place des
-   `getattr(sprite, "hitbox", getattr(sprite, "rect", None))`.
-3. **B1.2 — Moyen.** Extraire l'affichage de `Game` dans un objet dédié
-   (`stage`, `presentation`, `window`, plein écran, suivi des écrans). `Game`
-   garderait `game.presentation` et `game.stage` comme attributs, donc les
-   87 références des tests resteraient valides.
-4. **B5 — Moyen.** Sortir l'état de rendu d'`Entity` (`RenderHints`) et
-   l'état de virage (`TurnTuning`). À faire avec la suite complète.
-5. **B6 — Moyen.** Prédicats d'état (`is_dashing`, `in_knockback`) au lieu
-   de comparer `current_state_name` à des chaînes.
-6. **B8 — Faible.** `Entity.__init__` (174 lignes) et `Level.__init__`
-   (110 lignes) suivront naturellement B5.
+1. **B5 — Moyen.** Sortir l'état de rendu d'`Entity` dans un composant
+   (`RenderHints`). Préalable : typer ce que le renderer et l'overlay lisent
+   sur un sprite. Aujourd'hui, ils lisent ces champs par `getattr` avec une
+   valeur par défaut : un renommage manqué dégraderait un effet visuel sans
+   aucune erreur.
+2. **B7 — Moyen.** Les groupes de sprites restent hétérogènes (tuiles,
+   plateformes, entités), d'où les `getattr` restants dans la physique, le
+   rendu et l'overlay. Un `Protocol` par rôle (collider, sprite dessiné)
+   permettrait de les typer.
+3. **Contenu.** Seul le niveau 0 est déclaré dans `levels_manifest.json` ;
+   la carte du niveau 0 contient un objet `water` sans fabrique, ignoré au
+   chargement.
 
 **Pour garder ce niveau dans le temps :**
 
