@@ -313,6 +313,7 @@ complète, mypy et Ruff.
 | `7ac5d7f` | B7 (cause racine de B0) | `ControllerView` supprimé. Les lecteurs passent par `player.jump`/`.guard`/`.dash` ; le verrou est un attribut déclaré `Entity.wall_jump_lock` ; plus aucun `Protocol` testé par `isinstance`. Les faux joueurs des tests deviennent une fabrique unique, `tests/fakes.py:player_shape`. |
 | `607f5da` | Régression de la session précédente | Le fondu entre pages (`4468f7e`) faisait échouer `test_a_halted_scene_repaints_identical_pixels`, invisible tant que les assets manquaient. Le test attend désormais la fin du fondu (`SceneManager.transitioning`) avant la même assertion exacte. |
 | `2334a09` | README faux | Nombre de tests, couverture et fichiers mypy, mesurés. |
+| `d74353e` | Erreur de ma part | `main.py` était resté hors du commit `239906e` : de `239906e` à `d74353e`, le point d'entrée committé importait `src.core.game`, qui n'existait plus. Démarrage vérifié depuis l'état committé, puis chargement du niveau 0 et 3 s de jeu à 60 ticks/s. |
 
 **Effet sur l'architecture**, mesuré par le graphe d'imports :
 
