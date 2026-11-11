@@ -642,21 +642,10 @@ class MenuView:
         color: tuple[int, int, int],
         max_width: int,
     ) -> pygame.Surface:
-        """Render ``text`` no wider than ``max_width``, cutting with a marker.
+        """Render ``text`` no wider than ``max_width``, cut with an ellipsis.
 
-        The description is free-form prose and the panel is sized to
-        everything else, so a long note is the one thing that can
-        outgrow it: measured, 190 characters render 1158px wide
-        against a 616px panel, and the centred text spills out over
-        both sides.
-
-        Cut rather than wrapped, because the band's height is
-        reserved as a single line -- wrapping would make the panel's
-        height a function of the note's length, which is exactly the
-        reflow a scrolling list is meant not to have.
-
-        Cached on the text that was drawn, so a cut note costs one
-        measurement the first time and nothing after.
+        The ellipsis is inside the measurement, so the result never overhangs.
+        Cached on the text drawn.
         """
         surface = self._render_cached(font, text, color)
         if surface.get_width() <= max_width:
@@ -752,23 +741,9 @@ class MenuView:
         self._panel_cache_size = (0, 0)
         self._text_cache.clear()
         self._text_cache_key = None
-        # Geometry from a draw whose surfaces are gone: it describes
-        # rows that no longer exist at this scale.
+        # The rects from the last draw describe rows that are gone: a click
+        # queued behind a window rebuild must hit nothing rather than the wrong
+        # row (it was measured 244px off once).
         self._scroll_rail = None
         self._scroll_thumb = None
-        # And the rows themselves, which is the half that is *clicked*. They
-        # were left in place for a long time on the reasoning that the next draw
-        # would replace them a frame later -- which is true, and is also exactly
-        # one frame in which a click is measured against rows that are no longer
-        # where anything is drawn. Measured, the last row of the video menu was
-        # 244px from where it had been drawn.
-        #
-        # The frame the *window* moved is handled by the runtime, which lays the
-        # scenes out before reading the input. This covers the case the runtime
-        # cannot see coming: a change the game performs *while* handling one
-        # input, with a second input already queued behind it in the same frame --
-        # two clicks, the first applying a video setting that rebuilds the window.
-        # An empty rectangle hit-tests to nothing, which is the safe answer: a
-        # click that does nothing is better than one that changes a setting the
-        # player did not click.
         self._item_rects = []

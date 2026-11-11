@@ -37,25 +37,9 @@ from src.ui.ui_manager import UIManager
 
 logger = logging.getLogger(__name__)
 
-#: Ceiling a vsync frame is allowed to reach, as a runaway backstop only.
-#:
-#: A working vsync presents once per refresh -- 16.7ms at 60Hz, 4.2ms at
-#: 240Hz -- and that present is the pacer, so this target must never bite. It
-#: is derived from ``Display.FPS`` rather than hardcoded so that raising the
-#: configured frame rate cannot leave the ceiling *below* it: a fixed 125 sat
-#: under a 240 target and quietly halved the frame rate the user had asked
-#: for, with vsync on and nothing on screen to say so. The multiplier is
-#: generous on purpose, clearing any real refresh rate by a wide margin, so
-#: the only thing it ever catches is a present that does not block at all.
-#:
-#: ``MAX_FRAME_LIMIT`` is deliberately *below* this number, and the video menu
-#: says so rather than hiding it: the ladder tops out at 500, so with vsync on
-#: every one of its values sits under the ceiling and is ignored. That is the
-#: contract -- the present paces, and the ladder is what runs when nothing
-#: does -- and it is why the frame-limit row reads "ignored while VSync is
-#: on" rather than promising a rate it does not deliver. Raising the ladder
-#: past this ceiling would silently re-introduce the double pacer that the
-#: comment above describes.
+#: Ceiling a vsync frame may reach, as a runaway backstop only: a working vsync
+#: paces below it. Never under ``MAX_FRAME_LIMIT``, so with vsync on the frame
+#: limit is ignored (the menu says so) rather than becoming a second pacer.
 DISPLAY_SAFETY_CEILING_FPS = max(Display.FPS * 4, MAX_FRAME_LIMIT)
 
 #: SDL environment set before ``pygame.init()``.
@@ -185,15 +169,8 @@ class Game:
 
     @property
     def ui_scale(self) -> float:
-        """The scale the interface is laid out at.
-
-        The player's own preference multiplied by the target's pixel density,
-        and the multiplication is the whole point: the layout is written once,
-        in the units of a 1152x648 picture, and drawn at whatever density the
-        window turned out to have. The alternative -- laying the interface out
-        in target pixels -- makes every font size and every padding a thing that
-        has to be right for every window, which is the mistake a fixed render
-        target was supposed to prevent.
+        """The scale the interface is laid out at: the player's preference times the
+        target's density, so the layout is written once in 1152x648 units.
         """
         if self.presentation is None:
             return self.settings.ui_scale
@@ -261,16 +238,9 @@ class Game:
         )
 
     def _asked_window_size(self) -> tuple[int, int] | None:
-        """The size to ask for, and the fallback that follows the player.
-
-        Two readings, in order:
-
-        - a size the player chose is asked for as it stands;
-        - otherwise, a rebuild keeps the size the window currently has, which is
-          what makes a drag survive the next display setting rather than being
-          undone by it;
-        - a launch opens at the size the last session closed at, and the very
-          first one has nothing and gets ``opening_size``.
+        """The size to ask for: the chosen size; else, on a rebuild, the size the
+        window has now (so a drag survives a settings change); else the size the
+        last session closed at; else ``opening_size``.
         """
         if self.settings.window_size is not None:
             return self.settings.window_size
@@ -292,26 +262,11 @@ class Game:
         return self.window.topology(refresh=refresh)
 
     def monitor(self) -> Monitor:
-        """The panel the game is built on: the one holding the window.
+        """The panel the game is built on: the one holding the window (Rule W).
 
-        One rule decides it (**Rule W**), and it is the only anchor this game has
-        left. Everything the menu derives from a panel -- the size ladder, the
-        clamp a rebuild asks with, the centre a new window is placed at -- used to
-        read the *primary*, and that answer is only right where one answer cannot
-        be: measured on a real two-panel desk, every ``set_mode`` that replaces
-        the window runs :meth:`Stage._place`, which re-centred on the primary -- so
-        a size change teleported the window back to a panel the player had moved
-        off, and then the size list opened describing the very panel the game had
-        just left. Three readers, three answers, and the one the player sees was
-        the least reliable of them.
-
-        Reading the panel the *window* is on closes that triangle: the window did
-        the moving, so the window is the record of where it is, and every reader
-        that anchored on the primary was anchoring on a default instead of a fact.
-        The fallbacks are the only two states where no fact exists -- a first
-        launch, which has no window yet, and a degraded topology, which knows no
-        geometry -- and both fall back to the primary, which is the best answer a
-        machine with one report can give.
+        The size list, the clamp and the centring all read it, so they describe the
+        screen the player is looking at. Before there is a window, or without
+        geometry, it is the primary.
         """
         held = self.window_monitor()
         if held is not None:
@@ -319,19 +274,9 @@ class Game:
         return self.topology().primary
 
     def effective_fit(self) -> FitPolicy:
-        """The picture's fit, as the runtime draws it and the menu reports it.
+        """The fit in force, as the presentation draws it and the menu reports it.
 
-        The single definition of the policy in force, and it is read by the
-        presentation -- which draws with it -- and by the video menu's read-out,
-        which describes it. Reading :attr:`settings.fit` directly was the
-        bug: two readers that looked identical and were not, so with
-        ``pixel_perfect`` set and no remembered policy the settings answers
-        "bars" while the game draws at whole pixels, and the menu describes a
-        target size nothing is drawn at.
-
-        The rule lives in :func:`src.core.display.letterbox.effective_fit`,
-        which is a pure function of the two stored names, so the migration
-        case is its own decision and not a property of this runtime.
+        Not ``settings.fit`` alone: see :func:`src.core.display.letterbox.effective_fit`.
         """
         return letterbox.effective_fit(self.settings.fit, self.settings.pixel_perfect)
 
@@ -423,23 +368,12 @@ class Game:
         return monitor_at(self.topology(), (int(x), int(y)), size)
 
     def apply_settings(self, settings: UserSettings) -> None:
-        """Apply new settings, doing only what the change actually touches.
+        """Apply new settings, doing only what the change touches.
 
-        A chosen window size or a vsync flag changes the window, and therefore the
-        picture, because the picture *is* the window's size. ``pixel_perfect``
-        changes the letterbox, and therefore the target, without the window
-        moving at all. A frame limit touches neither. The interface scale goes
-        last, and always as the player's preference times the density -- which
-        is why it is not a number read straight out of the settings.
-
-        The file is written *last*, for the same reason the stage's rebuild is
-        atomic: a ``set_mode`` that fails between the write and the call would
-        leave the file describing a window that was never there, with every menu
-        row agreeing with it -- the state the settings screen visualised in
-        reverse, where the game claims a setting the player never got. Which is
-        also why the in-memory state is rolled back on the way out: a raise
-        unwound bindings and scales that no window reapplied, and leaving those
-        set is a file-without-a-window by the frame after.
+        Size, vsync and fullscreen change the window; the fit changes the target; a
+        frame limit touches neither; the interface scale follows. The file is
+        written last and the in-memory state rolled back on failure, so a refused
+        ``set_mode`` never leaves a file describing a window that does not exist.
         """
         previous = self.settings
         self.settings = settings

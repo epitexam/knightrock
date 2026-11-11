@@ -70,27 +70,13 @@ class GridRow:
 
     label: str
     cells: tuple[GridCell | None, ...] = ()
+    #: Whether a click *acts* rather than only focusing; the screen decides
+    #: what acting means.
     activatable: bool = True
-    """Whether clicking this row *acts*, as opposed to only moving the focus.
-
-    The panel does not interpret it: it reports it in :class:`CellHit` and lets
-    the screen decide. A toggle or a Back row is ``activatable``; a row whose
-    click would open a capture it could never fill is not.
-    """
+    #: A choice of the screen (invert Y, reset, back) rather than a value. Option
+    #: rows open a group with a section gap above them, so they do not read as
+    #: more things to assign.
     option: bool = False
-    """This row is an *option* of the screen, not one of its values.
-
-    A mapping screen is two kinds of thing in one table: the rows you assign a
-    key to, and the rows you pick -- invert the Y axis, reset, go back. Painted
-    the same way, the second kind reads as the first, so a player counts
-    "Reset to defaults" among the things to be remapped and looks for a key to
-    press on it.
-
-    So an option row opens a group: a :attr:`~Metrics.section_gap` above it, and
-    its own text in the muted colour. The gap is the part that matters -- it is
-    what makes the block read as a block, from the top of the table, without a
-    caption.
-    """
 
 
 @dataclass(frozen=True)
@@ -98,14 +84,9 @@ class CellHit:
     row: int
     column: int
     rect: pygame.Rect
+    #: Whether a click here acts rather than only focusing. Every drawn cell is
+    #: hit-testable either way, so hovering never skips a row.
     activatable: bool = True
-    """Whether a click here acts, as opposed to only focusing.
-
-    Non-activatable rows (a toggle, Reset, Back) must still be hoverable,
-    otherwise the pointer focus silently skips them: ``cell_at`` is what the
-    screen queries on hover, and a row missing from ``_cells`` can never
-    receive the focus highlight.
-    """
 
 
 class GridView:
@@ -280,18 +261,11 @@ class GridView:
         column_headers: tuple[str, ...],
         selected_column: int = -1,
     ) -> int:
-        """The panel, its title, the subtitle and the column titles.
+        """The panel, its title, the subtitle and the column titles; returns the first row's y.
 
-        The focused column's title is lit and the others are faint, which says
-        which device a press would assign without a line of its own.
-
-        Returns the y the first row starts at. The column titles are drawn here
-        rather than where they are painted, and *this* is why: the layout
-        reserved the height of that band, and the drawing has to consume it or
-        the first row lands on the titles -- two texts at the same y, which
-        reads as "the title is glued to the column" rather than as the bug it
-        is. A layout that reserves space it does not spend is invisible in
-        every screenshot and obvious in two numbers.
+        The focused column's title is lit and the others faint. The header band
+        the layout reserved is consumed here, so the first row never lands on
+        the titles.
         """
         assert self._fonts is not None
         title_font, item_font, small_font = self._fonts
@@ -338,19 +312,10 @@ class GridView:
         footers: tuple[str, ...],
         reserve: tuple[str, ...] = (),
     ) -> Layout:
-        """Panel, label gutter, cell columns, and the header band's top and height.
+        """Panel, label gutter, cell columns, and the header band.
 
-        The order matters and it is the whole of the responsiveness: the *text*
-        decides how much room it needs, so it is measured first, at a scale it
-        has been given the chance to give up. Only then is the panel sized around
-        it -- driven by the content, not by a 900px desktop cap that ignored both
-        the window and the text inside it.
-
-        The row height is then the height of the text plus its padding. The old
-        version took ``min(34, ...)`` of that and got 34 while the text was 49:
-        a clickable band 44% the size of the label it labelled, so clicking the
-        row you read selected the row above. A row may be tight; it may not be
-        shorter than its own glyphs.
+        The text scale is settled first, then the panel is sized around the
+        measured text. A row is never shorter than its own glyphs.
         """
         metrics = self._metrics
         margin = metrics.margin
@@ -428,25 +393,13 @@ class GridView:
         rows: Sequence[GridRow] = (),
         reserve: tuple[str, ...] = (),
     ) -> None:
-        """The largest text scale whose panel fits in ``budget`` and in the
-        window's width, found by measuring.
+        """The largest text scale whose panel fits the window, found by measuring.
 
-        The width counts too: the pixel font is wide, and a table that only
-        shrank for height ran off the sides of a narrow window at a large scale.
-        Its floor is lower, :data:`WIDTH_FLOOR`: a column cut off at the edge is
-        worse than the font at the size it was drawn for.
-
-        Not computed from the design constants: the font sizes snap to the pixel
-        font's grid, so the height moves in steps. The height is *measured* with
-        the real fonts and the scale corrected by the ratio, at
-        most three times -- after the first, the answer is within a pixel or two,
-        because font height is very nearly linear in size.
-
-        The floor is :data:`MIN_TEXT_RATIO`: a scale the window cannot afford at
-        any legible size keeps the legible size and overflows, which is the trade
-        this makes on purpose. A label nobody can read is not an option, and a
-        window smaller than the interface at the player's own chosen scale is
-        theirs to resolve.
+        Height is held to ``budget`` with a floor of :data:`MIN_TEXT_RATIO`;
+        width is held to the window with the lower :data:`WIDTH_FLOOR`, because
+        a column cut off at the edge is worse than the font at its native 8px.
+        Font sizes snap to the pixel grid, so the scale is corrected by the
+        measured ratio a few times.
         """
         metrics = self._metrics
         floor = metrics.scale * MIN_TEXT_RATIO
@@ -514,13 +467,9 @@ class GridView:
 
     @staticmethod
     def _section_gap_count(rows: Sequence[GridRow]) -> int:
-        """How many section gaps ``rows`` asks for.
+        """How many section gaps ``rows`` asks for: one per group of option rows.
 
-        One per *group* of option rows, not one per option row: a block of three
-        choices is separated from the values above it once, and keeps the list's
-        own row pitch inside itself. Counted from the rows rather than kept as a
-        number the caller passes, because ``draw`` and ``_layout`` must spend the
-        same gaps or the panel is sized for a list that is not the one it paints.
+        Counted from the rows so ``draw`` and ``_layout`` spend the same gaps.
         """
         return sum(
             1
@@ -530,14 +479,10 @@ class GridView:
 
     @staticmethod
     def _section_gap(content: Metrics, row_height: int) -> int:
-        """The air that opens a group, and never less than a row.
+        """The air that opens a group, never less than a row.
 
-        ``content.section_gap`` is a multiple of the *text* scale, and a list
-        that does not fit shrinks that scale while the font -- and therefore the
-        row -- stays legible. On a small window the token ends up below the row
-        it was meant to separate, and the block of options is then not set apart
-        at all: the gap is the only thing marking the group, so it is floored on
-        the row.
+        The gap is the only thing marking the group, and the token shrinks with
+        the text while the row does not.
         """
         return max(content.section_gap, row_height)
 
@@ -603,12 +548,8 @@ class GridView:
     ) -> tuple[int, int, int]:
         """The gutter, the widest cell, and the panel width that holds them.
 
-        ``capped=False`` leaves the gutter as wide as its longest label: the
-        width the table needs to show everything, which the text scale is
-        settled against.
-
-        Measured, not assumed: a fixed 34% gutter leaves a short label a hole the
-        size of a long one, and the panel stops being as wide as its own content.
+        Measured from the text. ``capped=False`` leaves the gutter as wide as
+        its longest label, the width the text scale is settled against.
         """
         columns_count = max(1, len(column_headers))
         label_width = max((item_font.size(row.label)[0] for row in rows), default=0)
@@ -641,13 +582,10 @@ class GridView:
         return max(self._metrics.px(200), surface.get_width() - margin * 2)
 
     def _ensure_fonts(self) -> None:
-        """The three faces at the scale the list can afford, rebuilt only on change.
+        """The three faces at the settled text scale, rebuilt only when it changes.
 
-        The rendered-text cache is keyed on ``id(font)``, so rebuilding these
-        every frame -- which a layout pass that wants a fresh font will happily
-        do -- would miss the whole cache and re-render thirty strings a frame.
-        The key also means a stale entry is worse than a missing one, so the
-        cache is emptied at the only moment the fonts change: a resize.
+        The text cache is keyed on ``id(font)``, so it is emptied when the
+        fonts are replaced.
         """
         if self._fonts is not None and self._font_key == self._text_scale:
             return
@@ -697,20 +635,10 @@ class GridView:
     def _fit(
         font: pygame.font.Font, text: str, max_width: int, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        """Render ``text`` truncated to ``max_width`` with a trailing ellipsis.
+        """Render ``text`` cut to ``max_width``, with a trailing ellipsis.
 
-        The longest fitting prefix is found by binary search: a prefix's width
-        grows monotonically with its length, and the previous
-        shrink-one-character-at-a-time loop re-measured the whole remaining
-        string on every iteration, which is quadratic and cost 0.83ms for a
-        single long label.
-
-        **The marker is inside the measurement.** The search used to measure the
-        bare prefix, drop a character to leave room, and append an ellipsis it
-        had never measured -- so a label could come back *wider* than the cell it
-        was asked to fit in, measured: 44px against a 40px budget. It only
-        looked right on a machine whose font made the marker narrower than a
-        character; the fallback font is wider, and the label spills.
+        The longest fitting prefix is found by binary search, measuring the
+        prefix *with* the ellipsis so the result never overhangs.
         """
         # No antialiasing: a pixel font blurred at its edges is not one.
         if not text or font.size(text)[0] <= max_width:

@@ -140,16 +140,10 @@ class MenuModel:
         return None
 
     def move_page(self, direction: int, page: int) -> str | None:
-        """Move by a page, which is how many rows the window shows.
+        """Move by a page: as many rows as the window shows.
 
-        A page is the window's, not a fixed count, because the
-        point of the key is "where I am looking now": a smaller
-        window means a smaller page, and the player's eyes never
-        have to leave the panel to know where they landed.
-
-        The row a page lands on may be disabled, and the nearest
-        enabled row the way the page was going is the one a page
-        means -- the same reading :meth:`move` gives one step.
+        A disabled landing row gives way to the nearest enabled one in the same
+        direction, as :meth:`move` does.
         """
         if not self._items:
             return None
@@ -165,15 +159,7 @@ class MenuModel:
         return None
 
     def jump(self, direction: int) -> str | None:
-        """To the first or last row: the whole list in one press.
-
-        ``direction`` is the way the list runs, as in
-        :meth:`move`: down (positive) is the last row. The
-        scan starts at the edge asked for and works inward,
-        so a disabled edge row lands on the first row that
-        can be, rather than refusing because the edge
-        itself cannot.
-        """
+        """To the first (``direction`` < 0) or last row, skipping disabled edge rows."""
         if not self._items:
             return None
         order = range(len(self._items) - 1, -1, -1) if direction > 0 else range(len(self._items))
@@ -184,36 +170,21 @@ class MenuModel:
         return None
 
     def _select(self, index: int) -> None:
-        """Move the cursor, and take the selection from the pointer.
+        """Move the cursor and take the selection from the pointer.
 
-        The keyboard has taken the selection from the pointer, so
-        the pointer stops being treated as the thing that moved it.
-
-        Without this the two fight and the pointer loses badly. Hover
-        reports a change only when it lands on a row other than the
-        one it last landed on, so after one arrow key the selection
-        was somewhere the cursor was not, and every subsequent mouse
-        move inside the *original* row reported "no change" -- the
-        keyboard's row stayed drawn as selected, the cursor pointed
-        at another, and nothing moved until the pointer crossed a line.
-        Measured: hover row 1, press DOWN, wiggle one pixel on row 1,
-        and the selection stayed on row 2 while the cursor sat on row 1.
+        Otherwise, after an arrow key, small pointer moves inside the row it was
+        already on report no change, and the pointer cannot take the selection
+        back until it crosses into another row.
         """
         self._current = index
         self._pointer_row = None
 
     def hover(self, position: tuple[int, int], rects: Sequence[pygame.Rect]) -> str | None:
-        """Focus the item under the pointer; report only when the focus moved.
+        """Focus the row under the pointer; report only when the focus moved.
 
-        A pointer is routed on every mouse sample, so returning ``HOVER`` for
-        all of them describes the *motion*, not the *interaction* — and the
-        motion is not something a screen, or anything listening to it, can act
-        on. Returning the move only when the pointer lands on a row it was not
-        on makes this the exact counterpart of :meth:`move`, which already
-        returns None when the selection is blocked.
-
-        Leaving the rows reports nothing and forgets the position, so coming
-        back onto one reports again.
+        The pointer is sampled constantly, so this reports a row reached, not
+        motion. Leaving the rows reports nothing and forgets the row, so coming
+        back reports again.
         """
         self._hovered = -1
         row: int | None = None

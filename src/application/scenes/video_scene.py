@@ -1,24 +1,11 @@
 """Video settings: the window's size, and how the picture is presented.
 
-Sole owner of the display settings. They used to be duplicated in the Options
-hub, which let the player change the same value from two places; the Options
-screen is now navigation only.
-
-This screen is a hub. Every setting with more than a handful of values opens a
-list (:class:`~src.application.scenes.option_screen.OptionScreen`), because
-cycling is only a reasonable control for two to four values. The lists themselves
-live in :mod:`src.application.scenes.video_options`, so what a setting *offers*
-is decided without a screen in the way.
-
-Left as direct ←/→ cycling, on purpose, is the one row that really is two states:
-VSync. The display mode and the chosen screen lived here too, and both are gone.
-The game is a window, so there is one set of flags; the player chooses its size
-and the window manager owns where it sits.
-
-Still no resolution *catalogue*. A hardcoded list of window sizes is a claim
-about the player's monitor the game cannot check -- offering 2560x1440 to a
-1366x768 laptop is what that costs. The sizes offered are derived from the panel
-in force and filtered to what it can hold, which is what keeps them checkable.
+The only owner of the display settings; Options is navigation only. The rows
+are the ``ROWS`` table. A setting with many values opens a list
+(:class:`~src.application.scenes.option_screen.OptionScreen`) built in
+:mod:`src.application.scenes.video_options`; a two-state setting toggles with
+←/→. The sizes offered come from the panel the window is on, never from a
+fixed catalogue.
 """
 
 from __future__ import annotations
@@ -47,14 +34,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from src.core.game import Game
 
-#: What a submenu builder hands back: a title, the options, which one is in
-#: force, and what to do when one is picked. A tuple rather than four
-#: arguments because these are read positionally at the call site and a named
-#: structure here would need a class for one use.
-#:
-#: Generic in the value type, because each builder knows exactly what its options
-#: carry -- a ``FitPolicy``, an ``int | None`` -- and an alias that erased that
-#: would force every caller to cast what it just built.
+#: What a submenu builder returns: a title, the options, the value in force,
+#: and what to call with the one picked.
 Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 
 
@@ -221,25 +202,10 @@ class VideoScene(MenuPage):
         return (round(DEFAULT_FRAMING.width), round(DEFAULT_FRAMING.height))
 
     def _window_label(self) -> str:
-        """What the game derived from the window, so the player can see it.
+        """The debug read-out: target size, density, and whether there are bars.
 
-        The information the resolution row used to withhold by showing a number
-        the game was not using. Three facts, all derived and none stored: how big
-        the picture is, how many pixels a world unit gets there, and whether
-        anything around it is a bar.
-
-        Derived through :func:`picture` **with the policy in force** -- the one
-        the game draws with (:meth:`Game.effective_fit`), not the one the settings
-        file holds. The two differ for exactly one player, and it is the one this
-        row exists for: a file migrated from v3 with whole-pixel art on and no
-        ``fit`` key of its own has ``settings.fit`` answering "bars" while the
-        game is drawing at whole pixels, so reading the setting here would report
-        a target size nothing is drawn at.
-
-        The presentation is not asked, and that is deliberate rather than a
-        shortcut: it computes this from the window size and the same policy, so
-        the two agree by construction, and a pure function of two settings can be
-        read without a window existing.
+        Computed with the fit in force (:meth:`Game.effective_fit`), not the saved
+        one, the same way the presentation computes it.
         """
         fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.effective_fit())
         density = density_for(fitted.target.size, DEFAULT_FRAMING)
@@ -251,12 +217,10 @@ class VideoScene(MenuPage):
         return self._on_off(self.game.settings.vsync)
 
     def _vsync_note(self) -> str:
-        """What VSync does here, and of which screen's rate.
+        """What VSync does here, at which screen's rate.
 
-        The game sends the flag and cannot ask the driver whether it was
-        honoured -- pygame-ce's ``is_vsync()`` returns the flag it was given -- so
-        the note says "requested", never "on" as a fact. The rate is the screen
-        the window is on, and is left out when nobody can say which one that is.
+        The driver cannot be asked whether it honoured the flag, so the note says
+        "requested". The rate is left out when the window's screen is unknown.
         """
         if not self.game.settings.vsync:
             return t("note.vsync.off")
@@ -272,16 +236,9 @@ class VideoScene(MenuPage):
         return t("note.frame_limit.vsync" if self.game.settings.vsync else "note.frame_limit")
 
     def _screen_refresh_rate(self) -> int:
-        """The refresh rate of the screen the window is *on*, or 0 when nobody can say.
+        """The refresh rate of the screen the window is on, or 0 when unknown.
 
-        It used to be the **primary** display's rate, which is a claim about a
-        screen the window may not be on: on a two-panel desk the player reading
-        180Hz on the VSync row while the window sat on the 60Hz panel was reading
-        the wrong number, and one they had no way to tell apart from the right one.
-
-        So it reads the rate off the monitor that holds the window, and says
-        nothing at all when that monitor cannot be established -- a row with no
-        screen in it is a missing hint, where a wrong rate is a fact.
+        Not the primary's: on a two-screen desk that is the wrong number.
         """
         monitor = self.game.window_monitor()
         return monitor.refresh_rate if monitor is not None else 0
@@ -361,16 +318,7 @@ class VideoScene(MenuPage):
         )
 
     def _submenu_size(self) -> Submenu:
-        """The list behind the window-size row.
-
-        The window is the only thing the display settings produce now, so this
-        list is the only display choice on the screen: how big to open. The panel
-        the sizes are measured against is the one :meth:`Game.monitor` anchors
-        (Rule W) -- the panel the *window* is on, primary until there is a window
-        -- because a list derived from a panel the window is not on would describe
-        a screen the player is not looking at, which is exactly the mismatch the
-        read-out bug made.
-        """
+        """The list behind the window-size row, for the panel the window is on."""
         monitor = self.game.monitor()
         return (
             t("title.window_size"),
@@ -382,13 +330,7 @@ class VideoScene(MenuPage):
         )
 
     def _apply_window_size(self, size: tuple[int, int] | None) -> None:
-        """Ask for a window size, or forget the preference and follow the drag.
-
-        ``None`` clears the remembered size rather than storing one, which is
-        what makes the window follow whatever the player drags it to next time --
-        the honest answer for a setting whose whole point is that the window
-        manager owns it.
-        """
+        """Ask for a window size, or ``None`` to forget it and keep the dragged size."""
         self._apply(self.game.settings.with_video(window_size=size))
 
     def _submenu_frame_limit(self) -> Submenu:
@@ -417,17 +359,10 @@ class VideoScene(MenuPage):
         )
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
-        """←/→ adjust the focused row's value, and Enter does the same.
+        """←/→ and Enter act on the focused value row.
 
-        Every value row acts on all three, so a gamepad never lands on a row it
-        cannot use.
-
-        A row that is *not* usable -- the read-out of the window -- swallows the
-        press instead of passing it on. The alternative was worse than a dead
-        key: the menu model answers an action on a disabled row by activating
-        the nearest enabled one, so Enter on the read-out line silently changed
-        the setting on the row next to it. A row that cannot be used has to do
-        nothing, visibly.
+        On a disabled row they are swallowed: passed on, the model would act on the
+        nearest enabled row instead.
         """
         current = self.model.current_item
         if current is None:
@@ -452,24 +387,8 @@ class VideoScene(MenuPage):
         return False
 
     def _cycle_bool(self, action: InputAction, name: str, *, click: bool = False) -> None:
-        # A left/right press sets the value rather than toggling it: toggling
-        # makes ← and → behave identically, which reads as one of them broken.
-        #
-        # A click is not that. It is one discrete gesture with no direction to
-        # read a value out of, so on a row that already reads "on" it has to
-        # flip. Setting it instead made the row answer half the time, which is
-        # the same as a row that reads as dead -- and the two together are what
-        # made the screen look broken rather than merely terse.
-        #
-        # **Confirm is a click.** It is the same discrete gesture with no
-        # direction, which makes it the case above and not the one below, and it
-        # used to be handled as ← anyway: it fell through to the same
-        # `action is UI_RIGHT` test, so every confirm set the row *off* and none
-        # could ever be turned on. Whole-pixel art and VSync were the two rows
-        # it hit, and with a gamepad -- where confirm is how you press a button,
-        # not how you step a value -- both were dead in the only direction a
-        # player would try. Arrow keys worked, so the rows looked alive to a
-        # test written with arrow keys and dead to a player holding one.
+        # ← sets off and → sets on, so the two keys differ. A click or Enter has
+        # no direction and flips: treated as ←, Enter could never turn a row on.
         current = getattr(self.game.settings, name)
         if click or action is InputAction.UI_CONFIRM:
             value = not current
@@ -478,24 +397,11 @@ class VideoScene(MenuPage):
         self._apply(self.game.settings.with_video(**{name: value}))
 
     def _reset(self) -> None:
-        """Put every video setting back to its default, and only those.
+        """Put the video settings back to their defaults, and only those.
 
-        The bindings are carried over untouched: this is the video screen, and
-        a player who resets it should not lose the controls they just rebound.
-
-        ``fit`` and ``pixel_perfect`` go together, as they do in
-        :meth:`_apply_fit`: those two names have described one setting since the
-        whole-pixel row was folded into the fit picker, and resetting one and
-        leaving the other would leave a file where the flag said bars and the
-        policy said integer. Reset is when that pairing is easiest to forget,
-        which is why the pairing is stated here and not only there.
-
-        ``window_size`` is *not* reset, on purpose, and the difference is what
-        the two kinds of preference are. Fit, vsync and the scales are choices
-        about the picture; the window's size is where the player put the window,
-        which they chose by dragging, not by selecting -- resetting it would
-        undo their last gesture with a menu press. The row is named for what it
-        resets, and this is why the list above it is the list it is.
+        The bindings are kept, and so is the window size: it is where the player
+        dragged the window, not a picture choice. ``fit`` and ``pixel_perfect``
+        reset together, as they are one setting.
         """
         defaults = UserSettings()
         self._apply(

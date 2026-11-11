@@ -1,16 +1,7 @@
-"""The lists a settings screen opens: what they list, and what they say about it.
+"""The lists a settings screen opens, and what each entry says about itself.
 
-Each function here answers one question -- *what are the choices for this
-setting, and what does each one mean?* -- and hands back a list of
-:class:`~src.application.scenes.option_screen.Option`. Keeping them apart from
-both the screen and the picker is what lets the same option list be drawn, tested
-and reasoned about without a display attached, and it is why adding a setting is
-one function rather than a screen.
-
-Every entry carries a consequence, not a name. "Zoom" on its own is a word; "Zoom
--- fills the window, cropping the edges" tells a player what will happen before
-it happens, which is the difference between picking on purpose and picking
-whatever came first.
+Each function returns :class:`~src.application.scenes.option_screen.Option`
+entries with a note on the consequence, testable without a display.
 """
 
 from __future__ import annotations
@@ -30,9 +21,7 @@ from src.core.display.monitors import (
 )
 from src.ui.text import t
 
-#: Every ladder value gets a note where one is useful, and a bare value where one
-#: is not. An entry whose description is only restating its own label ("uncapped"
-#: -> "no limit") is noise: it makes every list longer and says nothing.
+#: A note where it says something the value does not.
 _FRAME_LIMIT_NOTES: dict[int | None, str] = {
     None: "as fast as the machine draws",
     30: "saves power, and a lot of it",
@@ -54,24 +43,10 @@ _PANEL_SCALE_NOTES: dict[float, str] = {
 
 
 def fit_options(window: tuple[int, int]) -> tuple[Option, ...]:
-    """The three fit policies, each saying what it does to the picture.
+    """The fit policies, each with what it does to the picture.
 
-    Whole-pixel art used to be a separate row on the parent screen, and it was
-    the *same setting* as the integer policy here. With zoom selected it was a
-    dead row: the label flipped, the stored flag changed, and the picture was
-    byte-identical. Folding it in here removes the contradiction instead of
-    labelling it -- and the note on ``integer`` is where a player actually reads
-    what "whole-pixel" means.
-
-    ``integer`` is offered **disabled** when it would change nothing, and there
-    are two classes of window where it does not. A window too small to hold a
-    whole multiple has nothing to snap to. A window *already* sized to a whole
-    multiple is a subtler case: bars and integer hand back the same rectangle,
-    so selecting it is a press that moves nothing -- and a row that flips its
-    label while the screen sits still is indistinguishable from a dead one,
-    which is the failure this screen has produced twice. Both are refused with
-    their reason, which is the difference between an unavailable choice and one
-    that quietly does nothing.
+    ``integer`` is disabled, with its reason, where it would change nothing: a
+    window too small for a whole multiple, or one that already is one.
     """
     options = []
     for policy in (FitPolicy.AUTO, FitPolicy.BARS, FitPolicy.INTEGER, FitPolicy.ZOOM):
@@ -89,17 +64,10 @@ def fit_options(window: tuple[int, int]) -> tuple[Option, ...]:
 
 
 def _largest_fitting(monitor: Monitor) -> tuple[int, int]:
-    """The largest window that fits: what "as large as fits" has to mean here.
+    """The largest window offered: :func:`opening_size`, clamped to the usable area.
 
-    :func:`opening_size` is the game's own answer, and it is normally *below*
-    the usable area by the title bar -- that margin is the entire reason it
-    exists. It can also overshoot: on a panel below the interface floor whose
-    report the guard refuses, it answers ``FALLBACK_WINDOW``, a size chosen for
-    use on a panel that gave nothing to derive from -- bigger than the panel,
-    and unbeholdable as a list entry. Clamping per axis here is what keeps the
-    head of the ladder honest on any panel: on a normal desk the margin decides
-    (the clamps do not bite), and on a report bad enough to answer a fallback,
-    the ladder tops out at the panel rather than at the fiction.
+    The clamp only matters when the panel's report was bad enough to answer
+    ``FALLBACK_WINDOW``.
     """
     opening = opening_size(monitor)
     usable = monitor.usable_size
@@ -111,21 +79,15 @@ def window_size_options(
     current: tuple[int, int] | None,
     granted: tuple[int, int],
 ) -> tuple[Option, ...]:
-    """Sizes worth offering a window, on this panel. Five at most, largest first.
+    """Sizes worth offering a window on this panel, largest first.
 
-    Not the driver's mode list: a window is not driven at a mode, and that list
-    ran to 26 entries down to 320x240. Offered instead:
+    - "free size" (``None``): the window keeps what it is dragged to;
+    - the largest window that fits with its title bar (the opening size);
+    - up to four sizes under it: the framing's whole multiples and the usual
+      16:9 sizes.
 
-    - "free size" (``None``): no stored size, the window keeps what it is dragged to;
-    - the largest window that fits with its title bar -- :func:`opening_size`,
-      the size the game opens at. The usable area itself is not offered: the
-      window manager grants it short by the frame;
-    - up to four sizes under it: the framing's whole multiples (the only sizes
-      the integer fit fills) and the usual 16:9 sizes.
-
-    ``current`` is the remembered preference. If it is not in the list it is
-    added: choosable when the panel can hold it, disabled and explained when it
-    cannot (a 4K window arriving at a laptop).
+    ``current``, if not in the list, is added: choosable when it fits, disabled
+    and explained when it does not.
     """
     usable = monitor.usable_size
     widest = _largest_fitting(monitor)

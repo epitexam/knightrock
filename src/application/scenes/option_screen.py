@@ -1,22 +1,10 @@
 """A screen that lists options and applies one on selection.
 
-Every settings choice with more than a handful of values gets one of these
-rather than a ←/→ cycle: a cycle hides every value but the current one, and
-needs a press per step to reach the one wanted. A list shows every option, marks
-the one in force, and takes one press.
-
-**Apply on selection, not on highlight.** Moving the highlight through the list
-changes nothing; picking an entry applies it and closes. The alternative --
-applying as the highlight moves -- looks better and is a trap: scrolling through
-the ladder would rebuild the window on every step, and a player browsing would
-leave the game in whatever they happened to scroll past. Highlight is a cursor,
-selection is a choice, and only the second one is a decision the player made.
-
-One class rather than one per setting, deliberately. Four bespoke pickers is four
-places for the keyboard, the mouse and the gamepad to disagree about what Enter
-does, and that class of bug has already cost this menu twice -- six of nine rows
-answered a click and none of them changed anything. Every picker here gets the
-same behaviour because there is only one implementation of it.
+Used for every setting with more than a handful of values: a list shows all of
+them, marks the one in force, and takes one press. Moving the highlight changes
+nothing; picking applies and closes -- applying on highlight would rebuild the
+window at every step of a scroll. One class for every picker, so keyboard,
+mouse and pad cannot disagree about what Enter does.
 """
 
 from __future__ import annotations
@@ -35,18 +23,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Option:
-    """One choice, with enough context to choose it without guessing.
+    """One choice: a label, the value it applies, and a note on what it does.
 
-    ``detail`` is what makes the list usable rather than merely navigable: two
-    fit policies are words, and "fills the window, cropping the edges" is the
-    difference between a player picking one on purpose and picking whichever came
-    first.
-
-    ``value`` is compared against ``selected`` to draw the check. It is compared
-    by equality rather than by index, so a list can be filtered or reordered
-    without the mark drifting onto the wrong entry -- the failure a fixed index
-    has whenever the source list is rebuilt, which is every frame the topology
-    changes.
+    The mark is placed by comparing ``value`` with the selected value, not by
+    index, so a rebuilt or filtered list keeps it on the right entry.
     """
 
     label: str
@@ -55,12 +35,7 @@ class Option:
     enabled: bool = True
 
     def matches(self, selected: Any) -> bool:
-        """Whether this is the option in force.
-
-        ``is`` for the sentinels and ``==`` for the rest, because a tuple of
-        ints compares fine while a freshly built enum member does not always
-        identify by value across a rebuild.
-        """
+        """Whether this is the option in force: ``is`` first, then ``==``."""
         if self.value is selected:
             return True
         try:
@@ -76,14 +51,9 @@ SELECTED_MARK = "•"
 class OptionScreen(MenuPage):
     """A list of options; picking one applies it and returns.
 
-    ``apply`` is called with the chosen option's ``value``. It is expected to do
-    the work immediately -- that is the contract that makes apply-on-selection
-    honest -- and this screen does not wait for it or check its result. A setting
-    that cannot be honoured says so in its own row, which is a better place for
-    that than a modal would be.
-
-    ``on_back`` is called before the screen closes, by a choice or by Back, so
-    the opener can rebuild its rows and keep its focus on the row that opened it.
+    ``apply`` gets the chosen ``value`` and is expected to act at once.
+    ``on_back`` runs before the screen closes, by a choice or by Back, so the
+    opener can rebuild its rows and keep its focus.
     """
 
     scrollable = True
@@ -112,12 +82,7 @@ class OptionScreen(MenuPage):
     # ------------------------------------------------------------------ rows
 
     def _items(self) -> tuple[MenuItem, ...]:
-        """The options as rows, plus a Back row.
-
-        The mark is a leading :data:`SELECTED_MARK` on the label rather than a column, because
-        the value column is right-aligned and a right-aligned checkmark reads as
-        the end of a long value at a glance.
-        """
+        """The options as rows, plus Back; the one in force carries :data:`SELECTED_MARK`."""
         rows = [
             MenuItem(
                 f"option:{index}",
