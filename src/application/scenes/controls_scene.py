@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 import pygame
 
 from src.application.scene import Scene
-from src.core.input.event_router import RoutedInput
+from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import (
     GameplayBindings,
@@ -26,6 +26,8 @@ from src.ui.controls_view import (
     RowKind,
 )
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
+from src.ui.menu_view import MenuView
+from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
     from src.core.game import Game
@@ -35,6 +37,7 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class RebindSpec:
+    #: A key of :mod:`src.ui.text`.
     label: str
     action: InputAction | None
     pair: bool = False
@@ -43,36 +46,40 @@ class RebindSpec:
 
 class ControlsScene(Scene):
     covers_panels_below = True
+    #: Where the panel sits, in design pixels of a 648-tall picture. Higher than
+    #: a menu page's: the table is tall, and a panel that does not fit shrinks
+    #: its text before it moves up.
+    TOP = 80
     MENU_SECTION: str = "menu"
     GAMEPLAY_SECTION: str = "gameplay"
     _key_names: ClassVar[dict[int, str]] = {}
     SECTIONS: dict[str, tuple[RebindSpec, ...]] = {
         MENU_SECTION: (
-            RebindSpec("Move up", InputAction.UI_UP),
-            RebindSpec("Move down", InputAction.UI_DOWN),
-            RebindSpec("Move left", InputAction.UI_LEFT),
-            RebindSpec("Move right", InputAction.UI_RIGHT),
-            RebindSpec("Confirm", InputAction.UI_CONFIRM),
-            RebindSpec("Back", InputAction.UI_BACK),
-            RebindSpec("Cancel", InputAction.UI_CANCEL),
-            RebindSpec("Page up", InputAction.UI_PAGE_UP),
-            RebindSpec("Page down", InputAction.UI_PAGE_DOWN),
-            RebindSpec("First row", InputAction.UI_HOME),
-            RebindSpec("Last row", InputAction.UI_END),
-            RebindSpec("New game shortcut", None),
+            RebindSpec("controls.move_up", InputAction.UI_UP),
+            RebindSpec("controls.move_down", InputAction.UI_DOWN),
+            RebindSpec("controls.move_left", InputAction.UI_LEFT),
+            RebindSpec("controls.move_right", InputAction.UI_RIGHT),
+            RebindSpec("controls.confirm", InputAction.UI_CONFIRM),
+            RebindSpec("controls.back", InputAction.UI_BACK),
+            RebindSpec("controls.cancel", InputAction.UI_CANCEL),
+            RebindSpec("controls.page_up", InputAction.UI_PAGE_UP),
+            RebindSpec("controls.page_down", InputAction.UI_PAGE_DOWN),
+            RebindSpec("controls.first_row", InputAction.UI_HOME),
+            RebindSpec("controls.last_row", InputAction.UI_END),
+            RebindSpec("controls.new_game", None),
         ),
         GAMEPLAY_SECTION: (
-            RebindSpec("Move left", InputAction.MOVE_X, side=0),
-            RebindSpec("Move right", InputAction.MOVE_X, side=1),
-            RebindSpec("Crouch / fast fall", InputAction.MOVE_DOWN),
-            RebindSpec("Jump", InputAction.JUMP),
-            RebindSpec("Dash", InputAction.DASH),
-            RebindSpec("Attack 1", InputAction.ATTACK_1),
-            RebindSpec("Attack 2", InputAction.ATTACK_2),
-            RebindSpec("Attack 3", InputAction.ATTACK_3),
-            RebindSpec("Attack 4", InputAction.ATTACK_4),
-            RebindSpec("Guard", InputAction.GUARD),
-            RebindSpec("Reset position", InputAction.RESET),
+            RebindSpec("controls.move_left", InputAction.MOVE_X, side=0),
+            RebindSpec("controls.move_right", InputAction.MOVE_X, side=1),
+            RebindSpec("controls.crouch", InputAction.MOVE_DOWN),
+            RebindSpec("controls.jump", InputAction.JUMP),
+            RebindSpec("controls.dash", InputAction.DASH),
+            RebindSpec("controls.attack_1", InputAction.ATTACK_1),
+            RebindSpec("controls.attack_2", InputAction.ATTACK_2),
+            RebindSpec("controls.attack_3", InputAction.ATTACK_3),
+            RebindSpec("controls.attack_4", InputAction.ATTACK_4),
+            RebindSpec("controls.guard", InputAction.GUARD),
+            RebindSpec("controls.reset_position", InputAction.RESET),
         ),
     }
 
@@ -83,14 +90,14 @@ class ControlsScene(Scene):
         self.section = section
         self.specs = self.SECTIONS[section]
         items = tuple(
-            MenuItem(f"rebind_{index}", spec.label) for index, spec in enumerate(self.specs)
+            MenuItem(f"rebind_{index}", t(spec.label)) for index, spec in enumerate(self.specs)
         )
         if section == self.MENU_SECTION:
             # The invert-Y toggle is a real navigation row, not decoration:
             # it must be reachable with ↑↓ and activatable, like Reset/Back.
-            items += (MenuItem("invert_y", "Invert stick Y"),)
+            items += (MenuItem("invert_y", t("controls.invert_y")),)
         self.model = MenuModel(
-            items + (MenuItem("reset", "Reset to defaults"), MenuItem("back", "Back"))
+            items + (MenuItem("reset", t("controls.reset")), MenuItem("back", t("row.back")))
         )
         self.view: ControlsView = ControlsView(game.ui_scale)
         self.selected_column = KEYBOARD_COLUMN
@@ -107,6 +114,8 @@ class ControlsScene(Scene):
         self._rows_cache: list[BindingRow] | None = None
         self._rows_bindings: object = None
         self._rows_capture: tuple[int, int] | None = None
+        #: The device the player last used, which the help line names keys for.
+        self._device = InputDevice.KEYBOARD
 
     @property
     def capturing(self) -> bool:
@@ -141,7 +150,7 @@ class ControlsScene(Scene):
     def _build_rows(self) -> list[BindingRow]:
         result = [
             BindingRow(
-                spec.label,
+                t(spec.label),
                 self._keyboard_cell(index, spec),
                 self._gamepad_cell(index, spec),
             )
@@ -152,8 +161,8 @@ class ControlsScene(Scene):
             # it lives here next to the bindings it affects. It is a toggle,
             # not a remappable slot: no cell to capture.
             result.append(self._invert_y_row())
-        result.append(BindingRow("Reset to defaults", kind=RowKind.OPTION))
-        result.append(BindingRow("Back", kind=RowKind.OPTION))
+        result.append(BindingRow(t("controls.reset"), kind=RowKind.OPTION))
+        result.append(BindingRow(t("row.back"), kind=RowKind.OPTION))
         return result
 
     def _invert_y_row(self) -> BindingRow:
@@ -166,8 +175,8 @@ class ControlsScene(Scene):
         """
         inverted = self.game.settings.bindings.menu.invert_y
         return BindingRow(
-            "Invert stick Y",
-            gamepad=BindingCell("inverted" if inverted else "normal"),
+            t("controls.invert_y"),
+            gamepad=BindingCell(t("controls.inverted" if inverted else "controls.normal")),
             kind=RowKind.OPTION,
         )
 
@@ -179,7 +188,7 @@ class ControlsScene(Scene):
         true for every row and painted the whole column with the prompt.
         """
         if self._capture == (row, KEYBOARD_COLUMN):
-            return BindingCell("Press a key…", True)
+            return BindingCell(t("controls.press_key"), True)
         value: object
         if spec.action is None:
             value = self.game.settings.bindings.menu.new_game_key
@@ -191,16 +200,17 @@ class ControlsScene(Scene):
         if spec.action is not None and self.section == self.MENU_SECTION:
             mouse_button = self.game.settings.bindings.menu.mouse_buttons.get(spec.action)
             if mouse_button is not None:
-                key_text = f"{key_text} / mouse {mouse_button}"
+                key_text = t("controls.with_mouse", keys=key_text, button=mouse_button)
         return BindingCell(key_text, muted=value is None)
 
     def _gamepad_cell(self, row: int, spec: RebindSpec) -> BindingCell:
         """The gamepad cell of ``spec``; same per-row rule as the keyboard one."""
         if self._capture == (row, GAMEPAD_COLUMN):
-            return BindingCell("Press button / axis / d-pad…", True)
+            return BindingCell(t("controls.press_pad"), True)
         if spec.action is None:
-            return BindingCell("not available", muted=True)
-        return BindingCell(self._gamepad_text(spec))
+            return BindingCell(t("controls.keyboard_only"), muted=True)
+        text = self._gamepad_text(spec)
+        return BindingCell(text, muted=text == t("controls.unbound"))
 
     def _context(self) -> GameplayBindings | MenuBindings:
         bindings = self.game.settings.bindings
@@ -208,21 +218,27 @@ class ControlsScene(Scene):
 
     def _gamepad_text(self, spec: RebindSpec) -> str:
         if spec.action is None:
-            return "unbound"
+            return t("controls.unbound")
         context = self._context()
         parts: list[str] = []
         button = context.gamepad_buttons.get(spec.action)
         if spec.side is not None and isinstance(button, tuple):
             button = button[spec.side]
         if button is not None:
-            parts.append(f"button {self._index_text(button)}")
+            parts.append(t("pad.button", index=self._index_text(button)))
         axis = context.gamepad_axes.get(spec.action)
         if axis is not None:
-            parts.append(f"axis {axis}")
+            parts.append(t("pad.axis", index=axis))
         hat = context.gamepad_hats.get(spec.action)
         if hat is not None:
-            parts.append(f"hat {self._index_text(hat)}")
-        return " / ".join(parts) or "unbound"
+            parts.append(self._hat_text(hat))
+        return " / ".join(parts) or t("controls.unbound")
+
+    @staticmethod
+    def _hat_text(hat: object) -> str:
+        """A pad has one d-pad as a rule, so its number is said only past the first."""
+        index = ControlsScene._index_text(hat)
+        return t("pad.hat") if index == "0" else t("pad.hat.numbered", index=index)
 
     def update(self, delta_time: float) -> None:
         return None
@@ -231,6 +247,8 @@ class ControlsScene(Scene):
         if self._ignore_routed:
             self._ignore_routed = False
             return None
+        if routed_input.device is not None and routed_input.variant != "device_removed":
+            self._device = routed_input.device
         if self._capture is not None:
             return None
         # This screen moves the cursor through ``MenuModel.move`` directly
@@ -348,7 +366,7 @@ class ControlsScene(Scene):
             invert_y=not self.game.settings.bindings.menu.invert_y,
         )
         self._apply_bindings(replace(self.game.settings.bindings, menu=menu))
-        self._status = "Stick Y inverted" if menu.invert_y else "Stick Y normal"
+        self._status = t("status.inverted" if menu.invert_y else "status.normal")
 
     def _start_capture(self, row: int, column: int) -> str | None:
         """Arm a capture; opening one is a confirmation, not a navigation."""
@@ -356,13 +374,13 @@ class ControlsScene(Scene):
             return None
         self._capture = (row, column)
         self._pending.clear()
-        self._status = "Esc / right click cancels; Delete unbinds keyboard"
+        self._status = t("status.capture", back=self._keys()["back"])
         return MenuAction.ACTIVATE
 
     def _cancel_capture(self) -> None:
         self._capture = None
         self._pending.clear()
-        self._status = "Capture cancelled"
+        self._status = t("status.cancelled")
 
     def _is_cancel_button(self, button: int) -> bool:
         """Whether ``button`` is the pad's cancel, i.e. the way out of a capture.
@@ -422,7 +440,7 @@ class ControlsScene(Scene):
             return
         spec = self.specs[capture[0]]
         if spec.action is None:
-            self._status = "This shortcut is keyboard-only"
+            self._status = t("status.keyboard_only")
             return
         self._apply_mouse_button(spec, button)
 
@@ -458,7 +476,7 @@ class ControlsScene(Scene):
             capture = self._capture
         spec = self.specs[capture[0]]
         if spec.action is None:
-            self._status = "This shortcut is keyboard-only"
+            self._status = t("status.keyboard_only")
             return
         if spec.side is not None:
             self._ignore_routed = True
@@ -497,7 +515,7 @@ class ControlsScene(Scene):
         else:
             bindings = replace(bindings, menu=defaults.menu)
         self._apply_bindings(bindings)
-        self._status = "Defaults restored"
+        self._status = t("status.defaults")
 
     def _clear_keyboard(self, spec: RebindSpec) -> None:
         if spec.action is None:
@@ -505,12 +523,12 @@ class ControlsScene(Scene):
             self._apply_bindings(replace(self.game.settings.bindings, menu=menu))
         else:
             self._apply_keyboard_map(spec, None)
-        self._finish(f"{spec.label} keyboard unbound")
+        self._finish(t("status.unbound", label=t(spec.label)))
 
     def _apply_keyboard(self, spec: RebindSpec, keys: tuple[int, ...]) -> None:
         self._apply_keyboard_map(spec, keys[0] if len(keys) == 1 else keys)
         self._ignore_routed = self.game.input_router.would_route_key(keys[-1])
-        self._finish(f"{spec.label} → {self._key_text(keys)}")
+        self._bound(spec, self._key_text(keys))
 
     def _apply_keyboard_map(self, spec: RebindSpec, value: int | tuple[int, ...] | None) -> None:
         if spec.action is None:
@@ -571,7 +589,7 @@ class ControlsScene(Scene):
         current[spec.action] = button
         self._replace_context(mouse_buttons=current)
         self._ignore_routed = True
-        self._finish(f"{spec.label} → mouse button {button}")
+        self._bound(spec, t("controls.mouse_button", button=button))
 
     def _apply_buttons(self, spec: RebindSpec, buttons: tuple[int, ...]) -> None:
         if spec.action is None:
@@ -594,7 +612,7 @@ class ControlsScene(Scene):
                     InputAction.UI_BACK,
                     InputAction.UI_CANCEL,
                 ):
-                    self._status = "B is reserved for Back; rebind Back first"
+                    self._status = t("status.back_reserved")
                     return
                 current.pop(action)
         current[spec.action] = value
@@ -607,7 +625,7 @@ class ControlsScene(Scene):
         else:
             self._replace_context(gamepad_buttons=current)
         self._ignore_routed = self.game.input_router.would_route_button(buttons[-1])
-        self._finish(f"{spec.label} → button {self._index_text(value)}")
+        self._bound(spec, t("pad.button", index=self._index_text(value)))
 
     def _apply_axis(self, spec: RebindSpec, axis: int) -> None:
         if spec.action is None:
@@ -625,7 +643,7 @@ class ControlsScene(Scene):
             gamepad_buttons=self._without_action(context.gamepad_buttons, spec.action),
             gamepad_hats=self._without_action(context.gamepad_hats, spec.action),
         )
-        self._finish(f"{spec.label} → axis {axis}")
+        self._bound(spec, t("pad.axis", index=axis))
 
     def _apply_hat(self, spec: RebindSpec, hat: int) -> None:
         if spec.action is None:
@@ -639,7 +657,7 @@ class ControlsScene(Scene):
             gamepad_buttons=self._without_action(context.gamepad_buttons, spec.action),
             gamepad_axes=self._without_action(context.gamepad_axes, spec.action),
         )
-        self._finish(f"{spec.label} → hat {self._index_text(hat)}")
+        self._bound(spec, self._hat_text(hat))
 
     @staticmethod
     def _paired_actions(action: InputAction) -> tuple[InputAction, ...]:
@@ -669,6 +687,9 @@ class ControlsScene(Scene):
     def _apply_bindings(self, bindings: Any) -> None:
         self.game.apply_bindings(bindings)
 
+    def _bound(self, spec: RebindSpec, binding: str) -> None:
+        self._finish(t("status.bound", label=t(spec.label), binding=binding))
+
     def _finish(self, message: str) -> None:
         self._capture = None
         self._pending.clear()
@@ -685,7 +706,7 @@ class ControlsScene(Scene):
     @staticmethod
     def _key_text(value: object) -> str:
         if value is None:
-            return "unbound"
+            return t("controls.unbound")
         codes = ControlsScene._codes(value)
         names = (ControlsScene._key_name(code) for code in codes)
         return " / ".join(names)
@@ -707,20 +728,24 @@ class ControlsScene(Scene):
     def _index_text(value: object) -> str:
         return "/".join(str(code) for code in ControlsScene._codes(value))
 
+    def _keys(self) -> dict[str, str]:
+        return DEVICE_KEYS["gamepad" if self._device is InputDevice.GAMEPAD else "keyboard"]
+
     def draw(self, surface: pygame.Surface) -> None:
         self.view.set_scale(self.game.ui_scale)
-        title = "MENU CONTROLS" if self.section == self.MENU_SECTION else "GAMEPLAY CONTROLS"
-        footers: tuple[str, ...] = ("↑↓ row · ←→ column · Enter capture · Esc/B back",)
+        gameplay = self.section == self.GAMEPLAY_SECTION
+        footers: tuple[str, ...] = (t("footer.controls", **self._keys()),)
         if self._status:
             footers = (self._status, *footers)
+        # No subtitle: the focused column's title is lit instead.
         self.view.draw(
             surface,
-            title,
-            "Keyboard / mouse" if self.selected_column == KEYBOARD_COLUMN else "Gamepad",
+            t("title.gameplay_controls" if gameplay else "title.menu_controls"),
+            "",
             self.rows,
             selected_row=self.model.current_index,
             selected_column=self.selected_column,
-            top=80,
+            top=MenuView.scaled_top(self.TOP, surface),
             footers=footers,
         )
 

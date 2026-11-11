@@ -78,7 +78,7 @@ def test_controls_exposes_keyboard_and_gamepad_columns() -> None:
     ]
     assert controls.rows[0].keyboard is not None
     assert controls.rows[0].gamepad is not None
-    assert controls.view.COLUMN_HEADERS == ("KEYBOARD / MOUSE", "GAMEPAD")
+    assert controls.view.column_headers == ("KEYBOARD / MOUSE", "GAMEPAD")
 
 
 def test_gamepad_button_capture_is_independent_from_keyboard() -> None:
@@ -209,7 +209,7 @@ def test_menu_controls_expose_the_stick_y_inversion() -> None:
     # to: a state under KEYBOARD / MOUSE reads as a key bound to a switch.
     assert row.keyboard is None
     assert row.gamepad is not None
-    assert row.gamepad.text == "inverted"
+    assert row.gamepad.text == "Inverted"
     assert row.rebindable is False, "it is a toggle, not a remappable slot"
 
     controls.handle_routed(_confirm())
@@ -257,21 +257,21 @@ def test_the_options_at_the_bottom_are_options_and_not_binding_slots() -> None:
     # The toggle is the one option with a value, and it is the stick's.
     menu_rows = ControlsScene(_game(), ControlsScene.MENU_SECTION).rows
     toggle = next(row for row in menu_rows if row.label == "Invert stick Y")
-    assert toggle.gamepad is not None and toggle.gamepad.text == "normal"
+    assert toggle.gamepad is not None and toggle.gamepad.text == "Normal"
 
 
 def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
-    """Invert Y, Reset and Back are all selectable, so all get a focus ring."""
+    """Invert Y, Reset and Back are all selectable, so the bar lands on each.
+
+    An option row is one target, so the bar covers the whole row -- sampled at
+    its right end, past any text.
+    """
+    from src.ui.styles import SELECTION_BG
+
     pygame.font.init()
     game = _game()
     controls = ControlsScene(game, ControlsScene.MENU_SECTION)
     surface = pygame.Surface((1024, 720))
-    calls: list[tuple[int, int, int, int, int]] = []
-    original_rect = pygame.draw.rect
-
-    def record_rect(target, color, rect, width=0):
-        calls.append((*rect, width))
-        return original_rect(target, color, rect, width)
 
     _move_to(controls, "reset")
     reset_index = controls.model.current_index
@@ -279,22 +279,19 @@ def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
     invert_index = controls.model.current_index
     back_index = controls.model.current_index + 1
 
-    pygame.draw.rect = record_rect
-    try:
-        for selected in (invert_index, reset_index, back_index):
-            before = len(calls)
-            controls.view.draw(
-                surface,
-                "MENU CONTROLS",
-                "Keyboard / mouse",
-                controls.rows,
-                selected_row=selected,
-                selected_column=0,
-                top=80,
-            )
-            assert any(width == 1 for *_, width in calls[before:]), selected
-    finally:
-        pygame.draw.rect = original_rect
+    for selected in (invert_index, reset_index, back_index):
+        surface.fill((0, 0, 0))
+        controls.view.draw(
+            surface,
+            "MENU CONTROLS",
+            "",
+            controls.rows,
+            selected_row=selected,
+            selected_column=0,
+            top=80,
+        )
+        row = controls.view.row_rects[selected]
+        assert surface.get_at((row.right - 2, row.centery))[:3] == SELECTION_BG, selected
 
 
 def test_video_menu_cycles_every_value_row_and_resets() -> None:
@@ -592,7 +589,7 @@ def test_keyboard_capture_prompt_replaces_only_the_armed_cell() -> None:
     assert keyboard[2] == "LEFT"
 
     gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
-    assert "Press button / axis / d-pad…" not in gamepad, "the other column is untouched"
+    assert "Press a button…" not in gamepad, "the other column is untouched"
 
 
 def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
@@ -603,9 +600,9 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
     controls.handle_routed(_confirm())
 
     gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
-    assert gamepad.count("Press button / axis / d-pad…") == 1
-    assert gamepad[0] == "Press button / axis / d-pad…"
-    assert gamepad[1] == "axis 1 / hat 0"
+    assert gamepad.count("Press a button…") == 1
+    assert gamepad[0] == "Press a button…"
+    assert gamepad[1] == "Axis 1 / D-pad"
 
     keyboard = [row.keyboard.text for row in controls.rows if row.keyboard is not None]
     assert "Press a key…" not in keyboard
@@ -719,3 +716,21 @@ def test_repeated_presses_walk_one_row_at_a_time() -> None:
         )
 
     assert controls.model.current_index == 3
+
+
+def test_the_panel_keeps_its_width_when_a_capture_starts() -> None:
+    """The prompt's width is reserved, so the panel does not widen under the player."""
+    pygame.font.init()
+    controls = ControlsScene(_game(), ControlsScene.GAMEPLAY_SECTION)
+    surface = pygame.Surface((1152, 648))
+
+    def width() -> int:
+        return controls.view.draw(
+            surface, "", "", controls.rows, selected_row=0, selected_column=1, top=80
+        ).width
+
+    before = width()
+    controls._select_column(1)
+    controls._activate()
+    assert controls.capturing
+    assert width() == before

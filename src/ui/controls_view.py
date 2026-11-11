@@ -1,7 +1,6 @@
 """Two-column keyboard/mouse and gamepad bindings view.
 
-The panel itself belongs to :class:`~src.ui.grid_view.GridView`, which the
-resolution picker shares; what stays here is this screen's own vocabulary: its
+The panel itself belongs to :class:`~src.ui.grid_view.GridView`; what stays here is this screen's own vocabulary: its
 two columns, its row kinds and its binding cells.
 """
 
@@ -14,6 +13,7 @@ from enum import StrEnum
 import pygame
 
 from src.ui.grid_view import CellHit, GridCell, GridRow, GridView
+from src.ui.text import t
 
 __all__ = [
     "GAMEPAD_COLUMN",
@@ -78,17 +78,22 @@ class BindingRow:
 class ControlsView:
     """The bindings panel: a label gutter and one cell per input device.
 
-    Built on :class:`~src.ui.grid_view.GridView` rather than being one: the
-    panel is shared with the resolution picker, and this class is the adapter
-    that turns binding rows into grid rows and names the two columns.
+    Built on :class:`~src.ui.grid_view.GridView` rather than being one: this
+    class is the adapter that turns binding rows into grid rows and names the
+    two columns.
     """
 
-    COLUMN_HEADERS = ("KEYBOARD / MOUSE", "GAMEPAD")
+    #: Keys of :mod:`src.ui.text`, read at draw time so a language switch shows.
+    COLUMN_HEADER_KEYS = ("controls.column.keyboard", "controls.column.gamepad")
 
     def __init__(self, scale: float = 1.0) -> None:
         self._grid = GridView(scale)
         self._rows_source: Sequence[BindingRow] | None = None
         self._grid_rows: list[GridRow] = []
+
+    @property
+    def column_headers(self) -> tuple[str, ...]:
+        return tuple(t(key) for key in self.COLUMN_HEADER_KEYS)
 
     @property
     def row_rects(self) -> list[pygame.Rect]:
@@ -119,12 +124,13 @@ class ControlsView:
             surface,
             title,
             subtitle,
-            self.COLUMN_HEADERS,
+            self.column_headers,
             self._project(rows),
             selected_row=selected_row,
             selected_column=selected_column,
             top=top,
             footers=footers,
+            reserve=(t("controls.press_key"), t("controls.press_pad")),
         )
 
     def _project(self, rows: Sequence[BindingRow]) -> list[GridRow]:

@@ -20,6 +20,7 @@ from pathlib import Path
 import pygame
 import pytest
 
+from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
@@ -55,8 +56,14 @@ def _fit_list(game: Game) -> None:
     scene._open("fit")
 
 
+def _controls(game: Game) -> None:
+    game.scene_manager.switch(MenuScene(game))
+    game.scene_manager.push(ControlsScene(game, ControlsScene.MENU_SECTION))
+
+
 SCREENS: dict[str, Callable[[Game], None]] = {
     "main_menu": _main_menu,
+    "controls": _controls,
     "video": _video,
     "fit_list": _fit_list,
 }
