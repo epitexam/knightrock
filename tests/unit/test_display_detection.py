@@ -285,3 +285,18 @@ def test_the_topology_falls_back_to_pygame_when_the_probe_is_silent(monkeypatch)
     assert [monitor.size for monitor in desk.monitors] == [(2560, 1440), (1920, 1080)]
     assert [monitor.refresh_rate for monitor in desk.monitors] == [180, 144]
     assert not desk.named
+
+
+def test_a_monitor_carries_no_scale() -> None:
+    """It used to, read from the panel's physical DPI and used by nothing.
+
+    That number is not the desktop's scale setting -- measured 1.135 on a 27"
+    1440p panel and 0.975 on a 24" 1080p one, both at 100% -- so the first
+    reader to trust it would have resized the interface on machines that need
+    no resizing. A scale comes back when something reads the real one.
+    """
+    import dataclasses
+
+    names = {field.name for field in dataclasses.fields(monitors.Monitor)}
+
+    assert "scale" not in names

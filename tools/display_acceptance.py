@@ -78,7 +78,7 @@ def _report(game: Game) -> None:
         print(
             f"    [{monitor.index}] {monitor.name or 'unnamed'!r} "
             f"{monitor.size[0]}x{monitor.size[1]} at ({left}, {top}) "
-            f"usable {monitor.usable_size} scale {monitor.scale}"
+            f"usable {monitor.usable_size} at {monitor.refresh_rate or "?"} Hz"
         )
     held = game.window_monitor()
     on = f"[{held.index}] {held.name or 'unnamed'}" if held is not None else "unknown"

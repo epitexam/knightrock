@@ -28,8 +28,7 @@ class Monitor:
     """One display.
 
     ``bounds`` is the panel in virtual-desktop coordinates (``x``/``y`` may be
-    negative); ``usable`` is bounds less taskbars and the like. ``scale`` is the
-    compositor's scale factor, 1.0 when it reports none.
+    negative); ``usable`` is bounds less taskbars and the like.
     """
 
     index: int
@@ -37,7 +36,6 @@ class Monitor:
     bounds: tuple[int, int, int, int]
     usable: tuple[int, int, int, int]
     refresh_rate: int = 0
-    scale: float = 1.0
 
     @classmethod
     def from_geometry(cls, geometry: DisplayGeometry) -> Monitor:
@@ -47,7 +45,6 @@ class Monitor:
             bounds=geometry.bounds,
             usable=geometry.usable,
             refresh_rate=geometry.refresh_rate,
-            scale=geometry.scale,
         )
 
     @property

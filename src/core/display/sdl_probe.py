@@ -45,15 +45,6 @@ logger = logging.getLogger(__name__)
 #: bindings below are not merely missing there -- they would be wrong.
 SDL_MAJOR = 2
 
-#: DPI the platform calls 100%, which is the divisor for a display scale.
-BASE_DPI = 96.0
-
-#: Refused as implausible rather than trusted as a scale factor. SDL reports
-#: garbage on some drivers instead of failing, and a scale of 0 or 300 would
-#: either collapse the interface or multiply it into nothing.
-MIN_PLAUSIBLE_DPI = 24.0
-MAX_PLAUSIBLE_DPI = 960.0
-
 
 class _SdlRect(ctypes.Structure):
     _fields_ = (
@@ -92,7 +83,6 @@ class DisplayGeometry:
     bounds: tuple[int, int, int, int]
     usable: tuple[int, int, int, int]
     refresh_rate: int
-    scale: float
 
     @property
     def size(self) -> tuple[int, int]:
@@ -121,15 +111,6 @@ class _Bindings:
         lib.SDL_GetDisplayName.argtypes = [ctypes.c_int]
         lib.SDL_GetDesktopDisplayMode.restype = ctypes.POINTER(_SdlDisplayMode)
         lib.SDL_GetDesktopDisplayMode.argtypes = [ctypes.c_int, ctypes.POINTER(_SdlDisplayMode)]
-        # SDL_GetDisplayDPI reports 0 on success and -1 when the platform has no
-        # answer, which on SDL 2 includes a Wayland session.
-        lib.SDL_GetDisplayDPI.restype = ctypes.c_int
-        lib.SDL_GetDisplayDPI.argtypes = [
-            ctypes.c_int,
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float),
-        ]
         self.lib = lib
 
     def display_geometry(self, index: int) -> DisplayGeometry | None:
@@ -158,25 +139,7 @@ class _Bindings:
             bounds=(bounds.x, bounds.y, bounds.w, bounds.h),
             usable=(usable.x, usable.y, usable.w, usable.h),
             refresh_rate=refresh,
-            scale=self._scale(index),
         )
-
-    def _scale(self, index: int) -> float:
-        """The desktop scale the compositor reports, or 1.0 when it reports none.
-
-        A scale is a *system* preference, so it is worth reading when it exists
-        and must never be guessed: SDL answering -1 on a platform that has no
-        notion of it means 1.0, and inventing a number there would resize the
-        interface on machines that need no resizing.
-        """
-        ddpi, hdpi, vdpi = ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
-        if self.lib.SDL_GetDisplayDPI(
-            index, ctypes.byref(ddpi), ctypes.byref(hdpi), ctypes.byref(vdpi)
-        ):
-            return 1.0
-        if not MIN_PLAUSIBLE_DPI <= hdpi.value <= MAX_PLAUSIBLE_DPI:
-            return 1.0
-        return round(hdpi.value / BASE_DPI, 3)
 
 
 def _decode(raw: bytes | None) -> str:
