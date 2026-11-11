@@ -16,7 +16,7 @@ import pygame
 import pytest
 
 from src.core.paths import PROJECT_ROOT
-from src.ui.fonts import ui_font, ui_fonts
+from src.ui.fonts import menu_font
 
 FONTS_DIR = PROJECT_ROOT / "assets" / "fonts"
 
@@ -30,20 +30,13 @@ def _headless_display() -> None:
 
 
 def test_the_font_it_loads_is_the_one_that_is_shipped() -> None:
-    for bold in (False, True):
-        name = "LiberationMono-Bold.ttf" if bold else "LiberationMono-Regular.ttf"
-        shipped = FONTS_DIR / name
-        assert shipped.is_file(), f"{name} is not in the repository"
-        assert (
-            ui_font(24, bold=bold).get_height() == pygame.font.Font(str(shipped), 24).get_height()
-        )
+    shipped = FONTS_DIR / "PressStart2P-Regular.ttf"
+    assert shipped.is_file(), f"{shipped.name} is not in the repository"
+    assert menu_font(16).get_height() == pygame.font.Font(str(shipped), 16).get_height()
 
 
 def test_a_pixel_size_is_built_once_and_shared() -> None:
-    first = ui_fonts(18)
-    assert first is ui_fonts(18)
-    assert first[0] is ui_font(18)
-    assert first[1] is ui_font(18, bold=True)
+    assert menu_font(16) is menu_font(16)
 
 
 def test_the_interface_does_not_resolve_a_font_by_system_name() -> None:
@@ -53,6 +46,6 @@ def test_the_interface_does_not_resolve_a_font_by_system_name() -> None:
             continue
         source = path.read_text(encoding="utf-8")
         assert "SysFont(" not in source, (
-            f"{path.name} resolves a font by system name; use src.ui.fonts.ui_font, "
+            f"{path.name} resolves a font by system name; use src.ui.fonts.menu_font, "
             "which answers from the bundled file"
         )
