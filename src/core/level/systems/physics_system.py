@@ -4,7 +4,6 @@ Extracted from ``Level.update`` (audit §4: ``core/level/systems/physics_system`
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from src.core.fx import (
     spawn_dash_dust,
@@ -20,6 +19,7 @@ from src.core.fx import (
 )
 from src.core.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
 from src.core.sprite_groups import SpriteGroups
+from src.entities.entity import Entity
 from src.physics.movement import apply_moving_platform
 from src.states import state_names
 
@@ -45,41 +45,34 @@ class _StepClock:
     foot: bool = False
 
 
-def _in_dash_penalty(entity: object) -> bool:
+def _in_dash_penalty(entity: Entity) -> bool:
     """Whether the entity drained every dash charge and sits out the penalty."""
-    dash = getattr(entity, "dash", None)
-    return (
-        dash is not None
-        and getattr(dash, "charges", 1) <= 0
-        and getattr(dash, "penalty_timer", 0.0) > 0.0
-    )
+    dash = entity.dash
+    return dash is not None and dash.charges <= 0 and dash.penalty_timer > 0.0
 
 
-def _is_dizzy(entity: object) -> bool:
+def _is_dizzy(entity: Entity) -> bool:
     """Whether the entity is currently in a dizzy state."""
-    state_machine = getattr(entity, "state_machine", None)
-    current = getattr(state_machine, "current_state_name", None)
+    current = entity.state_machine.current_state_name
     return current is not None and state_names.DIZZY in current
 
 
-def _is_dashing(entity: object) -> bool:
+def _is_dashing(entity: Entity) -> bool:
     """Whether the entity is currently in a dash state."""
-    state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == state_names.DASH
+    return entity.state_machine.current_state_name == state_names.DASH
 
 
-def _is_grounded(entity: object) -> bool:
+def _is_grounded(entity: Entity) -> bool:
     """Whether the entity is standing on a floor."""
-    surfaces = getattr(entity, "on_surface", None) or {}
-    return bool(surfaces.get("floor", False))
+    return bool(entity.on_surface.get("floor", False))
 
 
-def _ground_speed(entity: object) -> float:
+def _ground_speed(entity: Entity) -> float:
     """How fast the entity is rolling along the ground, in px/s."""
-    return abs(float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0))
+    return abs(float(entity.velocity.x))
 
 
-def _footstep_tier(entity: object) -> FootstepTier | None:
+def _footstep_tier(entity: Entity) -> FootstepTier | None:
     """The dust this entity's ground tier gets, or ``None`` if it gets none.
 
     Three outcomes and all three are real. A tier in ``FootstepDust.TIER`` gets
@@ -101,9 +94,8 @@ def _footstep_tier(entity: object) -> FootstepTier | None:
     none of that, and the flicker at this cadence is a scuff blinking under a
     fighter who is barely moving.
     """
-    state_machine = getattr(entity, "state_machine", None)
-    name = getattr(state_machine, "current_state_name", None)
-    if not isinstance(name, str):
+    name = entity.state_machine.current_state_name
+    if name is None:
         return FootstepDust.DEFAULT_TIER
     if name in FootstepDust.SILENT:
         return None
@@ -185,7 +177,7 @@ class PhysicsSystem:
 
     def _process_entity_fx(
         self,
-        entity: Any,
+        entity: Entity,
         delta_time: float,
         sweating_ids: set[int],
         dashing_ids: set[int],
@@ -265,7 +257,7 @@ class PhysicsSystem:
             if entity_id in stepping_ids
         }
 
-    def _tick_dash_dust(self, entity: object, delta_time: float) -> None:
+    def _tick_dash_dust(self, entity: Entity, delta_time: float) -> None:
         """Emit the dash trail: a burst on the first tick, puffs after that.
 
         Which tick is the first is not asked for and needs no flag. A timer
@@ -301,7 +293,7 @@ class PhysicsSystem:
             spawn_dash_grains(self.groups.fx_sprites, entity, burst=first)
         self._dash_timers[entity_id] = DashDust.SPAWN_EVERY if timer <= 0.0 else timer
 
-    def _tick_footsteps(self, entity: object, delta_time: float, tier: FootstepTier) -> None:
+    def _tick_footsteps(self, entity: Entity, delta_time: float, tier: FootstepTier) -> None:
         """Throw a scuff every ``tier.step_distance`` pixels of ground covered.
 
         The tier is resolved by the caller and arrives here already decided, so
@@ -348,7 +340,7 @@ class PhysicsSystem:
             spawn_footstep_grains(self.groups.fx_sprites, entity, foot=clock.foot)
         self._step_clocks[id(entity)] = clock
 
-    def _tick_sweat(self, entity: object, delta_time: float) -> None:
+    def _tick_sweat(self, entity: Entity, delta_time: float) -> None:
         """Emit sweat droplets on the ``Sweat.SPAWN_EVERY`` cadence."""
         timer = self._sweat_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
@@ -356,7 +348,7 @@ class PhysicsSystem:
             timer = Sweat.SPAWN_EVERY
         self._sweat_timers[id(entity)] = timer
 
-    def _tick_dizzy_vortex(self, entity: object, delta_time: float) -> None:
+    def _tick_dizzy_vortex(self, entity: Entity, delta_time: float) -> None:
         """Emit purple vortex swirls on the ``FxDizzy.VORTEX_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:
@@ -364,7 +356,7 @@ class PhysicsSystem:
             timer = FxDizzy.VORTEX_SPAWN_EVERY
         self._dizzy_timers[id(entity)] = timer
 
-    def _tick_dizzy_stars(self, entity: object, delta_time: float) -> None:
+    def _tick_dizzy_stars(self, entity: Entity, delta_time: float) -> None:
         """Emit circling stars on the ``FxDizzy.STAR_SPAWN_EVERY`` cadence."""
         timer = self._dizzy_star_timers.get(id(entity), 0.0) - delta_time
         if timer <= 0.0:

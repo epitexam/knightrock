@@ -4,10 +4,10 @@ Extracted from ``Level.update`` (audit §4: respawn/progression stages).
 """
 
 from collections.abc import Iterable
-from typing import Any
 
 from src.core.level.level_data import LevelData
 from src.core.settings import Respawn
+from src.entities.entity import Entity
 from src.entities.player import Player
 
 __all__ = ["PlayerRespawnSystem"]
@@ -28,7 +28,7 @@ class PlayerRespawnSystem:
         self.respawn_timer = 0.0
         self.deaths = 0
 
-    def process(self, delta_time: float, entity_sprites: Iterable[Any] | None = None) -> None:
+    def process(self, delta_time: float, entity_sprites: Iterable[Entity] | None = None) -> None:
         """Advance the death/respawn state by one simulation tick.
 
         Fallen non-player entities below the death border die too: without
@@ -59,14 +59,13 @@ class PlayerRespawnSystem:
         if border > 0 and self.player.hitbox.top > border:
             self.player.die()
 
-    def _reap_fallen_entities(self, entity_sprites: Iterable[Any]) -> None:
+    def _reap_fallen_entities(self, entity_sprites: Iterable[Entity]) -> None:
         """Kill live non-player entities below the death border."""
         border = self.level_data.config.death_border_bottom
         if border <= 0:
             return
         for entity in tuple(entity_sprites):
-            if entity is self.player or getattr(entity, "is_dead", False):
+            if entity is self.player or entity.is_dead:
                 continue
-            hitbox = getattr(entity, "hitbox", None)
-            if hitbox is not None and hitbox.top > border:
+            if entity.hitbox.top > border:
                 entity.die()

@@ -71,6 +71,7 @@ class RiderStub(FighterSprite):
         self.old_hitbox = self.hitbox.copy()
         self.rect = pygame.FRect(self.hitbox)
         self.on_surface = {"floor": on_floor, "left": False, "right": False}
+        self.velocity = pygame.math.Vector2()
         self.x_at_entity_update: float | None = None
 
     def sync_rects(self) -> None:

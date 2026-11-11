@@ -37,6 +37,7 @@ from src.entities.components.reaction import (
     compute_knockback_direction,
 )
 from src.entities.hurtbox_zones import HurtboxZoneDef
+from src.entities.player_controllers import DashController
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import SpatialHash
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
@@ -116,6 +117,10 @@ class Entity(Sprite):
 
     # A fighter always has a picture; ``Sprite`` alone allows none.
     image: pygame.Surface
+
+    # Only a fighter that can dash has the resource; the player sets it. Declared
+    # here so the systems that walk every entity ask ``is None`` and not ``getattr``.
+    dash: DashController | None = None
 
     # Kinematic state is owned by ``self._movement`` (MovementComponent) and
     # exposed through the ``velocity`` / ``on_surface`` delegating properties

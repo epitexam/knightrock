@@ -18,6 +18,7 @@ class PairEntity(pygame.sprite.Sprite):
     """Minimal entity stub for the pairing systems."""
 
     _next_id = 0
+    is_invincible = False
 
     def __init__(self, x: float, faction: str, speed: float = 500.0, entity_id: str | None = None):
         super().__init__()

@@ -69,6 +69,9 @@ class FighterSprite(pygame.sprite.Sprite):
 
     faction = "enemy"
     facing_right = True
+    is_dead = False
+    is_invincible = False
+    dash = None
     turn_lead_px = 0.0
     turn_skew_px = 0.0
 

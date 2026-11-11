@@ -306,9 +306,9 @@ class GameplayLoop:
 
     def remove_dead_entities(
         self,
-        entity_sprites: Iterable[pygame.sprite.Sprite],
-        player: pygame.sprite.Sprite | None,
+        entity_sprites: Iterable[Entity],
+        player: Entity | None,
     ) -> None:
         for entity in tuple(entity_sprites):
-            if getattr(entity, "is_dead", False) and entity is not player:
+            if entity.is_dead and entity is not player:
                 entity.kill()

@@ -192,9 +192,7 @@ class SpawnSystem:
         ``COOLDOWN`` and ``BUSY`` stay quiet: pressing a showcase key twice in a
         row is not a mistake, and a bench that raised on it would be unusable.
         """
-        start = getattr(getattr(player, "combat", None), "start_attack", None)
-        if not callable(start):
-            return False
+        start = player.combat.start_attack
         if not player.combat.has_attack(attack_name):
             raise KeyError(
                 f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
@@ -224,8 +222,7 @@ class SpawnSystem:
         """Restart the looped attack once idle and its cooldown is ready."""
         if self.attack_replay is None:
             return
-        combat = getattr(player, "combat", None)
-        if combat is None or getattr(combat, "is_attacking", False):
+        if player.combat.is_attacking:
             return
         if not self._debug_ready(self.attack_replay):
             return
@@ -238,23 +235,19 @@ class SpawnSystem:
         """Fire a pooled projectile from the player toward its facing."""
         if self.projectile_system is None:
             return None
-        direction = 1.0 if getattr(player, "facing_right", True) else -1.0
-        hitbox = getattr(player, "hitbox", None)
-        if hitbox is None:
-            return None
+        direction = 1.0 if player.facing_right else -1.0
+        hitbox = player.hitbox
         return self.projectile_system.spawn(
             config,
             pos=(hitbox.centerx, hitbox.centery),
             velocity=(DEBUG_SHOT_SPEED * direction, -50.0),
-            faction=getattr(player, "faction", "player"),
+            faction=player.faction,
         )
 
     def spawn_juggle_dummy(self, player: Player) -> Any | None:
         """Pop an airborne dummy ahead of the player to juggle (Phase 5 #4)."""
-        hitbox = getattr(player, "hitbox", None)
-        if hitbox is None:
-            return None
-        offset_x = 140 if getattr(player, "facing_right", True) else -140
+        hitbox = player.hitbox
+        offset_x = 140 if player.facing_right else -140
         try:
             enemy = create_enemy(
                 "dummy",

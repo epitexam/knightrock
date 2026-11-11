@@ -102,20 +102,6 @@ def test_trigger_test_attack_says_so_when_the_move_is_not_registered() -> None:
         system.trigger_test_attack(_player(), move_id("nope"))
 
 
-def test_trigger_test_attack_still_answers_false_when_the_player_has_no_combat() -> None:
-    """The bench runs against every entity on the map, not just the player.
-
-    Only the player carries an attack table, so the missing-``combat`` case is
-    ordinary and must stay quiet -- unlike the missing-*move* case above.
-    """
-
-    class _Bare:
-        combat = None
-
-    system = SpawnSystem(SpriteGroups())
-    assert system.trigger_test_attack(_Bare(), move_id("twin_fangs")) is False
-
-
 def test_attack_replay_restarts_attack_when_idle() -> None:
     system = SpawnSystem(SpriteGroups())
     player = _player()

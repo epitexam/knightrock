@@ -162,6 +162,9 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         on_surface={"floor": False, "left": False, "right": False},
         dash_started_this_frame=False,
         render_hints=RenderHints(),
+        dash=None,
+        velocity=pygame.math.Vector2(),
+        state_machine=SimpleNamespace(current_state_name=None),
         respawn=Mock(),
         die=Mock(),
     )
@@ -171,6 +174,9 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         on_surface={"floor": False, "left": False, "right": False},
         kill=Mock(),
         render_hints=RenderHints(),
+        dash=None,
+        velocity=pygame.math.Vector2(),
+        state_machine=SimpleNamespace(current_state_name=None),
     )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),
