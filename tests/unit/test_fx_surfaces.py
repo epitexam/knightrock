@@ -31,7 +31,7 @@ from src.core.fx import (
     vortex_frames,
 )
 from src.core.fx import particles as particles
-from src.core.settings import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
+from src.core.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
 
 
 @pytest.fixture(scope="module", autouse=True)

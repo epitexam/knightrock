@@ -33,6 +33,8 @@ from src.core.fx import (
     spawn_sweat_drops,
     spawners,
 )
+from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
+from src.core.fx.tuning import Sweat as SweatSettings
 from src.core.level.systems import physics_system
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.rendering.camera import Camera
@@ -44,20 +46,8 @@ from src.core.rendering.renderer import (
     is_player_dashing,
 )
 from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
-from src.core.settings import (
-    Afterimage,
-    DashDust,
-    Dust,
-    DustGrain,
-    FootstepDust,
-    HitFlash,
-    Locomotion,
-    Physics,
-    Simulation,
-    Sweat,
-)
+from src.core.settings import Afterimage, HitFlash, Locomotion, Physics, Simulation
 from src.core.settings import Guard as GuardSettings
-from src.core.settings import Sweat as SweatSettings
 from src.core.sprite_groups import SpriteGroups
 from src.states.player_states import PlayerState
 from tests.unit.helpers import make_entity

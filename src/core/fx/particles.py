@@ -41,7 +41,7 @@ from src.core.fx.draw import (
     star_shape,
     streak_points,
 )
-from src.core.settings import (
+from src.core.fx.tuning import (
     DashDust,
     Dust,
     DustGrain,

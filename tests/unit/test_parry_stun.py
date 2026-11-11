@@ -311,8 +311,8 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     than as the state the block earned. Emitted on a cadence they fade in with
     the dizzy state and are gone shortly after it ends.
     """
+    from src.core.fx.tuning import FxDizzy
     from src.core.level.systems.physics_system import PhysicsSystem
-    from src.core.settings import FxDizzy
     from src.core.sprite_groups import SpriteGroups
     from tests.unit.helpers import make_entity
 

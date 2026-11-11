@@ -13,9 +13,9 @@ from src.core.fx import (
     spawn_guard_arc,
     spawn_shatter_arc,
 )
+from src.core.fx.tuning import FxGuard
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
-from src.core.settings import FxGuard
 from src.core.settings import Guard as GuardSettings
 from src.entities.player import Player
 from tests.unit.helpers import InputStub, make_active_attacker

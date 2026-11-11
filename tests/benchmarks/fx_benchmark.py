@@ -70,7 +70,7 @@ from src.core.fx import (
     spawners,
 )
 from src.core.fx import particles as particles
-from src.core.settings import Dust, FootstepDust, FxGuard
+from src.core.fx.tuning import Dust, FootstepDust, FxGuard
 
 #: The frame this plane has to fit inside, at 60 Hz.
 FRAME_BUDGET_US = 1000.0 / 60.0 * 1000.0

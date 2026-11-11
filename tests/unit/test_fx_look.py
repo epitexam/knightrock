@@ -40,15 +40,9 @@ from src.core.fx import (
     spawners,
 )
 from src.core.fx.draw import snap
+from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
-from src.core.settings import (
-    DashDust,
-    Dust,
-    DustGrain,
-    FootstepDust,
-    FxGuard,
-)
 from src.core.sprite_groups import SpriteGroups
 from src.states.player_states import PlayerState
 

@@ -22,6 +22,7 @@ import pygame
 import pytest
 
 from src.core.display.framing import Framing
+from src.core.fx.tuning import FootstepDust
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
@@ -33,7 +34,7 @@ from src.core.rendering.renderer import (
     turn_offset_px,
     turn_skew_px,
 )
-from src.core.settings import FootstepDust, Turn
+from src.core.settings import Turn
 from src.entities.player import Player
 from src.states.player_states import PlayerState
 from src.states.state_machine import StateMachine

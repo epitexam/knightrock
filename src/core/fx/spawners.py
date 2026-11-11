@@ -39,7 +39,7 @@ from src.core.fx.particles import (
     puff_tint,
     puff_variant,
 )
-from src.core.settings import (
+from src.core.fx.tuning import (
     DashDust,
     Dust,
     DustGrain,

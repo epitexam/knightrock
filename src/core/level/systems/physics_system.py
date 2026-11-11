@@ -18,7 +18,7 @@ from src.core.fx import (
     spawn_landing_grains,
     spawn_sweat_drops,
 )
-from src.core.settings import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
+from src.core.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
 from src.core.sprite_groups import SpriteGroups
 from src.physics.movement import apply_moving_platform
 
