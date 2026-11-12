@@ -43,27 +43,32 @@ class HazardDamageSystem:
         #: ``(id(hazard), target_id) -> ticks left before that hazard may
         #: damage that target again``.
         self._cooldowns: dict[tuple[int, str], int] = {}
-        #: Pairs the gate admitted this tick, so a target cleared by the
-        #: broadphase arms its cooldown once however often it was asked about.
+        #: Pairs whose contact landed this tick; their cooldown starts once the
+        #: tick is resolved.
         self._armed: set[tuple[int, str]] = set()
 
     def _can_contact(self, hazard_key: int) -> Callable[[str], bool]:
-        """The contact gate for one hazard, carrying its own memory.
+        """The contact gate for one hazard: closed while its cooldown runs.
 
-        Called once per (hazard, target) pair per tick by the pipeline. The
-        cooldown is armed here rather than after the hit resolves, so that a
-        target that walked out of a guarded or i-framed window does not get a
-        second answer for the same tick.
+        Only read here, for the reason given in
+        :meth:`ContactDamageSystem._can_contact`: the pipeline asks every
+        candidate, touching or not, so arming here made a spike wait out its
+        cooldown against a player who had only walked past it (audit C2). The
+        cooldown is armed by :meth:`_record` once a contact has landed.
         """
 
         def can_contact(target_id: str) -> bool:
-            pair = (hazard_key, target_id)
-            if self._cooldowns.get(pair, 0) > 0:
-                return False
-            self._armed.add(pair)
-            return True
+            return self._cooldowns.get((hazard_key, target_id), 0) <= 0
 
         return can_contact
+
+    def _record(self, hazard_key: int) -> Callable[[Combatant], None]:
+        """Arm the cooldown of a target this hazard just touched."""
+
+        def record_contact(target: Combatant) -> None:
+            self._armed.add((hazard_key, getattr(target, "id", "") or ""))
+
+        return record_contact
 
     def _build_box(self, hazard: Any, box: Any) -> OffensiveBox:
         """A hazard's offensive box, built once.
@@ -86,6 +91,7 @@ class HazardDamageSystem:
             faction=None,
             owner_id="",
             can_contact=self._can_contact(id(hazard)),
+            record_contact=self._record(id(hazard)),
             kind="hazard",
             interrupt=False,
         )

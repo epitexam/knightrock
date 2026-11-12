@@ -218,8 +218,12 @@ PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905
 # window, so a lifetime rider died inside the cooldown window and never
 # reached the exit. 24 ticks, ~0.4s, roughly the player's own i-frame
 # window.  PHYSICS and RESPAWN carry no hazard and are unaffected.
-PHYSICS_DIGEST = "43ab72f5351c4b5d908fef2997b157d8af4a518c6a99961844160081cccaed32"
-RIDE_DIGEST = "4f23129cd904725a48b0346798d93b7cc3eb420b3ac169db9706095a3ef4f124"
+# Re-captured PHYSICS and RIDE for audit C2 (2026-11-12): a contact or hazard
+# cooldown is armed by a contact that landed, no longer by a pair that was only
+# near. The first body contact lands on tick 9 instead of 12, the first hazard
+# hit on tick 3 instead of 24; the cadence after a contact is unchanged.
+PHYSICS_DIGEST = "e84b65bae71fbf106e8adcc9d42bc86d6c5a382a5c571f9a544cfda825ead734"
+RIDE_DIGEST = "d9a98584ea934ca7629a7d66f9cc77264c019fa3eeda4628710ea53f8ac5a3e7"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

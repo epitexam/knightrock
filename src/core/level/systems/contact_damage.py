@@ -67,28 +67,39 @@ class ContactDamageSystem:
         #: ``(id(entity), target_id) -> ticks left before that entity may
         #: damage that target again``.
         self._cooldowns: dict[tuple[int, str], int] = {}
-        #: Pairs the gate admitted this tick, so a pair cleared by the
-        #: broadphase arms its cooldown once however often it was asked about.
+        #: Pairs whose contact landed this tick; their cooldown starts once the
+        #: tick is resolved, however many boxes touched them.
         self._armed: set[tuple[int, str]] = set()
 
     def _can_contact(self, entity_key: int) -> Callable[[str], bool]:
-        """The contact gate for one entity, carrying its own cooldown.
+        """The contact gate for one entity: closed while its cooldown runs.
 
         ``MomentumGate`` asks whether the target is already hurt, but contact
         damage resolves with ``interrupt=False``, which never puts a target in
         the hurt state -- so the pair that should have stopped repeating did
-        not, and an overlap re-applied the damage every tick. This is the half
-        of that guarantee that actually holds: a pair reacts once, then waits.
+        not, and an overlap re-applied the damage every tick. The cooldown is
+        the half of that guarantee that actually holds: a pair reacts once,
+        then waits.
+
+        Only read here. The pipeline asks this of every *candidate*, before it
+        knows whether the two touch, so arming the wait here started it for
+        pairs that were merely near each other -- and the first real contact
+        could then go unpunished for the rest of it (audit C2). It is armed by
+        :meth:`_record`, once a contact has actually landed.
         """
 
         def can_contact(target_id: str) -> bool:
-            pair = (entity_key, target_id)
-            if self._cooldowns.get(pair, 0) > 0:
-                return False
-            self._armed.add(pair)
-            return True
+            return self._cooldowns.get((entity_key, target_id), 0) <= 0
 
         return can_contact
+
+    def _record(self, entity_key: int) -> Callable[[Combatant], None]:
+        """Arm the cooldown of a pair whose contact just landed."""
+
+        def record_contact(target: Combatant) -> None:
+            self._armed.add((entity_key, getattr(target, "id", "") or ""))
+
+        return record_contact
 
     def produce_boxes(self, entity_sprites: Iterable[Combatant]) -> tuple[OffensiveBox, ...]:
         """One candidate box per moving-eligible entity (momentum-gated).
@@ -134,6 +145,7 @@ class ContactDamageSystem:
             faction=getattr(entity, "faction", None),
             owner_id=getattr(entity, "id", "") or "",
             can_contact=self._can_contact(id(entity)),
+            record_contact=self._record(id(entity)),
             kind="contact",
             interrupt=False,
             accept=MomentumGate(entity.velocity.length()),

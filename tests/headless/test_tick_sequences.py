@@ -34,7 +34,6 @@ from tests.unit.test_hazard_damage import FakeHazard
 DT = 1 / 60
 #: Known to fail until the audit's stage 1; ``strict`` turns a silent fix into a
 #: failure, so the marker cannot outlive the defect.
-DEFECT_C2 = pytest.mark.xfail(strict=True, reason="audit C2: cooldown armed without contact")
 DEFECT_C5 = pytest.mark.xfail(strict=True, reason="audit C5: reset heals outside debug mode")
 
 
@@ -131,7 +130,6 @@ def test_bodies_already_touching_deal_damage_on_the_first_tick() -> None:
     assert standing.health == standing.max_health - CombatSettings.CONTACT_DAMAGE_AMOUNT
 
 
-@DEFECT_C2
 def test_bodies_that_meet_deal_damage_on_the_tick_they_touch() -> None:
     runner, standing = _bodies(gap=150.0)
     system = ContactDamageSystem()
@@ -145,7 +143,6 @@ def test_bodies_that_meet_deal_damage_on_the_tick_they_touch() -> None:
     assert standing.health == standing.max_health - CombatSettings.CONTACT_DAMAGE_AMOUNT
 
 
-@DEFECT_C2
 def test_a_slow_touch_arms_no_cooldown() -> None:
     """Below the momentum threshold nothing happens, so nothing is owed a wait."""
     runner, standing = _bodies(gap=-20.0, speed=10.0)
@@ -159,7 +156,6 @@ def test_a_slow_touch_arms_no_cooldown() -> None:
 # -- hazards --------------------------------------------------------------------
 
 
-@DEFECT_C2
 def test_stepping_on_a_spike_hurts_on_the_first_tick_on_it() -> None:
     walker = make_entity(pos=(0.0, 0.0), faction="player")
     spike = FakeHazard(pygame.FRect(400.0, 0.0, 40.0, 40.0))
