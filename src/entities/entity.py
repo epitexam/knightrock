@@ -38,7 +38,13 @@ from src.entities.components.reaction import (
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.player_controllers import DashController
 from src.entities.vitals import Vitals, VitalsSnapshot
-from src.physics import SpatialHash
+from src.physics import (
+    SpatialHash,
+    apply_horizontal_movement,
+    apply_moving_platform,
+    move_entity,
+    resolve_collisions,
+)
 from src.physics.collisions import CollisionSprite, get_nearby_sprites
 from src.physics.movement import WallJumpLock
 from src.physics.spatial_hash import collider_box
@@ -845,19 +851,19 @@ class Entity(Sprite):
 
     def apply_horizontal_movement(self, delta_time: float) -> None:
         """Apply horizontal acceleration and control based on move_axis."""
-        self._movement.apply_horizontal_movement(delta_time)
+        apply_horizontal_movement(self, delta_time)
 
     def handle_collisions(self, axis: Literal["horizontal", "vertical"]) -> None:
         """Resolve collisions along a given axis."""
-        self._movement.handle_collisions(axis)
+        resolve_collisions(self, axis)
 
     def move(self, delta_time: float, apply_gravity: bool = True) -> None:
         """Move the entity based on velocity, resolving collisions."""
-        self._movement.move(delta_time, apply_gravity=apply_gravity)
+        move_entity(self, delta_time, apply_gravity=apply_gravity)
 
     def apply_moving_platform(self, moving_platforms: Iterable[Any]) -> None:
         """Carry the entity along moving platforms."""
-        self._movement.apply_moving_platform(moving_platforms)
+        apply_moving_platform(self, moving_platforms)
 
     def reset_position(self) -> None:
         """Reset the entity to its spawn position and clear all states.
@@ -867,7 +873,7 @@ class Entity(Sprite):
         """
         self.hitbox.center = self.spawn_pos
         self.sync_rects()
-        self._movement.stop()
+        self.velocity = Vector2(0, 0)
         self.old_hitbox = self.hitbox.copy()
         self.vitals.reset()
         # P1 (D4) / P2: respawn/teleport is a discontinuity — no swept smear.
