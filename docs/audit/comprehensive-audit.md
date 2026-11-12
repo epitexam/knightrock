@@ -530,8 +530,13 @@ Mesures sans tête (pilote SDL `dummy`, donc CPU seul), niveau 0 réel :
 | Tick de simulation | 2,87 ms | 3,69 ms |
 | Dessin du monde | 3,62 ms | 5,75 ms |
 
-- **Confirmé :** environ 6,5 ms par frame à 60 Hz, soit 40 % du budget de
-  16,7 ms. Aucun goulot unique : le profil du tick se répartit entre la
+> **Correction (étape B).** Ces valeurs ont été prises sur une machine chargée.
+> Remesurées côte à côte sur le commit de départ et après refactorisation : tick
+> **1,9 ms**, dessin **1,8 ms**, identiques avant et après. Les conclusions
+> ci-dessous ne changent pas ; le budget utilisé est d'environ 22 % à 60 Hz.
+
+- **Confirmé :** environ 6,5 ms par frame à 60 Hz dans la mesure initiale
+  (3,7 ms remesuré, voir la correction ci-dessus). Aucun goulot unique : le profil du tick se répartit entre la
   résolution des collisions, le spatial hash, `sync_rects` et `getattr`
   (≈ 1 200 appels par tick).
 - **Probable :** le tick croît à peu près linéairement avec le nombre

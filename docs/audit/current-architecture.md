@@ -6,6 +6,10 @@ Python 3.14, pygame-ce 2.5.7, PyTMX.
 Ce document décrit le jeu **tel qu'il est**, avant toute recommandation. Les
 jugements sont dans `comprehensive-audit.md`.
 
+> **Note (après l'étape B).** Ce document décrit l'état de départ (`d718a8c`).
+> Ce qui a changé depuis (entrées lues par le niveau, `FeedbackSystem`, source
+> unique des combattants, états typés…) est dans `final-report.md`.
+
 ## 0. Méthode et état de départ
 
 - Lecture du code de production, en suivant les chemins d'exécution d'un module

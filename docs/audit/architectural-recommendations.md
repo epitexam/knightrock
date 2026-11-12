@@ -277,7 +277,7 @@ davantage.
 | Bus d'événements général | Le bus actuel a un rôle précis (simulation → application). Les effets de combat ont besoin d'être rassemblés (R6), pas diffusés. |
 | Réorganiser les dossiers (`core/level` → `world/`…) | Le nom `core` est imparfait (§2.1 de l'architecture), mais le renommage toucherait des centaines d'imports et de tests sans corriger un seul défaut. |
 | Remplacer `StateMachine` | Elle fait ce qu'il faut : interruptions à priorité, tags, tampon. |
-| Optimiser maintenant | 40 % du budget à 60 Hz, aucun goulot. Mesurer à nouveau quand un niveau dépassera 30 ennemis. |
+| Optimiser maintenant | Environ 22 % du budget à 60 Hz (remesuré), aucun goulot. Mesurer à nouveau quand un niveau dépassera 30 ennemis. |
 | Refactorer l'overlay de debug ou l'affichage | Gros mais isolés, testés, sans effet sur le jeu. |
 | Sous-classes d'ennemis | La configuration couvre les différences actuelles. |
 

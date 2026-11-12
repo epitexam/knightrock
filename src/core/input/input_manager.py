@@ -10,6 +10,12 @@ class InputManager:
         self._prev_state = InputState()
 
     def apply_remote_state(self, state: InputState) -> None:
+        """Install ``state`` as this tick's input, for driving one entity by hand.
+
+        A whole ``Level`` reads its provider on every simulated tick, which
+        would read over a state planted here; a network session feeds the
+        level through an :class:`InputProvider` instead.
+        """
         self._prev_state = self._current_state
         self._current_state = state
 
