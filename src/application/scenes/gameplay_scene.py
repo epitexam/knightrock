@@ -108,7 +108,6 @@ class GameplayScene(Scene):
     def update(self, delta_time: float) -> None:
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
-        self.game.input_manager.update()
         if self.frozen and Debug.is_enabled():
             if not self._step_pending:
                 return  # debug freeze: the frame still renders, the sim holds still

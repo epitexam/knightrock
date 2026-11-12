@@ -109,6 +109,7 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     )
 
     level = Level.__new__(Level)
+    level.input_manager = Mock()
     level.player = player  # type: ignore[assignment]
     level.groups = groups  # type: ignore[assignment]
     level.tick = 0
@@ -187,6 +188,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         exit_sprites=TrackingGroup(),
     )
     level = Level.__new__(Level)
+    level.input_manager = Mock()
     level.player = player  # type: ignore[assignment]
     level.groups = groups  # type: ignore[assignment]
     level.tick = 0
@@ -204,6 +206,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
 
     level.update(0.016)
 
+    level.input_manager.update.assert_called_once()  # a live tick reads the input
     groups.moving_platforms.update.assert_called_once_with(pytest.approx(0.016))
     groups.hazard_sprites.update.assert_called_once_with(pytest.approx(0.016))
     groups.entity_sprites.update.assert_called_once_with(pytest.approx(0.016))

@@ -64,6 +64,7 @@ class LocalInputProvider(InputProvider):
         self._current_joy_axes: dict[int, float] = {}
         self._current_joy_hats: dict[int, tuple[float, float]] = {}
         self._latched_keys: set[int] = set()
+        self._latched_buttons: set[int] = set()
 
     def set_bindings(self, bindings: InputBindings) -> None:
         self._bindings = bindings
@@ -80,7 +81,7 @@ class LocalInputProvider(InputProvider):
             self._joystick = next(iter(joysticks.values()))
 
     def note_event(self, event: pygame.event.Event) -> None:
-        """Latch a keyboard edge seen between two polls.
+        """Latch a key or pad-button edge seen between two polls.
 
         ``pygame.key.get_pressed()`` is a *state* read: a key pressed and
         released between two polls -- which happens whenever a tap is shorter
@@ -89,14 +90,27 @@ class LocalInputProvider(InputProvider):
         drains the whole event queue each frame, so it hands the edges here
         and the next poll reports the action as held for exactly one tick.
 
-        Only KEYDOWN is latched. A KEYUP carries no action of its own, and
+        The pad's buttons are latched the same way, for the same reason and for
+        one more: the level does not poll while hit-stop holds the world still,
+        so a tap made inside the freeze is over before the next poll, and the
+        latch is what plays it on the first tick that moves.
+
+        Only presses are latched. A release carries no action of its own, and
         holding the latch through it would make a release look like a press.
         """
-        if event.type != pygame.KEYDOWN:
-            return
-        key = int(getattr(event, "key", -1))
-        if key >= 0:
-            self._latched_keys.add(key)
+        if event.type == pygame.KEYDOWN:
+            key = int(getattr(event, "key", -1))
+            if key >= 0:
+                self._latched_keys.add(key)
+        elif event.type == pygame.JOYBUTTONDOWN and self._from_the_pad(event):
+            self._latched_buttons.add(int(event.button))
+
+    def _from_the_pad(self, event: pygame.event.Event) -> bool:
+        """Whether a pad event comes from the pad that drives the player."""
+        joystick = self._joystick
+        return joystick is not None and getattr(event, "instance_id", None) == (
+            joystick.get_instance_id()
+        )
 
     def poll(self) -> InputState:
         keys = pygame.key.get_pressed()
@@ -119,7 +133,9 @@ class LocalInputProvider(InputProvider):
 
         down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN, latch=False)
         if not down_held:
-            down_held = self._button_held(gameplay.gamepad_buttons, InputAction.MOVE_DOWN)
+            down_held = self._button_held(
+                gameplay.gamepad_buttons, InputAction.MOVE_DOWN, latch=False
+            )
         if not down_held:
             down_axis = self._apply_deadzone(
                 self._axis_value(gameplay.gamepad_axes, InputAction.MOVE_DOWN)
@@ -171,6 +187,7 @@ class LocalInputProvider(InputProvider):
         # Consumed: a latched tap must not be reported again on the next poll,
         # or the action would be held for as long as no new key was pressed.
         self._latched_keys.clear()
+        self._latched_buttons.clear()
         return state
 
     def _calculate_move_axis(self, keys: Sequence[bool] | Mapping[int, bool]) -> float:
@@ -245,11 +262,15 @@ class LocalInputProvider(InputProvider):
             return ()
         return binding if isinstance(binding, tuple) else (binding,)
 
-    def _button_held(self, bindings: ButtonMap, action: InputAction) -> bool:
-        return any(
-            self._current_joy_buttons.get(index, False)
-            for index in self._pad_indices(bindings, action)
-        )
+    def _button_held(self, bindings: ButtonMap, action: InputAction, latch: bool = True) -> bool:
+        """Whether ``action``'s pad button is down, or was tapped since the last poll.
+
+        ``latch=False`` for the postures, as in :meth:`_key_held`.
+        """
+        indices = self._pad_indices(bindings, action)
+        if any(self._current_joy_buttons.get(index, False) for index in indices):
+            return True
+        return latch and bool(self._latched_buttons.intersection(indices))
 
     def _axis_value(self, bindings: AxisMap, action: InputAction) -> float:
         bindings = cast(Mapping[InputAction, int], bindings)

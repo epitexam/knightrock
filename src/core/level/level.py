@@ -297,11 +297,19 @@ class Level:
         """
         Advance the level simulation by one tick.
 
-        The level is a strict facade (audit F1.2/§4): the whole tick —
-        debug spawner, every simulation stage, camera follow, event-bus
-        notifications and the end-of-tick rollback snapshot — runs inside
-        the gameplay loop's pipeline.
+        The whole tick -- debug spawner, every simulation stage, camera,
+        notifications and the rollback snapshot -- runs inside the gameplay
+        loop's pipeline. The one thing done here first is reading the input,
+        and only on a tick that hit-stop does not freeze.
         """
+        if not self.gameplay_loop.combat_system.in_hit_stop:
+            # Read on the ticks the player is simulated, and only on those. A
+            # tick frozen by hit-stop does not run the player, so polling on it
+            # would spend the one tick a press is "just pressed" on a tick that
+            # cannot see it -- and the press made to chain off a landed hit is
+            # exactly the one that falls inside the freeze. Not polling leaves
+            # the press latched in the provider until the world moves again.
+            self.input_manager.update()
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
         if Debug.is_enabled():
             renderer = getattr(self, "renderer", None)

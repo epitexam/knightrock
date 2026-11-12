@@ -836,14 +836,17 @@ def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Frozen: input still polls, level.update never runs until unfreeze."""
+    """Frozen: level.update never runs until unfreeze.
+
+    The scene does not read the input itself: the level does, on the ticks it
+    simulates, so a frozen level reads nothing and a press made meanwhile stays
+    latched until the world moves again.
+    """
     from src.application.scenes.gameplay_scene import GameplayScene
 
     monkeypatch.setenv("DEBUG", "1")
-    calls = {"input": 0, "level": 0}
-    game = SimpleNamespace(
-        input_manager=SimpleNamespace(update=lambda: calls.__setitem__("input", calls["input"] + 1))
-    )
+    calls = {"level": 0}
+    game = SimpleNamespace()  # no input_manager: the scene must not need one
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
         exit_reached=False,
@@ -852,15 +855,15 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
     scene = GameplayScene(game, level_id=0, level=level)
 
     scene.update(1 / 60)
-    assert calls == {"input": 1, "level": 1}
+    assert calls == {"level": 1}
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
     scene.update(1 / 60)
-    assert calls == {"input": 2, "level": 1}
+    assert calls == {"level": 1}
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
     scene.update(1 / 60)
-    assert calls == {"input": 3, "level": 2}
+    assert calls == {"level": 2}
 
 
 def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch) -> None:

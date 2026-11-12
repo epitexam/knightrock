@@ -21,19 +21,19 @@ import pytest
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
+from src.core.input.input_provider import InputProvider
 from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.settings import Combat as CombatSettings
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
-from tests.unit.helpers import ScriptedInputProvider, make_entity
+from tests.unit.helpers import make_entity
 from tests.unit.test_hazard_damage import FakeHazard
 
 DT = 1 / 60
 #: Known to fail until the audit's stage 1; ``strict`` turns a silent fix into a
 #: failure, so the marker cannot outlive the defect.
-DEFECT_C1 = pytest.mark.xfail(strict=True, reason="audit C1: presses during hit-stop are dropped")
 DEFECT_C2 = pytest.mark.xfail(strict=True, reason="audit C2: cooldown armed without contact")
 DEFECT_C5 = pytest.mark.xfail(strict=True, reason="audit C5: reset heals outside debug mode")
 
@@ -41,72 +41,76 @@ DEFECT_C5 = pytest.mark.xfail(strict=True, reason="audit C5: reset heals outside
 # -- hit-stop and input -----------------------------------------------------------
 
 
-def _press(action: InputAction, ticks: set[int], total: int) -> list[InputState]:
-    return [
-        InputState(held_actions=frozenset({action}) if tick in ticks else frozenset())
-        for tick in range(total)
-    ]
+class _ClockedPad(InputProvider):
+    """A pad played against the clock, the way a real one is.
+
+    ``ScriptedInputProvider`` hands out one state per *poll*, which is only the
+    same as one per tick while every tick polls. The level skips its poll on
+    the ticks hit-stop freezes, so this pad is driven by the test's tick
+    counter instead, and it latches a press made between two polls exactly as
+    ``LocalInputProvider.note_event`` does for the real keyboard and pad.
+    """
+
+    def __init__(self, action: InputAction, pressed_on: set[int]) -> None:
+        self.action = action
+        self.pressed_on = pressed_on
+        self.tick = 0
+        self._last_poll = -1
+
+    def poll(self) -> InputState:
+        held = self.tick in self.pressed_on
+        tapped = any(t in self.pressed_on for t in range(self._last_poll + 1, self.tick))
+        self._last_poll = self.tick
+        return InputState(held_actions=frozenset({self.action}) if held or tapped else frozenset())
 
 
-def _scene(states: list[InputState]) -> tuple[GameplayScene, Level]:
-    """A gameplay scene over a real level, fed a scripted pad.
+def _scene(provider: InputProvider) -> tuple[GameplayScene, Level]:
+    """A gameplay scene over a real level, fed ``provider``.
 
     The animator is dropped so the player can tick without the art in
     ``assets/``; nothing here is about what the player looks like.
     """
-    manager = InputManager(ScriptedInputProvider(states))
+    manager = InputManager(provider)
     level = Level(make_viewport().surface, make_programmatic_level_data(), manager)
     level.player.animator = None
-    game = SimpleNamespace(input_manager=manager, scene_manager=None, level_manager=None)
+    game = SimpleNamespace(scene_manager=None, level_manager=None)
     return GameplayScene(game, level=level), level  # type: ignore[arg-type]
 
 
 def _run(
-    action: InputAction, press: set[int], freeze: set[int], total: int = 24
-) -> tuple[Level, int | None]:
-    """Tick a level, holding the world still on ``freeze``; when did ``action`` act?"""
-    scene, level = _scene(_press(action, press, total))
+    action: InputAction, press: set[int], freeze: range = range(0), total: int = 24
+) -> int | None:
+    """Tick a level frozen by hit-stop over ``freeze``; on which tick did ``action`` act?"""
+    pad = _ClockedPad(action, press)
+    scene, level = _scene(pad)
     player = level.player
-    acted_at: int | None = None
-    start_y = player.velocity.y
     for tick in range(total):
-        if tick in freeze:
-            level.gameplay_loop.combat_system.hit_stop_timer = max(
-                level.gameplay_loop.combat_system.hit_stop_timer, 1e-9 + DT
-            )
+        pad.tick = tick
+        if freeze and tick == freeze.start:
+            # Exactly len(freeze) ticks of hit-stop, the way a landed hit sets it.
+            level.gameplay_loop.combat_system.hit_stop_timer = len(freeze) * DT - 1e-6
         scene.update(DT)
-        if acted_at is None:
-            if action is InputAction.ATTACK_1 and player.combat.is_attacking:
-                acted_at = tick
-            if action is InputAction.DASH and player.is_dashing:
-                acted_at = tick
-            if action is InputAction.JUMP and player.velocity.y < start_y - 1.0:
-                acted_at = tick
-    return level, acted_at
+        if action is InputAction.ATTACK_1 and player.combat.is_attacking:
+            return tick
+        if action is InputAction.DASH and player.is_dashing:
+            return tick
+    return None
 
 
 @pytest.mark.parametrize("action", [InputAction.ATTACK_1, InputAction.DASH])
 def test_a_press_outside_hit_stop_acts_on_its_tick(action: InputAction) -> None:
-    _level, acted_at = _run(action, press={10, 11}, freeze=set())
-
-    assert acted_at == 10
+    assert _run(action, press={10, 11}) == 10
 
 
-@DEFECT_C1
 @pytest.mark.parametrize("action", [InputAction.ATTACK_1, InputAction.DASH])
 def test_a_tap_during_hit_stop_acts_on_the_first_tick_after_it(action: InputAction) -> None:
     """Pressed and released inside the freeze: played as soon as the world moves."""
-    _level, acted_at = _run(action, press={10, 11}, freeze={9, 10, 11, 12})
-
-    assert acted_at == 13
+    assert _run(action, press={10, 11}, freeze=range(9, 13)) == 13
 
 
-@DEFECT_C1
 def test_a_press_held_through_hit_stop_acts_on_the_first_tick_after_it() -> None:
     """Pressed during the freeze and still held when it ends."""
-    _level, acted_at = _run(InputAction.ATTACK_1, press=set(range(10, 20)), freeze={9, 10, 11})
-
-    assert acted_at == 12
+    assert _run(InputAction.ATTACK_1, press=set(range(10, 20)), freeze=range(9, 12)) == 12
 
 
 # -- contact damage between bodies ----------------------------------------------------
@@ -187,10 +191,12 @@ def test_a_spike_does_not_hurt_twice_within_its_cooldown() -> None:
 @DEFECT_C5
 def test_the_reset_key_does_nothing_outside_debug_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEBUG", raising=False)
-    scene, level = _scene(_press(InputAction.RESET, {3}, 6))
+    pad = _ClockedPad(InputAction.RESET, {3})
+    scene, level = _scene(pad)
     player = level.player
     player.health = 10.0
-    for _ in range(6):
+    for tick in range(6):
+        pad.tick = tick
         scene.update(DT)
 
     assert player.health == 10.0

@@ -24,6 +24,7 @@ import pytest
 
 from src.combat.knockback import NULL_KNOCKBACK
 from src.core.input.input_manager import InputManager
+from src.core.input.input_provider import InputProvider
 from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
@@ -68,9 +69,19 @@ def _build(level_config: LevelConfig, objects: list[ObjectData]) -> Level:
         object_layers={"Entities": ObjectLayerData(name="Entities", objects=objects)},
         config=level_config,
     )
-    input_manager = InputManager()
-    input_manager.apply_remote_state(InputState(move_axis=1.0))
-    return Level(make_viewport().surface, data, input_manager)
+    return Level(make_viewport().surface, data, InputManager(_HoldRight()))
+
+
+class _HoldRight(InputProvider):
+    """A pad held right for the whole scenario.
+
+    The level reads its input on every simulated tick, so the hold has to be what
+    each read returns. It used to be planted once with ``apply_remote_state``,
+    which only worked while nothing ever polled.
+    """
+
+    def poll(self) -> InputState:
+        return InputState(move_axis=1.0)
 
 
 def build_physics_level() -> Level:
