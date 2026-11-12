@@ -35,9 +35,9 @@ class MomentumGate:
         other_speed = other.velocity.length()
         if max(self.speed, other_speed) < CombatSettings.CONTACT_DAMAGE_THRESHOLD:
             return False
-        if getattr(other, "is_invincible", False):
+        if other.is_invincible:
             return False
-        if getattr(getattr(other, "combat", None), "is_hurt", False):
+        if other.combat.is_hurt:
             return False
         return self.speed >= other_speed
 
@@ -97,7 +97,7 @@ class ContactDamageSystem:
         """Arm the cooldown of a pair whose contact just landed."""
 
         def record_contact(target: Combatant) -> None:
-            self._armed.add((entity_key, getattr(target, "id", "") or ""))
+            self._armed.add((entity_key, target.id))
 
         return record_contact
 
@@ -118,7 +118,7 @@ class ContactDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for entity in entity_sprites:
-            if getattr(entity, "is_dead", False) or getattr(entity, "is_invincible", False):
+            if entity.is_dead or entity.is_invincible:
                 continue
             key = id(entity)
             live.add(key)
@@ -142,8 +142,8 @@ class ContactDamageSystem:
             swept=(entity.hitbox,),
             swept_shapes=(),
             hit=self._hit,
-            faction=getattr(entity, "faction", None),
-            owner_id=getattr(entity, "id", "") or "",
+            faction=entity.faction,
+            owner_id=entity.id,
             can_contact=self._can_contact(id(entity)),
             record_contact=self._record(id(entity)),
             kind="contact",
@@ -168,11 +168,9 @@ class ContactDamageSystem:
     @staticmethod
     def _swept_shapes(entity: Combatant) -> tuple:
         """The shape sweep for an entity, or nothing for a plain AABB one."""
-        contact_shape = getattr(entity, "contact_shape", None)
-        if contact_shape is None or contact_shape.kind is ShapeKind.AABB:
+        if entity.contact_shape.kind is ShapeKind.AABB:
             return ()
-        factory = getattr(entity, "swept_contact_shapes", None)
-        return factory() if callable(factory) else ()
+        return entity.swept_contact_shapes()
 
     def process(
         self,

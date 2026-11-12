@@ -13,6 +13,7 @@ from typing import Any
 import pygame
 
 from src.combat.combat_component import NullCombatComponent
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.rendering.render_hints import RenderHints
 
 #: Where the real Player keeps each controller field: flat test name -> attribute
@@ -112,3 +113,87 @@ class FighterSprite(pygame.sprite.Sprite):
         super().__init__(*groups)
         self.render_hints = RenderHints()
         self.state_machine = SimpleNamespace(current_state_name=None)
+
+
+class BodyStub(pygame.sprite.Sprite):
+    """A body the contact pipeline can touch: every ``Combatant`` field it reads.
+
+    For the pairing, hazard and contact tests, which care about *whether* and
+    *how often* a body is hit, not about health or states. The production code
+    reads these fields directly, so a stand-in missing one fails loudly instead
+    of being tolerated -- ``test_fakes.py`` checks this shape against the
+    protocol, so it cannot drift from it either.
+
+    ``damage_taken`` adds up every ``receive_damage`` amount.
+    """
+
+    _next_id = 0
+
+    def __init__(
+        self,
+        box: pygame.FRect,
+        faction: str = "player",
+        speed: float = 0.0,
+        entity_id: str | None = None,
+    ) -> None:
+        super().__init__()
+        if entity_id is None:
+            BodyStub._next_id += 1
+            entity_id = f"body{BodyStub._next_id}"
+        self.id = entity_id
+        self.hitbox = box
+        self.velocity = pygame.Vector2(speed, 0.0)
+        self.faction = faction
+        self.is_dead = False
+        self.is_invincible = False
+        self.pushable = True
+        self.on_surface = {"floor": True, "left": False, "right": False}
+        self.combat = SimpleNamespace(is_hurt=False)
+        self.contact_shape = ShapePose(ShapeKind.AABB, box.size, box.center)
+        self.damage_taken = 0.0
+
+    @property
+    def hurtbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    @property
+    def hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        return (self.hitbox,)
+
+    hurtbox_mult: tuple[float, ...] = (1.0,)
+    hurtbox_tags: tuple[tuple[str, ...], ...] = ((),)
+
+    def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        return (self.hitbox,)
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    def swept_pushbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        return (SweptShape(None, self.contact_shape),)
+
+    def sync_rects(self) -> None:  # separation calls it after pushing
+        pass
+
+    def receive_damage(self, amount: float = 0.0, **_: object) -> None:
+        self.damage_taken += amount
+
+
+def game_shape(**fields: Any) -> SimpleNamespace:
+    """A ``Game`` with what a scene reads from it, at rest.
+
+    No interface yet, no notice, no tick fraction to interpolate. The scene
+    reads these directly, so a stand-in starts from them and overrides what its
+    test is about.
+    """
+    defaults: dict[str, Any] = {
+        "ui": None,
+        "clock": None,
+        "notice_lines": (),
+        "notice": lambda *lines, seconds=4.0: None,
+        "render_alpha": lambda: 0.0,
+    }
+    return SimpleNamespace(**{**defaults, **fields})

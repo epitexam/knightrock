@@ -12,34 +12,14 @@ import pytest
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.settings import Combat as CombatSettings
+from tests.fakes import BodyStub
 
 
-class PairEntity(pygame.sprite.Sprite):
-    """Minimal entity stub for the pairing systems."""
-
-    _next_id = 0
-    is_invincible = False
-
-    def __init__(self, x: float, faction: str, speed: float = 500.0, entity_id: str | None = None):
-        super().__init__()
-        if entity_id is None:
-            PairEntity._next_id += 1
-            entity_id = f"e{PairEntity._next_id}"
-        self.id = entity_id
-        self.hitbox = pygame.FRect(x, 0, 40, 40)
-        self.velocity = pygame.Vector2(speed, 0)
-        self.faction = faction
-        self.is_dead = False
-        self.pushable = True
-        self.on_surface = {"floor": True, "left": False, "right": False}
-        self.combat = type("CombatStub", (), {"is_hurt": False})()
-        self.damage_taken = 0.0
-
-    def receive_damage(self, amount: float = 0.0, **_) -> None:
-        self.damage_taken += amount
-
-    def sync_rects(self) -> None:  # separation calls it after pushing
-        pass
+def PairEntity(  # noqa: N802 - reads as the class it used to be
+    x: float, faction: str, speed: float = 500.0, entity_id: str | None = None
+) -> BodyStub:
+    """A 40px body at ``x`` moving right at ``speed``."""
+    return BodyStub(pygame.FRect(x, 0, 40, 40), faction, speed=speed, entity_id=entity_id)
 
 
 def test_contact_damage_applies_to_fast_overlapping_pair():

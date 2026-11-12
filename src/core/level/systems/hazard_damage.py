@@ -66,7 +66,7 @@ class HazardDamageSystem:
         """Arm the cooldown of a target this hazard just touched."""
 
         def record_contact(target: Combatant) -> None:
-            self._armed.add((hazard_key, getattr(target, "id", "") or ""))
+            self._armed.add((hazard_key, target.id))
 
         return record_contact
 

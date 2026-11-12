@@ -222,6 +222,18 @@ class Combatant(Protocol):
         """Union of the per-zone swept rectangles (legacy single-view API)."""
         ...
 
+    @property
+    def is_invincible(self) -> bool:
+        """Whether the current state ignores every hit (dash, launch...)."""
+        ...
+
+    contact_shape: ShapePose
+    """The body's own contact shape, for momentum contact."""
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        """The contact shape swept since the last capture."""
+        ...
+
     def swept_pushbox(self) -> pygame.FRect:
         """Physical body rectangle swept over the current tick."""
         ...

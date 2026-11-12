@@ -28,6 +28,7 @@ from src.core.sprite_groups import SpriteGroups
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.projectile import ProjectileConfig
 from src.physics.entity_grid import EntityGrid
+from tests.fakes import BodyStub
 from tests.unit.helpers import entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -191,19 +192,7 @@ class _HazardStub:
         self.damage = damage
 
 
-class _TargetStub(pygame.sprite.Sprite):
-    def __init__(self, box: pygame.FRect, faction: str, speed: float = 0.0) -> None:
-        super().__init__()
-        self.hitbox = box
-        self.velocity = pygame.Vector2(speed, 0.0)
-        self.faction = faction
-        self.is_dead = False
-        self.is_invincible = False
-        self.combat = type("CombatStub", (), {"is_hurt": False})()
-        self.damage_taken = 0.0
-
-    def receive_damage(self, amount: float = 0.0, **_: object) -> None:
-        self.damage_taken += amount
+_TargetStub = BodyStub
 
 
 def test_hazard_boxes_route_through_the_shared_engine() -> None:

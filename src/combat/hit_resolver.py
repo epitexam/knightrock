@@ -173,13 +173,11 @@ class HitResolver:
         final_damage = hit.damage * charge_multiplier * zone_mult * type_mult * juggle_scale
 
         # DIZZY bonus: targets in dizzy state take extra damage
-        if getattr(target, "state_machine", None) is not None:
-            current = getattr(target.state_machine, "current_state_name", None)
-            if current == DIZZY_STATE:
-                final_damage *= CombatSettings.DIZZY_DAMAGE_MULT
+        if target.state_machine.current_state_name == DIZZY_STATE:
+            final_damage *= CombatSettings.DIZZY_DAMAGE_MULT
 
         # INVINCIBILITY: entities with invincible tag (dash, hurt, knockback) cannot be hit
-        if getattr(target, "is_invincible", False):
+        if target.is_invincible:
             return DamageResult()
 
         if final_damage <= 0:

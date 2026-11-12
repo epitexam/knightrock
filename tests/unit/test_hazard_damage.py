@@ -6,18 +6,15 @@ from unittest.mock import Mock
 import pygame
 
 from src.core.level.systems.hazard_damage import HazardDamageSystem
+from tests.fakes import BodyStub
 
 
-def make_entity(
-    hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str = "e1"
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=entity_id,
-        is_dead=is_dead,
-        hitbox=hitbox,
-        velocity=pygame.Vector2(0, 0),
-        receive_damage=Mock(return_value=None),
-    )
+def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str = "e1") -> BodyStub:
+    """A body with a ``receive_damage`` spy."""
+    body = BodyStub(hitbox, entity_id=entity_id)
+    body.is_dead = is_dead
+    body.receive_damage = Mock(return_value=None)  # type: ignore[method-assign]
+    return body
 
 
 class FakeHazard:

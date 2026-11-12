@@ -24,6 +24,7 @@ from src.ui.hud import (
 )
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
+from tests.fakes import game_shape
 from tests.unit.helpers import make_overlay
 
 
@@ -314,7 +315,7 @@ def test_gameplay_scene_draws_the_hud_even_with_debug_off(
         player=_player(health=20.0),
         draw=lambda *args, **kwargs: None,
     )
-    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
+    scene = GameplayScene(game_shape(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
     scene.draw(pygame.display.get_surface())
 
@@ -337,7 +338,7 @@ def test_gameplay_scene_hud_survives_a_level_without_a_player(
     renderer = Renderer(
         _surface(), Camera(Framing(float(1024), float(768))), overlay=make_overlay(_surface())
     )
-    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
-    scene = GameplayScene(SimpleNamespace(clock=None, ui=renderer.overlay), level_id=0, level=level)
+    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None, player=None)
+    scene = GameplayScene(game_shape(clock=None, ui=renderer.overlay), level_id=0, level=level)
 
     assert scene.draw(pygame.display.get_surface()) is None

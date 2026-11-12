@@ -114,9 +114,7 @@ def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] 
     Falls back to the target's own centre when the two do not overlap in
     their stored rectangles, which a swept or moving attack can produce.
     """
-    hitbox = getattr(target, "hitbox", None)
-    if hitbox is None:
-        return None
+    hitbox = target.hitbox
     overlap = box.box.clip(hitbox)
     if overlap.width <= 0.0 or overlap.height <= 0.0:
         return (hitbox.centerx, hitbox.centery)
@@ -156,61 +154,29 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 
 
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
-    """Per-zone swept rectangles (P2), single legacy box as fallback.
-
-    The ``getattr`` looks redundant next to ``Combatant.swept_hurtboxes``,
-    which the protocol does declare, and the audit read it that way. It is not
-    redundant: the fallback is *behaviour*, not tolerance. A target that has
-    no previous-tick capture -- one that has not been swept since it was
-    placed, or a duck-typed producer's stand-in -- has no swept geometry to
-    offer, and the discrete hurtbox is then the best available answer rather
-    than a wrong one. The protocol says what a combatant *is*; this says what
-    to do when it cannot answer.
-    """
-    swept = getattr(target, "swept_hurtboxes", None)
-    if callable(swept):
-        zones = tuple(swept())
-        if zones:
-            return zones
-    return (target.hurtbox,)
+    """Per-zone swept rectangles (P2); the discrete hurtbox when there are none."""
+    return target.swept_hurtboxes() or (target.hurtbox,)
 
 
 def _zone_mults(target: Combatant) -> tuple[float, ...]:
-    """Per-zone damage multipliers (P2), neutral 1.0 for legacy targets.
-
-    Declared on ``Combatant.hurtbox_mult``; ``getattr`` remains for stubs.
-    """
-    mults = getattr(target, "hurtbox_mult", ())
-    if isinstance(mults, tuple):
-        return mults
-    if callable(mults):
-        return tuple(mults())
-    return (1.0,)
+    """Per-zone damage multipliers (P2)."""
+    return target.hurtbox_mult
 
 
 def _zone_tags(target: Combatant) -> tuple[tuple[str, ...], ...]:
-    """Per-zone reserved invulnerability tags (empty when unknown, P2).
-
-    Declared on ``Combatant.hurtbox_tags``; ``getattr`` remains for stubs.
-    """
-    tags = getattr(target, "hurtbox_tags", ())
-    return tuple(tuple(zone) for zone in tags)
+    """Per-zone reserved invulnerability tags (P2)."""
+    return target.hurtbox_tags
 
 
 def _is_valid_target(box: OffensiveBox, target: Combatant) -> bool:
-    """Target eligibility: not the owner, alive, enemy faction, contact.
-
-    Duck-typed on purpose: hazard/contact producers are exercised with
-    minimal stubs (no ``id``/``faction``), like the legacy systems were.
-    """
-    if getattr(target, "is_dead", False):
+    """Target eligibility: not the owner, alive, enemy faction, contact."""
+    if target.is_dead:
         return False
-    target_id = getattr(target, "id", "") or ""
-    if target_id and target_id == box.owner_id:
+    if target.id == box.owner_id:
         return False
-    if box.faction is not None and getattr(target, "faction", None) == box.faction:
+    if box.faction is not None and target.faction == box.faction:
         return False
-    return bool(box.can_contact(target_id))
+    return bool(box.can_contact(target.id))
 
 
 def _eligible(box: OffensiveBox, target: Combatant) -> bool:
@@ -264,22 +230,15 @@ class _TargetGeometry:
 
 
 def _swept_target_box(box: OffensiveBox, target: Combatant) -> pygame.FRect:
-    """Return the target geometry swept only for swept offensive producers.
+    """The rectangle a box of this kind tests the target against.
 
-    Same reasoning as :func:`_target_swept_zones`: a target with no sweep
-    falls back to its discrete geometry, which is a decision about what to
-    draw rather than a duck-typing concession.
+    A projectile meets the swept hurtbox, a hazard the swept pushbox, anything
+    else the plain pushbox.
     """
     if box.kind == "projectile":
-        swept = getattr(target, "swept_hurtbox", None)
-        if callable(swept):
-            return cast(pygame.FRect, swept())
-        return target.hurtbox
+        return target.swept_hurtbox()
     if box.kind == "hazard":
-        swept = getattr(target, "swept_pushbox", None)
-        if callable(swept):
-            return cast(pygame.FRect, swept())
-        return target.hitbox
+        return target.swept_pushbox()
     return target.hitbox
 
 
@@ -496,7 +455,7 @@ class ContactSystem:
         self.zone_contacts.append(
             ZoneContact(
                 owner_id=box.owner_id,
-                target_id=getattr(target, "id", "") or "",
+                target_id=target.id,
                 zone_index=zone_index,
                 zone_mult=zone_mult,
                 kind=box.kind,
@@ -544,7 +503,7 @@ class ContactSystem:
         self.zone_contacts.append(
             ZoneContact(
                 owner_id=box.owner_id,
-                target_id=getattr(target, "id", "") or "",
+                target_id=target.id,
                 zone_index=0,
                 zone_mult=1.0,
                 kind=box.kind,

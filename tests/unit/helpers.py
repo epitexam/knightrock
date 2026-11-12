@@ -239,9 +239,14 @@ class SpyStateMachine:
     """Record forced state changes without requiring concrete game states."""
 
     changes: list[tuple[str, dict[str, object]]] = field(default_factory=list)
+    current_state_name: str | None = None
 
     def change_state(self, name: str, **kwargs: object) -> None:
         self.changes.append((name, kwargs))
+
+    def has_tag(self, tag: str) -> bool:
+        """A machine with no states carries no tags (nothing makes it invincible)."""
+        return False
 
 
 class InputStub:

@@ -33,6 +33,7 @@ from src.ui.world_overlay_metrics import (
 from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_overlay_velocity import arrow_outline
 from src.ui.world_ui import WorldUI
+from tests.fakes import game_shape
 from tests.unit.helpers import card_rows, make_overlay
 
 
@@ -789,7 +790,7 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers(
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
     level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
-    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
+    scene = GameplayScene(game_shape(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is False
@@ -811,7 +812,7 @@ def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
     level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
-    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
+    scene = GameplayScene(game_shape(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is True
@@ -821,7 +822,7 @@ def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
     """F6 flips the freeze switch in debug mode, ignored otherwise."""
     from src.application.scenes.gameplay_scene import GameplayScene
 
-    scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace())
+    scene = GameplayScene(game_shape(), level_id=0, level=SimpleNamespace())
 
     monkeypatch.setenv("DEBUG", "1")
     assert scene.frozen is False
@@ -846,7 +847,7 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setenv("DEBUG", "1")
     calls = {"level": 0}
-    game = SimpleNamespace()  # no input_manager: the scene must not need one
+    game = game_shape()  # no input_manager: the scene must not need one
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
         exit_reached=False,
@@ -872,7 +873,7 @@ def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setenv("DEBUG", "1")
     calls = {"level": 0}
-    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None))
+    game = game_shape()
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
         exit_reached=False,
@@ -906,7 +907,7 @@ def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
 
     spawn = SpawnSystem(SpriteGroups())
     scene = GameplayScene(
-        SimpleNamespace(),
+        game_shape(),
         level_id=0,
         level=SimpleNamespace(spawn_system=spawn),
     )
@@ -932,10 +933,10 @@ def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: C
     surface = pygame.display.get_surface()
     assert surface is not None
     renderer = Renderer(surface, camera, overlay=make_overlay(surface))
-    game = SimpleNamespace(
+    game = game_shape(
         input_manager=SimpleNamespace(update=lambda: None), clock=None, ui=renderer.overlay
     )
-    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
+    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None, player=None)
     scene = GameplayScene(game, level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))

@@ -206,11 +206,9 @@ class GameplayScene(Scene):
         The application layer is where ``core`` and ``ui`` meet, so this is
         the one place allowed to name :class:`UIManager` concretely -- the
         renderer and the level go through the ``WorldOverlay`` port instead.
-        Optional because the tests drive this scene with a lightweight game
-        stand-in that has no interface at all, and a debug keypress on such a
-        runtime should do nothing rather than raise.
+        ``None`` until the first level built it (``Game.world_overlay``).
         """
-        return getattr(self.game, "ui", None)
+        return self.game.ui
 
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:
@@ -284,12 +282,10 @@ class GameplayScene(Scene):
             return
         self._dead_key_notice_shown = True
         purpose = self._KEY_PURPOSE.get(key, "toggle the overlay")
-        notice = getattr(self.game, "notice", None)
-        if callable(notice):
-            notice(
-                f"F-keys are debug-only -- {purpose}",
-                "Start with:  python main.py --debug",
-            )
+        self.game.notice(
+            f"F-keys are debug-only -- {purpose}",
+            "Start with:  python main.py --debug",
+        )
 
     def _route_to_panels(self, event: pygame.event.Event) -> bool:
         """Let the debug panels swallow a mouse event (``×``, drag & drop).
@@ -315,11 +311,7 @@ class GameplayScene(Scene):
         clock = self.game.clock
         fps = clock.get_fps() if clock else 0.0
         frame_time = clock.get_time() if clock else 0.0
-        # Duck-typed: tests drive this scene with a lightweight game stand-in,
-        # which has no accumulator to read a tick fraction from. Such a
-        # runtime gets no interpolation, which is the correct fallback.
-        render_alpha = getattr(self.game, "render_alpha", None)
-        alpha = render_alpha() if callable(render_alpha) else 0.0
+        alpha = self.game.render_alpha()
         self.level.draw(
             fps,
             scene_host=self.game,
@@ -332,8 +324,8 @@ class GameplayScene(Scene):
         # so a shrinking bar or an expiring combo cannot leave a stripe behind.
         ui = self._ui
         if ui is not None:
-            ui.draw_hud(getattr(self.level, "player", None))
-        notice = getattr(self.game, "notice_lines", ())  # absent: nothing to say
+            ui.draw_hud(self.level.player)
+        notice = self.game.notice_lines
         if ui is not None and notice:
             ui.hud.draw_notice(notice)
         if self.frozen:
