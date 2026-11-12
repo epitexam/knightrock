@@ -9,8 +9,9 @@ from collections.abc import Sequence
 import pygame
 from pygame.sprite import Group
 
+from src.core.asset_library import shared_library
 from src.core.colors import Colors
-from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
+from src.core.hazards import OrbitingHazard, SpanHazard, art_bounds, build_hazard_animator
 from src.core.input.input_manager import InputManager
 from src.core.level import properties as props
 from src.core.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
@@ -174,6 +175,10 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
     groups.moving_platforms.add(platform)
 
 
+SAW_ART = "assets/graphics/enemies/saw/animation"
+FLOOR_SPIKES_ART = "assets/graphics/enemies/floor_spikes"
+
+
 def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     """Create a linearly moving hazard (saw) patrolling the object rectangle.
 
@@ -187,7 +192,7 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     flip = props.flag(obj.properties, "flip", False, where=where)
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator({"spin": "assets/graphics/enemies/saw/animation"}, "spin")
+        animator = build_hazard_animator({"spin": SAW_ART}, "spin")
     except FileNotFoundError:
         animator = None
     if "size" in obj.properties:
@@ -213,6 +218,9 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         animator=animator,
         span=(span_a, span_b),
     )
+    # The blade is a disc in a square frame: it cuts with the disc.
+    frames = shared_library().frames(SAW_ART) if animator is not None else [surf]
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
 
@@ -237,6 +245,8 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         groups.all_sprites,
         damage=damage,
     )
+    # Drawn as a circle in its square: it hurts with the circle.
+    hazard.fit_contact(pygame.FRect(0.0, 0.0, size, size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
 
@@ -249,14 +259,16 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator(
-            {"spikes": "assets/graphics/enemies/floor_spikes"}, "spikes"
-        )
+        animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes")
     except FileNotFoundError:
         animator = None
     hazard = SpanHazard(
         (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
     )
+    # The spikes fill the bottom half of their tile: only they hurt, not the air
+    # above them.
+    frames = shared_library().frames(FLOOR_SPIKES_ART) if animator is not None else [surf]
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size))
     groups.hazard_sprites.add(hazard)
 
 

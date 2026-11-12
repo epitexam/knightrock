@@ -1,5 +1,5 @@
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Protocol
 
 import pygame
@@ -16,6 +16,33 @@ class AnimatedSprite(Protocol):
     animator: Animator | None
     rect: pygame.FRect
     image: pygame.Surface
+
+
+#: Below this alpha a pixel is antialiasing or glow, not something that cuts.
+ART_ALPHA = 64
+
+
+def art_bounds(frames: Iterable[pygame.Surface], size: tuple[float, float]) -> pygame.FRect:
+    """Where the art of ``frames`` is drawn in a sprite of ``size``: their opaque union.
+
+    Measured on every frame, since an animation can reach further on some, and
+    scaled to ``size`` because the animator stretches each frame to the sprite.
+    The whole sprite when nothing is opaque, so a contact never vanishes.
+    """
+    union: pygame.FRect | None = None
+    for frame in frames:
+        width, height = frame.get_size()
+        if width == 0 or height == 0:
+            continue
+        bounds = frame.get_bounding_rect(min_alpha=ART_ALPHA)
+        if bounds.width == 0 or bounds.height == 0:
+            continue
+        scale_x, scale_y = size[0] / width, size[1] / height
+        scaled = pygame.FRect(
+            bounds.x * scale_x, bounds.y * scale_y, bounds.w * scale_x, bounds.h * scale_y
+        )
+        union = scaled if union is None else union.union(scaled)
+    return union if union is not None else pygame.FRect(0.0, 0.0, size[0], size[1])
 
 
 def build_hazard_animator(animations: Mapping[str, str], default: str) -> Animator:

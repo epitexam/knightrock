@@ -250,6 +250,19 @@ def _shape_swept_intersects(shape: SweptShape, target: pygame.FRect) -> bool:
     return swept_intersects_aabb(shape.previous, shape.current, target)
 
 
+def _generic_hit(box: OffensiveBox, target_box: pygame.FRect) -> bool:
+    """Whether a projectile, hazard or body box touches ``target_box``.
+
+    A box with a round (or otherwise non-rectangular) shape is judged on that
+    shape alone, as melee already is: its rectangle is only the shape's bounding
+    box, and testing it too made a saw hurt from the empty corners of its frame.
+    """
+    advanced = [shape for shape in box.swept_shapes if shape.current.kind is not ShapeKind.AABB]
+    if advanced:
+        return any(_shape_swept_intersects(shape, target_box) for shape in advanced)
+    return any(swept.colliderect(target_box) for swept in box.swept)
+
+
 def _first_vulnerable_zone(
     target: Combatant,
     swept_boxes: tuple[pygame.FRect, ...],
@@ -350,11 +363,7 @@ class ContactSystem:
                     self._resolve_melee(box, target, contact[0], contact[1])
                 else:
                     target_box = self._target_geometry.for_box(box, target)
-                    shape_hit = any(
-                        _shape_swept_intersects(shape, target_box) for shape in box.swept_shapes
-                    )
-                    swept_hit = any(swept.colliderect(target_box) for swept in box.swept)
-                    if not shape_hit and not swept_hit:
+                    if not _generic_hit(box, target_box):
                         continue
                     self.metrics.overlaps += 1
                     self._target_geometry.reset()

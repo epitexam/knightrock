@@ -147,6 +147,36 @@ changements du §3 ; le ressenti du verrou de manette ; D5 à 120/144 Hz ; la
 construction PyInstaller (`knightrock.spec` ne référençait pas les modules
 supprimés, mais le paquet n'a pas été construit ici).
 
+## 8 bis. Suite : la géométrie des pièges (retour du développeur)
+
+**Constat rapporté** : après C2, on prend des dégâts avant de toucher les pièges.
+
+**Cause** : chaque piège blessait par le rectangle entier de son image, alors
+que son dessin n'en remplit qu'une partie. C2 ne l'a pas créé, il l'a révélé :
+le délai aléatoire retardait souvent le premier dégât jusqu'à ce que le joueur
+soit déjà dans les pics visibles.
+
+| Piège | Avant | Après |
+|---|---|---|
+| Pics au sol (43 sur les 7 niveaux) | carré 64 × 64 : touché jusqu'à **32 px au-dessus** des pointes | rectangle 62 × 32 de la partie visible |
+| Scie | carré 76 × 76 : touché depuis les coins vides | cercle de 76 px |
+| Boule orbitale | carré : idem | cercle |
+
+Vérifié sur les vrais niveaux avec le vrai joueur : à 20 px au-dessus des pics,
+dégât avant, aucun après ; dans un coin du carré de la scie, aucun dégât ; dans
+le disque, dégât au premier tick. L'overlay de debug (F1 + F4) dessine en orange
+la zone qui blesse, à côté de l'ancien cadre gris.
+
+Au passage, `ContactSystem` juge désormais un producteur qui porte une forme
+ronde (piège, projectile) sur cette forme seule, comme la mêlée ; son
+rectangle n'est plus que la boîte englobante de la broadphase.
+
+**Observation, non modifiée** : 15 pics au sol sont marqués « retournés
+verticalement » dans les cartes Tiled, mais s'affichent tous pointe en haut (le
+retournement n'est pas appliqué à leur image). Leur zone de dégâts suit l'image
+affichée. Si ces pics devaient pendre du plafond, c'est un défaut d'affichage à
+traiter à part.
+
 ## 9. Dette technique restante
 
 Par priorité :

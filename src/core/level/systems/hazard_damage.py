@@ -128,7 +128,10 @@ class HazardDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for hazard in hazard_sprites:
-            box = collider_box(hazard)
+            # The part of the hazard that touches, when it says; its whole
+            # rectangle otherwise (a bare test sprite).
+            contact_rect = getattr(hazard, "contact_rect", None)
+            box = contact_rect() if callable(contact_rect) else collider_box(hazard)
             if box is None:
                 continue
             key = id(hazard)

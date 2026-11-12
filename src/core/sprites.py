@@ -39,21 +39,49 @@ class Sprite(pygame.sprite.Sprite):
         self._previous_contact_shape: ShapePose | None = None
         self._previous_contact_rect: pygame.FRect | None = None
 
+    #: The part of the image that touches, in image coordinates, or ``None``
+    #: for the whole image. A hazard's art rarely fills its rectangle -- floor
+    #: spikes use the bottom half of theirs -- and a contact tested against the
+    #: full rectangle hurts the player before anything visible reaches him.
+    contact_area: pygame.FRect | None = None
+
+    def contact_rect(self) -> pygame.FRect:
+        """Where this sprite touches, in world coordinates."""
+        area = self.contact_area
+        if area is None:
+            return self.rect.copy()
+        return pygame.FRect(self.rect.x + area.x, self.rect.y + area.y, area.w, area.h)
+
+    def fit_contact(self, area: pygame.FRect, round_shape: bool = False) -> None:
+        """Touch only through ``area`` of the image; as a circle in it when ``round_shape``.
+
+        The circle is the largest one centred in the area, for art that is a
+        disc in a square frame (a saw, a spiked ball): its corners are empty,
+        and a square contact would hurt from them.
+        """
+        self.contact_area = pygame.FRect(area)
+        if round_shape:
+            diameter = min(area.w, area.h)
+            self.contact_shape = ShapePose(ShapeKind.CIRCLE, (diameter, diameter))
+        else:
+            self.contact_shape = ShapePose(ShapeKind.AABB, (area.w, area.h))
+        self.sync_contact_shape()
+
     def sync_contact_shape(self) -> None:
         self.contact_shape = ShapePose(
             self.contact_shape.kind,
             self.contact_shape.size,
-            self.rect.center,
+            self.contact_rect().center,
             self.contact_shape.angle,
         )
 
     def capture_contact_origin(self) -> None:
         self._previous_contact_shape = self.contact_shape
-        self._previous_contact_rect = self.rect.copy()
+        self._previous_contact_rect = self.contact_rect()
 
     def swept_contact_rect(self) -> pygame.FRect:
         """Return the contact rectangle swept from the previous tick boundary."""
-        return swept_box(self._previous_contact_rect, self.rect)
+        return swept_box(self._previous_contact_rect, self.contact_rect())
 
     def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
         return (SweptShape(self._previous_contact_shape, self.contact_shape),)
