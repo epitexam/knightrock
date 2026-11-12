@@ -79,9 +79,9 @@ class EnemyIdleState(State):
         self.timer -= delta_time
         if self.timer <= 0:
             if self.entity.can_see_player():
-                self.entity.state_machine.change_state(EnemyState.CHASE)
+                return EnemyState.CHASE
             else:
-                self.entity.state_machine.change_state(EnemyState.PATROL)
+                return EnemyState.PATROL
         return None
 
 
@@ -100,8 +100,7 @@ class EnemyPatrolState(State):
         # probing (facing may lag a turn behind and must not steer this).
         self.entity.move_axis = self.direction
         if self.entity.is_at_ledge():
-            self.entity.state_machine.change_state(EnemyState.LEDGE)
-            return None
+            return EnemyState.LEDGE
         # A patrol reversal -- the enemy reaching the end of its beat -- is the
         # one enemy pivot that reads well: the fighter is already turning, and
         # nothing about it announces the change. Asked here because this is
@@ -112,8 +111,7 @@ class EnemyPatrolState(State):
         self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.can_see_player():
-            self.entity.state_machine.change_state(EnemyState.CHASE)
-            return None
+            return EnemyState.CHASE
 
         self.patrol_timer -= delta_time
         if self.patrol_timer <= 0:
@@ -147,8 +145,7 @@ class EnemyChaseState(State):
     def update(self, delta_time: float) -> str | None:
         """Update the state, move towards the player, and check attack range."""
         if self.entity.player is None:
-            self.entity.state_machine.change_state(EnemyState.IDLE)
-            return None
+            return EnemyState.IDLE
 
         player_center = self.entity.player.hitbox.centerx
         enemy_center = self.entity.hitbox.centerx
@@ -172,16 +169,15 @@ class EnemyChaseState(State):
             leapt = self._try_gap_jump() or self._try_risky_jump()
             jumped = leapt or self._try_drop()
         if not jumped and at_ledge:
-            self.entity.state_machine.change_state(EnemyState.LEDGE)
-            return None
+            return EnemyState.LEDGE
 
         if not leapt and not self._glide_step(delta_time):
             self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.is_player_in_range():
-            self.entity.state_machine.change_state(EnemyState.ATTACK)
+            return EnemyState.ATTACK
         elif not self.entity.can_see_player():
-            self.entity.state_machine.change_state(EnemyState.IDLE)
+            return EnemyState.IDLE
         return None
 
     def _glide_step(self, delta_time: float) -> bool:
@@ -374,7 +370,7 @@ class EnemyAttackState(State):
     def update(self, delta_time: float) -> str | None:
         """Update the state and return to idle when the attack finishes."""
         if not self.entity.combat.is_attacking:
-            self.entity.state_machine.change_state(EnemyState.IDLE)
+            return EnemyState.IDLE
         return None
 
 
@@ -389,9 +385,9 @@ class EnemyChargeState(State):
         """Update the state and transition to attack when charge is released."""
         if not self.entity.combat.charging.is_charging:
             if self.entity.combat.is_attacking:
-                self.entity.state_machine.change_state(EnemyState.ATTACK)
+                return EnemyState.ATTACK
             else:
-                self.entity.state_machine.change_state(EnemyState.IDLE)
+                return EnemyState.IDLE
         return None
 
 

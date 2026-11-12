@@ -206,9 +206,8 @@ def test_patrol_steps_into_ledge_state_at_the_edge() -> None:
     state = EnemyPatrolState(entity)
     state.enter()
 
-    state.update(1 / 60)
+    assert state.update(1 / 60) == EnemyState.LEDGE
 
-    entity.state_machine.change_state.assert_called_once_with(EnemyState.LEDGE)
     entity.apply_horizontal_movement.assert_not_called()
 
 
@@ -256,9 +255,7 @@ def test_chase_refuses_to_run_off_the_edge() -> None:
     entity = _chase_stub(at_ledge=True)
     state = EnemyChaseState(entity)
 
-    state.update(1 / 60)
-
-    entity.state_machine.change_state.assert_called_once_with(EnemyState.LEDGE)
+    assert state.update(1 / 60) == EnemyState.LEDGE
 
 
 def test_chase_keeps_running_with_ground_ahead() -> None:
