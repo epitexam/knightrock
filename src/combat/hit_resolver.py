@@ -1,9 +1,26 @@
 """
-Hit resolution: damage calculation, knockback, stagger, and special effects.
+Hit resolution: what one landed melee or projectile hit does.
 
-The ``HitResolver`` is a stateless utility that computes and applies the
-consequences of a single hit.  It is called by ``CombatSystem`` whenever
-a hitbox collision is detected.
+``HitResolver`` is stateless; ``ContactSystem`` calls it once per contact. The
+whole outcome of a hit, in the order it happens, and where each part lives:
+
+1. **Damage** -- base x charge x zone x damage type x juggle, x the dizzy bonus;
+   then invincibility, the OTG window and the finisher. Here.
+2. **Defence** -- the target's own ``receive_damage``. ``Player`` decides the
+   dash parry and the guard (parry, block, chip, break) before the generic
+   ``Entity`` path; ``Entity`` applies health, flash, knockback, i-frames and
+   the heavy launch (``ReactionComponent``). Defence lives with the defender on
+   purpose: hazards and body contact call ``receive_damage`` directly, without
+   this resolver, and a guarding player blocks them too.
+3. **After an applied hit** -- armour break, juggle gravity, the attacker's
+   combo, the dash refresh, then hurt and stagger unless the target died, armour
+   absorbed it or it was launched. Here, in :func:`_apply_post_effects`.
+4. **On the attacker** -- a parried melee attack calls ``attacker.on_parried()``
+   (an enemy counts it and may be stunned); one that took health off calls
+   ``attacker.on_damage_landed()``. Called by ``ContactSystem._resolve_melee``.
+5. **On the world** -- hit-stop and camera impact, in ``ContactSystem``.
+
+The pins for all of it are in ``tests/golden/hit_outcomes.json``.
 """
 
 from __future__ import annotations

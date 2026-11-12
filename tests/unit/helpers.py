@@ -205,6 +205,10 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         swept_hurtbox=lambda: target.swept_hurtbox(),
         swept_hurtboxes=lambda: target.swept_hurtboxes(),
         capture_sweep_origin=target.capture_sweep_origin,
+        # The Combatant hooks a melee contact calls on its attacker: a plain
+        # fighter, neither counting parries nor stunned by them.
+        on_parried=lambda: False,
+        on_damage_landed=lambda: None,
     )
 
 

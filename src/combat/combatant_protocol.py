@@ -324,6 +324,14 @@ class Combatant(Protocol):
         """Break the entity's super armor, allowing stagger again."""
         ...
 
+    def on_parried(self) -> bool:
+        """React to a melee attack of this fighter being parried; True if it is now stunned."""
+        ...
+
+    def on_damage_landed(self) -> None:
+        """A melee attack of this fighter took health off its target."""
+        ...
+
 
 # There is deliberately no guard port: `Player` is the only guarding type, and
 # its readers (`hud.py`, `player_ui.py`, the hit resolver) use `player.guard`,

@@ -37,10 +37,8 @@ from src.combat.shapes import (
 from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
-from src.entities.enemies.enemy import Enemy
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
-from src.states.reaction_states import DIZZY_STATE
 
 __all__ = [
     "CombatMetrics",
@@ -506,8 +504,8 @@ class ContactSystem:
         )
         if result.guarded:
             self._record_guard_event(result, target, box)
-            if result.parried:
-                self._maybe_parry_stun(box.attacker)
+            if result.parried and box.attacker.on_parried():
+                self.guard_events.append(GuardEvent("stun", box.attacker))
         magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
         self.impact = max(self.impact, magnitude)
         duration = (
@@ -518,9 +516,8 @@ class ContactSystem:
         if result.parried:
             duration = max(duration, GuardSettings.PARRY_HITSTOP)
         self.hit_stop = max(self.hit_stop, duration)
-        # Real HP damage resets the consecutive-parry counter.
-        if result.applied and hasattr(box.attacker, "parries_taken"):
-            box.attacker.parries_taken = 0
+        if result.applied:
+            box.attacker.on_damage_landed()
 
     def _resolve_generic(self, box: OffensiveBox, target: Combatant) -> None:
         """Projectile/hazard/contact hit, keeping their legacy semantics.
@@ -568,18 +565,3 @@ class ContactSystem:
         elif result.guard_broken:
             kind = "break"
         self.guard_events.append(GuardEvent(kind, target, _contact_point(box, target)))
-
-    def _maybe_parry_stun(self, attacker: Any) -> None:
-        """Parry-stun: count the consecutive perfect parries an enemy took."""
-        if not isinstance(attacker, Enemy):
-            return
-        attacker.parries_taken += 1
-        if (
-            attacker.parry_stun_threshold is not None
-            and attacker.parries_taken >= attacker.parry_stun_threshold
-        ):
-            attacker.state_machine.change_state(
-                DIZZY_STATE, force=True, duration=attacker.parry_stun_duration
-            )
-            attacker.parries_taken = 0
-            self.guard_events.append(GuardEvent("stun", attacker))

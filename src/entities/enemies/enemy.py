@@ -315,6 +315,21 @@ class Enemy(Entity):
             # zero instead of sliding forever on an asymptote.
             apply_velocity_friction(self, self.passive_friction, delta_time)
 
+    def on_parried(self) -> bool:
+        """Count a parried attack; enough in a row and the enemy is stunned (dizzy).
+
+        A config with no threshold counts but is never stunned.
+        """
+        self.parries_taken += 1
+        threshold = self.parry_stun_threshold
+        if threshold is None or self.parries_taken < threshold:
+            return False
+        self.state_machine.change_state(
+            EnemyState.DIZZY, force=True, duration=self.parry_stun_duration
+        )
+        self.parries_taken = 0
+        return True
+
     def can_see_player(self) -> bool:
         """Check if the player is within vision range.
 

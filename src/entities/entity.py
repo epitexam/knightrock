@@ -589,6 +589,18 @@ class Entity(Sprite):
         self.super_armor = False
         self.super_armor_count = 0
 
+    def on_parried(self) -> bool:
+        """A melee attack of this fighter was parried. Nothing happens by default.
+
+        :class:`~src.entities.enemies.enemy.Enemy` counts the parries and is
+        stunned by enough of them in a row; the player is not.
+        """
+        return False
+
+    def on_damage_landed(self) -> None:
+        """A melee attack of this fighter took health off its target: the parry streak ends."""
+        self.parries_taken = 0
+
     def get_damage_modifier(self, damage_type: DamageType) -> float:
         """Damage multiplier for a given damage type.
 
