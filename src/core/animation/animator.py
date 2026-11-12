@@ -75,6 +75,7 @@ class Animator:
         self._frame = 0
         self._finished = False
         self._display_cache: dict[tuple[str, int, bool, tuple[int, int]], pygame.Surface] = {}
+        self._generation = library.generation
 
     @property
     def current(self) -> str:
@@ -101,6 +102,19 @@ class Animator:
         spec = self._specs[self._current]
         frames = self._library.frames(spec.directory)
         return frames[0].get_width(), frames[0].get_height()
+
+    def preload(self) -> None:
+        """Load every clip now rather than the first time it plays.
+
+        Called when a level is built: the first swing of a fight was the frame
+        that read the attack PNGs from disk. A clip whose directory is missing
+        is left for :meth:`update` to report when it plays, as before.
+        """
+        for spec in self._specs.values():
+            try:
+                self._library.frames(spec.directory)
+            except FileNotFoundError:
+                continue
 
     def play(self, name: str) -> bool:
         """Switch to ``name``; return True when the animation changed.
@@ -143,6 +157,11 @@ class Animator:
         """
         if size[0] <= 0 or size[1] <= 0:
             return None
+        if self._generation != self._library.generation:
+            # The library was cleared for a new display format: every scaled
+            # frame held here was converted for the old one.
+            self._display_cache.clear()
+            self._generation = self._library.generation
         spec = self._specs[self._current]
         key = (spec.name, self._frame, facing_right, size)
         cached = self._display_cache.get(key)

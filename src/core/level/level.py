@@ -130,6 +130,9 @@ class Level:
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         self._install_static_culls()
+        for entity in self.groups.entity_sprites:
+            if entity.animator is not None:
+                entity.animator.preload()
 
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed

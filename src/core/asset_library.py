@@ -26,6 +26,9 @@ class AssetLibrary:
     def __init__(self) -> None:
         self._cache: dict[str, pygame.Surface] = {}
         self._frame_cache: dict[str, list[pygame.Surface]] = {}
+        #: Bumped by :meth:`clear`, so whoever derived surfaces from this
+        #: library's frames can tell theirs are from an older display format.
+        self.generation = 0
 
     def image(self, relative_path: str | Path, *, alpha: bool = True) -> pygame.Surface:
         """Return the cached converted surface for ``relative_path``.
@@ -140,6 +143,7 @@ class AssetLibrary:
         """Drop the whole cache (level transition or memory pressure)."""
         self._cache.clear()
         self._frame_cache.clear()
+        self.generation += 1
 
 
 _SHARED_LIBRARY: AssetLibrary | None = None
