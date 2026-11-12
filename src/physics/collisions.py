@@ -95,7 +95,7 @@ def get_nearby_sprites(
     """Return the collision sprites near the given sprite.
 
     Uses spatial hash for O(1) lookup when available, otherwise falls back
-    to the original O(n) search (PERF-01).
+    to the original O(n) search.
     """
     # Only use spatial_hash if it's actually a SpatialHash instance
     if isinstance(spatial_hash, SpatialHash):

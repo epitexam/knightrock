@@ -1,4 +1,4 @@
-"""JSON save of the progression (audit F8.1, Phase 2 #6).
+"""JSON save of the progression.
 
 ``LevelConfig.level_unlock`` — declared in the TMX *Data* layer — was never
 read: on level completion, the application layer unlocks the id it points to

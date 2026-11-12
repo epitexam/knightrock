@@ -179,11 +179,11 @@ class HitProperties:
         If True, instantly kills a target whose HP is below 20%.
         Use sparingly — best on slow, high-risk moves.
     juggle_gravity_mult : float
-        Gravity multiplier applied to an airborne victim (Phase 5 #4):
+        Gravity multiplier applied to an airborne victim:
         < 1.0 floats the juggle, > 1.0 slams it down. 1.0 = untouched.
     otg_allowed : bool
         If True, this hit may connect during the OTG protection window
-        granted on landing from a juggle (Phase 5 #4). Ground hits
+        granted on landing from a juggle. Ground hits
         otherwise bounce off a recently knocked-down victim.
     unblockable : bool
         If True, the hit bypasses guard and parry (chip/posture unchanged).

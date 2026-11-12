@@ -2,7 +2,7 @@
 
 Extracted from ``Entity`` (audit Phase 3 #2) so knockback, heavy launch, and
 stagger live in a dedicated component wired in like ``vitals``/``combat``
-instead of sitting inline on the entity aggregate (audit F2.2).
+instead of sitting inline on the entity aggregate.
 
 The component owns the *rules*, not the state: velocity and contacts belong
 to movement, health and status timers to vitals, hurt state to combat, and

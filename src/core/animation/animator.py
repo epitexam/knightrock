@@ -1,10 +1,10 @@
-"""Per-state frame animation driven by :class:`AssetLibrary` (Phase 2 #1).
+"""Per-state frame animation driven by :class:`AssetLibrary`.
 
 The shipped art lives under ``assets/graphics/`` as directories of numbered
 PNG frames (``idle/0.png``, ``idle/1.png``, ...).  The :class:`Animator`
 turns such a directory into a looping or one-shot animation, flips frames
 for left-facing sprites, and resizes them to the entity's sprite rect so
-the physics rect stays authoritative (audit F2.2: hitbox owns geometry).
+the physics rect stays authoritative.
 """
 
 from collections.abc import Mapping

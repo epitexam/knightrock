@@ -1,4 +1,4 @@
-"""Typed JSON loader for the player config (Phase 3 #4).
+"""Typed JSON loader for the player config.
 
 ``player.json`` holds the *overrides* on the bare ``PlayerConfig()`` defaults
 (pink sprite, ``max_wall_jumps: "inf"``, ``"player"`` attack set), and the

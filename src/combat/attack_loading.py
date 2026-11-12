@@ -1,4 +1,4 @@
-"""Attack loading and strict validation (P4.2).
+"""Attack loading and strict validation.
 
 ``load_attacks`` is the single entry point for attack definitions (builtin
 tables and gameplay JSON both go through it), so it is also where malformed

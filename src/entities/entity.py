@@ -53,7 +53,7 @@ from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
 from src.states.turn_state import FACING_LOCKED
 
-# Deterministic entity identifier source (ARCH-08).  A sequential counter
+# Deterministic entity identifier source.  A sequential counter
 # yields identical IDs for identically-ordered simulations, which keeps
 # rollback and future netcode in sync (unlike a random UUID).
 _ENTITY_ID_SEQUENCE = count()
@@ -63,7 +63,7 @@ __all__ = ["Entity"]
 
 @dataclass
 class EntitySnapshot:
-    """Serializable capture of an entity's full simulation state (Phase 3 #3).
+    """Serializable capture of an entity's full simulation state.
 
     Holds a direct reference to the live entity so a *local* rollback
     (``RollbackSystem``) can resurrect a sprite that has since been
@@ -496,7 +496,7 @@ class Entity(Sprite):
 
     @property
     def hitbox(self) -> pygame.FRect:
-        """The physical collider: walls, floors, separation, platform carry (P2).
+        """The physical collider: walls, floors, separation, platform carry.
 
         ``pushbox`` is the name the same FRect had at this tier and is kept for
         the *derived* forms -- ``swept_pushbox`` and the overlay legend's
@@ -513,7 +513,7 @@ class Entity(Sprite):
 
     @property
     def hurtbox(self) -> pygame.FRect:
-        """Damage-receiving area: union of every zone (P2).
+        """Damage-receiving area: union of every zone.
 
         Legacy single-zone configurations are exactly that one zone, so the
         union view stays byte-identical to the pre-P2 ``hurtbox``.
@@ -545,7 +545,7 @@ class Entity(Sprite):
         return tuple(zone.name for zone in self._zones)
 
     def capture_sweep_origin(self) -> None:
-        """Freeze the current zones as the next tick's sweep origin (P1/D3).
+        """Freeze the current zones as the next tick's sweep origin.
 
         Called once per tick by the gameplay loop, before any movement.
         """
@@ -561,7 +561,7 @@ class Entity(Sprite):
         return (SweptShape(self._previous_contact_shape, self.contact_shape),)
 
     def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
-        """Per-zone swept rectangles for the current tick (P1, D1/D4).
+        """Per-zone swept rectangles for the current tick.
 
         Bilateral-generous by design: a target that dodges more than
         ``SWEEP_MIN_DISPLACEMENT_PX`` but less than
@@ -627,7 +627,7 @@ class Entity(Sprite):
     def sync_rects(self) -> None:
         """Derive sprite rect and every hurtbox zone from the pushbox.
 
-        The single derivation point of the hurt geometry (P2): the dash
+        The single derivation point of the hurt geometry: the dash
         squish mutates the pushbox, this re-derives zones — including the
         cached union backing the legacy ``hurtbox`` view.
 
@@ -876,7 +876,7 @@ class Entity(Sprite):
         self.velocity = Vector2(0, 0)
         self.old_hitbox = self.hitbox.copy()
         self.vitals.reset()
-        # P1 (D4) / P2: respawn/teleport is a discontinuity — no swept smear.
+        # P1 / P2: respawn/teleport is a discontinuity — no swept smear.
         self._prev_hurtboxes = ()
         self._prev_pushbox = None
         self._previous_contact_shape = None
@@ -1054,7 +1054,7 @@ class Entity(Sprite):
         self._reaction.stagger(duration)
 
     def set_juggle(self, gravity_mult: float, duration: float) -> None:
-        """Float or slam an airborne victim for ``duration`` (Phase 5 #4)."""
+        """Float or slam an airborne victim for ``duration``."""
         self.gravity_scale = gravity_mult
         self.juggle_timer = max(0.0, duration)
 
@@ -1091,7 +1091,7 @@ class Entity(Sprite):
         """Tick the optional animator and publish its surface as ``image``.
 
         The display surface is scaled to the sprite rect so the physics
-        rect stays authoritative (audit F2.2); entities without an
+        rect stays authoritative; entities without an
         animator keep their flat colored surface.
         """
         if self.animator is None:
@@ -1146,7 +1146,7 @@ class Entity(Sprite):
         self._update_animator(delta_time)
 
     def save_state(self) -> EntitySnapshot:
-        """Capture the full simulation state for rollback (Phase 3 #3).
+        """Capture the full simulation state for rollback.
 
         ``rng`` is captured so any entity that consumes randomness during a
         tick stays bit-identical across a rollback.  Subclasses (``Player``)
@@ -1197,7 +1197,7 @@ class Entity(Sprite):
             snapshot.old_hitbox
         )
         self.sync_rects()
-        # P1 (D3) / P2: ``prev`` is re-derived at the next frontier capture;
+        # P1 / P2: ``prev`` is re-derived at the next frontier capture;
         # no snapshot field carries it across a rollback.
         self._prev_hurtboxes = ()
         self._prev_pushbox = None

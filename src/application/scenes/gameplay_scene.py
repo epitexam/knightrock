@@ -1,4 +1,4 @@
-"""Gameplay scene: one level, its deaths, its transitions (Phase 2 #4)."""
+"""Gameplay scene: one level, its deaths, its transitions."""
 
 from __future__ import annotations
 

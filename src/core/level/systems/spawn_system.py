@@ -1,4 +1,4 @@
-"""SpawnSystem: debug-spawn head of the level pipeline (audit F1.2, Phase 3 #2).
+"""SpawnSystem: debug-spawn head of the level pipeline.
 
 Runs first each tick, before the platforms move, so a runtime-spawned enemy
 joins the world before any stage reads it.  It owns the debug-spawn
@@ -114,7 +114,7 @@ class SpawnSystem:
 
     @property
     def spawn_cooldown_max(self) -> float:
-        """Longest remaining debug-spawn cooldown (audit F5.2)."""
+        """Longest remaining debug-spawn cooldown."""
         return max([*self.spawn_cooldowns.values(), *self.debug_cooldowns.values(), 0.0])
 
     def process(self, delta_time: float, player: Player) -> None:
@@ -251,7 +251,7 @@ class SpawnSystem:
         )
 
     def spawn_juggle_dummy(self, player: Player) -> Any | None:
-        """Pop an airborne dummy ahead of the player to juggle (Phase 5 #4)."""
+        """Pop an airborne dummy ahead of the player to juggle."""
         hitbox = player.hitbox
         offset_x = 140 if player.facing_right else -140
         try:

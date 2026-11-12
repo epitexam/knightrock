@@ -51,7 +51,7 @@ class Level:
     the systems that make up its tick, and re-exposes the state they hold
     (``respawn_timer``/``deaths``/``exit_reached``) directly from them.
 
-    It is a *strict facade* over those systems (audit F1.2/§4): :meth:`update`
+    It is a *strict facade* over those systems: :meth:`update`
     is a single delegation to
     :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update` — the
     debug spawner, every simulation stage, the camera follow, the event-bus
@@ -81,10 +81,10 @@ class Level:
             events: Optional event bus; emissions are notifications only
                 (subscribers must never mutate the simulation).
             rollback_enabled: Opt-in per-tick snapshot recording for the
-                local rollback core (Phase 3 #3). Off by default: recording
+                local rollback core. Off by default: recording
                 costs a full state capture each tick and only netcode,
                 rewind-the-tape, or tests need it.
-            gameplay_data: Optional gameplay-data bundle (Phase 3 #4).
+            gameplay_data: Optional gameplay-data bundle.
                 When given, the player config, enemy configs and level
                 paths are taken from the JSON assets instead of the
                 built-in Python values.
@@ -104,11 +104,11 @@ class Level:
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
-        # systems assembled below and are re-exposed as properties (audit F1.2).
+        # systems assembled below and are re-exposed as properties.
         self.level_id = level_id
         self.events = events
 
-        # Local rollback core (Phase 3 #3): monotonic fixed-tick counter and
+        # Local rollback core: monotonic fixed-tick counter and
         # the ring buffer that captures a snapshot at the end of each tick.
         # Recording is opt-in because a capture costs a full state copy.
         self.tick = 0
@@ -116,7 +116,7 @@ class Level:
         self.rollback = RollbackSystem()
 
         self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
-        # Spatial hash for O(1) collision lookups (PERF-01/02). Created before
+        # Spatial hash for O(1) collision lookups. Created before
         # the world build, not before the spawner: what the build needs is the
         # grid, so that every entity it creates is wired into it from the start.
         self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
@@ -147,9 +147,9 @@ class Level:
             # collision tile in the level.
             platform.spatial_hash = self.spatial_hash
 
-        # Systems assembled by the level (audit F1.2/§4): the level owns them
+        # Systems assembled by the level: the level owns them
         # and re-exposes the state they hold, while the gameplay loop owns the
-        # order in which they run (audit F1.6).  Each one takes its
+        # order in which they run.  Each one takes its
         # collaborators explicitly, so it stays independently testable.
         # P4.1: one ContactSystem instance shared by all four offensive
         # producers (melee via GameplayLoop, projectiles, hazards, contact).
@@ -248,7 +248,7 @@ class Level:
     # -- the facade's read/write surface over the systems' state --------------
     #
     # Three delegating properties, and they are here on purpose. The whole
-    # point of the level being a strict facade over its systems (audit F1.2)
+    # point of the level being a strict facade over its systems
     # is that a scene asks the level a question instead of reaching into
     # `level.respawn_system`; without these, every consumer would know how the
     # level is built, and the moment the respawn state moved into a different
@@ -279,7 +279,7 @@ class Level:
         """Number of respawns performed, owned by the respawn system.
 
         ``GameplayScene`` turns this into a Game Over transition after
-        ``Gameplay.MAX_DEATHS`` (Phase 2 #4).
+        ``Gameplay.MAX_DEATHS``.
         """
         return self.respawn_system.deaths
 
@@ -324,7 +324,7 @@ class Level:
                 renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
 
     def save_state(self) -> LevelSnapshot:
-        """Capture the whole level's simulation state for rollback (Phase 3 #3).
+        """Capture the whole level's simulation state for rollback.
 
         Groups the per-entity snapshots (keyed by deterministic ``entity_id``)
         with the level's own transient state and the moving-platform

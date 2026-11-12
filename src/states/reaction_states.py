@@ -1,7 +1,7 @@
 """Shared reaction states (hurt / knockback / stagger) for players and enemies.
 
 These states were duplicated between ``player_states.py`` and
-``enemy_states.py`` with only small differences (ARCH-05).  The shared
+``enemy_states.py`` with only small differences.  The shared
 logic is now parameterized by:
 
 - ``exit_resolver``: a zero-argument callable returning the next state name

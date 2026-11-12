@@ -1,8 +1,8 @@
-"""Orchestration of the fixed-tick systems of a level (audit F1.6 / §4).
+"""Orchestration of the fixed-tick systems of a level.
 
 ``GameplayLoop`` owns the *order* in which a level's systems run; the systems
 themselves are assembled by :class:`~src.core.level.level.Level` and injected
-here, so each one stays independently testable (audit F1.2).  The level is
+here, so each one stays independently testable.  The level is
 then a strict facade: :meth:`~src.core.level.level.Level.update` delegates
 its whole tick — debug spawner, simulation, camera, notifications and
 rollback bookkeeping — to :meth:`update` below.
@@ -73,7 +73,7 @@ class GameplayLoop:
         contact_system: ContactSystem | None = None,
         feedback_system: FeedbackSystem | None = None,
     ) -> None:
-        # Unified offensive-contact pipeline (P4.1): one shared engine for
+        # Unified offensive-contact pipeline: one shared engine for
         # melee, projectiles, hazards and contact damage (injected by Level
         # in production; created here for combat-only test fixtures). Its
         # tick accumulator is what the debug metrics panel surfaces.
@@ -164,7 +164,7 @@ class GameplayLoop:
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
-            # P1 sweep (D1/D3): tick-frontier capture. One explicit capture
+            # P1 sweep: tick-frontier capture. One explicit capture
             # per tick, before any movement or attack start of the tick —
             # covering the pre-carry segment, unlike a start-of-``update``
             # capture that would run after the platform carry. ``update``

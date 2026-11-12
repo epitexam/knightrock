@@ -1,4 +1,4 @@
-"""Shared typed-JSON plumbing for gameplay data (Phase 3 #4)."""
+"""Shared typed-JSON plumbing for gameplay data."""
 
 from __future__ import annotations
 

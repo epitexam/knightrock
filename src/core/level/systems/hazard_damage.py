@@ -17,7 +17,7 @@ class HazardDamageSystem:
 
     The per-hazard ``damage``/``knockback`` attributes take precedence when
     present (they can be set through the TMX ``damage`` object property).
-    Contact resolution is delegated to the unified pipeline (P4.1): hazards
+    Contact resolution is delegated to the unified pipeline: hazards
     carry no faction and no memory, so every overlapping entity is a valid
     target and the damage never interrupts.
 

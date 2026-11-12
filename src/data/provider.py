@@ -1,4 +1,4 @@
-"""Single entry point loading all gameplay data (Phase 3 #4).
+"""Single entry point loading all gameplay data.
 
 Source of truth: the JSON files in ``data/gameplay/``, and only them. The
 attacks, the enemies and the player are required; only the level list keeps a

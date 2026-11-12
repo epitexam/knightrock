@@ -170,7 +170,7 @@ class StateMachine:
     def save_state(self) -> StateMachineSnapshot:
         """Capture the machine position and every state's transient scalars.
 
-        Used by the rollback system (Phase 3 #3).  ``history`` is
+        Used by the rollback system.  ``history`` is
         deliberately not captured: it is debug/telemetry only and never
         read by simulation logic.
         """

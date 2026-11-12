@@ -1,4 +1,4 @@
-"""Spatial hash grid for efficient collision detection (PERF-01/02).
+"""Spatial hash grid for efficient collision detection.
 
 The world is divided into square cells; each collidable sprite is registered
 in **every cell its collision box (hitbox or rect) overlaps** and a query

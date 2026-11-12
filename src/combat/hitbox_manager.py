@@ -22,7 +22,7 @@ class HitboxManager:
 
     P1 sweep: ``_prev_pool`` holds the geometry captured at the previous
     tick boundary (``capture_origin``), the sole other writers of which
-    are the ``start_attack`` seed (D1) and ``clear`` (attack end).
+    are the ``start_attack`` seed and ``clear`` (attack end).
     ``update`` never touches it: positioning is pure and idempotent, so a
     second sync in the same tick -- which the gameplay loop still does, for
     the fighters separation just pushed -- is harmless.
@@ -51,9 +51,9 @@ class HitboxManager:
     def swept_rects(self) -> tuple[pygame.FRect, ...]:
         """Per-index swept rectangles between the captured origin and now.
 
-        An index without a captured origin (spawn, resize) or whose
-        displacement is out of the ``Combat`` sweep bounds yields ``cur``
-        (D1/D4); otherwise the union of prev and cur.
+                An index without a captured origin (spawn, resize) or whose
+                displacement is out of the ``Combat`` sweep bounds yields ``cur``
+        ; otherwise the union of prev and cur.
         """
         return tuple(
             swept_box(

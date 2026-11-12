@@ -1,1 +1,1 @@
-"""Application scenes: Menu, Gameplay, Pause, Game Over (Phase 2 #4)."""
+"""Application scenes: Menu, Gameplay, Pause, Game Over."""

@@ -1,4 +1,4 @@
-"""Per-tick combat contact dump (Axe G).
+"""Per-tick combat contact dump.
 
 Records one :class:`HitCandidate` per landed contact (and per tick summary)
 into a bounded ring buffer, optionally flushed as JSON lines for replaying a
@@ -22,7 +22,7 @@ __all__ = ["CombatTrace", "HitCandidate"]
 
 @dataclass(frozen=True)
 class HitCandidate:
-    """One recorded contact candidate for the dump (Axe G)."""
+    """One recorded contact candidate for the dump."""
 
     tick: int
     kind: str

@@ -1,4 +1,4 @@
-"""Fixed-tick systems orchestrated by a level (audit F1.2 / F1.6, §4).
+"""Fixed-tick systems orchestrated by a level.
 
 ``core/level/level.py`` is a *facade* that assembles the world and hands the
 per-tick work to :class:`GameplayLoop`, which owns the ordered pipeline. This

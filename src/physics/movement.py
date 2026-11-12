@@ -261,7 +261,7 @@ def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> N
 def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = True) -> None:
     """Move an entity according to its velocity and the environment.
 
-    Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
+    Uses spatial hash for O(1) collision lookup. Falls back to
     the original O(n) search if spatial_hash is not available.
     """
     entity.crushed = False

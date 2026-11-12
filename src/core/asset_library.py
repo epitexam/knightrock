@@ -1,4 +1,4 @@
-"""Nascent lazy asset loading with display-format conversion (audit F4.1, Phase 1 #3).
+"""Nascent lazy asset loading with display-format conversion.
 
 Entities currently render colored rectangles. The shipped art (a hundred
 spritesheets under ``assets/graphics/``) is unused. This module is the

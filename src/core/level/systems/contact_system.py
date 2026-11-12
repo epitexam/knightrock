@@ -1,4 +1,4 @@
-"""Unified offensive-contact pipeline (P4.1).
+"""Unified offensive-contact pipeline.
 
 Every offensive producer (melee, projectiles, hazards, contact damage)
 emits :class:`OffensiveBox` records; this system runs the shared pipeline:
@@ -133,7 +133,7 @@ class ContactOutcome:
 
 @dataclass(frozen=True)
 class ZoneContact:
-    """One landed contact with the hurt zone that absorbed it (P2.4)."""
+    """One landed contact with the hurt zone that absorbed it."""
 
     owner_id: str
     target_id: str
@@ -154,17 +154,17 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 
 
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
-    """Per-zone swept rectangles (P2); the discrete hurtbox when there are none."""
+    """Per-zone swept rectangles; the discrete hurtbox when there are none."""
     return target.swept_hurtboxes() or (target.hurtbox,)
 
 
 def _zone_mults(target: Combatant) -> tuple[float, ...]:
-    """Per-zone damage multipliers (P2)."""
+    """Per-zone damage multipliers."""
     return target.hurtbox_mult
 
 
 def _zone_tags(target: Combatant) -> tuple[tuple[str, ...], ...]:
-    """Per-zone reserved invulnerability tags (P2)."""
+    """Per-zone reserved invulnerability tags."""
     return target.hurtbox_tags
 
 
@@ -256,7 +256,7 @@ def _first_vulnerable_zone(
     hit_tags: tuple[str, ...] = (),
     swept_shapes: tuple[SweptShape, ...] = (),
 ) -> tuple[int, float] | None:
-    """First vulnerable zone touched by any swept attack box (P2).
+    """First vulnerable zone touched by any swept attack box.
 
     Zones are tested in order; the first vulnerable zone overlapping a swept
     box wins.
@@ -296,7 +296,7 @@ class ContactSystem:
         self.impact: float = 0.0
         self.hit_stop: float = 0.0
         self.guard_events: list[GuardEvent] = []
-        #: Contacts landed this resolve, with their absorbing zone (P2.4).
+        #: Contacts landed this resolve, with their absorbing zone.
         self.zone_contacts: list[ZoneContact] = []
         #: Optional Axe G dump; enabled only under DEBUG + DEBUG_COMBAT_DUMP.
         self.trace = CombatTrace(enabled=CombatTrace.is_enabled())

@@ -121,7 +121,7 @@ class Vitals:
         self.health = self._max_health
 
     def save_state(self) -> VitalsSnapshot:
-        """Capture every field for rollback (Phase 3 #3)."""
+        """Capture every field for rollback."""
         return VitalsSnapshot(
             health=self._health,
             max_health=self._max_health,

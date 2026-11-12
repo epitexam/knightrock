@@ -35,7 +35,7 @@ from src.states.reaction_states import DIZZY_STATE
 
 
 def _is_grounded(target: Combatant) -> bool:
-    """Grounded victim: no juggle, OTG rules may apply (Phase 5 #4)."""
+    """Grounded victim: no juggle, OTG rules may apply."""
     return bool(target.on_surface.get("floor", False))
 
 

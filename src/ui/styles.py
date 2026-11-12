@@ -1,5 +1,5 @@
 # ui/styles.py
-"""Debug/HUD theme. Values mirror src.core.colors.Colors (audit F6.2)."""
+"""Debug/HUD theme. Values mirror src.core.colors.Colors."""
 
 from src.core.colors import Colors
 

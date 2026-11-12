@@ -239,7 +239,7 @@ class Combatant(Protocol):
         ...
 
     def capture_sweep_origin(self) -> None:
-        """Freeze the current zones as the next tick's sweep origin (P1/D3)."""
+        """Freeze the current zones as the next tick's sweep origin."""
         ...
 
     @property

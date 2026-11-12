@@ -1,6 +1,6 @@
-"""PlayerRespawnSystem: respawn delay, death tally and death border (audit F1.2).
+"""PlayerRespawnSystem: respawn delay, death tally and death border.
 
-Extracted from ``Level.update`` (audit §4: respawn/progression stages).
+Extracted from ``Level.update``.
 """
 
 from collections.abc import Iterable
@@ -50,7 +50,7 @@ class PlayerRespawnSystem:
             self._reap_fallen_entities(entity_sprites)
 
     def _check_death_border(self) -> None:
-        """Kill the player when it falls below the level's death border (BUG-06).
+        """Kill the player when it falls below the level's death border.
 
         A non-positive border disables the rule, which is how levels without
         a pit opt out (``death_border_bottom = 0.0``).

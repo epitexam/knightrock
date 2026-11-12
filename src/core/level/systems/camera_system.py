@@ -1,4 +1,4 @@
-"""CameraSystem: camera-follow tail of the level pipeline (audit F1.2, Phase 3 #2).
+"""CameraSystem: camera-follow tail of the level pipeline.
 
 Runs after the simulation stages, once every entity has integrated: the
 camera follows the living player's final position for the tick.  A dead

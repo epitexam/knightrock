@@ -12,7 +12,7 @@ from src.core.paths import resource_path
 LEVEL_PATHS: dict[int, str] = {
     0: "assets/data/levels/1.tmx",
 }
-"""Level registry: map ``id -> TMX path`` (audit F8.1, Phase 2 #4).
+"""Level registry: map ``id -> TMX path``.
 
 Replaces imperative ``level_manager.register(0, ...)`` calls: a new level is
 declared here (and its ``level_unlock`` progression in the TMX *Data* layer

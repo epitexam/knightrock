@@ -4,7 +4,7 @@ Dust, sweat, dizzy swirls, guard rings and camera shake are render-only: they
 never touch the simulation and are never snapshotted. They used to be decided
 in three places -- ``PhysicsSystem`` (movement dust), ``GameplayLoop`` (guard
 rings, impact and dash shake) and flags read by both -- and a fourth kind of
-feedback, a combat sound, would have had no obvious home (audit §3.5). This
+feedback, a combat sound, would have had no obvious home. This
 system owns all of it.
 
 It has two entry points because the facts arrive at two moments of the tick,

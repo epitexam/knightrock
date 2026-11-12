@@ -1,4 +1,4 @@
-"""Typed JSON loader for the level registry (Phase 3 #4).
+"""Typed JSON loader for the level registry.
 
 ``levels.json`` is the data-driven replacement for the ``LEVEL_PATHS``
 dict hardcoded in ``level_manager.py`` (kept as the built-in fallback)::

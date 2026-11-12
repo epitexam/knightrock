@@ -225,11 +225,11 @@ class CombatComponent:
 
     @property
     def air_combo_count(self) -> int:
-        """Air-juggle hits landed in the current window (Phase 5 #4)."""
+        """Air-juggle hits landed in the current window."""
         return self.combo.air_count
 
     def record_hit_landed(self, airborne: bool) -> None:
-        """Count a connected hit, tracking air juggles (Phase 5 #4)."""
+        """Count a connected hit, tracking air juggles."""
         self.combo.on_hit_landed(airborne)
 
     @property
@@ -309,7 +309,7 @@ class CombatComponent:
         self._cooldowns[name] = definition.cooldown
         self.combo.on_attack_started(definition.combo_reset)
 
-        # P1 starter seed (D1): all starts happen during ``Entity.update``,
+        # P1 starter seed: all starts happen during ``Entity.update``,
         # i.e. AFTER the tick-frontier capture, so without seeding ``prev``
         # here the first ACTIVE tick would stay discrete. Position the
         # startup frame-0 geometry in the pool, then copy it as origin.

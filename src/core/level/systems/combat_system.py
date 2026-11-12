@@ -1,7 +1,7 @@
 """Hit detection, hit-vs-hit priority/clash, and global hit-stop timing.
 
 Detection itself is delegated to the unified
-:class:`~src.core.level.systems.contact_system.ContactSystem` (P4.1): this
+:class:`~src.core.level.systems.contact_system.ContactSystem`: this
 class owns the melee *producer* half (attacker eligibility, hit-vs-hit
 priority/clash) and the global hit-stop timer.
 """
@@ -58,7 +58,7 @@ def _attacker_ready(
     phase = combat.current_phase
     if not combat.state.is_active or not attack_boxes or phase is None:
         return None
-    # Per-index pairing preserved (D1): swept boxes follow the same order
+    # Per-index pairing preserved: swept boxes follow the same order
     # as the live boxes; a missing origin (spawn/resize) degenerates to cur.
     if len(swept_boxes) != len(attack_boxes):
         swept_boxes = attack_boxes
@@ -148,8 +148,8 @@ class CombatSystem:
         order. The iterable is materialized once, avoiding repeated Pygame group
         copies and supporting generators safely.
 
-        Hit-vs-hit priority/clash runs first (P3t1), then every surviving
-        attacker feeds the unified :class:`ContactSystem` (P4.1), which owns
+        Hit-vs-hit priority/clash runs first, then every surviving
+        attacker feeds the unified :class:`ContactSystem`, which owns
         broadphase, narrowphase and hit resolution; its counters and hit-stop
         are merged back here so existing consumers keep reading the same
         attributes.
@@ -185,7 +185,7 @@ class CombatSystem:
     ) -> tuple[OffensiveBox, ...]:
         """Melee producer: one box per surviving ready attacker.
 
-        The whole swept geometry travels in ``swept`` (P1); the first live
+        The whole swept geometry travels in ``swept``; the first live
         box is the discrete ``box`` so the record stays uniform across
         producers.
         """

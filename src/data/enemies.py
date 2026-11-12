@@ -1,4 +1,4 @@
-"""Typed JSON loader for enemy configs (Phase 3 #4).
+"""Typed JSON loader for enemy configs.
 
 ``enemies.json`` maps enemy type names to :class:`EnemyConfig` values::
 

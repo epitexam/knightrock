@@ -1,8 +1,8 @@
-"""NotificationSystem: event-bus tail of the level pipeline (audit F1.2, Phase 3 #2).
+"""NotificationSystem: event-bus tail of the level pipeline.
 
 Runs after respawn/progression so the bus observes the tick's final state.
 Emissions are notifications only — subscribers must never mutate the
-simulation (Phase 2 #5).  The one-shot latches (``player_dead_emitted`` /
+simulation.  The one-shot latches (``player_dead_emitted`` /
 ``completed_emitted``) live here, next to the rule that reads them, and are
 captured by the rollback snapshots so a rewind re-arms them.
 """

@@ -1,12 +1,12 @@
 """Always-on player HUD: health, guard posture, dash charges and combo.
 
 Unlike the F1-F7 debug panels this overlay is **not** gated by
-``Debug.is_enabled()`` (audit UI-7): it is what the player reads while
+``Debug.is_enabled()``: it is what the player reads while
 fighting. Everything is read-only and screen-anchored — health and guard
 posture sit in the bottom-left corner, dash charges and the combo counter
 in the bottom-right one — and the bar width follows the display width, so
 the HUD stays readable from the windowed resolutions of the video settings
-(audit UI-6).
+.
 
 Wired from ``GameplayScene.draw`` after ``level.draw()`` (decision D9):
 neither ``src/core/level/level.py`` nor ``src/core/rendering/renderer.py``
@@ -96,7 +96,7 @@ class HudLayout:
     """Resolved geometry and colors of one HUD frame.
 
     Kept apart from the drawing so the HUD can be asserted on state and
-    resolved colors (audit UI-7 acceptance) instead of on pixels.
+    resolved colors instead of on pixels.
     """
 
     health_bar: pygame.Rect

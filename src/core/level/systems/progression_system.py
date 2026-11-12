@@ -1,6 +1,6 @@
-"""ProgressionSystem: exit detection for the level (audit F1.2 / §4).
+"""ProgressionSystem: exit detection for the level.
 
-Extracted from ``Level.update`` (audit §4: ``core/level/systems/progression_system``).
+Extracted from ``Level.update``.
 
 The system owns the mutable ``exit_reached`` flag that used to live on
 ``Level``; the level re-exposes it as a property so the scene layer, the

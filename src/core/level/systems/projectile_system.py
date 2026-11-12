@@ -2,7 +2,7 @@
 
 Extracted as a world stage like the other ``core/level/systems`` stages.
 Targets are resolved through the unified
-:class:`~src.core.level.systems.contact_system.ContactSystem` (P4.1), which
+:class:`~src.core.level.systems.contact_system.ContactSystem`, which
 owns the per-tick grid prune (O(n . k) instead of projectiles x entities;
 exhaustive without a grid) and the shared hit resolution: ranged hits go
 through :class:`~src.combat.hit_resolver.HitResolver` so they share armor,

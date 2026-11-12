@@ -19,7 +19,7 @@ class AnimatedSprite(Protocol):
 
 
 def build_hazard_animator(animations: Mapping[str, str], default: str) -> Animator:
-    """Create an Animator for hazard sprite sheets (Phase 2 #1)."""
+    """Create an Animator for hazard sprite sheets."""
     specs = {
         name: AnimationSpec(name, directory, frame_duration=0.12, loop=True)
         for name, directory in animations.items()

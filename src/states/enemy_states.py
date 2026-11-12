@@ -397,7 +397,7 @@ class EnemyChargeState(State["Enemy"]):
 class EnemyHurtState(HurtState["Enemy"]):
     """Hurt reaction: return to idle when the hurt timer clears.
 
-    Shares the generic :class:`HurtState` logic (ARCH-05); enemies hold no
+    Shares the generic :class:`HurtState` logic; enemies hold no
     knockback impulse and no friction on hurt.
     """
 

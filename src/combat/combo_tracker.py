@@ -27,7 +27,7 @@ class ComboTracker:
     count : int
         Current number of consecutive landed hits in the combo.  0 when idle.
     air_count : int
-        Hits landed on an airborne victim in the current window (Phase 5 #4).
+        Hits landed on an airborne victim in the current window.
     """
 
     def __init__(self, window_duration: float) -> None:
@@ -122,7 +122,7 @@ class ComboTracker:
                 # live rather than off the clock.
 
     def on_hit_landed(self, airborne: bool) -> None:
-        """Record a connected hit, counting air juggles separately (Phase 5 #4).
+        """Record a connected hit, counting air juggles separately.
 
         This is the only site that increments the combo counter. A hit that no
         armed attack vouches for -- contact damage, a projectile drifting into

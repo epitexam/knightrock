@@ -1,4 +1,4 @@
-"""Bounded swept-box geometry shared by attack and hurt rectangles (P1, D1/D4).
+"""Bounded swept-box geometry shared by attack and hurt rectangles.
 
 The sweep decision is purely geometric and identical on both sides of a
 contact test:
@@ -44,9 +44,9 @@ def swept_box(
     cur :
         Live rectangle at the end of the current tick.
     min_px :
-        Displacement threshold below which sweeping is skipped (D1).
+        Displacement threshold below which sweeping is skipped.
     max_px :
-        Displacement ceiling above which sweeping is skipped (D4).
+        Displacement ceiling above which sweeping is skipped.
 
     Returns
     -------

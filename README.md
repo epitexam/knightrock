@@ -709,6 +709,15 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
   at all. `GridView` measures the real fonts rather than trusting the design
   constants, since a fallback face has different metrics again.
 - **No dead menu options.** User-facing hotkeys are mirrored by tests.
+- **Comments say why, commits say how it got here.** A docstring states what the
+  code does and why the rule exists; a body comment explains an invariant or a
+  choice that is not obvious. The history -- what it used to do, a measurement
+  from one session, an audit identifier -- goes in the commit message or in
+  `docs/`, where it cannot go stale next to code that has moved on.
+- **Stand-ins have the real shape.** A test double for a fighter starts from
+  `tests/fakes.py` (`BodyStub`, `FighterSprite`, `player_shape`, `game_shape`),
+  which is pinned to the protocols it imitates. Production code does not read a
+  declared field through `getattr(x, name, default)` to tolerate a partial fake.
 
 ---
 
@@ -791,6 +800,11 @@ Written in French unless stated otherwise.
 
 | File | Contents |
 |---|---|
+| `docs/audit/current-architecture.md` | The architecture as it is (2026-11-12): layers, tick order, combat, AI and animation flows. |
+| `docs/audit/comprehensive-audit.md` | The audit: verified defects C1-C5, every subsystem classified (keep, refactor, simplify...). |
+| `docs/audit/architectural-recommendations.md` | The recommendations, the alternatives weighed, the target architecture. |
+| `docs/audit/refactoring-roadmap.md` | The staged roadmap the refactoring followed. |
+| `docs/audit/final-report.md` | What was changed, preserved, verified, and the debt left. |
 | `notes/ecarts_ouverts.md` | Open gaps and the measured reference baseline. |
 | `notes/audit_2026-11-11_architecture.md` | The architecture and quality audit: findings, what was refactored, measurements, remaining debt. |
 | `notes/plan_hitbox_amelioration_partiels.md` | Hitbox partial-compliance follow-up. |

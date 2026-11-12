@@ -1,4 +1,4 @@
-"""Player input reading extracted from ``Player`` (audit F1.1, Phase 2 #3).
+"""Player input reading extracted from ``Player``.
 
 ``Player`` used to concentrate keyboard/gamepad reading (axes, jump/dash
 buffers, charge attacks and combos) on top of physics, states and combat.

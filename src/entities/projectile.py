@@ -180,7 +180,7 @@ class Projectile(Sprite):
         }
 
 
-#: Straight firebolt for debug key V (Phase 5 #3 showcase).
+#: Straight firebolt for debug key V.
 FIREBOLT_CONFIG = ProjectileConfig(
     size=(12.0, 12.0),
     lifetime=2.0,
@@ -193,7 +193,7 @@ FIREBOLT_CONFIG = ProjectileConfig(
     pierce=False,
 )
 
-#: Piercing bolt for debug key B (Phase 5 #3 showcase).
+#: Piercing bolt for debug key B.
 PIERCING_BOLT_CONFIG = ProjectileConfig(
     size=(14.0, 14.0),
     lifetime=2.5,

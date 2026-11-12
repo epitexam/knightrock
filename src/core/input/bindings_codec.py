@@ -295,7 +295,7 @@ def bindings_to_dict(bindings: InputBindings) -> dict[str, object]:
 def bindings_from_dict(data: object) -> InputBindings:
     """Validate a bindings file: free-form subsets, context respected.
 
-    The contract comes from the two-column controls screen (audit UI-5):
+    The contract comes from the two-column controls screen:
 
     * every key of a map must belong to its context (gameplay or menu);
     * a map may be partial -- a missing action means unbound, and

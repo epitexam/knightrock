@@ -1,4 +1,4 @@
-"""Typed JSON loader for attack frame data (Phase 3 #4).
+"""Typed JSON loader for attack frame data.
 
 ``attacks.json`` groups attacks in named sets so each consumer only sees
 its own moves::

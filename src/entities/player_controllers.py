@@ -112,7 +112,7 @@ class JumpController:
         self.wall_jumps_left = self.max_wall_jumps
 
     def save_state(self) -> JumpSnapshot:
-        """Capture runtime state for rollback (Phase 3 #3)."""
+        """Capture runtime state for rollback."""
         return JumpSnapshot(
             jump_buffer_timer=self.jump_buffer_timer,
             coyote_timer=self.coyote_timer,
@@ -329,7 +329,7 @@ class DashController:
         self.coyote_timer = 0.0
 
     def save_state(self) -> DashSnapshot:
-        """Capture runtime state for rollback (Phase 3 #3)."""
+        """Capture runtime state for rollback."""
         return DashSnapshot(
             charges=self.charges,
             recharge_timer=self.recharge_timer,

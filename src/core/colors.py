@@ -2,7 +2,7 @@
 Shared color constants and palettes.
 
 ``src/ui/styles.py`` remains the canonical theme for debug/HUD panels
-(audit F6.2); ``Colors`` is the gameplay/rendering palette. To avoid
+; ``Colors`` is the gameplay/rendering palette. To avoid
 two diverging sources of truth, the theme aliases below re-export the
 same values.
 """
@@ -199,7 +199,7 @@ class FXColors:
 
 
 #: Valid ``LevelConfig.bg`` names: avoids ``getattr(Colors, cfg.bg)``
-#: typos by failing closed on unknown values (audit F5.1).
+#: typos by failing closed on unknown values.
 BG_COLORS: dict[str, Color] = {
     "black": Colors.black,
     "dark_grey": Colors.dark_grey,

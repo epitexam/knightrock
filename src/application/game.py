@@ -58,12 +58,11 @@ SDL_HINTS = {
 class Game:
     """Application runtime: display, input, and the scene stack.
 
-    The loop itself no longer owns gameplay state (audit F8.1, Phase 2
-    #4): :class:`SceneManager` holds Menu/Play/Pause/GameOver scenes and
-    the loop simply feeds it fixed ticks, draws the stack into the render
-    target and presents it once.  Gameplay systems notify the app
-    layer (UI, save, audio) through the synchronous :class:`EventBus`
-    (Phase 2 #5) — subscribers must never mutate the simulation.
+    The loop owns no gameplay state: :class:`SceneManager` holds the
+    Menu/Play/Pause/GameOver scenes, and the loop feeds it fixed ticks, draws
+    the stack into the render target and presents it once. Gameplay systems
+    notify the app layer (UI, save, audio) through the synchronous
+    :class:`EventBus`; subscribers must never mutate the simulation.
     """
 
     def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
@@ -78,7 +77,7 @@ class Game:
         self.input_router = EventRouter(self.input_bindings, joystick_reader=lambda: self.joysticks)
         self.input_provider = LocalInputProvider(self.input_bindings)
         self.input_manager = InputManager(self.input_provider)
-        # Gameplay data driven by JSON (Phase 3 #4): attack sets, enemy
+        # Gameplay data driven by JSON: attack sets, enemy
         # configs, player config and level registry. Falls back to the
         # historical in-code values when the JSON assets are absent.
         self.gameplay_data: GameplayData = load_gameplay_data()
@@ -140,7 +139,7 @@ class Game:
         pygame.init()
         pygame.joystick.init()
         # After pygame.init(), and never fatal: a machine with no sound card
-        # must still reach the menu (audit UI, lot 5).
+        # must still reach the menu.
         self.audio.initialize()
 
         self.initialize_display()

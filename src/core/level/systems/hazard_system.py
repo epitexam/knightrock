@@ -1,6 +1,6 @@
-"""HazardSystem: hazard sprite stage of the level tick (audit F1.2 / §4).
+"""HazardSystem: hazard sprite stage of the level tick.
 
-Extracted from ``Level.update`` (audit §4: ``core/level/systems/hazard_system``).
+Extracted from ``Level.update``.
 
 Damage application is deliberately *not* part of this stage:
 :class:`~src.core.level.systems.hazard_damage.HazardDamageSystem` runs later

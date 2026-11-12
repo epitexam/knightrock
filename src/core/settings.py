@@ -139,11 +139,11 @@ class Combat:
     JUGGLE_GRAVITY_TIME = 0.45
     OTG_INVULN_DURATION = 0.5
     DIZZY_DAMAGE_MULT = 1.5
-    # P1 sweep CCD (D1): the LOW bound, on measured displacement rather than
+    # P1 sweep CCD: the LOW bound, on measured displacement rather than
     # speed. Euclidean distance between box centres per box index; below this
     # the sweep is pointless (goldens stay stable) and `swept = cur`.
     SWEEP_MIN_DISPLACEMENT_PX = 4.0
-    # P1 sweep CCD (D4): the HIGH bound. Past it (respawn, teleport, abnormal
+    # P1 sweep CCD: the HIGH bound. Past it (respawn, teleport, abnormal
     # carry) `swept = cur`: no giant smear, no phantom touch.
     # Invariant at fixed sim dt (TIMESTEP = 1/60):
     # SWEEP_MAX >= max(MAX_FALL_SPEED, DASH_SPEED, JUMP_FORCE, KB_MAX * 2.0)
@@ -567,7 +567,7 @@ class Debug:
 
         The environment variable is read at call time (not at import time)
         so that ``main_debug()`` can enable the overlay after the module
-        hierarchy has already been imported (BUG-02).
+        hierarchy has already been imported.
         """
         return os.getenv("DEBUG", "0") == "1"
 
@@ -578,7 +578,7 @@ class Simulation:
     TICK_RATE = 60
     TICK_DURATION = 1.0 / TICK_RATE
     TIMESTEP = TICK_DURATION
-    # Rollback tuning (audit F2.5, Phase 3 #3): MAX_PREDICTION_FRAMES sizes
+    # Rollback tuning: MAX_PREDICTION_FRAMES sizes
     # the local RollbackSystem ring buffer; ROLLBACK_FRAMES is the per-request
     # rewind depth a future netcode transport will cap re-simulation at.
     MAX_PREDICTION_FRAMES = 8
@@ -635,7 +635,7 @@ class Input:
 
 
 class Audio:
-    """Mixer and interface sound levels (audit UI, lot 5).
+    """Mixer and interface sound levels.
 
     The mixer channel count is deliberately absent. ``pygame.init()`` opens the
     mixer with SDL's two channels, and it only honours a different count when
@@ -833,7 +833,7 @@ class StateMachineConfig:
 
 
 class Animation:
-    """Sprite animation tuning (Phase 2 #1: AssetLibrary + Animator)."""
+    """Sprite animation tuning."""
 
     FRAME_DURATION = 0.10
     RUN_FRAME_DURATION = 0.08
@@ -845,6 +845,6 @@ class Animation:
 
 
 class Gameplay:
-    """App-level gameplay rules (Phase 2 #4: SceneManager)."""
+    """App-level gameplay rules."""
 
     MAX_DEATHS = 3

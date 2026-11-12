@@ -1,4 +1,4 @@
-"""Sprite-sheet animations of the player (audit F4.1, Phase 2 #1/#3)."""
+"""Sprite-sheet animations of the player."""
 
 from src.core.animation.animator import AnimationSpec
 from src.core.settings import Animation as AnimationSettings
@@ -47,7 +47,7 @@ PLAYER_ANIMATIONS: dict[str, AnimationSpec] = {
 States without dedicated art (guard, charge, stagger) keep playing
 the previous animation: :meth:`Player._animation_name` returns None for
 them.  The animator is attached in ``Player.__init__`` so the hundred
-shipped artworks are actually rendered (audit F4.1, Phase 2 #1).
+shipped artworks are actually rendered.
 
 ``crouch`` resolves to a directory that is not in the tree yet, and
 :meth:`Animator.play` treats an unresolvable spec as a no-op, so the

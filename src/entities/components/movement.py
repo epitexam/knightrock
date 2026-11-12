@@ -4,7 +4,7 @@ It owns ``velocity`` and the ``on_surface`` contact flags, the state the
 physics pass reads and writes every tick. The movement itself is the pure
 functions of ``src.physics``, which ``Entity`` calls directly with itself: the
 component used to relay each of them, which made one call three deep for
-nothing (audit §3.6).
+nothing.
 
 The per-entity *tuning* (``speed``, ``floor_control``, the gravity and drag
 coefficients, ``move_axis``) stays on the entity, where ``Player`` and ``Enemy``

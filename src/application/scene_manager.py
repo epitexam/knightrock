@@ -1,4 +1,4 @@
-"""Stacked scene manager (audit F8.1, Phase 2 #4).
+"""Stacked scene manager.
 
 Replaces the infinite ``Game.run`` loop with Menu / Play / Pause / Game Over
 states: ``switch`` replaces the whole stack, ``push`` piles a transient scene
