@@ -10,7 +10,7 @@ reference frame rate.
 
 import math
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from functools import cached_property
 from typing import NewType
 
@@ -79,6 +79,50 @@ class Stance(Enum):
 
     WALL = "wall"
     """Airborne and in contact with a wall the fighter is holding into."""
+
+
+class Clash(StrEnum):
+    """What two equal-priority hits do when they meet."""
+
+    TRADE = "trade"
+    """Both connect."""
+    CLASH = "clash"
+    """Both are cancelled, with a clash spark."""
+
+
+class Height(StrEnum):
+    """Where a hit lands, against ``Guard.HEIGHT_BLOCK``."""
+
+    HIGH = "high"
+    MID = "mid"
+    LOW = "low"
+    OVERHEAD = "overhead"
+
+
+class HitLevel(StrEnum):
+    """How much guard posture a blocked hit costs."""
+
+    LIGHT = "light"
+    MED = "med"
+    HEAVY = "heavy"
+
+
+class BlockMask(StrEnum):
+    """The posture a hit can be blocked from."""
+
+    ANY = "any"
+    STAND = "stand"
+    CROUCH = "crouch"
+
+
+#: The four hit fields that take a closed set of names: field, type, and the
+#: message a bad value has always raised.
+_NAMED_HIT_FIELDS: tuple[tuple[str, type[StrEnum], str], ...] = (
+    ("clash", Clash, "Hit clash must be 'trade' or 'clash'"),
+    ("height", Height, "Hit height must be 'high', 'mid', 'low' or 'overhead'"),
+    ("hit_level", HitLevel, "Hit level must be 'light', 'med' or 'heavy'"),
+    ("block_mask", BlockMask, "Block mask must be 'any', 'stand' or 'crouch'"),
+)
 
 
 class PhaseState(Enum):
@@ -169,10 +213,10 @@ class HitProperties:
     otg_allowed: bool = False
     unblockable: bool = False
     priority: int = 0
-    clash: str = "trade"
-    height: str = "mid"
-    hit_level: str = "med"
-    block_mask: str = "any"
+    clash: Clash = Clash.TRADE
+    height: Height = Height.MID
+    hit_level: HitLevel = HitLevel.MED
+    block_mask: BlockMask = BlockMask.ANY
     tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -184,14 +228,13 @@ class HitProperties:
             raise ValueError("Juggle gravity multiplier must be strictly positive")
         if self.priority < 0:
             raise ValueError("Hit priority cannot be negative")
-        if self.clash not in ("trade", "clash"):
-            raise ValueError("Hit clash must be 'trade' or 'clash'")
-        if self.height not in ("high", "mid", "low", "overhead"):
-            raise ValueError("Hit height must be 'high', 'mid', 'low' or 'overhead'")
-        if self.hit_level not in ("light", "med", "heavy"):
-            raise ValueError("Hit level must be 'light', 'med' or 'heavy'")
-        if self.block_mask not in ("any", "stand", "crouch"):
-            raise ValueError("Block mask must be 'any', 'stand' or 'crouch'")
+        # A name from a data file arrives as a plain string; it is turned into
+        # its enum member here, so every reader past this point holds one.
+        for name, kind, message in _NAMED_HIT_FIELDS:
+            try:
+                object.__setattr__(self, name, kind(getattr(self, name)))
+            except ValueError:
+                raise ValueError(message) from None
         if not isinstance(self.tags, tuple) or any(
             not isinstance(tag, str) or not tag for tag in self.tags
         ):

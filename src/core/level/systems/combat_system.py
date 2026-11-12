@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import pygame
 
 from src.combat.combatant_protocol import Combatant, CombatPort
-from src.combat.frame_data import PhaseDefinition
+from src.combat.frame_data import Clash, PhaseDefinition
 from src.combat.shapes import (
     ShapeKind,
     ShapePose,
@@ -234,7 +234,7 @@ class CombatSystem:
                 pa = entry_a.phase.hit.priority
                 pb = entry_b.phase.hit.priority
                 if pa == pb:
-                    if entry_a.phase.hit.clash != "clash":
+                    if entry_a.phase.hit.clash is not Clash.CLASH:
                         continue
                     entry_a.attacker.combat.cancel_attack()
                     entry_b.attacker.combat.cancel_attack()

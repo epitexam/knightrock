@@ -851,3 +851,29 @@ def test_load_gameplay_data_refuses_to_boot_without_its_fighters(
 
     with pytest.raises((FileNotFoundError, GameplayDataError)):
         load_gameplay_data(root)
+
+
+def test_a_named_hit_field_becomes_its_enum_member() -> None:
+    from src.combat.frame_data import BlockMask, Clash, Height, HitLevel, HitProperties
+
+    hit = HitProperties(
+        damage=1, clash="clash", height="low", hit_level="heavy", block_mask="stand"
+    )  # type: ignore[arg-type]
+
+    assert (hit.clash, hit.height, hit.hit_level, hit.block_mask) == (
+        Clash.CLASH,
+        Height.LOW,
+        HitLevel.HEAVY,
+        BlockMask.STAND,
+    )
+
+
+def test_an_unknown_hit_height_names_its_place_in_the_file(tmp_path: Path) -> None:
+    doc = _attacks_doc()
+    first_set = next(iter(doc["sets"].values()))
+    first_attack = next(iter(first_set.values()))
+    first_attack["phases"][0]["hit"]["height"] = "sideways"
+    path = _write(tmp_path / "attacks.json", doc)
+
+    with pytest.raises(GameplayDataError, match=r"\.hit\.height: 'sideways' is not one of"):
+        read_attacks_file(path)

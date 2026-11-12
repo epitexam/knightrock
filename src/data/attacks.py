@@ -23,14 +23,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import MISSING, fields
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
 
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     AttackDefinition,
+    BlockMask,
+    Clash,
+    Height,
     HitboxKeyframe,
     HitboxSpec,
+    HitLevel,
     HitProperties,
     MoveId,
     PhaseDefinition,
@@ -143,6 +148,16 @@ def _read_tags(raw: Any, where: str) -> tuple[str, ...]:
     return tuple(raw)
 
 
+def _named[NamedT: StrEnum](kind: type[NamedT], raw: dict, key: str, where: str) -> NamedT:
+    """The member of ``kind`` a hit block names under ``key``, or its default."""
+    value = raw.get(key, _HIT_DEFAULTS[key])
+    try:
+        return kind(value)
+    except ValueError:
+        names = ", ".join(repr(member.value) for member in kind)
+        raise GameplayDataError(f"{where}.{key}: {value!r} is not one of {names}") from None
+
+
 def _read_hit(raw: Any, where: str) -> HitProperties:
     """Parse a hit block into :class:`HitProperties`."""
     if not isinstance(raw, dict):
@@ -167,10 +182,10 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             otg_allowed=bool(raw.get("otg_allowed", _HIT_DEFAULTS["otg_allowed"])),
             unblockable=bool(raw.get("unblockable", _HIT_DEFAULTS["unblockable"])),
             priority=int(raw.get("priority", _HIT_DEFAULTS["priority"])),
-            clash=str(raw.get("clash", _HIT_DEFAULTS["clash"])),
-            height=str(raw.get("height", _HIT_DEFAULTS["height"])),
-            hit_level=str(raw.get("hit_level", _HIT_DEFAULTS["hit_level"])),
-            block_mask=str(raw.get("block_mask", _HIT_DEFAULTS["block_mask"])),
+            clash=_named(Clash, raw, "clash", where),
+            height=_named(Height, raw, "height", where),
+            hit_level=_named(HitLevel, raw, "hit_level", where),
+            block_mask=_named(BlockMask, raw, "block_mask", where),
             tags=_read_tags(raw.get("tags"), f"{where}.tags"),
         )
     except (TypeError, ValueError) as exc:
