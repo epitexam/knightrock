@@ -122,9 +122,8 @@ déplacés d'appelant), sauvegarde et réglages.
   mesuré sur une machine chargée (2,9 et 3,6 ms). Remesurés côte à côte, sur le
   commit de départ et sur le résultat : **1,9 ms par tick et 1,8 ms de dessin,
   identiques avant et après**.
-- **README** : la section « Further notes » liste toujours les fichiers de
-  `notes/` que vous avez supprimés dans l'arbre de travail (suppression non
-  commitée). Je ne les ai pas retirés : la décision vous appartient.
+- **README** : la section « Further notes » ne renvoie plus à `notes/`,
+  supprimé à votre demande (voir §12).
 
 ## 8. Vérifications
 
@@ -259,3 +258,54 @@ constante.
   dessin ; règle aussi le défaut de reconversion ci-dessus.
 - Secondaire : `sync_rects` (≈ 3,3 appels par entité et par tick) et environ
   2 350 `getattr` par tick dans la résolution des collisions.
+
+## 12. Ce qui reste des notes supprimées de `notes/`
+
+Les sept fichiers de `notes/` ont été relus un par un avant d'être supprimés.
+
+**Réglés, rien à reprendre :**
+
+- `ecarts_ouverts.md` : les écarts O1 à O10 sont tous fermés.
+- `audit_2026-11-11_architecture.md` : remplacé par `docs/audit/`.
+- `plan_hitbox_amelioration_partiels.md` : phases A à E faites. Les tests passent
+  par `monkeypatch` pour `DEBUG` (aucune écriture directe dans `os.environ`).
+  `ruff check .` et `ruff format --check .` passent sur tout le dépôt.
+- `plan_limit_frames_video.md` : exécuté.
+- `perf_debug_overlay.md` : rien n'a été changé, et c'était voulu. Mesure
+  conservée : passe complète du panneau joueur à 0,123 ms en 1280×720
+  (0,74 % d'une frame). Calque de tuiles du F4 : 1,98 ms → 0,09 ms.
+  Banc : `tests/benchmarks/ui_benchmark.py`.
+- `perf_shatter_arc.md` : le cache `_scaled_cache` du renderer, signalé comme
+  non borné, est désormais limité (`SCALE_CACHE_MAX = 512`, avec `_evict_half`).
+  Mesures conservées :
+  - frame complète à 1,61 ms en 1280×720 et à 8,86 ms en 3840×2160 ;
+  - présentation 1:1 à 0,38 ms, contre 3,95 ms pour `smoothscale` en 720p.
+
+**Encore ouverts, repris ici :**
+
+- **Le monde en matrice.** C'est une proposition de design, rien n'est
+  implémenté. Elle est déplacée telle quelle dans `docs/design/matrice-niveaux.md`.
+  Les décisions marquées **[arbitrer]** sont à prendre.
+- **Les objets `water`.** Six niveaux en contiennent. Aucune fabrique n'existe
+  pour eux : `world_builder` les journalise comme ignorés. Il faut décider s'il
+  faut un comportement (nage, dégâts, ralentissement) ou retirer ces objets des
+  cartes.
+- **Le pas d'échantillonnage de `draw_arc_stroke`.** Le pas fixe de 0,5° est
+  plus fin que la grille de pixels : 6× plus fin à r = 18 et 19× à r = 6.
+  - Un pas qui tient compte du rayon diviserait le coût par deux environ.
+  - Cette borne est empirique, et elle dépend de l'étendue de l'arc : la règle
+    « 1 px / 3 » casse les arcs larges (140°, et 24° à r = 20).
+  - À ne faire qu'avec un test d'identité au pixel, qui couvre les **extrémités**
+    des fragments. Le pas de 0,5° corrige justement un bug où ces extrémités
+    fusionnaient.
+  - Reporté parce que le gain est négligeable : environ 7 ms par session.
+- **La limite d'images et le vsync.** Si le vsync est un jour couplé à un choix
+  de taux, au lieu d'un simple booléen, il faudra revoir la régulation des
+  frames. Sinon, la boucle attend deux fois la même rafraîchissement, une fois
+  dans la limite et une fois dans le vsync, et les deux attentes s'additionnent.
+- **B4** (tuiles non reconverties après un changement de format) : voir §11.
+- **Test instable** : `tests/headless/test_death_is_a_still_picture.py` a
+  échoué 2 fois sur une vingtaine d'exécutions le 2026-11-12 (« 2119 bytes of
+  the frame moved 43 ticks into the respawn window »), puis il est passé 15 fois
+  de suite, seul et dans la suite complète. Le test cadence le jeu sur le temps
+  réel (`Game.step`). La cause n'est pas identifiée.

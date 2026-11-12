@@ -482,7 +482,8 @@ reproductibles, test des frontières de couches.
   commentaires). 157 passages racontent l'historique (« used to », « measured
   … »). 130 références renvoient à des identifiants d'audit (`audit F1.2`,
   `Phase 3 #4`, `P4.1`, `PERF-02`) dont les documents ont été supprimés de
-  `notes/` (suppression non commitée dans l'arbre de travail).
+  `notes/` (supprimé depuis ; ce qui restait ouvert est repris dans
+  `final-report.md` §12).
 - Pour un développeur qui découvre le jeu, ces textes sont précieux quand ils
   expliquent **pourquoi** une règle existe ; ils deviennent du bruit quand ils
   racontent **comment** on en est arrivé là. L'historique a sa place dans les

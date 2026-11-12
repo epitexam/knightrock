@@ -242,7 +242,7 @@ contact damage keep **discrete** collision.
 > you nothing, and drawing them is the most expensive thing the overlay does.
 > Measured on level 0 at 1280×720, dropping the layer took the whole overlay pass
 > from **1.98 ms to 0.09 ms** — 1.9 ms of a 16.7 ms budget, for a picture of the
-> tileset. (`notes/perf_debug_overlay.md`)
+> tileset. (`docs/audit/final-report.md`, §12)
 
 ### Frame timings & benchmarks
 
@@ -399,7 +399,7 @@ target with `pygame.transform.smoothscale`:
 | 1280×720 | ~0.38 ms | ~3.95 ms |
 | 2560×1440 | ~1.33 ms | ~7.46 ms |
 
-Source: `notes/perf_shatter_arc.md`.
+Source: `docs/audit/final-report.md`, §12.
 
 </details>
 
@@ -663,7 +663,7 @@ src/
 
 data/gameplay/     Tracked JSON gameplay values
 assets/            TMX levels and sprites — required at runtime
-notes/             Refactoring plans, audit reports, measurements, open gaps
+docs/              Audit reports, measurements, open points, design proposals
 ```
 
 ### Reading the code, module by module
@@ -821,13 +821,9 @@ Written in French unless stated otherwise.
 | `docs/audit/comprehensive-audit.md` | The audit: verified defects C1-C5, every subsystem classified (keep, refactor, simplify...). |
 | `docs/audit/architectural-recommendations.md` | The recommendations, the alternatives weighed, the target architecture. |
 | `docs/audit/refactoring-roadmap.md` | The staged roadmap the refactoring followed. |
-| `docs/audit/final-report.md` | What was changed, preserved, verified, and the debt left. |
-| `notes/ecarts_ouverts.md` | Open gaps and the measured reference baseline. |
-| `notes/audit_2026-11-11_architecture.md` | The architecture and quality audit: findings, what was refactored, measurements, remaining debt. |
-| `notes/plan_hitbox_amelioration_partiels.md` | Hitbox partial-compliance follow-up. |
-| `notes/plan_limit_frames_video.md` | Planned frame-limit setting for the video menu, with the measurements that bound it. |
-| `notes/perf_debug_overlay.md` | The overlay pass cost, with and without the static layer. |
-| `notes/perf_shatter_arc.md` | Particle construction cost and the 1:1 present measurement. |
+| `docs/audit/final-report.md` | What was changed, preserved, verified, the debt left, and the open points kept from the old notes. |
+| `docs/audit/combat-dynamism.md` | Why the combat lacked pace, measured, and what was changed. |
+| `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
 
 ---
 

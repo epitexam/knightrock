@@ -111,7 +111,7 @@ class SaveGame:
     col: int = 0
     row: int = 0
     visited: set[tuple[int, int]] = field(default_factory=set)
-    abilities: set[str] = field(default_factory=set)   # voir §7
+    abilities: set[str] = field(default_factory=set)  # voir §7
 ```
 
 `last_level_id: int` disparaît. La migration d'une sauvegarde existante (un entier) peut se

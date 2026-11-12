@@ -27,8 +27,8 @@ l'accord du développeur.
   `ruff check`, `ruff format --check`.
 - Les changements de comportement (étape 1) ne sont **jamais** mêlés à une
   refactorisation.
-- Les suppressions de `notes/` présentes dans l'arbre de travail appartiennent
-  au développeur : ne pas les committer ni les annuler sans son accord.
+- `notes/` a été supprimé par le développeur ; ce qui restait ouvert est repris
+  dans `final-report.md` §12.
 - Après chaque étape : lancer le jeu (`uv run python main.py`, puis `--debug`),
   jouer le niveau 0, mettre à jour `docs/audit/final-report.md`.
 
