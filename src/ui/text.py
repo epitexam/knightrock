@@ -126,7 +126,7 @@ ENGLISH: dict[str, str] = {
     "controls.attack_3": "Attack 3",
     "controls.attack_4": "Attack 4",
     "controls.guard": "Guard",
-    "controls.reset_position": "Reset position",
+    "controls.reset_position": "Reset (debug)",
     "controls.invert_y": "Invert stick Y",
     "controls.reset": "Reset to defaults",
     "controls.column.keyboard": "KEYBOARD / MOUSE",

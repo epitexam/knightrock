@@ -32,9 +32,6 @@ from tests.unit.helpers import make_entity
 from tests.unit.test_hazard_damage import FakeHazard
 
 DT = 1 / 60
-#: Known to fail until the audit's stage 1; ``strict`` turns a silent fix into a
-#: failure, so the marker cannot outlive the defect.
-DEFECT_C5 = pytest.mark.xfail(strict=True, reason="audit C5: reset heals outside debug mode")
 
 
 # -- hit-stop and input -----------------------------------------------------------
@@ -184,7 +181,6 @@ def test_a_spike_does_not_hurt_twice_within_its_cooldown() -> None:
 # -- the reset key --------------------------------------------------------------
 
 
-@DEFECT_C5
 def test_the_reset_key_does_nothing_outside_debug_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEBUG", raising=False)
     pad = _ClockedPad(InputAction.RESET, {3})
@@ -196,3 +192,16 @@ def test_the_reset_key_does_nothing_outside_debug_mode(monkeypatch: pytest.Monke
         scene.update(DT)
 
     assert player.health == 10.0
+
+
+def test_the_reset_key_still_works_in_debug_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEBUG", "1")
+    pad = _ClockedPad(InputAction.RESET, {3})
+    scene, level = _scene(pad)
+    player = level.player
+    player.health = 10.0
+    for tick in range(6):
+        pad.tick = tick
+        scene.update(DT)
+
+    assert player.health == player.max_health

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from src.combat.frame_data import MoveId
 from src.core.input.input_actions import InputAction
-from src.core.settings import GameFeel
+from src.core.settings import Debug, GameFeel
 from src.core.settings import Input as InputSettings
 from src.entities.attack_moves import move_for_button
 from src.physics.movement import apply_jump_cut
@@ -86,7 +86,10 @@ class PlayerInputHandler:
         if im.just_pressed(InputAction.DASH):
             player.dash.request(player.move_axis)
 
-        if im.just_pressed(InputAction.RESET):
+        # A test-bench key: it puts the player back at the spawn at full health,
+        # which in a normal game is a free heal that never counts as a death
+        # (audit C5). Only the debug build honours it.
+        if Debug.is_enabled() and im.just_pressed(InputAction.RESET):
             player.reset_position()
 
     def _handle_attack_input(self) -> None:
