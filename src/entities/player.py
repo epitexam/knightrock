@@ -427,7 +427,10 @@ class Player(Entity):
 
     def save_state(self) -> EntitySnapshot:
         snapshot = super().save_state()
-        snapshot.extra = {
+        # Added to the entity's own extras, never in place of them: replacing the
+        # dict dropped the juggle, OTG and parry state, and a restored player
+        # came back with all of it reset (audit C3).
+        snapshot.extra |= {
             "jump": self.jump.save_state(),
             "guard": self.guard.save_state(),
             "dash": self.dash.save_state(),
