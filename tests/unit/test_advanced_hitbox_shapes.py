@@ -1,3 +1,5 @@
+"""Advanced hitbox shapes end to end: OBB and circle geometry, trades, v2 files and sweeps."""
+
 from __future__ import annotations
 
 from pathlib import Path

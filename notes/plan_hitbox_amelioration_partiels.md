@@ -163,7 +163,7 @@ uv run ruff check .
 ```bash
 env -u DEBUG uv run pytest -q tests/unit/test_debug_overlay.py
 DEBUG=1 uv run pytest -q tests/unit/test_debug_overlay.py
-env -u DEBUG uv run pytest -q tests/unit/test_hitbox_shapes.py tests/unit/test_p5_integration.py
+env -u DEBUG uv run pytest -q tests/unit/test_hitbox_shapes.py tests/unit/test_advanced_hitbox_shapes.py
 env -u DEBUG uv run pytest -q tests/unit/test_contact_unified.py tests/unit/test_hitbox_sweep.py
 ```
 

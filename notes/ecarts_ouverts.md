@@ -63,7 +63,7 @@ F9 exporte l’attaque sélectionnée vers un JSON relisible dans `KNIGHTROCK_EX
 
 `ContactSystem` réutilise ses buffers de broadphase. `CombatSnapshot` contient un checksum géométrique quantifié ; la restauration le vérifie via `verify_geometry_checksum`.
 
-**Tests :** `tests/unit/test_geometry_checksum.py`, `tests/unit/test_p5_integration.py`, `tests/unit/test_contact_unified.py`.
+**Tests :** `tests/unit/test_geometry_checksum.py`, `tests/unit/test_advanced_hitbox_shapes.py`, `tests/unit/test_contact_unified.py`.
 
 ### O7 — Sweep multi-producteurs
 
