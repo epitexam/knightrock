@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.combat.refusal import Refusal
 from src.core.settings import Guard as GuardSettings
@@ -8,6 +8,9 @@ from src.physics import apply_velocity_friction
 from src.states.reaction_states import HurtState, KnockbackState, StaggerState
 from src.states.state_machine import State, StateMachine
 from src.states.turn_state import TurnState
+
+if TYPE_CHECKING:
+    from src.entities.player import Player
 
 
 def _classify_ratio(ratio: float) -> str:
@@ -19,7 +22,7 @@ def _classify_ratio(ratio: float) -> str:
     return PlayerState.WALK_SLOW.value
 
 
-def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
+def resolve_locomotion_state(entity: Player, from_state: str | None = None) -> str:
     """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis.
 
     ``from_state`` overrides the tier the hysteresis is measured against, and
@@ -54,7 +57,7 @@ def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
     return _classify_ratio(ratio)
 
 
-def player_ground_return(entity: Any) -> str:
+def player_ground_return(entity: Player) -> str:
     """Return the landing state name for the player.
 
     Shared by every reaction state so the landing decision lives in one
@@ -67,10 +70,10 @@ def player_ground_return(entity: Any) -> str:
     return "fall"
 
 
-class PlayerBaseState(State):
+class PlayerBaseState(State["Player"]):
     """Represent the PlayerBase state."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Player, tags: list[str] | None = None):
         """Initialize the PlayerBaseState instance."""
         super().__init__(entity, tags)
 
@@ -129,7 +132,7 @@ class PlayerWalkSlowState(PlayerGroundLocomotionState):
     """Slow ground tier (Guard MOVE_MULT, partial analog stick)."""
 
 
-class PlayerTurnState(TurnState):
+class PlayerTurnState(TurnState["Player"]):
     """The player's pivot: where to go, and how the player leaves the floor.
 
     All of the hold itself -- arming it, keeping the fighter moving, freezing
@@ -215,7 +218,7 @@ class PlayerWallSlideState(PlayerBaseState):
 class PlayerChargeState(PlayerBaseState):
     """Represent the PlayerCharge state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerChargeState instance with charge tags."""
         super().__init__(entity, tags=["charge", "busy"])
 
@@ -266,7 +269,7 @@ class PlayerCrouchState(PlayerBaseState):
     the right locomotion tier instead of dropping to idle.
     """
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(entity, tags=["crouch", "busy"])
 
     def update(self, delta_time: float) -> str | None:
@@ -293,7 +296,7 @@ class PlayerCrouchState(PlayerBaseState):
 class PlayerAttackState(PlayerBaseState):
     """Represent the PlayerAttack state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerAttackState instance with attack tags."""
         super().__init__(entity, tags=["attack", "busy"])
 
@@ -359,7 +362,7 @@ class PlayerAttackState(PlayerBaseState):
 
 
 class PlayerGuardState(PlayerBaseState):
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(entity, tags=["guard", "busy"])
 
     def update(self, delta_time: float) -> str | None:
@@ -375,10 +378,10 @@ class PlayerGuardState(PlayerBaseState):
         return None
 
 
-class PlayerHurtState(HurtState):
+class PlayerHurtState(HurtState["Player"]):
     """Player hurt reaction: light knockback, then recover on the ground."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(
             entity,
             exit_resolver=self._hurt_exit,
@@ -403,10 +406,10 @@ class PlayerHurtState(HurtState):
         return player_ground_return(self.entity)
 
 
-class PlayerKnockbackState(KnockbackState):
+class PlayerKnockbackState(KnockbackState["Player"]):
     """Player knockback reaction: strong launch, then ground recovery."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(
             entity,
             exit_resolver=self._knockback_exit,
@@ -428,7 +431,7 @@ class PlayerKnockbackState(KnockbackState):
 class PlayerDashState(PlayerBaseState):
     """Represent the PlayerDash state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerDashState instance with dashing tags."""
         super().__init__(entity, tags=["dash", "invincible"])
 
@@ -499,10 +502,10 @@ class PlayerDashState(PlayerBaseState):
         return None
 
 
-class PlayerStaggerState(StaggerState):
+class PlayerStaggerState(StaggerState["Player"]):
     """Represent the PlayerStagger state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerStaggerState instance with stagger tags."""
         super().__init__(
             entity,
@@ -512,10 +515,10 @@ class PlayerStaggerState(StaggerState):
         )
 
 
-class PlayerDizzyState(State):
+class PlayerDizzyState(State["Player"]):
     """Represent the PlayerDizzy state from consecutive perfect parries received."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -551,7 +554,7 @@ class PlayerState(str, Enum):
     DIZZY = "dizzy"
 
 
-def dash_cancel_open(player: Any) -> bool:
+def dash_cancel_open(player: Player) -> bool:
     """Whether a dash has run long enough to be cancelled (attack/guard).
 
     ``Physics.DASH_CANCEL_WINDOW`` is measured from the dash start, so the
@@ -570,7 +573,7 @@ def dash_cancel_open(player: Any) -> bool:
     return bool(elapsed >= Physics.DASH_CANCEL_WINDOW)
 
 
-def _can_dash(player: Any) -> bool:
+def _can_dash(player: Player) -> bool:
     """Check if the player can currently interrupt to dash."""
     return player.dash.can_use() and player.state_machine.current_state_name not in (
         PlayerState.DASH,
@@ -580,7 +583,7 @@ def _can_dash(player: Any) -> bool:
     )
 
 
-def _can_guard(player: Any) -> bool:
+def _can_guard(player: Player) -> bool:
     if not (player.guard_held and player.guard.can_use()):
         return False
     current = player.state_machine.current_state_name
@@ -606,7 +609,7 @@ def _can_guard(player: Any) -> bool:
     )
 
 
-def _can_attack_interrupt(player: Any) -> bool:
+def _can_attack_interrupt(player: Player) -> bool:
     """Check if the player can currently interrupt to attack.
 
     ``Player.may_attack_now()`` is deliberately *not* a precondition, and
@@ -641,13 +644,13 @@ def _can_attack_interrupt(player: Any) -> bool:
     return True
 
 
-def _wants_crouch(player: Any) -> bool:
+def _wants_crouch(player: Player) -> bool:
     down = bool(player.down_held)
     grounded = bool(player.on_surface.get("floor", False))
     return down and grounded
 
 
-def _is_fully_stood(player: Any) -> bool:
+def _is_fully_stood(player: Player) -> bool:
     """Whether the crouch blend has finished standing the fighter back up.
 
     Never true under a low ceiling, which is the point: the posture is left once
@@ -656,7 +659,7 @@ def _is_fully_stood(player: Any) -> bool:
     return bool(player.crouch.is_fully_stood)
 
 
-def _can_crouch(player: Any) -> bool:
+def _can_crouch(player: Player) -> bool:
     """Whether the player may crouch from the state they are in.
 
     ``turn`` is in there because a pivot is locomotion with a lean on it, and a
@@ -676,7 +679,7 @@ def _can_crouch(player: Any) -> bool:
     )
 
 
-def configure_player_state_machine(player: Any) -> None:
+def configure_player_state_machine(player: Player) -> None:
     """Build the 17-state player machine (moved from Player, audit F1.1)."""
     sm = StateMachine(player)
     player.state_machine = sm

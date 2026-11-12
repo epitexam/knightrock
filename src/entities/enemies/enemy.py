@@ -8,6 +8,7 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group
 
+from src.combat.frame_data import MoveId, move_id
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
 from src.core.settings import Animation as AnimationSettings
@@ -91,7 +92,7 @@ class Enemy(Entity):
     patrol_speed: float
     vision_range: float
     attack_range: float
-    attack_name: str | None
+    attack_name: MoveId | None
     idle_duration: float
     passive_friction: float
     patrol_direction: int
@@ -170,7 +171,7 @@ class Enemy(Entity):
         )
         self.vision_range = config.vision_range
         self.attack_range = config.attack_range
-        self.attack_name = config.attack_name
+        self.attack_name = move_id(config.attack_name) if config.attack_name else None
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
 

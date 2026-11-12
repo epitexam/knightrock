@@ -1,9 +1,16 @@
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from src.core.settings import StateMachineConfig
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
+
+#: The fighter a state drives. Bound to ``Entity`` so a state shared by every
+#: fighter reads the base class, and a player or enemy state reads its own.
+EntityT = TypeVar("EntityT", bound="Entity")
 
 # Transient per-state attributes worth capturing for rollback: plain
 # scalars (timers, counters, flags, directions).  Callables (``exit_resolver``,
@@ -29,7 +36,7 @@ class StateMachineSnapshot:
     state_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-def _capture_state_attrs(state: State) -> dict[str, Any]:
+def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
     """Copy the snapshotable scalar attributes of one state instance."""
     return {
         name: value
@@ -38,12 +45,12 @@ def _capture_state_attrs(state: State) -> dict[str, Any]:
     }
 
 
-class State:
-    """Abstract base for all states."""
+class State(Generic[EntityT]):
+    """Abstract base for all states, typed by the fighter it drives."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None) -> None:
+    def __init__(self, entity: EntityT, tags: list[str] | None = None) -> None:
         """Initialize the State instance."""
-        self.entity: Any = entity
+        self.entity: EntityT = entity
         self.tags: list[str] = tags or []
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -65,9 +72,9 @@ class StateMachine:
     def __init__(self, entity: Any) -> None:
         """Initialize the StateMachine instance."""
         self.entity: Any = entity
-        self.states: dict[str, State] = {}
+        self.states: dict[str, State[Any]] = {}
 
-        self.current_state: State | None = None
+        self.current_state: State[Any] | None = None
         self.current_state_name: str | None = None
         self.previous_state_name: str | None = None
 
@@ -78,7 +85,7 @@ class StateMachine:
 
         self.on_state_change: Callable[[str | None, str], None] | None = None
 
-    def add_state(self, name: str, state: State) -> None:
+    def add_state(self, name: str, state: State[Any]) -> None:
         """Add state."""
         self.states[name] = state
 

@@ -6,6 +6,7 @@ from typing import Any
 import pygame
 from pygame.sprite import Group
 
+from src.combat.combat_component import CombatComponent
 from src.combat.combatant_protocol import DamageResult
 from src.combat.frame_data import MoveId, Stance
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
@@ -42,6 +43,9 @@ class Player(Entity):
     speed: float
     floor_control: float
     air_control: float
+
+    #: Always a real component: the player is built with its attack table.
+    combat: CombatComponent
 
     jump: JumpController
     guard: GuardController

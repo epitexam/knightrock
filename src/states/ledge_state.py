@@ -12,17 +12,17 @@ from typing import Any
 
 from src.core.settings import Ledge
 from src.physics import lerp_velocity
-from src.states.state_machine import State
+from src.states.state_machine import EntityT, State
 
 __all__ = ["LedgeState"]
 
 
-class LedgeState(State):
+class LedgeState(State[EntityT]):
     """At the void's edge: brake, turn around, wait out the hold beat."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
         hold_duration: float = Ledge.HOLD_DURATION,

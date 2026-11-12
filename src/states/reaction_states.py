@@ -28,7 +28,7 @@ from typing import Any, Final
 from src.core.settings import Combat, Physics
 from src.physics import lerp_velocity
 from src.states import state_names
-from src.states.state_machine import State
+from src.states.state_machine import EntityT, State
 
 #: Shared reaction-state vocabulary: ``ReactionComponent`` drives the state
 #: machine with these names, and both state-name enums carry the same values
@@ -42,12 +42,12 @@ KNOCKBACK_STOP_SPEED = 20.0
 KNOCKBACK_STOP_VERTICAL = 1.0
 
 
-class HurtState(State):
+class HurtState(State[EntityT]):
     """Reaction to taking damage: wait for the hurt timer to clear."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = 0.0,
@@ -77,12 +77,12 @@ class HurtState(State):
         return None
 
 
-class KnockbackState(State):
+class KnockbackState(State[EntityT]):
     """Strong launch: wait for the entity to land and slow down."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = Physics.KNOCKBACK_FRICTION,
@@ -147,12 +147,12 @@ class KnockbackState(State):
         self.entity.velocity.x = max(-cap, min(cap, vx))
 
 
-class StaggerState(State):
+class StaggerState(State[EntityT]):
     """Stunned: stay locked until the stagger timer clears."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
         friction: float = 0.0,

@@ -1,7 +1,7 @@
 """State machine states for enemies (AI)."""
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.core.settings import AI, EnemyJump, Turn
 from src.states.reaction_states import (
@@ -11,6 +11,9 @@ from src.states.reaction_states import (
 )
 from src.states.state_machine import State
 from src.states.turn_state import TurnState, request_turn
+
+if TYPE_CHECKING:
+    from src.entities.enemies.enemy import Enemy
 
 
 class EnemyState(str, Enum):
@@ -32,7 +35,7 @@ class EnemyState(str, Enum):
     LEDGE = "ledge"
 
 
-class EnemyTurnState(TurnState):
+class EnemyTurnState(TurnState["Enemy"]):
     """An enemy's pivot: the shared hold with an enemy's way back.
 
     Registered like every other enemy state, so the pivot is *available* to
@@ -67,7 +70,7 @@ class EnemyTurnState(TurnState):
         return EnemyState.PATROL
 
 
-class EnemyIdleState(State):
+class EnemyIdleState(State["Enemy"]):
     """Idle state: the enemy stands still for a short duration."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -85,7 +88,7 @@ class EnemyIdleState(State):
         return None
 
 
-class EnemyPatrolState(State):
+class EnemyPatrolState(State["Enemy"]):
     """Patrol state: the enemy moves back and forth in a single direction."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -125,10 +128,10 @@ class EnemyPatrolState(State):
         self.entity.move_axis = 0.0
 
 
-class EnemyChaseState(State):
+class EnemyChaseState(State["Enemy"]):
     """Chase state: the enemy moves towards the player."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the chase with a ready jump cooldown."""
         super().__init__(entity, tags or [])
         # Rollback-safe by construction: plain scalars, auto-captured in
@@ -256,7 +259,7 @@ class EnemyChaseState(State):
         self._leap(entity, direction)
         return True
 
-    def _leap_context(self) -> tuple[Any, float, float] | None:
+    def _leap_context(self) -> tuple[Enemy, float, float] | None:
         """Shared preconditions for void leaps: jumper, ready, grounded.
 
         Returns (entity, direction, hop_range) or None. The cooldown was
@@ -276,11 +279,11 @@ class EnemyChaseState(State):
         return entity, direction, entity.jump_range()
 
     @staticmethod
-    def _sight_range(entity: Any) -> float:
+    def _sight_range(entity: Enemy) -> float:
         """How far ahead the leap cares about the player: vision, else SEEK."""
         return entity.vision_range or EnemyJump.SEEK_RANGE_PX
 
-    def _leap(self, entity: Any, direction: float) -> None:
+    def _leap(self, entity: Enemy, direction: float) -> None:
         """Fire the leap: vertical impulse plus a sprint boost forward.
 
         The boost is what carries running jumps past a standing hop's
@@ -353,10 +356,10 @@ class EnemyChaseState(State):
         )
 
 
-class EnemyAttackState(State):
+class EnemyAttackState(State["Enemy"]):
     """Attack state: the enemy performs its attack."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the EnemyAttackState instance."""
         super().__init__(entity, tags or ["attack", "busy"])
 
@@ -374,10 +377,10 @@ class EnemyAttackState(State):
         return None
 
 
-class EnemyChargeState(State):
+class EnemyChargeState(State["Enemy"]):
     """Charge state: the enemy is charging an attack."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the EnemyChargeState instance."""
         super().__init__(entity, tags or ["charge", "busy"])
 
@@ -391,21 +394,21 @@ class EnemyChargeState(State):
         return None
 
 
-class EnemyHurtState(HurtState):
+class EnemyHurtState(HurtState["Enemy"]):
     """Hurt reaction: return to idle when the hurt timer clears.
 
     Shares the generic :class:`HurtState` logic (ARCH-05); enemies hold no
     knockback impulse and no friction on hurt.
     """
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
-class EnemyKnockbackState(KnockbackState):
+class EnemyKnockbackState(KnockbackState["Enemy"]):
     """Knockback reaction: return to hurt/idle when the enemy stops sliding."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(
             entity,
             exit_resolver=self._resolve_exit,
@@ -422,17 +425,17 @@ class EnemyKnockbackState(KnockbackState):
         return EnemyState.HURT if self.entity.combat.is_hurt else EnemyState.IDLE
 
 
-class EnemyStaggerState(StaggerState):
+class EnemyStaggerState(StaggerState["Enemy"]):
     """Stagger reaction: return to idle when the stagger timer clears."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
-class EnemyDizzyState(State):
+class EnemyDizzyState(State["Enemy"]):
     """Dizzy reaction from consecutive perfect parries: return to idle when timer clears."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:

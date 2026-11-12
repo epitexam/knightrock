@@ -28,10 +28,13 @@ is still set, because it costs nothing and because a subclass that starts
 writing the facing from outside would silently need it.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.core.settings import Locomotion, Turn
-from src.states.state_machine import State
+from src.states.state_machine import EntityT, State
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 #: The tag that stops a state from re-writing the fighter's facing.
 #:
@@ -43,7 +46,7 @@ from src.states.state_machine import State
 FACING_LOCKED = "facing_locked"
 
 
-def request_turn(entity: Any) -> bool:
+def request_turn(entity: Entity) -> bool:
     """Enter this fighter's pivot state if its axis is a ground reversal.
 
     Asked from wherever the fighter decides its ``move_axis``, in place of
@@ -91,7 +94,7 @@ def request_turn(entity: Any) -> bool:
     return bool(entity.state_machine.current_state_name == Turn.STATE)
 
 
-class TurnState(State):
+class TurnState(State[EntityT]):
     """A fighter mid-pivot: feet turned, head still catching up.
 
     It is a locomotion state in every other respect. The fighter keeps its
@@ -108,7 +111,7 @@ class TurnState(State):
     enemy it is a decision about the player, not about speed.
     """
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: EntityT, tags: list[str] | None = None):
         super().__init__(entity, [*(tags or []), FACING_LOCKED])
         #: The facing held for the duration, restored if the pivot is dropped.
         self.held: bool = True
