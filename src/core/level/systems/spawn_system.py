@@ -266,8 +266,7 @@ class SpawnSystem:
             )
         except KeyError:
             return None
-        self.groups.combat_sprites.add(enemy)
-        self.groups.entity_sprites.add(enemy)
+        self.groups.add_fighter(enemy)
         enemy.velocity.y = -550.0
         enemy.on_surface["floor"] = False
         return enemy
@@ -289,6 +288,5 @@ class SpawnSystem:
             player_reference=player,
             spatial_hash=self.spatial_hash,
         )
-        self.groups.combat_sprites.add(enemy)
-        self.groups.entity_sprites.add(enemy)
+        self.groups.add_fighter(enemy)
         self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

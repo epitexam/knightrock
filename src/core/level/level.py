@@ -15,6 +15,7 @@ from src.core.level.scene_host import SceneHost
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -152,6 +153,7 @@ class Level:
         self.contact_system = ContactSystem()
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
+        self.feedback_system = FeedbackSystem(self.groups)
         self.hazard_system = HazardSystem(self.groups)
         self.contact_damage_system = ContactDamageSystem(contact_system=self.contact_system)
         self.hazard_damage_system = HazardDamageSystem(contact_system=self.contact_system)
@@ -195,6 +197,7 @@ class Level:
             tick_system=self.tick_system,
             projectile_system=self.projectile_system,
             contact_system=self.contact_system,
+            feedback_system=self.feedback_system,
         )
 
         if self.events is not None:

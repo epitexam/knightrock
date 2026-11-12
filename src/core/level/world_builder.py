@@ -386,8 +386,7 @@ class WorldBuilder:
                         config=config,
                         spatial_hash=self.spatial_hash,
                     )
-                    groups.combat_sprites.add(player)
-                    groups.entity_sprites.add(player)
+                    groups.add_fighter(player)
                     return player
         return None
 
@@ -427,8 +426,7 @@ class WorldBuilder:
                 spatial_hash=self.spatial_hash,
                 reverse=reverse,
             )
-            groups.combat_sprites.add(entity)
-            groups.entity_sprites.add(entity)
+            groups.add_fighter(entity)
         elif OBJECT_FACTORIES.has(obj.name):
             OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
         elif obj.image is not None:

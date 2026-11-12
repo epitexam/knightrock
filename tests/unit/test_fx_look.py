@@ -41,6 +41,7 @@ from src.core.fx import (
 )
 from src.core.fx.draw import snap
 from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, FxGuard
+from src.core.level.systems.feedback_system import _spawn_guard_fx
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
@@ -1068,14 +1069,11 @@ def test_a_clash_spawns_no_guard_ring() -> None:
     while no attack declares clash data, and a wrong mark the day one does.
     """
     from src.core.level.systems.contact_system import GuardEvent
-    from src.core.level.systems.gameplay_loop import GameplayLoop
 
     entity = _entity()
     group = Group()
-    loop = GameplayLoop(camera_system=SimpleNamespace(add_trauma=lambda _amount: None))
-
     for kind in ("clash", "stun"):
-        loop._spawn_fx_for_event(GuardEvent(kind, entity), group)
+        _spawn_guard_fx(GuardEvent(kind, entity), group)
 
     assert len(group) == 0
 

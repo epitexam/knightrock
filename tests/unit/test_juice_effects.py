@@ -35,8 +35,8 @@ from src.core.fx import (
 )
 from src.core.fx.tuning import DashDust, Dust, DustGrain, FootstepDust, Sweat
 from src.core.fx.tuning import Sweat as SweatSettings
-from src.core.level.systems import physics_system
-from src.core.level.systems.physics_system import PhysicsSystem
+from src.core.level.systems import feedback_system
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.rendering.camera import Camera
 from src.core.rendering.render_hints import RenderHints
 from src.core.rendering.renderer import (
@@ -269,9 +269,9 @@ def test_a_hard_landing_spawns_its_fan_and_its_ground_mark() -> None:
     lander = make_entity(pos=(50.0, 100.0))
     lander.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(lander)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     assert len(_by_family(groups, "landing_dust")) == Dust.COUNT
     assert len(_by_family(groups, "dust_grain")) == DustGrain.LANDING_COUNT
@@ -322,11 +322,11 @@ def test_a_dash_trails_dust_and_nothing_else() -> None:
     """
     groups = SpriteGroups()
     groups.entity_sprites.add(_dasher())
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     ticks = int(Physics.DASH_DURATION * 60)
     for _ in range(ticks):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
     trail = _by_family(groups, "dash_dust")
     assert trail, "a dash leaves a trail"
@@ -349,10 +349,10 @@ def test_the_dash_trail_bursts_once_per_dash_and_not_once_per_tick() -> None:
     """
     groups = SpriteGroups()
     groups.entity_sprites.add(_dasher())
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     for _ in range(3):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
     radii = [sprite.radius for sprite in _by_family(groups, "dash_dust")]
     assert radii.count(max(radii)) == 1, f"exactly one puff at the burst's size: {radii}"
@@ -369,15 +369,15 @@ def test_a_second_dash_bursts_again() -> None:
     groups = SpriteGroups()
     dasher = _dasher()
     groups.entity_sprites.add(dasher)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
     first = len(_by_family(groups, "dash_dust"))
     dasher.state_machine = SimpleNamespace(current_state_name="idle")
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
     assert len(_by_family(groups, "dash_dust")) == first, "an idle entity trails nothing"
     dasher.state_machine = SimpleNamespace(current_state_name="dash")
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     assert len(_by_family(groups, "dash_dust")) == first + DashDust.BURST_COUNT
 
@@ -393,9 +393,9 @@ def test_the_dash_trail_stops_at_the_family_budget() -> None:
     cap = FX_FAMILY_BUDGETS["dash_dust"]
     for _ in range(cap - 1):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     assert len(_by_family(groups, "dash_dust")) == cap - 1, (
         "a burst that does not fit is not half-thrown"
@@ -417,10 +417,10 @@ def test_a_dash_in_mid_air_trails_nothing() -> None:
     """
     groups = SpriteGroups()
     groups.entity_sprites.add(_dasher(grounded=False))
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     for _ in range(int(Physics.DASH_DURATION * 60)):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
     assert len(groups.fx_sprites) == 0
 
@@ -435,15 +435,15 @@ def test_a_dash_that_leaves_the_ground_stops_trail_but_keeps_its_dust() -> None:
     groups = SpriteGroups()
     dasher = _dasher()
     groups.entity_sprites.add(dasher)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
     laid = len(groups.fx_sprites)
     assert laid
 
     dasher.on_surface["floor"] = False
     for _ in range(int(Physics.DASH_DURATION * 60)):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
     assert len(groups.fx_sprites) == laid, "no more puffs once there is no floor"
 
@@ -460,15 +460,15 @@ def test_a_dash_that_begins_airborne_spends_its_burst_on_landing() -> None:
     groups = SpriteGroups()
     dasher = _dasher(grounded=False)
     groups.entity_sprites.add(dasher)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     for _ in range(int(Physics.DASH_DURATION * 60)):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
     assert len(groups.fx_sprites) == 0
 
     dasher.on_surface["floor"] = True
     for _ in range(int(Physics.DASH_DURATION * 60)):
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
     radii = [sprite.radius for sprite in _by_family(groups, "dash_dust")]
     assert max(radii) < DashDust.BURST_RADIUS, "and the burst was not held back for it"
@@ -488,9 +488,9 @@ def test_a_landing_still_wins_the_plane_over_a_dash_trail() -> None:
     groups.entity_sprites.add(dasher)
     for _ in range(FX_FAMILY_BUDGETS["dash_dust"]):
         groups.fx_sprites.add(DashDustParticle((0.0, 0.0), (0.0, 0.0)))
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     families = [sprite.family for sprite in groups.fx_sprites]
     assert families.count("landing_dust") == Dust.COUNT, "the landing is not refused"
@@ -507,9 +507,9 @@ def test_fx_spawning_stops_past_the_particle_budget() -> None:
     groups.entity_sprites.add(dasher)
     for _ in range(MAX_FX_SPRITES):
         groups.fx_sprites.add(DustParticle((0.0, 0.0), (0.0, 0.0)))
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     assert len(groups.fx_sprites) == MAX_FX_SPRITES
     # The landing hint is still consumed: no debt for later ticks.
@@ -734,7 +734,7 @@ def _spy_on_steps(monkeypatch: pytest.MonkeyPatch) -> _StepSpy:
     cadence from a budget.
     """
     spy = _StepSpy()
-    monkeypatch.setattr(physics_system, "spawn_footstep_dust", spy)
+    monkeypatch.setattr(feedback_system, "spawn_footstep_dust", spy)
     return spy
 
 
@@ -763,10 +763,10 @@ def _walker(
     return entity
 
 
-def _walk(system: PhysicsSystem, entity: object, speed: float, ticks: int) -> None:
+def _walk(system: FeedbackSystem, entity: object, speed: float, ticks: int) -> None:
     for _ in range(ticks):
         entity.rect.x += speed / 60.0
-        system._spawn_impact_fx(1 / 60)
+        system._spawn_movement_fx(1 / 60)
 
 
 def test_a_fighter_rolling_on_a_floor_leaves_footsteps() -> None:
@@ -781,7 +781,7 @@ def test_a_fighter_rolling_on_a_floor_leaves_footsteps() -> None:
     groups = SpriteGroups()
     entity = _walker()
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=60)
 
@@ -799,7 +799,7 @@ def test_a_fighter_standing_still_leaves_nothing() -> None:
     groups = SpriteGroups()
     entity = _walker(speed=0.0)
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, 0.0, ticks=60)
 
@@ -824,7 +824,7 @@ def test_the_footstep_cadence_is_distance_and_not_frames(
     groups = SpriteGroups()
     entity = _walker(speed=speed, state=PlayerState.WALK.value)
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
 
@@ -857,7 +857,7 @@ def test_a_walk_marks_the_floor_and_a_run_marks_it_twice_as_fast(
         groups = SpriteGroups()
         entity = _walker(speed=speed, state=state)
         groups.entity_sprites.add(entity)
-        system = PhysicsSystem(groups)
+        system = FeedbackSystem(groups)
         spy = _spy_on_steps
         spy.feet.clear()
 
@@ -892,7 +892,7 @@ def test_a_run_is_a_comb_of_marks_and_not_a_trail(
     speed = Physics.PLAYER_SPEED
     entity = _walker(speed=speed)
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
 
@@ -925,7 +925,7 @@ def test_a_guard_shuffle_marks_nothing() -> None:
     speed = Physics.PLAYER_SPEED * GuardSettings.MOVE_MULT
     entity = _walker(speed=speed, state=PlayerState.WALK_SLOW.value)
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, speed, ticks=120)
 
@@ -989,7 +989,7 @@ def test_a_fighter_with_no_locomotion_tier_marks_the_floor_anyway() -> None:
             entity.velocity.x = speed
             entity.on_surface["floor"] = True
         groups.entity_sprites.add(entity)
-        system = PhysicsSystem(groups)
+        system = FeedbackSystem(groups)
 
         _walk(system, entity, speed, ticks=120)
 
@@ -1006,7 +1006,7 @@ def test_the_two_feet_alternate(_spy_on_steps: _StepSpy) -> None:
     groups = SpriteGroups()
     entity = _walker()
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
     spy = _spy_on_steps
     spy.feet.clear()
 
@@ -1040,7 +1040,7 @@ def test_a_stopped_fighter_lays_no_step_under_himself() -> None:
     groups = SpriteGroups()
     entity = _walker()
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=120)
 
@@ -1062,7 +1062,7 @@ def test_a_walker_in_mid_air_leaves_nothing() -> None:
     groups = SpriteGroups()
     entity = _walker(grounded=False)
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=120)
 
@@ -1082,7 +1082,7 @@ def test_a_walking_fighter_lays_no_step_under_his_own_dash() -> None:
     entity.state_machine = SimpleNamespace(current_state_name="dash")
     entity.velocity.x = Physics.DASH_SPEED
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.DASH_SPEED, ticks=int(Physics.DASH_DURATION * 60))
 
@@ -1102,10 +1102,10 @@ def test_the_tick_a_landing_fires_carries_no_footstep() -> None:
     entity = _walker()
     entity.render_hints.landed_impact = Dust.MIN_FALL_SPEED + 100.0
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     entity.rect.x += Physics.PLAYER_SPEED * FootstepDust.TIER["run"].step_distance / 60.0
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     families = [sprite.family for sprite in groups.fx_sprites]
     assert "landing_dust" in families, "the landing is not what got refused"
@@ -1125,7 +1125,7 @@ def test_a_step_that_does_not_fit_the_budget_is_not_half_thrown() -> None:
     cap = FX_FAMILY_BUDGETS["footstep_dust"]
     for _ in range(cap - 1):
         groups.fx_sprites.add(FootstepDustParticle((0.0, 0.0), (0.0, 0.0)))
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     _walk(system, entity, Physics.PLAYER_SPEED, ticks=120)
 
@@ -1147,9 +1147,9 @@ def test_a_walking_fighter_never_starves_the_dash_trail() -> None:
         groups.fx_sprites.add(FootstepDustParticle((0.0, 0.0), (0.0, 0.0)))
     dasher = _dasher()
     groups.entity_sprites.add(dasher)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system._spawn_impact_fx(1 / 60)
+    system._spawn_movement_fx(1 / 60)
 
     assert len(_by_family(groups, "dash_dust")) == DashDust.BURST_COUNT
 
@@ -1261,16 +1261,16 @@ def test_penalty_dashers_sweat_on_a_cadence() -> None:
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
     )
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system.process(1 / 60)  # penalty begins: the first drop fires immediately
+    system.after_movement(1 / 60)  # penalty begins: the first drop fires immediately
     first_drop = system.groups.fx_sprites.sprites()[0]
     assert isinstance(first_drop, SweatParticle)
 
-    system.process(1 / 60)  # cadence holds: no extra drop until SPAWN_EVERY
+    system.after_movement(1 / 60)  # cadence holds: no extra drop until SPAWN_EVERY
     assert len(system.groups.fx_sprites) == 1
 
-    system.process(Sweat.SPAWN_EVERY)
+    system.after_movement(Sweat.SPAWN_EVERY)
     assert len(system.groups.fx_sprites) == 2
 
 
@@ -1281,9 +1281,9 @@ def test_dash_pools_stop_sweating_when_penalty_ends() -> None:
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
     )
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system.process(1 / 60)
+    system.after_movement(1 / 60)
 
     assert len(groups.fx_sprites) == 0
 
@@ -1295,11 +1295,11 @@ def test_sweat_stops_when_the_dasher_leaves_the_level() -> None:
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
     )
-    system = PhysicsSystem(groups)
-    system.process(1 / 60)
+    system = FeedbackSystem(groups)
+    system.after_movement(1 / 60)
 
     entity.kill()  # groups.entity_sprites is now empty
-    system.process(Sweat.SPAWN_EVERY * 2)
+    system.after_movement(Sweat.SPAWN_EVERY * 2)
 
     # The stale per-entity timer was pruned with its entity.
     assert system._sweat_timers == {}
@@ -1312,9 +1312,9 @@ def test_dash_only_entities_never_sweat() -> None:
         moving_platforms=[],
         fx_sprites=pygame.sprite.Group(),
     )
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
-    system.process(1 / 60)
+    system.after_movement(1 / 60)
 
     assert len(groups.fx_sprites) == 0
 

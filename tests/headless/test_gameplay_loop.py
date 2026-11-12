@@ -148,6 +148,14 @@ def _noop_rollback() -> SimpleNamespace:
     return SimpleNamespace(record=lambda level: None)
 
 
+def _noop_feedback_stage(calls: list[str]) -> SimpleNamespace:
+    """Feedback double: records its two entry points in the tick."""
+    return SimpleNamespace(
+        after_movement=lambda delta_time: calls.append("feedback_movement"),
+        after_combat=lambda impact, events, player, camera: calls.append("feedback_combat"),
+    )
+
+
 def _idle_player() -> SimpleNamespace:
     """Player double: no dash started this tick."""
     return SimpleNamespace(dash_started_this_frame=False)
@@ -173,6 +181,7 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         camera_system=_noop_camera_stage("camera", calls),
         notification_system=_noop_tail_stage("notifications", calls),
         tick_system=_noop_tick_stage("tick", calls),
+        feedback_system=_noop_feedback_stage(calls),
     )
     loop.separation_system = SimpleNamespace(
         # Returns the entities it displaced; the loop re-syncs the attack boxes
@@ -196,8 +205,10 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         "platform",
         "hazard",
         "physics",
+        "feedback_movement",
         "separation",
         "combat",
+        "feedback_combat",
         "contact_damage",
         "hazard_damage",
         "respawn",
@@ -223,6 +234,7 @@ def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
         camera_system=_noop_camera_stage("camera", calls),
         notification_system=_noop_tail_stage("notifications", calls),
         tick_system=_noop_tick_stage("tick", calls),
+        feedback_system=_noop_feedback_stage(calls),
     )
     loop.combat_system.hit_stop_timer = 0.05
 
@@ -279,6 +291,7 @@ def test_update_without_the_world_stages_fails_fast() -> None:
         camera_system=_noop_camera_stage("camera", calls),
         notification_system=_noop_tail_stage("notifications", calls),
         tick_system=_noop_tick_stage("tick", calls),
+        feedback_system=_noop_feedback_stage(calls),
     )
 
     with pytest.raises(RuntimeError, match="platform_system"):

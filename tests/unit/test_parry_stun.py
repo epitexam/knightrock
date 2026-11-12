@@ -8,6 +8,7 @@ import pytest
 
 from src.core.fx import OrbitParticle
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.feedback_system import _spawn_guard_fx
 from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
 from src.entities.player import Player
@@ -309,7 +310,7 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     the dizzy state and are gone shortly after it ends.
     """
     from src.core.fx.tuning import FxDizzy
-    from src.core.level.systems.physics_system import PhysicsSystem
+    from src.core.level.systems.feedback_system import FeedbackSystem
     from src.core.sprite_groups import SpriteGroups
     from tests.unit.helpers import make_entity
 
@@ -317,14 +318,14 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     entity.state_machine = SimpleNamespace(current_state_name="idle")
     groups = SpriteGroups()
     groups.entity_sprites.add(entity)
-    system = PhysicsSystem(groups)
+    system = FeedbackSystem(groups)
 
     for _ in range(4):
-        system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
+        system._spawn_movement_fx(FxDizzy.STAR_SPAWN_EVERY)
     assert len(groups.fx_sprites) == 0, "an idle fighter gets no stars"
 
     entity.state_machine.current_state_name = DIZZY_STATE
-    system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
+    system._spawn_movement_fx(FxDizzy.STAR_SPAWN_EVERY)
 
     stars = [sprite for sprite in groups.fx_sprites if isinstance(sprite, OrbitParticle)]
     assert len(stars) == FxDizzy.STAR_BATCH
@@ -332,7 +333,7 @@ def test_dizzy_stars_come_from_the_dizzy_state_and_not_from_the_parry() -> None:
     assert all(star.velocity.length() == 0.0 for star in stars), "they orbit, they do not fall"
 
     entity.state_machine.current_state_name = "idle"
-    system._spawn_impact_fx(FxDizzy.STAR_SPAWN_EVERY)
+    system._spawn_movement_fx(FxDizzy.STAR_SPAWN_EVERY)
 
     assert all(star.ttl == pytest.approx(FxDizzy.STAR_TTL) for star in stars), (
         "and no more arrive once the state is over"
@@ -344,7 +345,6 @@ def test_a_parry_that_stuns_spawns_no_stars_of_its_own() -> None:
     from pygame.sprite import Group
 
     from src.core.level.systems.contact_system import GuardEvent
-    from src.core.level.systems.gameplay_loop import GameplayLoop
 
     entity = SimpleNamespace(
         hitbox=pygame.FRect(100, 100, 40, 48),
@@ -352,8 +352,6 @@ def test_a_parry_that_stuns_spawns_no_stars_of_its_own() -> None:
         facing_right=True,
     )
     group = Group()
-    loop = GameplayLoop(camera_system=SimpleNamespace(add_trauma=lambda _amount: None))
-
-    loop._spawn_fx_for_event(GuardEvent("stun", entity), group)
+    _spawn_guard_fx(GuardEvent("stun", entity), group)
 
     assert len(group) == 0

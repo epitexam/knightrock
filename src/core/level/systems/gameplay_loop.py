@@ -20,6 +20,7 @@ from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.notification_system import NotificationSystem
@@ -35,9 +36,7 @@ from src.entities.entity import Entity
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
-from src.core.settings import CameraShake, World
-from src.core.settings import Combat as CombatSettings
-from src.core.settings import Guard as GuardSettings
+from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
@@ -72,6 +71,7 @@ class GameplayLoop:
         tick_system: TickSystem | None = None,
         projectile_system: ProjectileSystem | None = None,
         contact_system: ContactSystem | None = None,
+        feedback_system: FeedbackSystem | None = None,
     ) -> None:
         # Unified offensive-contact pipeline (P4.1): one shared engine for
         # melee, projectiles, hazards and contact damage (injected by Level
@@ -103,6 +103,7 @@ class GameplayLoop:
         self.notification_system = notification_system
         self.tick_system = tick_system
         self.projectile_system = projectile_system
+        self.feedback_system = feedback_system
 
     @classmethod
     def combat_only(cls) -> GameplayLoop:
@@ -135,11 +136,11 @@ class GameplayLoop:
         The debug spawner runs first with the raw frame delta (it only
         decays cooldowns and spawns), then hit-stop decides the simulation
         delta: a suspended tick skips the world stages but still advances
-        the camera, notifications and tick bookkeeping — the level did the
-        same before it became a facade.  The order is load-bearing and
-        matches the pre-refactor ``Level.update`` exactly: spawner,
-        platforms, hazards, entity integration, pairings, deaths reaped,
-        respawn, progression, camera, notifications, tick counter.
+        the camera, notifications and tick bookkeeping. The order is
+        load-bearing: spawner, platforms, hazards, entity integration,
+        movement feedback, separation and melee, projectiles, combat feedback,
+        contact and hazard damage, deaths reaped, respawn, progression, camera,
+        notifications, tick counter.
 
         The full wiring (spawner, world stages, camera, notifications,
         tick) is resolved up front, before the spawner or hit-stop mutate
@@ -157,6 +158,7 @@ class GameplayLoop:
         hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
         respawn = self._require(self.respawn_system, "respawn_system")
         progression = self._require(self.progression_system, "progression_system")
+        feedback = self._require(self.feedback_system, "feedback_system")
 
         spawn.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
@@ -177,20 +179,16 @@ class GameplayLoop:
             platform.process(effective_delta)
             hazard.process(effective_delta)
             physics.process(effective_delta)
+            feedback.after_movement(effective_delta)
 
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
-            impact = self.combat_system.impact
-            if impact >= CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
-                camera.add_trauma(impact / CameraShake.HEAVY_DIV)
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
-            self._emit_guard_fx(groups, camera)
-            # Dash start screen shake
-            if player.dash_started_this_frame:
-                player.dash_started_this_frame = False
-                camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
+            feedback.after_combat(
+                self.combat_system.impact, self._collect_guard_events(), player, camera
+            )
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
             self._flush_combat_trace()
@@ -199,15 +197,8 @@ class GameplayLoop:
             respawn.process(effective_delta, groups.entity_sprites)
             progression.process(player)
 
-            camera.process(raw_delta, player)
-            notifications.process(
-                player,
-                deaths=respawn.deaths,
-                exit_reached=progression.exit_reached,
-            )
-            tick.process(level, rollback)
-            return
-
+        # The tail runs on a frozen tick too: the camera keeps easing and the
+        # tick is still counted and recorded.
         camera.process(raw_delta, player)
         notifications.process(
             player,
@@ -239,12 +230,6 @@ class GameplayLoop:
 
         trace.drain_jsonl(Path("logs") / "combat_trace.jsonl")
 
-    def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
-        events = self._collect_guard_events()
-        if not events:
-            return
-        self._spawn_guard_fx(events, groups, camera)
-
     def _collect_guard_events(self) -> list[GuardEvent]:
         """Take this tick's guard events from the melee and projectile systems."""
         events = list(self.combat_system.guard_events)
@@ -253,34 +238,6 @@ class GameplayLoop:
             events.extend(self.projectile_system.guard_events)
             self.projectile_system.guard_events.clear()
         return events
-
-    def _spawn_guard_fx(
-        self, events: list[GuardEvent], groups: SpriteGroups, camera: CameraSystem
-    ) -> None:
-        fx_group = groups.fx_sprites
-        trauma = 0.0
-        for event in events:
-            trauma = max(trauma, self._trauma_for_event(event))
-            self._spawn_fx_for_event(event, fx_group)
-        if trauma > 0.0:
-            camera.add_trauma(trauma)
-
-    def _trauma_for_event(self, event: GuardEvent) -> float:
-        if event.kind == "parry":
-            return GuardSettings.PARRY_TRAUMA
-        if event.kind in ("break", "stun"):
-            return GuardSettings.BREAK_TRAUMA
-        return GuardSettings.GUARD_TRAUMA
-
-    def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
-        from src.core.fx import spawn_guard_arc, spawn_shatter_arc
-
-        if event.kind == "parry":
-            spawn_guard_arc(fx_group, event.target, parried=True, contact=event.point)
-        elif event.kind == "break":
-            spawn_shatter_arc(fx_group, event.target, contact=event.point)
-        elif event.kind == "guard":
-            spawn_guard_arc(fx_group, event.target, contact=event.point)
 
     def process_combat_and_separation(
         self,

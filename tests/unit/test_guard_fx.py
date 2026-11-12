@@ -15,6 +15,7 @@ from src.core.fx import (
 )
 from src.core.fx.tuning import FxGuard
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.settings import Guard as GuardSettings
 from src.entities.player import Player
@@ -161,6 +162,10 @@ def _loop_with_camera() -> tuple[GameplayLoop, SimpleNamespace]:
     return loop, camera
 
 
+#: A player who did not start a dash this tick.
+_NO_DASH = SimpleNamespace(dash_started_this_frame=False)
+
+
 def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
     player = _guard_player(parry=True)
     attacker = make_active_attacker(player)
@@ -168,7 +173,12 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
     loop.combat_system.process_attacks([attacker, player])  # type: ignore[list-item]
     groups = SimpleNamespace(fx_sprites=Group())
 
-    loop._emit_guard_fx(groups, loop.camera_system)
+    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
+        0.0,
+        loop._collect_guard_events(),
+        _NO_DASH,
+        loop.camera_system,  # type: ignore[arg-type]
+    )
 
     assert len(groups.fx_sprites) == 1, "the gold ring alone"
     assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
@@ -182,7 +192,12 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
     loop.combat_system.process_attacks([attacker, player])  # type: ignore[list-item]
     groups = SimpleNamespace(fx_sprites=Group())
 
-    loop._emit_guard_fx(groups, loop.camera_system)
+    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
+        0.0,
+        loop._collect_guard_events(),
+        _NO_DASH,
+        loop.camera_system,  # type: ignore[arg-type]
+    )
 
     assert len(groups.fx_sprites) == 1, "the ring alone"
     assert camera.traumas == [pytest.approx(GuardSettings.GUARD_TRAUMA)]
@@ -192,7 +207,12 @@ def test_game_loop_skips_fx_without_events() -> None:
     loop, camera = _loop_with_camera()
     groups = SimpleNamespace(fx_sprites=Group())
 
-    loop._emit_guard_fx(groups, loop.camera_system)
+    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
+        0.0,
+        loop._collect_guard_events(),
+        _NO_DASH,
+        loop.camera_system,  # type: ignore[arg-type]
+    )
 
     assert len(groups.fx_sprites) == 0
     assert camera.traumas == []

@@ -100,7 +100,7 @@ class TestPlatformSystem:
 
 
 class TestPhysicsSystem:
-    """Carry the platform riders, then integrate entities and effects."""
+    """Carry the platform riders, then integrate the entities."""
 
     def _groups(self, rider: RiderStub) -> SimpleNamespace:
         return SimpleNamespace(
@@ -123,7 +123,8 @@ class TestPhysicsSystem:
         assert rider.hitbox.x == pytest.approx(105.0)
         # The carry ran before the entity pass: the sprite already sees the new x.
         assert rider.x_at_entity_update == pytest.approx(105.0)
-        assert groups.fx_sprites.delta == pytest.approx(1 / 60)
+        # The FX plane is the feedback stage's to advance, not physics'.
+        assert groups.fx_sprites.delta is None
 
     def test_does_not_carry_an_airborne_entity(self) -> None:
         rider = RiderStub((100.0, 150.0), on_floor=False)

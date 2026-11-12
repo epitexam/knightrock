@@ -8,6 +8,7 @@ import pytest
 
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.physics_system import PhysicsSystem
@@ -77,6 +78,7 @@ def wire_world_systems(level: Level, groups, player) -> None:
         camera_system=level.camera_system,
         notification_system=level.notification_system,
         tick_system=level.tick_system,
+        feedback_system=FeedbackSystem(groups),
     )
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
     # ``process`` now reports the entities it displaced, which the loop iterates
