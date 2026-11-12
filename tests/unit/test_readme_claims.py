@@ -15,14 +15,20 @@ section.
 import re
 import subprocess
 import sys
+from functools import cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README = REPO_ROOT / "README.md"
 
 
+@cache
 def _collected_test_count() -> int:
-    """How many tests pytest collects, counted the same way CI would."""
+    """How many tests pytest collects, counted the same way CI would.
+
+    Cached: the count cannot change during a run, and collecting twice cost a
+    second of every run for nothing.
+    """
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
         cwd=REPO_ROOT,

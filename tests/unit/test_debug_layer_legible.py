@@ -233,7 +233,15 @@ def test_the_notice_is_shown_once_and_then_expires(tmp_path, monkeypatch) -> Non
     assert game.notice_lines, "a second key should not need a second hint"
     assert sum(1 for _ in game.notice_lines) == 2
 
-    for _ in range(600):
+    # Each frame is billed 100 ms, so the 4 s notice expires after 40 frames
+    # instead of after four real seconds of rendering.
+    import src.application.game as game_module
+
+    monkeypatch.setattr(game_module, "_elapsed_ms", lambda _started: 100.0)
+    for _ in range(30):
+        game.step()
+    assert game.notice_lines, "three seconds in, the notice is still owed"
+    for _ in range(15):
         game.step()
     assert game.notice_lines == (), "the notice has to go away on its own"
 
