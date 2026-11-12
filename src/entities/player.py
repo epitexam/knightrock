@@ -8,10 +8,11 @@ from pygame.sprite import Group
 
 from src.combat.combat_component import CombatComponent
 from src.combat.combatant_protocol import DamageResult
-from src.combat.frame_data import MoveId, Stance
+from src.combat.frame_data import Stance
 from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
 from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
+from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
@@ -170,15 +171,6 @@ class Player(Entity):
     def is_guarding(self) -> bool:
         return self.state_machine.current_state_name == PlayerState.GUARD
 
-    @property
-    def _buffered_attack_name(self) -> MoveId | None:
-        """Attack buffered when a start request was refused (combos)."""
-        return self.input_handler.buffered_attack_name
-
-    @_buffered_attack_name.setter
-    def _buffered_attack_name(self, value: MoveId | None) -> None:
-        self.input_handler.buffered_attack_name = value
-
     def may_attack_now(self) -> bool:
         """Whether an attack press is worth reading at all this tick.
 
@@ -299,7 +291,7 @@ class Player(Entity):
 
     def _pre_update(self, delta_time: float) -> None:
         """Process input and timers before combat and state machine updates."""
-        self.input_handler.update()
+        self.input_handler.update(delta_time)
         self.update_timers(delta_time)
 
     def _post_update(self, delta_time: float) -> None:
@@ -316,7 +308,7 @@ class Player(Entity):
         self.guard.reset()
         self.dash.reset()
         self.move_axis = 0.0
-        self.input_handler.buffered_attack_name = None
+        self.input_handler.clear_buffer()
         self.hitbox.width = self.dash.original_hitbox_width
 
         self.left_held = False
@@ -434,7 +426,12 @@ class Player(Entity):
             "guard": self.guard.save_state(),
             "dash": self.dash.save_state(),
             "crouch": self.crouch.save_state(),
-            "buffered_attack_name": self.input_handler.buffered_attack_name,
+            "buffered_action": (
+                None
+                if self.input_handler.buffered_action is None
+                else self.input_handler.buffered_action.value
+            ),
+            "buffer_timer": self.input_handler.buffer_timer,
             "left_held": self.left_held,
             "right_held": self.right_held,
             "guard_held": self.guard_held,
@@ -455,7 +452,9 @@ class Player(Entity):
         self.guard.load_state(extra["guard"])
         self.dash.load_state(extra["dash"])
         self.crouch.restore(extra["crouch"])
-        self.input_handler.buffered_attack_name = extra["buffered_attack_name"]
+        buffered = extra["buffered_action"]
+        self.input_handler.buffered_action = None if buffered is None else InputAction(buffered)
+        self.input_handler.buffer_timer = extra["buffer_timer"]
         self.left_held = extra["left_held"]
         self.right_held = extra["right_held"]
         self.guard_held = extra["guard_held"]

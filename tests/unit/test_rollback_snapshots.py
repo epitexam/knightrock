@@ -14,6 +14,7 @@ import pytest
 from pygame.math import Vector2
 from pygame.sprite import Group
 
+from src.core.input.input_actions import InputAction
 from src.entities.entity import Entity
 from src.entities.player import Player
 from src.entities.player_controllers import (
@@ -244,7 +245,8 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
     player.guard.posture = 25.0
     player.dash.charges = 0
     player.dash.penalty_timer = 0.5
-    player.input_handler.buffered_attack_name = "light_attack"
+    player.input_handler.buffered_action = InputAction.ATTACK_1
+    player.input_handler.buffer_timer = 0.11
     player.left_held = True
     player.right_held = False
     player.guard_held = True
@@ -254,7 +256,7 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
     player.jump.reset()
     player.guard.reset()
     player.dash.reset()
-    player.input_handler.buffered_attack_name = None
+    player.input_handler.clear_buffer()
     player.left_held = False
     player.guard_held = False
 
@@ -265,7 +267,8 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
     assert player.guard.posture == pytest.approx(25.0)
     assert player.dash.charges == 0
     assert player.dash.penalty_timer == pytest.approx(0.5)
-    assert player.input_handler.buffered_attack_name == "light_attack"
+    assert player.input_handler.buffered_action is InputAction.ATTACK_1
+    assert player.input_handler.buffer_timer == pytest.approx(0.11)
     assert player.left_held is True
     assert player.right_held is False
     assert player.guard_held is True

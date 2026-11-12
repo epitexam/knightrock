@@ -174,8 +174,6 @@ class LocalInputProvider(InputProvider):
             for action in (
                 InputAction.ATTACK_1,
                 InputAction.ATTACK_2,
-                InputAction.ATTACK_3,
-                InputAction.ATTACK_4,
             ):
                 held[action] = self._key_held(keys, gameplay.keyboard, action) or (
                     self._button_held(gameplay.gamepad_buttons, action)

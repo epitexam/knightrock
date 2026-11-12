@@ -504,22 +504,19 @@ def test_a_vertical_lunge_survives_the_round_trip() -> None:
 def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
     """The shipped data against the rule, which is the only place both exist.
 
-    Each aerial is asserted against the direction its button already means on
-    the floor: ATTACK_3 launches on the ground so it rises in the air, ATTACK_2
-    is the heavy hit down here so it falls up there, and the neutral one leaves
-    the arc alone. A table where all four had the same sign would satisfy the
-    validation and be the missing feature replaced by a worse one.
+    The heavy rises in the air, as the launcher does on the floor; Down and
+    heavy dives; the light leaves the arc alone. A table where all had the same
+    sign would satisfy the validation and be the missing feature replaced by a
+    worse one.
     """
-    player = PLAYER_ATTACKS
     from src.core.input.input_actions import InputAction
-    from src.entities.attack_moves import BUTTON_MOVES
+    from src.entities.attack_moves import MoveContext, resolve_move
 
-    aerial = {
-        action.value: moves[Stance.AIR]
-        for action, moves in BUTTON_MOVES.items()
-        if Stance.AIR in moves
-    }
+    player = PLAYER_ATTACKS
+    light = resolve_move(InputAction.ATTACK_1, MoveContext(Stance.AIR))
+    heavy = resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR))
+    dive = resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR, diving=True))
 
-    assert player[aerial[InputAction.ATTACK_3.value]].vertical_lunge > 0
-    assert player[aerial[InputAction.ATTACK_2.value]].vertical_lunge < 0
-    assert player[aerial[InputAction.ATTACK_1.value]].vertical_lunge == 0.0
+    assert player[heavy].vertical_lunge > 0
+    assert player[dive].vertical_lunge < 0
+    assert player[light].vertical_lunge == 0.0

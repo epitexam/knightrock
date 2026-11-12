@@ -31,8 +31,15 @@ from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
-from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+from src.entities.attack_moves import (
+    BUTTON_MOVES,
+    DIVE_MOVES,
+    MoveContext,
+    move_for_button,
+    resolve_move,
+)
 from src.entities.player import Player
+from tests.unit.helpers import SHOWCASE
 
 TICK = 1 / 60
 FLOOR_TOP = 56.0
@@ -112,39 +119,36 @@ def _airborne(player: Player, *, vertical: float = -300.0) -> None:
 
 
 def test_every_aerial_button_throws_something() -> None:
-    """Three of the four used to answer ``None`` in the air.
+    """Light, heavy, and heavy with Down: three distinct aerials.
 
     A missing entry is not an error: it is a refusal the player reads as a dead
-    button. Asserting the four exist is the claim that the air is playable at
-    all.
+    button. Asserting they exist is the claim that the air is playable at all.
     """
     thrown = {
-        action: move_for_button(action, Stance.AIR)
-        for action in (
-            InputAction.ATTACK_1,
-            InputAction.ATTACK_2,
-            InputAction.ATTACK_3,
-            InputAction.ATTACK_4,
-        )
+        "light": resolve_move(InputAction.ATTACK_1, MoveContext(Stance.AIR)),
+        "heavy": resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR)),
+        "dive": resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR, diving=True)),
     }
 
     assert all(move is not None for move in thrown.values()), thrown
-    assert len(set(thrown.values())) == 4, "two buttons throw the same aerial"
+    assert len(set(thrown.values())) == 3, "two inputs throw the same aerial"
 
 
 def test_the_aerial_on_each_button_is_the_answer_to_its_grounded_counterpart() -> None:
     """The design claim, stated as a table rather than as a comment.
 
-    ``ATTACK_3`` is the launcher on the floor, so it rises in the air;
-    ``ATTACK_2`` is the heavy hit down here, so it falls up there; ``ATTACK_4``
-    is the forward reach on the ground, so it reaches forward from the air. Four
-    identical aerials would have satisfied the test above and been the missing
-    feature replaced by a worse one.
+    The heavy rises in the air, as the launcher does on the floor; Down and heavy
+    dives; the light chains into a forward reach. Identical aerials would have
+    satisfied the test above and been the missing feature replaced by a worse
+    one.
     """
-    rises = PLAYER_ATTACKS[move_for_button(InputAction.ATTACK_3, Stance.AIR)]
-    dives = PLAYER_ATTACKS[move_for_button(InputAction.ATTACK_2, Stance.AIR)]
-    reaches = PLAYER_ATTACKS[move_for_button(InputAction.ATTACK_4, Stance.AIR)]
-    neutral = PLAYER_ATTACKS[move_for_button(InputAction.ATTACK_1, Stance.AIR)]
+    neutral_name = resolve_move(InputAction.ATTACK_1, MoveContext(Stance.AIR))
+    neutral = PLAYER_ATTACKS[neutral_name]
+    rises = PLAYER_ATTACKS[resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR))]
+    dives = PLAYER_ATTACKS[resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR, diving=True))]
+    reaches = PLAYER_ATTACKS[
+        resolve_move(InputAction.ATTACK_1, MoveContext(Stance.AIR, running=neutral))
+    ]
 
     assert rises.vertical_lunge > 0 > dives.vertical_lunge
     assert rises.phases[0].hitbox_offset[1] < neutral.phases[0].hitbox_offset[1]
@@ -165,12 +169,10 @@ def test_the_ground_height_is_kept_unless_the_direction_of_the_move_is_the_point
     because every other parallel between the two columns was checked and this one
     was not.
 
-    ``air_sweep`` is the exception, and it is an exception rather than an
-    oversight: a dive descends onto a crouched target, so ``"overhead"`` is the
-    height that makes it land. Asserting a blanket rule would have thrown that
-    away; asserting nothing let ``air_rise`` drift. So the rule is the rule plus
-    the one name it does not apply to, which is a statement that can be read and
-    has to be changed on purpose.
+    The dive is the exception, and it is an exception rather than an
+    oversight: it descends onto a crouched target, so ``"overhead"`` is the
+    height that makes it land. It is Down and heavy, not a column of the
+    table, so the table's own columns keep their ground heights.
     """
     grounded_height = {
         action: PLAYER_ATTACKS[moves[Stance.GROUND]].phases[0].hit.height
@@ -186,7 +188,9 @@ def test_the_ground_height_is_kept_unless_the_direction_of_the_move_is_the_point
         and PLAYER_ATTACKS[moves[Stance.AIR]].phases[0].hit.height != grounded_height[action]
     }
 
-    assert diverging == {InputAction.ATTACK_2.value: "overhead"}
+    assert diverging == {}
+    for dive in DIVE_MOVES.values():
+        assert PLAYER_ATTACKS[dive].phases[0].hit.height == "overhead"
 
 
 @pytest.mark.parametrize("height", ["mid", "low", "high", "overhead"])
@@ -435,20 +439,13 @@ def test_the_impulse_does_not_fire_from_the_ground() -> None:
 
 
 def test_only_the_designated_move_pokes_a_downed_enemy() -> None:
-    """OTG is scarce by construction, and the dive was quietly making it common.
+    """OTG is scarce by construction: nothing in the game's catalogue carries it.
 
-    A hurt enemy that lands is invulnerable for ``OTG_INVULN_DURATION`` (0.5s)
-    to every move without ``otg_allowed`` -- so the flag is what a knockdown buys
-    you, and one move owning it is what makes that window worth planning around.
-    ``otg_slam`` owns it and pays for it: 1.2s of cooldown and a walk across the
-    room to the downed enemy.
-
-    The dive cost 0.6s and no positioning at all, since being airborne above
-    someone who just fell is exactly the situation it is thrown in. That is a
-    two-times-more-available OTG for free, which erodes the scarcity without
-    anyone having decided to erode it. So the dive keeps the identity that does
-    not need the flag -- ``height: "overhead"`` punishes the crouch, the
-    downward knockback drops them -- and OTG stays singular.
+    A hurt enemy that lands is invulnerable for ``OTG_INVULN_DURATION`` to every
+    move without ``otg_allowed``. The one move that had it, ``otg_slam``, was
+    never on a button -- only on the test bench -- and it moved to the tests'
+    own data with the light/heavy catalogue. The dive keeps the identity that
+    does not need the flag: ``"overhead"`` punishes the crouch.
     """
     from src.combat.attack_data import GOBLIN_ATTACKS, SLIME_ATTACKS
 
@@ -459,7 +456,8 @@ def test_only_the_designated_move_pokes_a_downed_enemy() -> None:
         if any(phase.hit.otg_allowed for phase in attack.phases)
     }
 
-    assert carriers == {"otg_slam"}
+    assert carriers == set()
+    assert any(phase.hit.otg_allowed for phase in SHOWCASE["otg_slam"].phases)
 
 
 def test_the_aerial_kit_has_three_roles_and_each_move_has_exactly_one() -> None:
@@ -480,7 +478,8 @@ def test_the_aerial_kit_has_three_roles_and_each_move_has_exactly_one() -> None:
 
     Read as a role per move and asserted as a partition, so a fifth aerial has to
     declare which of the three it is instead of inheriting whichever defaults it
-    was built with.
+    was built with. The riposte, thrown from the ground as well, is not an
+    aerial.
     """
     roles = {
         name: (
@@ -489,7 +488,7 @@ def test_the_aerial_kit_has_three_roles_and_each_move_has_exactly_one() -> None:
             else ("launch" if attack.vertical_lunge > 0 else "drop")
         )
         for name, attack in PLAYER_ATTACKS.items()
-        if Stance.AIR in attack.stances
+        if attack.stances == (Stance.AIR,)
     }
 
     assert roles == {
@@ -509,7 +508,7 @@ def test_the_extenders_are_the_aerials_that_can_be_thrown_again_soonest() -> Non
     stretches the neutral aerial past the dive, this is what says no.
     """
     aerial = {
-        name: attack for name, attack in PLAYER_ATTACKS.items() if Stance.AIR in attack.stances
+        name: attack for name, attack in PLAYER_ATTACKS.items() if attack.stances == (Stance.AIR,)
     }
     extenders = [a.cooldown for a in aerial.values() if a.phases[0].hit.juggle_gravity_mult != 1.0]
     others = [a.cooldown for a in aerial.values() if a.phases[0].hit.juggle_gravity_mult == 1.0]

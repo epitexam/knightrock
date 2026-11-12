@@ -54,6 +54,7 @@ class CombatSnapshot:
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
     combo_armed: bool = False
+    attacks_started: int = 0
     geometry_checksum: str = field(default="", compare=False)
 
 
@@ -105,6 +106,9 @@ class CombatComponent:
         self.is_hurt: bool = False
         self._hurt_timer: float = 0.0
         self._hurt_duration: float = hurt_duration
+        #: Every attack started, chained ones included: how the attack state
+        #: tells a new link of a chain from the move it was already playing.
+        self.attacks_started: int = 0
 
     def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """Register a new attack definition.
@@ -307,6 +311,7 @@ class CombatComponent:
             return Refusal.BUSY
 
         self._cooldowns[name] = definition.cooldown
+        self.attacks_started += 1
         self.combo.on_attack_started(definition.combo_reset)
 
         # P1 starter seed: all starts happen during ``Entity.update``,
@@ -436,6 +441,7 @@ class CombatComponent:
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
             combo_armed=self.combo.is_armed,
+            attacks_started=self.attacks_started,
             geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
         )
 
@@ -457,6 +463,7 @@ class CombatComponent:
             snapshot.combo_armed,
         )
         self._cooldowns = dict(snapshot.cooldowns)
+        self.attacks_started = snapshot.attacks_started
         self.charging.load_state(snapshot.charge_state)
         # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
         # at the next frontier capture; forgetting it here keeps the restore
@@ -535,6 +542,7 @@ class NullCombatComponent:
     """
 
     def __init__(self) -> None:
+        self.attacks_started: int = 0
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None

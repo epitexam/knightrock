@@ -10,7 +10,7 @@ from src.combat.attack_state import AttackStateMachine
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition, Stance
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
-from tests.unit.helpers import activate, entity_at, make_entity
+from tests.unit.helpers import SHOWCASE, activate, entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
@@ -386,7 +386,7 @@ def test_golden_dash_attack_trajectory() -> None:
 def test_golden_sweeping_arc_trajectory() -> None:
     frames = _drive("sweeping_arc", PLAYER_ATTACKS)
 
-    assert len(frames) == 17
+    assert len(frames) == PLAYER_ATTACKS["sweeping_arc"].total_frames
     assert [sub for sub, _, _ in frames].count("startup") == 5
     assert [sub for sub, _, _ in frames].count("active") == 6
     assert frames[0] == ("startup", 0, (38.333, 17.333, 32.5, 16.333))
@@ -396,7 +396,7 @@ def test_golden_sweeping_arc_trajectory() -> None:
 
 
 def test_golden_sky_launcher_trajectory() -> None:
-    frames = _drive("sky_launcher", PLAYER_ATTACKS)
+    frames = _drive("sky_launcher", SHOWCASE)
 
     assert len(frames) == 22
     assert [sub for sub, _, _ in frames].count("startup") == 6

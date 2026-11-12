@@ -29,6 +29,7 @@ from typing import Any, cast
 
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
+    AttackButton,
     AttackDefinition,
     BlockMask,
     Clash,
@@ -354,6 +355,7 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             cancel_into=tuple(
                 MoveId(name) for name in raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])
             ),
+            cancel_on_hit=bool(raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"])),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
@@ -416,9 +418,31 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
             attack_move_multiplier=float(
                 raw.get("attack_move_multiplier", _ATTACK_DEFAULTS["attack_move_multiplier"])
             ),
+            follow_ups=_read_follow_ups(raw.get("follow_ups"), where),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid attack value: {exc}") from exc
+
+
+def _read_follow_ups(raw: Any, where: str) -> tuple[tuple[AttackButton, MoveId], ...]:
+    """Parse ``{"light": "twin_fangs", "heavy": "uppercut"}`` into button/move pairs."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise GameplayDataError(f"{where}.follow_ups: expected an object, got {raw!r}")
+    pairs: list[tuple[AttackButton, MoveId]] = []
+    for button, move in raw.items():
+        try:
+            pressed = AttackButton(button)
+        except ValueError:
+            names = ", ".join(repr(member.value) for member in AttackButton)
+            raise GameplayDataError(
+                f"{where}.follow_ups: {button!r} is not one of {names}"
+            ) from None
+        if not isinstance(move, str) or not move:
+            raise GameplayDataError(f"{where}.follow_ups.{button}: expected a move name")
+        pairs.append((pressed, MoveId(move)))
+    return tuple(pairs)
 
 
 def read_attacks_file(path: str | Path) -> dict[str, dict[MoveId, AttackDefinition]]:
@@ -540,6 +564,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                 ],
                 "reset_targets": phase.reset_targets,
                 "cancel_into": list(phase.cancel_into),
+                **({"cancel_on_hit": True} if phase.cancel_on_hit else {}),
             }
             for phase in definition.phases
         ],
@@ -555,6 +580,11 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
         "lunge_speed_multiplier": definition.lunge_speed_multiplier,
         "vertical_lunge": definition.vertical_lunge,
         "attack_move_multiplier": definition.attack_move_multiplier,
+        **(
+            {"follow_ups": {button.value: move for button, move in definition.follow_ups}}
+            if definition.follow_ups
+            else {}
+        ),
     }
 
 

@@ -71,20 +71,30 @@ def test_player_dash_charges(player_setup):
     assert _can_dash(player)
 
 
-# --- Dash attack (F / attack4) ---
+# --- Dash attack (dash, then light) ---
 
 
-def test_attack4_starts_the_dash_attack(mock_input_manager):
-    """The lunge move is bound to attack4 and applies its full-speed lunge."""
+def test_dash_then_light_starts_the_dash_attack(mock_input_manager):
+    """The lunge move is the light button out of a dash, with its full-speed lunge."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
+    _step(player, mock_input_manager, 1, press=InputAction.DASH)
 
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "attack"
     assert player.combat.state.attack_name == "dash_attack"
     # dash_attack.lunge_speed_multiplier is 1.0: the whole run speed forward.
     assert player.velocity.x == pytest.approx(player.speed, rel=0.05)
+
+
+def test_light_with_no_dash_is_the_light_attack(mock_input_manager):
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
+
+    assert player.combat.state.attack_name == "light_attack"
 
 
 def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_manager):
@@ -101,14 +111,14 @@ def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_m
     assert player.state_machine.current_state_name == "dash"
 
     # One frame in: 0.016s elapsed, under the 0.03s window.
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "dash"
     assert player.combat.is_attacking is False
 
 
 def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
-    """Dash then F: the attack takes over and the dash perks drop with it."""
+    """Dash then light: the attack takes over and the dash perks drop with it."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
     _step(player, mock_input_manager, 1, press=InputAction.DASH)
@@ -116,7 +126,7 @@ def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
     assert player.is_invincible is True
     squished_width = player.hitbox.width
 
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "attack"
     assert player.combat.state.attack_name == "dash_attack"

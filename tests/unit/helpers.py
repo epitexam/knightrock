@@ -8,6 +8,7 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,7 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.core.input.input_state import InputState
+from src.data.attacks import read_attacks_file
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.ui.world_overlay_cards import CardLayer
@@ -397,3 +399,12 @@ def card_rows(card: CardLayer, sprite: Any) -> list[str] | None:
     if segments is None:
         return None
     return [" ".join(text.strip() for text, _ in row) for row in segments]
+
+
+#: The moves that exercise the hitbox engine without being in the game
+#: (``p5_shapes``, ``circle_burst``, ``sky_launcher``, ``otg_slam``): they left the
+#: player's catalogue when it became light/heavy chains, and live here for the
+#: tests that need their shapes.
+SHOWCASE = read_attacks_file(
+    Path(__file__).resolve().parents[1] / "data" / "showcase_attacks.json"
+)["showcase"]

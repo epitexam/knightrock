@@ -171,12 +171,16 @@ class AttackStateMachine:
             ``True`` if the machine is in RECOVERY and the current phase's
             ``cancel_into`` tuple contains ``attack_name``.
         """
-        if self.sub_state != PhaseState.RECOVERY:
-            return False
         phase = self.current_phase_def
-        if phase is None:
+        if phase is None or attack_name not in phase.cancel_into:
             return False
-        return attack_name in phase.cancel_into
+        if self.sub_state == PhaseState.RECOVERY:
+            return True
+        # A chain link opens on contact: once this phase has hit someone, the
+        # next link need not wait for the recovery.
+        return (
+            self.sub_state == PhaseState.ACTIVE and phase.cancel_on_hit and bool(self.targets_hit)
+        )
 
     def start(self, attack_name: MoveId, charge_multiplier: float = 1.0) -> bool:
         """Begin a new attack sequence deterministically.

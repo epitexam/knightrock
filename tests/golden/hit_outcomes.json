@@ -2599,502 +2599,6 @@
    0
   ]
  },
- "player.circle_burst[0] -> dummy_armoured": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 987.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "None",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.272,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> goblin_dizzy": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 33.0,
-  "hit_stop": 0.0919,
-  "hurt": true,
-  "hurt_timer": 0.4,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 1.0,
-  "state": "dizzy",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> goblin_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.272,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> goblin_low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> goblin_otg": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 60.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.circle_burst[0] -> player.airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.crouch_guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 76.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.dash_early": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "dash",
-  "super_armor_count": 0,
-  "velocity": [
-   -1350.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.circle_burst[0] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 76.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.guard_back": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.0919,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> player.low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.circle_burst[0] -> slime_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 28.0,
-  "hit_stop": 0.0919,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.248,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
  "player.crouch_slash[0] -> dummy_armoured": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
@@ -3104,10 +2608,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 993.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3131,10 +2635,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 51.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3143,7 +2647,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3158,10 +2662,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 46.5,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": true,
   "hurt_timer": 0.4,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3170,7 +2674,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3185,10 +2689,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 51.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3197,7 +2701,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3212,10 +2716,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3224,7 +2728,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3264,10 +2768,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3279,7 +2783,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3296,10 +2800,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 99.1,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3354,10 +2858,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3369,7 +2873,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3384,10 +2888,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3399,7 +2903,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3414,10 +2918,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3429,7 +2933,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3444,10 +2948,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3459,7 +2963,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3474,10 +2978,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3489,7 +2993,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3504,10 +3008,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 94.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3519,7 +3023,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3534,10 +3038,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -3549,7 +3053,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -3564,10 +3068,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 34.0,
-  "hit_stop": 0.0509,
+  "hit_stop": 0.05,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -3576,7 +3080,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5070,10 +4574,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 991.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5097,10 +4601,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 48.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5109,7 +4613,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5124,10 +4628,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 42.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": true,
   "hurt_timer": 0.4,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5136,7 +4640,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5151,10 +4655,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 48.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5163,7 +4667,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5178,10 +4682,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5190,7 +4694,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5230,10 +4734,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5245,7 +4749,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5262,10 +4766,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5322,10 +4826,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5352,10 +4856,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5367,7 +4871,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5384,10 +4888,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": true,
   "hurt_timer": 0.12,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 1.2,
@@ -5419,7 +4923,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5452,7 +4956,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5479,10 +4983,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5494,7 +4998,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5509,10 +5013,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -5524,7 +5028,7 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
@@ -5539,10 +5043,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 32.0,
-  "hit_stop": 0.0549,
+  "hit_stop": 0.054,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 44.7214,
+  "impact": 40.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5551,13 +5055,13 @@
   "super_armor_count": 0,
   "velocity": [
    40.0,
-   -20.0
+   0.0
   ],
   "zone": [
    0
   ]
  },
- "player.otg_slam[0] -> dummy_armoured": {
+ "player.riposte[0] -> dummy_armoured": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -5565,11 +5069,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 979.0,
-  "hit_stop": 0.1685,
+  "health": 969.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 492.4429,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5577,41 +5081,14 @@
   "state": "None",
   "super_armor_count": 0,
   "velocity": [
-   200.0,
-   450.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.otg_slam[0] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 30.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> goblin_dizzy": {
+ "player.riposte[0] -> goblin_airborne": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -5620,37 +5097,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 15.0,
-  "hit_stop": 0.1685,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 1.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> goblin_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 30.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -5658,14 +5108,14 @@
   "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   200.0,
-   450.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.otg_slam[0] -> goblin_low_health": {
+ "player.riposte[0] -> goblin_dizzy": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -5674,454 +5124,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.1685,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> goblin_otg": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 30.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 80.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.crouch_guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 60.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   30.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.dash_early": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "dash",
-  "super_armor_count": 0,
-  "velocity": [
-   -1350.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.otg_slam[0] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 60.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   30.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.guard_back": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 80.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.0,
-  "hit_stop": 0.1685,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   30.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 80.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> player.low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.otg_slam[0] -> slime_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 20.0,
-  "hit_stop": 0.1685,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 492.4429,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   200.0,
-   450.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> dummy_armoured": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 991.0,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "None",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 48.0,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.148,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   120.0,
-   -40.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> goblin_dizzy": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.0713,
-  "hurt": true,
-  "hurt_timer": 0.4,
-  "impact": 126.4911,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -6129,14 +5135,14 @@
   "state": "dizzy",
   "super_armor_count": 0,
   "velocity": [
-   120.0,
-   -40.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.p5_shapes[0] -> goblin_idle": {
+ "player.riposte[0] -> goblin_idle": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6144,26 +5150,26 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 48.0,
-  "hit_stop": 0.0713,
+  "health": 15.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 126.4911,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
-  "stagger_timer": 0.148,
-  "state": "stagger",
+  "stagger_timer": 0.0,
+  "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   120.0,
-   -40.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.p5_shapes[0] -> goblin_low_health": {
+ "player.riposte[0] -> goblin_low_health": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6172,10 +5178,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0713,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 126.4911,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -6183,14 +5189,14 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   120.0,
-   -40.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.p5_shapes[0] -> goblin_otg": {
+ "player.riposte[0] -> goblin_otg": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6215,7 +5221,7 @@
   ],
   "zone": []
  },
- "player.p5_shapes[0] -> player.airborne": {
+ "player.riposte[0] -> player.airborne": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6223,61 +5229,59 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 92.0,
-  "hit_stop": 0.0713,
+  "health": 70.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 126.4911,
+  "impact": 514.7815,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
   "posture": 100.0,
   "riposte_timer": 0.0,
-  "stagger_timer": 0.132,
-  "state": "stagger",
+  "stagger_timer": 0.0,
+  "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   120.0,
-   -40.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.p5_shapes[0] -> player.crouch_guard": {
+ "player.riposte[0] -> player.crouch_guard": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
   "contacts": 1,
   "dead": false,
-  "events": [
-   "guard"
-  ],
+  "events": [],
   "gravity_scale": 1.0,
-  "health": 98.8,
-  "hit_stop": 0.0713,
+  "health": 70.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
+  "impact": 514.7815,
+  "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
-  "posture": 84.0,
+  "posture": 100.0,
   "riposte_timer": 0.0,
   "stagger_timer": 0.0,
-  "state": "guard",
+  "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   18.0,
-   0.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.p5_shapes[0] -> player.dash_early": {
+ "player.riposte[0] -> player.dash_early": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6305,39 +5309,7 @@
   ],
   "zone": []
  },
- "player.p5_shapes[0] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.8,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 84.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   18.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.guard_back": {
+ "player.riposte[0] -> player.guard": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -6345,1499 +5317,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 92.0,
-  "hit_stop": 0.0713,
+  "health": 70.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.132,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   120.0,
-   -40.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.8,
-  "hit_stop": 0.0713,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   18.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 92.0,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.132,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   120.0,
-   -40.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> player.low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   120.0,
-   -40.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[0] -> slime_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 32.0,
-  "hit_stop": 0.0713,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 126.4911,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.132,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   120.0,
-   -40.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> dummy_armoured": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 989.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "None",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 45.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.26,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> goblin_dizzy": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 37.5,
-  "hit_stop": 0.0879,
-  "hurt": true,
-  "hurt_timer": 0.4,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 1.0,
-  "state": "dizzy",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> goblin_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 45.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.26,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> goblin_low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> goblin_otg": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 60.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.p5_shapes[1] -> player.airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 90.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.24,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.crouch_guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.5,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 80.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.dash_early": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "dash",
-  "super_armor_count": 0,
-  "velocity": [
-   -1350.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.p5_shapes[1] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.5,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 80.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.guard_back": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 90.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.24,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.5,
-  "hit_stop": 0.0879,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   27.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 90.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.24,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> player.low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[1] -> slime_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 30.0,
-  "hit_stop": 0.0879,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 189.7367,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.24,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   180.0,
-   -60.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> dummy_armoured": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 987.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "None",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.372,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> goblin_dizzy": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 33.0,
-  "hit_stop": 0.106,
-  "hurt": true,
-  "hurt_timer": 0.4,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 1.0,
-  "state": "dizzy",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> goblin_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.372,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> goblin_low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> goblin_otg": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 60.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.p5_shapes[2] -> player.airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.348,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.crouch_guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 76.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   36.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.dash_early": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "dash",
-  "super_armor_count": 0,
-  "velocity": [
-   -1350.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.p5_shapes[2] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 76.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   36.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.guard_back": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.348,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.106,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   36.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.14,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.348,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> player.low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.p5_shapes[2] -> slime_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 28.0,
-  "hit_stop": 0.106,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 260.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.348,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   240.0,
-   -100.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> dummy_armoured": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 985.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "None",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> goblin_airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 0.5,
-  "health": 39.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.45,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> goblin_dizzy": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 28.5,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 1.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> goblin_idle": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 39.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> goblin_low_health": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": true,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 0.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> goblin_otg": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 60.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "parries_given": 0,
-  "stagger_timer": 0.0,
-  "state": "idle",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.sky_launcher[0] -> player.airborne": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 0.5,
-  "health": 86.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.18,
-  "juggle_timer": 0.45,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "knockback",
-  "super_armor_count": 0,
-  "velocity": [
-   250.0,
-   -650.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.crouch_guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.9,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 72.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   37.5,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.dash_early": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 0,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.0,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 0.0,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 100.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "dash",
-  "super_armor_count": 0,
-  "velocity": [
-   -1350.0,
-   0.0
-  ],
-  "zone": []
- },
- "player.sky_launcher[0] -> player.guard": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "guard"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.9,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 0,
-  "posture": 72.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   37.5,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.guard_back": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [],
-  "gravity_scale": 1.0,
-  "health": 86.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
+  "impact": 514.7815,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -7848,111 +5332,14 @@
   "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   250.0,
-   -650.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.sky_launcher[0] -> player.guard_exhausted": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "break"
-  ],
-  "gravity_scale": 1.0,
-  "health": 97.9,
-  "hit_stop": 0.1973,
-  "hurt": true,
-  "hurt_timer": 0.12,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 1.2,
-  "parries_given": 0,
-  "posture": 0.0,
-  "riposte_timer": 0.0,
-  "stagger_timer": 1.0,
-  "state": "stagger",
-  "super_armor_count": 0,
-  "velocity": [
-   37.5,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.guard_parry": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 1,
-  "attacker_state": "idle",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.guard_parry_stun": {
-  "attacker_combo": 0,
-  "attacker_parries_taken": 0,
-  "attacker_state": "dizzy",
-  "contacts": 1,
-  "dead": false,
-  "events": [
-   "parry",
-   "stun"
-  ],
-  "gravity_scale": 1.0,
-  "health": 100.0,
-  "hit_stop": 0.1973,
-  "hurt": false,
-  "hurt_timer": 0.0,
-  "impact": 696.4194,
-  "invincibility_timer": 0.0,
-  "juggle_timer": 0.0,
-  "lockout_timer": 0.0,
-  "parries_given": 1,
-  "posture": 100.0,
-  "riposte_timer": 0.6,
-  "stagger_timer": 0.0,
-  "state": "guard",
-  "super_armor_count": 0,
-  "velocity": [
-   0.0,
-   0.0
-  ],
-  "zone": [
-   0
-  ]
- },
- "player.sky_launcher[0] -> player.idle": {
+ "player.riposte[0] -> player.guard_back": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -7960,11 +5347,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 86.0,
-  "hit_stop": 0.1973,
+  "health": 70.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 696.4194,
+  "impact": 514.7815,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -7975,14 +5362,134 @@
   "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   250.0,
-   -650.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.sky_launcher[0] -> player.low_health": {
+ "player.riposte[0] -> player.guard_exhausted": {
+  "attacker_combo": 0,
+  "attacker_parries_taken": 0,
+  "attacker_state": "idle",
+  "contacts": 1,
+  "dead": false,
+  "events": [],
+  "gravity_scale": 1.0,
+  "health": 70.0,
+  "hit_stop": 0.193,
+  "hurt": false,
+  "hurt_timer": 0.0,
+  "impact": 514.7815,
+  "invincibility_timer": 0.18,
+  "juggle_timer": 0.0,
+  "lockout_timer": 0.0,
+  "parries_given": 0,
+  "posture": 1.0,
+  "riposte_timer": 0.0,
+  "stagger_timer": 0.0,
+  "state": "knockback",
+  "super_armor_count": 0,
+  "velocity": [
+   450.0,
+   -250.0
+  ],
+  "zone": [
+   0
+  ]
+ },
+ "player.riposte[0] -> player.guard_parry": {
+  "attacker_combo": 0,
+  "attacker_parries_taken": 0,
+  "attacker_state": "idle",
+  "contacts": 1,
+  "dead": false,
+  "events": [],
+  "gravity_scale": 1.0,
+  "health": 70.0,
+  "hit_stop": 0.193,
+  "hurt": false,
+  "hurt_timer": 0.0,
+  "impact": 514.7815,
+  "invincibility_timer": 0.18,
+  "juggle_timer": 0.0,
+  "lockout_timer": 0.0,
+  "parries_given": 0,
+  "posture": 100.0,
+  "riposte_timer": 0.0,
+  "stagger_timer": 0.0,
+  "state": "knockback",
+  "super_armor_count": 0,
+  "velocity": [
+   450.0,
+   -250.0
+  ],
+  "zone": [
+   0
+  ]
+ },
+ "player.riposte[0] -> player.guard_parry_stun": {
+  "attacker_combo": 0,
+  "attacker_parries_taken": 0,
+  "attacker_state": "idle",
+  "contacts": 1,
+  "dead": false,
+  "events": [],
+  "gravity_scale": 1.0,
+  "health": 70.0,
+  "hit_stop": 0.193,
+  "hurt": false,
+  "hurt_timer": 0.0,
+  "impact": 514.7815,
+  "invincibility_timer": 0.18,
+  "juggle_timer": 0.0,
+  "lockout_timer": 0.0,
+  "parries_given": 0,
+  "posture": 100.0,
+  "riposte_timer": 0.0,
+  "stagger_timer": 0.0,
+  "state": "knockback",
+  "super_armor_count": 0,
+  "velocity": [
+   450.0,
+   -250.0
+  ],
+  "zone": [
+   0
+  ]
+ },
+ "player.riposte[0] -> player.idle": {
+  "attacker_combo": 0,
+  "attacker_parries_taken": 0,
+  "attacker_state": "idle",
+  "contacts": 1,
+  "dead": false,
+  "events": [],
+  "gravity_scale": 1.0,
+  "health": 70.0,
+  "hit_stop": 0.193,
+  "hurt": false,
+  "hurt_timer": 0.0,
+  "impact": 514.7815,
+  "invincibility_timer": 0.18,
+  "juggle_timer": 0.0,
+  "lockout_timer": 0.0,
+  "parries_given": 0,
+  "posture": 100.0,
+  "riposte_timer": 0.0,
+  "stagger_timer": 0.0,
+  "state": "knockback",
+  "super_armor_count": 0,
+  "velocity": [
+   450.0,
+   -250.0
+  ],
+  "zone": [
+   0
+  ]
+ },
+ "player.riposte[0] -> player.low_health": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -7991,10 +5498,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.1973,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 696.4194,
+  "impact": 514.7815,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -8005,14 +5512,14 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   250.0,
-   -650.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
   ]
  },
- "player.sky_launcher[0] -> slime_idle": {
+ "player.riposte[0] -> slime_idle": {
   "attacker_combo": 0,
   "attacker_parries_taken": 0,
   "attacker_state": "idle",
@@ -8020,11 +5527,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 26.0,
-  "hit_stop": 0.1973,
+  "health": 10.0,
+  "hit_stop": 0.193,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 696.4194,
+  "impact": 514.7815,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -8032,8 +5539,8 @@
   "state": "knockback",
   "super_armor_count": 0,
   "velocity": [
-   250.0,
-   -650.0
+   450.0,
+   -250.0
   ],
   "zone": [
    0
@@ -10527,11 +8034,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 987.0,
-  "hit_stop": 0.1023,
+  "health": 983.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -10554,20 +8061,20 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.1023,
+  "health": 36.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
-  "stagger_timer": 0.272,
+  "stagger_timer": 0.446,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10581,11 +8088,11 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 33.0,
-  "hit_stop": 0.1023,
+  "health": 24.0,
+  "hit_stop": 0.11,
   "hurt": true,
   "hurt_timer": 0.4,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -10593,8 +8100,8 @@
   "state": "dizzy",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10608,20 +8115,20 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 42.0,
-  "hit_stop": 0.1023,
+  "health": 36.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
-  "stagger_timer": 0.272,
+  "stagger_timer": 0.446,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10636,10 +8143,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.1023,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -10647,8 +8154,8 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10687,23 +8194,23 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.1023,
+  "health": 84.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
   "posture": 100.0,
   "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
+  "stagger_timer": 0.414,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10719,22 +8226,22 @@
    "guard"
   ],
   "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.1023,
+  "health": 97.6,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
-  "posture": 76.0,
+  "posture": 60.0,
   "riposte_timer": 0.0,
   "stagger_timer": 0.0,
   "state": "guard",
   "super_armor_count": 0,
   "velocity": [
-   33.0,
+   36.0,
    0.0
   ],
   "zone": [
@@ -10779,22 +8286,22 @@
    "guard"
   ],
   "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.1023,
+  "health": 97.6,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
-  "posture": 76.0,
+  "posture": 60.0,
   "riposte_timer": 0.0,
   "stagger_timer": 0.0,
   "state": "guard",
   "super_armor_count": 0,
   "velocity": [
-   33.0,
+   36.0,
    0.0
   ],
   "zone": [
@@ -10809,23 +8316,23 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.1023,
+  "health": 84.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
   "posture": 100.0,
   "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
+  "stagger_timer": 0.414,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10841,11 +8348,11 @@
    "break"
   ],
   "gravity_scale": 1.0,
-  "health": 98.2,
-  "hit_stop": 0.1023,
+  "health": 97.6,
+  "hit_stop": 0.11,
   "hurt": true,
   "hurt_timer": 0.12,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 1.2,
@@ -10856,7 +8363,7 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   33.0,
+   36.0,
    0.0
   ],
   "zone": [
@@ -10877,7 +8384,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -10910,7 +8417,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -10936,23 +8443,23 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 88.0,
-  "hit_stop": 0.1023,
+  "health": 84.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
   "parries_given": 0,
   "posture": 100.0,
   "riposte_timer": 0.0,
-  "stagger_timer": 0.248,
+  "stagger_timer": 0.414,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10967,10 +8474,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.1023,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -10981,8 +8488,8 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -10996,20 +8503,20 @@
   "dead": false,
   "events": [],
   "gravity_scale": 1.0,
-  "health": 28.0,
-  "hit_stop": 0.1023,
+  "health": 24.0,
+  "hit_stop": 0.11,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 241.6609,
+  "impact": 240.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
-  "stagger_timer": 0.248,
+  "stagger_timer": 0.414,
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   220.0,
-   -100.0
+   240.0,
+   0.0
   ],
   "zone": [
    0
@@ -11024,10 +8531,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 991.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11051,10 +8558,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 48.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11062,8 +8569,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11078,10 +8585,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 42.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": true,
   "hurt_timer": 0.4,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11089,8 +8596,8 @@
   "state": "dizzy",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11105,10 +8612,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 48.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11116,8 +8623,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11132,10 +8639,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11143,8 +8650,8 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11184,10 +8691,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11198,8 +8705,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11216,10 +8723,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11230,7 +8737,7 @@
   "state": "guard",
   "super_armor_count": 0,
   "velocity": [
-   27.0,
+   9.0,
    0.0
   ],
   "zone": [
@@ -11276,10 +8783,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11290,7 +8797,7 @@
   "state": "guard",
   "super_armor_count": 0,
   "velocity": [
-   27.0,
+   9.0,
    0.0
   ],
   "zone": [
@@ -11306,10 +8813,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11320,8 +8827,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11338,10 +8845,10 @@
   ],
   "gravity_scale": 1.0,
   "health": 98.8,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": true,
   "hurt_timer": 0.12,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 1.2,
@@ -11352,7 +8859,7 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   27.0,
+   9.0,
    0.0
   ],
   "zone": [
@@ -11373,7 +8880,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11406,7 +8913,7 @@
   "hit_stop": 0.14,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11433,10 +8940,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 92.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11447,8 +8954,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11463,10 +8970,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 0.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.18,
   "juggle_timer": 0.0,
   "lockout_timer": 0.0,
@@ -11477,8 +8984,8 @@
   "state": "idle",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0
@@ -11493,10 +9000,10 @@
   "events": [],
   "gravity_scale": 1.0,
   "health": 32.0,
-  "hit_stop": 0.0854,
+  "hit_stop": 0.058,
   "hurt": false,
   "hurt_timer": 0.0,
-  "impact": 196.9772,
+  "impact": 60.0,
   "invincibility_timer": 0.0,
   "juggle_timer": 0.0,
   "parries_given": 0,
@@ -11504,8 +9011,8 @@
   "state": "stagger",
   "super_armor_count": 0,
   "velocity": [
-   180.0,
-   -80.0
+   60.0,
+   0.0
   ],
   "zone": [
    0

@@ -77,8 +77,6 @@ class ControlsScene(Scene):
             RebindSpec("controls.dash", InputAction.DASH),
             RebindSpec("controls.attack_1", InputAction.ATTACK_1),
             RebindSpec("controls.attack_2", InputAction.ATTACK_2),
-            RebindSpec("controls.attack_3", InputAction.ATTACK_3),
-            RebindSpec("controls.attack_4", InputAction.ATTACK_4),
             RebindSpec("controls.guard", InputAction.GUARD),
             RebindSpec("controls.reset_position", InputAction.RESET),
         ),

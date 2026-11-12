@@ -23,7 +23,7 @@ from src.entities.projectile import FIREBOLT_CONFIG, PIERCING_BOLT_CONFIG
 from src.physics.spatial_hash import SpatialHash
 from src.ui.world_overlay_geo import GeoLayer
 from src.ui.world_overlay_panels import PanelLayer
-from tests.unit.helpers import make_entity
+from tests.unit.helpers import SHOWCASE, make_entity
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -66,19 +66,24 @@ def test_showcase_attacks_use_phase5_features() -> None:
     assert len(sweep.hitbox_keyframes) == 3  # #2 animated
     assert sweep.hitbox_at(0)[0] != sweep.hitbox_at(12)[0]
 
-    launcher = PLAYER_ATTACKS["sky_launcher"].phases[0]
+    launcher = SHOWCASE["sky_launcher"].phases[0]
     assert launcher.hit.juggle_gravity_mult == 0.5  # #4 juggle
     assert launcher.hit.knockback.power[1] < 0  # upward launch
 
-    slam = PLAYER_ATTACKS["otg_slam"].phases[0]
+    slam = SHOWCASE["otg_slam"].phases[0]
     assert slam.hit.otg_allowed is True  # #4 OTG
 
 
 def test_showcase_attacks_survive_json_roundtrip() -> None:
-    for name in ("twin_fangs", "sweeping_arc", "sky_launcher", "otg_slam"):
-        raw = attack_definition_to_dict(PLAYER_ATTACKS[name])
+    for table, name in (
+        (PLAYER_ATTACKS, "twin_fangs"),
+        (PLAYER_ATTACKS, "sweeping_arc"),
+        (SHOWCASE, "sky_launcher"),
+        (SHOWCASE, "otg_slam"),
+    ):
+        raw = attack_definition_to_dict(table[name])
         back = read_attack_definition(raw, f"test.{name}")
-        assert back == PLAYER_ATTACKS[name]
+        assert back == table[name]
 
 
 def test_trigger_test_attack_starts_showcase_move() -> None:
@@ -103,27 +108,25 @@ def test_trigger_test_attack_says_so_when_the_move_is_not_registered() -> None:
 
 
 def test_attack_replay_restarts_attack_when_idle() -> None:
+    """The replay waits for the running move to end, then starts it again."""
     system = SpawnSystem(SpriteGroups())
     player = _player()
 
     assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
     assert system.trigger_test_attack(player, move_id("twin_fangs"))
-    # Replay waits while the attack runs, then restarts once idle.
+    first = player.combat.attacks_started
     system.tick_attack_replay(player)
-    assert player.combat.is_attacking
-    while player.combat.is_attacking:
-        player.combat.update(1 / 60)
-        player.combat.sync_attack_box()
-        system.debug_cooldowns.clear()
-        system.tick_attack_replay(player)
-    # Drain the combat-side cooldown so start_attack may fire again.
+    assert player.combat.attacks_started == first, "nothing restarts mid-move"
+
     for _ in range(180):
         player.combat.update(1 / 60)
         player.combat.sync_attack_box()
         system.debug_cooldowns.clear()
         system.tick_attack_replay(player)
-        if player.combat.is_attacking:
+        if player.combat.attacks_started > first:
             break
+
+    assert player.combat.attacks_started == first + 1
     assert player.combat.is_attacking
 
 

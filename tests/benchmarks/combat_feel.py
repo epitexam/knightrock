@@ -190,7 +190,6 @@ def measure(seconds: float) -> dict[str, object]:
     for name, button in (
         ("light", InputAction.ATTACK_1),
         ("heavy", InputAction.ATTACK_2),
-        ("forward", InputAction.ATTACK_4),
     ):
         report[f"mash_{name}_vs_target"] = _duel(
             _mash(button), seconds, "goblin", ai=False, health=1e6

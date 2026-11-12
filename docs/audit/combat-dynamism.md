@@ -304,3 +304,85 @@ aucun état, aucune issue de garde ou de parade n'a bougé.
 **Reste à faire, dans l'ordre :** le retour (axe 3 : sons, étincelles,
 secousses, mort), puis les chaînes à finisher (axe 1, partie code), puis les
 ennemis (axe 4).
+
+## 9. Étape 2 réalisée : deux boutons et un catalogue en chaînes (2026-11-12)
+
+Décisions du développeur : passer de quatre boutons d'attaque à deux (léger,
+lourd), et retirer les coups de test du catalogue de jeu en les gardant dans les
+tests.
+
+### Le catalogue (14 coups)
+
+| Entrée | Coup |
+|---|---|
+| Léger, léger, léger | `light_attack` → `twin_fangs` → `sweeping_arc` (finisher : pousse, étourdit) |
+| Lourd pendant la chaîne légère | `uppercut` (lanceur) |
+| Lourd | `heavy_attack` (chargeable) |
+| Dash puis léger | `dash_attack`, qui se prolonge dans la chaîne |
+| Bas + léger / lourd au sol | `crouch_slash` (se répète) / `crouch_sweep` |
+| Léger, léger en l'air | `air_attack` → `air_forward` |
+| Lourd en l'air | `air_rise` |
+| Bas + lourd en l'air | `air_sweep` (plongeon) |
+| Léger ou lourd juste après une parade | `riposte` : rapide, imblocable, 30 dégâts, une par parade |
+| Spécial | `special_attack`, inchangé |
+
+Sortis du catalogue vers `tests/data/showcase_attacks.json` : `p5_shapes`,
+`circle_burst`, `sky_launcher`, `otg_slam`. Aucun n'était relié à un bouton en
+jeu.
+
+**Écarts avec la proposition du §5**, et pourquoi :
+- « Haut + lourd » n'existe pas : le jeu n'a pas d'entrée « haut ».
+  L'uppercut est le lourd *pendant* la chaîne légère.
+- Le plongeon est `air_sweep`, qui en était déjà un, et non `otg_slam`.
+- Le lourd chargé reste le lourd avec multiplicateur, et non `sky_launcher` :
+  un coup différent selon la charge demande un mécanisme de plus, pour un gain
+  incertain.
+
+### Le moteur
+
+- **Données** : `follow_ups` sur une attaque (le coup suivant par bouton), et
+  `cancel_on_hit` sur une phase (la chaîne continue dès que le coup a touché).
+  Le chargeur refuse un maillon qui ne nomme rien, ou qu'aucune phase ne laisse
+  passer.
+- **Choix du coup** (`resolve_move`) : riposte, puis maillon suivant de la
+  chaîne, puis dash, puis plongeon, puis le coup de la posture.
+- **Tampon** : le *bouton* pressé est gardé `ATTACK_BUFFER_WINDOW` et retenté à
+  chaque tick ; le coup est choisi au moment où il part. `NO_CANCEL` est
+  désormais un refus « à retenter », comme `COOLDOWN`.
+- **Élan par maillon** : un compteur d'attaques lancées
+  (`CombatComponent.attacks_started`, inclus dans les instantanés de rollback)
+  permet à l'état d'attaque de rejouer l'élan à chaque nouveau maillon.
+- **Deux boutons** : `ATTACK_3` et `ATTACK_4` sont retirés. Un fichier de
+  réglages qui les lie encore est lu sans eux, au lieu d'être rejeté.
+
+### Ce que la mise en œuvre a révélé
+
+- **Une charge pouvait rester bloquée.** Un lourd mis en tampon partait en
+  charge alors que le bouton était déjà relâché, et la charge attendait un
+  relâchement passé. On ne charge plus que si le bouton est tenu.
+- **Les petits sauts déclenchaient l'OTG.** Le léger, le deuxième maillon et le
+  finisher avaient un léger recul vers le haut. L'ennemi blessé retombait, et
+  sa protection au sol (0,5 s) faisait rebondir la suite de la chaîne : 39 % de
+  coups portés contre une cible passive. Les maillons poussent maintenant à
+  l'horizontale : 97 %.
+- **Un test bouclait indéfiniment.** Le test de la relecture d'attaque du banc
+  de debug comptait sur un cooldown pour s'arrêter ; il compte maintenant les
+  attaques lancées.
+
+### Mesures (`tests/benchmarks/combat_feel.py`)
+
+| Mesure | Avant l'audit | Étape 1 | Étape 2 |
+|---|---|---|---|
+| Coups légers portés par seconde (cible passive) | 2,3 | 4,3 | 3,9 (en chaîne, finisher compris) |
+| Part des coups portés (cible passive) | 96 % | 100 % | 97 % |
+| Temps pour tuer : gobelin | 2,05 s | 1,05 s | **0,95 s** |
+| slime | 1,88 s | 0,98 s | 1,07 s |
+| dent | 2,15 s | 1,42 s | 2,45 s |
+| coquille | 4,55 s | 2,68 s | **2,12 s** |
+
+La dent recule parce que, dans ce duel, elle frappe le joueur et l'envoie en
+l'air : ses coups suivants sont aériens, et `air_forward` la repousse loin.
+C'est le combat qui joue, pas une chaîne qui rate.
+
+**À essayer à la manette :** la chaîne léger ×3 sur un gobelin ; léger, lourd
+(lanceur) ; dash puis léger ; parade puis riposte ; bas + lourd en l'air.

@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from src.combat.refusal import Refusal
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
@@ -299,9 +298,15 @@ class PlayerAttackState(PlayerBaseState):
     def __init__(self, entity: Player):
         """Initialize the PlayerAttackState instance with attack tags."""
         super().__init__(entity, tags=["attack", "busy"])
+        self._started = 0
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and apply forward momentum if grounded.
+        """Start the move's momentum, and remember which attack it was."""
+        self._started = self.entity.combat.attacks_started
+        self._lunge()
+
+    def _lunge(self) -> None:
+        """Apply the running move's momentum: forward on the ground, vertical in the air.
 
         Off the ground the horizontal lunge is skipped -- a fighter who lunges
         on the ground overshoots the target -- and the vertical impulse takes its
@@ -341,22 +346,20 @@ class PlayerAttackState(PlayerBaseState):
             self.entity.combat.state.end()
 
     def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
-        """Update the current state and check for buffered combo inputs."""
+        """Move, give each new link of a chain its own lunge, and leave when done.
+
+        A chain link starts while this state is running -- the input handler
+        cancels one move into the next -- so the state is not re-entered and
+        would not lunge again; the attack counter is how it sees the new move.
+        A press for after the attack is the input handler's buffer, not this
+        state's.
+        """
+        started = self.entity.combat.attacks_started
+        if started != self._started:
+            self._started = started
+            self._lunge()
         self.entity.apply_horizontal_movement(delta_time)
-
         if not self.entity.combat.is_attacking:
-            if self.entity.state_machine.consume_input("attack"):
-                attack_name = self.entity._buffered_attack_name
-                self.entity._buffered_attack_name = None
-                # Re-asked at *consumption*, not trusted from when it was
-                # buffered. A press buffered during a sweep and consumed after
-                # the fighter stood up has to be refused for the wrong posture,
-                # which is what ``start_attack`` answers -- and what the old
-                # code could not, since it cleared the name and fired whatever
-                # it had stored.
-                if attack_name and self.entity.combat.start_attack(attack_name) is Refusal.NONE:
-                    return ("attack", {"force": True})
-
             return self.ground_return()
         return None
 

@@ -49,6 +49,4 @@ def test_attack_priority_special_first() -> None:
         InputAction.SPECIAL_ATTACK,
         InputAction.ATTACK_1,
         InputAction.ATTACK_2,
-        InputAction.ATTACK_3,
-        InputAction.ATTACK_4,
     )

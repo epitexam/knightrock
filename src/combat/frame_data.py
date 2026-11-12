@@ -52,6 +52,13 @@ def move_id(name: str) -> MoveId:
     return MoveId(name)
 
 
+class AttackButton(StrEnum):
+    """The two attack buttons a move is resolved from, before stance and chain."""
+
+    LIGHT = "light"
+    HEAVY = "heavy"
+
+
 class Stance(Enum):
     """The posture an attack has to be thrown from.
 
@@ -484,6 +491,10 @@ class PhaseDefinition:
     hitbox_keyframes: tuple[HitboxKeyframe, ...] = ()
     reset_targets: bool = True
     cancel_into: tuple[MoveId, ...] = ()
+    cancel_on_hit: bool = False
+    """Open ``cancel_into`` from the moment this phase has hit someone, not
+    only in its recovery: the chain continues on contact, which is what lets a
+    string of hits flow without waiting out each swing."""
 
     def __post_init__(self) -> None:
         if self.startup_frames < 0 or self.recovery_frames < 0:
@@ -663,6 +674,19 @@ class AttackDefinition:
     lunge_speed_multiplier: float = 0.35
     vertical_lunge: float = 0.0
     attack_move_multiplier: float = 0.3
+    follow_ups: tuple[tuple[AttackButton, MoveId], ...] = ()
+    """The move a button throws while this one runs: the next link of a chain.
+
+    Pairs rather than a mapping so the definition stays immutable and hashable.
+    A follow-up still goes through ``start_attack``, so it must also be in the
+    ``cancel_into`` of a phase -- the loader checks that it is."""
+
+    def follow_up(self, button: AttackButton) -> MoveId | None:
+        """The move ``button`` chains into from this one, or ``None``."""
+        for pressed, move in self.follow_ups:
+            if pressed is button:
+                return move
+        return None
 
     def __post_init__(self) -> None:
         if not self.phases:

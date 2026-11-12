@@ -115,22 +115,24 @@ def test_a_button_with_no_move_in_a_posture_has_none(action: InputAction, stance
     assert move_for_button(action, stance) is None
 
 
-def test_only_cooldown_is_worth_buffering() -> None:
+def test_only_a_press_that_will_work_is_worth_buffering() -> None:
     """``is_retryable`` is the whole reason the refusal is a value.
 
-    A press refused on cooldown is still the press the player made. One refused
-    because the fighter is in the wrong posture, or hurt, or because the move is
-    unknown, is not: keeping those would fire a move the player stopped asking
-    for seconds ago.
+    A press refused on cooldown, or because the running move cannot be
+    cancelled *yet*, is still the press the player made: the timer runs out, the
+    cancel window opens, and the same press works -- that is how a press made
+    during one link of a chain becomes the next. One refused because the fighter
+    is in the wrong posture, or hurt, or because the move is unknown, is not:
+    keeping those would fire a move the player stopped asking for.
     """
     assert Refusal.COOLDOWN.is_retryable
+    assert Refusal.NO_CANCEL.is_retryable
     for refusal in (
         Refusal.NONE,
         Refusal.STANCE,
         Refusal.BUSY,
         Refusal.UNKNOWN,
         Refusal.CHARGING,
-        Refusal.NO_CANCEL,
     ):
         assert not refusal.is_retryable, refusal
 

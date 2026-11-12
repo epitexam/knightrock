@@ -5,8 +5,8 @@ joins the world before any stage reads it.  It owns the debug-spawn
 cooldowns and the spawn logic directly (moved here from the former
 ``DebugController``), so the level no longer drives anything itself.
 
-Phase 5 test bench: ``DEBUG_ATTACKS`` forces the showcase attacks (twin
-blades, animated sweep, launcher, OTG slam) on the player, ``DEBUG_SHOTS``
+Test bench: ``DEBUG_ATTACKS`` forces any move of the catalogue on the player
+(the chain links, the launcher, the riposte, the aerials), ``DEBUG_SHOTS``
 fires pooled projectiles, and ``DEBUG_JUGGLE_KEY`` pops an airborne dummy
 to juggle.  The per-action helpers are plain methods so tests drive them
 without polling hardware keys.
@@ -57,10 +57,10 @@ DEBUG_SPAWNS = {
 DEBUG_ATTACKS: dict[int, MoveId] = {
     pygame.K_1: move_id("twin_fangs"),
     pygame.K_2: move_id("sweeping_arc"),
-    pygame.K_3: move_id("sky_launcher"),
-    pygame.K_4: move_id("otg_slam"),
-    pygame.K_5: move_id("p5_shapes"),
-    pygame.K_6: move_id("circle_burst"),
+    pygame.K_3: move_id("uppercut"),
+    pygame.K_4: move_id("riposte"),
+    pygame.K_5: move_id("dash_attack"),
+    pygame.K_6: move_id("heavy_attack"),
     pygame.K_7: move_id("air_attack"),
     pygame.K_8: move_id("air_forward"),
     pygame.K_9: move_id("air_rise"),

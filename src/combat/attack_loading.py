@@ -210,6 +210,7 @@ def _validate_cancels(
     before it can be thrown again. Refusing mutual cancels would have rejected a
     table that works.
     """
+    _validate_follow_ups(name, definition, attacks)
     for index, phase in enumerate(definition.phases):
         for target in phase.cancel_into:
             if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
@@ -224,6 +225,30 @@ def _validate_cancels(
                     f"reachable from {'/'.join(sorted(s.value for s in definition.stances))} "
                     f"(it needs {'/'.join(sorted(s.value for s in missing))})"
                 )
+
+
+def _validate_follow_ups(
+    name: MoveId,
+    definition: AttackDefinition,
+    attacks: Mapping[MoveId, AttackDefinition],
+) -> None:
+    """Refuse a chain link that names nothing, or that no phase lets through.
+
+    A follow-up is started like any move, through ``start_attack``, so it only
+    fires where a phase's ``cancel_into`` allows it. One that no phase lists
+    would load and never chain.
+    """
+    reachable = {target for phase in definition.phases for target in phase.cancel_into}
+    for button, target in definition.follow_ups:
+        if target not in attacks:
+            raise GameplayDataError(
+                f"Attack {name!r}: follow-up on {button.value!r} names unknown move {target!r}"
+            )
+        if target not in reachable:
+            raise GameplayDataError(
+                f"Attack {name!r}: follow-up on {button.value!r} is {target!r}, which no "
+                "phase lists in cancel_into, so the chain could never fire"
+            )
 
 
 def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:

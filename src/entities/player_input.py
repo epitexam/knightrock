@@ -11,34 +11,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.combat.frame_data import MoveId
+from src.combat.frame_data import Stance
+from src.combat.refusal import Refusal
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug, GameFeel
 from src.core.settings import Input as InputSettings
-from src.entities.attack_moves import move_for_button
+from src.entities.attack_moves import RIPOSTE, MoveContext, resolve_move
 from src.physics.movement import apply_jump_cut
 from src.states.turn_state import request_turn
 
 if TYPE_CHECKING:
     from src.entities.player import Player
 
-#: The attack buttons, in the order they are considered.
-#:
-#: The order is the contract of :meth:`PlayerInputHandler._handle_attack_request`:
-#: a tick can only start one attack, so the first button pressed wins. It was
-#: implicit in the branch order of an ``if``/``elif`` ladder and pinned by a test
-#: that scraped the source text; naming it states the same thing without the
-#: scraping. SPECIAL first, then the numbered attacks in order, so a light does
-#: not eat a heavy thrown on the same tick.
-#:
-#: Step 4 of the spine refactor replaces this with a lookup into the move table
-#: declared in ``player.json``; it stays here until then.
+#: The attack buttons, in the order they are considered: a tick starts one
+#: attack, so the first pressed wins. The special first, so a light does not eat
+#: the special's chord.
 ATTACK_BUTTONS: tuple[InputAction, ...] = (
     InputAction.SPECIAL_ATTACK,
     InputAction.ATTACK_1,
     InputAction.ATTACK_2,
-    InputAction.ATTACK_3,
-    InputAction.ATTACK_4,
 )
 
 
@@ -47,12 +38,22 @@ class PlayerInputHandler:
 
     def __init__(self, player: Player) -> None:
         self._player = player
-        self.buffered_attack_name: MoveId | None = None
+        #: The attack button pressed and not yet played, and how long it is
+        #: still worth playing. The *button*, not a move: the move is chosen
+        #: when it fires, so a press made during the first link of a chain
+        #: becomes the second link once the first lets it through.
+        self.buffered_action: InputAction | None = None
+        self.buffer_timer: float = 0.0
 
-    def update(self) -> None:
+    def update(self, delta_time: float = 1 / 60) -> None:
         """Read movement/ability input, then process attack input."""
         self._read_input()
-        self._handle_attack_input()
+        self._handle_attack_input(delta_time)
+
+    def clear_buffer(self) -> None:
+        """Forget a pending attack press."""
+        self.buffered_action = None
+        self.buffer_timer = 0.0
 
     def _read_input(self) -> None:
         """Read all input and update facing direction and buffers."""
@@ -92,11 +93,11 @@ class PlayerInputHandler:
         if Debug.is_enabled() and im.just_pressed(InputAction.RESET):
             player.reset_position()
 
-    def _handle_attack_input(self) -> None:
+    def _handle_attack_input(self, delta_time: float) -> None:
         """Process attack input with charge attacks, buffering, and combos."""
         if self._handle_charging():
             return
-        self._handle_attack_request()
+        self._handle_attack_request(delta_time)
 
     def _handle_charging(self) -> bool:
         player = self._player
@@ -114,47 +115,74 @@ class PlayerInputHandler:
             player.combat.release_charge()
         return True
 
-    def _handle_attack_request(self) -> None:
-        """Start the highest-priority attack button that was pressed this tick.
+    def _handle_attack_request(self, delta_time: float) -> None:
+        """Buffer the attack button pressed this tick, then try to play the buffer.
 
         No gate here: every "can I attack" question is answered by
         ``CombatComponent.start_attack``, which is the only place that knows
-        about cooldowns, cancellations, the fighter's state and its posture. A
-        gate in front of it would be a second answer to the same question, and
-        the two are exactly what used to drift apart.
+        about cooldowns, cancellations, the fighter's state and its posture.
+        A press it refuses for a reason that will pass -- a cooldown running
+        out, a cancel window not open yet -- stays buffered for
+        ``ATTACK_BUFFER_WINDOW`` and is tried again every tick, so a press made
+        a little early during a chain is played the moment it can be.
         """
         player = self._player
-        for action in ATTACK_BUTTONS:
-            if not player.input_manager.just_pressed(action):
-                continue
-            self._start(action)
+        pressed = next(
+            (action for action in ATTACK_BUTTONS if player.input_manager.just_pressed(action)),
+            None,
+        )
+        if pressed is not None:
+            self.buffered_action = pressed
+            self.buffer_timer = InputSettings.ATTACK_BUFFER_WINDOW
+        elif self.buffered_action is not None:
+            self.buffer_timer -= delta_time
+            if self.buffer_timer <= 0.0:
+                self.clear_buffer()
+        if self.buffered_action is not None and not self._start(self.buffered_action):
             return
+        self.clear_buffer()
 
-    def _start(self, action: InputAction) -> None:
-        """Throw the move bound to one button, or buffer it if it can be retried.
+    def _context(self) -> MoveContext:
+        player = self._player
+        combat = player.combat
+        return MoveContext(
+            stance=player.stance,
+            running=combat.current_attack_def if combat.is_attacking else None,
+            dashing=player.is_dashing or player.dash.in_coyote(),
+            diving=player.stance is Stance.AIR and player.down_held,
+            riposte=player.guard.riposte_timer > 0.0 and combat.has_attack(RIPOSTE),
+        )
 
-        The buffer is the reason the refusal has to be read rather than
-        discarded: a press refused on cooldown is worth keeping, because the
-        same press unchanged will work once the timer runs down. One refused
-        because the fighter is in the wrong posture or is hurt is not -- keeping
-        it would fire a move the player has long since stopped asking for.
+    def _start(self, action: InputAction) -> bool:
+        """Throw the move for one button now; ``False`` while it is worth retrying.
+
+        ``True`` means the press is settled: it started, or it was refused for a
+        reason that will not pass (wrong posture, hurt, nothing on the button).
+        Keeping such a press would fire a move the player has long since
+        stopped asking for.
         """
         player = self._player
         if not player.may_attack_now():
-            return
-        move = move_for_button(action, player.stance)
+            return False
+        move = resolve_move(action, self._context())
         if move is None:
-            # Nothing on this button from here. Dropped without a buffer, and
-            # without falling back to the standing version: a fighter who holds
-            # Down and presses the uppercut gets nothing, rather than a
-            # standing uppercut from a crouched collider.
-            return
+            # Nothing on this button from here. Dropped, and without falling
+            # back to the standing version: a fighter who holds Down gets the
+            # crouching move or nothing.
+            return True
 
-        if action is InputAction.ATTACK_2 and player.combat.start_charge(move):
+        # Charge only on a button still held: a press played from the buffer may
+        # have been released already, and a charge started then would wait for
+        # a release that has come and gone -- and charge forever.
+        if (
+            action is InputAction.ATTACK_2
+            and player.input_manager.held(InputAction.ATTACK_2)
+            and player.combat.start_charge(move)
+        ):
             player.state_machine.change_state("charge", force=True)
-            return
+            return True
 
         refusal = player.combat.start_attack(move)
-        if refusal.is_retryable:
-            self.buffered_attack_name = move
-            player.state_machine.buffer_input("attack", window=InputSettings.ATTACK_BUFFER_WINDOW)
+        if refusal is Refusal.NONE and move == RIPOSTE:
+            player.guard.riposte_timer = 0.0  # one riposte per parry
+        return not refusal.is_retryable

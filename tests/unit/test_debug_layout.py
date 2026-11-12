@@ -463,7 +463,7 @@ def test_a_move_on_cooldown_shows_its_timer_and_is_the_only_warned_row() -> None
     warned = [(text, color) for text, color in rows if color == TEXT_WARN]
 
     assert len(warned) == 1
-    assert warned[0][0].startswith("attack3")
+    assert warned[0][0].startswith("attack2")
     assert "1.2s" in warned[0][0]
     # Stance is the one row worth colouring positively: it is the input to
     # everything else in the block.

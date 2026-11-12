@@ -1,4 +1,4 @@
-"""Which move each attack button throws, from which posture.
+"""Which move each attack button throws: posture, chain, dash, dive and riposte.
 
 This used to be one ternary. ``ATTACK_1`` resolved to ``light_attack`` or
 ``air_attack`` on whether the fighter had a floor, and every other button named
@@ -12,21 +12,15 @@ fallback to the standing version, just nothing -- which is what makes a crouch a
 real restriction instead of a costume.
 """
 
-from src.combat.frame_data import MoveId, Stance, move_id
+from dataclasses import dataclass
+
+from src.combat.frame_data import AttackButton, AttackDefinition, MoveId, Stance, move_id
 from src.core.input.input_actions import InputAction
 
-#: Stance to move, per button. The special is ground-only: it is a 110-frame
-#: commitment, and letting it come out of a crouch would trade the posture's
-#: whole purpose -- a fighter went down to be hard to hit, and then stood still
-#: for two seconds doing it on purpose.
-#:
-#: The air column mirrors the ground one button for button, so ``ATTACK_3`` is
-#: the rising blow in the air and the launcher on the floor, and ``ATTACK_2`` is
-#: the descending one up there and the heavy hit down here. Each of them is the
-#: aerial answer to its grounded counterpart rather than a second neutral poke
-#: wearing a different key -- the whole point of an air kit is that the four
-#: buttons mean four things, and four identical aerials would be the missing
-#: feature replaced by a worse one.
+#: Stance to move, per button, with nothing else going on. Two attack buttons,
+#: light and heavy: the variety comes from the chains each move declares in
+#: ``attacks.json`` (``follow_ups``), from the dash and from Down in the air, not
+#: from more buttons. The special is ground-only: it is a 110-frame commitment.
 BUTTON_MOVES: dict[InputAction, dict[Stance, MoveId]] = {
     InputAction.ATTACK_1: {
         Stance.GROUND: move_id("light_attack"),
@@ -36,26 +30,62 @@ BUTTON_MOVES: dict[InputAction, dict[Stance, MoveId]] = {
     InputAction.ATTACK_2: {
         Stance.GROUND: move_id("heavy_attack"),
         Stance.CROUCH: move_id("crouch_sweep"),
-        Stance.AIR: move_id("air_sweep"),
-    },
-    InputAction.ATTACK_3: {
-        Stance.GROUND: move_id("uppercut"),
         Stance.AIR: move_id("air_rise"),
-    },
-    InputAction.ATTACK_4: {
-        Stance.GROUND: move_id("dash_attack"),
-        Stance.AIR: move_id("air_forward"),
     },
     InputAction.SPECIAL_ATTACK: {Stance.GROUND: move_id("special_attack")},
 }
 
+#: The two attack buttons, as the chains in ``attacks.json`` name them.
+ATTACK_BUTTONS: dict[InputAction, AttackButton] = {
+    InputAction.ATTACK_1: AttackButton.LIGHT,
+    InputAction.ATTACK_2: AttackButton.HEAVY,
+}
+
+#: The guaranteed blow after a parry, on either button.
+RIPOSTE = move_id("riposte")
+#: The light button out of a dash.
+DASH_ATTACK = move_id("dash_attack")
+#: In the air with Down held: the heavy button dives.
+DIVE_MOVES: dict[InputAction, MoveId] = {InputAction.ATTACK_2: move_id("air_sweep")}
+
+
+@dataclass(frozen=True)
+class MoveContext:
+    """What the fighter is doing when a button is pressed, as far as the move cares."""
+
+    stance: Stance
+    running: AttackDefinition | None = None
+    """The move in progress, whose chain the button may continue."""
+    dashing: bool = False
+    """Mid-dash or just out of one: the light button lunges."""
+    diving: bool = False
+    """Airborne with Down held: the heavy button dives."""
+    riposte: bool = False
+    """Just parried: either button ripostes."""
+
+
+def resolve_move(action: InputAction, context: MoveContext) -> MoveId | None:
+    """The move ``action`` throws in ``context``, or ``None`` if it has none.
+
+    Most specific first: a riposte, then the next link of the running chain,
+    then the dash and dive variants, then the button's move for the posture.
+    ``None`` is a real answer, as in :func:`move_for_button`.
+    """
+    button = ATTACK_BUTTONS.get(action)
+    if button is not None:
+        if context.riposte:
+            return RIPOSTE
+        if context.running is not None:
+            follow_up = context.running.follow_up(button)
+            if follow_up is not None:
+                return follow_up
+        if context.dashing and button is AttackButton.LIGHT and context.stance is Stance.GROUND:
+            return DASH_ATTACK
+        if context.diving and action in DIVE_MOVES:
+            return DIVE_MOVES[action]
+    return BUTTON_MOVES.get(action, {}).get(context.stance)
+
 
 def move_for_button(action: InputAction, stance: Stance) -> MoveId | None:
-    """The move ``action`` throws from ``stance``, or ``None`` if it has none.
-
-    ``None`` is a real answer, not a fallback: it means this button has nothing
-    in this posture. The caller turns that into a refusal rather than reaching
-    for a neighbouring entry, because substituting a different move is how a
-    fighter ends up throwing the standing swing from a crouch.
-    """
-    return BUTTON_MOVES.get(action, {}).get(stance)
+    """The move ``action`` throws from ``stance`` with nothing else going on."""
+    return resolve_move(action, MoveContext(stance))

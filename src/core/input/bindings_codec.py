@@ -170,11 +170,32 @@ _OLD_DEFAULT_GAMEPLAY_BUTTONS: dict[InputAction, int] = {
     InputAction.JUMP: 0,
     InputAction.ATTACK_1: 1,
     InputAction.ATTACK_2: 2,
-    InputAction.ATTACK_3: 3,
     InputAction.GUARD: 4,
-    InputAction.ATTACK_4: 5,
     InputAction.RESET: 7,
 }
+# (Buttons 3 and 5 held the third and fourth attacks, which are gone: a file
+# still naming them has them dropped by ``_without_retired`` before this is
+# compared, so the comparison is against what is left.)
+
+#: Gameplay actions the game had once and no longer has: the third and fourth
+#: attack buttons, retired when the moves became light/heavy chains. A file
+#: that still binds them is read with those entries dropped, not rejected --
+#: rejecting would throw away every other binding the player made.
+_RETIRED_ACTIONS = frozenset({"attack3", "attack4"})
+
+
+def _without_retired(section: dict[str, object]) -> dict[str, object]:
+    """``section`` with the retired actions removed from every map in it."""
+    return {
+        key: (
+            {action: value for action, value in maps.items() if action not in _RETIRED_ACTIONS}
+            if isinstance(maps, dict)
+            else maps
+        )
+        for key, maps in section.items()
+    }
+
+
 _OLD_DEFAULT_GAMEPAD_COMBOS: dict[InputAction, tuple[int, ...]] = {
     InputAction.SPECIAL_ATTACK: (1, 3),
 }
@@ -310,6 +331,7 @@ def bindings_from_dict(data: object) -> InputBindings:
     menu_data = data["menu"]
     if not isinstance(gameplay_data, dict) or not isinstance(menu_data, dict):
         raise ValueError("bindings contexts must be objects")
+    gameplay_data = _without_retired(gameplay_data)
     gameplay_actions = {
         InputAction.MOVE_X,
         InputAction.MOVE_DOWN,
@@ -319,8 +341,6 @@ def bindings_from_dict(data: object) -> InputBindings:
         InputAction.RESET,
         InputAction.ATTACK_1,
         InputAction.ATTACK_2,
-        InputAction.ATTACK_3,
-        InputAction.ATTACK_4,
         InputAction.SPECIAL_ATTACK,
     }
     menu_actions = {

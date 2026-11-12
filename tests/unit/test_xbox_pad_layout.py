@@ -35,7 +35,7 @@ def test_the_default_layout_is_the_xbox_convention() -> None:
     assert pad[InputAction.JUMP] == XBOX_A
     assert pad[InputAction.ATTACK_1] == XBOX_X
     assert pad[InputAction.ATTACK_2] == XBOX_Y
-    assert pad[InputAction.ATTACK_3] == XBOX_B
+    assert XBOX_B not in pad.values(), "two attack buttons: B is free"
     assert pad[InputAction.RESET] == XBOX_VIEW
     assert InputBindings().menu.gamepad_buttons[InputAction.UI_PAUSE] == XBOX_START
     assert XBOX_START not in pad.values(), "Start is the pause's alone"

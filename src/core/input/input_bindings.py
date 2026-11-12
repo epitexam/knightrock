@@ -49,8 +49,6 @@ class GameplayBindings:
                 InputAction.DASH: pygame.K_LSHIFT,
                 InputAction.ATTACK_1: pygame.K_a,
                 InputAction.ATTACK_2: pygame.K_s,
-                InputAction.ATTACK_3: pygame.K_d,
-                InputAction.ATTACK_4: pygame.K_f,
                 InputAction.GUARD: pygame.K_q,
                 InputAction.RESET: pygame.K_r,
             }
@@ -58,7 +56,7 @@ class GameplayBindings:
     )
     #: An Xbox pad's layout, as SDL numbers it: A 0, B 1, X 2, Y 3, LB 4,
     #: RB 5, View 6, Start 7. The action-game convention: A jumps, X is the
-    #: light attack, Y the heavy one, B the third; Start is left to the pause
+    #: light attack, Y the heavy one; Start is left to the pause
     #: (``MenuBindings.gamepad_buttons``), so the reset is on View.
     gamepad_buttons: ButtonMap = field(
         default_factory=lambda: _immutable(
@@ -66,9 +64,7 @@ class GameplayBindings:
                 InputAction.JUMP: XBOX_A,
                 InputAction.ATTACK_1: XBOX_X,
                 InputAction.ATTACK_2: XBOX_Y,
-                InputAction.ATTACK_3: XBOX_B,
                 InputAction.GUARD: XBOX_LB,
-                InputAction.ATTACK_4: XBOX_RB,
                 InputAction.RESET: XBOX_VIEW,
             }
         )
