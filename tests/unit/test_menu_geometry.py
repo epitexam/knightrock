@@ -347,8 +347,6 @@ def test_two_scales_are_the_same_picture_twice_as_big() -> None:
 
     for name in ("padding", "gap", "row", "panel_padding", "panel_row", "margin"):
         assert getattr(two, name) == pytest.approx(getattr(one, name) * 2, abs=1)
-    assert two.item_text == pytest.approx(one.item_text * 2, abs=1)
-    assert two.title_text == pytest.approx(one.title_text * 2, abs=1)
 
 
 # --------------------------------------------------------------------------

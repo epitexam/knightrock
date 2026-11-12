@@ -359,13 +359,6 @@ def test_the_ink_rim_grows_a_shape_outward_and_never_shrinks_it() -> None:
     )
 
 
-def test_polygon_bounds_leaves_a_pixel_of_spare() -> None:
-    left, top, width, height = draw.polygon_bounds([(4, 6), (10, 6), (10, 12)])
-
-    assert (left, top) == (3, 5)
-    assert (width, height) == (9, 9)
-
-
 def test_the_fade_ramps_up_then_falls_in_discrete_steps() -> None:
     """Discrete levels, and a fade-in, or a particle pops into existence.
 
@@ -463,11 +456,6 @@ def test_a_shape_with_fewer_than_three_points_is_not_drawn() -> None:
 
     cut = draw.inked_polygon([(2, 2), (8, 8)], (200, 200, 200), (0, 0, 0), 1)
     assert cut.get_size() == (1, 1), "a drawable of the smallest size, not a crash"
-
-
-def test_bounds_of_no_points_still_describe_a_drawable() -> None:
-    """`(0, 0, 1, 1)` rather than a zero-size box, which `pygame` rejects."""
-    assert draw.polygon_bounds([]) == (0, 0, 1, 1)
 
 
 def test_a_vertex_with_no_room_to_grow_stays_where_it_is() -> None:

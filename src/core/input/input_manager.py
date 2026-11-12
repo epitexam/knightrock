@@ -9,9 +9,6 @@ class InputManager:
         self._current_state = InputState()
         self._prev_state = InputState()
 
-    def set_provider(self, provider: InputProvider) -> None:
-        self._provider = provider
-
     def apply_remote_state(self, state: InputState) -> None:
         self._prev_state = self._current_state
         self._current_state = state

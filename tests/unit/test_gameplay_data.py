@@ -116,7 +116,7 @@ def test_read_attacks_file_extra_hitbox_keyframes_roundtrip(tmp_path: Path) -> N
 
     assert len(phase.extra_hitboxes[0].keyframes) == 2
     # Third of the way along the 0->9 curve interpolates linearly.
-    size, offset = phase.extra_box_at(0, 3)
+    (size, offset), _angle = phase.extra_shape_at(0, 3)
     assert size[0] == pytest.approx(20.0 + 20.0 / 3)
     assert offset[0] == pytest.approx(-30.0 + 20.0 / 3)
     serialized = attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0]["extra_hitboxes"]

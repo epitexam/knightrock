@@ -56,11 +56,6 @@ class AssetLibrary:
         self._cache[key] = surface
         return surface
 
-    def preload(self, relative_paths: list[str | Path]) -> None:
-        """Warm the cache for a batch of paths."""
-        for relative_path in relative_paths:
-            self.image(relative_path)
-
     def frames(self, relative_directory: str | Path) -> list[pygame.Surface]:
         """Return the cached converted frame list for a sprite-sheet directory.
 

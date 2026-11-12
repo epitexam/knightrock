@@ -111,7 +111,6 @@ class ControlsScene(Scene):
         self._pending: list[int] = []
         self._status: str | None = None
         self._ignore_routed = False
-        self._ignore_mouse_capture = False
         self._rows_cache: list[BindingRow] | None = None
         self._rows_bindings: object = None
         self._rows_capture: tuple[int, int] | None = None

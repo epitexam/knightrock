@@ -40,17 +40,6 @@ def checked_ui_scale(scale: float) -> float:
     return scale
 
 
-def font_size(base: int, scale: float) -> int:
-    """A font size in whole pixels.
-
-    The one place a scale becomes a font size, so that a view's cache keyed on
-    the size it asked for is keyed on exactly what it will get: at a fractional
-    scale two neighbouring values can round to the same size, and a cache keyed
-    on the scale itself would then hold two identical sets of fonts.
-    """
-    return max(1, round(base * scale))
-
-
 #: How far a *screen* overlay may grow with the window. A debug panel is screen
 #: furniture, not an annotation of the world, so it has a ceiling: at 4K the
 #: density is 3.3 and a panel scaled by it would cover a quarter of the display

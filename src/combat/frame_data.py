@@ -503,15 +503,6 @@ class PhaseDefinition:
             self.hitbox_easing,
         )
 
-    def extra_box_at(self, index: int, frame: int) -> BoxGeometry:
-        """Interpolate extra box ``index`` at a phase ``frame``.
-
-        Each box follows its own curve (static ``(size, offset)`` when it
-        carries no keyframes); the primary curve is never reused here.
-        """
-        spec = self.extra_hitboxes[index]
-        return interpolate_keyframes(spec.keyframes, (spec.size, spec.offset), frame)
-
     def extra_shape_at(self, index: int, frame: int) -> tuple[BoxGeometry, float]:
         """Interpolate extra box geometry and angle at a phase frame."""
         spec = self.extra_hitboxes[index]

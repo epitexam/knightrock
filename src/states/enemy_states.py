@@ -370,17 +370,12 @@ class EnemyAttackState(State):
 
         if self.entity.attack_name is not None:
             self.entity.combat.start_attack(self.entity.attack_name)
-        self._started = True
 
     def update(self, delta_time: float) -> str | None:
         """Update the state and return to idle when the attack finishes."""
         if not self.entity.combat.is_attacking:
             self.entity.state_machine.change_state(EnemyState.IDLE)
         return None
-
-    def exit(self, next_state: str | None = None) -> None:
-        """Exit the state."""
-        self._started = False
 
 
 class EnemyChargeState(State):

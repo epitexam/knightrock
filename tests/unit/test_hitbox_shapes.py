@@ -4,8 +4,6 @@ import pygame
 import pytest
 
 from src.combat.shapes import (
-    AnchorKind,
-    AnchorSpec,
     EasingKind,
     ShapeKind,
     ShapePose,
@@ -24,14 +22,11 @@ from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
 
-def test_pose_and_anchor_specs_are_immutable() -> None:
+def test_a_pose_is_immutable() -> None:
     pose = ShapePose(ShapeKind.CIRCLE, (20.0, 20.0))
-    anchor = AnchorSpec(AnchorKind.WEAPON, (4.0, -2.0))
 
     with pytest.raises(FrozenInstanceError):
         pose.position = (1.0, 1.0)
-    with pytest.raises(FrozenInstanceError):
-        anchor.offset = (0.0, 0.0)
 
 
 def test_shape_dimensions_follow_their_conventions() -> None:

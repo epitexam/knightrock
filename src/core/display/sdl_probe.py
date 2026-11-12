@@ -313,12 +313,3 @@ def probe() -> tuple[DisplayGeometry, ...]:
         logger.warning("SDL reported displays that disagree with pygame; ignoring them")
         return ()
     return found
-
-
-def is_available() -> bool:
-    """Whether display geometry can be read at all.
-
-    A capability question rather than a repeat of :func:`probe`, so the menu can
-    say once whether the monitor list is real before it shows one.
-    """
-    return bool(probe())

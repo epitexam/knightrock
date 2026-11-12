@@ -16,7 +16,7 @@ between two scales rather than as a list of pixels.
 
 from dataclasses import dataclass
 
-from src.ui.scale import checked_ui_scale, font_size
+from src.ui.scale import checked_ui_scale
 
 #: Design sizes, in the pixels of a 1152x648 picture. They are *not* pixels
 #: until :class:`Metrics` multiplies them, and no view may use them directly.
@@ -31,15 +31,12 @@ DESIGN_SECTION_GAP = 30
 DESIGN_TITLE_GAP = 12
 DESIGN_BORDER = 2
 DESIGN_ROW = 30
-DESIGN_SMALL_TEXT = 18
-DESIGN_ITEM_TEXT = 22
-DESIGN_TITLE_TEXT = 42
 
 #: The option panel is a second family, larger than the grid: a menu is read one
 #: row at a time from further away than a mapping table, and its rows are the
 #: only things a player has to aim at. Same scale, different design sizes.
-#: It carries no text sizes: ``GridView`` is the only view that draws text, and
-#: it takes all three from the grid family at a text scale it chose.
+#: Neither family carries text sizes: ``GridView`` takes its three from
+#: ``src.ui.menu_view`` at a text scale it chose.
 DESIGN_PANEL_PADDING = 28
 DESIGN_PANEL_TITLE_GAP = 16
 DESIGN_PANEL_ROW = 40
@@ -70,10 +67,6 @@ class Metrics:
     def px(self, design: float) -> int:
         """A design dimension in whole target pixels, never below one."""
         return max(1, round(design * self.scale))
-
-    def font(self, design: int) -> int:
-        """A design font size in whole target pixels."""
-        return font_size(design, self.scale)
 
     # -- tokens -------------------------------------------------------------
     # Named, because ``metrics.gap`` says what it is and ``metrics.px(18)`` is a
@@ -137,24 +130,3 @@ class Metrics:
     def panel_min_width(self) -> int:
         """Below this a menu is a list of one-word rows, so it stops shrinking."""
         return self.px(DESIGN_PANEL_MIN_WIDTH)
-
-    @property
-    def title_text(self) -> int:
-        return self.font(DESIGN_TITLE_TEXT)
-
-    @property
-    def item_text(self) -> int:
-        return self.font(DESIGN_ITEM_TEXT)
-
-    # -- the same sizes, at a scale a view had to give up -------------------
-    # A list that does not fit asks for smaller text rather than taller rows, so
-    # the three sizes are readable at any scale, not only at the setting's.
-
-    def title_text_at(self, text_scale: float) -> int:
-        return font_size(DESIGN_TITLE_TEXT, text_scale)
-
-    def item_text_at(self, text_scale: float) -> int:
-        return font_size(DESIGN_ITEM_TEXT, text_scale)
-
-    def small_text_at(self, text_scale: float) -> int:
-        return font_size(DESIGN_SMALL_TEXT, text_scale)
