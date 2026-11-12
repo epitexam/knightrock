@@ -34,6 +34,7 @@ __all__ = [
     "ReactionStatus",
     "VELOCITY_KINDS",
     "compute_knockback_direction",
+    "push_direction",
 ]
 
 
@@ -102,6 +103,22 @@ def compute_knockback_direction(
     if source_center_x is not None:
         return 1.0 if hitbox_centerx >= source_center_x else -1.0
     return 1.0 if facing_right else -1.0
+
+
+def push_direction(
+    knockback: KnockbackConfig,
+    hitbox_centerx: float,
+    source_center_x: float | None,
+    facing_right: bool,
+) -> float:
+    """Which way a knockback pushes: its own sign when ``fixed``, else away from the source.
+
+    The one place the two modes are told apart for a push or a guard push; it
+    used to be written out at each of them.
+    """
+    if knockback.mode == "fixed":
+        return 1.0 if knockback.power[0] >= 0.0 else -1.0
+    return compute_knockback_direction(hitbox_centerx, source_center_x, facing_right)
 
 
 class ReactionCombatPort(Protocol):
@@ -179,17 +196,14 @@ class ReactionComponent:
             return
 
         owner = self._owner
-        direction: float
-        if knockback.mode == "fixed":
-            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
-            owner.velocity.x = knockback.power[0]
-            owner.velocity.y = knockback.power[1]
-        else:
-            direction = compute_knockback_direction(
-                owner.hitbox.centerx, source_center_x, owner.facing_right
-            )
-            owner.velocity.x = knockback.power[0] * direction
-            owner.velocity.y = knockback.power[1]
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
+        )
+        # A fixed push already carries its sign in the power; a relative one
+        # gets it from the side the source is on.
+        signed = knockback.power[0] if knockback.mode == "fixed" else knockback.power[0] * direction
+        owner.velocity.x = signed
+        owner.velocity.y = knockback.power[1]
         self._arm(
             ReactionKind.PUSH,
             Vector2(knockback.power[0], knockback.power[1]).length(),
@@ -249,12 +263,10 @@ class ReactionComponent:
         source_center_x: float | None,
         parried: bool = False,
     ) -> None:
-        if knockback.mode == "fixed":
-            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
-        else:
-            direction = compute_knockback_direction(
-                self._owner.hitbox.centerx, source_center_x, self._owner.facing_right
-            )
+        owner = self._owner
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
+        )
         if parried:
             self._arm(ReactionKind.PARRIED, 0.0, direction)
             return

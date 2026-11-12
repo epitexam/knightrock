@@ -15,8 +15,9 @@ from src.core.input.input_manager import InputManager
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import HitFlash, ParryFlash, Physics
+from src.entities.components.reaction import push_direction
 from src.entities.crouch_posture import CrouchPosture
-from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
+from src.entities.entity import Entity, EntitySnapshot
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import (
@@ -365,15 +366,9 @@ class Player(Entity):
             self._reaction.note_guard_push(_kb, source_center_x, parried=True)
             self.render_hints.parry_flash_timer = ParryFlash.DURATION
             return DamageResult(guarded=True, parried=True)
-        direction = compute_knockback_direction(
-            self.hitbox.centerx, source_center_x, self.facing_right
-        )
-        if _kb.mode == "fixed":
-            push_dir = 1.0 if _kb.power[0] >= 0.0 else -1.0
-            self.velocity.x = _kb.power[0] * GuardSettings.PUSH_FACTOR
-            direction = push_dir
-        else:
-            self.velocity.x = _kb.power[0] * GuardSettings.PUSH_FACTOR * direction
+        direction = push_direction(_kb, self.hitbox.centerx, source_center_x, self.facing_right)
+        push = _kb.power[0] * GuardSettings.PUSH_FACTOR
+        self.velocity.x = push if _kb.mode == "fixed" else push * direction
         self._reaction.note_guard_push(_kb, source_center_x)
         if chip > 0:
             self._apply_damage(chip)

@@ -34,7 +34,6 @@ from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
     ReactionComponent,
     ReactionStatus,
-    compute_knockback_direction,
 )
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.player_controllers import DashController
@@ -53,10 +52,7 @@ from src.states.turn_state import FACING_LOCKED
 # rollback and future netcode in sync (unlike a random UUID).
 _ENTITY_ID_SEQUENCE = count()
 
-# ``compute_knockback_direction`` now lives in the reaction component; it is
-# re-exported here so the historical ``from src.entities.entity import
-# compute_knockback_direction`` (used by ``Player``) keeps working.
-__all__ = ["Entity", "compute_knockback_direction"]
+__all__ = ["Entity"]
 
 
 @dataclass
