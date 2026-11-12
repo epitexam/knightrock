@@ -306,17 +306,17 @@ def test_the_crouch_moves_hit_low() -> None:
 
 
 def test_the_crouch_sweep_is_the_way_out_and_the_slash_is_not() -> None:
-    """The slash chains into the sweep; the sweep chains into nothing.
+    """The slash chains into itself and into the sweep; the sweep chains into nothing.
 
     Leaving the posture costs a commitment. A cancel into ``light_attack`` from
     here would be a ground move thrown from a crouch -- the stance-crossing
     cancel ``validate_attacks`` now refuses, and the one it caught when it was
-    added.
+    added. Slash into slash is the crouching light chain, like the standing one.
     """
     slash = PLAYER_ATTACKS["crouch_slash"].phases[0]
     sweep = PLAYER_ATTACKS["crouch_sweep"].phases[0]
 
-    assert set(slash.cancel_into) == {move_id("crouch_sweep")}
+    assert set(slash.cancel_into) == {move_id("crouch_sweep"), move_id("crouch_slash")}
     assert sweep.cancel_into == ()
     assert PLAYER_ATTACKS["crouch_sweep"].combo_reset is True
     assert PLAYER_ATTACKS["crouch_slash"].combo_reset is False

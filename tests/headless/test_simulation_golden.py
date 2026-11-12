@@ -223,7 +223,10 @@ PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905
 # near. The first body contact lands on tick 9 instead of 12, the first hazard
 # hit on tick 3 instead of 24; the cadence after a contact is unchanged.
 PHYSICS_DIGEST = "e84b65bae71fbf106e8adcc9d42bc86d6c5a382a5c571f9a544cfda825ead734"
-RIDE_DIGEST = "d9a98584ea934ca7629a7d66f9cc77264c019fa3eeda4628710ea53f8ac5a3e7"
+# RIDE re-captured again for the combat retune (2026-11-12, docs/audit/
+# combat-dynamism.md): the goblin's claw now has a 16-frame startup and a
+# 16-frame recovery, and hit-stop starts from 30ms instead of 50ms.
+RIDE_DIGEST = "521221f63dc6fdf131c86737a37f8ec4277cf7ffb5ef9bd3ca6ca3b5bb5ea627"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

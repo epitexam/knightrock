@@ -446,21 +446,29 @@ def test_golden_claw_swipe_phase_transitions() -> None:
     offset (24,4) -> centre (44,24). Le premier tick de phase 1 expose la
     geometrie du startup de phase 1 (jamais l ACTIVE de phase 0).
     """
+    first, second = GOBLIN_ATTACKS["claw_swipe"].phases
     frames = _drive("claw_swipe", GOBLIN_ATTACKS)
+    boundary = first.total_frames - 1  # the tick phase 1 begins on
 
-    assert len(frames) == 25  # 13 + 12
+    assert len(frames) == first.total_frames + second.total_frames
     boundaries = [i for i in range(1, len(frames) - 1) if frames[i][1] != frames[i - 1][1]]
-    assert boundaries == [12]
-    assert [sub for sub, _, _ in frames].count("startup") == 5
-    assert [sub for sub, _, _ in frames].count("active") == 10
+    assert boundaries == [boundary]
+    assert [sub for sub, _, _ in frames].count("startup") == (
+        first.startup_frames + second.startup_frames - 1
+    )
+    assert [sub for sub, _, _ in frames].count("active") == (
+        first.active_frames + second.active_frames
+    )
     assert frames[0] == ("startup", 0, (40.0, 16.0, 40.0, 20.0))
-    assert frames[12] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
+    assert frames[boundary] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
     assert all(
-        box == (40.0, 16.0, 40.0, 20.0) for _, ph, box in frames[:12] if box is not None and ph == 0
+        box == (40.0, 16.0, 40.0, 20.0)
+        for _, ph, box in frames[:boundary]
+        if box is not None and ph == 0
     )
     assert all(
         box == (44.0, 24.0, 48.0, 24.0)
-        for _, ph, box in frames[12:-1]
+        for _, ph, box in frames[boundary:-1]
         if box is not None and ph == 1
     )
     assert frames[-1] == ("idle", 0, None)

@@ -25,8 +25,9 @@ dans les données ou dans le retour :
 2. **Il n'y a pas de chaînes** (léger → léger → léger → finisher) : un bouton
    donne toujours le même coup, et six attaques déjà conçues ne sont
    accessibles qu'au banc de debug.
-3. **Chaque coup repousse l'ennemi hors de portée** : moins de la moitié des
-   coups portent contre un ennemi réel.
+3. **Chaque coup repousse l'ennemi hors de portée** : il faut avancer après
+   chaque frappe pour que la suivante porte (voir la correction au §8 sur
+   l'ampleur de l'effet).
 4. **Un coup se voit et s'entend à peine** : aucun son de combat, aucune
    étincelle d'impact, la même animation de 3 images pour les 17 attaques, et
    des ennemis qui disparaissent à la mort sans réaction.
@@ -43,7 +44,7 @@ sans préavis lisible, ce qui transforme garde et parade en paris.
 | Coups légers par seconde, en martelant, cible passive | **2,4** (plafond imposé par le cooldown) |
 | Coups lourds par seconde, cible passive | 1,2 lancés, **0,6 portés** |
 | Meilleur enchaînement existant (léger ↔ attaque en avant) | 2,0 coups/s |
-| Contre un gobelin (60 PV), en martelant le léger | tué en **4,1 s** ; **5 coups portés sur 13** |
+| Contre un gobelin (60 PV), en martelant le léger | tué en **4,1 s** ; 5 coups portés sur 13 *(voir la correction au §8)* |
 | Contre un slime, une « dent », une « coquille » | 5,2 s, 3,8 s, 6,3 s (et 54 PV perdus contre la coquille, qui a de la super-armure) |
 | Le même gobelin, avec l'enchaînement léger ↔ attaque en avant | tué en **1,2 s** : l'élan de l'attaque en avant garde le contact |
 
@@ -249,3 +250,57 @@ Le dynamisme ne se règle pas sans une direction :
 
 Les deux corrigent les quatre causes du §1. Ils divergent sur la longueur des
 chaînes, la place du jonglage et le nombre de PV des ennemis.
+
+## 8. Étape 1 réalisée : les réglages (2026-11-12)
+
+Direction retenue par le développeur : **No More Heroes, Katana ZERO, Dead
+Cells**, soit « nerveux mais pesé », avec un retour très appuyé et des chaînes
+courtes plutôt que de longs jonglages.
+
+**Correction de mesure.** Le « 5 coups portés sur 13 » du §2 venait en partie
+de mon script : le joueur scripté ne recollait à l'ennemi qu'au-delà de 34 px,
+alors que le léger porte à une quinzaine de pixels. Remesuré avec un joueur qui
+reste au contact (`tests/benchmarks/combat_feel.py`, `KEEP_PX = 8`), l'ancien
+réglage portait déjà 83 % de ses coups contre un gobelin. Le recul (cause C)
+reste un défaut pour un joueur humain, qui doit avancer après chaque coup, mais
+il est moins grave que je ne l'avais écrit. Les causes A, B, D et E ne changent
+pas.
+
+**Réglages appliqués** (`data/gameplay/attacks.json`, `core/settings.py`) :
+
+| Réglage | Avant | Après |
+|---|---|---|
+| Cooldown : léger, aérien, accroupi | 0,30 / 0,35 / 0,28 s | **0** |
+| Cooldown : lourd, uppercut, attaque en avant, aérien avant | 0,80 / 0,90 / 0,50 / 0,40 s | 0,15 / 0,40 / 0,25 / 0,20 s |
+| Le léger, l'aérien et la frappe accroupie s'annulent en eux-mêmes | non | **oui** (chaîne en recovery) |
+| Recul du léger / de la frappe accroupie / de l'aérien | 150 / 120 / 180 | **40 / 40 / 60** |
+| Élan du léger (`lunge`), ralentissement pendant le léger | 0,35 ; 0,50 | **0,60 ; 0,80** |
+| Élan du lourd | 0,35 | 0,50 |
+| Hit-stop : base de la formule | 50 ms | **30 ms** (le lourd et le finisher restent longs : la formule dépend des dégâts et du recul) |
+| Préavis / récupération du coup de griffe (gobelin, dent, coquille) | 4 / 5 frames | **16 / 16** |
+| Préavis / récupération du coup du slime | 6 / 7 frames | **20 / 18** |
+| Dash | 80 ms, 1 100 px/s, 5 charges | **140 ms, 1 350 px/s (189 px), 3 charges** |
+
+Deux règles du moteur ont été assouplies pour cela, parce qu'elles écrivaient
+l'ancienne conception : le cooldown n'a plus à durer au moins autant que
+l'attaque, et une attaque peut s'annuler en elle-même si son cooldown est écoulé
+avant sa dernière frame (sinon le refus reste). La traînée du dash passe de 6 à
+9 images au plus, pour couvrir un dash de 140 ms.
+
+**Résultats** (arène, joueur au contact) :
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Coups légers portés par seconde (cible passive) | 2,3 | **4,3** |
+| Temps pour tuer : gobelin / slime / dent / coquille | 2,05 / 1,88 / 2,15 / 4,55 s | **1,05 / 0,98 / 1,42 / 2,68 s** |
+| PV perdus contre la coquille | 36 | 18 |
+| Préavis des attaques ennemies | 67 / 100 ms | **267 / 333 ms** |
+| Part du temps en hit-stop en martelant le léger | 23 % | 29 % (plus de coups, chacun plus court) |
+
+La matrice des issues de coups change sur trois champs seulement : hit-stop
+(371 issues), recul et impact (les coups au knockback réduit). Aucun dégât,
+aucun état, aucune issue de garde ou de parade n'a bougé.
+
+**Reste à faire, dans l'ordre :** le retour (axe 3 : sons, étincelles,
+secousses, mort), puis les chaînes à finisher (axe 1, partie code), puis les
+ennemis (axe 4).

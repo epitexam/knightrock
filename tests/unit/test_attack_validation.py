@@ -75,7 +75,8 @@ def test_json_attack_outside_sprite_envelope_is_rejected() -> None:
         validate_attacks({"kick": definition})
 
 
-def test_json_attack_with_too_short_cooldown_is_rejected() -> None:
+def test_json_attack_with_a_cooldown_shorter_than_itself_is_accepted() -> None:
+    """A basic move is paced by its frame data; its cooldown may be zero."""
     raw = {
         "phases": [
             {
@@ -91,8 +92,22 @@ def test_json_attack_with_too_short_cooldown_is_rejected() -> None:
     }
     definition = read_attack_definition(raw, "data/gameplay/attacks.json#player.slam")
 
-    with pytest.raises(GameplayDataError, match=r"slam': cooldown"):
-        validate_attacks({"slam": definition})
+    validate_attacks({"slam": definition})
+
+
+def test_a_self_cancel_on_a_move_still_cooling_down_is_rejected() -> None:
+    """Cancelling into itself is a chain only if the cooldown is over by then."""
+    looped = replace(_valid_attack().phases[0], cancel_into=(move_id("slam"),))
+    looping = replace(_valid_attack(), phases=(looped,), cooldown=5.0)
+
+    with pytest.raises(GameplayDataError, match="cancels into itself"):
+        validate_attacks({"slam": looping})
+
+
+def test_a_self_cancel_on_a_move_without_cooldown_is_a_chain() -> None:
+    looped = replace(_valid_attack().phases[0], cancel_into=(move_id("slam"),))
+
+    validate_attacks({"slam": replace(_valid_attack(), phases=(looped,), cooldown=0.0)})
 
 
 def test_non_positive_box_size_is_rejected_with_named_message() -> None:
@@ -399,7 +414,10 @@ def test_intermediate_phase_without_target_reset_warns() -> None:
 
 def test_load_attacks_validates_before_registering() -> None:
     combat = _CombatStub()
-    broken = replace(_valid_attack(), cooldown=0.0)
+    broken = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=(move_id("nope"),)),),
+    )
 
     with pytest.raises(GameplayDataError):
         load_attacks(combat, {"kick": broken})  # type: ignore[arg-type]

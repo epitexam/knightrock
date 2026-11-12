@@ -57,10 +57,10 @@ class Physics:
     FALL_GRAVITY = 2800.0
     JUMP_FORCE = 750.0
     MAX_FALL_SPEED = 1500.0
-    DASH_SPEED = 1100
-    DASH_DURATION = 0.08
+    DASH_SPEED = 1350
+    DASH_DURATION = 0.14
     DASH_FRICTION = 25.0
-    DASH_MAX_CHARGES = 5
+    DASH_MAX_CHARGES = 3
     DASH_RECHARGE_TIME = 0.35
     DASH_PENALTY_TIME = 2.0
     DASH_GRAVITY_MULT = 0.0
@@ -110,7 +110,7 @@ class Combat:
     HURT_DURATION = 0.4
     PLAYER_HURT_DURATION = 0.12
     INVINCIBILITY_DURATION = 0.18
-    HITSTOP_BASE = 0.05
+    HITSTOP_BASE = 0.03
     HITSTOP_DAMAGE_FACTOR = 0.002
     SUPER_ARMOR_THRESHOLD = 3
     COMBO_WINDOW = 0.5
@@ -273,11 +273,11 @@ class Afterimage:
     gone before the next one starts.
     """
 
-    MAX = 6
+    MAX = 9
     TTL = 0.22
     SPAWN_EVERY = 0.012
-    """One stamp per frame while the dash runs, which is five for an 80ms
-    dash. Slower than a frame and the trail thins out; faster and the stamps
+    """One stamp per frame while the dash runs, which is eight or nine for a
+    140ms dash. Slower than a frame and the trail thins out; faster and the stamps
     land on top of each other and stop being countable."""
     LEVELS = (255, 170, 90)
     """The opacity ladder, brightest first, walked as the ghost ages.

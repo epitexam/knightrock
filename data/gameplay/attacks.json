@@ -12,8 +12,8 @@
               "damage": 8.0,
               "knockback": {
                 "power": [
-                  150.0,
-                  -50.0
+                  40.0,
+                  -20.0
                 ],
                 "mode": "from_attacker"
               },
@@ -35,7 +35,8 @@
             "cancel_into": [
               "heavy_attack",
               "uppercut",
-              "dash_attack"
+              "dash_attack",
+              "light_attack"
             ],
             "hitboxes": [
               {
@@ -52,7 +53,7 @@
             ]
           }
         ],
-        "cooldown": 0.3,
+        "cooldown": 0.0,
         "stances": [
           "ground"
         ],
@@ -63,9 +64,9 @@
         "max_charge_time": 1.0,
         "charge_move_multiplier": 1.0,
         "uninterruptible": false,
-        "lunge_speed_multiplier": 0.35,
+        "lunge_speed_multiplier": 0.6,
         "vertical_lunge": 0.0,
-        "attack_move_multiplier": 0.5
+        "attack_move_multiplier": 0.8
       },
       "heavy_attack": {
         "phases": [
@@ -113,7 +114,7 @@
             ]
           }
         ],
-        "cooldown": 0.8,
+        "cooldown": 0.15,
         "stances": [
           "ground"
         ],
@@ -124,7 +125,7 @@
         "max_charge_time": 1.0,
         "charge_move_multiplier": 0.4,
         "uninterruptible": false,
-        "lunge_speed_multiplier": 0.35,
+        "lunge_speed_multiplier": 0.5,
         "vertical_lunge": 0.0,
         "attack_move_multiplier": 0.15
       },
@@ -174,7 +175,7 @@
             ]
           }
         ],
-        "cooldown": 0.9,
+        "cooldown": 0.4,
         "stances": [
           "ground"
         ],
@@ -239,7 +240,7 @@
             ]
           }
         ],
-        "cooldown": 0.5,
+        "cooldown": 0.25,
         "stances": [
           "ground"
         ],
@@ -264,8 +265,8 @@
               "damage": 10.0,
               "knockback": {
                 "power": [
-                  180.0,
-                  -120.0
+                  60.0,
+                  -60.0
                 ],
                 "mode": "from_attacker"
               },
@@ -284,7 +285,9 @@
               "tags": []
             },
             "reset_targets": true,
-            "cancel_into": [],
+            "cancel_into": [
+              "air_attack"
+            ],
             "hitboxes": [
               {
                 "size": [
@@ -300,7 +303,7 @@
             ]
           }
         ],
-        "cooldown": 0.35,
+        "cooldown": 0.0,
         "stances": [
           "air"
         ],
@@ -1161,7 +1164,7 @@
               "damage": 6.0,
               "knockback": {
                 "power": [
-                  120.0,
+                  40.0,
                   -20.0
                 ],
                 "mode": "from_attacker"
@@ -1182,7 +1185,8 @@
             },
             "reset_targets": true,
             "cancel_into": [
-              "crouch_sweep"
+              "crouch_sweep",
+              "crouch_slash"
             ],
             "hitboxes": [
               {
@@ -1199,7 +1203,7 @@
             ]
           }
         ],
-        "cooldown": 0.28,
+        "cooldown": 0.0,
         "stances": [
           "crouch"
         ],
@@ -1321,7 +1325,7 @@
             ]
           }
         ],
-        "cooldown": 0.4,
+        "cooldown": 0.2,
         "stances": [
           "air"
         ],
@@ -1463,7 +1467,7 @@
       "claw_swipe": {
         "phases": [
           {
-            "startup_frames": 4,
+            "startup_frames": 16,
             "active_frames": 5,
             "recovery_frames": 4,
             "hit": {
@@ -1508,7 +1512,7 @@
           {
             "startup_frames": 2,
             "active_frames": 5,
-            "recovery_frames": 5,
+            "recovery_frames": 16,
             "hit": {
               "damage": 10.0,
               "knockback": {
@@ -1569,9 +1573,9 @@
       "body_slam": {
         "phases": [
           {
-            "startup_frames": 6,
+            "startup_frames": 20,
             "active_frames": 5,
-            "recovery_frames": 7,
+            "recovery_frames": 18,
             "hit": {
               "damage": 6.0,
               "knockback": {

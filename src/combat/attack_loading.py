@@ -113,14 +113,14 @@ def _validate_phase(name: str, phase_index: int, phase: PhaseDefinition) -> None
 
 
 def _validate_attack(name: str, definition: AttackDefinition) -> None:
-    """Timing rules of one attack."""
-    duration = definition.total_frames / FRAME_RATE
-    if definition.cooldown < duration:
-        raise GameplayDataError(
-            f"Attack {name!r}: cooldown {definition.cooldown:.3f}s is shorter than the "
-            f"attack duration {duration:.3f}s ({definition.total_frames} frames at "
-            f"{FRAME_RATE} Hz)"
-        )
+    """Timing rules of one attack.
+
+    A cooldown may be shorter than the attack, or zero. It used to have to
+    outlast the attack, which made every move a single blow followed by a wait:
+    the basic moves of a hack and slash are paced by their own frame data and
+    their cancel windows, and a cooldown is for the moves that must not be
+    spammed (a special, a launcher).
+    """
     last_index = len(definition.phases) - 1
     _validate_vertical_lunge(name, definition)
     for index, phase in enumerate(definition.phases):
@@ -196,10 +196,11 @@ def _validate_cancels(
     Two ways a ``cancel_into`` name passes the existence check and is still
     wrong:
 
-    * it names the attack itself. The cooldown gate runs before the cancel gate,
-      and every move is still on cooldown at its own last frame, so
+    * it names the attack itself while the attack is still on cooldown at its
+      own last frame. The cooldown gate runs before the cancel gate, so such a
       ``light_attack -> light_attack`` was accepted at load time and dead in
-      play.
+      play. A self-cancel on a move whose cooldown runs out within it is a
+      chain (light, light, light) and is accepted.
     * it names a move whose ``stances`` do not include this one's. That was the
       ``air_attack -> light_attack`` chain: an air chain into a ground move.
 
@@ -211,10 +212,10 @@ def _validate_cancels(
     """
     for index, phase in enumerate(definition.phases):
         for target in phase.cancel_into:
-            if target == name:
+            if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
                 raise GameplayDataError(
                     f"Attack {name!r} phase {index}: cancels into itself ({target!r}), "
-                    "which the cooldown gate makes unreachable"
+                    f"which its {definition.cooldown:g}s cooldown makes unreachable"
                 )
             missing = set(attacks[target].stances) - set(definition.stances)
             if missing:

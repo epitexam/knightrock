@@ -49,10 +49,18 @@ def _enemy(config=GOBLIN_CONFIG, player=None) -> Enemy:
     # airborne until something says otherwise.
     enemy.on_surface["floor"] = True
     assert enemy.combat.start_attack(enemy.attack_name)
-    for _ in range(6):
-        enemy.combat.update(1 / 60)
-    enemy.combat.sync_attack_box()
+    _advance_to_active(enemy)
     return enemy
+
+
+def _advance_to_active(enemy: Enemy) -> None:
+    """Run the enemy's attack through its startup, whatever its length is tuned to."""
+    for _ in range(120):
+        if enemy.combat.state.is_active:
+            break
+        enemy.combat.update(1 / 60)
+    assert enemy.combat.state.is_active, "the attack never reached its active frames"
+    enemy.combat.sync_attack_box()
 
 
 def _make_attacker(config=GOBLIN_CONFIG, player=None) -> Enemy:
@@ -71,10 +79,7 @@ def _make_attacker(config=GOBLIN_CONFIG, player=None) -> Enemy:
     # ground-only now that ``stances`` says so.
     attacker.on_surface["floor"] = True
     assert attacker.combat.start_attack(attacker.attack_name)
-    # Advance past startup frames
-    for _ in range(5):
-        attacker.combat.update(1 / 60)
-    attacker.combat.sync_attack_box()
+    _advance_to_active(attacker)
     return attacker
 
 
@@ -91,10 +96,7 @@ def _reset_attacker(attacker: Enemy) -> None:
     attacker.combat._cooldowns.clear()
     attacker.on_surface["floor"] = True
     assert attacker.combat.start_attack(attacker.attack_name)
-    # Advance past startup frames (4 startup + 1 to enter active)
-    for _ in range(6):
-        attacker.combat.update(1 / 60)
-    attacker.combat.sync_attack_box()
+    _advance_to_active(attacker)
 
 
 def _clear_hit_stop(system: CombatSystem) -> None:

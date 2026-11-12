@@ -60,9 +60,21 @@ def test_ui_benchmark_runs() -> None:
     assert "cache_entries=0." not in out
 
 
+def test_combat_feel_benchmark_runs() -> None:
+    out = _run("combat_feel.py", ["--seconds", "1", "--json"])
+    assert '"kill_s"' in out, out[-400:]
+    assert '"enemy_warning_ms"' in out
+
+
 @pytest.mark.parametrize(
     "name",
-    ["contact_benchmark.py", "fx_benchmark.py", "render_benchmark.py", "ui_benchmark.py"],
+    [
+        "combat_feel.py",
+        "contact_benchmark.py",
+        "fx_benchmark.py",
+        "render_benchmark.py",
+        "ui_benchmark.py",
+    ],
 )
 def test_every_benchmark_is_reachable(name: str) -> None:
     """Each file is a script someone can actually invoke by path."""
