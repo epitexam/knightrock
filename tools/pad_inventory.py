@@ -9,35 +9,44 @@ It only reads the device; it never writes a binding.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pygame
 
-# SDL_GameControllerButton enum (SDL2/SDL_gamecontroller.h), the indices
-# pygame reports on JOYBUTTONDOWN events.
+from src.core.input.input_bindings import (
+    XBOX_A,
+    XBOX_B,
+    XBOX_LB,
+    XBOX_RB,
+    XBOX_START,
+    XBOX_VIEW,
+    XBOX_X,
+    XBOX_Y,
+)
+
+# The names the game itself gives these indices, so the tool and the default
+# bindings cannot disagree. ``JOYBUTTONDOWN`` reports SDL's *joystick* numbers,
+# not the ``SDL_GameControllerButton`` enum: the table used to follow the enum
+# and called button 4 "View" where the game -- correctly -- reads LB.
 BUTTON_NAMES = {
-    0: "A",
-    1: "B",
-    2: "X",
-    3: "Y",
-    4: "View (Affichage)",
-    5: "Guide (logo Xbox)",
-    6: "Menu (3 traits)",
-    7: "clic stick gauche",
-    8: "clic stick droit",
-    9: "LB",
-    10: "RB",
-    11: "dpad haut",
-    12: "dpad bas",
-    13: "dpad gauche",
-    14: "dpad droite",
-    15: "Share",
+    XBOX_A: "A",
+    XBOX_B: "B",
+    XBOX_X: "X",
+    XBOX_Y: "Y",
+    XBOX_LB: "LB",
+    XBOX_RB: "RB",
+    XBOX_VIEW: "View (Affichage)",
+    XBOX_START: "Menu / Start (3 traits)",
 }
+# Only the left stick is numbered the same on every platform; the triggers and
+# the right stick move between drivers, which is what this tool is for finding.
 AXIS_NAMES = {
     0: "stick gauche X",
     1: "stick gauche Y",
-    2: "stick droit X",
-    3: "stick droit Y",
-    4: "LT (gâchette gauche)",
-    5: "RT (gâchette droite)",
 }
 
 

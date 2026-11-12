@@ -78,7 +78,7 @@ def _report(game: Game) -> None:
         print(
             f"    [{monitor.index}] {monitor.name or 'unnamed'!r} "
             f"{monitor.size[0]}x{monitor.size[1]} at ({left}, {top}) "
-            f"usable {monitor.usable_size} at {monitor.refresh_rate or "?"} Hz"
+            f"usable {monitor.usable_size} at {monitor.refresh_rate or '?'} Hz"
         )
     held = game.window_monitor()
     on = f"[{held.index}] {held.name or 'unnamed'}" if held is not None else "unknown"
@@ -217,15 +217,18 @@ def main() -> None:
 
         os.environ["DEBUG"] = "1"
 
+    # The save file goes to the scratch directory either way: the walkthrough
+    # never needs real progression, and a run that reads it can also write it.
+    scratch = tempfile.TemporaryDirectory(prefix="knightrock-acceptance-")
+    save_path = Path(scratch.name) / "save.json"
     if arguments.real_settings:
         settings_path = None
         print("using the REAL settings file; the walkthrough will be saved to it")
     else:
-        scratch = tempfile.TemporaryDirectory(prefix="knightrock-acceptance-")
         settings_path = Path(scratch.name) / "settings.json"
         print(f"using a throwaway settings file ({settings_path}); your own is untouched")
 
-    game = Game(bindings_path=settings_path)
+    game = Game(save_path=save_path, bindings_path=settings_path)
     # The real path, not ``initialize_display`` on its own: the automatic
     # resolution of the window size happens in ``_initialize``, and skipping it
     # would report a configuration the player never gets.
