@@ -62,10 +62,12 @@ def _enemy(kind: str = "goblin", **overrides):
     that changes, whereas "the group is applied and the flag is read at the
     right moment" is the mechanism and does not.
     """
-    from src.entities.enemies.configs import ENEMY_CONFIGS
+    from src.data.provider import shipped_gameplay_data
     from src.entities.enemies.enemy import Enemy
 
-    config = dataclasses.replace(ENEMY_CONFIGS[kind], **{"turn_profile": None, **overrides})
+    config = dataclasses.replace(
+        shipped_gameplay_data().enemies[kind], **{"turn_profile": None, **overrides}
+    )
     return Enemy(
         pos=(0, 0),
         groups=pygame.sprite.Group(),

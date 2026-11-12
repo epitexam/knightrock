@@ -12,7 +12,7 @@ to juggle.  The per-action helpers are plain methods so tests drive them
 without polling hardware keys.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -22,6 +22,7 @@ from src.combat.refusal import Refusal
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
+from src.entities.enemies.schema import EnemyConfig
 from src.entities.projectile import (
     FIREBOLT_CONFIG,
     PIERCING_BOLT_CONFIG,
@@ -96,8 +97,13 @@ class SpawnSystem:
         groups: SpriteGroups,
         spatial_hash: SpatialHash | None = None,
         projectile_system: ProjectileSystem | None = None,
+        enemy_configs: Mapping[str, EnemyConfig] | None = None,
     ) -> None:
         self.groups = groups
+        #: The configurations the level's own enemies were built from, so a
+        #: bench spawn is the same goblin as a placed one (audit C4). ``None``
+        #: falls back to the shipped files inside ``create_enemy``.
+        self.enemy_configs: Mapping[str, EnemyConfig] = enemy_configs or {}
         self.spatial_hash = spatial_hash
         self.projectile_system = projectile_system
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
@@ -251,6 +257,7 @@ class SpawnSystem:
         try:
             enemy = create_enemy(
                 "dummy",
+                config=self.enemy_configs.get("dummy"),
                 pos=(hitbox.centerx + offset_x, hitbox.top - 150.0),
                 groups=(self.groups.all_sprites,),
                 collision_sprites=self.groups.collision_sprites,
@@ -275,6 +282,7 @@ class SpawnSystem:
         offset_x = 100 if player.facing_right else -100
         enemy = create_enemy(
             enemy_name,
+            config=self.enemy_configs.get(enemy_name),
             pos=(player.hitbox.centerx + offset_x, player.hitbox.top),
             groups=(self.groups.all_sprites,),
             collision_sprites=self.groups.collision_sprites,

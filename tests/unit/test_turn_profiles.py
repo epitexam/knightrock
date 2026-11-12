@@ -21,7 +21,7 @@ from src.core.settings import (
     TurnProfile,
     resolve_turn_profile,
 )
-from src.entities.enemies.configs import ENEMY_CONFIGS
+from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
 
 
@@ -50,7 +50,9 @@ def _enemy(kind: str = "goblin", **overrides):
     changes; that a group is applied and a sub-group layers onto it is the
     mechanism, and only the second is worth a test that outlives a retune.
     """
-    config = dataclasses.replace(ENEMY_CONFIGS[kind], **{"turn_profile": None, **overrides})
+    config = dataclasses.replace(
+        shipped_gameplay_data().enemies[kind], **{"turn_profile": None, **overrides}
+    )
     return Enemy(
         pos=(0, 0),
         groups=pygame.sprite.Group(),

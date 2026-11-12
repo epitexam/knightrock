@@ -18,7 +18,7 @@ from src.core.settings import HitFlash, ParryFlash, Physics
 from src.entities.crouch_posture import CrouchPosture
 from src.entities.entity import Entity, EntitySnapshot, compute_knockback_direction
 from src.entities.player_animation import PLAYER_ANIMATIONS
-from src.entities.player_config import DEFAULT_PLAYER_CONFIG, PlayerConfig
+from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import (
     DashController,
     GuardController,
@@ -78,12 +78,17 @@ class Player(Entity):
         input_manager : InputManager
             Input source.
         config : PlayerConfig | None
-            Optional player configuration. Uses DEFAULT_PLAYER_CONFIG if not provided.
+            The player's configuration; the shipped ``player.json`` when not
+            given, never a copy kept in code (audit C4).
         spatial_hash : SpatialHash | None
             Shared collision grid covering ``collision_sprites``; see
             :class:`~src.entities.entity.Entity`.
         """
-        config = config or DEFAULT_PLAYER_CONFIG
+        if config is None:
+            # Local: the data layer imports the player config from this package.
+            from src.data.provider import shipped_gameplay_data
+
+            config = shipped_gameplay_data().player
 
         attacks = None
         if hasattr(config, "attacks") and config.attacks:

@@ -1,8 +1,8 @@
 """Typed JSON loader for the player config (Phase 3 #4).
 
-``player.json`` holds the *overrides* that distinguish
-``DEFAULT_PLAYER_CONFIG`` from the bare ``PlayerConfig()`` defaults
-(pink sprite, ``max_wall_jumps: "inf"``, ``"player"`` attack set)::
+``player.json`` holds the *overrides* on the bare ``PlayerConfig()`` defaults
+(pink sprite, ``max_wall_jumps: "inf"``, ``"player"`` attack set), and the
+result is the player's whole configuration -- there is no copy in code::
 
     {"version": 1, "player": {"color": [255, 120, 200], ...}}
 

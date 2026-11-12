@@ -19,8 +19,8 @@ from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit, MovingPlatform, Sprite
-from src.data.provider import GameplayData
-from src.entities.enemies.factory import create_enemy, is_enemy_type
+from src.data.provider import GameplayData, shipped_gameplay_data
+from src.entities.enemies.factory import create_enemy
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
 
@@ -320,7 +320,11 @@ class WorldBuilder:
 
     def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
         self.level_data = level_data
-        self.gameplay_data = gameplay_data
+        #: The values the fighters are built from; the shipped files when none
+        #: is given, so a level never builds from anything else.
+        self.gameplay_data: GameplayData = (
+            gameplay_data if gameplay_data is not None else shipped_gameplay_data()
+        )
         #: Shared collision grid handed to every entity this builder creates.
         #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
         #: born without it falls back to a linear scan of every collidable in
@@ -367,7 +371,7 @@ class WorldBuilder:
         level's settings, not its world, and a definition that happened to be
         named ``player`` there is not a spawn.
         """
-        config = self.gameplay_data.player if self.gameplay_data is not None else None
+        config = self.gameplay_data.player
         for layer in self.level_data.object_layers.values():
             if layer.name == DATA_LAYER_NAME:
                 continue
@@ -402,10 +406,8 @@ class WorldBuilder:
         """
         if obj.name == "player":
             return
-        if is_enemy_type(obj.name):
-            config = (
-                self.gameplay_data.enemies.get(obj.name) if self.gameplay_data is not None else None
-            )
+        config = self.gameplay_data.enemies.get(obj.name)
+        if config is not None:
             where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
             # Absent is not false: an enemy that authors no direction keeps the
             # coin toss, and one that does gets what it was given. Collapsing

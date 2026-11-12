@@ -272,6 +272,6 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
 
 
 def _fake_player_config():
-    from src.entities.player_config import DEFAULT_PLAYER_CONFIG
+    from src.data.provider import shipped_gameplay_data
 
-    return DEFAULT_PLAYER_CONFIG
+    return shipped_gameplay_data().player

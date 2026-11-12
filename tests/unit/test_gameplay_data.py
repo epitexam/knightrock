@@ -21,9 +21,13 @@ from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemie
 from src.data.errors import GameplayDataError
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
-from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
+from src.data.provider import (
+    GameplayData,
+    gameplay_data_root,
+    load_gameplay_data,
+    shipped_gameplay_data,
+)
 from src.entities.enemies.schema import EnemyConfig
-from src.entities.enemies.types.goblin import GOBLIN_CONFIG
 from src.entities.player_config import PlayerConfig
 
 
@@ -292,7 +296,7 @@ def test_read_enemies_file_explicit_patrol_speed(tmp_path: Path) -> None:
 
 
 def test_enemy_config_to_dict_omits_default_patrol_speed() -> None:
-    assert "patrol_speed" not in enemy_config_to_dict(GOBLIN_CONFIG)
+    assert "patrol_speed" not in enemy_config_to_dict(shipped_gameplay_data().enemies["goblin"])
 
 
 def test_read_enemies_file_unknown_attack_set_raises(tmp_path: Path) -> None:
@@ -832,3 +836,18 @@ def test_the_shipped_attacks_file_is_exactly_what_the_serializer_writes(
         shipped.read_text(encoding="utf-8")
         == json.dumps(attacks_document(data.attack_sets, 2), indent=2, allow_nan=False) + "\n"
     )
+
+
+@pytest.mark.parametrize("missing", [ENEMIES_FILENAME, PLAYER_FILENAME])
+def test_load_gameplay_data_refuses_to_boot_without_its_fighters(
+    tmp_path: Path, missing: str
+) -> None:
+    """The enemies and the player are required too: their Python copies are gone (C4)."""
+    root = tmp_path / "data"
+    _write(root / "attacks.json", _attacks_doc())
+    _write(root / "enemies.json", {"version": 1, "enemies": {}})
+    _write(root / "player.json", {"version": 1, "player": {}})
+    (root / missing).unlink()
+
+    with pytest.raises((FileNotFoundError, GameplayDataError)):
+        load_gameplay_data(root)

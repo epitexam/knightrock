@@ -1,6 +1,8 @@
 """Single entry point loading all gameplay data (Phase 3 #4).
 
-Source of truth: the JSON files in ``data/gameplay/``, and only them. They used
+Source of truth: the JSON files in ``data/gameplay/``, and only them. The
+attacks, the enemies and the player are required; only the level list keeps a
+built-in fallback. They used
 to be shadowed by hand-maintained copies in Python -- ``src/combat/attack_data.py``
 held all fourteen attacks a second time, with a CI test asserting the two were
 equal. That test's failure mode was a repr rather than a diff, and a field added
@@ -23,7 +25,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from src.combat.frame_data import AttackDefinition, MoveId
@@ -46,26 +49,10 @@ logger = logging.getLogger(__name__)
 class GameplayData:
     """Every gameplay value group in one immutable bundle."""
 
-    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]] = field(default_factory=dict)
-    enemies: Mapping[str, EnemyConfig] = field(default_factory=dict)
-    player: PlayerConfig | None = None
-    levels: Mapping[int, str] = field(default_factory=dict)
-
-
-def _fallback_enemy_configs(
-    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]],
-) -> dict[str, EnemyConfig]:
-    """Rebuild the historical enemy table (mirror of ``configs.py``)."""
-    from src.entities.enemies.types.dummy import DUMMY_CONFIG
-    from src.entities.enemies.types.goblin import GOBLIN_CONFIG
-    from src.entities.enemies.types.slime import SLIME_CONFIG
-
-    _ = attack_sets  # enemy configs carry their own attack tables
-    return {
-        "goblin": GOBLIN_CONFIG,
-        "dummy": DUMMY_CONFIG,
-        "slime": SLIME_CONFIG,
-    }
+    attack_sets: Mapping[str, dict[MoveId, AttackDefinition]]
+    enemies: Mapping[str, EnemyConfig]
+    player: PlayerConfig
+    levels: Mapping[int, str]
 
 
 def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
@@ -82,20 +69,12 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
     attacks_path = directory / ATTACKS_FILENAME
     attack_sets: dict[str, dict[MoveId, AttackDefinition]] = read_attacks_file(attacks_path)
 
-    enemies: dict[str, EnemyConfig]
-    enemies_path = directory / ENEMIES_FILENAME
-    if enemies_path.exists():
-        enemies = read_enemies_file(enemies_path, attack_sets)
-    else:
-        logger.warning("Gameplay JSON %s missing: using built-in enemy configs", enemies_path)
-        enemies = _fallback_enemy_configs(attack_sets)
-
-    player: PlayerConfig | None = None
-    player_path = directory / PLAYER_FILENAME
-    if player_path.exists():
-        player = read_player_file(player_path, attack_sets)
-    else:
-        logger.warning("Gameplay JSON %s missing: using built-in player config", player_path)
+    # Required, like the attacks, and for the same reason: the Python copies
+    # these files used to fall back on were a second source of truth, and the
+    # debug bench and the enemy-type check read that copy rather than the file
+    # (audit C4). A missing file now raises from the reader.
+    enemies: dict[str, EnemyConfig] = read_enemies_file(directory / ENEMIES_FILENAME, attack_sets)
+    player: PlayerConfig = read_player_file(directory / PLAYER_FILENAME, attack_sets)
 
     levels: dict[int, str]
     levels_path = directory / LEVELS_FILENAME
@@ -108,3 +87,15 @@ def load_gameplay_data(root: str | Path | None = None) -> GameplayData:
         levels = dict(LEVEL_PATHS)
 
     return GameplayData(attack_sets=attack_sets, enemies=enemies, player=player, levels=levels)
+
+
+@cache
+def shipped_gameplay_data() -> GameplayData:
+    """The gameplay data under :func:`gameplay_data_root`, loaded once.
+
+    For the code that builds a fighter without being handed a bundle -- a
+    ``Player`` or an enemy made outside a level, the tests -- so that what it
+    gets is the files and not a copy of them. ``Game`` loads its own bundle
+    from the same place.
+    """
+    return load_gameplay_data()

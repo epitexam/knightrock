@@ -178,6 +178,7 @@ class Level:
             self.groups,
             self.spatial_hash,
             projectile_system=self.projectile_system,
+            enemy_configs=self.world_builder.gameplay_data.enemies,
         )
 
         self.gameplay_loop = GameplayLoop(

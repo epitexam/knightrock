@@ -20,7 +20,7 @@ import pygame
 import pytest
 
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
-from src.entities.enemies.configs import ENEMY_CONFIGS
+from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
 
 ASSETS_PRESENT = os.path.isdir(
@@ -61,7 +61,7 @@ def test_every_enemy_the_level_declares_is_a_registered_type(built_enemies: list
     built here carries a config, which is only true for a resolved name.
     """
     for enemy in built_enemies:
-        assert enemy.enemy_type in ENEMY_CONFIGS, (
+        assert enemy.enemy_type in shipped_gameplay_data().enemies, (
             f"{enemy} was built as {enemy.enemy_type!r}, which is not a registered enemy"
         )
 

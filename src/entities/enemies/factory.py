@@ -1,29 +1,14 @@
+"""Building an enemy from its configuration."""
+
 from collections.abc import Sequence
 from dataclasses import replace
 
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.entities.enemies.configs import ENEMY_CONFIGS
 from src.entities.enemies.enemy import Enemy, PlayerReference
 from src.entities.enemies.schema import EnemyConfig
 from src.physics.spatial_hash import SpatialHash
-
-
-def is_enemy_type(name: str) -> bool:
-    """Check if an enemy config exists for the given type name.
-
-    Parameters
-    ----------
-    name : str
-        The enemy type name to check.
-
-    Returns
-    -------
-    bool
-        True if an enemy config exists for the given name.
-    """
-    return name in ENEMY_CONFIGS
 
 
 def create_enemy(
@@ -36,45 +21,44 @@ def create_enemy(
     spatial_hash: SpatialHash | None = None,
     reverse: bool | None = None,
 ) -> Enemy:
-    """Create an enemy from the shared enemy registry.
-
-    This is the official way to instantiate enemies. It uses the factory
-    pattern with data-driven configuration from ENEMY_CONFIGS.
+    """Create the enemy called ``name``.
 
     Parameters
     ----------
     name : str
-        The enemy type name (e.g., "goblin", "dummy", "slime").
+        The enemy type (``"goblin"``, ``"dummy"``...), shown in the debug card.
     pos : Sequence[float] | Vector2
-        Starting top-left position. Normalized to a tuple of floats
-        before being handed to :class:`Enemy`.
+        Starting top-left position, normalized to a tuple of floats.
     groups : Group | Sequence[Group]
         Sprite group(s) to add this enemy to.
     collision_sprites : Group
         Group of sprites that block movement.
     player_reference : PlayerReference | None
         Reference to the player entity for AI targeting.
+    config : EnemyConfig | None
+        The configuration to build from. A level passes the one from the
+        bundle it was given; without one, the shipped ``enemies.json`` entry
+        for ``name`` is used -- never a copy kept in code (audit C4).
     spatial_hash : SpatialHash | None
-        Shared collision grid covering ``collision_sprites``. Pass it here so
-        a runtime-spawned enemy is wired for O(1) neighbour lookups at birth,
-        the same way the level's own enemies are.
-
-    Returns
-    -------
-    Enemy
-        A new enemy instance configured according to the specified config.
+        Shared collision grid covering ``collision_sprites``, so a
+        runtime-spawned enemy is wired for O(1) neighbour lookups at birth.
+    reverse : bool | None
+        Authored patrol direction; ``None`` keeps the coin toss.
 
     Raises
     ------
     KeyError
-        If the enemy type name is not found in ENEMY_CONFIGS.
+        If no ``config`` is given and ``enemies.json`` has no ``name``.
     """
-    config = config if config is not None else ENEMY_CONFIGS[name]
-    spawn_pos = (float(pos[0]), float(pos[1]))
+    if config is None:
+        # Local: the data layer imports the enemy schema from this package.
+        from src.data.provider import shipped_gameplay_data
+
+        config = shipped_gameplay_data().enemies[name]
     if reverse is not None:
         config = replace(config, reverse=reverse)
     return Enemy(
-        pos=spawn_pos,
+        pos=(float(pos[0]), float(pos[1])),
         groups=groups,
         collision_sprites=collision_sprites,
         player_reference=player_reference,

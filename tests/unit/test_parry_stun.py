@@ -8,11 +8,14 @@ import pytest
 
 from src.core.fx import OrbitParticle
 from src.core.level.systems.combat_system import CombatSystem
+from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.types.goblin import GOBLIN_CONFIG
 from src.entities.player import Player
 from src.states.reaction_states import DIZZY_STATE
 from tests.unit.helpers import InputStub
+
+GOBLIN_CONFIG = shipped_gameplay_data().enemies["goblin"]
+SLIME_CONFIG = shipped_gameplay_data().enemies["slime"]
 
 
 def _player() -> Player:
@@ -121,8 +124,6 @@ def test_parry_increments_attacker_parries_taken() -> None:
 
 
 def test_slime_needs_three_parries() -> None:
-    from src.entities.enemies.types.slime import SLIME_CONFIG
-
     player = _player()
     player.state_machine.current_state_name = "guard"
     player.facing_right = True  # face the attacker
@@ -155,8 +156,6 @@ def test_slime_needs_three_parries() -> None:
 
 def test_entity_immune_to_dizzy() -> None:
     """Test an entity with no parry_stun_threshold (immune to dizzy)."""
-    from src.entities.enemies.types.goblin import GOBLIN_CONFIG
-
     player = _player()
     player.state_machine.current_state_name = "guard"
     player.facing_right = True  # face the attacker
@@ -201,8 +200,6 @@ def test_real_hit_resets_attacker_parries_taken() -> None:
 
 
 def test_chip_damage_does_not_reset_parries_taken() -> None:
-    from src.entities.enemies.types.slime import SLIME_CONFIG
-
     player = _player()
     player.state_machine.current_state_name = "guard"
     player.facing_right = True  # face the attacker
