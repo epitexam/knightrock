@@ -48,6 +48,7 @@ class TestFactoryPattern:
 
         assert isinstance(enemy, Enemy)
         assert enemy.config == ENEMY_CONFIGS["goblin"]
+        assert enemy.player is player_ref
 
     def test_create_enemy_stores_the_registry_type_name(self):
         """Test that the factory records the type for debug labels."""
@@ -153,31 +154,21 @@ class TestFactoryPattern:
         """Test that all enemy configs are proper dataclasses."""
         for config in ENEMY_CONFIGS.values():
             assert isinstance(config, EnemyConfig)
-            # Check that it has all required fields
-            assert hasattr(config, "size")
-            assert hasattr(config, "color")
-            assert hasattr(config, "health")
-            assert hasattr(config, "attacks")
-            assert hasattr(config, "chase_speed")
-            assert hasattr(config, "patrol_speed")
-            assert hasattr(config, "vision_range")
 
 
 class TestNoDirectSubclassUsage:
     """Test that Goblin and TrainingDummy are not used directly."""
 
-    def test_goblin_not_importable_from_enemies(self):
-        """Test that Goblin cannot be imported from enemies module."""
-        import importlib
+    def test_no_concrete_enemy_module_exists(self):
+        """The factory is the only way to build an enemy; no per-type module exists.
 
-        # These should NOT be available as direct subclasses.
-        with pytest.raises(ImportError):
-            importlib.import_module("src.entities.enemies.goblin")
-            raise ImportError("Goblin must not be importable as a class")
+        The first version raised ``ImportError`` itself inside ``pytest.raises``,
+        so it passed whether or not the modules existed.
+        """
+        import importlib.util
 
-        with pytest.raises(ImportError):
-            importlib.import_module("src.entities.enemies.training_dummy")
-            raise ImportError("TrainingDummy must not be importable as a class")
+        for module in ("src.entities.enemies.goblin", "src.entities.enemies.training_dummy"):
+            assert importlib.util.find_spec(module) is None, module
 
     def test_the_enemies_package_re_exports_nothing(self):
         """The factory is the only way in, and the package says so by staying empty.

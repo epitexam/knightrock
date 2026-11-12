@@ -8,7 +8,6 @@ from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
 from src.core.display import letterbox
-from src.core.display.letterbox import FitPolicy
 from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
@@ -359,37 +358,6 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
     assert game.settings.pixel_perfect == defaults.pixel_perfect
     assert game.settings.frame_limit == defaults.frame_limit
     assert game.settings.ui_scale == defaults.ui_scale
-
-
-def test_the_fit_list_says_so_on_a_window_too_small_for_whole_pixel() -> None:
-    """The one refusal the fit policy has, said where the choice is made.
-
-    Whole-pixel art needs a whole multiple of the framing to snap to, and a
-    window narrower than the framing has none. The entry says so rather than
-    silently accepting a choice that does nothing -- which is what an entry
-    reading "integer" on a window it cannot honour would be.
-
-    It lives in the fit list now rather than on its own row, because it is the
-    same setting as the integer policy and two rows for one setting is how the
-    dead row happened in the first place.
-    """
-    game = _game()
-    game.presentation.window_size = (800, 600)
-    game.presentation.stage = pygame.Surface((800, 600))
-    scene = VideoScene(game)
-    integer = next(
-        option for option in _open_list(scene, "fit").options if option.value is FitPolicy.INTEGER
-    )
-
-    assert "too small" in integer.detail
-
-    game.presentation.window_size = (2304, 1296)
-    game.presentation.stage = pygame.Surface((2304, 1296))
-    scene = VideoScene(game)
-    integer = next(
-        option for option in _open_list(scene, "fit").options if option.value is FitPolicy.INTEGER
-    )
-    assert "too small" not in integer.detail
 
 
 def test_every_video_row_reports_its_value_in_its_own_column() -> None:

@@ -37,12 +37,6 @@ class TestCombatComponentInitialization:
         assert isinstance(enemy.combat, CombatComponent)
         assert not isinstance(enemy.combat, NullCombatComponent)
 
-        # Combat component should be properly configured
-        assert hasattr(enemy.combat, "state")
-        assert hasattr(enemy.combat, "hitbox")
-        assert hasattr(enemy.combat, "combo")
-        assert hasattr(enemy.combat, "charging")
-
     def test_player_has_combat_component_not_null(self):
         """Test that Player has a real CombatComponent, not NullCombatComponent."""
         groups = Group()
@@ -62,12 +56,6 @@ class TestCombatComponentInitialization:
         assert isinstance(player.combat, CombatComponent)
         assert not isinstance(player.combat, NullCombatComponent)
 
-        # Combat component should be properly configured
-        assert hasattr(player.combat, "state")
-        assert hasattr(player.combat, "hitbox")
-        assert hasattr(player.combat, "combo")
-        assert hasattr(player.combat, "charging")
-
     def test_combat_component_has_attacks_loaded(self):
         """Test that combat component has attacks loaded from config."""
         groups = Group()
@@ -83,7 +71,6 @@ class TestCombatComponentInitialization:
         )
 
         # Combat component should have attacks loaded
-        assert hasattr(enemy.combat, "_attacks")
         # Goblin config has GOBLIN_ATTACKS
         assert len(enemy.combat._attacks) > 0
 
@@ -103,7 +90,6 @@ class TestCombatComponentInitialization:
         )
 
         # Combat component should have attacks loaded from PLAYER_ATTACKS
-        assert hasattr(player.combat, "_attacks")
         assert len(player.combat._attacks) > 0
 
 

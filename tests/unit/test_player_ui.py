@@ -10,6 +10,7 @@ from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.player_ui import PlayerUI
+from src.ui.styles import TEXT_CRIT, TEXT_OK
 from tests.fakes import combat_shape, player_shape
 
 
@@ -129,45 +130,6 @@ def test_draw_stats_panel_none_player(player_ui: PlayerUI) -> None:
     assert player_ui.draw_stats_panel(0, 0, None) == 0
 
 
-def test_draw_stats_panel_draws(player_ui: PlayerUI) -> None:
-    player = _make_full_player(combat=None)
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
-def test_draw_stats_panel_low_health(player_ui: PlayerUI) -> None:
-    player = _make_full_player(health=10.0, max_health=100.0, combat=None)
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
-def test_draw_stats_panel_with_combat(player_ui: PlayerUI) -> None:
-    player = _make_full_player(
-        health=80.0,
-        combat=SimpleNamespace(combo_count=3, combo_timer=0.5),
-    )
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
-def test_draw_stats_panel_without_combat(player_ui: PlayerUI) -> None:
-    player = _make_full_player(combat=None)
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
-def test_draw_stats_panel_shows_riposte_window(player_ui: PlayerUI) -> None:
-    player = _make_full_player(guard_riposte_timer=0.4, combat=None)
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
-def test_draw_stats_panel_shows_lockout(player_ui: PlayerUI) -> None:
-    player = _make_full_player(guard_lockout_timer=1.0, guard_posture=0.0, combat=None)
-    height = player_ui.draw_stats_panel(0, 0, player)
-    assert height > 0
-
-
 # --- the two panels are split by what a line is for -------------------------
 
 
@@ -252,8 +214,9 @@ class _RecordingRenderer:
         self.lines: list[str] = []
         self.interaction = SimpleNamespace(is_closed=lambda _panel_id: False)
 
-    def draw_panel(self, _x, _y, lines, **_kwargs) -> int:
+    def draw_panel(self, _x, _y, lines, **kwargs) -> int:
         self.lines = list(lines)
+        self.line_colors = dict(kwargs.get("line_colors") or {})
         return 100
 
 
@@ -357,3 +320,47 @@ def test_the_attack_in_progress_is_still_printed_somewhere() -> None:
     assert "air_rise" in text
     assert "p0" in text
     assert "active" in text
+
+
+# --- STATS: what reaches the renderer ----------------------------------------
+
+
+def _stats_panel(player) -> _RecordingRenderer:
+    renderer = _RecordingRenderer()
+    PlayerUI(renderer).draw_stats_panel(0, 0, player)
+    return renderer
+
+
+def test_stats_colours_the_hp_line_by_how_much_is_left() -> None:
+    healthy = _stats_panel(_make_full_player(health=100.0, max_health=100.0))
+    dying = _stats_panel(_make_full_player(health=10.0, max_health=100.0))
+
+    assert healthy.lines[0].startswith("HP")
+    assert healthy.line_colors[0] == TEXT_OK
+    assert dying.line_colors[0] == TEXT_CRIT
+
+
+def test_stats_prints_the_combo_the_combat_component_holds() -> None:
+    player = _make_full_player(combat=SimpleNamespace(combo_count=3, combo_timer=0.5))
+
+    combo = [line for line in _stats_panel(player).lines if line.startswith("Combo")]
+
+    assert len(combo) == 1
+    assert "x3" in combo[0]
+
+
+def test_stats_shows_the_riposte_window_only_while_it_is_open() -> None:
+    open_ = _stats_panel(_make_full_player(guard_riposte_timer=0.4))
+    closed = _stats_panel(_make_full_player(guard_riposte_timer=0.0))
+
+    riposte = [i for i, line in enumerate(open_.lines) if line.startswith("RIPOSTE")]
+    assert len(riposte) == 1
+    assert open_.line_colors[riposte[0]] == TEXT_OK
+    assert not any(line.startswith("RIPOSTE") for line in closed.lines)
+
+
+def test_stats_marks_the_guard_line_during_a_lockout() -> None:
+    panel = _stats_panel(_make_full_player(guard_lockout_timer=1.0, guard_posture=0.0))
+
+    assert panel.lines[1].startswith("Guard")
+    assert panel.line_colors[1] == TEXT_CRIT
