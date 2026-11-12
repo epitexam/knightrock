@@ -241,8 +241,8 @@ class ReactionComponent:
         # Cancel an active action before selecting knockback as the definitive
         # reaction. This avoids a simultaneous hurt/knockback state.
         owner.combat.on_hit(interrupt=True)
-        direction = compute_knockback_direction(
-            owner.hitbox.centerx, source_center_x, owner.facing_right
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
         )
         owner.state_machine.change_state(
             KNOCKBACK_STATE,

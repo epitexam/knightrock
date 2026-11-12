@@ -55,6 +55,10 @@ class ObjectData:
     image: pygame.Surface | None
     points: list[tuple[float, float]] | None
     properties: dict
+    flip_x: bool = False
+    flip_y: bool = False
+    """The tile object was mirrored in Tiled. PyTMX records the flags but hands
+    back the tile's image unflipped, so the builder applies them itself."""
 
 
 @dataclass
@@ -145,7 +149,7 @@ class LevelData:
             if isinstance(layer, pytmx.TiledTileLayer):
                 tile_layers[layer.name] = TileLayerData(name=layer.name, tiles=list(layer.tiles()))
             elif isinstance(layer, pytmx.TiledObjectGroup):
-                objects = [_object_from_tmx(obj) for obj in layer]
+                objects = [_object_from_tmx(obj, tmx_map) for obj in layer]
                 object_layers[layer.name] = ObjectLayerData(name=layer.name, objects=objects)
                 if layer.name == DATA_LAYER_NAME and objects:
                     config = _config_from_properties(objects[0].properties)
@@ -169,10 +173,26 @@ class LevelData:
         )
 
 
-def _object_from_tmx(obj: Any) -> ObjectData:
+def _gid_flips(tmx_map: Any, gid: int | None) -> tuple[bool, bool]:
+    """The (horizontal, vertical) mirror of a tile object's pytmx gid.
+
+    A mirrored tile object gets its own internal gid, registered with the
+    flags beside the tile's own: ``gidmap[tile] -> [(gid, flags), ...]``.
+    """
+    if not gid or tmx_map is None:
+        return False, False
+    tile = getattr(tmx_map, "tiledgidmap", {}).get(gid)
+    for internal, flags in getattr(tmx_map, "gidmap", {}).get(tile, ()):
+        if internal == gid:
+            return bool(flags.flipped_horizontally), bool(flags.flipped_vertically)
+    return False, False
+
+
+def _object_from_tmx(obj: Any, tmx_map: Any = None) -> ObjectData:
     """Convert a pytmx object to our ObjectData structure."""
     raw_points = getattr(obj, "points", None)
     points = [(float(px), float(py)) for px, py in raw_points] if raw_points else None
+    flip_x, flip_y = _gid_flips(tmx_map, getattr(obj, "gid", None))
     return ObjectData(
         name=obj.name or "",
         x=obj.x,
@@ -183,6 +203,8 @@ def _object_from_tmx(obj: Any) -> ObjectData:
         image=getattr(obj, "image", None),
         points=points,
         properties=dict(obj.properties or {}),
+        flip_x=flip_x,
+        flip_y=flip_y,
     )
 
 

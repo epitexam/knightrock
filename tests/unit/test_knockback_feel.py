@@ -191,3 +191,35 @@ def test_grounded_hits_ignore_juggle_scaling() -> None:
     )
 
     assert target.health == pytest.approx(90.0)
+
+
+def test_a_fixed_heavy_launch_goes_where_its_power_points() -> None:
+    """``fixed`` means world-space: a launch to the right goes right, whoever hit.
+
+    The plain push already honoured the mode; the heavy launch read the side the
+    source stood on instead, and flipped a fixed launch whose attacker stood on
+    the far side. No shipped attack uses ``fixed`` yet.
+    """
+    from pygame.sprite import Group
+
+    from src.combat.knockback import KnockbackConfig
+    from src.data.provider import shipped_gameplay_data
+    from src.entities.enemies.factory import create_enemy
+
+    goblin = create_enemy(
+        "goblin",
+        (100.0, 100.0),
+        Group(),
+        Group(),
+        None,
+        config=shipped_gameplay_data().enemies["goblin"],
+    )
+    goblin.on_surface["floor"] = True
+    source_on_the_right = goblin.hitbox.centerx + 50.0
+
+    goblin.receive_damage(
+        1.0, source_on_the_right, KnockbackConfig(power=(500.0, -100.0), mode="fixed")
+    )
+
+    assert goblin.state_machine.current_state_name == "knockback"
+    assert goblin.velocity.x > 0.0

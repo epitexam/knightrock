@@ -154,14 +154,18 @@ def test_a_present_that_does_not_block_still_gets_a_speed_limit(runtime: Game) -
     """A display ignoring the vsync flag must not let the loop run flat out.
 
     The ceiling is handed to the clock, so a frame that arrives in 0ms is
-    held to the 8ms floor rather than being allowed to run away.
+    held to it rather than being allowed to run away. Asserted on the rate the
+    clock is asked to hold, not on a wall-clock reading: the latter measured
+    whatever else the machine was doing, and failed under load.
     """
     runtime.settings = replace(runtime.settings, vsync=True)
-    runtime.clock = pygame.time.Clock()
+    clock = _FakeClock(elapsed=0)
+    runtime.clock = clock  # type: ignore[assignment]
 
     runtime._frame_delta()
 
-    assert runtime.clock.get_time() <= 1000 / game_module.DISPLAY_SAFETY_CEILING_FPS + 1
+    assert clock.slept == [max(game_module.DISPLAY_SAFETY_CEILING_FPS, runtime._frame_target())]
+    assert clock.slept[0] > 0, "a ceiling, not pygame's 'no limit'"
 
 
 def test_the_frame_delta_is_the_clock_delta(runtime: Game) -> None:

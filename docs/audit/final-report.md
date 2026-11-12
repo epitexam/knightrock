@@ -211,3 +211,51 @@ Par priorité :
   champ doit échouer, jamais être toléré par le code de production.
 - **Ne pas** introduire d'ECS, de bus d'évènements général ni de réorganisation
   des dossiers : rien dans l'audit ni dans cette étape ne l'a justifié.
+
+## 11. Dernier scan : bugs et performances (2026-11-12)
+
+Passage final demandé par le développeur, mené en lecture seule puis corrigé
+sur validation.
+
+### Bugs corrigés
+
+| # | Défaut | Correction |
+|---|---|---|
+| B1 | **15 pics retournés dans Tiled s'affichaient à l'envers** (pointe en haut, flottant sous un plafond) sur les niveaux 1 à 6 et `omni`. PyTMX enregistre le drapeau de retournement mais rend l'image non retournée, et l'animation des pics la remplaçait par des frames non retournées. Depuis l'ajustement des zones de dégâts, ces pics blessaient en plus du mauvais côté. | `ObjectData.flip_x` / `flip_y` lus dans la table de PyTMX ; l'image, l'animation et la zone de contact du piège suivent le retournement. Vérifié à l'image (niveau 3) et par sonde : sous les pointes, touché ; dans la moitié vide, non. |
+| B2 | La projection lourde ignorait le mode `fixed` du knockback (sens repris de la position de l'attaquant). Latent : aucun coup livré n'utilise `fixed`. | `handle_heavy_knockback` passe par `push_direction`, comme la poussée simple. Matrice des coups identique. |
+| B3 | `test_frame_pacing` mesurait l'horloge réelle et échouait parfois sous charge. | Le test vérifie la limite transmise à l'horloge, avec l'horloge factice du fichier. |
+
+Non corrigé, faible : après un changement de format d'affichage, les tuiles du
+niveau en cours ne sont pas reconverties (blits un peu plus lents, sans erreur).
+Se règlerait avec le pré-rendu des tuiles ci-dessous.
+
+### Performances mesurées
+
+Niveau 0, cible 1920×1080, CPU seul :
+
+| Entités | Tick (médiane / 99e) | Dessin (médiane / 99e) |
+|---|---|---|
+| 12 | 2,1 / 3,2 ms | 2,3 / 4,2 ms |
+| 24 | 3,3 / 5,0 ms | 2,6 / 4,2 ms |
+| 53 | 5,7 / 7,1 ms | 3,0 / 5,2 ms |
+
+Environ 9 ms sur un budget de 16,7 ms au pire scénario, coût linéaire
+(≈ 0,08 ms par entité), aucun goulot unique. **Aucune optimisation n'est
+nécessaire aujourd'hui.**
+
+Mémoire : aucune fuite. 12 000 ticks avec 40 vagues de gobelins créés puis tués :
+51 → 52 Mo, nombre d'objets Python constant, caches et tables internes de taille
+constante.
+
+### Pistes, à ouvrir seulement si les niveaux grossissent
+
+- **Voisinage calculé une fois par entité et par tick.** `get_nearby` est
+  appelé environ 2,4 fois par entité (mouvement, puis sondes d'IA `is_at_ledge`
+  et `find_landing_ahead`) ; garder le premier résultat pour le tick. Gain
+  estimé ~10 % du tick.
+- **Pré-rendu des calques de tuiles statiques** en surfaces par bloc, à partir
+  de `TileChunkIndex`, invalidé au changement d'échelle ou de format : environ
+  117 blits par frame deviendraient une poignée. Gain estimé 30 à 40 % du
+  dessin ; règle aussi le défaut de reconversion ci-dessus.
+- Secondaire : `sync_rects` (≈ 3,3 appels par entité et par tick) et environ
+  2 350 `getattr` par tick dans la résolution des collisions.

@@ -11,7 +11,13 @@ from pygame.sprite import Group
 
 from src.core.asset_library import shared_library
 from src.core.colors import Colors
-from src.core.hazards import OrbitingHazard, SpanHazard, art_bounds, build_hazard_animator
+from src.core.hazards import (
+    OrbitingHazard,
+    SpanHazard,
+    art_bounds,
+    build_hazard_animator,
+    mirrored,
+)
 from src.core.input.input_manager import InputManager
 from src.core.level import properties as props
 from src.core.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
@@ -256,6 +262,10 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     if surf is None:
         surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
         surf.fill(Colors.red)
+    elif obj.flip_x or obj.flip_y:
+        # Mirrored in Tiled (a spike hung from a ceiling): PyTMX gives the tile
+        # back unflipped, so it is turned here.
+        surf = pygame.transform.flip(surf, obj.flip_x, obj.flip_y)
     where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
     damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
@@ -265,9 +275,14 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     hazard = SpanHazard(
         (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
     )
-    # The spikes fill the bottom half of their tile: only they hurt, not the air
-    # above them.
-    frames = shared_library().frames(FLOOR_SPIKES_ART) if animator is not None else [surf]
+    hazard.flip_x, hazard.flip_y = obj.flip_x, obj.flip_y
+    # The spikes fill half of their tile -- the bottom half, or the top one for
+    # a mirrored ceiling spike: only they hurt, not the air beside them.
+    frames = (
+        mirrored(shared_library().frames(FLOOR_SPIKES_ART), obj.flip_x, obj.flip_y)
+        if animator is not None
+        else [surf]
+    )
     hazard.fit_contact(art_bounds(frames, hazard.rect.size))
     groups.hazard_sprites.add(hazard)
 

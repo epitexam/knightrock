@@ -9,15 +9,20 @@ C2 made the first contact land on its tick.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pygame
 import pytest
 
 from src.combat.frame_data import HitProperties
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.hazards import SpanHazard, art_bounds
+from src.core.level.level_data import ObjectData, _gid_flips
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 from src.core.level.systems.hazard_damage import HazardDamageSystem
+from src.core.level.world_builder import _build_static_hazard
 from src.core.paths import PROJECT_ROOT
+from src.core.sprite_groups import SpriteGroups
 from tests.fakes import BodyStub
 
 TILE = 64
@@ -158,3 +163,56 @@ def test_the_shipped_floor_spikes_hurt_through_their_bottom_half_only() -> None:
 
     assert area.top >= TILE / 2 - 1
     assert area.bottom == TILE
+
+
+# -- a spike mirrored in Tiled ------------------------------------------------
+
+
+def _spike_object(flip_y: bool) -> ObjectData:
+    return ObjectData(
+        name="floor_spike",
+        x=0.0,
+        y=0.0,
+        width=64.0,
+        height=64.0,
+        gid=85,
+        image=_bottom_half_art(),
+        points=None,
+        properties={},
+        flip_y=flip_y,
+    )
+
+
+def _built(obj: ObjectData) -> SpanHazard:
+    groups = SpriteGroups()
+    _build_static_hazard(obj, groups)
+    (hazard,) = groups.hazard_sprites
+    hazard.update(1 / 60)  # the animator, when the art is there, takes over the image
+    return hazard
+
+
+def test_the_flip_flags_of_a_tiled_object_are_read_from_pytmx() -> None:
+    """PyTMX gives a mirrored tile object its own gid, with the flags beside it."""
+    flags = SimpleNamespace(flipped_horizontally=False, flipped_vertically=True)
+    plain = SimpleNamespace(flipped_horizontally=0, flipped_vertically=0)
+    tmx = SimpleNamespace(tiledgidmap={84: 231, 85: 231}, gidmap={231: [(84, plain), (85, flags)]})
+
+    assert _gid_flips(tmx, 85) == (False, True)
+    assert _gid_flips(tmx, 84) == (False, False)
+    assert _gid_flips(tmx, None) == (False, False)
+
+
+def test_a_spike_mirrored_in_tiled_hangs_and_hurts_from_the_top() -> None:
+    """PyTMX hands the tile back unflipped; the builder turns it, art and contact."""
+    hazard = _built(_spike_object(flip_y=True))
+
+    assert hazard.image.get_bounding_rect(min_alpha=64).top == 0
+    assert hazard.contact_rect().top == hazard.rect.top
+    assert hazard.contact_rect().bottom <= hazard.rect.top + TILE / 2 + 1
+
+
+def test_an_unmirrored_spike_is_unchanged() -> None:
+    hazard = _built(_spike_object(flip_y=False))
+
+    assert hazard.contact_rect().bottom == hazard.rect.bottom
+    assert hazard.contact_rect().top >= hazard.rect.top + TILE / 2 - 1
