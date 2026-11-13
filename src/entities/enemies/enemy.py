@@ -174,6 +174,7 @@ class Enemy(Entity):
         self.attack_name = move_id(config.attack_name) if config.attack_name else None
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
+        self.weight = config.weight
 
         self.speed = self.patrol_speed
         self.floor_control = CombatSettings.ENEMY_FLOOR_CONTROL

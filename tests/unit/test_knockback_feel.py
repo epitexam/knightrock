@@ -130,7 +130,7 @@ def test_airborne_victim_steers_its_flight() -> None:
     assert entity.velocity.x <= 600.0 + CombatSettings.KNOCKBACK_DI_CAP
 
 
-def test_neutral_stick_leaves_flight_untouched() -> None:
+def test_neutral_stick_does_not_steer_the_flight() -> None:
     entity = SimpleNamespace(
         velocity=Vector2(600, 0),
         move_axis=0.0,
@@ -141,7 +141,8 @@ def test_neutral_stick_leaves_flight_untouched() -> None:
 
     state.update(1 / 60)
 
-    assert entity.velocity.x == pytest.approx(600.0)
+    # Only the air drag acts: a hundredth of the speed, never a gain.
+    assert 590.0 < entity.velocity.x < 600.0
 
 
 def test_enemy_drops_stale_axis_on_launch() -> None:

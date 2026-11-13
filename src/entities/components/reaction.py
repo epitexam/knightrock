@@ -145,6 +145,8 @@ class ReactionOwner(Protocol):
     stagger_timer: float
     super_armor: bool
     super_armor_count: int
+    #: Divides every knockback the owner takes; 1.0 is the reference fighter.
+    weight: float
     # Its ``reaction_age`` is the render-only freshness of the last reaction:
     # armed here, decayed in Entity.update and never snapshotted.
     render_hints: RenderHints
@@ -178,6 +180,22 @@ class ReactionComponent:
         self.status = ReactionStatus(kind=kind, magnitude=magnitude, direction=direction)
         self._owner.render_hints.reaction_age = ReactionMark.DURATION
 
+    def felt(self, knockback: KnockbackConfig) -> KnockbackConfig:
+        """The knockback as this owner takes it: the hit's, divided by its weight.
+
+        Applied here, before anything reads the power, so the one division
+        decides the speed of the push, how far it slides *and* whether it is
+        heavy enough to launch: a blow that sends a slime flying only shoves a
+        shell back.
+        """
+        weight = self._owner.weight
+        if weight == 1.0:
+            return knockback
+        return KnockbackConfig(
+            power=(knockback.power[0] / weight, knockback.power[1] / weight),
+            mode=knockback.mode,
+        )
+
     def apply_knockback(
         self,
         knockback: KnockbackConfig,
@@ -195,6 +213,7 @@ class ReactionComponent:
         if knockback.power == (0.0, 0.0):
             return
 
+        knockback = self.felt(knockback)
         owner = self._owner
         direction = push_direction(
             knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
@@ -233,6 +252,7 @@ class ReactionComponent:
             ``True`` when the heavy-knockback launch state was entered.
         """
         owner = self._owner
+        knockback = self.felt(knockback)
         kb_power_x, kb_power_y = knockback.power
         magnitude = Vector2(kb_power_x, kb_power_y).length()
         if magnitude < CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:

@@ -30,6 +30,9 @@ class EnemyConfig:
     pushable: bool = True
     super_armor: bool = False
     passive_friction: float = 10.0
+    # Divides every knockback this type takes: 1.0 is the goblin, above it a
+    # hit moves the enemy less and launches it later, below it more and sooner.
+    weight: float = 1.0
     # Per-type jump kit: only types with can_jump hop, and only while
     # chasing (wall ahead, player above). 0.0 height never jumps.
     can_jump: bool = False

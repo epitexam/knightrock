@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3474%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3501%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3474 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3501 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -461,12 +461,29 @@ Combat is frame-data driven: startup / active / recovery phases feed
 | Constant | Effect |
 |---|---|
 | `Combat.WALL_BOUNCE_FACTOR` | Mid-launch entities rebound off walls (red arrow in debug) instead of stopping dead. |
+| `Combat.GROUND_BOUNCE_MIN_SPEED` / `_FACTOR` / `_KEEP` | A launched fighter that lands faster than `MIN_SPEED` rebounds once, keeping `FACTOR` of its fall and `KEEP` of its run. `FACTOR = 0` turns it off. |
 | `Combat.KNOCKBACK_MAX_DURATION` | Anti-lock safety for pits. |
+| `Physics.REACTION_SLIDE_FRICTION` / `_SLIDE_DRAG` | How a hit fighter slides to a stop on the ground: a constant grip (px/s²) plus a drag (1/s). Shared by hurt, stagger and knockback, so a hit's `power` alone decides how far it sends its target. |
+| `Physics.REACTION_AIR_DRAG` | Light horizontal drag while a hit fighter is airborne; `0` keeps the launch speed constant. |
 | `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
 | `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
 | `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
 | `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
 | `CameraShake` | `MAX_PX`, `DECAY_PER_S`, `FREQUENCY` — the shake envelope itself. |
+
+Three things decide how far a hit sends its target, and nothing else does:
+
+- the hit's `knockback.power` in `attacks.json` — the speed it gives, in px/s;
+- the target's `weight` in `enemies.json` — every knockback it takes is divided
+  by it, *before* the launch threshold is read, so one blow launches a slime
+  (`0.8`), shoves a goblin (`1.0`) and barely moves a shell (`1.5`);
+- the shared friction above (`Physics.REACTION_*`), the same in hurt, stagger
+  and knockback.
+
+An enemy the last hit kills leaves the simulation on that tick, and a body in
+the FX plane (`CorpseParticle`, tuned by `fx.tuning.Corpse`) carries the hit on:
+thrown the way the blow pushed, tumbling, fading. Render-only — it collides with
+nothing and no snapshot or golden sees it.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/states/reaction_states.py` fires for any entity whose `move_axis` is
@@ -744,7 +761,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3474 tests · 94 % instruction coverage · 86 % branch
+> **Current baseline:** 3501 tests · 94 % instruction coverage · 86 % branch
 > coverage · Ruff clean · mypy clean (190 files across `src main.py tools`;
 > `mypy src` alone is 183).[^coverage]
 

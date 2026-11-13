@@ -23,6 +23,7 @@ from pygame.math import Vector2
 
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.particles import (
+    CorpseParticle,
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
@@ -40,6 +41,7 @@ from src.core.fx.particles import (
     puff_variant,
 )
 from src.core.fx.tuning import (
+    Corpse,
     DashDust,
     Dust,
     DustGrain,
@@ -70,6 +72,7 @@ FX_FAMILY_BUDGETS: dict[str, int] = {
     "shield_arc": 4,
     "shatter_arc": 4,
     "sweat": 6,
+    "corpse": 6,
 }
 """Per-family caps, on top of :data:`MAX_FX_SPRITES`.
 
@@ -743,6 +746,36 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
         fx_group.add(drop)
         drops.append(drop)
     return drops
+
+
+def spawn_corpse(fx_group: pygame.sprite.Group, entity: Any) -> CorpseParticle | None:
+    """Throw the body of a fighter that just died, the way its last hit pushed it.
+
+    Called while the fighter still exists, on the tick it is reaped: its
+    velocity is the killing hit's knockback, already divided by its weight,
+    and its image is the frame it died on. A fighter that was standing gives
+    the body a floor to rebound from; one killed in the air has none, and the
+    body simply falls out of its fade.
+
+    With no push to speak of -- a hazard, a jab -- the body still leaves:
+    backwards, off the way the fighter faced.
+    """
+    image = getattr(entity, "image", None)
+    rect = getattr(entity, "rect", None)
+    if image is None or rect is None or not _has_room(fx_group, "corpse"):
+        return None
+    push = Vector2(entity.velocity) * Corpse.BOOST
+    side = math.copysign(1.0, push.x) if push.x else -facing_side(entity)
+    velocity = (side * max(abs(push.x), Corpse.MIN_KICK), min(push.y, Corpse.MIN_POP))
+    grounded = bool(entity.on_surface.get("floor", False))
+    corpse = CorpseParticle(
+        image,
+        rect.center,
+        velocity,
+        ground_y=float(entity.hitbox.bottom) if grounded else None,
+    )
+    fx_group.add(corpse)
+    return corpse
 
 
 def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:

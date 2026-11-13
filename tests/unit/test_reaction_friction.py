@@ -83,15 +83,17 @@ def test_enemy_knockback_recovers_under_one_second() -> None:
     assert frames <= 60
 
 
-def test_enemy_knockback_uses_central_friction_constant() -> None:
-    """Friction must come from settings, not a magic number."""
+def test_reactions_take_their_friction_from_settings() -> None:
+    """One model, tuned in one place: no state carries a rate of its own."""
     import inspect
 
-    source = inspect.getsource(EnemyKnockbackState.__init__)
-    assert "Physics.KNOCKBACK_FRICTION" not in source  # inherited default
-    reaction_source = inspect.getsource(KnockbackState.__init__)
-    assert "Physics.KNOCKBACK_FRICTION" in reaction_source
-    assert "8.0 * delta_time" not in reaction_source
+    from src.states import reaction_states
+
+    source = inspect.getsource(reaction_states.apply_reaction_drag)
+    assert "Physics.REACTION_SLIDE_FRICTION" in source
+    assert "Physics.REACTION_AIR_DRAG" in source
+    for state in (reaction_states.HurtState, reaction_states.StaggerState, KnockbackState):
+        assert "friction" not in inspect.signature(state.__init__).parameters
 
 
 def test_player_knockback_recovers_through_hurt_when_still_hurt() -> None:

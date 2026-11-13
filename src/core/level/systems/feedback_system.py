@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from src.core.fx import (
+    spawn_corpse,
     spawn_dash_dust,
     spawn_dash_grains,
     spawn_dizzy_stars,
@@ -171,6 +172,15 @@ class FeedbackSystem:
         if player.dash_started_this_frame:
             player.dash_started_this_frame = False
             camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
+
+    def before_removal(self, entity: Entity) -> None:
+        """Leave a body behind for a fighter about to be reaped.
+
+        The third moment of the tick this system hears about, and the last
+        one at which the fighter can still be read: its image, where it
+        stood, and the push of the hit that killed it.
+        """
+        spawn_corpse(self.groups.fx_sprites, entity)
 
     def _spawn_movement_fx(self, delta_time: float) -> None:
         """Turn movement and status into render-only FX.

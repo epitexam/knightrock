@@ -268,4 +268,6 @@ class GameplayLoop:
     ) -> None:
         for entity in tuple(entity_sprites):
             if entity.is_dead and entity is not player:
+                if self.feedback_system is not None:
+                    self.feedback_system.before_removal(entity)
                 entity.kill()

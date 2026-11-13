@@ -226,7 +226,11 @@ PHYSICS_DIGEST = "e84b65bae71fbf106e8adcc9d42bc86d6c5a382a5c571f9a544cfda825ead7
 # RIDE re-captured again for the combat retune (2026-11-12, docs/audit/
 # combat-dynamism.md): the goblin's claw now has a 16-frame startup and a
 # 16-frame recovery, and hit-stop starts from 30ms instead of 50ms.
-RIDE_DIGEST = "521221f63dc6fdf131c86737a37f8ec4277cf7ffb5ef9bd3ca6ca3b5bb5ea627"
+# RIDE re-captured for the knockback rework (2026-11-13): the push of a hit
+# now decays the same way in hurt, stagger and knockback (a ground slide that
+# stops, a light air drag) instead of one exponential rate per state. PHYSICS
+# and RESPAWN did not move.
+RIDE_DIGEST = "99334f167522c64f7695b84c59f1a4011b8098b52150cffdeafd3f1932556dc8"
 RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
 
 

@@ -299,6 +299,9 @@ class Entity(Sprite):
         self.fall_drag_coefficient: float = Physics.FALL_DRAG_COEFFICIENT
         # Gravity multiplier while juggled; fast fall from the down action.
         self.gravity_scale: float = 1.0
+        # How much a hit moves this fighter: every knockback it takes is
+        # divided by it (``ReactionComponent``). Tuning, set from the config.
+        self.weight: float = 1.0
         self.fast_fall: bool = False
         # Physics robustness: the bounded resolver flags a crush, and the
         # pre-carry backup lets it be reverted.
@@ -1074,6 +1077,27 @@ class Entity(Sprite):
             if self.stagger_timer > 0.0 or self.combat.is_hurt:
                 self.otg_timer = CombatSettings.OTG_INVULN_DURATION
 
+    def _bounce_off_the_ground(self, fall_speed: float) -> None:
+        """Rebound a launched fighter that hit the floor hard, once.
+
+        The vertical counterpart of the wall bounce, and only for a fighter
+        flying in its knockback state: a jump, a hop or a light pop lands as
+        it always did. Decided here, on the landing edge, rather than in the
+        collision pass, because a landing reaches the floor three ways there
+        (a resolved overlap, a shallow one, the ground snap) and only this
+        edge sees all of them. The floor flag stays set for this tick; the
+        reaction states read ``velocity.y`` with it, so the rising fighter is
+        not rubbed against the ground it is leaving.
+        """
+        if (
+            CombatSettings.GROUND_BOUNCE_FACTOR <= 0.0
+            or fall_speed < CombatSettings.GROUND_BOUNCE_MIN_SPEED
+            or self.state_machine.current_state_name != state_names.KNOCKBACK
+        ):
+            return
+        self.velocity.y = -fall_speed * CombatSettings.GROUND_BOUNCE_FACTOR
+        self.velocity.x *= CombatSettings.GROUND_BOUNCE_KEEP
+
     def _pre_update(self, delta_time: float) -> None:
         """Hook called at the beginning of the update loop, before combat and physics."""
         pass
@@ -1139,7 +1163,10 @@ class Entity(Sprite):
         now_grounded = bool(self.on_surface.get("floor", False))
         # Landing edge with the pre-move fall speed: hard landings become
         # dust puffs in PhysicsSystem; anything else zeroes the hint.
-        self.render_hints.landed_impact = fall_speed if now_grounded and not was_grounded else 0.0
+        landed = now_grounded and not was_grounded
+        self.render_hints.landed_impact = fall_speed if landed else 0.0
+        if landed:
+            self._bounce_off_the_ground(fall_speed)
         self._tick_juggle(delta_time, was_grounded)
         self.combat.sync_attack_box()
         self._post_update(delta_time)

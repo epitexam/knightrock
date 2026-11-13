@@ -24,6 +24,7 @@ def _narrow_owner(**overrides) -> SimpleNamespace:
         "stagger_timer": 0.0,
         "super_armor": False,
         "super_armor_count": 0,
+        "weight": 1.0,
         "render_hints": RenderHints(),
         "combat": SimpleNamespace(
             is_hurt=False,

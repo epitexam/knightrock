@@ -1269,3 +1269,36 @@ class Sweat:
     CROWN = (2.0, 7.0)
     TEMPLE = (0.15, 0.5)
     TINT = (0.0, 0.25)
+
+
+class Corpse:
+    """The body of a fighter the last hit killed, thrown by that hit.
+
+    A fighter that dies leaves the simulation on the tick it dies, which is
+    what the rules want and was also everything the screen showed: the
+    strongest blow of the fight was the only one whose target did not move.
+    The body is a particle, so it costs the simulation nothing -- it collides
+    with nothing, is never snapshotted, and no golden hashes it.
+
+    It leaves with the velocity the killing hit gave the fighter, times
+    ``BOOST``, and never slower than ``MIN_KICK`` sideways and ``MIN_POP``
+    upward, so a kill by a jab still reads as a kill. It falls under
+    ``GRAVITY``, tumbles ``SPIN`` degrees a second in ``SPIN_STEP`` notches
+    (whole notches: a continuous rotation of pixel art shimmers), rebounds
+    off the height its feet were at with ``BOUNCE`` of its fall and
+    ``GROUND_KEEP`` of its run, and is fully drawn until ``FADE_FROM`` of its
+    life, then steps out.
+    """
+
+    TTL = 0.7
+    GRAVITY = 1500.0
+    DRAG = 0.6
+    BOOST = 1.25
+    MIN_KICK = 180.0
+    MIN_POP = -260.0
+    SPIN = 540.0
+    SPIN_STEP = 30
+    BOUNCE = 0.3
+    GROUND_KEEP = 0.6
+    FADE_FROM = 0.45
+    ALPHA_STEPS = 4

@@ -39,6 +39,17 @@ def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
     return mapping[key]
 
 
+def _read_weight(raw: Any, where: str) -> float:
+    """A knockback divisor: a number above zero (zero would launch to infinity)."""
+    try:
+        weight = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: 'weight' must be a number, got {raw!r}") from exc
+    if not weight > 0.0:
+        raise GameplayDataError(f"{where}: 'weight' must be above 0, got {raw!r}")
+    return weight
+
+
 def _read_animations(raw: Any, where: str) -> dict[str, str]:
     if raw is None:
         return {}
@@ -100,6 +111,7 @@ def read_enemy_config(
             pushable=bool(raw.get("pushable", True)),
             super_armor=bool(raw.get("super_armor", False)),
             passive_friction=float(raw.get("passive_friction", 10.0)),
+            weight=_read_weight(raw.get("weight", 1.0), where),
             can_jump=bool(raw.get("can_jump", False)),
             jump_height=float(raw.get("jump_height", 500.0)),
             jump_cooldown=float(raw.get("jump_cooldown", 1.0)),
@@ -178,6 +190,7 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "pushable": config.pushable,
         "super_armor": config.super_armor,
         "passive_friction": config.passive_friction,
+        "weight": config.weight,
         "can_jump": config.can_jump,
         "jump_height": config.jump_height,
         "jump_cooldown": config.jump_cooldown,

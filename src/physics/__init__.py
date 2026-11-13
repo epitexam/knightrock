@@ -2,7 +2,7 @@
 
 The physics layer is a real aggregation point -- eight call sites import from
 this package rather than from a leaf module -- so it keeps re-exporting. The
-set is the eight names below and nothing else: the other twelve it used to
+set is the nine names below and nothing else: the other twelve it used to
 carry (``EntityGrid``, ``overlapping_pairs``, ``apply_entity_gravity``,
 ``apply_jump_cut``, ``update_moving_platform``, ``update_contact_state``,
 ``hitbox_collide``, ``get_nearby_sprites`` and the spatial-hash types) are
@@ -17,12 +17,13 @@ from .movement import (
     resolve_jump,
 )
 from .spatial_hash import SpatialHash
-from .velocity import apply_velocity_friction, lerp_velocity
+from .velocity import apply_slide_friction, apply_velocity_friction, lerp_velocity
 
 __all__ = [
     "SpatialHash",
     "apply_horizontal_movement",
     "apply_moving_platform",
+    "apply_slide_friction",
     "apply_velocity_friction",
     "lerp_velocity",
     "move_entity",

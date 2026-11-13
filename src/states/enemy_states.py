@@ -397,8 +397,8 @@ class EnemyChargeState(State["Enemy"]):
 class EnemyHurtState(HurtState["Enemy"]):
     """Hurt reaction: return to idle when the hurt timer clears.
 
-    Shares the generic :class:`HurtState` logic; enemies hold no
-    knockback impulse and no friction on hurt.
+    Shares the generic :class:`HurtState` logic, the slide of the push
+    included; the push itself was applied by ``ReactionComponent``.
     """
 
     def __init__(self, entity: Enemy):

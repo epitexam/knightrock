@@ -42,6 +42,7 @@ from src.core.fx.draw import (
     streak_points,
 )
 from src.core.fx.tuning import (
+    Corpse,
     DashDust,
     Dust,
     DustGrain,
@@ -778,6 +779,68 @@ class SweatParticle(FxParticle):
             max(1.0, radius / 3.0),
         )
         return surface
+
+
+class CorpseParticle(FxParticle):
+    family: ClassVar[str] = "corpse"
+
+    """The body of a fighter killed this tick, thrown by the hit that did it.
+
+    The one particle that is handed its pixels instead of painting them: it is
+    the fighter's own last frame, so what flies off is recognisably what was
+    standing there. See :class:`Corpse` for the motion.
+
+    The tumble is a ladder of rotations built on demand and kept, one per
+    notch, because a body visits a dozen notches at most and most of them
+    twice.
+    """
+
+    gravity: ClassVar[float] = Corpse.GRAVITY
+    drag: ClassVar[float] = Corpse.DRAG
+    alpha_steps: ClassVar[int] = Corpse.ALPHA_STEPS
+
+    def __init__(
+        self,
+        image: pygame.Surface,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        ground_y: float | None = None,
+    ) -> None:
+        self._body = image.copy()
+        self._turns: dict[int, pygame.Surface] = {0: self._body}
+        self._angle = 0.0
+        self._half_height = image.get_height() / 2.0
+        self.ground_y = ground_y
+        super().__init__(pos, Corpse.TTL)
+        self.velocity = Vector2(velocity)
+        self._spin = math.copysign(Corpse.SPIN, self.velocity.x) if self.velocity.x else 0.0
+
+    def _paint(self) -> pygame.Surface:
+        return self._body
+
+    def _integrate(self, delta_time: float) -> None:
+        super()._integrate(delta_time)
+        feet = self.pos.y + self._half_height
+        if self.ground_y is not None and feet >= self.ground_y and self.velocity.y > 0.0:
+            self.pos.y = self.ground_y - self._half_height
+            self.velocity.y = -self.velocity.y * Corpse.BOUNCE
+            self.velocity.x *= Corpse.GROUND_KEEP
+            self._spin *= Corpse.GROUND_KEEP
+        self._angle += self._spin * delta_time
+        notch = int(self._angle // Corpse.SPIN_STEP) * Corpse.SPIN_STEP % 360
+        turned = self._turns.get(notch)
+        if turned is None:
+            # Clockwise for a body thrown to the right: pygame turns the other way.
+            turned = pygame.transform.rotate(self._body, -notch)
+            self._turns[notch] = turned
+        self.image = turned
+
+    def _fade(self) -> None:
+        if self.life <= Corpse.FADE_FROM:
+            self.image.set_alpha(255)
+            return
+        gone = (self.life - Corpse.FADE_FROM) / (1.0 - Corpse.FADE_FROM)
+        self.image.set_alpha(life_alpha(gone, 0.0, self.alpha_steps))
 
 
 def _shade(color: Color, amount: float) -> Color:

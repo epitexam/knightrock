@@ -98,9 +98,21 @@ class Physics:
     FALL_DRAG_COEFFICIENT = 0.12
     MAX_SLIDE_SPEED = 80.0
 
-    HURT_FRICTION = 5.0
-    KNOCKBACK_FRICTION = 8.0
-    STAGGER_FRICTION = 8.0
+    # How a fighter who was hit loses the speed the hit gave it. One model for
+    # the three reactions (hurt, stagger, knockback), so a shove of 390 px/s
+    # and a launch of 410 px/s travel alike; they used to have a rate each, and
+    # an enemy's hurt and stagger had none at all -- it glided at full speed
+    # for as long as the stun lasted, then stopped dead.
+    #
+    # On the ground: a constant grip (px/s^2) plus a drag (1/s). The grip is
+    # what stops the slide, cleanly; the drag bites first on the hard hits.
+    # 240 px/s slides 24 px in 0.24 s, 550 slides 80 px in 0.39 s, 900 slides
+    # 152 px in 0.49 s.
+    REACTION_SLIDE_FRICTION = 600.0
+    REACTION_SLIDE_DRAG = 4.0
+    # In the air: a light horizontal drag (1/s), so a launch falls steeper than
+    # it rose instead of drawing a triangle. 0.0 = constant horizontal speed.
+    REACTION_AIR_DRAG = 0.6
     DASH_AIR_CONTROL = 3000.0
 
 
@@ -125,6 +137,14 @@ class Combat:
     # Wall bounce: launched entities rebound instead of stopping dead.
     # 0.0 = legacy full stop.
     WALL_BOUNCE_FACTOR = 0.4
+    # Ground bounce: a launched fighter that comes down faster than MIN_SPEED
+    # rebounds once instead of sticking to the floor like a dart. It keeps
+    # FACTOR of its fall speed, upward, and KEEP of its horizontal speed --
+    # the floor takes the rest. One bounce by construction: FACTOR * the
+    # terminal fall speed is below MIN_SPEED. FACTOR 0.0 = no bounce.
+    GROUND_BOUNCE_MIN_SPEED = 450.0
+    GROUND_BOUNCE_FACTOR = 0.25
+    GROUND_BOUNCE_KEEP = 0.75
     # Extra hit-stop per knockback magnitude unit (px/s).
     HITSTOP_KNOCKBACK_FACTOR = 0.0002
     # Directional influence while airborne in knockback (hold to steer).

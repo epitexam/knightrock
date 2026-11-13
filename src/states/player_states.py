@@ -388,7 +388,6 @@ class PlayerHurtState(HurtState["Player"]):
         super().__init__(
             entity,
             exit_resolver=self._hurt_exit,
-            friction=Physics.HURT_FRICTION,
             tags=["hurt", "invincible"],
             on_enter=self._hurt_enter,
         )
@@ -513,7 +512,6 @@ class PlayerStaggerState(StaggerState["Player"]):
         super().__init__(
             entity,
             exit_resolver=lambda: player_ground_return(self.entity),
-            friction=Physics.STAGGER_FRICTION,
             tags=["stagger", "busy"],
         )
 
