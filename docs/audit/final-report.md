@@ -309,3 +309,23 @@ Les sept fichiers de `notes/` ont été relus un par un avant d'être supprimés
   the frame moved 43 ticks into the respawn window »), puis il est passé 15 fois
   de suite, seul et dans la suite complète. Le test cadence le jeu sur le temps
   réel (`Game.step`). La cause n'est pas identifiée.
+
+## 13. Suite de la dette (2026-11-14)
+
+Reprise du §9 et du §12, à la demande du développeur (« tout, sauf les sons et
+les assets »).
+
+| Point | État | Détail |
+|---|---|---|
+| P2 — Prose | **Fait pour `core/fx/tuning.py`** | 1 304 → 592 lignes ; AST du code identique (docstrings exclues). L'historique des réglages est retiré, le pourquoi reste. Les autres fichiers restent à reprendre au fil des modifications. |
+| P2 — `getattr` | **229 → 186** | Dangers (protocole `Hazard`, doublure `HazardStub`), spawners FX (protocoles `FxBody` / `FxSubject`), rollback du niveau, vérification de géométrie, combat. Restent surtout l'overlay de debug, les évènements pygame et la résolution des collisions. |
+| P3 — `GameplayLoop` | **Fait** | Tous les systèmes sont des arguments obligatoires ; le cœur de combat seul est `CombatLoop`. Les tests de « câblage invalide » sont remplacés par un test qui refuse la construction. |
+| P3 — Interpolation (D5) | **Fait** | Les combattants sont dessinés entre les deux derniers ticks, avec le même `alpha` que la caméra ; un déplacement de plus de `Interpolation.MAX_STEP_PX` est une téléportation. Les barres de vie suivent. Coût mesuré : +0,1 à +0,2 ms de dessin à 52 entités. Reste à observer à 120/144 Hz. |
+| P3 — Direction de la projection lourde | Fait (§11, B2) | — |
+| P3 / B4 — Tuiles non reconverties | **Fait** | `Level.reconvert_tiles`, appelé quand la scène reçoit une nouvelle cible de rendu. |
+| Voisinage une fois par tick | **Fait autrement** | La grille spatiale garde le résultat d'une requête par plage de cellules jusqu'à sa prochaine modification. Tick à 51 entités : 5,81 → 5,51 ms (moyenne de trois mesures). |
+| Pré-rendu des tuiles | **Non** | À densité fractionnaire, une tuile pré-rendue dans un bloc se place à ±1 px de sa place actuelle par rapport aux personnages. Le dessin coûte ~2 ms : le gain ne justifie pas ce changement d'image sans décision. |
+| Objets `water` | Non | Touche aux cartes (assets). |
+| Pas de `draw_arc_stroke` | Non | Gain estimé à 7 ms par session. |
+| Limite d'images et vsync | Sans objet | Ne se pose que si le vsync devient un choix de taux. |
+| Test instable `test_death_is_a_still_picture` | **Non reproduit** | 15 exécutions, 24 sous charge (8 en parallèle) et 30 graines forcées pour les ennemis : toutes vertes. Cause non identifiée. À noter : `Entity` crée son générateur aléatoire sans graine, donc deux parties ne sont pas identiques ; ce n'est pas la cause ici (vérifié). |

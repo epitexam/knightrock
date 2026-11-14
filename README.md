@@ -133,10 +133,12 @@ doing (`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
 | Heavy in the air | `air_rise` |
 | Down + heavy in the air | `air_sweep` (dive) |
 | Light or heavy just after a parry | `riposte` (fast, unblockable) |
+| Jump once an attack has hit | cancels it into the jump, to follow a launch up |
 
 A link of a chain starts as soon as the previous one has hit, and a press made a
 little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
-can be. A settings file that still binds the old third and fourth attack
+can be. Every `Combat.COMBO_DASH_REFILL_HITS` hits of one combo give a dash
+charge back, and a hit landed out of a dash refunds that dash. A settings file that still binds the old third and fourth attack
 buttons is read with those two dropped.
 
 ## In-game options
@@ -415,6 +417,12 @@ Source: `docs/audit/final-report.md`, §12.
   narrowed to a handful of chunks before it gets there.
 - Every frame is a complete repaint of the target, so a stale pixel is not
   possible rather than merely unlikely.
+- A frame drawn between two ticks blends the camera *and* the fighters by the
+  same `alpha`: each fighter is drawn between where the last tick began and
+  where it ended (`RenderHints.previous_center`, written at the top of every
+  tick, frozen ones included). A move longer than `Interpolation.MAX_STEP_PX`
+  is a teleport and is drawn where it lands. Health bars follow the drawn
+  fighter. `Interpolation.ENABLED = False` turns it off.
 
 <details>
 <summary><b>Why the rounding rule is asymmetric</b></summary>
@@ -468,7 +476,9 @@ Combat is frame-data driven: startup / active / recovery phases feed
 | `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
 | `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
 | `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
+| `Combat.KILL_HITSTOP` | The least a killing blow freezes the world. A hit's own `hit_stop` in `attacks.json` replaces the formula (the light chain's finisher uses it). |
 | `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
+| `CameraShake.HIT_TRAUMA` / `HIT_DIV` / `KILL_TRAUMA` | Every landed hit shakes a little, a kill a little more; the strongest of the tick wins. |
 | `CameraShake` | `MAX_PX`, `DECAY_PER_S`, `FREQUENCY` — the shake envelope itself. |
 
 Three things decide how far a hit sends its target, and nothing else does:
@@ -480,10 +490,23 @@ Three things decide how far a hit sends its target, and nothing else does:
 - the shared friction above (`Physics.REACTION_*`), the same in hurt, stagger
   and knockback.
 
+A hit marked `flinch` in `attacks.json` does not push a grounded target
+sideways: the light chain's links stun without sending the target out of reach.
+An airborne target is pushed as usual, so a juggle still carries.
+
 An enemy the last hit kills leaves the simulation on that tick, and a body in
 the FX plane (`CorpseParticle`, tuned by `fx.tuning.Corpse`) carries the hit on:
 thrown the way the blow pushed, tumbling, fading. Render-only — it collides with
 nothing and no snapshot or golden sees it.
+
+**Enemies choose and take turns.** An enemy type lists its `moves` in
+`enemies.json` -- an attack, the range it is thrown from and a weight. The chase
+picks one on entry (from the enemy's own random stream, so a rollback replays the
+choice) and closes in until it is in range. No more than `AI.MAX_ATTACKERS`
+enemies attack the player at once: the others wait at striking distance, which
+is counted from the roster's states each time and stored nowhere. The goblin and
+the tooth add a long low claw, the slime a low splash; a low attack is blocked
+crouching or jumped.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/states/reaction_states.py` fires for any entity whose `move_axis` is
@@ -627,7 +650,7 @@ are reviewable in a pull request. The frozen dataclasses stay the runtime model.
 | File | Contents |
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
-| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them. |
+| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them; `moves` lists the attacks the AI chooses between. |
 | `player.json` | Player overrides plus the name of the attack set to use. |
 | `levels.json` | Level id to TMX path mapping. |
 
@@ -688,7 +711,7 @@ docs/              Audit reports, measurements, open points, design proposals
 | Module | Owns |
 |---|---|
 | `src/application/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
-| `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. Each system stays independently testable. |
+| `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. `GameplayLoop` requires every stage, so a loop that exists can run a tick; `CombatLoop` is the combat core alone, for tests. |
 | `src/core/events.py` | A synchronous, strictly ordered event bus with two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`, `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no reference to the application) and interface feedback (`UiFeedback`, emitted by the input dispatcher from what a screen reports). Subscribers must never mutate the simulation. |
 | `src/core/audio.py` | The only module that touches `pygame.mixer`, and it is a **consumer**: it never asks who did something and imports neither the input router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole policy — one effect, one cue — and `attach(bus)` subscribes to the facts it answers. It loads each sound once, caches it, applies the cue's category volume and never raises: no sound card, no asset and an undecodable file all end with a warning and a silent cue, which is also the CI path. |
 | `src/core/rendering/overlay.py` | The `WorldOverlay` port. `UIManager` implements it and `Game.world_overlay` builds it once. |

@@ -386,3 +386,53 @@ C'est le combat qui joue, pas une chaîne qui rate.
 
 **À essayer à la manette :** la chaîne léger ×3 sur un gobelin ; léger, lourd
 (lanceur) ; dash puis léger ; parade puis riposte ; bas + lourd en l'air.
+
+## 10. Étape 3 réalisée : retour, ennemis, récompenses (2026-11-14)
+
+Demande du développeur : tout le reste de l'audit, sauf les sons et ce qui
+touche aux assets. Une étincelle d'impact et une étoile de préavis au-dessus
+des ennemis ont été essayées puis **retirées** à la demande du développeur
+(« c'est assez moche ») : aucun effet visuel nouveau n'est livré.
+
+### Ce qui change en jeu
+
+| Axe | Changement | Où |
+|---|---|---|
+| 2 | **Coups « flinch »** : le léger, `twin_fangs` et la frappe accroupie ne repoussent plus une cible au sol (ni un joueur qui garde) ; une cible en l'air est poussée comme avant | `flinch` dans `attacks.json`, `HitResolver` |
+| 3 | **Secousse à chaque coup porté**, plus forte sur un coup fatal ; la forte secousse des coups lourds reste | `CameraShake.HIT_*`, `FeedbackSystem.after_combat` |
+| 3 | **Hit-stop par coup** : un coup peut fixer le sien (`hit_stop`, 0,16 s sur `sweeping_arc`) ; un coup fatal gèle au moins `Combat.KILL_HITSTOP` (0,1 s) | `ContactSystem._hit_stop` |
+| 4 | **Deux attaques par type** : `claw_reach` (griffe longue et basse) pour le gobelin et la dent, `slime_splash` (éclaboussure basse) pour le slime ; choisies à l'entrée en poursuite selon un poids | `moves` dans `enemies.json`, `Enemy.plan_move` |
+| 4 | **Jetons d'attaque** : deux ennemis au plus attaquent le joueur à la fois, les autres attendent à portée | `AI.MAX_ATTACKERS`, `Enemy.attack_slot_free` |
+| 5 | **Saut qui annule une attaque qui a touché** | `PlayerAttackState._jump_cancel` |
+| 6 | **Combo récompensé** : tous les 4 coups d'un combo rendent une charge de dash | `Combat.COMBO_DASH_REFILL_HITS`, `Player.on_hit_confirmed` |
+
+Les attaques basses se bloquent en garde accroupie ou s'évitent en sautant ;
+une parade debout ne les arrête pas.
+
+### Déjà en place, vérifié
+
+Les dégâts de contact pendant le dash : le dash est invincible, et une entité
+invincible ne produit ni ne reçoit de contact. Un test le fixe
+(`test_dashing_through_an_enemy_costs_the_player_nothing`).
+
+### Non fait
+
+- Sons de combat, animation par attaque : demandent des assets.
+- Signal visuel de préavis : essayé, retiré. Le préavis reste porté par la
+  durée du startup (267 à 400 ms).
+
+### Mesures (`tests/benchmarks/combat_feel.py`)
+
+| Mesure | Étape 2 | Étape 3 |
+|---|---|---|
+| Coups légers portés par seconde (cible passive) | 3,9 | 3,8 |
+| Part des coups portés (cible passive) | 97 % | 100 % |
+| Temps pour tuer : gobelin | 0,95 s | 0,87 à 0,95 s (selon le tirage de ses attaques) |
+| slime | 1,07 s | **0,87 s** |
+| dent | 2,45 s | **1,17 s** |
+| coquille | 2,12 s | 2,33 s |
+| Part du temps en hit-stop en martelant | 29 % | 35 à 41 % |
+
+La matrice des issues de coups change sur trois points seulement : le hit-stop
+des coups fatals et de `sweeping_arc`, la vitesse (nulle) après un coup
+« flinch » au sol, et 20 issues nouvelles pour `claw_reach` et `slime_splash`.
