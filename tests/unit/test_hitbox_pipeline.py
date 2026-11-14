@@ -9,7 +9,7 @@ from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.attack_state import AttackStateMachine
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition, Stance
 from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import CombatLoop
 from tests.unit.helpers import SHOWCASE, activate, entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -69,7 +69,7 @@ def test_attack_box_is_resynchronized_after_entity_separation() -> None:
     other = entity_at(10.0, faction="same")
     activate(attacker)
     initial_center = attacker.combat.attack_box.center
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
 
     loop.process_combat_and_separation(
         1 / 60,

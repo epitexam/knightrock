@@ -1,12 +1,11 @@
 """BUG-03: hazards (saw/spike/floor_spike) must deal damage on overlap."""
 
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pygame
 
 from src.core.level.systems.hazard_damage import HazardDamageSystem
-from tests.fakes import BodyStub
+from tests.fakes import BodyStub, HazardStub
 
 
 def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str = "e1") -> BodyStub:
@@ -17,29 +16,12 @@ def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str =
     return body
 
 
-class FakeHazard:
-    def __init__(
-        self,
-        rect: pygame.FRect,
-        *,
-        damage: float = 25.0,
-        knockback=None,
-    ) -> None:
-        self.rect = rect
-        self.damage = damage
-        self.knockback = knockback
+FakeHazard = HazardStub
 
 
-class _MovingHazard:
-    def __init__(self, previous: pygame.FRect, current: pygame.FRect) -> None:
-        self.rect = current
-        self._previous = previous
-        self.damage = 25.0
-
-    def swept_contact_rect(self) -> pygame.FRect:
-        from src.combat.sweep import swept_box
-
-        return swept_box(self._previous, self.rect)
+def _MovingHazard(previous: pygame.FRect, current: pygame.FRect) -> HazardStub:  # noqa: N802
+    """A hazard that moved from ``previous`` to ``current`` during the tick."""
+    return HazardStub(current, previous=previous)
 
 
 def test_moving_hazard_sweeps_target_between_positions() -> None:
@@ -69,7 +51,7 @@ def test_hazard_applies_configured_damage() -> None:
 
 def test_hazard_uses_default_damage_when_unspecified() -> None:
     entity = make_entity(pygame.FRect(0, 0, 40, 40))
-    hazard = SimpleNamespace(rect=pygame.FRect(10, 10, 64, 64))
+    hazard = HazardStub(pygame.FRect(10, 10, 64, 64), damage=HazardDamageSystem.DEFAULT_DAMAGE)
     system = HazardDamageSystem()
 
     system.process([entity], [hazard])
@@ -214,9 +196,13 @@ def test_a_hazard_that_leaves_the_level_releases_its_box() -> None:
 
 
 def test_the_cache_survives_an_unhashable_producer() -> None:
-    """Producers are duck-typed, and a stand-in need not be hashable."""
+    """The cache is keyed by identity, so a hazard need not be hashable."""
+
+    class Unhashable(HazardStub):
+        __hash__ = None  # type: ignore[assignment]
+
     system = HazardDamageSystem()
-    hazard = SimpleNamespace(rect=pygame.FRect(10, 10, 64, 64), damage=25.0)
+    hazard = Unhashable(pygame.FRect(10, 10, 64, 64))
 
     first = system.produce_boxes([], [hazard])
     second = system.produce_boxes([], [hazard])

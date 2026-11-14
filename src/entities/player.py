@@ -97,7 +97,7 @@ class Player(Entity):
             config = shipped_gameplay_data().player
 
         attacks = None
-        if hasattr(config, "attacks") and config.attacks:
+        if config.attacks:
             attacks = dict(config.attacks)
         else:
             # No config carried attacks: take the shipped table. Imported here

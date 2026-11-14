@@ -4,6 +4,7 @@ from typing import Protocol
 
 import pygame
 
+from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
 from src.core.level.systems.hazard_damage import HazardDamageSystem
@@ -89,6 +90,8 @@ class OrbitingHazard(Sprite):
     #: Mirrored in the level editor: the art, its animation and its contact follow.
     flip_x: bool = False
     flip_y: bool = False
+    #: The push of a contact; ``None`` is ``HazardDamageSystem.DEFAULT_KNOCKBACK``.
+    knockback: KnockbackConfig | None = None
 
     def __init__(
         self,
@@ -143,6 +146,8 @@ class SpanHazard(Sprite):
     #: Mirrored in the level editor: the art, its animation and its contact follow.
     flip_x: bool = False
     flip_y: bool = False
+    #: The push of a contact; ``None`` is ``HazardDamageSystem.DEFAULT_KNOCKBACK``.
+    knockback: KnockbackConfig | None = None
 
     def __init__(
         self,

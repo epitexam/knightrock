@@ -1248,9 +1248,7 @@ class Entity(Sprite):
         self.rng.setstate(snapshot.rng_state)
         self.vitals.load_state(snapshot.vitals)
         self.combat.load_state(snapshot.combat)
-        verify_geometry = getattr(self.combat, "verify_geometry_checksum", None)
-        if callable(verify_geometry):
-            verify_geometry(snapshot.combat.geometry_checksum)
+        self.combat.verify_geometry_checksum(snapshot.combat.geometry_checksum)
         self.state_machine.load_state(snapshot.state_machine)
         extra = snapshot.extra or {}
         self.gravity_scale = float(extra.get("gravity_scale", 1.0))

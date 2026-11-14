@@ -28,7 +28,7 @@ from src.core.sprite_groups import SpriteGroups
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.entities.projectile import ProjectileConfig
 from src.physics.entity_grid import EntityGrid
-from tests.fakes import BodyStub
+from tests.fakes import BodyStub, HazardStub
 from tests.unit.helpers import entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
@@ -186,10 +186,7 @@ def test_projectile_pierce_keeps_flying_but_remembers_targets() -> None:
     assert len(groups.projectile_sprites) == 1
 
 
-class _HazardStub:
-    def __init__(self, box: pygame.FRect, damage: float) -> None:
-        self.rect = box
-        self.damage = damage
+_HazardStub = HazardStub
 
 
 _TargetStub = BodyStub

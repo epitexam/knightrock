@@ -26,10 +26,7 @@ from src.core.fx import (
     spawn_dizzy_stars,
     spawn_dizzy_vortex,
     spawn_footstep_dust,
-    spawn_guard_arc,
-    spawn_impact_decal,
     spawn_landing_dust,
-    spawn_shatter_arc,
     spawn_sweat_drops,
     spawners,
 )
@@ -1247,13 +1244,6 @@ def test_sweat_droplet_arcs_then_reaps_itself() -> None:
     assert not drop.alive()
 
 
-def test_sweat_needs_a_hitbox_to_bead_from() -> None:
-    group = pygame.sprite.Group()
-
-    assert spawn_sweat_drops(group, SimpleNamespace()) == []
-    assert list(group) == []
-
-
 def test_penalty_dashers_sweat_on_a_cadence() -> None:
     entity = PenaltySprite()
     groups = SimpleNamespace(
@@ -1319,28 +1309,6 @@ def test_dash_only_entities_never_sweat() -> None:
     assert len(groups.fx_sprites) == 0
 
 
-def test_every_spawner_declines_an_entity_that_has_no_body() -> None:
-    """FX takes any duck-typed entity, including one mid-removal.
-
-    The spawners read `entity.hitbox` and hand back nothing when it is
-    absent, rather than raising. A projectile, or a fighter being pulled out
-    of the group by a loop that is still holding a reference, is exactly the
-    kind of thing that reaches a spawner -- and a `None` return is the one
-    answer that cannot leave a half-added particle behind.
-    """
-    group = pygame.sprite.Group()
-    bare = SimpleNamespace()
-
-    assert spawn_landing_dust(group, bare) == []
-    assert spawn_impact_decal(group, bare) is None
-    assert spawn_dizzy_stars(group, bare) == []
-    assert spawn_dizzy_vortex(group, bare) is None
-    assert spawn_sweat_drops(group, bare) == []
-    assert spawn_guard_arc(group, bare) is None
-    assert spawn_shatter_arc(group, bare) is None
-    assert len(group) == 0, "and nothing was added on the way past"
-
-
 def test_a_spawner_whose_family_is_full_declines_rather_than_waiting() -> None:
     """The cap is per family, so a full star budget must not touch the swirl.
 
@@ -1357,7 +1325,7 @@ def test_a_spawner_whose_family_is_full_declines_rather_than_waiting() -> None:
     """
     group = pygame.sprite.Group()
     box = pygame.FRect(100, 100, 40, 48)
-    entity = SimpleNamespace(hitbox=box, velocity=pygame.math.Vector2(0.0, 0.0))
+    entity = SimpleNamespace(hitbox=box, velocity=pygame.math.Vector2(0.0, 0.0), facing_right=True)
 
     while spawn_dizzy_stars(group, entity):
         pass

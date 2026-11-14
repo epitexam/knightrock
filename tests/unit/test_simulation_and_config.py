@@ -6,10 +6,11 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
+from src.combat.combat_component import NullCombatComponent
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData
 from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
@@ -30,9 +31,12 @@ class TrackingGroup(list):
         super().__init__(sprites)
         self.update = Mock()
 
+    def add(self, *sprites):
+        self.extend(sprites)
+
 
 def test_hit_stop_suspends_the_tick_that_expires_it() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     loop.combat_system.hit_stop_timer = 0.01
 
     effective_delta = loop.begin_tick(0.02)
@@ -78,6 +82,9 @@ def wire_world_systems(level: Level, groups, player) -> None:
         camera_system=level.camera_system,
         notification_system=level.notification_system,
         tick_system=level.tick_system,
+        projectile_system=SimpleNamespace(  # type: ignore[arg-type]
+            process=Mock(), guard_events=[], impact_events=[]
+        ),
         feedback_system=FeedbackSystem(groups),
     )
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
@@ -170,16 +177,23 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         state_machine=SimpleNamespace(current_state_name=None),
         respawn=Mock(),
         die=Mock(),
+        faction="player",
+        combat=NullCombatComponent(),
     )
     dead_enemy = SimpleNamespace(
         is_dead=True,
         hitbox=pygame.FRect(200, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
         kill=Mock(),
+        image=pygame.Surface((48, 56)),
+        rect=pygame.FRect(200, 0, 48, 56),
+        facing_right=True,
         render_hints=RenderHints(),
         dash=None,
         velocity=pygame.math.Vector2(),
         state_machine=SimpleNamespace(current_state_name=None),
+        faction="enemy",
+        combat=NullCombatComponent(),
     )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),

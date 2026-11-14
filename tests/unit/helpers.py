@@ -166,6 +166,8 @@ class _ActiveAttackerCombat(SimpleNamespace):
             attack_box=attack_box,
             attack_boxes=(attack_box,),
             swept_attack_boxes=(attack_box,),
+            attack_shapes=(),
+            swept_attack_shapes=(),
             current_phase=SimpleNamespace(hit=hit),
             charge_multiplier=1.0,
             targets_hit=targets_hit,

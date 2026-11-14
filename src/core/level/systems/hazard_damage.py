@@ -1,22 +1,43 @@
 """Hazard contact damage system (saws, spikes, floor spikes)."""
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import Protocol
+
+import pygame
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
-from src.combat.shapes import ShapeKind
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHashMember, collider_box
+
+
+class Hazard(Protocol):
+    """What the hazard pipeline reads of a hazard sprite.
+
+    Every hazard is a :class:`~src.core.sprites.Sprite`, which gives it the
+    contact geometry; the hazard classes add ``damage`` and ``knockback``.
+    """
+
+    damage: float
+    knockback: KnockbackConfig | None
+    contact_shape: ShapePose
+
+    def contact_rect(self) -> pygame.FRect: ...
+
+    def swept_contact_rect(self) -> pygame.FRect: ...
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]: ...
+
+    def capture_contact_origin(self) -> None: ...
 
 
 class HazardDamageSystem:
     """Apply configured damage to entities overlapping an active hazard.
 
-    The per-hazard ``damage``/``knockback`` attributes take precedence when
-    present (they can be set through the TMX ``damage`` object property).
+    A hazard's ``damage`` is its own (set through the TMX ``damage`` object
+    property); its ``knockback`` is ``DEFAULT_KNOCKBACK`` unless it carries one.
     Contact resolution is delegated to the unified pipeline: hazards
     carry no faction and no memory, so every overlapping entity is a valid
     target and the damage never interrupts.
@@ -39,7 +60,7 @@ class HazardDamageSystem:
         #: One live :class:`OffensiveBox` per hazard, keyed by ``id()`` and
         #: holding the hazard itself so the key cannot be recycled onto a
         #: different object while the entry lives. See :meth:`produce_boxes`.
-        self._boxes: dict[int, tuple[Any, OffensiveBox]] = {}
+        self._boxes: dict[int, tuple[Hazard, OffensiveBox]] = {}
         #: ``(id(hazard), target_id) -> ticks left before that hazard may
         #: damage that target again``.
         self._cooldowns: dict[tuple[int, str], int] = {}
@@ -70,7 +91,7 @@ class HazardDamageSystem:
 
         return record_contact
 
-    def _build_box(self, hazard: Any, box: Any) -> OffensiveBox:
+    def _build_box(self, hazard: Hazard, box: pygame.FRect) -> OffensiveBox:
         """A hazard's offensive box, built once.
 
         ``HitProperties`` is a frozen dataclass of fourteen fields with a
@@ -81,12 +102,11 @@ class HazardDamageSystem:
         is built the first time a hazard is seen and only its geometry is
         refreshed afterwards.
         """
-        damage = float(getattr(hazard, "damage", self.DEFAULT_DAMAGE))
-        knockback = getattr(hazard, "knockback", None) or self.DEFAULT_KNOCKBACK
+        knockback = hazard.knockback or self.DEFAULT_KNOCKBACK
         return OffensiveBox(
             box=box,
             swept=(box,),
-            hit=HitProperties(damage=damage, knockback=knockback),
+            hit=HitProperties(damage=float(hazard.damage), knockback=knockback),
             swept_shapes=(),
             faction=None,
             owner_id="",
@@ -96,7 +116,7 @@ class HazardDamageSystem:
             interrupt=False,
         )
 
-    def _refresh_geometry(self, entry: OffensiveBox, hazard: Any, box: Any) -> None:
+    def _refresh_geometry(self, entry: OffensiveBox, hazard: Hazard, box: pygame.FRect) -> None:
         """Point a live box at where the hazard is this tick.
 
         Run on the tick the box is built as well as on every later one, so a
@@ -104,12 +124,11 @@ class HazardDamageSystem:
         only from the second onwards.
         """
         entry.box = box
-        swept_rect_factory = getattr(hazard, "swept_contact_rect", None)
-        entry.swept = (swept_rect_factory(),) if callable(swept_rect_factory) else (box,)
+        entry.swept = (hazard.swept_contact_rect(),)
         entry.swept_shapes = self._swept_shapes(hazard)
 
     def produce_boxes(
-        self, entity_sprites: Iterable, hazard_sprites: Iterable
+        self, entity_sprites: Iterable[Combatant], hazard_sprites: Iterable[Hazard]
     ) -> tuple[OffensiveBox, ...]:
         """One offensive box per hazard, damage/knockback from the hazard.
 
@@ -128,12 +147,7 @@ class HazardDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for hazard in hazard_sprites:
-            # The part of the hazard that touches, when it says; its whole
-            # rectangle otherwise (a bare test sprite).
-            contact_rect = getattr(hazard, "contact_rect", None)
-            box = contact_rect() if callable(contact_rect) else collider_box(hazard)
-            if box is None:
-                continue
+            box = hazard.contact_rect()
             key = id(hazard)
             live.add(key)
             entry = self._boxes.get(key)
@@ -150,18 +164,16 @@ class HazardDamageSystem:
         return tuple(boxes)
 
     @staticmethod
-    def _swept_shapes(hazard: Any) -> tuple:
+    def _swept_shapes(hazard: Hazard) -> tuple[SweptShape, ...]:
         """The shape sweep for a hazard, or nothing for a plain AABB one."""
-        contact_shape = getattr(hazard, "contact_shape", None)
-        if contact_shape is None or contact_shape.kind is ShapeKind.AABB:
+        if hazard.contact_shape.kind is ShapeKind.AABB:
             return ()
-        factory = getattr(hazard, "swept_contact_shapes", None)
-        return factory() if callable(factory) else ()
+        return hazard.swept_contact_shapes()
 
     def process(
         self,
         entity_sprites: Iterable[Combatant],
-        hazard_sprites: Iterable[SpatialHashMember],
+        hazard_sprites: Iterable[Hazard],
         entity_grid: EntityGrid | None = None,
     ) -> None:
         """Apply damage for every overlap between a hazard and a live entity."""

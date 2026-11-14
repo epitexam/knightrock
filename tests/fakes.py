@@ -13,8 +13,10 @@ from typing import Any
 import pygame
 
 from src.combat.combat_component import NullCombatComponent
+from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.rendering.render_hints import RenderHints
+from src.core.sprites import Sprite
 
 #: Where the real Player keeps each controller field: flat test name -> attribute
 #: on the controller. Flat names keep the tests short; the stand-in stores them
@@ -197,3 +199,29 @@ def game_shape(**fields: Any) -> SimpleNamespace:
         "render_alpha": lambda: 0.0,
     }
     return SimpleNamespace(**{**defaults, **fields})
+
+
+class HazardStub(Sprite):
+    """A hazard the pipeline can read: a real ``Sprite`` with a damage and a knockback.
+
+    ``rect`` is the very rectangle passed in, so a test that moves it moves the
+    hazard. ``previous`` is where it was at the last tick boundary, for a
+    hazard that sweeps; without one it has not moved.
+    """
+
+    def __init__(
+        self,
+        rect: pygame.FRect,
+        *,
+        damage: float = 25.0,
+        knockback: KnockbackConfig | None = None,
+        previous: pygame.FRect | None = None,
+    ) -> None:
+        super().__init__(
+            rect.topleft, surf=pygame.Surface((max(1, int(rect.w)), max(1, int(rect.h))))
+        )
+        self.rect = rect
+        self.damage = damage
+        self.knockback = knockback
+        self.sync_contact_shape()
+        self._previous_contact_rect = previous

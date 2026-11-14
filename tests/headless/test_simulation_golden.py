@@ -30,6 +30,7 @@ from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.core.paths import PROJECT_ROOT
 from src.core.sprites import MovingPlatform
+from tests.fakes import HazardStub
 from tests.headless.conftest import make_viewport
 
 SEED = 20260913
@@ -157,11 +158,9 @@ def build_ride_level() -> Level:
     )
     level.spatial_hash.add(platform)
 
-    hazard = pygame.sprite.Sprite()
-    hazard.hitbox = pygame.FRect(150.0, 150.0, 40.0, 40.0)
-    hazard.rect = hazard.hitbox.copy()
-    hazard.damage = 7.0
-    hazard.knockback = NULL_KNOCKBACK
+    hazard = HazardStub(
+        pygame.FRect(150.0, 150.0, 40.0, 40.0), damage=7.0, knockback=NULL_KNOCKBACK
+    )
     level.groups.hazard_sprites.add(hazard)
 
     exit_sprite = pygame.sprite.Sprite()

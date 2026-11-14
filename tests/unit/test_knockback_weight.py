@@ -12,7 +12,7 @@ from src.combat.knockback import KnockbackConfig
 from src.core.fx import FX_FAMILY_BUDGETS, CorpseParticle, spawn_corpse
 from src.core.fx.tuning import Corpse
 from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import CombatLoop
 from src.core.settings import Combat as CombatSettings
 from src.data.enemies import read_enemy_config
 from src.data.errors import GameplayDataError
@@ -225,7 +225,7 @@ def test_the_body_does_not_touch_the_fighter_it_came_from() -> None:
 
 def test_a_reaped_enemy_leaves_a_body_and_the_player_does_not() -> None:
     feedback = Mock(spec=FeedbackSystem)
-    loop = GameplayLoop(feedback_system=feedback)
+    loop = CombatLoop(feedback_system=feedback)
     player, foe, alive = make_entity(), make_entity(), make_entity()
     player.die()
     foe.die()
@@ -242,6 +242,6 @@ def test_the_loop_without_feedback_still_reaps() -> None:
     foe.die()
     group = Group(foe)
 
-    GameplayLoop.combat_only().remove_dead_entities(group, None)
+    CombatLoop().remove_dead_entities(group, None)
 
     assert foe not in group

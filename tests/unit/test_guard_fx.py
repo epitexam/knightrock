@@ -16,14 +16,14 @@ from src.core.fx import (
 from src.core.fx.tuning import FxGuard
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.feedback_system import FeedbackSystem
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
 from src.core.settings import Guard as GuardSettings
 from src.entities.player import Player
 from tests.unit.helpers import InputStub, make_active_attacker
 
 
 def _entity() -> SimpleNamespace:
-    return SimpleNamespace(hitbox=pygame.FRect(100, 100, 40, 48))
+    return SimpleNamespace(hitbox=pygame.FRect(100, 100, 40, 48), facing_right=True)
 
 
 def test_the_block_arc_fades_and_reaps_itself() -> None:
@@ -84,15 +84,13 @@ def test_a_break_spawns_the_broken_ring() -> None:
     assert len(shatter.steps) == FxGuard.SHARD_STEPS
 
 
-def test_guard_spawners_respect_budget_and_missing_hitbox() -> None:
+def test_guard_spawners_respect_budget() -> None:
     full = Group()
     for _ in range(fx.MAX_FX_SPRITES):
         full.add(ShieldArcParticle((0.0, 0.0), 1.0))
 
     assert spawn_guard_arc(full, _entity()) is None
     assert spawn_shatter_arc(full, _entity()) is None
-    assert spawn_guard_arc(Group(), SimpleNamespace()) is None
-    assert spawn_shatter_arc(Group(), SimpleNamespace()) is None
 
 
 def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:
@@ -158,8 +156,7 @@ def test_guard_events_clear_each_tick() -> None:
 
 def _loop_with_camera() -> tuple[GameplayLoop, SimpleNamespace]:
     camera = SimpleNamespace(traumas=[], add_trauma=lambda amount: camera.traumas.append(amount))
-    loop = GameplayLoop(camera_system=camera)  # type: ignore[arg-type]
-    return loop, camera
+    return CombatLoop(), camera
 
 
 #: A player who did not start a dash this tick.
@@ -177,7 +174,7 @@ def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
         0.0,
         loop._collect_guard_events(),
         _NO_DASH,
-        loop.camera_system,  # type: ignore[arg-type]
+        camera,  # type: ignore[arg-type]
     )
 
     assert len(groups.fx_sprites) == 1, "the gold ring alone"
@@ -196,7 +193,7 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
         0.0,
         loop._collect_guard_events(),
         _NO_DASH,
-        loop.camera_system,  # type: ignore[arg-type]
+        camera,  # type: ignore[arg-type]
     )
 
     assert len(groups.fx_sprites) == 1, "the ring alone"
@@ -211,7 +208,7 @@ def test_game_loop_skips_fx_without_events() -> None:
         0.0,
         loop._collect_guard_events(),
         _NO_DASH,
-        loop.camera_system,  # type: ignore[arg-type]
+        camera,  # type: ignore[arg-type]
     )
 
     assert len(groups.fx_sprites) == 0

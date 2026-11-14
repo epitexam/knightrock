@@ -54,8 +54,8 @@ def _attacker_ready(
     combat = attacker.combat
     attack_boxes = combat.attack_boxes
     swept_boxes = combat.swept_attack_boxes
-    attack_shapes = tuple(getattr(combat, "attack_shapes", ()))
-    swept_shapes = tuple(getattr(combat, "swept_attack_shapes", ()))
+    attack_shapes = combat.attack_shapes
+    swept_shapes = combat.swept_attack_shapes
     phase = combat.current_phase
     if not combat.state.is_active or not attack_boxes or phase is None:
         return None

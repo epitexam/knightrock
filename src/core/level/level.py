@@ -319,9 +319,7 @@ class Level:
             self.input_manager.update()
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
         if Debug.is_enabled():
-            renderer = getattr(self, "renderer", None)
-            if renderer is not None:
-                renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
+            self.renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
 
     def save_state(self) -> LevelSnapshot:
         """Capture the whole level's simulation state for rollback.
@@ -333,10 +331,7 @@ class Level:
         """
         entities: dict[str, EntitySnapshot] = {}
         for entity in self.groups.entity_sprites:
-            save = getattr(entity, "save_state", None)
-            if save is None:
-                continue
-            snapshot = save()
+            snapshot = entity.save_state()
             entities[snapshot.entity_id] = snapshot
 
         platforms = [
@@ -384,12 +379,9 @@ class Level:
 
         # Reap entities that did not exist at capture time (e.g. a debug
         # spawn after the target tick) — they must not pollute the restored
-        # simulation.  Only snapshottable entities are candidates: a plain
-        # sprite without ``save_state`` was never captured and must stay.
+        # simulation.
         for entity in list(self.groups.entity_sprites):
-            if not hasattr(entity, "save_state"):
-                continue
-            if getattr(entity, "id", None) not in snapshot.entities:
+            if entity.id not in snapshot.entities:
                 entity.kill()
 
         for entity_snapshot in snapshot.entities.values():
