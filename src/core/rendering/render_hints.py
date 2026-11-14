@@ -27,6 +27,14 @@ class RenderHints:
     turn_ratio: float = 0.0
     """How far through a pivot the fighter is: 1 at the start, 0 when the facing lands."""
 
+    previous_center: tuple[float, float] | None = None
+    """Where the hitbox's centre was when the tick being drawn began.
+
+    Written at the top of every tick, a frozen one included, so a frame drawn
+    between two ticks can place the fighter between the two positions. None
+    until the first tick a fighter lives through.
+    """
+
     def tick(self, delta_time: float) -> None:
         """Run the three timers down; the other two are written each tick by their owners."""
         if self.flash_timer > 0.0:

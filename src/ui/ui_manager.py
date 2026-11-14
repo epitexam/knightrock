@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import pygame
@@ -551,7 +551,7 @@ class UIManager:
         self,
         entities: Iterable[pygame.sprite.Sprite],
         camera: Camera,
-        screen_rects: dict[int, pygame.Rect] | None = None,
+        screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
     ) -> list[pygame.Rect]:
         """Draw the HP bars; return the rects they occupy.
 

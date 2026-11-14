@@ -28,7 +28,7 @@ caller in `src` and the rest were read only by the test that asserted the
 re-export existed. Every layer imports the dimensions it uses from
 `world_overlay_metrics` directly, and so does `ui_manager`."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import pygame
 
@@ -202,7 +202,7 @@ class WorldUI:
         self,
         entities: Iterable[pygame.sprite.Sprite],
         camera: Camera,
-        screen_rects: dict[int, pygame.Rect] | None = None,
+        screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
     ) -> list[pygame.Rect]:
         """Draw the always-on HP bars; return the rects they occupy."""
         return _draw_health_bars(self.surface, entities, camera, screen_rects)

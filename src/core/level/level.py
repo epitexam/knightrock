@@ -206,6 +206,25 @@ class Level:
         if self.events is not None:
             self.events.emit(LevelStarted(level_id=self.level_id))
 
+    def reconvert_tiles(self) -> None:
+        """Convert the tile planes' images to the display's current format.
+
+        PyTMX converted them when the level was read; a window rebuilt with
+        another format leaves them in the old one, and every blit of a tile
+        then converts it again on the fly. Without a display (headless) there
+        is no format to follow.
+        """
+        if pygame.display.get_surface() is None:
+            return
+        for sprite in (*self.groups.static_sprites, *self.groups.fg_sprites):
+            image = sprite.image
+            if image is None:
+                continue
+            if image.get_flags() & pygame.SRCALPHA:
+                sprite.image = image.convert_alpha()
+            else:
+                sprite.image = image.convert()
+
     def _install_static_culls(self) -> None:
         """Hand the renderer a chunked cull for the frozen tile planes.
 

@@ -285,6 +285,19 @@ class ReactionMark:
     DURATION = 0.4
 
 
+class Interpolation:
+    """Drawing a fighter between the last two ticks, as the camera already is.
+
+    The simulation runs at 60 Hz and a display may run faster; a fighter drawn
+    where the last tick left it moves in 60 Hz steps under a camera that glides.
+    """
+
+    ENABLED = True
+    #: A fighter that moved further than this in one tick was placed, not
+    #: moved (a respawn, a teleport): it is drawn where it is, not swept there.
+    MAX_STEP_PX = 96.0
+
+
 class Afterimage:
     """The dash's entire visual: a few hard-edged copies of the sprite.
 

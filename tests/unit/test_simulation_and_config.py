@@ -106,8 +106,11 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
         hitbox=pygame.FRect(0, 0, 48, 56),
         respawn=Mock(),
         die=Mock(),
+        render_hints=RenderHints(),
     )
-    dead_enemy = SimpleNamespace(is_dead=True, kill=Mock())
+    dead_enemy = SimpleNamespace(
+        is_dead=True, kill=Mock(), hitbox=pygame.FRect(200, 0, 48, 56), render_hints=RenderHints()
+    )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),
         hazard_sprites=TrackingGroup(),

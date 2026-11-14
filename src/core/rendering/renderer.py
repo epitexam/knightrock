@@ -11,7 +11,7 @@ from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash, ParryFlash
+from src.core.settings import Afterimage, HitFlash, Interpolation, ParryFlash
 from src.core.sprite_groups import SpriteGroups
 from src.states import state_names
 
@@ -330,6 +330,9 @@ class Renderer:
         self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
         self._dashing_player: Entity | None = None
         self._turning_player: Entity | None = None
+        #: ``id(fighter) -> (dx, dy)`` this frame: how far behind its simulated
+        #: position a fighter is drawn. Only fighters that moved are in it.
+        self._lag: dict[int, tuple[float, float]] = {}
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
         #: a renderer that was handed a bare group (every test that draws a
@@ -494,6 +497,7 @@ class Renderer:
         repaint has no such window.
         """
         self.camera.begin_frame(alpha)
+        self._lag = self._interpolation_lag(groups, alpha)
         self._dashing_player = self._find_dashing_player(groups)
         self._turning_player = self._find_turning_player(groups)
         self.surface.fill(self.background_color)
@@ -506,6 +510,42 @@ class Renderer:
             overlays = perf_counter()
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
+
+    @staticmethod
+    def _interpolation_lag(groups: SpriteGroups, alpha: float) -> dict[int, tuple[float, float]]:
+        """How far behind its simulated position each moving fighter is drawn.
+
+        A frame drawn ``alpha`` of the way into the pending tick shows a fighter
+        that far from where the last tick began to where it ended, the same
+        blend the camera makes -- so a fighter and the camera following it
+        move together instead of the fighter stepping at 60 Hz under it.
+        """
+        lag: dict[int, tuple[float, float]] = {}
+        if not Interpolation.ENABLED:
+            return lag
+        behind = 1.0 - min(max(alpha, 0.0), 1.0)
+        if behind <= 0.0:
+            return lag
+        limit = Interpolation.MAX_STEP_PX
+        for fighter in groups.entity_sprites:
+            previous = fighter.render_hints.previous_center
+            if previous is None:
+                continue
+            center = fighter.hitbox.center
+            dx, dy = previous[0] - center[0], previous[1] - center[1]
+            if (dx == 0.0 and dy == 0.0) or abs(dx) > limit or abs(dy) > limit:
+                continue
+            lag[id(fighter)] = (dx * behind, dy * behind)
+        return lag
+
+    def _drawn_rect(
+        self, sprite: pygame.sprite.Sprite, rect: pygame.FRect | pygame.Rect
+    ) -> pygame.FRect | pygame.Rect:
+        """``rect`` moved to where this frame draws the sprite."""
+        lag = self._lag.get(id(sprite))
+        if lag is None:
+            return rect
+        return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
 
     def _find_dashing_player(self, groups: SpriteGroups) -> Entity | None:
         """The one sprite that can be a dashing player, or None.
@@ -648,7 +688,7 @@ class Renderer:
         image_source = sprite.image
         if rect is None or image_source is None or not colliderect(rect):
             return
-        screen_rect = self.camera.apply_snapped(rect)
+        screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, rect))
         image = self._scaled_image(image_source)
         # Only a player can be dashing, and a player is an entity, so this
         # branch is resolved by identity rather than by a ``getattr`` walk
@@ -690,7 +730,7 @@ class Renderer:
                 strength = max(strength, ParryFlash.ALPHA * min(1.0, parried / ParryFlash.DURATION))
             overlay = self._silhouette(sprite.image, color).copy()
             overlay.set_alpha(int(255 * min(1.0, strength)))
-            screen_rect = self.camera.apply_snapped(sprite.rect)
+            screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, sprite.rect))
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
@@ -776,7 +816,7 @@ class Renderer:
         for surface, screen_rect in ghost_draws:
             self.surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite]) -> list[pygame.Rect]:
+    def draw_health_bars(self, entities: Iterable[Entity]) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy.
 
         The bars are anchored to the rects this frame blitted, not to the
@@ -791,7 +831,13 @@ class Renderer:
         ``Level.draw`` discards the result: the only readers today are the
         tests that assert which rects were painted.
         """
-        return self.overlay.draw_health_bars(entities, self.camera)
+        fighters = tuple(entities)
+        screen_rects = {
+            id(entity): self.camera.apply(self._drawn_rect(entity, entity.hitbox))
+            for entity in fighters
+            if id(entity) in self._lag
+        }
+        return self.overlay.draw_health_bars(fighters, self.camera, screen_rects or None)
 
     def draw_debug_panels(self, **counters: Any) -> None:
         """Ask the overlay to draw the screen-side debug panels.

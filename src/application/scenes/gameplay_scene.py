@@ -192,6 +192,7 @@ class GameplayScene(Scene):
         """
         if self.level is not None:
             self.level.surface = surface
+            self.level.reconvert_tiles()
             self.level.renderer.set_surface(surface)
 
     def set_ui_scale(self, scale: float) -> None:

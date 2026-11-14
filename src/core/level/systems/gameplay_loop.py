@@ -186,6 +186,8 @@ class GameplayLoop(CombatLoop):
         contact and hazard damage, deaths reaped, respawn, progression, camera,
         notifications, tick counter.
         """
+        for fighter in groups.entity_sprites:
+            fighter.render_hints.previous_center = fighter.hitbox.center
         self.spawn_system.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
 

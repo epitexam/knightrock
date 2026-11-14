@@ -22,7 +22,7 @@ the world, and the cards are decoration arranged around it.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import pygame
 
@@ -100,7 +100,7 @@ def draw_health_bars(
     surface: pygame.Surface,
     entities: Iterable[pygame.sprite.Sprite],
     camera: Camera,
-    screen_rects: dict[int, pygame.Rect] | None = None,
+    screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
 ) -> list[pygame.Rect]:
     """Draw the always-on HP bars; return the rects they occupy.
 

@@ -147,6 +147,11 @@ class SpatialHash:
         # checkable: `add` confirms the object is the one it registered, and a
         # mismatch is a miss rather than somebody else's bucket.
         self._cells_by_sprite: dict[int, tuple[SpatialHashMember, tuple[tuple[int, int], ...]]] = {}
+        # Query results by cell range, emptied by every change to the grid. A
+        # fighter asks about the same few cells several times a tick -- its
+        # move, then the AI's ledge and landing probes -- and between two
+        # changes of the grid the answer cannot differ.
+        self._queries: dict[tuple[int, int, int, int], list[SpatialHashMember]] = {}
 
     def add(self, sprite: SpatialHashMember) -> None:
         """Register a sprite in every cell its hitbox overlaps (idempotent).
@@ -171,6 +176,7 @@ class SpatialHash:
         for cell in cells:
             self.grid[cell].append(sprite)
         self._cells_by_sprite[key] = (sprite, cells)
+        self._queries.clear()
 
     def add_all(self, sprites: Iterable[SpatialHashMember]) -> None:
         """Register multiple sprites.
@@ -192,6 +198,7 @@ class SpatialHash:
             # Either never registered, or the id now belongs to someone else.
             # Removing "its" cells here would empty another sprite's buckets.
             return
+        self._queries.clear()
         cells = entry[1]
         for cell in cells:
             bucket = self.grid.get(cell)
@@ -224,6 +231,7 @@ class SpatialHash:
         """Remove all sprites from the grid."""
         self.grid.clear()
         self._cells_by_sprite.clear()
+        self._queries.clear()
 
     @property
     def occupied_cells(self) -> int:
@@ -251,21 +259,30 @@ class SpatialHash:
             List of sprites that might collide. May include false positives.
         """
         margin = QUERY_MARGIN_PX
-        query = pygame.FRect(
-            hitbox.left - margin,
-            hitbox.top - margin,
-            hitbox.width + 2 * margin,
-            hitbox.height + 2 * margin,
+        span = self._cell_span(
+            pygame.FRect(
+                hitbox.left - margin,
+                hitbox.top - margin,
+                hitbox.width + 2 * margin,
+                hitbox.height + 2 * margin,
+            )
         )
+        cached = self._queries.get(span)
+        if cached is not None:
+            return list(cached)
         nearby: list[SpatialHashMember] = []
         seen: set[int] = set()
-        for cell in self._cells_for_box(query):
-            for sprite in self.grid.get(cell, ()):
-                key = id(sprite)
-                if key not in seen:
-                    seen.add(key)
-                    nearby.append(sprite)
-        return nearby
+        x0, x1, y0, y1 = span
+        grid = self.grid
+        for cy in range(y0, y1 + 1):
+            for cx in range(x0, x1 + 1):
+                for sprite in grid.get((cx, cy), ()):
+                    key = id(sprite)
+                    if key not in seen:
+                        seen.add(key)
+                        nearby.append(sprite)
+        self._queries[span] = nearby
+        return list(nearby)
 
     def append_nearby(
         self,
@@ -293,6 +310,18 @@ class SpatialHash:
         """Return a sprite's hitbox, falling back to its rect."""
         return collider_box(sprite)
 
+    def _cell_span(self, box: pygame.Rect | pygame.FRect) -> tuple[int, int, int, int]:
+        """The first and last cell column and row the box overlaps: ``(x0, x1, y0, y1)``."""
+        x0 = floor(box.left / self.cell_size)
+        x1 = ceil(box.right / self.cell_size) - 1
+        y0 = floor(box.top / self.cell_size)
+        y1 = ceil(box.bottom / self.cell_size) - 1
+        if x1 < x0:  # zero-width box: keep a single column
+            x1 = x0
+        if y1 < y0:  # zero-height box: keep a single row
+            y1 = y0
+        return x0, x1, y0, y1
+
     def _cells_for_box(self, box: pygame.Rect | pygame.FRect) -> tuple[tuple[int, int], ...]:
         """Return every cell the box overlaps, column-major.
 
@@ -302,12 +331,5 @@ class SpatialHash:
         Returns:
             Tuple of (cell_x, cell_y) coordinates for each covered cell.
         """
-        x0 = floor(box.left / self.cell_size)
-        x1 = ceil(box.right / self.cell_size) - 1
-        y0 = floor(box.top / self.cell_size)
-        y1 = ceil(box.bottom / self.cell_size) - 1
-        if x1 < x0:  # zero-width box: keep a single column
-            x1 = x0
-        if y1 < y0:  # zero-height box: keep a single row
-            y1 = y0
+        x0, x1, y0, y1 = self._cell_span(box)
         return tuple((cx, cy) for cy in range(y0, y1 + 1) for cx in range(x0, x1 + 1))
