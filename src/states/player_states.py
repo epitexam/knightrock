@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from src.combat.frame_data import PhaseState
 from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
@@ -354,6 +355,8 @@ class PlayerAttackState(PlayerBaseState):
         A press for after the attack is the input handler's buffer, not this
         state's.
         """
+        if self._jump_cancel():
+            return "jump"
         started = self.entity.combat.attacks_started
         if started != self._started:
             self._started = started
@@ -362,6 +365,23 @@ class PlayerAttackState(PlayerBaseState):
         if not self.entity.combat.is_attacking:
             return self.ground_return()
         return None
+
+    def _jump_cancel(self) -> bool:
+        """Jump out of an attack that has hit, to follow a launched target up.
+
+        Only once the running phase has touched someone: a whiff stays
+        committed. The jump is the ordinary one -- from the ground, off a
+        wall or in the air while a midair jump is left -- so the press is
+        spent only if a jump actually happened.
+        """
+        player = self.entity
+        state = player.combat.state
+        if not (player.jump.has_buffered_jump() and state.targets_hit):
+            return False
+        if state.sub_state not in (PhaseState.ACTIVE, PhaseState.RECOVERY):
+            return False
+        player.handle_jump()
+        return player.jump.jump_buffer_timer <= 0.0
 
 
 class PlayerGuardState(PlayerBaseState):

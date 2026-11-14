@@ -6,6 +6,20 @@ from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 @dataclass(frozen=True)
+class EnemyMove:
+    """One attack an enemy may choose, and how close it must be to throw it.
+
+    ``range`` is the distance between the two fighters' centres under which
+    the move is thrown; ``weight`` is how often it is picked against the
+    type's other moves.
+    """
+
+    name: str
+    range: float
+    weight: float = 1.0
+
+
+@dataclass(frozen=True)
 class EnemyConfig:
     """Reusable data needed to create an enemy type."""
 
@@ -14,6 +28,9 @@ class EnemyConfig:
     health: float
     attacks: Mapping[MoveId, AttackDefinition]
     attack_name: str | None = None
+    # The attacks the AI chooses between. Empty means the one ``attack_name``
+    # thrown at ``attack_range``, which is what a type with a single move says.
+    moves: Sequence[EnemyMove] = ()
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)
     hurtbox_inflate: Sequence[float] = (0.0, 0.0)

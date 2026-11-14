@@ -124,6 +124,10 @@ class Combat:
     INVINCIBILITY_DURATION = 0.18
     HITSTOP_BASE = 0.03
     HITSTOP_DAMAGE_FACTOR = 0.002
+    #: The least a killing blow freezes the world, so a kill reads as one.
+    KILL_HITSTOP = 0.1
+    #: Every this many hits of one combo gives a dash charge back; 0 turns it off.
+    COMBO_DASH_REFILL_HITS = 4
     SUPER_ARMOR_THRESHOLD = 3
     COMBO_WINDOW = 0.5
     CONTACT_DAMAGE_THRESHOLD = 300.0
@@ -214,6 +218,12 @@ class CameraShake:
     FREQUENCY = 90.0
     # Impact magnitude (px/s) mapping to full trauma.
     HEAVY_DIV = 1200.0
+    #: Every landed hit shakes a little: this much trauma, plus its knockback
+    #: over ``HIT_DIV``. A heavy hit still gets the stronger ``HEAVY_DIV`` shake.
+    HIT_TRAUMA = 0.05
+    HIT_DIV = 4000.0
+    #: A kill adds this much on top, whatever the hit.
+    KILL_TRAUMA = 0.2
 
 
 class CameraFollow:
@@ -837,6 +847,10 @@ class AI:
     """Enemy perception thresholds."""
 
     CHASE_STOP_DISTANCE_PX = 10.0
+    #: How many enemies may attack the player at once. The others wait at
+    #: striking distance for a slot, so a crowd takes turns instead of landing
+    #: every blow on the same frame.
+    MAX_ATTACKERS = 2
 
 
 class Respawn:

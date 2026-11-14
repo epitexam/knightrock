@@ -26,7 +26,7 @@ from src.data.errors import (
     reject_unknown,
     triple_of_ints,
 )
-from src.entities.enemies.schema import EnemyConfig
+from src.entities.enemies.schema import EnemyConfig, EnemyMove
 from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
 ENEMIES_FILENAME = "enemies.json"
@@ -61,6 +61,37 @@ def _read_animations(raw: Any, where: str) -> dict[str, str]:
     return dict(raw)
 
 
+def _read_moves(
+    raw: Any, where: str, attacks: dict[MoveId, AttackDefinition]
+) -> tuple[EnemyMove, ...]:
+    """The moves list: each names one of the type's attacks, a range and a weight."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GameplayDataError(f"{where}: 'moves' must be a list")
+    moves: list[EnemyMove] = []
+    for index, entry in enumerate(raw):
+        at = f"{where}.moves[{index}]"
+        if not isinstance(entry, dict):
+            raise GameplayDataError(f"{at}: a move must be an object")
+        reject_unknown(entry, frozenset({"name", "range", "weight"}), at)
+        name = _required(entry, "name", at)
+        if name not in attacks:
+            raise GameplayDataError(f"{at}: {name!r} is not one of this enemy's attacks")
+        try:
+            move = EnemyMove(
+                name=str(name),
+                range=float(_required(entry, "range", at)),
+                weight=float(entry.get("weight", 1.0)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise GameplayDataError(f"{at}: invalid move value: {exc}") from exc
+        if not (move.range > 0.0 and move.weight > 0.0):
+            raise GameplayDataError(f"{at}: 'range' and 'weight' must be above 0")
+        moves.append(move)
+    return tuple(moves)
+
+
 def read_enemy_config(
     raw: Any,
     where: str,
@@ -90,6 +121,7 @@ def read_enemy_config(
             health=float(_required(raw, "health", where)),
             attacks=attacks,
             attack_name=raw.get("attack_name"),
+            moves=_read_moves(raw.get("moves"), where, attacks),
             max_health=(float(raw["max_health"]) if raw.get("max_health") is not None else None),
             hitbox_inflate=pair_of_floats(
                 raw.get("hitbox_inflate", [0.0, 0.0]), f"{where}.hitbox_inflate"
@@ -171,6 +203,16 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
             name: attack_definition_to_dict(attack) for name, attack in config.attacks.items()
         },
         "attack_name": config.attack_name,
+        **(
+            {
+                "moves": [
+                    {"name": move.name, "range": move.range, "weight": move.weight}
+                    for move in config.moves
+                ]
+            }
+            if config.moves
+            else {}
+        ),
         "max_health": config.max_health,
         "hitbox_inflate": list(config.hitbox_inflate),
         "hurtbox_inflate": list(config.hurtbox_inflate),

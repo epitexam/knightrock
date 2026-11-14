@@ -19,7 +19,7 @@ from src.combat.combatant_protocol import Combatant
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.contact_system import ContactSystem
+from src.core.level.systems.contact_system import ContactSystem, ImpactEvent
 from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -187,7 +187,11 @@ class GameplayLoop:
             if self.projectile_system is not None:
                 self.projectile_system.process(effective_delta, self.entity_grid)
             feedback.after_combat(
-                self.combat_system.impact, self._collect_guard_events(), player, camera
+                self.combat_system.impact,
+                self._collect_guard_events(),
+                player,
+                camera,
+                self._collect_impact_events(),
             )
             contact.process(groups.entity_sprites, self.entity_grid)
             hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
@@ -237,6 +241,15 @@ class GameplayLoop:
         if self.projectile_system is not None:
             events.extend(self.projectile_system.guard_events)
             self.projectile_system.guard_events.clear()
+        return events
+
+    def _collect_impact_events(self) -> list[ImpactEvent]:
+        """Take this tick's landed hits from the melee and projectile systems."""
+        events = list(self.combat_system.impact_events)
+        self.combat_system.impact_events.clear()
+        if self.projectile_system is not None:
+            events.extend(self.projectile_system.impact_events)
+            self.projectile_system.impact_events.clear()
         return events
 
     def process_combat_and_separation(

@@ -62,6 +62,7 @@ class SpriteGroups:
         self.all_sprites.add(fighter)
         self.entity_sprites.add(fighter)
         self.combat_sprites.add(fighter)
+        fighter.roster = self.entity_sprites
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:

@@ -152,7 +152,9 @@ def _noop_feedback_stage(calls: list[str]) -> SimpleNamespace:
     """Feedback double: records its two entry points in the tick."""
     return SimpleNamespace(
         after_movement=lambda delta_time: calls.append("feedback_movement"),
-        after_combat=lambda impact, events, player, camera: calls.append("feedback_combat"),
+        after_combat=lambda impact, events, player, camera, impacts: calls.append(
+            "feedback_combat"
+        ),
     )
 
 
@@ -194,6 +196,7 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         in_hit_stop=False,
         impact=0.0,
         guard_events=[],
+        impact_events=[],
         update_timer=lambda delta_time: None,
         process_attacks=lambda combatants, grid=None: calls.append("combat"),
     )

@@ -3,6 +3,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from src.combat.frame_data import move_id
 from src.core.settings import AI, EnemyJump, Turn
 from src.states.reaction_states import (
     HurtState,
@@ -138,17 +139,30 @@ class EnemyChaseState(State["Enemy"]):
         # StateMachineSnapshot.state_attrs like every other state scalar.
         self.jump_cooldown_timer = 0.0
         self.leap_glide_timer = 0.0
+        # The attack this chase closes in for, chosen on entry.
+        self.planned_move = ""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state, face the player, and pick up chase speed."""
+        """Enter the state, face the player, pick up chase speed and choose the attack."""
         self.entity.face_player()
         self.entity.speed = self.entity.chase_speed
         self.leap_glide_timer = 0.0
+        self.planned_move = self.entity.plan_move() or ""
 
-    def update(self, delta_time: float) -> str | None:
-        """Update the state, move towards the player, and check attack range."""
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
+        """Close in for the chosen attack and throw it once in range and a slot is free.
+
+        In range with every slot taken, the enemy holds where it is, facing
+        the player, and throws the attack the moment another enemy is done.
+        """
         if self.entity.player is None:
             return EnemyState.IDLE
+        reach = self.entity.move_range(self.planned_move or None)
+        if self.entity.is_player_in_range(reach) and not self.entity.attack_slot_free():
+            self.entity.move_axis = 0.0
+            self.entity.face_player()
+            self.entity.apply_horizontal_movement(delta_time)
+            return None
 
         player_center = self.entity.player.hitbox.centerx
         enemy_center = self.entity.hitbox.centerx
@@ -177,8 +191,8 @@ class EnemyChaseState(State["Enemy"]):
         if not leapt and not self._glide_step(delta_time):
             self.entity.apply_horizontal_movement(delta_time)
 
-        if self.entity.is_player_in_range():
-            return EnemyState.ATTACK
+        if self.entity.is_player_in_range(reach):
+            return EnemyState.ATTACK, {"move": self.planned_move}
         elif not self.entity.can_see_player():
             return EnemyState.IDLE
         return None
@@ -364,11 +378,14 @@ class EnemyAttackState(State["Enemy"]):
         super().__init__(entity, tags or ["attack", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state, face the player, and start the attack."""
-        self.entity.face_player()
+        """Enter the state, face the player, and start the chosen attack.
 
-        if self.entity.attack_name is not None:
-            self.entity.combat.start_attack(self.entity.attack_name)
+        ``move`` is the chase's choice; without one, the type's ``attack_name``.
+        """
+        self.entity.face_player()
+        name = kwargs.get("move") or self.entity.attack_name
+        if name is not None:
+            self.entity.combat.start_attack(move_id(name))
 
     def update(self, delta_time: float) -> str | None:
         """Update the state and return to idle when the attack finishes."""

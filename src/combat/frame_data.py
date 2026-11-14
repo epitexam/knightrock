@@ -208,6 +208,14 @@ class HitProperties:
         Category tags used by hurt-zone invulnerability matching.
     hit_level : str
         Guard pressure level: ``"light"``, ``"med"`` or ``"heavy"``.
+    flinch : bool
+        A grounded target only flinches: the hit stuns it as usual but does
+        not push it, so the next link of a chain is still in reach. An
+        airborne target is pushed as usual, or a juggle could not carry.
+    hit_stop : float | None
+        The world's freeze on contact, in seconds. ``None`` derives it from
+        the damage and the knockback (``Combat.HITSTOP_*``); a number is for a
+        hit whose weight is not in those two, such as a chain's finisher.
     """
 
     damage: float
@@ -225,10 +233,14 @@ class HitProperties:
     hit_level: HitLevel = HitLevel.MED
     block_mask: BlockMask = BlockMask.ANY
     tags: tuple[str, ...] = ()
+    flinch: bool = False
+    hit_stop: float | None = None
 
     def __post_init__(self) -> None:
         if self.damage < 0:
             raise ValueError("Hit damage cannot be negative")
+        if self.hit_stop is not None and self.hit_stop < 0:
+            raise ValueError("Hit-stop cannot be negative")
         if self.stagger < 0:
             raise ValueError("Hit stagger cannot be negative")
         if self.juggle_gravity_mult <= 0:

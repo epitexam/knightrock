@@ -180,9 +180,10 @@ class _ActiveAttackerCombat(SimpleNamespace):
     def air_combo_count(self) -> int:
         return self._air_count
 
-    def record_hit_landed(self, airborne: bool) -> None:
+    def record_hit_landed(self, airborne: bool) -> bool:
         if airborne:
             self._air_count += 1
+        return False
 
 
 def make_active_attacker(target: Entity) -> SimpleNamespace:
@@ -211,6 +212,7 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         # fighter, neither counting parries nor stunned by them.
         on_parried=lambda: False,
         on_damage_landed=lambda: None,
+        on_hit_confirmed=lambda combo_advanced: None,
     )
 
 
@@ -272,7 +274,10 @@ class AttackerStub:
 
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
-        self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
+        self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: False)
+
+    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+        """Owed nothing for a hit."""
 
 
 __all__ = [

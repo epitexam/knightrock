@@ -5,7 +5,8 @@ Hit resolution: what one landed melee or projectile hit does.
 whole outcome of a hit, in the order it happens, and where each part lives:
 
 1. **Damage** -- base x charge x zone x damage type x juggle, x the dizzy bonus;
-   then invincibility, the OTG window and the finisher. Here.
+   then invincibility, the OTG window and the finisher; a ``flinch`` hit loses
+   its sideways push on a grounded target. Here.
 2. **Defence** -- the target's own ``receive_damage``. ``Player`` decides the
    dash parry and the guard (parry, block, chip, break) before the generic
    ``Entity`` path; ``Entity`` applies health, flash, knockback, i-frames and
@@ -13,7 +14,8 @@ whole outcome of a hit, in the order it happens, and where each part lives:
    purpose: hazards and body contact call ``receive_damage`` directly, without
    this resolver, and a guarding player blocks them too.
 3. **After an applied hit** -- armour break, juggle gravity, the attacker's
-   combo, the dash refresh, then hurt and stagger unless the target died, armour
+   combo and what the attacker gets for the hit (``on_hit_confirmed``: the
+   player's dash charges), then hurt and stagger unless the target died, armour
    absorbed it or it was launched. Here, in :func:`_apply_post_effects`.
 4. **On the attacker** -- a parried melee attack calls ``attacker.on_parried()``
    (an enemy counts it and may be stunned); one that took health off calls
@@ -29,8 +31,6 @@ from src.combat.combatant_protocol import AttackerPort, Combatant, DamageResult
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Physics
-from src.states import state_names
 from src.states.reaction_states import DIZZY_STATE
 
 
@@ -70,6 +70,13 @@ def _scaled_knockback(
     return KnockbackConfig(power=scaled_power, mode=hit.knockback.mode)
 
 
+def _flinched(knockback: KnockbackConfig, hit: HitProperties, grounded: bool) -> KnockbackConfig:
+    """A flinch hit does not push a grounded target sideways; anything else is unchanged."""
+    if not (hit.flinch and grounded) or knockback.power[0] == 0.0:
+        return knockback
+    return KnockbackConfig(power=(0.0, knockback.power[1]), mode=knockback.mode)
+
+
 def _apply_post_effects(
     attacker: AttackerPort,
     target: Combatant,
@@ -91,19 +98,8 @@ def _apply_post_effects(
     if was_airborne and hit.juggle_gravity_mult != 1.0:
         target.set_juggle(hit.juggle_gravity_mult, CombatSettings.JUGGLE_GRAVITY_TIME)
 
-    attacker.combat.record_hit_landed(was_airborne)
-
-    # Dash refresh on hit: restore 1 charge when hitting during dash
-    if Physics.DASH_REFRESH_ON_HIT:
-        dash = getattr(attacker, "dash", None)
-        state_machine = getattr(attacker, "state_machine", None)
-        if (
-            dash is not None
-            and state_machine is not None
-            and getattr(state_machine, "current_state_name", None) == state_names.DASH
-            and getattr(dash, "charges", 0) < getattr(dash, "max_charges", 0)
-        ):
-            dash.charges = min(dash.charges + 1, dash.max_charges)
+    combo_advanced = attacker.combat.record_hit_landed(was_airborne)
+    attacker.on_hit_confirmed(combo_advanced)
 
     if not result.killed and not armor_absorbs_reaction and not result.heavy_knockback:
         target.combat.on_hit(interrupt=True)
@@ -187,7 +183,9 @@ class HitResolver:
             return DamageResult()
 
         final_damage = _finisher_damage(hit, target, final_damage)
-        effective_knockback = _scaled_knockback(hit, charge_multiplier, juggle_scale)
+        effective_knockback = _flinched(
+            _scaled_knockback(hit, charge_multiplier, juggle_scale), hit, grounded_before
+        )
 
         source_x: float = attacker.hitbox.centerx
 

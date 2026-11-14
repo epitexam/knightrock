@@ -49,7 +49,7 @@ class AttackComboPort(Protocol):
     @property
     def air_combo_count(self) -> int: ...
 
-    def record_hit_landed(self, airborne: bool) -> None: ...
+    def record_hit_landed(self, airborne: bool) -> bool: ...
 
 
 class AttackerPort(Protocol):
@@ -59,6 +59,14 @@ class AttackerPort(Protocol):
 
     @property
     def combat(self) -> AttackComboPort: ...
+
+    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+        """One of this carrier's hits took health off a target.
+
+        ``combo_advanced`` is whether the hit moved the combo counter, which
+        happens once per attack however many targets it reached.
+        """
+        ...
 
 
 class CombatPort(AttackComboPort, Protocol):
@@ -113,7 +121,7 @@ class CombatPort(AttackComboPort, Protocol):
     @property
     def air_combo_count(self) -> int: ...
 
-    def record_hit_landed(self, airborne: bool) -> None: ...
+    def record_hit_landed(self, airborne: bool) -> bool: ...
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 

@@ -34,7 +34,7 @@ from src.core.fx import (
     spawn_sweat_drops,
 )
 from src.core.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
-from src.core.level.systems.contact_system import GuardEvent
+from src.core.level.systems.contact_system import GuardEvent, ImpactEvent
 from src.core.settings import CameraShake
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
@@ -153,15 +153,30 @@ class FeedbackSystem:
         guard_events: list[GuardEvent],
         player: Player,
         camera: CameraSystem,
+        impact_events: list[ImpactEvent] | None = None,
     ) -> None:
-        """Shake for a heavy melee impact, ring and shake for guard outcomes, shake for a dash.
+        """Shake for the hits, rings and shake for guard outcomes, shake for a dash.
 
         ``impact`` is the strongest melee knockback this tick; ``guard_events``
-        are this tick's guard, parry, break and stun outcomes, already drained
+        are this tick's guard, parry, break and stun outcomes and
+        ``impact_events`` the hits that took health off, all already drained
         from the systems that produced them.
+
+        Every landed hit shakes a little (``CameraShake.HIT_*``) and a kill a
+        little more; a heavy one still gets the stronger shake it always had.
+        Trauma is added once, at the strongest of them, so three targets hit by
+        one sweep do not shake three times as hard as one.
         """
+        trauma = 0.0
         if impact >= CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
-            camera.add_trauma(impact / CameraShake.HEAVY_DIV)
+            trauma = impact / CameraShake.HEAVY_DIV
+        for landed in impact_events or ():
+            hit = CameraShake.HIT_TRAUMA + landed.strength / CameraShake.HIT_DIV
+            if landed.killed:
+                hit += CameraShake.KILL_TRAUMA
+            trauma = max(trauma, hit)
+        if trauma > 0.0:
+            camera.add_trauma(trauma)
         if guard_events:
             trauma = 0.0
             for event in guard_events:

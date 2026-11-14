@@ -124,6 +124,10 @@ class Entity(Sprite):
     # here so the systems that walk every entity ask ``is None`` and not ``getattr``.
     dash: DashController | None = None
 
+    # The fighters this one shares a level with, filed by
+    # ``SpriteGroups.add_fighter``. Empty for a fighter built on its own.
+    roster: Iterable[Entity] = ()
+
     # Kinematic state is owned by ``self._movement`` (MovementComponent) and
     # exposed through the ``velocity`` / ``on_surface`` delegating properties
     # below.  Class-level annotations were removed: they collided with the
@@ -609,6 +613,13 @@ class Entity(Sprite):
     def on_damage_landed(self) -> None:
         """A melee attack of this fighter took health off its target: the parry streak ends."""
         self.parries_taken = 0
+
+    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+        """One of this fighter's hits took health off. Nothing by default.
+
+        :class:`~src.entities.player.Player` gets dash charges back for it.
+        """
+        del combo_advanced
 
     def get_damage_modifier(self, damage_type: DamageType) -> float:
         """Damage multiplier for a given damage type.

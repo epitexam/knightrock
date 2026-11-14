@@ -199,9 +199,10 @@ def measure(seconds: float) -> dict[str, object]:
     report["idle_vs_goblin"] = _duel(_idle, seconds, "goblin")
     attacks = shipped_gameplay_data().attack_sets
     report["enemy_warning_ms"] = {
-        owner: round(next(iter(table.values())).phases[0].startup_frames / 60 * 1000)
+        f"{owner}.{name}": round(attack.phases[0].startup_frames / 60 * 1000)
         for owner, table in attacks.items()
         if owner != "player"
+        for name, attack in table.items()
     }
     return report
 

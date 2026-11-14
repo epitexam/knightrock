@@ -303,6 +303,27 @@ class Player(Entity):
         """Process jump input with coyote time, wall jumps, and midair jumps."""
         resolve_jump(self)
 
+    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+        """A hit of the player's took health off: dash charges are its reward.
+
+        A hit landed out of a dash gives its charge back
+        (``Physics.DASH_REFRESH_ON_HIT``), so a dash into an attack costs
+        nothing when it connects; and every ``COMBO_DASH_REFILL_HITS`` hits of
+        one combo give one back, so a fighter who keeps the pressure up keeps
+        the means to get out.
+        """
+        dash = self.dash
+        if dash.charges >= dash.max_charges:
+            return
+        refresh = (
+            Physics.DASH_REFRESH_ON_HIT
+            and self.state_machine.current_state_name == PlayerState.DASH
+        )
+        every = CombatSettings.COMBO_DASH_REFILL_HITS
+        milestone = combo_advanced and every > 0 and self.combat.combo_count % every == 0
+        if refresh or milestone:
+            dash.charges += 1
+
     def _on_reset(self) -> None:
         self.jump.reset()
         self.guard.reset()

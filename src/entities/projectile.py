@@ -71,6 +71,10 @@ class Projectile(Sprite):
         """Body box used if something intercepts the projectile itself."""
         return self.hitbox
 
+    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+        """A projectile is owed nothing for a hit."""
+        del combo_advanced
+
     def launch(
         self,
         config: ProjectileConfig,

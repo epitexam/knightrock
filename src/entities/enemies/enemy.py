@@ -11,10 +11,10 @@ from pygame.sprite import Group
 from src.combat.frame_data import MoveId, move_id
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
+from src.core.settings import AI, Locomotion
 from src.core.settings import Animation as AnimationSettings
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Locomotion
-from src.entities.enemies.schema import EnemyConfig
+from src.entities.enemies.schema import EnemyConfig, EnemyMove
 from src.entities.entity import Entity
 from src.physics import apply_velocity_friction
 from src.physics.spatial_hash import SpatialHash
@@ -93,6 +93,7 @@ class Enemy(Entity):
     vision_range: float
     attack_range: float
     attack_name: MoveId | None
+    moves: tuple[EnemyMove, ...]
     idle_duration: float
     passive_friction: float
     patrol_direction: int
@@ -172,6 +173,12 @@ class Enemy(Entity):
         self.vision_range = config.vision_range
         self.attack_range = config.attack_range
         self.attack_name = move_id(config.attack_name) if config.attack_name else None
+        if config.moves:
+            self.moves = tuple(config.moves)
+        elif config.attack_name:
+            self.moves = (EnemyMove(config.attack_name, config.attack_range),)
+        else:
+            self.moves = ()
         self.idle_duration = config.idle_duration
         self.passive_friction = config.passive_friction
         self.weight = config.weight
@@ -349,8 +356,8 @@ class Enemy(Entity):
             < self.vision_range
         )
 
-    def is_player_in_range(self) -> bool:
-        """Check if the player is within attack range.
+    def is_player_in_range(self, reach: float | None = None) -> bool:
+        """Whether the player is closer than ``reach``, or the attack range.
 
         Returns
         -------
@@ -359,9 +366,46 @@ class Enemy(Entity):
         """
         if self.player is None:
             return False
-        return (
-            pygame.math.Vector2(self.hitbox.center).distance_to(
-                pygame.math.Vector2(self.player.hitbox.center)
-            )
-            < self.attack_range
-        )
+        return pygame.math.Vector2(self.hitbox.center).distance_to(
+            pygame.math.Vector2(self.player.hitbox.center)
+        ) < (self.attack_range if reach is None else reach)
+
+    def plan_move(self) -> str | None:
+        """Pick the next attack to close in for, weighted by the type's moves.
+
+        A type with one move draws nothing from its random stream, so its
+        behaviour is what it was before it could choose.
+        """
+        if not self.moves:
+            return None
+        if len(self.moves) == 1:
+            return self.moves[0].name
+        roll = self.rng.random() * sum(move.weight for move in self.moves)
+        for move in self.moves:
+            roll -= move.weight
+            if roll < 0.0:
+                return move.name
+        return self.moves[-1].name
+
+    def move_range(self, name: str | None) -> float:
+        """How close the player must be for the move called ``name``."""
+        for move in self.moves:
+            if move.name == name:
+                return move.range
+        return self.attack_range
+
+    def attack_slot_free(self) -> bool:
+        """Whether fewer than ``AI.MAX_ATTACKERS`` others are attacking the same player.
+
+        Counted from the roster's states each time it is asked, so nothing is
+        held between ticks and a rollback has nothing to restore.
+        """
+        busy = 0
+        for other in self.roster:
+            if other is self or not isinstance(other, Enemy) or other.player is not self.player:
+                continue
+            if other.state_machine.current_state_name in (EnemyState.ATTACK, EnemyState.CHARGE):
+                busy += 1
+                if busy >= AI.MAX_ATTACKERS:
+                    return False
+        return True

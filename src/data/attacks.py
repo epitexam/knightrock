@@ -188,6 +188,8 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             hit_level=_named(HitLevel, raw, "hit_level", where),
             block_mask=_named(BlockMask, raw, "block_mask", where),
             tags=_read_tags(raw.get("tags"), f"{where}.tags"),
+            flinch=bool(raw.get("flinch", _HIT_DEFAULTS["flinch"])),
+            hit_stop=(float(raw["hit_stop"]) if raw.get("hit_stop") is not None else None),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -557,6 +559,8 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "hit_level": phase.hit.hit_level,
                     "block_mask": phase.hit.block_mask,
                     "tags": list(phase.hit.tags),
+                    **({"flinch": True} if phase.hit.flinch else {}),
+                    **({"hit_stop": phase.hit.hit_stop} if phase.hit.hit_stop is not None else {}),
                 },
                 "extra_hitboxes": [_hitbox_spec_to_dict(spec) for spec in phase.extra_hitboxes],
                 "hitbox_keyframes": [

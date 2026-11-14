@@ -45,6 +45,7 @@ __all__ = [
     "ContactOutcome",
     "ContactSystem",
     "GuardEvent",
+    "ImpactEvent",
     "OffensiveBox",
     "ZoneContact",
 ]
@@ -108,6 +109,19 @@ class GuardEvent:
     point, as a clash between two attackers does not."""
 
 
+@dataclass(frozen=True)
+class ImpactEvent:
+    """Render-only record of a hit that took health off its target.
+
+    What the shake of a hit is drawn from: how hard it was, and whether it
+    killed.
+    """
+
+    strength: float
+    """The hit's knockback magnitude, charge included, in px/s."""
+    killed: bool = False
+
+
 def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] | None:
     """The middle of the overlap between an attack box and its target.
 
@@ -129,6 +143,7 @@ class ContactOutcome:
     guard_events: list[GuardEvent] = field(default_factory=list)
     impact: float = 0.0
     hit_stop: float = 0.0
+    impact_events: list[ImpactEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -140,6 +155,22 @@ class ZoneContact:
     zone_index: int
     zone_mult: float
     kind: str = "melee"
+
+
+def _hit_stop(hit: HitProperties, magnitude: float) -> float:
+    """How long a landed melee hit freezes the world, in seconds.
+
+    The hit's own ``hit_stop`` when the data gives one; otherwise a base plus
+    a share of the damage and of the knockback, so a jab barely stops the
+    world and a launcher holds it.
+    """
+    if hit.hit_stop is not None:
+        return hit.hit_stop
+    return (
+        CombatSettings.HITSTOP_BASE
+        + hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
+        + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
+    )
 
 
 def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> bool:
@@ -309,6 +340,7 @@ class ContactSystem:
         self.impact: float = 0.0
         self.hit_stop: float = 0.0
         self.guard_events: list[GuardEvent] = []
+        self.impact_events: list[ImpactEvent] = []
         #: Contacts landed this resolve, with their absorbing zone.
         self.zone_contacts: list[ZoneContact] = []
         #: Optional Axe G dump; enabled only under DEBUG + DEBUG_COMBAT_DUMP.
@@ -340,6 +372,7 @@ class ContactSystem:
         self.impact = 0.0
         self.hit_stop = 0.0
         self.guard_events = []
+        self.impact_events = []
         # zone_contacts accumulates across producers of the same tick
         # (cleared only by begin_tick), mirroring tick_metrics.
         self._target_geometry.reset()
@@ -405,6 +438,7 @@ class ContactSystem:
             guard_events=self.guard_events,
             impact=self.impact,
             hit_stop=self.hit_stop,
+            impact_events=self.impact_events,
         )
 
     def _candidates(
@@ -476,15 +510,14 @@ class ContactSystem:
                 self.guard_events.append(GuardEvent("stun", box.attacker))
         magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
         self.impact = max(self.impact, magnitude)
-        duration = (
-            CombatSettings.HITSTOP_BASE
-            + box.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
-            + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
-        )
+        duration = _hit_stop(box.hit, magnitude)
         if result.parried:
             duration = max(duration, GuardSettings.PARRY_HITSTOP)
+        if result.killed:
+            duration = max(duration, CombatSettings.KILL_HITSTOP)
         self.hit_stop = max(self.hit_stop, duration)
         if result.applied:
+            self._record_impact(box, target, magnitude, result.killed)
             box.attacker.on_damage_landed()
 
     def _resolve_generic(self, box: OffensiveBox, target: Combatant) -> None:
@@ -501,6 +534,9 @@ class ContactSystem:
             if not (result.applied or result.guarded):
                 return
             self._record_guard_event(result, target, box)
+            if result.applied:
+                magnitude = pygame.math.Vector2(box.hit.knockback.power).length()
+                self._record_impact(box, target, magnitude, result.killed)
         else:
             target.receive_damage(
                 amount=box.hit.damage,
@@ -520,6 +556,13 @@ class ContactSystem:
         )
         if box.record_contact is not None:
             box.record_contact(target)
+
+    def _record_impact(
+        self, box: OffensiveBox, target: Combatant, strength: float, killed: bool
+    ) -> None:
+        """Note how hard a hit landed, for the shake."""
+        del box, target
+        self.impact_events.append(ImpactEvent(strength, killed))
 
     def _record_guard_event(
         self, result: DamageResult, target: Combatant, box: OffensiveBox

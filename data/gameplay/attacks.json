@@ -29,7 +29,8 @@
               "height": "mid",
               "hit_level": "med",
               "block_mask": "any",
-              "tags": []
+              "tags": [],
+              "flinch": true
             },
             "reset_targets": true,
             "cancel_into": [
@@ -358,7 +359,8 @@
               "height": "mid",
               "hit_level": "med",
               "block_mask": "any",
-              "tags": []
+              "tags": [],
+              "flinch": true
             },
             "reset_targets": true,
             "cancel_into": [
@@ -438,7 +440,8 @@
               "height": "mid",
               "hit_level": "heavy",
               "block_mask": "any",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.16
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -766,7 +769,8 @@
               "height": "low",
               "hit_level": "med",
               "block_mask": "any",
-              "tags": []
+              "tags": [],
+              "flinch": true
             },
             "reset_targets": true,
             "cancel_into": [
@@ -1219,6 +1223,67 @@
         "lunge_speed_multiplier": 0.35,
         "vertical_lunge": 0.0,
         "attack_move_multiplier": 0.3
+      },
+      "claw_reach": {
+        "phases": [
+          {
+            "startup_frames": 22,
+            "active_frames": 5,
+            "recovery_frames": 24,
+            "hit": {
+              "damage": 9.0,
+              "knockback": {
+                "power": [
+                  140.0,
+                  -60.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.12,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "low",
+              "hit_level": "med",
+              "block_mask": "any",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  56.0,
+                  16.0
+                ],
+                "offset": [
+                  46.0,
+                  14.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 1.2,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.3
       }
     },
     "slime": {
@@ -1269,6 +1334,67 @@
           }
         ],
         "cooldown": 1.25,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.3
+      },
+      "slime_splash": {
+        "phases": [
+          {
+            "startup_frames": 24,
+            "active_frames": 4,
+            "recovery_frames": 22,
+            "hit": {
+              "damage": 7.0,
+              "knockback": {
+                "power": [
+                  110.0,
+                  -90.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "blunt",
+              "stagger": 0.1,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "low",
+              "hit_level": "med",
+              "block_mask": "any",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  84.0,
+                  14.0
+                ],
+                "offset": [
+                  0.0,
+                  9.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 1.5,
         "stances": [
           "ground"
         ],

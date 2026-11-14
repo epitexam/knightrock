@@ -232,9 +232,9 @@ class CombatComponent:
         """Air-juggle hits landed in the current window."""
         return self.combo.air_count
 
-    def record_hit_landed(self, airborne: bool) -> None:
-        """Count a connected hit, tracking air juggles."""
-        self.combo.on_hit_landed(airborne)
+    def record_hit_landed(self, airborne: bool) -> bool:
+        """Count a connected hit, tracking air juggles; whether the combo moved."""
+        return self.combo.on_hit_landed(airborne)
 
     @property
     def movement_multiplier(self) -> float:
@@ -589,9 +589,10 @@ class NullCombatComponent:
         """Always returns ``0``."""
         return 0
 
-    def record_hit_landed(self, airborne: bool) -> None:
-        """No-op."""
+    def record_hit_landed(self, airborne: bool) -> bool:
+        """Never counts: there is no combo."""
         del airborne
+        return False
 
     def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """No-op."""

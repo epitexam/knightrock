@@ -17,7 +17,12 @@ import pygame
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.shapes import ShapeKind, shape_aabb_intersects, swept_intersects_aabb
-from src.core.level.systems.contact_system import ContactSystem, GuardEvent, OffensiveBox
+from src.core.level.systems.contact_system import (
+    ContactSystem,
+    GuardEvent,
+    ImpactEvent,
+    OffensiveBox,
+)
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
 from src.entities.projectile import Projectile, ProjectileConfig
@@ -59,6 +64,7 @@ class ProjectileSystem:
             contact_system if contact_system is not None else ContactSystem()
         )
         self.guard_events: list[GuardEvent] = []
+        self.impact_events: list[ImpactEvent] = []
 
     def spawn(
         self,
@@ -81,6 +87,7 @@ class ProjectileSystem:
     ) -> None:
         """Advance every projectile and resolve contacts."""
         self.guard_events.clear()
+        self.impact_events.clear()
         if delta_time <= 0.0:
             return
         for projectile in list(self.groups.projectile_sprites):
@@ -152,6 +159,7 @@ class ProjectileSystem:
         )
         outcome = self.contact_system.resolve((box,), self.groups.entity_sprites, entity_grid)
         self.guard_events.extend(outcome.guard_events)
+        self.impact_events.extend(outcome.impact_events)
         if outcome.metrics.contacts and not config.pierce:
             self._release(projectile)
 

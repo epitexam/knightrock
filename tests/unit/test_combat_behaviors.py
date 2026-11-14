@@ -71,6 +71,7 @@ def test_a_new_chain_link_lunges_without_leaving_the_attack_state() -> None:
         facing_right=True,
         velocity=pygame.Vector2(),
         speed=400.0,
+        jump=SimpleNamespace(has_buffered_jump=lambda: False),
     )
     state = PlayerAttackState(entity)  # type: ignore[arg-type]
     state.enter()

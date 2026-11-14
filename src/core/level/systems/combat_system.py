@@ -25,6 +25,7 @@ from src.core.level.systems.contact_system import (
     ContactOutcome,
     ContactSystem,
     GuardEvent,
+    ImpactEvent,
     OffensiveBox,
 )
 from src.core.settings import Combat as CombatSettings
@@ -134,6 +135,7 @@ class CombatSystem:
         self.metrics: CombatMetrics = CombatMetrics()
         self.impact: float = 0.0
         self.guard_events: list[GuardEvent] = []
+        self.impact_events: list[ImpactEvent] = []
         self.last_clash: tuple[float, float] | None = None
 
     def process_attacks(
@@ -157,6 +159,7 @@ class CombatSystem:
         self.metrics = CombatMetrics()
         self.impact = 0.0
         self.guard_events = []
+        self.impact_events = []
         self.last_clash = None
         if self.in_hit_stop:
             return
@@ -174,6 +177,7 @@ class CombatSystem:
         self.metrics.overlaps += outcome.metrics.overlaps
         self.metrics.contacts += outcome.metrics.contacts
         self.guard_events.extend(outcome.guard_events)
+        self.impact_events.extend(outcome.impact_events)
         self.impact = max(self.impact, outcome.impact)
         self.hit_stop_timer = max(self.hit_stop_timer, outcome.hit_stop)
 
