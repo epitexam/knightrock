@@ -38,7 +38,6 @@ _CONTROLLER_FIELDS: dict[str, dict[str, str]] = {
         "dash_recharge_timer": "recharge_timer",
         "dash_speed": "speed",
         "dash_duration": "duration",
-        "dash_friction": "friction",
         "dash_requested": "requested",
     },
 }

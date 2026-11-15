@@ -1395,10 +1395,12 @@ def test_the_afterimage_count_is_bounded_by_one_dash_not_by_taste() -> None:
     and one dash's trail must be gone before the next dash can start, or the
     copies of two dashes pile up in the same place.
     """
-    # Bounded by the cadence and by the frame: a stamp cannot land twice in
-    # one tick, so a cadence finer than a frame is really a per-frame rate.
+    # Stamps are spaced by the distance covered, so a dash lays one per
+    # SPACING of its length -- at most its peak speed held the whole way -- and
+    # never more than one a frame.
     frame = 1.0 / Simulation.TICK_RATE
-    per_dash = min(Physics.DASH_DURATION / Afterimage.SPAWN_EVERY, Physics.DASH_DURATION / frame)
+    longest = Physics.DASH_SPEED * Physics.DASH_DURATION
+    per_dash = min(longest / Afterimage.SPACING + 1, Physics.DASH_DURATION / frame)
     assert per_dash <= Afterimage.MAX, (
         f"an {Physics.DASH_DURATION * 1000:.0f}ms dash lays {per_dash:.1f} stamps, "
         f"and the cap is {Afterimage.MAX}"

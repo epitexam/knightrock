@@ -336,7 +336,6 @@ def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
             PlayerConfig(
                 dash_speed=1200.0,
                 dash_duration=0.5,
-                dash_friction=2.0,
                 dash_recharge_time=0.85,
                 dash_gravity_mult=0.4,
             ),

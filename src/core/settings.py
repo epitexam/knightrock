@@ -58,11 +58,12 @@ class Physics:
     JUMP_FORCE = 750.0
     MAX_FALL_SPEED = 1500.0
     DASH_SPEED = 1350
-    DASH_DURATION = 0.14
-    DASH_FRICTION = 25.0
+    DASH_DURATION = 0.16
     DASH_MAX_CHARGES = 3
     DASH_RECHARGE_TIME = 0.35
-    DASH_PENALTY_TIME = 2.0
+    # Spending the last charge locks the dash this long: long enough that three
+    # in a row is a choice, short enough not to read as the dash breaking.
+    DASH_PENALTY_TIME = 0.7
     DASH_GRAVITY_MULT = 0.0
     # Dash cancel window (s): how long a dash must last before an attack or a
     # guard can cancel it. 0.0 = cancellable as soon as the dash starts, which
@@ -74,6 +75,14 @@ class Physics:
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05
     DASH_WALL_BOUNCE = 0.5
+    # The dash's speed curve: from DASH_SPEED down to the exit speed as
+    # (1 - t)^DASH_CURVE over the dash -- a burst that eases out. About
+    # 105 px holding the stick (ending at the run speed), 80 px without.
+    DASH_CURVE = 2.0
+    # The exit speed when the stick no longer holds the dash's way: a glide.
+    DASH_EXIT_IDLE = 90.0
+    # A push the other way this early in a dash turns it round, once.
+    DASH_REVERSE_WINDOW = 0.05
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0
     WALL_SLIDE_SPEED = 100.0
@@ -452,7 +461,7 @@ class Afterimage:
     gone before the next one starts.
     """
 
-    MAX = 9
+    MAX = 10
     TTL = 0.22
     SPAWN_EVERY = 0.012
     """One stamp per frame while the dash runs, which is eight or nine for a

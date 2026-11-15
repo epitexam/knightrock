@@ -115,7 +115,9 @@ class PlayerInputHandler:
         # Asked here, where the facing would otherwise be written: the input
         # read runs before the state machine, so a decision taken from a
         # state's own update would be a frame too late to stop the mirror.
-        if not request_turn(player):
+        # The dash turns itself round (``PlayerDashState``): a ground pivot
+        # entered from it would end the dash, its invincibility with it.
+        if not player.is_dashing and not request_turn(player):
             player.face_movement()
 
         if im.just_pressed(InputAction.JUMP):

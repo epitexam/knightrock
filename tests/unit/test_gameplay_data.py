@@ -546,7 +546,6 @@ _OVERRIDE_SAMPLES: dict[str, object] = {
     "max_dash_charges": 5,
     "dash_speed": 1100.0,
     "dash_duration": 0.08,
-    "dash_friction": 25.0,
     "dash_penalty_duration": 2.0,
     "dash_recharge_time": 0.35,
     "dash_gravity_mult": 0.0,

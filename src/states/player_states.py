@@ -448,28 +448,44 @@ class PlayerKnockbackState(KnockbackState["Player"]):
 
 
 class PlayerDashState(PlayerBaseState):
-    """Represent the PlayerDash state."""
+    """The dash: a burst that eases into the run, the same length every time.
+
+    The speed follows one curve, from ``dash.speed`` at the press down to the
+    exit speed at the end (``Physics.DASH_CURVE``): the run speed when the
+    stick still points the way of the dash, so the dash hands over to the run
+    without a stop, or ``Physics.DASH_EXIT_IDLE`` when it does not, a short
+    glide the ground then stops. The way is chosen at the press; a push the
+    other way in the first ``Physics.DASH_REVERSE_WINDOW`` turns it round,
+    once -- a press read a frame late is still the player's.
+
+    It used to hold full speed for as long as the stick was held and decay
+    fast when it was not, so the same press went 180 px or 64 px, and it set
+    the speed to zero on its last frame, which the run then had to climb back
+    from: a stop in the middle of every dash-into-run.
+    """
 
     def __init__(self, entity: Player):
         """Initialize the PlayerDashState instance with dashing tags."""
         super().__init__(entity, tags=["dash", "invincible"])
+        self.direction = 1.0
+        self.reversed = False
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
         self.entity.open_dodge_window()
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
-        # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
+        # The way of the press, else the stick now, else the facing.
         request_axis = self.entity.dash.request_move_axis
         move_axis = request_axis if request_axis != 0.0 else self.entity.move_axis
-        direction = (
-            1.0
-            if move_axis > 0
-            else -1.0
-            if move_axis < 0
-            else (1.0 if self.entity.facing_right else -1.0)
-        )
-        self.entity.velocity.x = self.entity.dash.speed * direction
+        if move_axis > 0:
+            self.direction = 1.0
+        elif move_axis < 0:
+            self.direction = -1.0
+        else:
+            self.direction = 1.0 if self.entity.facing_right else -1.0
+        self.reversed = False
+        self.entity.velocity.x = self.entity.dash.speed * self.direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
         # Signal dash start for screen shake/trauma
@@ -483,41 +499,44 @@ class PlayerDashState(PlayerBaseState):
         # Start dash coyote window for attack/guard after dash ends
         self.entity.dash.start_coyote()
 
+    def _exit_speed(self) -> float:
+        """The run speed while the stick holds the dash's way, a short glide otherwise."""
+        if self.entity.move_axis * self.direction > 0.0:
+            return float(self.entity.speed)
+        return Physics.DASH_EXIT_IDLE
+
     def update(self, delta_time: float) -> str | None:
-        """Update the current state, applying dash friction and air control."""
-        self.entity.dash.duration_timer -= delta_time
-        # Full directional control: input directly influences velocity for snappy changes
-        move_axis = self.entity.move_axis
-        if move_axis != 0.0:
-            target_vx = self.entity.dash.speed * move_axis
-            # Strong acceleration toward target velocity for instant direction response (Brawlhalla-style)
-            control_accel = Physics.DASH_AIR_CONTROL * delta_time
-            diff = target_vx - self.entity.velocity.x
-            # If trying to reverse direction, apply extra impulse for instant turn
-            if diff * self.entity.velocity.x < 0:  # Opposite signs = reversing
-                control_accel *= 5.0  # 5x stronger when reversing
-            if abs(diff) > control_accel:
-                self.entity.velocity.x += control_accel if diff > 0 else -control_accel
-            else:
-                self.entity.velocity.x = target_vx
-            # No friction while actively controlling - player has full authority
-        else:
-            # No input: apply friction to slow down naturally
-            apply_velocity_friction(self.entity, self.entity.dash.friction, delta_time)
+        """Follow the speed curve, turn round on an early push back, bounce off walls."""
+        dash = self.entity.dash
+        dash.duration_timer -= delta_time
+        elapsed = dash.duration - dash.duration_timer
+        if (
+            not self.reversed
+            and elapsed <= Physics.DASH_REVERSE_WINDOW
+            and self.entity.move_axis * self.direction < 0.0
+        ):
+            self.direction = -self.direction
+            self.reversed = True
+            self.entity.facing_right = self.direction > 0.0
+        share = min(1.0, max(0.0, elapsed / max(dash.duration, 1e-6)))
+        exit_speed = self._exit_speed()
+        speed = exit_speed + (dash.speed - exit_speed) * (1.0 - share) ** Physics.DASH_CURVE
+        self.entity.velocity.x = speed * self.direction
 
         # Wall bounce: if dashing into a wall, bounce off with momentum retention
-        if self.entity.on_surface.get("left", False) and self.entity.velocity.x < 0:
+        if self.entity.on_surface.get("left", False) and self.direction < 0:
+            self.direction = 1.0
             self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
             self.entity.facing_right = True
-        elif self.entity.on_surface.get("right", False) and self.entity.velocity.x > 0:
+        elif self.entity.on_surface.get("right", False) and self.direction > 0:
+            self.direction = -1.0
             self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
             self.entity.facing_right = False
 
-        self.entity.velocity.y += (
-            self.entity.normal_gravity * self.entity.dash.gravity_mult * delta_time
-        )
-        if self.entity.dash.duration_timer <= 0 or abs(self.entity.velocity.x) < 10.0:
-            self.entity.velocity.x = 0.0
+        self.entity.velocity.y += self.entity.normal_gravity * dash.gravity_mult * delta_time
+        if dash.duration_timer <= 0:
+            # The exit speed is kept: the run picks it up, or the ground stops it.
+            self.entity.velocity.x = exit_speed * self.direction
             return self.ground_return()
         return None
 

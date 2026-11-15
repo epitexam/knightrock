@@ -148,7 +148,6 @@ def test_debug_panels_signal_impossible_small_display_placement() -> None:
         wall_jump_height=600.0,
         dash_speed=800.0,
         dash_duration=0.12,
-        dash_friction=15.0,
         gravity_scale=1.0,
         otg_timer=0.0,
     )

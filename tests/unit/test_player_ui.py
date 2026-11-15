@@ -73,7 +73,6 @@ def _make_full_player(**overrides) -> SimpleNamespace:
         "wall_jump_height": 612.0,
         "dash_speed": 1500,
         "dash_duration": 0.12,
-        "dash_friction": 15.0,
     }
     base.update(overrides)
     return _make_player(**base)
@@ -172,7 +171,7 @@ def test_state_prints_the_dash_constants_nowhere() -> None:
     wherever the other fields for that field are."""
     text = "\n".join(_state_lines_of(_make_player()))
 
-    for constant in ("dash_speed", "dash_charges", "dash_friction"):
+    for constant in ("dash_speed", "dash_charges", "dash_duration"):
         assert constant not in text, constant
 
 

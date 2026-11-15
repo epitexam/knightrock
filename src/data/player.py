@@ -118,7 +118,6 @@ def read_player_config(
             max_dash_charges=int(raw.get("max_dash_charges", base.max_dash_charges)),
             dash_speed=float(raw.get("dash_speed", base.dash_speed)),
             dash_duration=float(raw.get("dash_duration", base.dash_duration)),
-            dash_friction=float(raw.get("dash_friction", base.dash_friction)),
             dash_penalty_duration=float(
                 raw.get("dash_penalty_duration", base.dash_penalty_duration)
             ),

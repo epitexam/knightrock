@@ -135,7 +135,6 @@ class DashController:
         self.max_charges: int = config.max_dash_charges
         self.speed: float = config.dash_speed
         self.duration: float = config.dash_duration
-        self.friction: float = config.dash_friction
         self.penalty_duration: float = config.dash_penalty_duration
         self.recharge_time: float = config.dash_recharge_time
         self.gravity_mult: float = config.dash_gravity_mult

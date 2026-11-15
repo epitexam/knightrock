@@ -72,8 +72,6 @@ class PlayerConfig:
         Horizontal speed during a dash.
     dash_duration : float
         Duration of a dash in seconds.
-    dash_friction : float
-        Friction applied during a dash.
     dash_penalty_duration : float
         Duration of penalty after a dash.
     dash_recharge_time : float
@@ -111,7 +109,6 @@ class PlayerConfig:
     max_dash_charges: int = Physics.DASH_MAX_CHARGES
     dash_speed: float = Physics.DASH_SPEED
     dash_duration: float = Physics.DASH_DURATION
-    dash_friction: float = Physics.DASH_FRICTION
     dash_penalty_duration: float = Physics.DASH_PENALTY_TIME
     dash_recharge_time: float = Physics.DASH_RECHARGE_TIME
     dash_gravity_mult: float = Physics.DASH_GRAVITY_MULT
