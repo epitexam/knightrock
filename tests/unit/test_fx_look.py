@@ -936,11 +936,11 @@ def test_the_block_ring_stands_on_the_side_the_attack_came_from() -> None:
     assert right.image.get_size() == left.image.get_size()
 
 
-def test_the_block_ring_is_one_hollow_fine_stroke() -> None:
-    """A hairline ring, and nothing of the inked band it used to be.
+def test_the_block_ring_is_hollow_and_not_a_filled_disc() -> None:
+    """A shield of light round the contact, open in the middle.
 
-    The rim was a five-pixel comic-panel outline, which at a 40-unit fighter
-    is a heavy drawn shape rather than a flash of light.
+    A filled disc would be a status icon stuck on the fighter, not a blow
+    turned away.
     """
     ring = spawn_guard_arc(Group(), _entity())
     assert ring is not None

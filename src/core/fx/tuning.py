@@ -478,8 +478,18 @@ class FxGuard:
     """
 
     ARC_RADIUS = 18.0
-    ARC_TTL = 0.22
+    ARC_TTL = 0.26
     ARC_FLASH = 42.0
+    #: How far the shield pushes out from the contact over its life, and how
+    #: thick its band is.
+    ARC_PUSH = 7.0
+    ARC_BAND = 3
+    #: The sparks thrown off the shield: how many, over what fan either side of
+    #: the blow (degrees), how far they fly and how long each streak is.
+    SPARKS = 6
+    SPARK_FAN = 55.0
+    SPARK_REACH = 10.0
+    SPARK_LENGTH = 5.0
     ARC_FADE_IN = 0.08
     ARC_FALLBACK_OFFSET = 0.3
     """Where the ring stands in front of the defender when the caller has no

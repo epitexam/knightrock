@@ -506,13 +506,17 @@ class ImpactDecalParticle(FxParticle):
 class ShieldArcParticle(FxParticle):
     family: ClassVar[str] = "shield_arc"
 
-    """The block: one fine ring, brighter where the hit landed.
+    """The block: a shield of light thrown up where the hit landed.
 
-    A hairline rather than an inked band. The rim it used to carry was a
-    comic-panel outline, five pixels of it, and at this size the ring read as
-    a heavy drawn shape with nothing light about it. One thin stroke plus a
-    short brighter kick on the side the block came from says the same thing
-    -- a shield taking a hit, from a direction -- with a fifth of the ink.
+    Animated rather than stamped, because a block is an event and not a
+    state: in its first instant a faint bubble closes round the contact, a
+    thick crescent faces the blow and pushes outward, and sparks are thrown
+    off its face -- then all of it fades. The crescent is the shield, the
+    bubble says the whole guard took it, the sparks say it was turned away;
+    everything bright is on the side the blow came from.
+
+    The sparks are painted in the ring's own surface, not thrown as particles:
+    they live and die with it and spend nothing from the particle budget.
     """
 
     fade_in: ClassVar[float] = FxGuard.ARC_FADE_IN
@@ -528,31 +532,65 @@ class ShieldArcParticle(FxParticle):
         self.body = FXColors.parry_spark if parried else FXColors.shield_arc
         self.kick = FXColors.parry_core if parried else Colors.off_white
         self.parried = parried
+        self.age = 0.0
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
-        """A one-pixel ring, and a two-pixel kick over the side that was hit.
+        """The bubble, the crescent and the sparks, at the current age.
 
-        Drawn with ``pygame.draw.circle`` rather than ``draw.arc``, which
-        ignores its start and stop angles and closes the loop whatever they
-        say -- every set of spans handed to it produced the same full ring.
+        Drawn with :func:`draw_arc_stroke` rather than ``draw.arc``, which
+        ignores its start and stop angles and closes the loop whatever they say.
         """
-        radius = snap(FxGuard.ARC_RADIUS)
-        side = 2 * radius + FxGuard.ARC_MARGIN
-        surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        middle = side / 2.0
-        pygame.draw.circle(surface, self.body, (snap(middle), snap(middle)), radius, 1)
+        span = self.max_ttl if self.max_ttl > 0.0 else 1.0
+        t = min(1.0, max(0.0, self.age / span))
+        grow = 1.0 - (1.0 - t) ** 2
+        reach = FxGuard.ARC_RADIUS + FxGuard.ARC_PUSH + FxGuard.SPARK_REACH
+        side_px = 2 * snap(reach) + FxGuard.ARC_MARGIN
+        surface = pygame.Surface((side_px, side_px), pygame.SRCALPHA)
+        middle = (snap(side_px / 2.0), snap(side_px / 2.0))
+        radius = FxGuard.ARC_RADIUS * 0.7 + FxGuard.ARC_PUSH * grow
         facing = 0.0 if self.side >= 0.0 else 180.0
+        # The bubble: a faint full ring, only at the start.
+        if t < 0.45:
+            pygame.draw.circle(surface, self.body, middle, snap(radius * 0.9), 1)
+        # The shield: a thick crescent facing the blow, white along its face.
+        half = FxGuard.ARC_FLASH + 30.0
+        draw_arc_stroke(
+            surface, middle, radius, facing - half, facing + half, self.body, FxGuard.ARC_BAND
+        )
         draw_arc_stroke(
             surface,
-            (snap(middle), snap(middle)),
-            radius,
+            middle,
+            radius + FxGuard.ARC_BAND / 2.0,
             facing - FxGuard.ARC_FLASH,
             facing + FxGuard.ARC_FLASH,
             self.kick,
             FxGuard.ARC_KICK_WIDTH,
         )
+        # The sparks: thrown off the shield's face, outward and fading.
+        for index in range(FxGuard.SPARKS):
+            share = index / max(1, FxGuard.SPARKS - 1)
+            angle = math.radians(facing - FxGuard.SPARK_FAN + 2 * FxGuard.SPARK_FAN * share)
+            start = radius + 2.0 + FxGuard.SPARK_REACH * grow * (0.6 + 0.4 * (index % 2))
+            length = max(1.0, FxGuard.SPARK_LENGTH * (1.0 - t))
+            a = (middle[0] + math.cos(angle) * start, middle[1] + math.sin(angle) * start)
+            b = (
+                middle[0] + math.cos(angle) * (start + length),
+                middle[1] + math.sin(angle) * (start + length),
+            )
+            pygame.draw.line(surface, self.kick, a, b, 1)
         return surface
+
+    def update(self, delta_time: float) -> None:
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+        self.age += delta_time
+        self.image = self._paint()
+        self._integrate(delta_time)
+        self._fade()
+        self.rect = self.image.get_frect(center=self.pos)
 
 
 class ShatterArcParticle(FxParticle):
