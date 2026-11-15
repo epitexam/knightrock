@@ -200,15 +200,19 @@ class GameplayLoop(CombatLoop):
                     sprite.capture_sweep_origin()
             for combatant in groups.combat_sprites:
                 combatant.combat.capture_attack_origin()
-            self.platform_system.process(effective_delta)
-            self.hazard_system.process(effective_delta)
-            self.physics_system.process(effective_delta)
+            # A perfect dodge slows the world and not the player: everything
+            # but the player runs on ``world_delta`` until the rush is over.
+            world_delta = effective_delta * player.world_time_scale
+            self.platform_system.process(world_delta)
+            self.hazard_system.process(world_delta)
+            self.physics_system.process(effective_delta, world_delta, player)
             self.feedback_system.after_movement(effective_delta)
+            self._launch_shots(groups.combat_sprites)
 
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
-            self.projectile_system.process(effective_delta, self.entity_grid)
+            self.projectile_system.process(world_delta, self.entity_grid)
             self.feedback_system.after_combat(
                 self.combat_system.impact,
                 self._collect_guard_events(),
@@ -235,6 +239,24 @@ class GameplayLoop(CombatLoop):
             exit_reached=self.progression_system.exit_reached,
         )
         self.tick_system.process(level, rollback)
+
+    def _launch_shots(self, combatants: Iterable[Combatant]) -> None:
+        """Put in flight every shot a phase threw this tick, from the hand forward."""
+        from src.entities.shots import SHOTS
+
+        for fighter in combatants:
+            for name, _charge in fighter.combat.state.take_launches():
+                spec = SHOTS[name]
+                side = 1.0 if fighter.facing_right else -1.0
+                width, height = spec.config.size
+                x = fighter.hitbox.centerx + spec.muzzle[0] * side - width / 2.0
+                y = fighter.hitbox.centery + spec.muzzle[1] - height / 2.0
+                self.projectile_system.spawn(
+                    spec.config,
+                    pos=(x, y),
+                    velocity=(spec.speed * side, spec.rise),
+                    faction=fighter.faction,
+                )
 
     def _flush_combat_trace(self) -> None:
         """Dump the buffered hit candidates when the debug trace is on.

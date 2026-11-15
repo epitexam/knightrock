@@ -147,14 +147,14 @@ class PlayerUI:
         if compact:
             lines = [
                 f"HP     {player.health:.0f}/{player.max_health:.0f}",
-                f"Guard  {player.guard.posture:.0f}/{player.guard.max_posture:.0f}",
+                f"Fury   {player.fury.amount:.0f}   bat {player.battery.amount:.0f}",
                 f"Move   spd {player.speed:.0f}",
             ]
         else:
             lines = [
-                f"HP     {player.health:.0f}/{player.max_health:.0f}",
-                f"Guard  {player.guard.posture:.0f}/{player.guard.max_posture:.0f}"
-                f"   lock {player.guard.lockout_timer:.2f}s",
+                f"HP     {player.health:.0f}/{player.max_health:.0f}"
+                f"   bat {player.battery.amount:.0f}",
+                f"Fury   {player.fury.amount:.0f}   speed x{player.attack_speed:.2f}",
                 # One dash line, not two. Both were constants of the same ability
                 # and STATE printed a third field of it, so the dash was the only
                 # subject in the debug view spread over three lines in two panels.
@@ -197,17 +197,22 @@ class PlayerUI:
 
         gravity_scale = player.gravity_scale
         line_colors: dict[int, tuple[int, int, int]] = {0: hp_color}
-        posture_ratio = (
-            player.guard.posture / player.guard.max_posture if player.guard.max_posture else 0
-        )
-        if player.guard.lockout_timer > 0:
-            line_colors[1] = TEXT_CRIT
-        elif posture_ratio <= 0.3:
+        if player.fury.in_dark:
             line_colors[1] = TEXT_WARN
-        if player.guard.riposte_timer > 0:
+        elif player.fury.is_full:
+            line_colors[1] = TEXT_OK
+        if player.rush_timer > 0:
             idx = len(lines)
-            lines.append(f"RIPOSTE {player.guard.riposte_timer:.2f}s")
+            lines.append(f"DARK STEP {player.rush_timer:.2f}s")
             line_colors[idx] = TEXT_OK
+        if player.slot.power is not None:
+            idx = len(lines)
+            lines.append(f"{player.slot.power.value.upper()} {player.slot.power_timer:.2f}s")
+            line_colors[idx] = TEXT_OK
+        if player.prompt.active and player.prompt.kind is not None:
+            idx = len(lines)
+            lines.append(f"PROMPT {player.prompt.kind.value} {player.prompt.timer:.2f}s")
+            line_colors[idx] = TEXT_WARN
         if gravity_scale != 1.0:
             idx = len(lines)
             lines.append(f"Juggle grav x{gravity_scale:.2f} {player.juggle_timer:.2f}s")

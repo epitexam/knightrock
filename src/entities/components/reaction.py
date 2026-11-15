@@ -23,7 +23,6 @@ from pygame.math import Vector2
 from src.combat.knockback import KnockbackConfig
 from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
 from src.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
 
@@ -42,7 +41,6 @@ class ReactionKind(Enum):
     PUSH = "push"
     LAUNCH = "launch"
     STAGGER = "stagger"
-    GUARDED = "guarded"
     PARRIED = "parried"
 
 
@@ -50,9 +48,7 @@ class ReactionKind(Enum):
 #: vectors red while the status is fresh *or* while the knockback state still
 #: carries the entity; stagger only locks the state machine without an impulse,
 #: so it stays a locomotion-colored vector.
-VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset(
-    {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
-)
+VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset({ReactionKind.PUSH, ReactionKind.LAUNCH})
 
 
 @dataclass(frozen=True)
@@ -113,8 +109,7 @@ def push_direction(
 ) -> float:
     """Which way a knockback pushes: its own sign when ``fixed``, else away from the source.
 
-    The one place the two modes are told apart for a push or a guard push; it
-    used to be written out at each of them.
+    The one place the two modes are told apart, for a push and for a parry.
     """
     if knockback.mode == "fixed":
         return 1.0 if knockback.power[0] >= 0.0 else -1.0
@@ -277,21 +272,13 @@ class ReactionComponent:
         self._arm(ReactionKind.LAUNCH, magnitude, direction)
         return True
 
-    def note_guard_push(
-        self,
-        knockback: KnockbackConfig,
-        source_center_x: float | None,
-        parried: bool = False,
-    ) -> None:
+    def note_parry(self, knockback: KnockbackConfig, source_center_x: float | None) -> None:
+        """Record a parried hit: no push, only the side it came from."""
         owner = self._owner
         direction = push_direction(
             knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
         )
-        if parried:
-            self._arm(ReactionKind.PARRIED, 0.0, direction)
-            return
-        push = abs(knockback.power[0]) * GuardSettings.PUSH_FACTOR
-        self._arm(ReactionKind.GUARDED, push, direction)
+        self._arm(ReactionKind.PARRIED, 0.0, direction)
 
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.

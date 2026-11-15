@@ -14,6 +14,7 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
+from src.combat.combatant_protocol import DamageResult
 from src.combat.frame_data import HitProperties, PhaseState
 from src.combat.knockback import KnockbackConfig
 from src.core.input.input_actions import InputAction
@@ -180,24 +181,27 @@ def test_every_landed_hit_shakes_a_little() -> None:
 
 # -- What a hit pays ------------------------------------------------------------
 
+#: An ordinary hit that took health off its target.
+_LANDED = DamageResult(applied=True, actual_damage=8.0)
+
 
 def test_every_fourth_hit_of_a_combo_gives_a_dash_charge_back() -> None:
     _level, _pad, player = _arena()
     player.dash.charges = 0
     for count in range(1, 9):
         player.combat.combo.count = count
-        player.on_hit_confirmed(combo_advanced=True)
+        player.on_hit_confirmed(player, True, _LANDED)
     assert player.dash.charges == 2
 
     player.combat.combo.count = 4
-    player.on_hit_confirmed(combo_advanced=False)
+    player.on_hit_confirmed(player, False, _LANDED)
     assert player.dash.charges == 2, "the second target of one swing pays nothing"
 
 
 def test_a_combo_never_fills_the_dash_past_its_charges() -> None:
     _level, _pad, player = _arena()
     player.combat.combo.count = CombatSettings.COMBO_DASH_REFILL_HITS
-    player.on_hit_confirmed(combo_advanced=True)
+    player.on_hit_confirmed(player, True, _LANDED)
     assert player.dash.charges == player.dash.max_charges
 
 
@@ -296,9 +300,9 @@ def test_a_bad_moves_list_is_refused_with_its_place(moves: object, message: str)
 
 def test_a_single_move_type_draws_nothing_from_its_random_stream() -> None:
     level, _pad, _player = _arena()
-    shell = _foe(level, "shell", 1300.0)
+    shell = _foe(level, "shell", 1300.0, moves=())
     state = shell.rng.getstate()
-    assert shell.plan_move() == "claw_swipe"
+    assert shell.plan_move() == "shell_bash"
     assert shell.rng.getstate() == state
 
 

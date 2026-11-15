@@ -436,3 +436,346 @@ invincible ne produit ni ne reçoit de contact. Un test le fixe
 La matrice des issues de coups change sur trois points seulement : le hit-stop
 des coups fatals et de `sweeping_arc`, la vitesse (nulle) après un coup
 « flinch » au sol, et 20 issues nouvelles pour `claw_reach` et `slime_splash`.
+
+## 11. Rework : une boucle de hack 'n' slash (2026-11-14)
+
+Demande du développeur : un rework complet du combat, pour un hack 'n' slash
+nerveux en 2D, inspiré de No More Heroes, Killer is Dead et Dead Cells. Ses
+quatre décisions : le combat d'abord (les niveaux ne bougent pas), la défense
+par l'esquive et la parade (plus de garde tenue), les quatre mécaniques
+proposées, et aucun effet visuel nouveau. Le ressenti passe par le temps
+(gel, ralenti), la caméra et le HUD.
+
+### La boucle
+
+| Mécanique | Règle | Où |
+|---|---|---|
+| **Chaîne de sabre** | Quatre coups sur le bouton léger : `light_attack` → `twin_fangs` → `cross_cut` (nouveau) → `sweeping_arc`. Les trois premiers ne repoussent pas la cible et ne gèlent le monde que deux ticks. | `attacks.json` |
+| **Tempo** | Le compteur de combo accélère les attaques du joueur : ×1,15 à 6 coups, ×1,3 à 14, ×1,45 à 24. Seuls le startup et la recovery raccourcissent ; une frame active n'est jamais sautée. Le combo tient 2 s sans coup et tombe quand le joueur est touché ; aucun coup ne le remet à zéro. | `Tempo.STEPS`, `AttackStateMachine.speed`, `Player.tempo` |
+| **Étourdissement** | Chaque coup porte une valeur `stun` ; la jauge de la cible la cumule, tient 2 s puis fond. Pleine, l'ennemi est sonné pour `stun_duration` : il encaisse sans être poussé ni interrompu, à ×1,5 dégâts. | `HitProperties.stun`, `Entity.add_stun`, `stun_max` dans `enemies.json` |
+| **Exécution** | Tout coup du bouton lourd (`execute`) tue net un ennemi sonné : gel de 0,22 s, la plus forte secousse, dash rechargé, +20 de sang, tout le rally rendu. | `HitResolver`, `Combat.EXECUTION_HITSTOP` |
+| **Parade** | Un tap ouvre 0,15 s de fenêtre et annule l'attaque en cours ; un coup reçu de face y est paré, ajoute 45 à la jauge d'étourdissement de l'attaquant et ouvre la riposte. Un tap dans le vide coûte 0,25 s avant le suivant. | `GuardController`, `PlayerGuardState`, `Stun.PARRY` |
+| **Esquive parfaite** | Un dash lancé moins de 0,15 s avant qu'un coup n'arrive ralentit tout sauf le joueur à 25 % pendant 1,2 s, rend le dash et donne 10 de sang. Le coup doit atteindre le joueur ou l'endroit que le dash vient de quitter. | `Rush`, `Player.dodge_ghost`, `ContactSystem._resolve_ghosts`, `PhysicsSystem.process` |
+| **Sang et frénésie** | Les dégâts infligés remplissent la jauge (×0,35), un coup reçu en retire 15. Pleine, l'accord léger + lourd la dépense : 6 s d'attaques à ×1,5, de course à ×1,2 et de dash illimité. | `BloodGauge`, `Blood` |
+| **Rally** | 75 % des dégâts d'un coup reçu restent récupérables : chaque coup porté en rend 0,6 PV par point de dégât. La réserve tient 0,8 s puis fond à 20 PV/s. | `RallyReserve`, `Rally` |
+
+Le lourd reste chargeable, en 0,6 s au lieu de 1 s : à pleine charge il double
+dégâts et étourdissement, et sonne d'un coup un gobelin, un slime ou une dent.
+
+### Ce qui disparaît
+
+- La garde tenue, la posture, les dégâts de chip et le bris de garde.
+- `special_attack` (110 frames) : il sort du catalogue vers
+  `tests/data/showcase_attacks.json`, et son accord lance la frénésie.
+- Le compteur de parades consécutives (`parry_stun_threshold`) : la parade
+  nourrit la même jauge que les coups.
+- La parade par le dash (`DASH_PARRY_WINDOW`), remplacée par l'esquive parfaite.
+
+### Ce que la mise en œuvre a révélé
+
+- **La fenêtre d'esquive parfaite ne faisait que 3 ticks.** Détectée seulement
+  sur le corps en dash, elle était bornée par la géométrie : le dash sort de la
+  boîte du coup en deux ou trois ticks. Elle se mesure maintenant aussi à
+  l'endroit quitté (le « fantôme »), et vaut ce que dit `Rush.WINDOW`.
+- **Un ennemi projeté était intouchable 0,5 s à l'atterrissage** (protection
+  OTG) : le lourd suivant le traversait. Les ennemis n'ont plus cette
+  protection, le joueur la garde (`ENEMY_OTG_INVULN_DURATION`).
+- **Un coup paré touchait quand même son pareur** sur le tick où la riposte
+  portait : l'attaque annulée oubliait qui elle avait touché, alors que sa
+  boîte du tick était déjà produite. Défaut antérieur au rework ; corrigé dans
+  `combat_system._contact_gate`, avec un test qui échoue sans la correction.
+- **Le lourd envoyait sa cible hors de portée** (300 px/s et une projection) :
+  30 % des lourds portaient en martelant. Il pousse maintenant à 160 px/s, sans
+  projection ; le lanceur reste l'uppercut.
+- **Une parade debout échouait une fois sur trois** contre un gobelin, parce
+  que `claw_reach` était un coup bas et que rien à l'image ne le distingue. Les
+  deux coups bas des ennemis (`claw_reach`, `slime_splash`) sont passés à
+  mi-hauteur : ils se parent debout et se sautent toujours. Les règles de
+  hauteur restent dans le moteur.
+- **Un ennemi sans IA n'a pas d'état « sonné »** : il n'a donc pas de jauge.
+
+### Réglages des ennemis
+
+| Type | PV | Jauge d'étourdissement | Sonné pendant |
+|---|---|---|---|
+| gobelin | 60 → 80 | 60 | 1,8 s |
+| slime | 40 → 55 | 40 | 2,0 s |
+| dent | 50 → 65 | 50 | 1,5 s |
+| coquille | 90 → 140 | 100 | 1,6 s |
+
+Leurs coups font 10 à 14 dégâts au lieu de 6 à 9.
+
+### Mesures (`tests/benchmarks/combat_feel.py`)
+
+| Mesure | Étape 3 | Rework |
+|---|---|---|
+| Coups légers portés par seconde (cible passive) | 3,8 | **6,0** |
+| Part du temps en hit-stop en martelant le léger | 35 à 41 % | 33 % |
+| Temps pour tuer au léger : gobelin / slime / dent / coquille | 0,87 à 0,95 / 0,87 / 1,17 / 2,33 s | 0,98 / 0,98 / 1,12 / 2,55 s (avec les PV relevés) |
+| Au lourd : sonné, puis exécuté — gobelin, slime, dent | — | 0,62 s, puis 1,08 s |
+| Au lourd : sonné, puis exécuté — coquille | — | 1,08 s, puis **1,55 s** |
+| Part des lourds portés en martelant | 24 % (avant le réglage du recul) | 100 % |
+| Fenêtre d'esquive parfaite | — | 10 ticks avant le coup |
+
+Les trois empreintes de `test_simulation_golden.py` ont été recapturées. Avec
+les PV et les dégâts ennemis d'avant, les trois anciennes sont reproduites au
+bit près : rien d'autre dans le rework ne déplace la simulation.
+
+### Non fait, à décider après essai à la manette
+
+- **Code devenu inatteignable**, laissé en place tant que la direction n'est
+  pas validée en jeu : l'anneau de garde simple et l'arc de bris de garde
+  (`spawn_guard_arc(parried=False)`, `spawn_shatter_arc`, `ShatterArcParticle`),
+  et le champ `hit_level` des coups, qui ne réglait que le coût en posture.
+- **Aucun ennemi ne porte plus de coup bas** : la parade accroupie et
+  `Guard.HEIGHT_BLOCK` n'ont plus d'usage en jeu.
+- **Frénésie au clavier** : l'accord est resté `G` + `H` ; `A` + `S`
+  correspondrait à la manette (`X` + `Y`).
+- Sons de combat et animation par attaque : toujours en attente d'assets.
+
+**À essayer à la manette :** marteler le léger jusqu'au troisième `!` du
+compteur ; lourd, lourd, lourd sur un gobelin (le troisième exécute) ; lourd
+chargé puis lourd ; dasher au dernier moment sous une griffe, puis frapper
+pendant le ralenti ; parade puis riposte ; remplir le sang et lancer la
+frénésie ; se faire toucher puis récupérer les PV en frappant.
+
+## 12. Rework complet : No More Heroes 2 en 2D (2026-11-15)
+
+Retour du développeur sur le §11 : « tu itères sur un système de combat que
+j'estime mauvais. Je veux un rework complet pour un vrai hack 'n' slash à la
+No More Heroes (surtout le gameplay du 2) mais en 2D. » Le kit du §11 (chaîne
+légère et lourde, parade en tap, sang, rally, tempo, posture accroupie) est
+**remplacé**, pas réglé. Le moteur dessous (frame data, résolution des coups,
+gel d'image, horloges par entité, rollback) est gardé.
+
+### Le kit
+
+| Mécanique | Règle | Où |
+|---|---|---|
+| **Deux boutons, haut ou bas** | Le sabre et le corps ; Bas tenu au sol donne la garde basse. La posture accroupie n'existe plus. | `attack_moves.py`, `AttackButton` |
+| **Chaînes de sabre** | 4 coups, haut ou bas à chaque maillon (`slash_high_*`, `slash_low_*`). Tenu, le sabre charge `charged_slash`, qui brise la garde. | `attacks.json` |
+| **Batterie** | Chaque coup de sabre coûte 2 % ; vide, il ne fait que 30 % de ses dégâts. Garde + Bas la recharge, debout et à découvert. La garde coûte 4 % par coup arrêté. | `Battery`, `PlayerRechargeState` |
+| **Gardes ennemies** | Le gobelin et la coquille tiennent une garde haute ou basse et en changent toutes les 1,2 à 2,6 s ; un trait sur leur flanc montre la moitié gardée. Un coup de sabre à cette hauteur est arrêté ; un coup de poing, de pied ou un coup chargé brise la garde pour 2,5 s. | `Enemy.guards_against`, `world_overlay_bars.guard_mark_rect` |
+| **Garde du joueur** | Tenue, elle arrête tout coup de face ; un coup qui brise la garde le fait chanceler. | `Player.guards_against` |
+| **Coup de grâce** | Un coup de sabre qui devrait tuer laisse l'ennemi condamné à 1 PV. Le combat ralentit à 5 % et une direction est demandée (1,6 s) : donnée à temps, le coup de grâce part (invulnérable) et lance la machine à sous ; manquée, l'ennemi meurt seul, sans rien rapporter. | `Finish.DOOM`, `PromptController`, `EnemyDoomedState` |
+| **Étourdissement et prise** | Les coups de poing et de pied remplissent la jauge (la série de trois poings sonne un gobelin). Sur un ennemi sonné, le bouton du corps l'attrape : deux directions, puis la projection, qui tue. Une erreur laisse le joueur à découvert. | `try_grab`, `Throw` |
+| **À terre** | Un ennemi projeté reste au sol 1,2 s ; un coup de sabre bas au-dessus de lui est l'estoc qui l'achève. | `EnemyDownedState`, `stab` |
+| **Duel de lames** | Deux lames qui se croisent (`clash` des deux côtés : le sabre et la griffe du gobelin) se bloquent : 6 appuis en 1,4 s sonnent l'ennemi ; perdu, il coûte 12 PV. | `combat_system._blades_lock`, `Player.on_clash` |
+| **Pas sombre** | L'esquive parfaite du §11, gardée : le monde ralentit, et les coups de sabre y sont gratuits et rapides. | `Rush` |
+| **Furie** | Remplie en touchant, perdue en étant touché ; trois paliers accélèrent le sabre. Pleine, l'accord ouvre le côté sombre : 8 s invulnérable, plus rapide, chaque coup tue. | `FuryGauge`, `Fury` |
+| **Machine à sous** | Chaque coup de grâce la lance ; trois symboles identiques (15 %) donnent un pouvoir pour 8 s : stase (le monde ralentit, chaque coup tue), blitz (plus rapide, chaque coup tue), tranchant (sabre ×2). | `SlotMachine`, `Slot` |
+
+### Mesures (`tests/benchmarks/combat_feel.py`, joueur scripté qui répond aux invites)
+
+| Mesure | Résultat |
+|---|---|
+| Coups de sabre portés par seconde (cible passive) | 5,6 |
+| Sabre jusqu'au coup de grâce : gobelin / slime / dent | 1,12 / 1,12 / 1,25 s |
+| Sabre contre la coquille (garde, super-armure) | 3,05 s |
+| Poings jusqu'à la prise : gobelin / slime / dent | sonné à 0,37 s, mort à 0,65 s |
+| Poings contre la coquille | sonnée à 1,22 s, morte à 1,52 s |
+| Fenêtre du pas sombre | 10 ticks avant le coup |
+
+### À régler à la manette
+
+- **La prise est plus rapide que le sabre** (0,65 s contre 1,12 s sur un
+  gobelin). C'est le cœur de NMH2 de mêler les deux ; si la prise écrase le
+  sabre, relever `stun_max` ou baisser le `stun` des coups de poing.
+- ~~Un appui pendant un gel d'image est perdu~~ : faux, voir plus bas ; la
+  perte venait de la manette scriptée des tests.
+- Les fenêtres des invites (1,6 s pour le coup de grâce, 0,9 s par direction
+  de prise), le coût de la batterie et la vitesse de recharge sont des
+  premières valeurs.
+- Sons, animations par coup et effet visuel du duel de lames : en attente
+  d'assets. Le seul ajout visuel est le trait de garde des ennemis, sans lequel
+  on ne peut pas savoir où frapper.
+
+### Retour du développeur : « il suffit de marteler A » (2026-11-15)
+
+Mesuré : un joueur qui ne fait que marteler A, sans répondre aux invites,
+battait les quatre ennemis en 3,8 à 6,7 s sans perdre un PV. Deux causes : chaque
+coup de sabre faisait chanceler l'ennemi, et une garde ne se lève qu'au repos,
+donc le premier coup placé enfermait l'ennemi ; et un coup de grâce raté tuait
+quand même.
+
+| Correction | Où |
+|---|---|
+| Un ennemi qui garde **se cabre** au 3e coup parable reçu d'affilée (fenêtre de 1 s) : il sort du chancellement, lève sa garde à la hauteur du coup et l'arrête. Les coups de dos et les coups du corps ne comptent pas. | `Enemy.guards_against`, `Guard.BLOCK_AFTER_HITS` |
+| Un coup arrêté ouvre une **contre-attaque** (0,6 s pour la lancer), portée derrière la garde : rien de parable ne l'interrompt, un coup du corps si. | `Enemy._tick_counter`, `countering` |
+| Un **coup de grâce raté** ou laissé sans réponse relève l'ennemi à 25 % de sa vie. | `Entity.recover_from_doom` |
+| La dent garde aussi. Le slime reste sans garde : c'est le seul ennemi qu'on peut marteler, mais il se relève à chaque coup de grâce raté. | `enemies.json` |
+
+| Mesure (12 s de duel) | Marteler A | Lire la garde et répondre aux invites |
+|---|---|---|
+| Gobelin | pas de victoire, 52 PV perdus | mort en 1,15 s, 12 PV perdus |
+| Slime | pas de victoire | 1,12 s |
+| Dent | pas de victoire, 52 PV perdus | 1,15 s |
+| Coquille | pas de victoire, 12 PV perdus | 1,15 s |
+
+### Hitbox : arcs de lame et zones haut/bas (2026-11-15)
+
+**Le moteur n'est pas refait.** Il savait déjà faire des boîtes orientées, des
+cercles, des capsules, des hitbox animées, plusieurs boîtes par coup et la
+détection balayée ; les données n'en utilisaient rien. Une seule lacune réelle :
+les zones de dégâts étaient toutes centrées sur le corps, si bien que la « tête »
+du gobelin était une bande au milieu. Les zones ont désormais un `offset_y`.
+
+| Changement | Où |
+|---|---|
+| Les 12 coups de lame (sabre haut et bas, chargé, aérien, estoc, coup de grâce) sont des **arcs** : une boîte orientée qui tourne autour de l'épaule pendant la fenêtre active, coup droit puis revers. | `attacks.json` |
+| La détection balayée tourne la lame entre deux images : une cible prise entre deux positions successives est touchée (testé). | `test_the_sweep_catches_a_target_between_two_poses_of_a_turning_blade` |
+| Gobelin, dent, coquille : **tête** en haut (×1,25), **corps**, **jambes** en bas (×0,9). | `enemies.json`, `HurtboxZoneDef.offset_y` |
+
+Effets mesurés (10 graines par ennemi, joueur scripté) :
+
+- Un arc touche 1 à 3 images plus tard qu'un rectangle fixe : la lame doit
+  arriver. Le combat est plus lent qu'avec les rectangles (gobelin 3,4 s contre
+  1,2 s pour le joueur qui lit la garde), plus proche des combats de NMH2.
+- La lame haute passe au-dessus de la griffe du gobelin et le coupe ; c'est la
+  lame basse qui la croise. Le duel de lames dépend donc de la position des
+  armes, plus seulement du moment.
+- Mesurer a fait apparaître un défaut de la contre-attaque : elle protégeait
+  l'ennemi jusqu'à la fin de sa récupération. Elle cesse maintenant à la
+  récupération, qui redevient l'ouverture à punir.
+
+| 10 duels de 12 s | Marteler A | Lire la garde |
+|---|---|---|
+| Gobelin | 0 victoire | 10 victoires, 3,4 s, 26 PV perdus |
+| Slime | 0 | 10, 1,4 s, 0 PV |
+| Dent | 0 | 10, 2,9 s, 26 PV |
+| Coquille | 0 | 10, 2,8 s, 24 PV |
+
+**Appuis pendant un gel d'image** : vérifié, aucun n'est perdu dans le jeu. Le
+niveau ne lit pas l'entrée pendant un gel et le fournisseur garde l'appui
+jusqu'au tick suivant. La perte observée venait de la manette scriptée des tests.
+`test_press_during_freeze.py` le fixe avec le vrai fournisseur, et échoue si le
+niveau lit l'entrée pendant le gel.
+
+**Reste** : les durées varient d'une partie à l'autre parce que les ennemis
+tirent leur garde au hasard sans graine fixe ; les hitbox ne seront calées sur
+un geste qu'avec une animation par coup.
+
+### Les autres attaques mises au niveau des coups de lame (2026-11-15)
+
+Les douze coups de lame balayaient un arc animé ; tout le reste était un
+rectangle fixe à une phase. Mis au même niveau, à dégâts et étourdissement
+inchangés (répartis sur les phases quand il y en a deux) :
+
+| Attaque | Forme et mouvement |
+|---|---|
+| `punch_1`, `punch_2` | Jab et direct : une capsule qui s'allonge vers l'avant (ralenti en fin de geste) |
+| `punch_3` | Deux phases : un crochet qui tourne, puis un coup qui remonte |
+| `kick_1` | Un balayage bas, du sol vers l'avant |
+| `kick_2` | Deux phases : un balayage au sol, puis le pied qui remonte et projette |
+| `throw` | Deux phases : l'ennemi soulevé, puis plaqué, avec une onde qui s'élargit au sol |
+| `air_kick` | Un pied pointé vers le bas et l'avant, qui s'allonge pendant la chute |
+| `claw_swipe` | Deux griffes en arc : de haut en bas, puis en revers |
+| `claw_reach` | Une griffe qui s'étire au ras du sol |
+| `body_slam` | Le slime qui gonfle |
+| `slime_splash` | Une éclaboussure qui s'étale au sol |
+
+Effets : les poussées portent plus loin à mesure qu'elles s'allongent ; le
+troisième poing et le second coup de pied touchent deux fois ; la prise plaque
+à l'image 15 au lieu de 5 (invulnérable tout du long). La griffe arrivant d'en
+haut, c'est maintenant la lame haute qui la croise en duel. Sur 10 duels par
+ennemi, le joueur qui lit la garde bat le gobelin en 1,35 s (3,4 s avant), la
+coquille en 1,33 s, la dent en 3,0 s ; le marteleur ne gagne toujours aucun duel.
+L'ancienne griffe à deux rectangles reste dans les données de test, où elle
+fixe la transition d'une phase à l'autre.
+
+### Marteler A en répondant aux invites gagnait encore (2026-11-15)
+
+Les mesures précédentes faisaient marteler A **sans répondre aux invites**. En
+jeu, on y répond, et ce joueur-là gagnait tous ses duels, aussi vite que celui
+qui lit la garde (gobelin 2,48 s contre 2,43 s). Chaque partie suivait le même
+chemin : le sabre martelé croisait la contre-attaque de l'ennemi, le duel de
+lames se gagnait en martelant, l'ennemi sortait sonné et encaissait 69 %
+(gobelin) à 93 % (coquille) des dégâts sans rien pouvoir faire. Les coups
+bloqués ne coûtaient presque rien.
+
+Trois règles changent :
+
+- **Rebond sur la garde.** Un coup bloqué met fin au coup ; le joueur est
+  repoussé (`Guard.DEFLECT_PUSH`), chancelle `Guard.DEFLECT_STAGGER` et paie
+  `Battery.DEFLECT_COST`, assez longtemps pour que la contre-attaque porte.
+- **La contre-attaque ne se croise pas.** Portée derrière la garde, elle fait
+  rebondir une lame qui la rencontre au lieu d'ouvrir un duel de lames.
+- **Un duel gagné ouvre, il ne sonne plus.** L'ennemi est déséquilibré
+  (`Clash.WIN_STAGGER`) et sa garde tombe `Clash.WIN_OPEN` (0,8 s), moins
+  longtemps qu'un bris au poing (`Guard.BROKEN_TIME`, 2,5 s).
+
+10 duels de 12 s par ennemi, joueurs scriptés qui répondent aux invites ; le
+lecteur frappe à la hauteur libre et garde pendant les attaques ennemies :
+
+| Ennemi | Martèle A | Lit la garde |
+|---|---|---|
+| Gobelin | 0/10, 87 PV perdus | 10/10, 3,6 s, 21 PV perdus |
+| Dent | 0/10, 87 PV perdus | 10/10, 3,8 s, 22 PV perdus |
+| Coquille | 0/10, mort | 7/10, 9,3 s, 73 PV perdus |
+| Slime (ne garde pas) | 10/10, 2,1 s | 10/10, 2,4 s |
+
+Testé dans `tests/headless/test_combat_loop.py` : le marteleur qui répond aux
+invites perd contre le gobelin, la dent et la coquille sur trois graines (il en
+gagnait 8 sur 9 sans ces règles), le rebond, la lame qui rencontre la
+contre-attaque et l'ouverture courte d'un duel gagné. Le lecteur scripté
+n'utilise ni poing ni pied ; la coquille (140 PV) reste longue pour lui, à
+juger à la manette.
+
+### Catalogue refait : des gestes à l'échelle du personnage, un tir, des charges à paliers (2026-11-15)
+
+Retour du développeur : les coups se ressemblaient, beaucoup n'avaient pas de
+sens, ils étaient surdimensionnés et partaient dans tous les sens, peu
+utilisaient les systèmes en place (charge…), et un coup chargé ne se
+distinguait pas d'un coup normal. Il voulait aussi exploiter B à la manette
+pour des projectiles.
+
+Mesuré avant : le personnage dessiné fait ~24 × 33 dans sa boîte de 40 × 56,
+mais les lames faisaient 58 à 92 unités et portaient jusqu'à 108 ;
+`slash_high_4` tournait de −100° à 230° ; les deux chaînes de sabre étaient
+identiques (3/5/4 images, 7 dégâts, poussée 30) ; un seul coup était
+chargeable ; la dent et la coquille utilisaient le jeu de coups du gobelin.
+
+Ce qui change :
+
+- **Gabarit.** Chaque coup part d'une articulation (épaule, hanche) : lame
+  ~28, poing ~22, jambe ~26 ; portée ≤ 48, balayage ≤ 150°, coups hauts
+  au-dessus des hanches, coups bas qui partent en dessous, et pas deux coups
+  identiques par combattant (`tests/unit/test_move_proportions.py`).
+- **Un rôle par coup.** Sabre haut : taille, revers, estoc qui avance, coupe
+  verticale. Sabre bas : genou, revers bas, estoc bas (achève au sol), coupe
+  montante qui projette. Corps : jab, direct, uppercut qui projette ; balayage,
+  circulaire qui envoie au mur.
+- **Charges à paliers, sur les trois boutons** (`CHARGES`,
+  `src/entities/attack_moves.py`). Sabre lâché tôt : `charged_slash`, plus fort
+  avec le temps tenu ; tenu à fond : `charged_slash_full`, prioritaire, brise
+  l'armure et lance un croissant. Corps tenu : `charged_kick`. Tir tenu :
+  `piercing_shot`.
+- **Tir (B / D).** Une phase peut lancer un projectile en devenant active
+  (`launches`, `src/entities/shots.py`) ; sa boîte ne touche jamais. Le tir
+  coûte `Battery.SHOT_COST`, casse une préparation ennemie à distance ; le
+  slime crache une boule en cloche qui retombe bas.
+- **Ennemis.** Dent : morsure haute, coup aux chevilles. Coquille : coup
+  d'épaule, roulade au sol que rien ne garde (à sauter), 120 PV.
+- **Prise.** On n'attrape qu'un ennemi au sol, et la prise l'immobilise : un
+  ennemi sonné par l'uppercut se jongle.
+- **Effets.** Un style par famille (sabre, coup lourd, chargé, chargé à fond,
+  coup de grâce, corps, ennemi, imparable), un liseré sombre pour le contraste,
+  la charge qui se rassemble à la main, le chevron d'alerte des ennemis à la
+  hauteur du coup, un dessin par projectile.
+
+10 duels de 12 s par ennemi, joueurs scriptés qui répondent aux invites (le
+lecteur frappe à la hauteur libre, casse la garde au poing, garde pendant les
+attaques, saute la roulade, recharge la batterie) :
+
+| Ennemi | Martèle A | Lit la garde |
+|---|---|---|
+| Gobelin | 0/10, 88 PV perdus | 10/10, 4,2 s, 3 PV perdus |
+| Dent | 0/10, 86 PV perdus | 10/10, 2,8 s |
+| Coquille | 0/10, mort | 10/10, 4,0 s, 6 PV perdus |
+| Slime | 10/10, 1,4 s | 10/10, 1,8 s |
+
+Les empreintes PHYSICS et RIDE de `test_simulation_golden.py` sont
+recapturées ; l'ancien catalogue ayant été écrasé avant, la preuve « seule
+cause » des recaptures précédentes n'a pas pu être refaite. À noter : les
+pieds du personnage dessiné sont ~8 unités au-dessus du bas de sa boîte, donc
+du sol -- à vérifier côté sprite.

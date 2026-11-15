@@ -59,10 +59,10 @@ def test_showcase_attacks_are_registered_on_player() -> None:
 
 
 def test_showcase_attacks_use_phase5_features() -> None:
-    twin = PLAYER_ATTACKS["twin_fangs"].phases[0]
+    twin = SHOWCASE["twin_fangs"].phases[0]
     assert len(twin.extra_hitboxes) == 1  # #1 multi-hitbox
 
-    sweep = PLAYER_ATTACKS["sweeping_arc"].phases[0]
+    sweep = SHOWCASE["sweeping_arc"].phases[0]
     assert len(sweep.hitbox_keyframes) == 3  # #2 animated
     assert sweep.hitbox_at(0)[0] != sweep.hitbox_at(12)[0]
 
@@ -76,8 +76,8 @@ def test_showcase_attacks_use_phase5_features() -> None:
 
 def test_showcase_attacks_survive_json_roundtrip() -> None:
     for table, name in (
-        (PLAYER_ATTACKS, "twin_fangs"),
-        (PLAYER_ATTACKS, "sweeping_arc"),
+        (SHOWCASE, "twin_fangs"),
+        (SHOWCASE, "sweeping_arc"),
         (SHOWCASE, "sky_launcher"),
         (SHOWCASE, "otg_slam"),
     ):
@@ -91,7 +91,7 @@ def test_trigger_test_attack_starts_showcase_move() -> None:
     system = SpawnSystem(groups)
     player = _player()
 
-    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
+    assert system.trigger_test_attack(player, move_id("slash_high_4")) is True
     assert player.combat.is_attacking
 
 
@@ -112,8 +112,8 @@ def test_attack_replay_restarts_attack_when_idle() -> None:
     system = SpawnSystem(SpriteGroups())
     player = _player()
 
-    assert system.toggle_attack_replay("twin_fangs") == "twin_fangs"
-    assert system.trigger_test_attack(player, move_id("twin_fangs"))
+    assert system.toggle_attack_replay("slash_high_4") == "slash_high_4"
+    assert system.trigger_test_attack(player, move_id("slash_high_4"))
     first = player.combat.attacks_started
     system.tick_attack_replay(player)
     assert player.combat.attacks_started == first, "nothing restarts mid-move"
@@ -143,16 +143,16 @@ def test_attack_replay_toggle_returns_state() -> None:
 def test_attack_replay_ignored_while_attacking_or_on_cooldown() -> None:
     system = SpawnSystem(SpriteGroups())
     player = _player()
-    system.toggle_attack_replay("twin_fangs")
+    system.toggle_attack_replay("slash_high_4")
 
     # Cooldown armed: tick is a no-op even when idle.
-    system.debug_cooldowns["twin_fangs"] = 0.5
+    system.debug_cooldowns["slash_high_4"] = 0.5
     system.tick_attack_replay(player)
     assert not player.combat.is_attacking
 
     # Attacking: replay must not interrupt.
     system.debug_cooldowns.clear()
-    assert system.trigger_test_attack(player, move_id("twin_fangs"))
+    assert system.trigger_test_attack(player, move_id("slash_high_4"))
     combat = player.combat
     started = combat.state.frame_counter
     system.tick_attack_replay(player)
@@ -443,7 +443,7 @@ def test_the_bench_holds_the_whole_air_kit() -> None:
     """
     air = [name for name in DEBUG_ATTACKS.values() if "air" in str(name)]
 
-    assert sorted(air) == ["air_attack", "air_forward", "air_rise", "air_sweep"]
+    assert sorted(air) == ["air_kick", "air_slash"]
 
 
 def test_the_air_keys_are_not_laid_out_among_the_ground_ones() -> None:
@@ -477,8 +477,8 @@ def test_pressing_an_air_key_on_the_floor_says_why_instead_of_looking_dead() -> 
     player = _player()
     player.on_surface["floor"] = True
 
-    with pytest.raises(RuntimeError, match=r"'air_rise' needs a different posture"):
-        system.trigger_test_attack(player, move_id("air_rise"))
+    with pytest.raises(RuntimeError, match=r"'air_kick' needs a different posture"):
+        system.trigger_test_attack(player, move_id("air_kick"))
 
 
 def test_pressing_a_ground_key_from_the_air_still_says_so() -> None:
@@ -491,8 +491,8 @@ def test_pressing_a_ground_key_from_the_air_still_says_so() -> None:
     player = _player()
     player.on_surface["floor"] = False
 
-    with pytest.raises(RuntimeError, match=r"'twin_fangs' needs a different posture"):
-        system.trigger_test_attack(player, move_id("twin_fangs"))
+    with pytest.raises(RuntimeError, match=r"'slash_high_4' needs a different posture"):
+        system.trigger_test_attack(player, move_id("slash_high_4"))
 
 
 def test_pressing_a_bench_key_twice_in_a_row_is_not_an_error() -> None:
@@ -506,5 +506,5 @@ def test_pressing_a_bench_key_twice_in_a_row_is_not_an_error() -> None:
     player = _player()
     player.on_surface["floor"] = True
 
-    assert system.trigger_test_attack(player, move_id("twin_fangs")) is True
-    assert system.trigger_test_attack(player, move_id("twin_fangs")) is False
+    assert system.trigger_test_attack(player, move_id("slash_high_4")) is True
+    assert system.trigger_test_attack(player, move_id("slash_high_4")) is False

@@ -1,16 +1,19 @@
 """Tests for PlayerUI (ui/player_ui)."""
 
 import os
+import random
 from types import SimpleNamespace
 
 import pygame
 import pytest
 
+from src.core.settings import Fury
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController
+from src.entities.player_kit import FuryGauge, PromptController, PromptKind
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.player_ui import PlayerUI
-from src.ui.styles import TEXT_CRIT, TEXT_OK
+from src.ui.styles import TEXT_CRIT, TEXT_OK, TEXT_WARN
 from tests.fakes import combat_shape, player_shape
 
 
@@ -59,10 +62,6 @@ def _make_full_player(**overrides) -> SimpleNamespace:
     base = {
         "health": 100.0,
         "max_health": 100.0,
-        "guard_posture": 50.0,
-        "guard_posture_max": 100.0,
-        "guard_lockout_timer": 0.0,
-        "guard_riposte_timer": 0.0,
         "dash_charges": 2,
         "max_dash_charges": 2,
         "dash_penalty_timer": 0.0,
@@ -349,18 +348,34 @@ def test_stats_prints_the_combo_the_combat_component_holds() -> None:
     assert "x3" in combo[0]
 
 
-def test_stats_shows_the_riposte_window_only_while_it_is_open() -> None:
-    open_ = _stats_panel(_make_full_player(guard_riposte_timer=0.4))
-    closed = _stats_panel(_make_full_player(guard_riposte_timer=0.0))
+def test_stats_marks_the_fury_line_once_it_can_be_spent_and_on_the_dark_side() -> None:
+    filling = _stats_panel(_make_full_player())
+    full_gauge = FuryGauge()
+    full_gauge.gain(Fury.MAX)
+    full = _stats_panel(_make_full_player(fury=full_gauge))
+    dark_gauge = FuryGauge()
+    dark_gauge.gain(Fury.MAX)
+    dark_gauge.start_dark()
+    dark = _stats_panel(_make_full_player(fury=dark_gauge))
 
-    riposte = [i for i, line in enumerate(open_.lines) if line.startswith("RIPOSTE")]
-    assert len(riposte) == 1
-    assert open_.line_colors[riposte[0]] == TEXT_OK
-    assert not any(line.startswith("RIPOSTE") for line in closed.lines)
+    assert filling.lines[1].startswith("Fury")
+    assert 1 not in filling.line_colors
+    assert full.line_colors[1] == TEXT_OK
+    assert dark.line_colors[1] == TEXT_WARN
 
 
-def test_stats_marks_the_guard_line_during_a_lockout() -> None:
-    panel = _stats_panel(_make_full_player(guard_lockout_timer=1.0, guard_posture=0.0))
+def test_stats_shows_the_dark_step_only_while_the_world_is_slowed() -> None:
+    slowed = _stats_panel(_make_full_player(rush_timer=0.8))
+    normal = _stats_panel(_make_full_player())
 
-    assert panel.lines[1].startswith("Guard")
-    assert panel.line_colors[1] == TEXT_CRIT
+    assert any(line.startswith("DARK STEP") for line in slowed.lines)
+    assert not any(line.startswith("DARK STEP") for line in normal.lines)
+
+
+def test_stats_shows_an_open_prompt() -> None:
+    prompt = PromptController()
+    prompt.open(PromptKind.DEATH_BLOW, "e1", random.Random(1))
+
+    panel = _stats_panel(_make_full_player(prompt=prompt))
+
+    assert any(line.startswith("PROMPT death_blow") for line in panel.lines)

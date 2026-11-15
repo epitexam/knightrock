@@ -10,6 +10,7 @@ from src.core.colors import BG_COLORS, Color, Colors, FXColors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
+from src.core.rendering.strike_trails import StrikeTrails
 from src.core.rendering.tile_chunk_index import TileChunkIndex
 from src.core.settings import Afterimage, HitFlash, Interpolation, ParryFlash
 from src.core.sprite_groups import SpriteGroups
@@ -316,6 +317,8 @@ class Renderer:
         self.overlay: WorldOverlay = overlay if overlay is not None else NullOverlay()
         self.background_color = self._resolve_background_color(config)
         self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
+        #: The strikes in flight, drawn from the live attack shapes.
+        self.strike_trails = StrikeTrails()
         self._ghost_timer: float = 0.0
         # Scaled sprite surfaces: ``id(image) -> (image, scaled)``. Scaling a
         # surface every frame for every visible sprite is expensive, so each
@@ -504,6 +507,8 @@ class Renderer:
         blits = self._collect_visible_blits(groups)
         for surface, screen_rect in blits:
             self.surface.blit(surface, screen_rect)
+        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
+        self.strike_trails.draw(self.surface, self.camera)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
         if debug_enabled:

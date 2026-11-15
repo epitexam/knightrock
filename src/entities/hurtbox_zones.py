@@ -1,8 +1,10 @@
 """Configuration and derivation helpers for multi-hurtbox zones (P2, axe B).
 
 A zone is a named damage-receiving area derived from the entity's pushbox:
-``box = pushbox.inflate(inflate)`` re-centered on the pushbox center, with a
-localized damage multiplier and reserved invulnerability tags. The legacy
+``box = pushbox.inflate(inflate)`` centred on the pushbox centre moved down by
+``offset_y``, with a localized damage multiplier and reserved invulnerability
+tags. Without the offset every zone shared the body's centre, so a ``head``
+was a band across the middle of the body. The legacy
 single-hurtbox behavior is exactly one unnamed zone carrying the entity's
 ``hurtbox_inflate``.
 """
@@ -36,6 +38,9 @@ class HurtboxZoneDef:
     invuln_states :
         Runtime states in which the zone is invulnerable. The built-in
         ``airborne`` state is activated when the entity has no floor contact.
+    offset_y :
+        How far below the pushbox centre the zone is centred, in pixels;
+        negative raises it. The horizontal centre is the body's.
     """
 
     name: str = ""
@@ -43,6 +48,7 @@ class HurtboxZoneDef:
     mult: float = 1.0
     tags: tuple[str, ...] = field(default=())
     invuln_states: tuple[str, ...] = field(default=())
+    offset_y: float = 0.0
 
 
 def _string_list(raw: Any, where: str) -> tuple[str, ...]:
@@ -78,6 +84,7 @@ def read_hurtbox_zones(raw: Any, where: str) -> tuple[HurtboxZoneDef, ...] | Non
                 raise ValueError(inflate_raw)
             inflate = (float(inflate_raw[0]), float(inflate_raw[1]))
             mult = float(zone_raw.get("mult", 1.0))
+            offset_y = float(zone_raw.get("offset_y", 0.0))
         except (TypeError, ValueError) as exc:
             raise GameplayDataError(f"{zone_where}: invalid numeric value: {exc}") from exc
         if not mult > 0.0:
@@ -93,6 +100,7 @@ def read_hurtbox_zones(raw: Any, where: str) -> tuple[HurtboxZoneDef, ...] | Non
                 mult=mult,
                 tags=tags,
                 invuln_states=invuln_states,
+                offset_y=offset_y,
             )
         )
     if not zones:
@@ -113,6 +121,7 @@ def hurtbox_zones_to_dict(
             "mult": zone.mult,
             "tags": list(zone.tags),
             **({"invuln_states": list(zone.invuln_states)} if zone.invuln_states else {}),
+            **({"offset_y": zone.offset_y} if zone.offset_y else {}),
         }
         for zone in zones
     ]

@@ -35,7 +35,7 @@ def test_debug_ready_and_arm_roundtrip() -> None:
     assert system._debug_ready("twin_fangs") is False
 
 
-def test_attack_priority_special_first() -> None:
+def test_attack_priority_light_first() -> None:
     """A tick can only start one attack, so the button order is the contract.
 
     Asserted against ``ATTACK_BUTTONS`` rather than by scraping the source of
@@ -45,8 +45,4 @@ def test_attack_priority_special_first() -> None:
     happened to *mention* the moves in that order. The declared list is what the
     method iterates, so this is now the actual claim.
     """
-    assert ATTACK_BUTTONS == (
-        InputAction.SPECIAL_ATTACK,
-        InputAction.ATTACK_1,
-        InputAction.ATTACK_2,
-    )
+    assert ATTACK_BUTTONS == (InputAction.ATTACK_1, InputAction.ATTACK_2, InputAction.SHOOT)

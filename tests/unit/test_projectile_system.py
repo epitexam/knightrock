@@ -265,6 +265,7 @@ def test_a_reused_surface_is_refilled_so_no_state_carries_over() -> None:
         _fleeting_config(), pos=(0.0, 0.0), velocity=(600.0, 0.0), faction="player"
     )
 
-    assert second.image.get_at((5, 5))[:3] == (255, 200, 60), (
+    # Blank: the strike layer draws a shot, so its own image is cleared.
+    assert second.image.get_at((5, 5)) == (0, 0, 0, 0), (
         "a refilled surface, not the previous launch's pixels"
     )

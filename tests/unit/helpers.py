@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import pygame
 from pygame.sprite import Group
 
+from src.combat.combatant_protocol import Finish
 from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
@@ -168,7 +169,7 @@ class _ActiveAttackerCombat(SimpleNamespace):
             swept_attack_boxes=(attack_box,),
             attack_shapes=(),
             swept_attack_shapes=(),
-            current_phase=SimpleNamespace(hit=hit),
+            current_phase=SimpleNamespace(hit=hit, launches=None),
             charge_multiplier=1.0,
             targets_hit=targets_hit,
             can_contact=lambda target_id: target_id not in targets_hit,
@@ -199,6 +200,7 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
     return SimpleNamespace(
         id="attacker",
         is_dead=False,
+        dodge_ghost=None,
         faction="enemy",
         hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
         combat=combat,
@@ -211,10 +213,12 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         swept_hurtboxes=lambda: target.swept_hurtboxes(),
         capture_sweep_origin=target.capture_sweep_origin,
         # The Combatant hooks a melee contact calls on its attacker: a plain
-        # fighter, neither counting parries nor stunned by them.
-        on_parried=lambda: False,
-        on_damage_landed=lambda: None,
-        on_hit_confirmed=lambda combo_advanced: None,
+        # fighter whose blows kill and who is owed nothing for a hit.
+        finish=Finish.NONE,
+        counter_covered=False,
+        on_clash=lambda other: None,
+        on_deflected=lambda source_center_x: None,
+        on_hit_confirmed=lambda target, combo_advanced, result: None,
     )
 
 
@@ -225,6 +229,8 @@ class SpyCombat:
     hit_interrupts: list[bool] = field(default_factory=list)
     is_hurt: bool = False
     hurt_timer: float = 0.0
+    #: Nothing running: no attack to make the fighter untouchable.
+    current_attack_def: None = None
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         self.hit_interrupts.append(interrupt)
@@ -278,7 +284,10 @@ class AttackerStub:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
         self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: False)
 
-    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+    #: Its blows kill what they would kill.
+    finish = Finish.NONE
+
+    def on_hit_confirmed(self, target: object, combo_advanced: bool, result: object) -> None:
         """Owed nothing for a hit."""
 
 
@@ -409,9 +418,9 @@ def card_rows(card: CardLayer, sprite: Any) -> list[str] | None:
 
 
 #: The moves that exercise the hitbox engine without being in the game
-#: (``p5_shapes``, ``circle_burst``, ``sky_launcher``, ``otg_slam``): they left the
-#: player's catalogue when it became light/heavy chains, and live here for the
-#: tests that need their shapes.
+#: (``p5_shapes``, ``circle_burst``, ``sky_launcher``, ``otg_slam`` and the
+#: five-phase ``special_attack``): they are not in the player's catalogue, and
+#: live here for the tests that need their shapes.
 SHOWCASE = read_attacks_file(
     Path(__file__).resolve().parents[1] / "data" / "showcase_attacks.json"
 )["showcase"]

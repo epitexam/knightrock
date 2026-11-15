@@ -72,11 +72,12 @@ class ControlsScene(Scene):
         GAMEPLAY_SECTION: (
             RebindSpec("controls.move_left", InputAction.MOVE_X, side=0),
             RebindSpec("controls.move_right", InputAction.MOVE_X, side=1),
-            RebindSpec("controls.crouch", InputAction.MOVE_DOWN),
+            RebindSpec("controls.low_stance", InputAction.MOVE_DOWN),
             RebindSpec("controls.jump", InputAction.JUMP),
             RebindSpec("controls.dash", InputAction.DASH),
             RebindSpec("controls.attack_1", InputAction.ATTACK_1),
             RebindSpec("controls.attack_2", InputAction.ATTACK_2),
+            RebindSpec("controls.shoot", InputAction.SHOOT),
             RebindSpec("controls.guard", InputAction.GUARD),
             RebindSpec("controls.reset_position", InputAction.RESET),
         ),

@@ -83,7 +83,8 @@ def _world_checksum(level: Level) -> str:
     if level.player is not None:
         parts.append(f"player_state={level.player.state_machine.current_state_name}")
         parts.append(f"health={level.player.health:.2f}")
-        parts.append(f"posture={level.player.guard.posture:.2f}")
+        parts.append(f"fury={level.player.fury.amount:.2f}")
+        parts.append(f"battery={level.player.battery.amount:.2f}")
         parts.append(f"charges={level.player.dash.charges}")
     return "|".join(parts)
 

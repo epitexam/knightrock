@@ -32,9 +32,22 @@ from src.ui.styles import PANEL_BORDER, TEXT_CRIT, TEXT_OK, TEXT_WARN
 from src.ui.world_overlay_metrics import (
     HEALTH_BAR_ANCHOR_GAP,
     HEALTH_BAR_HEIGHT,
+    STUN_BAR_HEIGHT,
 )
 
-__all__ = ["draw_health_bars", "has_health_bar", "health_bar_rect", "health_colour"]
+__all__ = [
+    "draw_guard_marks",
+    "draw_health_bars",
+    "has_health_bar",
+    "health_bar_rect",
+    "health_colour",
+    "stun_gauge",
+]
+
+#: The stun strip under a health bar: amber while it fills, pale while the
+#: fighter is stunned and the strip counts the stun down.
+STUN_COLOUR: Color = TEXT_WARN
+STUNNED_COLOUR: Color = (255, 245, 170)
 
 
 def has_health_bar(sprite: pygame.sprite.Sprite) -> bool:
@@ -96,6 +109,66 @@ def health_colour(health: float, max_health: float) -> Color:
     return TEXT_OK
 
 
+#: The guard mark: a bar along the front edge of an enemy, on the half it guards.
+GUARD_COLOUR: Color = (120, 200, 255)
+GUARD_MARK_WIDTH = 3
+
+
+def guard_mark_rect(
+    sprite: pygame.sprite.Sprite, screen_rect: pygame.Rect | pygame.FRect
+) -> pygame.Rect | None:
+    """Where the guard mark of ``sprite`` goes, or ``None`` if it holds no guard.
+
+    The front edge of the fighter, its upper half for a high guard and its
+    lower half for a low one: the half a slash has to avoid.
+    """
+    guard = getattr(sprite, "guard", None)
+    value = getattr(guard, "value", None)
+    if value not in ("high", "low"):
+        return None
+    half = float(screen_rect.height) / 2
+    top = float(screen_rect.top) if value == "high" else float(screen_rect.top) + half
+    facing_right = bool(getattr(sprite, "facing_right", True))
+    x = float(screen_rect.right) if facing_right else float(screen_rect.left) - GUARD_MARK_WIDTH
+    return pygame.Rect(int(x), int(top), GUARD_MARK_WIDTH, max(1, int(half)))
+
+
+def draw_guard_marks(
+    surface: pygame.Surface,
+    entities: Iterable[pygame.sprite.Sprite],
+    camera: Camera,
+    screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
+) -> None:
+    """Draw the guard of every enemy holding one, on the half it guards."""
+    for entity in entities:
+        rect = getattr(entity, "hitbox", None) or getattr(entity, "rect", None)
+        if rect is None or getattr(entity, "is_dead", False) or not camera.is_visible(rect):
+            continue
+        screen_rect = (screen_rects.get(id(entity)) if screen_rects else None) or camera.apply(rect)
+        mark = guard_mark_rect(entity, screen_rect)
+        if mark is not None:
+            pygame.draw.rect(surface, GUARD_COLOUR, mark)
+
+
+def stun_gauge(sprite: pygame.sprite.Sprite) -> tuple[float, Color] | None:
+    """How full the stun strip is, and its colour; ``None`` for no strip.
+
+    While it fills, the strip is the stun gauge. Once the fighter is stunned
+    it is the time left to execute it, counting down.
+    """
+    stun_max = getattr(sprite, "stun_max", None)
+    if not stun_max:
+        return None
+    if getattr(sprite, "is_stunned", False):
+        duration = getattr(sprite, "stun_duration", 0.0)
+        if duration <= 0.0:
+            return None
+        left = getattr(sprite, "stagger_timer", 0.0) / duration
+        return max(0.0, min(1.0, left)), STUNNED_COLOUR
+    ratio = max(0.0, min(1.0, getattr(sprite, "stun", 0.0) / stun_max))
+    return (ratio, STUN_COLOUR) if ratio > 0.0 else None
+
+
 def draw_health_bars(
     surface: pygame.Surface,
     entities: Iterable[pygame.sprite.Sprite],
@@ -117,9 +190,14 @@ def draw_health_bars(
     minimum width is wider than a narrow sprite — so anything reasoning about
     what the bars covered needs them. The presentation does not: the whole
     target is repainted every frame.
+
+    A fighter with a stun gauge gets a thin strip right under its bar, in the
+    gap the bar leaves above the fighter (see :func:`stun_gauge`), and one
+    holding a guard gets a mark on the half it guards (:func:`guard_mark_rect`).
     """
     drawn: list[pygame.Rect] = []
-    for entity in entities:
+    fighters = tuple(entities)
+    for entity in fighters:
         max_health = getattr(entity, "max_health", 0)
         if not max_health:
             continue
@@ -145,4 +223,15 @@ def draw_health_bars(
                 (background_rect.x, background_rect.y, health_width, background_rect.height),
             )
         pygame.draw.rect(surface, PANEL_BORDER, background_rect, width=1)
+        gauge = stun_gauge(entity)
+        if gauge is not None:
+            ratio, stun_colour = gauge
+            width = int(background_rect.width * ratio)
+            if width > 0:
+                pygame.draw.rect(
+                    surface,
+                    stun_colour,
+                    (background_rect.x, background_rect.bottom, width, STUN_BAR_HEIGHT),
+                )
+    draw_guard_marks(surface, fighters, camera, screen_rects)
     return drawn

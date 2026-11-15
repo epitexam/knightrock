@@ -179,7 +179,7 @@ def test_a_cancel_into_the_attack_itself_is_rejected() -> None:
 def test_a_cancel_into_a_posture_it_cannot_be_thrown_from_is_rejected() -> None:
     """An air chain into a ground move was loadable, and playable.
 
-    ``air_attack.cancel_into = ("light_attack",)`` passed every existing check
+    ``air_attack.cancel_into = ("slash_high_1",)`` passed every existing check
     for as long as it existed, and nothing stopped a fighter chaining from
     mid-air into a standing swing. The move's own ``stances`` are what make the
     crossing visible.
@@ -390,7 +390,7 @@ def test_a_comment_key_in_an_attack_set_is_dropped(tmp_path) -> None:
                 "sets": {
                     "player": {
                         "_comment": "tuned for the 2p pass, do not reorder",
-                        "kick": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"]),
+                        "kick": attack_definition_to_dict(PLAYER_ATTACKS["slash_high_1"]),
                     }
                 },
             }
@@ -502,21 +502,18 @@ def test_a_vertical_lunge_survives_the_round_trip() -> None:
 
 
 def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
-    """The shipped data against the rule, which is the only place both exist.
+    """In the air the body dives and the blade leaves the arc alone.
 
-    The heavy rises in the air, as the launcher does on the floor; Down and
-    heavy dives; the light leaves the arc alone. A table where all had the same
-    sign would satisfy the validation and be the missing feature replaced by a
-    worse one.
+    A table where both had the same sign would satisfy the validation and lose
+    the dive.
     """
-    from src.core.input.input_actions import InputAction
+    from src.combat.frame_data import AttackButton
     from src.entities.attack_moves import MoveContext, resolve_move
 
     player = PLAYER_ATTACKS
-    light = resolve_move(InputAction.ATTACK_1, MoveContext(Stance.AIR))
-    heavy = resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR))
-    dive = resolve_move(InputAction.ATTACK_2, MoveContext(Stance.AIR, diving=True))
+    slash = resolve_move(AttackButton.SLASH_HIGH, MoveContext(Stance.AIR))
+    dive = resolve_move(AttackButton.BEAT_HIGH, MoveContext(Stance.AIR))
 
-    assert player[heavy].vertical_lunge > 0
+    assert slash is not None and dive is not None
     assert player[dive].vertical_lunge < 0
-    assert player[light].vertical_lunge == 0.0
+    assert player[slash].vertical_lunge == 0.0

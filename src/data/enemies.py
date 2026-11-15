@@ -39,6 +39,17 @@ def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
     return mapping[key]
 
 
+def _read_stun_max(raw: Any, where: str) -> float:
+    """The size of the stun gauge: above zero, or a blow of any weight would fill it."""
+    try:
+        stun_max = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise GameplayDataError(f"{where}: 'stun_max' must be a number, got {raw!r}") from exc
+    if not stun_max > 0.0:
+        raise GameplayDataError(f"{where}: 'stun_max' must be above 0, got {raw!r}")
+    return stun_max
+
+
 def _read_weight(raw: Any, where: str) -> float:
     """A knockback divisor: a number above zero (zero would launch to infinity)."""
     try:
@@ -148,12 +159,11 @@ def read_enemy_config(
             jump_height=float(raw.get("jump_height", 500.0)),
             jump_cooldown=float(raw.get("jump_cooldown", 1.0)),
             leap_speed_mult=float(raw.get("leap_speed_mult", 1.0)),
-            parry_stun_threshold=(
-                int(raw["parry_stun_threshold"])
-                if raw.get("parry_stun_threshold") is not None
-                else None
+            stun_max=(
+                _read_stun_max(raw["stun_max"], where) if raw.get("stun_max") is not None else None
             ),
-            parry_stun_duration=float(raw.get("parry_stun_duration", 0.0)),
+            stun_duration=float(raw.get("stun_duration", 0.0)),
+            guards=bool(raw.get("guards", False)),
             # None is not a JSON value: the key is simply absent when the type
             # authors no direction. Present and false are different -- the first
             # keeps the historical coin toss, the second pins the heading.
@@ -237,8 +247,9 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "jump_height": config.jump_height,
         "jump_cooldown": config.jump_cooldown,
         "leap_speed_mult": config.leap_speed_mult,
-        "parry_stun_threshold": config.parry_stun_threshold,
-        "parry_stun_duration": config.parry_stun_duration,
+        "stun_max": config.stun_max,
+        "stun_duration": config.stun_duration,
+        "guards": config.guards,
         **({"turn_profile": config.turn_profile} if config.turn_profile is not None else {}),
         **({"reverse": config.reverse} if config.reverse is not None else {}),
         "animations": dict(config.animations),

@@ -229,8 +229,22 @@ PHYSICS_DIGEST = "e84b65bae71fbf106e8adcc9d42bc86d6c5a382a5c571f9a544cfda825ead7
 # now decays the same way in hurt, stagger and knockback (a ground slide that
 # stops, a light air drag) instead of one exponential rate per state. PHYSICS
 # and RESPAWN did not move.
-RIDE_DIGEST = "99334f167522c64f7695b84c59f1a4011b8098b52150cffdeafd3f1932556dc8"
-RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
+# All three re-captured for the combat rework (2026-11-14): the enemies' data
+# changed -- the goblin's claws deal 12 and 14 instead of 8 and 9, and a goblin
+# has 80 health instead of 60 (the digest hashes health). Proven the sole
+# cause: with the enemy damage and health as they were, the three digests of
+# the commit before are reproduced bit for bit, so the stun gauge, the
+# per-entity clock, the parry and the rest of the rework moved nothing here.
+# PHYSICS and RIDE re-captured for the move catalogue rework (2026-11-15): the
+# goblin's claws are now short arcs from the shoulder (22 px instead of a box
+# reaching 66), the slime's splash became a lobbed glob, and a blow stopped by
+# a guard makes its thrower recoil. The previous catalogue was overwritten
+# before a bit-for-bit check could be run, so the sole-cause proof of the
+# earlier re-captures is not available for this one; RESPAWN, which only
+# falls and respawns, did not move.
+PHYSICS_DIGEST = "c84740a6cd47840a75bbc0eb206b1b8e5f75c82c216ed3b0aa00c6b1fba79d92"
+RIDE_DIGEST = "e86caa42e85d9db9217dee6f85c417eaa3c412bcbb42b2126ad0a013b2eecd5d"
+RESPAWN_DIGEST = "3e37730c583750c0b95d7d1c785eaff271f81cd96a5c248c8125c9f6a867ec46"
 
 
 @requires_assets

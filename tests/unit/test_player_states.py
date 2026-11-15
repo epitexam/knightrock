@@ -13,6 +13,7 @@ from src.states.player_states import (
     _can_attack_interrupt,
     _can_dash,
     _can_guard,
+    _can_recharge,
     configure_player_state_machine,
     dash_cancel_open,
     player_ground_return,
@@ -34,8 +35,9 @@ def _make_entity(**overrides) -> SimpleNamespace:
         "left_held": False,
         "right_held": False,
         "dash": _dash_stub(),
-        "guard": SimpleNamespace(can_use=lambda: True),
         "guard_held": False,
+        "down_held": False,
+        "prompt": SimpleNamespace(active=False),
         "combat": SimpleNamespace(is_attacking=False),
         "state_machine": SimpleNamespace(current_state_name=None),
     }
@@ -164,48 +166,55 @@ def test_can_dash_false_when_no_charges() -> None:
     assert _can_dash(entity) is False
 
 
-# --- _can_guard ---
+# --- _can_guard / _can_recharge ---
 
 
-def test_can_guard_true_when_held() -> None:
+def test_can_guard_while_the_button_is_held_on_the_floor() -> None:
     entity = _make_entity(
-        guard_held=True,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
+        guard_held=True, state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE)
     )
     assert _can_guard(entity) is True
 
 
-def test_can_guard_true_when_airborne() -> None:
+def test_no_guard_in_the_air() -> None:
     entity = _make_entity(
         guard_held=True,
         on_surface={"floor": False, "left": False, "right": False},
         state_machine=SimpleNamespace(current_state_name=PlayerState.FALL),
     )
-    assert _can_guard(entity) is True
-
-
-def test_can_guard_false_when_not_held() -> None:
-    entity = _make_entity(
-        guard_held=False,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
-    )
     assert _can_guard(entity) is False
 
 
-def test_can_guard_false_in_hurt_state() -> None:
-    entity = _make_entity(
-        guard_held=True,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.HURT),
-    )
+def test_no_guard_without_the_button() -> None:
+    entity = _make_entity(state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE))
     assert _can_guard(entity) is False
 
 
-def test_can_guard_false_in_attack_state() -> None:
+@pytest.mark.parametrize(
+    "state", [PlayerState.HURT, PlayerState.ATTACK, PlayerState.DASH, PlayerState.DIZZY]
+)
+def test_no_guard_out_of_a_state_that_is_doing_something_else(state: PlayerState) -> None:
+    entity = _make_entity(guard_held=True, state_machine=SimpleNamespace(current_state_name=state))
+    assert _can_guard(entity) is False
+
+
+def test_down_added_to_the_guard_is_the_recharge_and_not_the_guard() -> None:
     entity = _make_entity(
         guard_held=True,
+        down_held=True,
+        state_machine=SimpleNamespace(current_state_name=PlayerState.GUARD),
+    )
+    assert _can_guard(entity) is False
+    assert _can_recharge(entity) is True
+
+
+def test_no_recharge_out_of_an_attack() -> None:
+    entity = _make_entity(
+        guard_held=True,
+        down_held=True,
         state_machine=SimpleNamespace(current_state_name=PlayerState.ATTACK),
     )
-    assert _can_guard(entity) is False
+    assert _can_recharge(entity) is False
 
 
 # --- _can_attack_interrupt ---
@@ -373,7 +382,7 @@ def test_configure_state_machine_sets_all_states() -> None:
     configure_player_state_machine(entity)
     sm = entity.state_machine
     assert sm.current_state_name == "idle"
-    assert len(list(PlayerState)) == 17
+    assert len(list(PlayerState)) == 18
     for state_name in PlayerState:
         assert state_name.value in sm.states
 
@@ -382,12 +391,14 @@ def test_configure_state_machine_registers_interrupts() -> None:
     entity = _make_entity(dash=_dash_stub(), guard=_guard_stub())
     configure_player_state_machine(entity)
     sm = entity.state_machine
-    assert len(sm._interrupts) == 4
     targets = {t for _, t, _ in sm._interrupts}
-    assert PlayerState.DASH.value in targets
-    assert PlayerState.GUARD.value in targets
-    assert PlayerState.ATTACK.value in targets
-    assert PlayerState.CROUCH.value in targets
+    assert targets == {
+        PlayerState.PROMPT.value,
+        PlayerState.DASH.value,
+        PlayerState.GUARD.value,
+        PlayerState.RECHARGE.value,
+        PlayerState.ATTACK.value,
+    }
 
 
 # --- Dash cancel window ---
@@ -435,32 +446,6 @@ def test_can_attack_interrupt_false_during_dash_before_cancel_window(
     assert _can_attack_interrupt(entity) is False
 
 
-def test_can_guard_true_during_dash_after_cancel_window(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Guard allowed from dash once the cancel window has elapsed."""
-    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
-    entity = _make_entity(
-        guard_held=True,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-        dash=_dash_stub(duration=0.08, duration_timer=0.04),  # 0.04s elapsed
-    )
-    assert _can_guard(entity) is True
-
-
-def test_can_guard_false_during_dash_before_cancel_window(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Guard blocked from a dash still inside its cancel window."""
-    monkeypatch.setattr(Physics, "DASH_CANCEL_WINDOW", 0.03)
-    entity = _make_entity(
-        guard_held=True,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.DASH),
-        dash=_dash_stub(duration=0.08, duration_timer=0.08),  # 0.0s elapsed
-    )
-    assert _can_guard(entity) is False
-
-
 # --- Dash coyote ---
 
 
@@ -472,13 +457,3 @@ def test_can_attack_interrupt_true_during_dash_coyote() -> None:
         dash=SimpleNamespace(in_coyote=lambda: True),
     )
     assert _can_attack_interrupt(entity) is True
-
-
-def test_can_guard_true_during_dash_coyote() -> None:
-    """Guard allowed during dash coyote window after dash ends."""
-    entity = _make_entity(
-        guard_held=True,
-        state_machine=SimpleNamespace(current_state_name=PlayerState.IDLE),
-        dash=SimpleNamespace(in_coyote=lambda: True),
-    )
-    assert _can_guard(entity) is True

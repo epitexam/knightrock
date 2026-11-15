@@ -167,9 +167,9 @@ def _noop_feedback_stage(calls: list[str]) -> SimpleNamespace:
     )
 
 
-def _idle_player() -> SimpleNamespace:
-    """Player double: no dash started this tick."""
-    return SimpleNamespace(dash_started_this_frame=False)
+def _idle_player(world_time_scale: float = 1.0) -> SimpleNamespace:
+    """Player double: no dash started this tick, and the world at its own clock."""
+    return SimpleNamespace(dash_started_this_frame=False, world_time_scale=world_time_scale)
 
 
 def _noop_level() -> SimpleNamespace:

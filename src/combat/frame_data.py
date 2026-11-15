@@ -53,33 +53,29 @@ def move_id(name: str) -> MoveId:
 
 
 class AttackButton(StrEnum):
-    """The two attack buttons a move is resolved from, before stance and chain."""
+    """A press of an attack button in a stance: what a chain is continued by.
 
-    LIGHT = "light"
-    HEAVY = "heavy"
+    Two buttons, the blade and the body, each thrown high or low. The stance is
+    held, not toggled, so it is read with the press.
+    """
+
+    SLASH_HIGH = "slash_high"
+    SLASH_LOW = "slash_low"
+    BEAT_HIGH = "beat_high"
+    BEAT_LOW = "beat_low"
+    SHOOT = "shoot"
 
 
 class Stance(Enum):
     """The posture an attack has to be thrown from.
 
-    The question this exists to answer is "which attacks are available right
-    now", and it could not be asked before: ``AttackDefinition`` had no notion
-    of a posture, so the whole answer lived in one ternary in the input handler
-    that picked a move name from whether the fighter had a floor under them.
-    That is why every attack was reachable from the crouch once crouching was
-    allowed -- there was nowhere to say otherwise.
-
-    Ordered by how specific the posture is to the fighter's situation, not by
-    how it affects the attack. Resolution runs most-specific first:
-    ``WALL`` before ``AIR`` (sliding a wall is airborne), ``AIR`` before
-    ``CROUCH`` (the crouch requires a floor).
+    Most specific first: ``WALL`` before ``AIR`` (sliding a wall is airborne).
+    Not the blade's high or low stance, which is part of the press
+    (:class:`AttackButton`).
     """
 
     GROUND = "ground"
     """Standing or moving on the floor -- the default posture."""
-
-    CROUCH = "crouch"
-    """Held down on the floor. Shrinks the hurtbox and slows the fighter."""
 
     AIR = "air"
     """No floor contact, not sliding a wall."""
@@ -98,7 +94,10 @@ class Clash(StrEnum):
 
 
 class Height(StrEnum):
-    """Where a hit lands, against ``Guard.HEIGHT_BLOCK``."""
+    """Where a hit lands: what a guard held high or low stops.
+
+    A low guard stops ``low``; a high guard stops everything else.
+    """
 
     HIGH = "high"
     MID = "mid"
@@ -106,29 +105,11 @@ class Height(StrEnum):
     OVERHEAD = "overhead"
 
 
-class HitLevel(StrEnum):
-    """How much guard posture a blocked hit costs."""
-
-    LIGHT = "light"
-    MED = "med"
-    HEAVY = "heavy"
-
-
-class BlockMask(StrEnum):
-    """The posture a hit can be blocked from."""
-
-    ANY = "any"
-    STAND = "stand"
-    CROUCH = "crouch"
-
-
-#: The four hit fields that take a closed set of names: field, type, and the
+#: The hit fields that take a closed set of names: field, type, and the
 #: message a bad value has always raised.
 _NAMED_HIT_FIELDS: tuple[tuple[str, type[StrEnum], str], ...] = (
     ("clash", Clash, "Hit clash must be 'trade' or 'clash'"),
     ("height", Height, "Hit height must be 'high', 'mid', 'low' or 'overhead'"),
-    ("hit_level", HitLevel, "Hit level must be 'light', 'med' or 'heavy'"),
-    ("block_mask", BlockMask, "Block mask must be 'any', 'stand' or 'crouch'"),
 )
 
 
@@ -193,21 +174,17 @@ class HitProperties:
         granted on landing from a juggle. Ground hits
         otherwise bounce off a recently knocked-down victim.
     unblockable : bool
-        If True, the hit bypasses guard and parry (chip/posture unchanged).
+        If True, no guard stops the hit, and it breaks the guard it meets.
     priority : int
         Hit-vs-hit rank for simultaneous box overlaps (higher wins).
     clash : str
         Equal-priority outcome: ``"trade"`` (both connect) or
         ``"clash"`` (both attacks cancel with a clash event).
     height : str
-        Guard height: ``"high"``, ``"mid"``, ``"low"`` or ``"overhead"``.
-        Checked against ``Guard.HEIGHT_BLOCK`` with the target crouching.
-    block_mask : str
-        Posture allowed to block this hit: ``"any"``, ``"stand"`` or ``"crouch"``.
+        Where the hit lands: ``"high"``, ``"mid"``, ``"low"`` or ``"overhead"``.
+        An enemy holding its guard at that height stops it.
     tags : tuple[str, ...]
         Category tags used by hurt-zone invulnerability matching.
-    hit_level : str
-        Guard pressure level: ``"light"``, ``"med"`` or ``"heavy"``.
     flinch : bool
         A grounded target only flinches: the hit stuns it as usual but does
         not push it, so the next link of a chain is still in reach. An
@@ -216,6 +193,13 @@ class HitProperties:
         The world's freeze on contact, in seconds. ``None`` derives it from
         the damage and the knockback (``Combat.HITSTOP_*``); a number is for a
         hit whose weight is not in those two, such as a chain's finisher.
+    stun : float
+        What the hit adds to its target's stun gauge. A full gauge stuns the
+        target (``Entity.add_stun``); light blows add little, heavy ones a lot.
+    execute : bool
+        If True, the hit kills a helpless target outright -- stunned, on the
+        ground or doomed -- whatever its health. A doomed target is reached by
+        nothing else.
     """
 
     damage: float
@@ -230,17 +214,19 @@ class HitProperties:
     priority: int = 0
     clash: Clash = Clash.TRADE
     height: Height = Height.MID
-    hit_level: HitLevel = HitLevel.MED
-    block_mask: BlockMask = BlockMask.ANY
     tags: tuple[str, ...] = ()
     flinch: bool = False
     hit_stop: float | None = None
+    stun: float = 0.0
+    execute: bool = False
 
     def __post_init__(self) -> None:
         if self.damage < 0:
             raise ValueError("Hit damage cannot be negative")
         if self.hit_stop is not None and self.hit_stop < 0:
             raise ValueError("Hit-stop cannot be negative")
+        if self.stun < 0:
+            raise ValueError("Stun cannot be negative")
         if self.stagger < 0:
             raise ValueError("Hit stagger cannot be negative")
         if self.juggle_gravity_mult <= 0:
@@ -507,6 +493,10 @@ class PhaseDefinition:
     """Open ``cancel_into`` from the moment this phase has hit someone, not
     only in its recovery: the chain continues on contact, which is what lets a
     string of hits flow without waiting out each swing."""
+    launches: str | None = None
+    """The shot (``src/entities/shots.py``) this phase throws as it turns
+    active. A launching phase strikes with the shot alone: its box marks the
+    hand it leaves from, for the eye and the debug view, and never touches."""
 
     def __post_init__(self) -> None:
         if self.startup_frames < 0 or self.recovery_frames < 0:
@@ -627,6 +617,9 @@ class AttackDefinition:
         If True, this attack sequence cannot be cancelled by taking a hit.
         The entity still receives damage normally, but the attack keeps
         running: no hurt state is entered and the attack is not ended.
+    invincible : bool
+        If True, nothing hits the fighter while this attack runs: the death
+        blow and the throw are played out untouched.
     lunge_speed_multiplier : float
         Multiplier applied to the entity's speed to compute the forward
         lunge velocity applied when this attack starts on the ground.
@@ -683,6 +676,7 @@ class AttackDefinition:
     max_charge_time: float = 1.0
     charge_move_multiplier: float = 1.0
     uninterruptible: bool = False
+    invincible: bool = False
     lunge_speed_multiplier: float = 0.35
     vertical_lunge: float = 0.0
     attack_move_multiplier: float = 0.3

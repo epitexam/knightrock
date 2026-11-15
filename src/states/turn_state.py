@@ -2,7 +2,7 @@
 
 The pivot is a **state**, and that is the whole design. A delay is a value that
 has to be undone by everyone who can interrupt the thing holding it -- an
-attack, a dash, a guard, a hit -- and each of those has to know the rule exists
+attack, a dash, a parry, a hit -- and each of those has to know the rule exists
 and to call something to release it. A state is the machine's own answer: it is
 entered and exited, so anything that interrupts it leaves through
 :meth:`TurnState.exit`, which is where the facing is finally committed. "An
@@ -66,7 +66,7 @@ def request_turn(entity: Entity) -> bool:
     * the fighter is not on the floor, so this is a jump turn and the arc
       already reads it;
     * there is no speed behind it. ``turn_min_speed_px_s`` is the floor, and a
-      fighter shuffling under a raised guard is above it.
+      fighter shuffling in the parry stance is above it.
 
     The last two are what make this a pivot rather than a slow response to a
     tap, and the speed one is why a fighter who lets go and immediately presses

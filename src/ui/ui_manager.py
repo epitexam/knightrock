@@ -224,51 +224,38 @@ class UIManager:
     def _attack_button_rows(player: Any) -> list[tuple[str, tuple[int, int, int]]]:
         """What each attack button would throw from where the fighter is standing.
 
-        This is the gate, rendered -- not a report of what the gate last decided.
-        ``start_attack`` tests posture before cooldown, and both are readable from
-        ``player.stance``, ``BUTTON_MOVES`` and ``combat.cooldowns``, so the
-        reason for a refusal is visible *before* the press rather than logged
-        after it. Nothing has to publish a refusal for that: ``refusal.py`` notes
-        no consumer exists yet, and the obvious one is a log, when the cheaper
-        answer is to show the rule.
-
-        The rows come from iterating ``BUTTON_MOVES``, never from a list written
-        out here. A button added to the table appears without a UI edit -- the
-        property whose absence let ``air_rise`` drift to a guard height its
-        grounded counterpart did not have.
-
-        A button with no move in this posture shows a dash. Printing the standing
-        move instead would claim it works from here, which is the one thing it
-        must not say.
+        This is the gate, rendered -- not a report of what the gate last decided:
+        each button, high then low, resolved from the fighter's posture with
+        nothing running, as :func:`resolve_move` would. A press with no move in
+        this posture shows a dash.
         """
-        from src.core.input.input_actions import InputAction
-        from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+        from src.combat.frame_data import AttackButton
+        from src.entities.attack_moves import MoveContext, resolve_move
 
-        # Read the way the rest of this panel reads: duck-typed off a real player.
-        # A player with no stance resolves every button to ``None`` rather than
-        # raising, which is the right failure for a debug overlay -- it draws an
-        # empty table instead of taking the frame down.
+        # Duck-typed off a real player: a player with no stance draws an empty
+        # table instead of taking the frame down.
         stance: Any = getattr(player, "stance", None)
         cooldowns = getattr(getattr(player, "combat", None), "cooldowns", {}) or {}
         rows: list[tuple[str, tuple[int, int, int]]] = [
             (f"Stance  {getattr(stance, 'value', stance)}", TEXT_OK)
         ]
-        for action in BUTTON_MOVES:
-            # The action, not the key it defaults to. ``SPECIAL_ATTACK`` has no
-            # keyboard binding at all and the rest are rebindable, so printing a
-            # letter would be a claim this panel cannot keep -- the same mistake
-            # as a guard height a move's grounded twin did not have.
-            label = "special" if action is InputAction.SPECIAL_ATTACK else action.value
-            name = move_for_button(action, stance)
-            if name is None:
-                text, color = f"{label:<7} —", TEXT_MUTED
+        # One row per button, high then low: four rows would not fit the
+        # small displays the panel stack has to hold.
+        for button, presses in (
+            ("Slash", (AttackButton.SLASH_HIGH, AttackButton.SLASH_LOW)),
+            ("Beat", (AttackButton.BEAT_HIGH, AttackButton.BEAT_LOW)),
+        ):
+            names = [
+                resolve_move(press, MoveContext(stance)) if stance is not None else None
+                for press in presses
+            ]
+            shown = " · ".join("—" if name is None else str(name) for name in names)
+            cooling = [float(cooldowns.get(name, 0.0)) for name in names if name is not None]
+            remaining = max(cooling, default=0.0)
+            if remaining > 0.0:
+                rows.append((f"{button:<6}{shown} {remaining:.1f}s", TEXT_WARN))
             else:
-                remaining = float(cooldowns.get(name, 0.0))
-                if remaining > 0.0:
-                    text, color = f"{label:<7} {name} {remaining:.1f}s", TEXT_WARN
-                else:
-                    text, color = f"{label:<7} {name}", TEXT_MUTED
-            rows.append((text, color))
+                rows.append((f"{button:<6}{shown}", TEXT_MUTED))
         return rows
 
     def draw_help_panel(
@@ -306,7 +293,7 @@ class UIManager:
             f"F4 {layer('statics', 'statics')} · F5 {layer('panels', 'panels')}",
         ]
         bench = [
-            "1-6 showcase · 7-0 air kit (in the air)",
+            "1-8 showcase · 9-0 air kit (in the air)",
             "V/B shots · C dummy · G/P/T spawn",
             *layer_rows,
             "F6 freeze · F7 step · F8 replay · F9 export",
@@ -562,7 +549,7 @@ class UIManager:
         return self.world_ui.draw_health_bars(entities, camera, screen_rects)
 
     def draw_hud(self, player: Any) -> None:
-        """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
+        """Always-on player gauges: health and rally, blood, dash, combo (UI-7)."""
         self.hud.draw(player)
 
     # -- the WorldOverlay port -------------------------------------------------

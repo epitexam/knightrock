@@ -16,6 +16,7 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Sprite
 
+from src.combat.combatant_protocol import Combatant, DamageResult, Finish
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
@@ -39,6 +40,11 @@ class ProjectileConfig:
         default_factory=lambda: HitProperties(damage=5.0),
     )
     pierce: bool = False
+    #: Downward pull in px/s², for a lobbed shot; a bolt flies straight.
+    gravity: float = 0.0
+    #: How it is drawn (``src/core/rendering/strike_trails.py``); the sprite's
+    #: own image stays blank so the drawing can glow past the hitbox.
+    look: str = "bolt"
 
 
 class Projectile(Sprite):
@@ -47,8 +53,7 @@ class Projectile(Sprite):
     def __init__(self) -> None:
         super().__init__()
         self.id: str = f"p{next(_PROJECTILE_ID_SEQUENCE)}"
-        self.image = pygame.Surface((8, 8))
-        self.image.fill((255, 200, 60))
+        self.image = pygame.Surface((8, 8), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.hitbox = pygame.FRect(0, 0, 8, 8)
         self.velocity = Vector2(0, 0)
@@ -71,9 +76,14 @@ class Projectile(Sprite):
         """Body box used if something intercepts the projectile itself."""
         return self.hitbox
 
-    def on_hit_confirmed(self, combo_advanced: bool) -> None:
+    #: A projectile's hit kills what it would kill: it leaves no one doomed.
+    finish = Finish.NONE
+
+    def on_hit_confirmed(
+        self, target: Combatant, combo_advanced: bool, result: DamageResult
+    ) -> None:
         """A projectile is owed nothing for a hit."""
-        del combo_advanced
+        del target, combo_advanced, result
 
     def launch(
         self,
@@ -121,8 +131,9 @@ class Projectile(Sprite):
         wanted = (max(1, int(size[0])), max(1, int(size[1])))
         surface = self.image
         if surface is None or surface.get_size() != wanted:
-            surface = pygame.Surface(wanted)
-        surface.fill((255, 200, 60))
+            surface = pygame.Surface(wanted, pygame.SRCALPHA)
+        # Blank: the strike layer draws the shot, glow and trail included.
+        surface.fill((0, 0, 0, 0))
         return surface
 
     def reset(self) -> None:
@@ -155,6 +166,7 @@ class Projectile(Sprite):
         """Integrate flight and age; expire without freeing (system frees)."""
         if not self.active or self.is_dead:
             return
+        self.velocity.y += self.config.gravity * delta_time
         self.hitbox.x += self.velocity.x * delta_time
         self.hitbox.y += self.velocity.y * delta_time
         self.contact_shape = ShapePose(

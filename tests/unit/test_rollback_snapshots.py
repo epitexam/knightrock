@@ -20,11 +20,10 @@ from src.entities.player import Player
 from src.entities.player_controllers import (
     DashController,
     DashSnapshot,
-    GuardController,
-    GuardSnapshot,
     JumpController,
     JumpSnapshot,
 )
+from src.entities.player_kit import PromptKind
 from src.entities.vitals import Vitals
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import State, StateMachine, StateMachineSnapshot
@@ -131,22 +130,8 @@ def test_jump_controller_snapshot_round_trip() -> None:
     assert ctrl.wall_jumps_left == 3
 
 
-def test_guard_and_dash_controller_snapshots() -> None:
+def test_dash_controller_snapshot() -> None:
     config = _fake_player_config()
-    guard = GuardController(config)
-    guard.posture = 42.0
-    guard.lockout_timer = 0.33
-    guard.parry_timer = 0.1
-    guard.riposte_timer = 0.2
-    snap_guard = guard.save_state()
-    assert isinstance(snap_guard, GuardSnapshot)
-    guard.reset()
-    guard.load_state(snap_guard)
-    assert guard.posture == pytest.approx(42.0)
-    assert guard.lockout_timer == pytest.approx(0.33)
-    assert guard.parry_timer == pytest.approx(0.1)
-    assert guard.riposte_timer == pytest.approx(0.2)
-
     dash = DashController(config, original_hitbox_width=48.0)
     dash.charges = 0
     dash.recharge_timer = 1.5
@@ -242,36 +227,47 @@ def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:
 
     player.jump.jump_buffer_timer = 0.14
     player.jump.midair_jumps_left = 0
-    player.guard.posture = 25.0
     player.dash.charges = 0
     player.dash.penalty_timer = 0.5
+    player.battery.amount = 37.0
+    player.fury.gain(40.0)
+    player.slot.spin(random.Random(3))
+    player.prompt.open(PromptKind.THROW, "e9", random.Random(4))
+    player.rush_timer = 0.6
     player.input_handler.buffered_action = InputAction.ATTACK_1
     player.input_handler.buffer_timer = 0.11
     player.left_held = True
     player.right_held = False
-    player.guard_held = True
 
     snapshot = player.save_state()
 
     player.jump.reset()
-    player.guard.reset()
+    expected_prompt = player.prompt.save_state()
+    expected_slot = player.slot.save_state()
     player.dash.reset()
+    player.battery.reset()
+    player.fury.reset()
+    player.slot.reset()
+    player.prompt.reset()
+    player.rush_timer = 0.0
     player.input_handler.clear_buffer()
     player.left_held = False
-    player.guard_held = False
 
     player.load_state(snapshot)
 
     assert player.jump.jump_buffer_timer == pytest.approx(0.14)
     assert player.jump.midair_jumps_left == 0
-    assert player.guard.posture == pytest.approx(25.0)
+    assert player.battery.amount == pytest.approx(37.0)
+    assert player.fury.amount == pytest.approx(40.0)
+    assert player.slot.save_state() == expected_slot
+    assert player.prompt.save_state() == expected_prompt
+    assert player.rush_timer == pytest.approx(0.6)
     assert player.dash.charges == 0
     assert player.dash.penalty_timer == pytest.approx(0.5)
     assert player.input_handler.buffered_action is InputAction.ATTACK_1
     assert player.input_handler.buffer_timer == pytest.approx(0.11)
     assert player.left_held is True
     assert player.right_held is False
-    assert player.guard_held is True
 
 
 def _fake_player_config():

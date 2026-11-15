@@ -201,3 +201,32 @@ def test_airborne_invulnerability_state_adds_runtime_tag() -> None:
     assert target.hurtbox_zone_names == ("head", "torso", "legs")
     # Legacy unnamed zone: no roster row (mult 1.0, empty name).
     assert target.hurtbox_mult == (1.2, 1.0, 1.0)
+
+
+def test_the_zones_stack_head_over_body_over_legs() -> None:
+    """``offset_y`` places a zone up or down the body; without it every zone shared its centre."""
+    from pygame.sprite import Group
+
+    from src.data.provider import shipped_gameplay_data
+    from src.entities.enemies.enemy import Enemy
+
+    for name in ("goblin", "tooth", "shell"):
+        config = shipped_gameplay_data().enemies[name]
+        enemy = Enemy((100.0, 100.0), Group(), Group(), None, config)
+        zones = dict(zip(enemy.hurtbox_zone_names, enemy.hurtboxes, strict=True))
+        body = enemy.hitbox
+
+        assert zones["head"].top == pytest.approx(body.top, abs=0.5), name
+        assert zones["legs"].bottom == pytest.approx(body.bottom, abs=0.5), name
+        assert zones["head"].bottom <= zones["torso"].top + 0.5 <= zones["legs"].top + 1.0, name
+
+
+def test_a_zone_offset_survives_a_round_trip() -> None:
+    from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
+
+    zones = read_hurtbox_zones([{"name": "head", "inflate": [0, -20], "offset_y": -10}], "t")
+    assert zones is not None
+    assert zones[0].offset_y == -10.0
+    assert hurtbox_zones_to_dict(zones) == [
+        {"name": "head", "inflate": [0.0, -20.0], "mult": 1.0, "tags": [], "offset_y": -10.0}
+    ]

@@ -146,8 +146,8 @@ class LocalInputProvider(InputProvider):
             down_held = hat[1] < 0
 
         held = {
-            # ``MOVE_DOWN`` is the crouch on the ground and the fast fall in the
-            # air: two postures, not presses. It is read with ``latch=False``
+            # ``MOVE_DOWN`` is the low stance on the ground and the fast fall in
+            # the air: two postures, not presses. It is read with ``latch=False``
             # above so a tap shorter than a poll cannot arrive as a one-tick
             # hold and flicker the posture.
             InputAction.MOVE_DOWN: down_held,
@@ -174,6 +174,7 @@ class LocalInputProvider(InputProvider):
             for action in (
                 InputAction.ATTACK_1,
                 InputAction.ATTACK_2,
+                InputAction.SHOOT,
             ):
                 held[action] = self._key_held(keys, gameplay.keyboard, action) or (
                     self._button_held(gameplay.gamepad_buttons, action)
@@ -235,9 +236,9 @@ class LocalInputProvider(InputProvider):
         ``latch=False`` is for the hold-only actions. The latch exists so a tap
         shorter than a poll is still seen, which is the right trade for an
         edge-triggered action like an attack -- but wrong for a posture: a
-        one-tick crouch squashes the hurtbox, marks the fighter ``busy``, and
-        re-derives every zone before restoring it, so a graze of the key reads
-        as a stutter rather than a press that was too short.
+        one-tick low stance would throw a low slash for a high press, so a
+        graze of the key would read as the wrong move rather than a press that
+        was too short.
         """
         binding = bindings.get(action)
         if binding is None:

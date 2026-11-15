@@ -30,14 +30,17 @@ from src.core.fx import (
     spawn_impact_decal,
     spawn_landing_dust,
     spawn_landing_grains,
-    spawn_shatter_arc,
     spawn_sweat_drops,
 )
 from src.core.fx.tuning import DashDust, Dust, FootstepDust, FootstepTier, FxDizzy, Sweat
 from src.core.level.systems.contact_system import GuardEvent, ImpactEvent
 from src.core.settings import CameraShake
+from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Finisher as FinisherSettings
 from src.core.settings import Guard as GuardSettings
+from src.core.settings import Rush as RushSettings
+from src.core.settings import Stun as StunSettings
 from src.core.sprite_groups import SpriteGroups
 from src.entities.entity import Entity
 from src.states import state_names
@@ -100,7 +103,7 @@ def _footstep_tier(entity: Entity) -> FootstepTier | None:
 
     Three outcomes and all three are real. A tier in ``FootstepDust.TIER`` gets
     its row. A tier in ``FootstepDust.SILENT`` -- ``walk_slow``, the one a
-    fighter reaches under a raised guard -- gets ``None``, and that is the
+    fighter reaches in the parry stance -- gets ``None``, and that is the
     setting rather than a fallback: he is holding still as far as the ground is
     concerned. Anything else gets the default row, so an enemy patrolling marks
     the floor and the rule stays "a fighter rolling on a floor marks it" with the
@@ -155,15 +158,16 @@ class FeedbackSystem:
         camera: CameraSystem,
         impact_events: list[ImpactEvent] | None = None,
     ) -> None:
-        """Shake for the hits, rings and shake for guard outcomes, shake for a dash.
+        """Shake for the hits, a ring and a shake for a parry, shake for a dash.
 
         ``impact`` is the strongest melee knockback this tick; ``guard_events``
-        are this tick's guard, parry, break and stun outcomes and
+        are this tick's parry, stun, perfect dodge and clash outcomes and
         ``impact_events`` the hits that took health off, all already drained
         from the systems that produced them.
 
-        Every landed hit shakes a little (``CameraShake.HIT_*``) and a kill a
-        little more; a heavy one still gets the stronger shake it always had.
+        Every landed hit shakes a little (``CameraShake.HIT_*``), a kill a
+        little more and an execution the most; a heavy one still gets the
+        stronger shake it always had.
         Trauma is added once, at the strongest of them, so three targets hit by
         one sweep do not shake three times as hard as one.
         """
@@ -174,6 +178,8 @@ class FeedbackSystem:
             hit = CameraShake.HIT_TRAUMA + landed.strength / CameraShake.HIT_DIV
             if landed.killed:
                 hit += CameraShake.KILL_TRAUMA
+            if landed.executed:
+                hit = max(hit, CameraShake.EXECUTION_TRAUMA)
             trauma = max(trauma, hit)
         if trauma > 0.0:
             camera.add_trauma(trauma)
@@ -186,7 +192,7 @@ class FeedbackSystem:
                 camera.add_trauma(trauma)
         if player.dash_started_this_frame:
             player.dash_started_this_frame = False
-            camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
+            camera.add_trauma(CameraShake.DASH_TRAUMA)
 
     def before_removal(self, entity: Entity) -> None:
         """Leave a body behind for a fighter about to be reaped.
@@ -430,20 +436,22 @@ class FeedbackSystem:
         self._dizzy_star_timers[id(entity)] = timer
 
 
+#: How hard each outcome of an exchange shakes the camera.
+_TRAUMA: dict[str, float] = {
+    "guard": GuardSettings.GUARD_TRAUMA,
+    "stun": StunSettings.TRAUMA,
+    "doom": FinisherSettings.DOOM_TRAUMA,
+    "dodge": RushSettings.TRAUMA,
+    "clash": ClashSettings.TRAUMA,
+}
+
+
 def _trauma_for(event: GuardEvent) -> float:
-    """How hard a guard outcome shakes the camera."""
-    if event.kind == "parry":
-        return GuardSettings.PARRY_TRAUMA
-    if event.kind in ("break", "stun"):
-        return GuardSettings.BREAK_TRAUMA
-    return GuardSettings.GUARD_TRAUMA
+    """How hard the outcome of an exchange shakes the camera."""
+    return _TRAUMA.get(event.kind, GuardSettings.GUARD_TRAUMA)
 
 
 def _spawn_guard_fx(event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
-    """The ring of a guard or parry, the shards of a break; a stun has its own swirl."""
-    if event.kind == "parry":
-        spawn_guard_arc(fx_group, event.target, parried=True, contact=event.point)
-    elif event.kind == "break":
-        spawn_shatter_arc(fx_group, event.target, contact=event.point)
-    elif event.kind == "guard":
+    """The ring of a guard that stopped a blow; a stun has its own swirl, drawn while it lasts."""
+    if event.kind == "guard":
         spawn_guard_arc(fx_group, event.target, contact=event.point)

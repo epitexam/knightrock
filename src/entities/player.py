@@ -1,4 +1,4 @@
-"""Player entity with full state machine, input reading, and combat mechanics."""
+"""The player: movement, dodge, guard, the blade and the body, and what they earn."""
 
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -7,27 +7,38 @@ import pygame
 from pygame.sprite import Group
 
 from src.combat.combat_component import CombatComponent
-from src.combat.combatant_protocol import DamageResult
-from src.combat.frame_data import Stance
-from src.combat.knockback import NULL_KNOCKBACK, KnockbackConfig
+from src.combat.combatant_protocol import Combatant, DamageResult, Finish
+from src.combat.frame_data import Height, MoveId, Stance
+from src.combat.knockback import KnockbackConfig
+from src.combat.refusal import Refusal
 from src.core.animation.animator import Animator
 from src.core.asset_library import shared_library
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
+from src.core.settings import Battery as BatterySettings
+from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Fury as FurySettings
 from src.core.settings import Guard as GuardSettings
-from src.core.settings import HitFlash, ParryFlash, Physics
-from src.entities.components.reaction import push_direction
-from src.entities.crouch_posture import CrouchPosture
+from src.core.settings import Physics, Rush
+from src.core.settings import Slot as SlotSettings
+from src.core.settings import Throw as ThrowSettings
+from src.entities.attack_moves import DEATH_BLOW, SHOTS, SLASHES, THROW
 from src.entities.entity import Entity, EntitySnapshot
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import (
-    DashController,
-    GuardController,
-    JumpController,
-)
+from src.entities.player_controllers import DashController, JumpController
 from src.entities.player_input import PlayerInputHandler
+from src.entities.player_kit import (
+    Battery,
+    Direction,
+    FuryGauge,
+    Power,
+    PromptController,
+    PromptKind,
+    PromptOutcome,
+    SlotMachine,
+)
 from src.physics import resolve_jump
 from src.physics.spatial_hash import SpatialHash
 from src.states.player_states import (
@@ -38,7 +49,17 @@ from src.states.player_states import (
 
 
 class Player(Entity):
-    """Playable character with movement, guard, dash, and frame-data attacks."""
+    """The playable fighter.
+
+    Two attack buttons, each thrown high or low: the slash, which spends the
+    blade's battery, and the beat -- punches and kicks -- which breaks guards
+    and fills the stun gauge. A stunned foe is thrown; a foe a slash would kill
+    is left doomed, and a direction given in time lands the death blow, which
+    spins the slot machine. The guard is held; Down added to it recharges the
+    battery; a dodge at the last moment slows the world (the dark step). Fury,
+    filled by hitting without being hit, speeds the slashes up and, full,
+    opens the dark side.
+    """
 
     input_manager: InputManager
     speed: float
@@ -49,15 +70,17 @@ class Player(Entity):
     combat: CombatComponent
 
     jump: JumpController
-    guard: GuardController
     dash: DashController
+    battery: Battery
+    fury: FuryGauge
+    slot: SlotMachine
+    prompt: PromptController
     input_handler: PlayerInputHandler
 
     moving_platforms: Iterable[Any]
 
     left_held: bool
     right_held: bool
-    guard_held: bool
 
     def __init__(
         self,
@@ -128,6 +151,7 @@ class Player(Entity):
         )
 
         self.speed = config.speed
+        self._run_speed = config.speed
         self.floor_control = config.floor_control
         self.air_control = config.air_control
         # The pivot is per fighter and per group, so this one line is the whole
@@ -140,16 +164,22 @@ class Player(Entity):
         # The jump controller is also the lock that damps the run after a wall
         # jump; apply_horizontal_movement reads it from here.
         self.wall_jump_lock = self.jump
-        self.guard = GuardController(config)
         self.dash = DashController(config, original_hitbox_width=self.hitbox.width)
-        self.crouch = CrouchPosture()
+        self.battery = Battery()
+        self.fury = FuryGauge()
+        self.slot = SlotMachine()
+        self.prompt = PromptController()
+        #: Seconds of slowed world left after a dark step, on the player's clock.
+        self.rush_timer = 0.0
+        #: Seconds left for the dodge in progress to become a dark step.
+        self.dodge_window = 0.0
 
         self.moving_platforms = moving_platforms
 
         self.left_held = False
         self.right_held = False
-        self.guard_held = False
         self.down_held = False
+        self.guard_held = False
         #: Set by the dash state on the tick a dash starts; the gameplay loop
         #: reads it for the screen shake and clears it the same tick.
         self.dash_started_this_frame = False
@@ -167,25 +197,65 @@ class Player(Entity):
     def _setup_interrupts(self) -> None:
         super()._setup_interrupts()
 
+    # -- what the player is doing --------------------------------------------
+
     @property
     def is_guarding(self) -> bool:
+        """Whether the guard is up."""
         return self.state_machine.current_state_name == PlayerState.GUARD
+
+    @property
+    def low_stance(self) -> bool:
+        """Whether a press now is thrown low: Down held on the floor."""
+        return bool(self.down_held) and bool(self.on_surface.get("floor", False))
+
+    @property
+    def is_invincible(self) -> bool:
+        """Untouchable in the states that say so, and for the whole dark side."""
+        return super().is_invincible or self.fury.in_dark
+
+    @property
+    def world_time_scale(self) -> float:
+        """The clock of everything but the player.
+
+        A prompt freezes the fight around the player, a dark step slows it,
+        and so does the stasis power.
+        """
+        if self.prompt.active:
+            return self.prompt.time_scale
+        if self.rush_timer > 0.0:
+            return Rush.TIME_SCALE
+        if self.slot.active(Power.STASIS):
+            return SlotSettings.STASIS_TIME_SCALE
+        return 1.0
+
+    @property
+    def finish(self) -> Finish:
+        """Every blow kills on the dark side and under stasis or blitz; else a kill dooms."""
+        if self.fury.in_dark or self.slot.active(Power.STASIS) or self.slot.active(Power.BLITZ):
+            return Finish.KILL
+        return Finish.DOOM
+
+    @property
+    def attack_speed(self) -> float:
+        """How fast the player's attacks run: the fastest of what speeds them up."""
+        speed = self.fury.speed
+        if self.rush_timer > 0.0:
+            speed = max(speed, Rush.ATTACK_SPEED)
+        if self.fury.in_dark:
+            speed = max(speed, FurySettings.DARK_ATTACK_SPEED)
+        if self.slot.active(Power.BLITZ):
+            speed = max(speed, SlotSettings.BLITZ_ATTACK_SPEED)
+        return speed
 
     def may_attack_now(self) -> bool:
         """Whether an attack press is worth reading at all this tick.
 
-        Narrower than it was. The old gate consulted
-        ``ATTACK_FORBIDDEN_STATES`` -- a list of states maintained by hand
-        beside three other lists, which is where the contradictions came from.
-        What is left is the one question that is not about the move at all:
-        whether the fighter is still committed to a dash.
-
-        Posture, cooldown, cancellation and the reaction states are all answered
-        by ``CombatComponent.start_attack``, which is the only place that knows
-        them. A gate in front of it is a second answer to the same question.
+        Posture, cooldown, cancellation and the reaction states are answered by
+        ``CombatComponent.start_attack``. What is left is whether the fighter
+        is still committed to a dash.
         """
-        current = self.state_machine.current_state_name
-        if current == PlayerState.DASH:
+        if self.state_machine.current_state_name == PlayerState.DASH:
             return dash_cancel_open(self)
         return True
 
@@ -199,24 +269,11 @@ class Player(Entity):
 
     @property
     def stance(self) -> Stance:
-        """The posture the fighter is in, which decides which moves are live.
-
-        Most specific first, because the postures overlap: sliding a wall is
-        also airborne, and the crouch requires a floor. Order is
-        ``WALL`` -> ``AIR`` -> ``CROUCH`` -> ``GROUND``.
-
-        This is the only place the resolution is written. It is asked per attack
-        press rather than decided per state, which is the point: ``crouch`` is a
-        property of the fighter's geometry, not of a state name, so a fighter
-        who crouches and then attacks is still crouched -- which is also what
-        makes the low half of ``Guard.HEIGHT_BLOCK`` resolve for a crouch-guard.
-        """
+        """The posture the fighter is in: ``WALL``, then ``AIR``, then ``GROUND``."""
         if self.is_wall_sliding():
             return Stance.WALL
         if not self.on_surface["floor"]:
             return Stance.AIR
-        if self.crouch.is_crouched:
-            return Stance.CROUCH
         return Stance.GROUND
 
     def _on_floor_contact(self) -> None:
@@ -227,23 +284,282 @@ class Player(Entity):
         """Reset midair jumps when touching a wall."""
         self.jump.restore_midair_jumps()
 
+    # -- the clock -------------------------------------------------------------
+
     def update_timers(self, delta_time: float) -> None:
-        is_guarding = self.state_machine.current_state_name == PlayerState.GUARD
         self.jump.update(delta_time, self.on_surface["floor"])
-        self.guard.update(delta_time, is_guarding)
         self.dash.update(delta_time)
-        self.crouch.update(self, delta_time, self._wants_crouch())
+        self.fury.update(delta_time)
+        self.slot.update(delta_time)
+        if self.combat.charging.is_charging:
+            self.battery.spend(BatterySettings.CHARGE_COST_PER_S * delta_time)
+        self.rush_timer = max(0.0, self.rush_timer - delta_time)
+        if self.dodge_window > 0.0:
+            self.dodge_window -= delta_time
+            if self.dodge_window <= 0.0:
+                self._close_dodge_window()
+        kind = self.prompt.kind
+        outcome = self.prompt.update(delta_time)
+        if kind is not None and outcome is not None:
+            self._settle_prompt(kind, outcome)
 
-    def _wants_crouch(self) -> bool:
-        """Whether the crouch is being held this tick.
+    def open_dodge_window(self) -> None:
+        """A dodge begins: for ``Rush.WINDOW``, a hit reaching it here is a dark step."""
+        self.dodge_window = Rush.WINDOW
+        self.dodge_ghost = self.hurtbox.copy()
 
-        Reads the same two conditions the crouch state's own gate does -- Down
-        held, feet on the floor -- but on the fighter rather than in the state,
-        so the blend keeps running through an attack or a guard out of the
-        posture. Airborne it is False so releasing the button in mid-air stands
-        the fighter up for the landing rather than leaving them stuck small.
+    def _close_dodge_window(self) -> None:
+        self.dodge_window = 0.0
+        self.dodge_ghost = None
+
+    def _apply_momentum(self) -> None:
+        """Hand the attack speed to the attack clock; a dark side keeps the dash full."""
+        self._sync_speeds()
+        if self.fury.in_dark:
+            self.dash.refill()
+
+    def _sync_speeds(self) -> None:
+        """Derive the attack clock and the run speed. Neither is stored."""
+        self.combat.attack_speed = self.attack_speed
+        mult = 1.0
+        if self.fury.in_dark:
+            mult = max(mult, FurySettings.DARK_MOVE_MULT)
+        if self.slot.active(Power.BLITZ):
+            mult = max(mult, SlotSettings.BLITZ_MOVE_MULT)
+        self.speed = self._run_speed * mult
+
+    # -- attacking -------------------------------------------------------------
+
+    def start_move(self, move: MoveId) -> Refusal:
+        """Start ``move``, paying its battery: a slash on an empty one is weak.
+
+        Paid only once the move has started: a buffered press is retried every
+        tick until a cancel window opens, and the refusals cost nothing. A dark
+        step makes the slashes free; cleave makes them harder.
         """
-        return bool(self.down_held) and bool(self.on_surface.get("floor", False))
+        slash = move in SLASHES
+        shot = move in SHOTS
+        if shot and self.battery.is_empty:
+            return Refusal.BUSY
+        power = 1.0
+        if slash:
+            if self.battery.is_empty and self.rush_timer <= 0.0:
+                power = BatterySettings.EMPTY_POWER
+            if self.slot.active(Power.CLEAVE):
+                power *= SlotSettings.CLEAVE_MULT
+        refusal = self.combat.start_attack(move, power)
+        if refusal is Refusal.NONE and slash and self.rush_timer <= 0.0:
+            self.battery.spend(BatterySettings.SLASH_COST)
+        if refusal is Refusal.NONE and shot and self.rush_timer <= 0.0:
+            self.battery.spend(BatterySettings.SHOT_COST)
+        return refusal
+
+    def _foe_in_front(self, reach: float, wanted: str) -> Entity | None:
+        """The nearest living foe within ``reach`` in front, in the state ``wanted``."""
+        best: Entity | None = None
+        best_gap = reach
+        for other in self.roster:
+            if other is self or other.is_dead or other.faction == self.faction:
+                continue
+            if other.state_machine.current_state_name != wanted:
+                continue
+            if other.hitbox.bottom < self.hitbox.top or other.hitbox.top > self.hitbox.bottom:
+                continue
+            dx = other.hitbox.centerx - self.hitbox.centerx
+            if (dx >= 0.0) != self.facing_right:
+                continue
+            gap = abs(dx) - (other.hitbox.width + self.hitbox.width) / 2
+            if gap <= best_gap:
+                best, best_gap = other, gap
+        return best
+
+    def downed_in_reach(self) -> Entity | None:
+        """A foe lying on the ground in front, close enough to be stabbed."""
+        return self._foe_in_front(ThrowSettings.RANGE, "downed")
+
+    def try_grab(self) -> bool:
+        """Grab a stunned foe standing in front, on the ground: the throw's prompt opens.
+
+        The grab cuts short whatever the fighter was swinging -- the beat that
+        stunned the foe is usually still in its recovery -- but never a throw
+        or a death blow being played out.
+        """
+        if self.prompt.active or self.stance is not Stance.GROUND:
+            return False
+        running = self.combat.current_attack_def
+        if running is not None and running.invincible:
+            return False
+        target = self._foe_in_front(ThrowSettings.RANGE, "dizzy")
+        # A foe stunned in the air is juggled, not grabbed: the slam is thrown
+        # along the floor and would pass under it.
+        if target is None or not target.on_surface.get("floor", False):
+            return False
+        self.combat.cancel_attack()
+        # Held: whatever was carrying it -- the blow that stunned it -- stops.
+        target.velocity.update(0.0, 0.0)
+        self.prompt.open(PromptKind.THROW, target.id, self.rng)
+        return True
+
+    def answer_prompt(self, direction: Direction) -> None:
+        kind = self.prompt.kind
+        outcome = self.prompt.give(direction)
+        if kind is not None and outcome is not None:
+            self._settle_prompt(kind, outcome)
+
+    def mash_prompt(self) -> None:
+        kind = self.prompt.kind
+        outcome = self.prompt.press()
+        if kind is not None and outcome is not None:
+            self._settle_prompt(kind, outcome)
+
+    def _prompt_target(self) -> Entity | None:
+        for other in self.roster:
+            if other.id == self.prompt.target_id and not other.is_dead:
+                return other
+        return None
+
+    def _settle_prompt(self, kind: PromptKind, outcome: PromptOutcome) -> None:
+        """Play out what an answered prompt earned, or what a failed one costs."""
+        target = self._prompt_target()
+        success = outcome is PromptOutcome.SUCCESS
+        if kind is PromptKind.DEATH_BLOW:
+            if success and target is not None:
+                self._strike_at(target, DEATH_BLOW)
+                self.fury.gain(FurySettings.DEATH_BLOW)
+                self.slot.spin(self.rng)
+            elif target is not None:
+                target.recover_from_doom()
+        elif kind is PromptKind.THROW:
+            if success and target is not None:
+                self._strike_at(target, THROW)
+                self.fury.gain(FurySettings.THROW)
+            elif not success:
+                self.stagger(ThrowSettings.FAIL_STAGGER)
+        elif success:
+            if target is not None:
+                target.lose_lock()
+            self.fury.gain(FurySettings.PER_HIT)
+        else:
+            self.receive_damage(ClashSettings.LOSS_DAMAGE, None, None, interrupt=False)
+            self.stagger(ClashSettings.LOSS_STAGGER)
+
+    def _strike_at(self, target: Entity, move: MoveId) -> None:
+        """Turn to ``target``, step up to it, and play ``move`` on it."""
+        self.facing_right = target.hitbox.centerx >= self.hitbox.centerx
+        side = -1.0 if self.facing_right else 1.0
+        self.hitbox.centerx = target.hitbox.centerx + side * (
+            (target.hitbox.width + self.hitbox.width) / 2 + 2.0
+        )
+        self.sync_rects()
+        self.combat.cancel_attack()
+        self.combat.start_attack(move)
+
+    # -- what the player's blows earn ------------------------------------------
+
+    def on_hit_confirmed(
+        self, target: Combatant, combo_advanced: bool, result: DamageResult
+    ) -> None:
+        """A hit landed: fury, the dash charges, and the death blow's prompt.
+
+        A blow that leaves its target doomed opens the prompt for the death
+        blow, unless one is already up. A hit landed out of a dash gives the
+        dash back, and every ``COMBO_DASH_REFILL_HITS`` hits of one combo give
+        a charge back.
+        """
+        self.fury.gain(FurySettings.PER_HIT if combo_advanced else 0.0)
+        if result.doomed and not self.prompt.active:
+            self.prompt.open(PromptKind.DEATH_BLOW, target.id, self.rng)
+        dash = self.dash
+        if dash.charges >= dash.max_charges:
+            return
+        refresh = (
+            Physics.DASH_REFRESH_ON_HIT
+            and self.state_machine.current_state_name == PlayerState.DASH
+        )
+        every = CombatSettings.COMBO_DASH_REFILL_HITS
+        milestone = combo_advanced and every > 0 and self.combat.combo_count % every == 0
+        if refresh or milestone:
+            dash.charges += 1
+
+    def on_hit_evaded(self) -> bool:
+        """A hit passed through the dodge or its ghost: a dark step, if in time.
+
+        In time is within ``Rush.WINDOW`` of the dodge beginning. It slows the
+        world for ``Rush.DURATION``, gives the dash back and fills some fury.
+        One at a time: a second hit dodged during a rush is only dodged.
+        """
+        if self.dodge_window <= 0.0 or self.rush_timer > 0.0:
+            return False
+        self._close_dodge_window()
+        self.rush_timer = Rush.DURATION
+        self.fury.gain(FurySettings.DARK_STEP)
+        self.dash.refill()
+        return True
+
+    def on_clash(self, other: Combatant) -> None:
+        """Blades met: the lock's prompt opens, won by mashing the slash."""
+        if not self.prompt.active and not other.is_dead:
+            self.prompt.open(PromptKind.CLASH, other.id, self.rng)
+
+    def on_deflected(self, source_center_x: float) -> None:
+        """A blow stopped by a guard bounces off: the move ends, the fighter recoils.
+
+        Mashing into a guard is the opening the enemy waits for: the recoil
+        outlasts the start of its counter, and it costs battery on top of the
+        slash that was spent.
+        """
+        self.combat.cancel_attack()
+        self.input_handler.clear_buffer()
+        self.battery.spend(BatterySettings.DEFLECT_COST)
+        away = -1.0 if source_center_x >= self.hitbox.centerx else 1.0
+        self.velocity.x = away * GuardSettings.DEFLECT_PUSH
+        self.stagger(GuardSettings.DEFLECT_STAGGER)
+
+    def guards_against(self, height: Height, unblockable: bool, source_center_x: float) -> bool:
+        """The raised guard stops a blow from the front at any height, for some battery.
+
+        An unblockable blow -- a heavy one -- breaks it instead, and the
+        fighter staggers.
+        """
+        if not self.is_guarding or not self._faces_source(source_center_x):
+            return False
+        if unblockable:
+            self.stagger(CombatSettings.HURT_DURATION)
+            return False
+        self.battery.spend(BatterySettings.GUARD_COST)
+        away = -1.0 if source_center_x >= self.hitbox.centerx else 1.0
+        self.velocity.x = away * GuardSettings.PUSH
+        return True
+
+    def _faces_source(self, source_center_x: float | None) -> bool:
+        if source_center_x is None:
+            return True
+        if source_center_x >= self.hitbox.centerx:
+            return self.facing_right
+        return not self.facing_right
+
+    def receive_damage(
+        self,
+        amount: float,
+        source_center_x: float | None = None,
+        knockback: KnockbackConfig | None = None,
+        interrupt: bool = True,
+    ) -> DamageResult:
+        """Take the hit; a hit taken costs fury and closes the dodge window."""
+        if not self._can_receive_damage():
+            return DamageResult()
+        result = super().receive_damage(amount, source_center_x, knockback, interrupt)
+        if interrupt and self.combat.hurt_timer > 0:
+            self.combat.hurt_timer = min(
+                self.combat.hurt_timer,
+                CombatSettings.PLAYER_HURT_DURATION,
+            )
+        if result.applied:
+            self.fury.lose(FurySettings.HURT_LOSS)
+            self._close_dodge_window()
+        return result
+
+    # -- the rest of the tick --------------------------------------------------
 
     def _animation_name(self) -> str | None:
         """Map the current player state to its sprite-sheet animation."""
@@ -254,13 +570,6 @@ class Player(Entity):
             return self._attack_animation()
         if state in (PlayerState.HURT, PlayerState.KNOCKBACK, PlayerState.STAGGER):
             return "hit"
-        if state == PlayerState.CROUCH:
-            return "crouch"
-        # A crouch held into an attack or a guard is still a crouch visually:
-        # the fighter went down, swung or blocked from down there, and the
-        # sprite has to say so rather than snapping to the standing attack.
-        if self.crouch.is_crouched and state not in (PlayerState.JUMP, PlayerState.FALL):
-            return "crouch"
         mapping: dict[str, str] = {
             PlayerState.IDLE: "idle",
             PlayerState.WALK_SLOW: "walk_slow",
@@ -274,16 +583,7 @@ class Player(Entity):
         return mapping.get(state)
 
     def _attack_animation(self) -> str:
-        """The clip the running move asks for.
-
-        Read off the definition rather than decided here, so a move can have art
-        of its own. It used to be ``"air_attack" if not on the floor else
-        "attack"`` -- one branch, one entry per case, and no way to add a third
-        without editing this. The fallback order matters more than the read: a
-        move with no art yet plays the airborne clip in the air and the standing
-        one on the floor, exactly as before, and only a move that names a clip
-        changes what is drawn.
-        """
+        """The clip the running move asks for; the plain swing in the air or on the floor."""
         definition = self.combat.current_attack_def
         if definition is not None:
             return definition.animation
@@ -293,6 +593,7 @@ class Player(Entity):
         """Process input and timers before combat and state machine updates."""
         self.input_handler.update(delta_time)
         self.update_timers(delta_time)
+        self._apply_momentum()
 
     def _post_update(self, delta_time: float) -> None:
         """Clear consumed inputs after state machine and physics updates."""
@@ -303,165 +604,55 @@ class Player(Entity):
         """Process jump input with coyote time, wall jumps, and midair jumps."""
         resolve_jump(self)
 
-    def on_hit_confirmed(self, combo_advanced: bool) -> None:
-        """A hit of the player's took health off: dash charges are its reward.
-
-        A hit landed out of a dash gives its charge back
-        (``Physics.DASH_REFRESH_ON_HIT``), so a dash into an attack costs
-        nothing when it connects; and every ``COMBO_DASH_REFILL_HITS`` hits of
-        one combo give one back, so a fighter who keeps the pressure up keeps
-        the means to get out.
-        """
-        dash = self.dash
-        if dash.charges >= dash.max_charges:
-            return
-        refresh = (
-            Physics.DASH_REFRESH_ON_HIT
-            and self.state_machine.current_state_name == PlayerState.DASH
-        )
-        every = CombatSettings.COMBO_DASH_REFILL_HITS
-        milestone = combo_advanced and every > 0 and self.combat.combo_count % every == 0
-        if refresh or milestone:
-            dash.charges += 1
-
     def _on_reset(self) -> None:
         self.jump.reset()
-        self.guard.reset()
         self.dash.reset()
+        self.battery.reset()
+        self.fury.reset()
+        self.slot.reset()
+        self.prompt.reset()
+        self.rush_timer = 0.0
+        self._close_dodge_window()
         self.move_axis = 0.0
         self.input_handler.clear_buffer()
         self.hitbox.width = self.dash.original_hitbox_width
 
         self.left_held = False
         self.right_held = False
-        self.guard_held = False
         self.down_held = False
+        self.guard_held = False
 
     def respawn(self) -> None:
         self.reset_position()
 
-    def _faces_source(self, source_center_x: float | None) -> bool:
-        if source_center_x is None:
-            return True
-        if source_center_x >= self.hitbox.centerx:
-            return self.facing_right
-        return not self.facing_right
-
-    def _apply_guard_reaction(
-        self,
-        amount: float,
-        knockback: KnockbackConfig | None,
-        source_center_x: float | None,
-        height: str = "mid",
-        block_mask: str = "any",
-        hit_level: str = "med",
-    ) -> DamageResult:
-        _kb = knockback if knockback is not None else NULL_KNOCKBACK
-        in_air = not self.on_surface["floor"]
-        # Read off the posture, not the state name: a fighter who guards while
-        # holding Down is in ``GUARD``, and reading the state there would report
-        # them standing and send every low attack straight through their guard.
-        crouching = self.crouch.is_crouched
-        outcome, chip, was_parry = self.guard.take_hit(
-            amount,
-            in_air,
-            height=height,
-            crouching=crouching,
-            block_mask=block_mask,
-            hit_level=hit_level,
-        )
-        if outcome == "none":
-            result = super().receive_damage(amount, source_center_x, knockback)
-            if self.combat.hurt_timer > 0:
-                self.combat.hurt_timer = min(
-                    self.combat.hurt_timer,
-                    CombatSettings.PLAYER_HURT_DURATION,
-                )
-            return result
-        if outcome == "parry":
-            self.parries_given += 1
-            self._reaction.note_guard_push(_kb, source_center_x, parried=True)
-            self.render_hints.parry_flash_timer = ParryFlash.DURATION
-            return DamageResult(guarded=True, parried=True)
-        direction = push_direction(_kb, self.hitbox.centerx, source_center_x, self.facing_right)
-        push = _kb.power[0] * GuardSettings.PUSH_FACTOR
-        self.velocity.x = push if _kb.mode == "fixed" else push * direction
-        self._reaction.note_guard_push(_kb, source_center_x)
-        if chip > 0:
-            self._apply_damage(chip)
-            self.render_hints.flash_timer = HitFlash.DURATION
-        if outcome == "break":
-            self.stagger(GuardSettings.BREAK_STAGGER)
-            return DamageResult(guarded=True, guard_broken=True, applied=True, actual_damage=chip)
-        return DamageResult(guarded=True, applied=False, actual_damage=chip)
-
-    def receive_damage(
-        self,
-        amount: float,
-        source_center_x: float | None = None,
-        knockback: KnockbackConfig | None = None,
-        interrupt: bool = True,
-        unblockable: bool = False,
-        height: str = "mid",
-        block_mask: str = "any",
-        hit_level: str = "med",
-    ) -> DamageResult:
-        if not self._can_receive_damage():
-            return DamageResult()
-
-        if not unblockable:
-            if self.is_dashing:
-                dash_elapsed = self.dash.duration - self.dash.duration_timer
-                if dash_elapsed <= Physics.DASH_PARRY_WINDOW:
-                    self.guard.posture = self.guard.max_posture
-                    self.guard.riposte_timer = GuardSettings.RIPOSTE_WINDOW
-                    self.parries_given += 1
-                    self._reaction.note_guard_push(
-                        knockback or NULL_KNOCKBACK, source_center_x, parried=True
-                    )
-                    self.render_hints.parry_flash_timer = ParryFlash.DURATION
-                    return DamageResult(guarded=True, parried=True)
-
-            if self.is_guarding and self._faces_source(source_center_x):
-                return self._apply_guard_reaction(
-                    amount, knockback, source_center_x, height, block_mask, hit_level
-                )
-
-        result = super().receive_damage(amount, source_center_x, knockback, interrupt)
-
-        if interrupt and self.combat.hurt_timer > 0:
-            self.combat.hurt_timer = min(
-                self.combat.hurt_timer,
-                CombatSettings.PLAYER_HURT_DURATION,
-            )
-
-        return result
-
     def save_state(self) -> EntitySnapshot:
         snapshot = super().save_state()
         # Added to the entity's own extras, never in place of them: replacing the
-        # dict dropped the juggle, OTG and parry state, and a restored player
-        # came back with all of it reset (audit C3).
+        # dict dropped the juggle and OTG state (audit C3).
+        handler = self.input_handler
         snapshot.extra |= {
             "jump": self.jump.save_state(),
-            "guard": self.guard.save_state(),
             "dash": self.dash.save_state(),
-            "crouch": self.crouch.save_state(),
+            "battery": self.battery.amount,
+            "fury": self.fury.save_state(),
+            "slot": self.slot.save_state(),
+            "prompt": self.prompt.save_state(),
+            "rush_timer": self.rush_timer,
+            "dodge_window": self.dodge_window,
+            "dodge_ghost": None if self.dodge_ghost is None else tuple(self.dodge_ghost),
             "buffered_action": (
-                None
-                if self.input_handler.buffered_action is None
-                else self.input_handler.buffered_action.value
+                None if handler.buffered_action is None else handler.buffered_action.value
             ),
-            "buffer_timer": self.input_handler.buffer_timer,
+            "buffered_low": handler.buffered_low,
+            "buffer_timer": handler.buffer_timer,
+            "held_for": {button.value: held for button, held in handler.held_for.items()},
+            "charge_button": None if handler.charge_button is None else handler.charge_button.value,
+            "last_axis": handler.last_axis,
+            "last_down": handler.last_down,
             "left_held": self.left_held,
             "right_held": self.right_held,
-            "guard_held": self.guard_held,
-            # The crouch and fast-fall reads are part of the tick's input state,
-            # like the three above them. Leaving them out meant a rollback
-            # restored a fighter mid-posture with ``down_held`` back at its
-            # pre-crouch value, so the crouch state and the input that drives it
-            # disagreed on the very next tick.
             "down_held": self.down_held,
+            "guard_held": self.guard_held,
             "fast_fall": self.fast_fall,
         }
         return snapshot
@@ -470,14 +661,28 @@ class Player(Entity):
         super().load_state(snapshot)
         extra = snapshot.extra
         self.jump.load_state(extra["jump"])
-        self.guard.load_state(extra["guard"])
         self.dash.load_state(extra["dash"])
-        self.crouch.restore(extra["crouch"])
+        self.battery.amount = extra["battery"]
+        self.fury.load_state(extra["fury"])
+        self.slot.load_state(extra["slot"])
+        self.prompt.load_state(extra["prompt"])
+        self.rush_timer = extra["rush_timer"]
+        self.dodge_window = extra["dodge_window"]
+        ghost = extra["dodge_ghost"]
+        self.dodge_ghost = None if ghost is None else pygame.FRect(ghost)
+        self._sync_speeds()
+        handler = self.input_handler
         buffered = extra["buffered_action"]
-        self.input_handler.buffered_action = None if buffered is None else InputAction(buffered)
-        self.input_handler.buffer_timer = extra["buffer_timer"]
+        handler.buffered_action = None if buffered is None else InputAction(buffered)
+        handler.buffered_low = extra["buffered_low"]
+        handler.buffer_timer = extra["buffer_timer"]
+        handler.held_for = {InputAction(name): held for name, held in extra["held_for"].items()}
+        button = extra["charge_button"]
+        handler.charge_button = None if button is None else InputAction(button)
+        handler.last_axis = extra["last_axis"]
+        handler.last_down = extra["last_down"]
         self.left_held = extra["left_held"]
         self.right_held = extra["right_held"]
-        self.guard_held = extra["guard_held"]
         self.down_held = extra["down_held"]
+        self.guard_held = extra["guard_held"]
         self.fast_fall = extra["fast_fall"]

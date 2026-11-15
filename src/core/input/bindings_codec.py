@@ -6,12 +6,13 @@ complete set. The file itself is :class:`~src.application.settings_store.Setting
 """
 
 from types import MappingProxyType
-from typing import cast
+from typing import Any, cast
 
 import pygame
 
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import (
+    XBOX_B,
     XBOX_START,
     XBOX_VIEW,
     ActionMap,
@@ -163,6 +164,20 @@ def _fill_menu_pause_default(bindings: ButtonMap) -> ButtonMap:
     if InputAction.UI_PAUSE in bindings:
         return bindings
     return MappingProxyType({**bindings, InputAction.UI_PAUSE: XBOX_START})
+
+
+def _fill_shoot_default(bindings: Any, default: int) -> Any:
+    """``bindings`` with the shot on ``default``, if it has no shot and ``default`` is free."""
+    if InputAction.SHOOT in bindings:
+        return bindings
+    taken = {
+        index
+        for value in bindings.values()
+        for index in (value if isinstance(value, tuple) else (value,))
+    }
+    if default in taken:
+        return bindings
+    return MappingProxyType({**bindings, InputAction.SHOOT: default})
 
 
 #: The gameplay pad layout every file had before the Xbox layout, by default.
@@ -341,6 +356,7 @@ def bindings_from_dict(data: object) -> InputBindings:
         InputAction.RESET,
         InputAction.ATTACK_1,
         InputAction.ATTACK_2,
+        InputAction.SHOOT,
         InputAction.SPECIAL_ATTACK,
     }
     menu_actions = {
@@ -365,6 +381,10 @@ def bindings_from_dict(data: object) -> InputBindings:
     )
     gameplay_axes = cast(AxisMap, _parse_int_map(gameplay_data["gamepad_axes"], gameplay_actions))
     gameplay_hats = _parse_int_map(gameplay_data["gamepad_hats"], gameplay_actions)
+    # The shot came after every other button: a file without it gets the
+    # default key and button, unless the player already put something there.
+    gameplay_keyboard = _fill_shoot_default(gameplay_keyboard, pygame.K_d)
+    gameplay_buttons = _fill_shoot_default(gameplay_buttons, XBOX_B)
     gameplay_keyboard_combos = _parse_combo_map(gameplay_data["keyboard_combos"], gameplay_actions)
     gameplay_gamepad_combos = _parse_combo_map(gameplay_data["gamepad_combos"], gameplay_actions)
     menu_keyboard = _parse_action_map(menu_data["keyboard"], menu_actions)

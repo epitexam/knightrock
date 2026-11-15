@@ -71,22 +71,9 @@ class Physics:
     # dash only accepted a press on its very last frame (measured), while 0.0
     # accepts every frame but the first.
     DASH_CANCEL_WINDOW = 0.0
-    DASH_PARRY_WINDOW = 0.07
     DASH_REFRESH_ON_HIT = True
     DASH_COYOTE_TIME = 0.05
     DASH_WALL_BOUNCE = 0.5
-    # Crouch: the posture shrinks the hurtbox to this fraction of the standing
-    # height, and the shrink is interpolated over BLEND_TIME rather than applied
-    # in one tick, so entering and leaving it reads as a body moving rather than
-    # a hitbox popping.
-    CROUCH_HEIGHT_FACTOR = 0.6
-    CROUCH_HEIGHT_BLEND_TIME = 0.08
-    # Crouch-walk speed as a fraction of the entity's own speed. Deliberately
-    # far below ``Guard.MOVE_MULT``: crouching is a defensive posture that
-    # shuffles, not a way to travel, and a fighter who can hold it down and
-    # cross the level has made the hurtbox shrink optional.
-    CROUCH_SPEED_MULT = 0.2
-
     FLOOR_CONTROL = 25.0
     AIR_CONTROL = 12.0
     WALL_SLIDE_SPEED = 100.0
@@ -126,10 +113,14 @@ class Combat:
     HITSTOP_DAMAGE_FACTOR = 0.002
     #: The least a killing blow freezes the world, so a kill reads as one.
     KILL_HITSTOP = 0.1
+    #: The least an execution freezes it: the longest stop in the game.
+    EXECUTION_HITSTOP = 0.22
     #: Every this many hits of one combo gives a dash charge back; 0 turns it off.
     COMBO_DASH_REFILL_HITS = 4
     SUPER_ARMOR_THRESHOLD = 3
-    COMBO_WINDOW = 0.5
+    #: How long a combo survives without a new hit: long enough to dodge to
+    #: the next enemy.
+    COMBO_WINDOW = 2.0
     CONTACT_DAMAGE_THRESHOLD = 300.0
     CONTACT_DAMAGE_AMOUNT = 5.0
     HEAVY_KNOCKBACK_THRESHOLD = 400.0
@@ -161,7 +152,15 @@ class Combat:
     # juggle gravity lasts one float window, OTG guards knockdown wakeup.
     HITSTUN_DAMAGE_FACTOR = 0.004
     JUGGLE_GRAVITY_TIME = 0.45
+    #: How long a fighter knocked off its feet is safe from ground hits once it
+    #: lands. The player gets it, so a pack cannot lock it down on the floor.
     OTG_INVULN_DURATION = 0.5
+    #: An enemy gets none: the blow after a launch has to land, or a chain
+    #: passes through the enemy it has just put on the ground.
+    ENEMY_OTG_INVULN_DURATION = 0.0
+    #: How long an enemy knocked off its feet lies on the ground, open to the
+    #: stab that finishes it.
+    DOWNED_DURATION = 1.2
     DIZZY_DAMAGE_MULT = 1.5
     # P1 sweep CCD: the LOW bound, on measured displacement rather than
     # speed. Euclidean distance between box centres per box index; below this
@@ -178,36 +177,164 @@ class Combat:
     GEOMETRY_CHECKSUM_QUANTUM = 1.0 / 1024.0
 
 
-class Guard:
-    """Directional guard with chip damage, parry window, and posture break."""
+class Stun:
+    """The stun gauge: punches and kicks fill it, a full one stuns."""
 
-    MAX_POSTURE = 100.0
-    REGEN_PER_S = 35.0
-    CHIP_RATIO = 0.15
-    POSTURE_COST_RATIO = 2.0
-    PARRY_WINDOW = 0.15
-    RIPOSTE_WINDOW = 0.6
-    MOVE_MULT = 0.35
-    AIR_POSTURE_MULT = 1.5
-    PUSH_FACTOR = 0.15
-    BREAK_LOCKOUT = 1.2
-    BREAK_STAGGER = 1.0
-    PARRY_HITSTOP = 0.14
-    PARRY_TRAUMA = 0.45
-    BREAK_TRAUMA = 0.55
-    GUARD_TRAUMA = 0.12
-    POSTURE_COST_MULT = {"light": 1.0, "med": 1.0, "heavy": 1.25}
-    BLOCK_MASK_POSTURE = {"any": None, "stand": False, "crouch": True}
-    HEIGHT_BLOCK = {
-        ("high", False): True,
-        ("high", True): False,
-        ("mid", False): True,
-        ("mid", True): True,
-        ("low", False): False,
-        ("low", True): True,
-        ("overhead", False): True,
-        ("overhead", True): False,
-    }
+    #: Seconds without a new blow before the gauge starts to drain.
+    DECAY_DELAY = 2.0
+    DECAY_PER_S = 25.0
+    TRAUMA = 0.55
+
+
+class Rush:
+    """The dark step: a dodge taken at the last moment slows the world."""
+
+    #: How long after a dodge begins a hit still makes it a dark step: the
+    #: hit has to reach the fighter, or the place the dodge left, within it.
+    #: Shorter than an enemy's wind-up, so the dodge has to be timed on the
+    #: blow and not thrown the moment the wind-up starts.
+    WINDOW = 0.15
+    #: How long the world stays slow, on the fighter's own clock. Slashes
+    #: thrown meanwhile cost no battery and run at ``ATTACK_SPEED``.
+    DURATION = 1.4
+    #: The clock of everything but the fighter while it lasts.
+    TIME_SCALE = 0.2
+    ATTACK_SPEED = 1.6
+    HITSTOP = 0.08
+    TRAUMA = 0.3
+
+
+class Battery:
+    """The blade's battery: every slash spends it, and it is recharged by hand."""
+
+    MAX = 100.0
+    SLASH_COST = 2.0
+    #: Drained per second while a charged slash is held.
+    CHARGE_COST_PER_S = 14.0
+    #: What guarding a blow costs.
+    GUARD_COST = 4.0
+    #: What a shot costs: the blade's charge fired off, five slashes' worth.
+    SHOT_COST = 10.0
+    #: What a slash stopped by an enemy's guard costs, on top of the slash.
+    DEFLECT_COST = 6.0
+    #: Gained per second while recharging, standing in the open.
+    RECHARGE_PER_S = 70.0
+    #: Damage and push of a slash thrown on an empty battery, as a share.
+    EMPTY_POWER = 0.3
+
+
+class Fury:
+    """The fury gauge: filled by hitting without being hit, spent on the dark side."""
+
+    MAX = 100.0
+    PER_HIT = 3.0
+    DEATH_BLOW = 12.0
+    THROW = 18.0
+    DARK_STEP = 10.0
+    #: Lost each time the fighter takes a hit.
+    HURT_LOSS = 35.0
+    #: Seconds without a hit landed before the gauge starts to drain.
+    DECAY_DELAY = 3.0
+    DECAY_PER_S = 6.0
+    #: Gauge level to slash speed, lowest first; below the first tier, 1.0.
+    TIERS: tuple[tuple[float, float], ...] = ((33.0, 1.15), (66.0, 1.3), (100.0, 1.45))
+    #: The dark side: seconds of it, and what it does to the fighter. Every
+    #: blow kills outright and nothing hurts while it lasts.
+    DARK_DURATION = 8.0
+    DARK_ATTACK_SPEED = 1.6
+    DARK_MOVE_MULT = 1.4
+
+
+class Finisher:
+    """The death blow: a foe brought to nothing waits for it."""
+
+    #: What a doomed fighter is left with.
+    DOOM_HEALTH = 1.0
+    #: Seconds, on its own clock, a doomed fighter waits before dying alone.
+    DOOM_TIME = 1.2
+    #: A death blow missed: the doomed foe gets back up with this share of its health.
+    RECOVER_RATIO = 0.25
+    #: Real seconds the player has to give the direction.
+    WINDOW = 1.6
+    #: The world's clock while the prompt is up.
+    TIME_SCALE = 0.05
+    DOOM_HITSTOP = 0.06
+    DOOM_TRAUMA = 0.25
+
+
+class Throw:
+    """The throw: a stunned foe is grabbed, and a run of directions slams it."""
+
+    #: How far in front of the fighter a stunned foe can be grabbed.
+    RANGE = 80.0
+    #: Directions to give, and real seconds for each.
+    STEPS = 2
+    STEP_WINDOW = 0.9
+    TIME_SCALE = 0.15
+    #: How long a failed throw leaves the fighter open.
+    FAIL_STAGGER = 0.4
+
+
+class Clash:
+    """The blade lock: two blades that meet are won by mashing the slash."""
+
+    PRESSES = 6
+    #: Real seconds to mash them in.
+    WINDOW = 1.4
+    TIME_SCALE = 0.05
+    #: What losing costs, and how long it leaves the fighter open.
+    LOSS_DAMAGE = 12.0
+    LOSS_STAGGER = 0.5
+    #: What winning does to the other fighter: off balance this long and its
+    #: guard broken -- an opening, not a stun, so the lock is not a free kill.
+    WIN_STAGGER = 0.5
+    #: How long its guard stays down after: shorter than a guard broken by a
+    #: beat (``Guard.BROKEN_TIME``), which is the read the lock does not ask for.
+    WIN_OPEN = 0.8
+    TRAUMA = 0.2
+
+
+class Slot:
+    """The slot machine: every death blow spins it, three of a kind pays a power."""
+
+    SPIN_TIME = 0.9
+    #: How long the stopped reels stay on screen.
+    SHOW_TIME = 1.2
+    JACKPOT_CHANCE = 0.15
+    POWER_DURATION = 8.0
+    #: Stasis: the world's clock while it lasts; every blow kills outright.
+    STASIS_TIME_SCALE = 0.3
+    #: Blitz: the fighter runs and slashes this much faster, and kills outright.
+    BLITZ_MOVE_MULT = 1.6
+    BLITZ_ATTACK_SPEED = 2.0
+    #: Cleave: slashes hit this much harder, damage and stun alike.
+    CLEAVE_MULT = 2.0
+
+
+class Guard:
+    """Guards: the player's is held at every height, an enemy's high or low."""
+
+    #: How hard a guarded blow pushes the player back, in px/s.
+    PUSH = 140.0
+    GUARD_HITSTOP = 0.05
+    #: A guarded blow, and two attacks that cancel each other, shake this much.
+    GUARD_TRAUMA = 0.1
+    #: How long an enemy holds one guard before it may switch, in seconds.
+    SWITCH_MIN = 1.2
+    SWITCH_MAX = 2.6
+    #: How long an enemy whose guard was broken stays open.
+    BROKEN_TIME = 2.5
+    #: An enemy that guards takes this many blockable blows in a row, then
+    #: braces: the next one is stopped, at its height, even mid-combo.
+    BLOCK_AFTER_HITS = 3
+    #: Seconds without a blow before the count starts over.
+    STREAK_WINDOW = 1.0
+    #: After a blocked blow, how long the enemy looks for the opening to strike back.
+    COUNTER_WINDOW = 0.6
+    #: A blow stopped by an enemy's guard bounces off: the attacker is pushed
+    #: back this hard (px/s) and staggers this long, long enough for the counter.
+    DEFLECT_PUSH = 180.0
+    DEFLECT_STAGGER = 0.4
 
 
 class CameraShake:
@@ -224,6 +351,10 @@ class CameraShake:
     HIT_DIV = 4000.0
     #: A kill adds this much on top, whatever the hit.
     KILL_TRAUMA = 0.2
+    #: An execution shakes at least this hard.
+    EXECUTION_TRAUMA = 0.6
+    #: The kick of a dash starting.
+    DASH_TRAUMA = 0.18
 
 
 class CameraFollow:
@@ -366,7 +497,7 @@ class Turn:
 
     The pivot is a **state** and not a delayed facing write, and that is the
     whole design. A delay is a value that has to be undone by everyone who can
-    interrupt the thing holding it -- an attack, a dash, a guard, a hit -- and
+    interrupt the thing holding it -- an attack, a dash, a parry, a hit -- and
     each of those has to know the rule exists. A state is the machine's own
     answer: it is entered, it is exited, and anything that interrupts it leaves
     through ``exit``, which is where the facing is finally committed. So "an
@@ -675,6 +806,8 @@ class Input:
     UI_REPEAT_INITIAL_DELAY = 0.22
     UI_REPEAT_INTERVAL = 0.06
     ATTACK_BUFFER_WINDOW = 0.2
+    #: How long an attack button must be held before it starts to charge.
+    CHARGE_DELAY = 0.25
 
 
 class Audio:

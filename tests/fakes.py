@@ -17,6 +17,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.rendering.render_hints import RenderHints
 from src.core.sprites import Sprite
+from src.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
 
 #: Where the real Player keeps each controller field: flat test name -> attribute
 #: on the controller. Flat names keep the tests short; the stand-in stores them
@@ -29,12 +30,6 @@ _CONTROLLER_FIELDS: dict[str, dict[str, str]] = {
         "wall_jumps_left": "wall_jumps_left",
         "jump_height": "jump_height",
         "wall_jump_height": "wall_jump_height",
-    },
-    "guard": {
-        "guard_posture": "posture",
-        "guard_posture_max": "max_posture",
-        "guard_lockout_timer": "lockout_timer",
-        "guard_riposte_timer": "riposte_timer",
     },
     "dash": {
         "dash_charges": "charges",
@@ -50,12 +45,18 @@ _CONTROLLER_FIELDS: dict[str, dict[str, str]] = {
 
 
 def player_shape(**fields: Any) -> SimpleNamespace:
-    """A player stand-in with the real Player's ``jump``/``guard``/``dash`` controllers.
+    """A player stand-in with the real Player's ``jump`` and ``dash`` controllers.
 
     Pass a controller (``dash=DashController(...)``) to use it; the flat fields
-    for that controller are set on it.
+    for that controller are set on it. The battery, the fury gauge, the slot
+    machine and the prompt are the real ones, at rest, unless the test passes
+    its own.
     """
     controllers = {name: fields.pop(name, None) or SimpleNamespace() for name in _CONTROLLER_FIELDS}
+    fields.setdefault("battery", Battery())
+    fields.setdefault("fury", FuryGauge())
+    fields.setdefault("slot", SlotMachine())
+    fields.setdefault("prompt", PromptController())
     for name, mapping in _CONTROLLER_FIELDS.items():
         for flat, attribute in mapping.items():
             if flat in fields:
@@ -71,6 +72,8 @@ _ENTITY_DEFAULTS: dict[str, Any] = {
     "gravity_scale": 1.0,
     "juggle_timer": 0.0,
     "otg_timer": 0.0,
+    "rush_timer": 0.0,
+    "attack_speed": 1.0,
 }
 
 
@@ -148,6 +151,7 @@ class BodyStub(pygame.sprite.Sprite):
         self.faction = faction
         self.is_dead = False
         self.is_invincible = False
+        self.dodge_ghost = None
         self.pushable = True
         self.on_surface = {"floor": True, "left": False, "right": False}
         self.combat = SimpleNamespace(is_hurt=False)

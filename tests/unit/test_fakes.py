@@ -20,6 +20,7 @@ CONTACT_PIPELINE_READS = (
     "faction",
     "is_dead",
     "is_invincible",
+    "dodge_ghost",
     "velocity",
     "hitbox",
     "hurtbox",

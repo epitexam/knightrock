@@ -12,14 +12,15 @@ from pygame.sprite import Group, Sprite
 
 from src.combat.attack_loading import load_attacks
 from src.combat.combat_component import CombatComponent, CombatSnapshot, NullCombatComponent
-from src.combat.combatant_protocol import DamageResult
+from src.combat.combatant_protocol import Combatant, DamageResult, Finish
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import AttackDefinition, MoveId, Stance
+from src.combat.frame_data import AttackDefinition, Height, MoveId, Stance
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
 from src.core.rendering.render_hints import RenderHints
+from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import (
     EnemyJump,
@@ -30,6 +31,8 @@ from src.core.settings import (
     Turn,
     resolve_turn_profile,
 )
+from src.core.settings import Finisher as FinisherSettings
+from src.core.settings import Stun as StunSettings
 from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
     ReactionComponent,
@@ -313,14 +316,25 @@ class Entity(Sprite):
         self.carry_backup: tuple[float, float, float, float] | None = None
 
     def _init_combat_state(self) -> None:
-        """Juggle and off-the-ground timers, and the parry-stun counters."""
+        """Juggle and off-the-ground timers, and the stun gauge."""
         self.juggle_timer: float = 0.0
         self.otg_timer: float = 0.0
+        # How long landing from a launch protects this fighter from ground hits.
+        self.otg_guard_duration: float = CombatSettings.OTG_INVULN_DURATION
         self.parries_given: int = 0
-        self.parries_taken: int = 0
-        # Per-entity parry-stun config, copied from the config on spawn.
-        self.parry_stun_threshold: int | None = None
-        self.parry_stun_duration: float = 0.0
+        # The stun gauge: blows and parried attacks fill it, and a full one
+        # stuns the fighter for ``stun_duration``. ``stun_max`` is the size of
+        # the gauge, copied from the config on spawn; None is never stunned.
+        self.stun: float = 0.0
+        self.stun_max: float | None = None
+        self.stun_duration: float = 0.0
+        self.stun_decay_delay: float = 0.0
+        # Where a fighter stood when it began a dodge that can still be a
+        # dark step; only the player dodges.
+        self.dodge_ghost: pygame.FRect | None = None
+        # Whether a blow that would kill this fighter leaves it doomed instead,
+        # waiting for the death blow. Set by the fighters that can be doomed.
+        self.doomable: bool = False
 
     def _init_turn_tuning(self) -> None:
         """The turn-around pivot: off by default, tuned per fighter.
@@ -602,24 +616,123 @@ class Entity(Sprite):
         self.super_armor = False
         self.super_armor_count = 0
 
-    def on_parried(self) -> bool:
-        """A melee attack of this fighter was parried. Nothing happens by default.
+    @property
+    def is_stunned(self) -> bool:
+        """Whether the fighter is stunned: helpless, and open to a throw."""
+        return bool(self.state_machine.current_state_name == state_names.DIZZY)
 
-        :class:`~src.entities.enemies.enemy.Enemy` counts the parries and is
-        stunned by enough of them in a row; the player is not.
+    @property
+    def is_downed(self) -> bool:
+        """Whether the fighter lies on the ground after a launch."""
+        return bool(self.state_machine.current_state_name == state_names.DOWNED)
+
+    @property
+    def is_doomed(self) -> bool:
+        """Whether the fighter was brought to nothing and waits for the death blow."""
+        return bool(self.state_machine.current_state_name == state_names.DOOMED)
+
+    @property
+    def is_helpless(self) -> bool:
+        """Stunned, on the ground or doomed: an ``execute`` hit kills it outright."""
+        return self.state_machine.current_state_name in (
+            state_names.DIZZY,
+            state_names.DOWNED,
+            state_names.DOOMED,
+        )
+
+    def doom(self) -> None:
+        """Leave the fighter doomed: all but dead, frozen, waiting for the death blow.
+
+        It dies on its own once ``Finisher.DOOM_TIME`` has run on its clock.
+        """
+        self.combat.cancel_attack()
+        self.combat.reset_hurt_state()
+        self.stun = 0.0
+        self.velocity.x = 0.0
+        self.health = min(self.health, FinisherSettings.DOOM_HEALTH)
+        self.state_machine.change_state(
+            state_names.DOOMED, force=True, duration=FinisherSettings.DOOM_TIME
+        )
+
+    def recover_from_doom(self) -> None:
+        """A death blow missed: the doomed fighter gets back up, with some health back."""
+        if not self.is_doomed or self.is_dead:
+            return
+        self.health = max(self.health, self.max_health * FinisherSettings.RECOVER_RATIO)
+        self.stagger_timer = 0.0
+        self.state_machine.change_state("idle", force=True)
+
+    @property
+    def finish(self) -> Finish:
+        """What this fighter's blow does to a target it would kill: it kills it."""
+        return Finish.NONE
+
+    def guards_against(self, height: Height, unblockable: bool, source_center_x: float) -> bool:
+        """Whether this fighter's guard stops the hit. No guard by default."""
+        del height, unblockable, source_center_x
+        return False
+
+    def on_clash(self, other: Combatant) -> None:
+        """This fighter's attack and ``other``'s cancelled each other. Nothing by default."""
+        del other
+
+    @property
+    def counter_covered(self) -> bool:
+        """Whether this fighter is striking back behind its guard. Never by default."""
+        return False
+
+    def on_deflected(self, source_center_x: float) -> None:
+        """This fighter's blow was stopped by a guard. Nothing by default."""
+        del source_center_x
+
+    def lose_lock(self) -> None:
+        """This fighter lost a blade lock: thrown off balance, open but not stunned."""
+        self.combat.cancel_attack()
+        self.stagger(ClashSettings.WIN_STAGGER)
+
+    def add_stun(self, amount: float) -> bool:
+        """Fill the stun gauge by ``amount``; True if that stunned the fighter.
+
+        A fighter with no gauge, one already stunned and a dead one take none.
+        The stun ends whatever the fighter was doing, an armoured attack
+        included.
+        """
+        if self.stun_max is None or amount <= 0.0 or self.is_dead or self.is_helpless:
+            return False
+        self.stun += amount
+        self.stun_decay_delay = StunSettings.DECAY_DELAY
+        if self.stun < self.stun_max:
+            return False
+        self.stun = 0.0
+        self.combat.cancel_attack()
+        self.combat.reset_hurt_state()
+        self.state_machine.change_state(state_names.DIZZY, force=True, duration=self.stun_duration)
+        return True
+
+    def _tick_stun(self, delta_time: float) -> None:
+        """Drain the stun gauge once nothing has added to it for a while."""
+        if self.stun <= 0.0:
+            return
+        if self.stun_decay_delay > 0.0:
+            self.stun_decay_delay = max(0.0, self.stun_decay_delay - delta_time)
+            return
+        self.stun = max(0.0, self.stun - StunSettings.DECAY_PER_S * delta_time)
+
+    def on_hit_evaded(self) -> bool:
+        """A hit passed through this fighter while invincible, or its ghost. Nothing by default.
+
+        :class:`~src.entities.player.Player` makes a perfect dodge of it.
         """
         return False
 
-    def on_damage_landed(self) -> None:
-        """A melee attack of this fighter took health off its target: the parry streak ends."""
-        self.parries_taken = 0
+    def on_hit_confirmed(
+        self, target: Combatant, combo_advanced: bool, result: DamageResult
+    ) -> None:
+        """One of this fighter's hits took health off ``target``. Nothing by default.
 
-    def on_hit_confirmed(self, combo_advanced: bool) -> None:
-        """One of this fighter's hits took health off. Nothing by default.
-
-        :class:`~src.entities.player.Player` gets dash charges back for it.
+        :class:`~src.entities.player.Player` is paid for it.
         """
-        del combo_advanced
+        del target, combo_advanced, result
 
     def get_damage_modifier(self, damage_type: DamageType) -> float:
         """Damage multiplier for a given damage type.
@@ -666,7 +779,7 @@ class Entity(Sprite):
                 pushbox.width + inflate_x,
                 pushbox.height + inflate_y,
             )
-            rect.center = pushbox.center
+            rect.center = (pushbox.centerx, pushbox.centery + zone.offset_y)
         # Only the single-zone layout can be short-circuited, and only by its
         # own rect: with several zones the union depends on all of them, so
         # one of the others moving would leave a stale union behind. The
@@ -896,6 +1009,8 @@ class Entity(Sprite):
         self._previous_contact_shape = None
 
         self.combat.reset()
+        self.stun = 0.0
+        self.stun_decay_delay = 0.0
 
         self.state_machine.change_state("idle", force=True)
 
@@ -911,8 +1026,11 @@ class Entity(Sprite):
 
     @property
     def is_invincible(self) -> bool:
-        """Whether the entity is currently invincible (e.g., dashing, hurt, knockback)."""
-        return bool(self.state_machine.has_tag("invincible"))
+        """Whether nothing hits the entity now: its state, or the attack it is playing out."""
+        if self.state_machine.has_tag("invincible"):
+            return True
+        attack = self.combat.current_attack_def
+        return attack is not None and attack.invincible
 
     def _apply_damage(self, amount: float) -> float:
         """Subtract health points and return actual damage dealt.
@@ -1002,10 +1120,6 @@ class Entity(Sprite):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
-        unblockable: bool = False,
-        height: str = "mid",
-        block_mask: str = "any",
-        hit_level: str = "med",
     ) -> DamageResult:
         """Public entry point for applying damage, knockback, and hit reactions.
 
@@ -1019,10 +1133,6 @@ class Entity(Sprite):
             Configuration for the push effect.
         interrupt : bool
             Whether to interrupt current actions.
-        unblockable : bool
-            Accepted for protocol compatibility; base entity has no guard.
-        height : str
-            Accepted for protocol compatibility; base entity has no guard.
 
         Returns
         -------
@@ -1086,7 +1196,7 @@ class Entity(Sprite):
             self.gravity_scale = 1.0
             self.juggle_timer = 0.0
             if self.stagger_timer > 0.0 or self.combat.is_hurt:
-                self.otg_timer = CombatSettings.OTG_INVULN_DURATION
+                self.otg_timer = self.otg_guard_duration
 
     def _bounce_off_the_ground(self, fall_speed: float) -> None:
         """Rebound a launched fighter that hit the floor hard, once.
@@ -1179,6 +1289,7 @@ class Entity(Sprite):
         if landed:
             self._bounce_off_the_ground(fall_speed)
         self._tick_juggle(delta_time, was_grounded)
+        self._tick_stun(delta_time)
         self.combat.sync_attack_box()
         self._post_update(delta_time)
         self._update_animator(delta_time)
@@ -1216,9 +1327,10 @@ class Entity(Sprite):
             "juggle_timer": self.juggle_timer,
             "otg_timer": self.otg_timer,
             "parries_given": self.parries_given,
-            "parries_taken": self.parries_taken,
-            "parry_stun_threshold": self.parry_stun_threshold,
-            "parry_stun_duration": self.parry_stun_duration,
+            "stun": self.stun,
+            "stun_max": self.stun_max,
+            "stun_duration": self.stun_duration,
+            "stun_decay_delay": self.stun_decay_delay,
         }
         return snap
 
@@ -1255,10 +1367,7 @@ class Entity(Sprite):
         self.juggle_timer = float(extra.get("juggle_timer", 0.0))
         self.otg_timer = float(extra.get("otg_timer", 0.0))
         self.parries_given = int(extra.get("parries_given", 0))
-        self.parries_taken = int(extra.get("parries_taken", 0))
-        self.parry_stun_threshold = (
-            int(extra["parry_stun_threshold"])
-            if extra.get("parry_stun_threshold") is not None
-            else None
-        )
-        self.parry_stun_duration = float(extra.get("parry_stun_duration", 0.0))
+        self.stun = float(extra.get("stun", 0.0))
+        self.stun_max = float(extra["stun_max"]) if extra.get("stun_max") is not None else None
+        self.stun_duration = float(extra.get("stun_duration", 0.0))
+        self.stun_decay_delay = float(extra.get("stun_decay_delay", 0.0))

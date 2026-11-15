@@ -43,6 +43,7 @@ __all__ = [
     "HEALTH_BAR_ANCHOR_GAP",
     "HEALTH_BAR_HEIGHT",
     "HEALTH_BAR_LABEL_GAP",
+    "STUN_BAR_HEIGHT",
     "HIT_HEIGHT_BADGES",
     "LABEL_ANCHOR_GAP",
     "LABEL_BAR_CLEARANCE",
@@ -175,6 +176,8 @@ OVERLAY_LAYERS = ("boxes", "labels", "velocities", "statics", "panels")
 HEALTH_BAR_HEIGHT = 6
 HEALTH_BAR_ANCHOR_GAP = 8
 HEALTH_BAR_LABEL_GAP = 4
+#: The stun strip, drawn in the anchor gap right under the health bar.
+STUN_BAR_HEIGHT = 3
 
 #: Gap between an entity edge and its label card when no health bar sits
 #: between them (statics, projectiles, or labels layer with bars hidden).

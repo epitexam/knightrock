@@ -12,6 +12,7 @@ from pygame.sprite import Group
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.settings import Battery as BatterySettings
 from src.entities.player import Player
 from src.entities.player_config import PlayerConfig
 from src.states.player_states import PlayerAttackState
@@ -43,16 +44,16 @@ def test_combat_system_consumes_guarded_contact_once() -> None:
     player.facing_right = False
     attacker = make_active_attacker(player)
     system = CombatSystem()
-    initial_posture = player.guard.posture
 
     combatants = [attacker, player]  # type: ignore[list-item]
     system.process_attacks(combatants)
-    posture_after_first_contact = player.guard.posture
     system.hit_stop_timer = 0.0
     system.process_attacks(combatants)
 
-    assert posture_after_first_contact < initial_posture
-    assert player.guard.posture == posture_after_first_contact
+    assert player.health == player.max_health
+    assert player.battery.amount == pytest.approx(
+        BatterySettings.MAX - BatterySettings.GUARD_COST
+    ), "the same attack is not guarded twice"
     assert player.id in attacker.combat.targets_hit
 
 
@@ -92,9 +93,9 @@ def test_combat_snapshot_restores_cooldowns_charge_and_combo() -> None:
     combat = entity.combat
     assert isinstance(combat, CombatComponent)
 
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     combat.state.end()
-    assert combat.start_charge("heavy_attack")
+    assert combat.start_charge("charged_slash")
     combat.update(0.1)
     snapshot = combat.save_state()
     json.dumps(asdict(snapshot))
@@ -123,8 +124,6 @@ def test_null_combat_component_is_reset_substitutable() -> None:
 
 def test_player_copies_all_behavioral_configuration() -> None:
     config = PlayerConfig(
-        guard_posture_max=120.0,
-        guard_break_lockout=2.0,
         dash_recharge_time=0.85,
         dash_gravity_mult=0.4,
     )
@@ -137,7 +136,5 @@ def test_player_copies_all_behavioral_configuration() -> None:
         config=config,
     )
 
-    assert player.guard.break_lockout == 2.0
-    assert player.guard.max_posture == 120.0
     assert player.dash.recharge_time == 0.85
     assert player.dash.gravity_mult == 0.4

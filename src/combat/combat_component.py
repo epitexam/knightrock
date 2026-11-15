@@ -237,6 +237,15 @@ class CombatComponent:
         return self.combo.on_hit_landed(airborne)
 
     @property
+    def attack_speed(self) -> float:
+        """How fast the running attack's clock goes; 1.0 is the frame data as written."""
+        return self.state.speed
+
+    @attack_speed.setter
+    def attack_speed(self, value: float) -> None:
+        self.state.speed = value
+
+    @property
     def movement_multiplier(self) -> float:
         """Movement speed multiplier to apply to the entity this frame."""
         if self.charging.is_charging:
@@ -340,7 +349,7 @@ class CombatComponent:
             return False
         return self.charging.start_charge(name)
 
-    def release_charge(self) -> Refusal:
+    def release_charge(self, full: MoveId | None = None) -> Refusal:
         """Release the current charge and execute the attack.
 
         Transactional in the way a charge release has to be. The handler used to
@@ -362,12 +371,16 @@ class CombatComponent:
             return Refusal.CHARGING
 
         name, multiplier = pending
+        started, power = name, multiplier
+        if full is not None and self.charging.is_full:
+            # A full charge throws its own, stronger move at its own power.
+            started, power = full, 1.0
         # The handler is cleared first because ``start_attack`` refuses outright
         # while a charge is in progress -- releasing has to make room before it
         # can be asked. A refusal therefore puts the charge back, which is what
         # makes the release a transaction rather than a destruction.
         self.charging.cancel()
-        refusal = self.start_attack(name, multiplier)
+        refusal = self.start_attack(started, power)
         if refusal is not Refusal.NONE:
             self.charging.restore_pending(name, multiplier)
         return refusal
@@ -619,8 +632,9 @@ class NullCombatComponent:
         """Always returns ``False``."""
         return False
 
-    def release_charge(self) -> bool:
+    def release_charge(self, full: MoveId | None = None) -> bool:
         """Always returns ``False``."""
+        del full
         return False
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
@@ -724,9 +738,14 @@ class _NullAttackState:
 
     is_active: bool = False
     is_attacking: bool = False
+    sub_state: PhaseState = PhaseState.IDLE
 
     def __init__(self) -> None:
         self.targets_hit: set[str] = set()
+
+    def take_launches(self) -> list[tuple[str, float]]:
+        """Never anything: nothing is ever thrown."""
+        return []
 
 
 class _NullComboTracker:

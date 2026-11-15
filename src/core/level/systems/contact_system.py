@@ -36,7 +36,9 @@ from src.combat.shapes import (
 )
 from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Finisher as FinisherSettings
 from src.core.settings import Guard as GuardSettings
+from src.core.settings import Rush as RushSettings
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
 
@@ -99,13 +101,18 @@ class CombatMetrics:
 
 @dataclass(frozen=True)
 class GuardEvent:
-    """Render-only guard outcome drained once per tick by the game loop."""
+    """Render-only outcome of an exchange, drained once per tick by the game loop.
+
+    ``kind`` is ``"guard"`` (a guard stopped the hit), ``"stun"`` (the
+    target's stun gauge filled), ``"doom"`` (the target waits for the death
+    blow), ``"dodge"`` (a dark step) or ``"clash"`` (two attacks cancelled).
+    """
 
     kind: str
     target: Combatant
     point: tuple[float, float] | None = None
-    """Where the block landed, so the FX spawn at the contact and not at the
-    middle of the defender. None when the outcome has no single contact
+    """Where the guard was struck, so the FX spawn at the contact and not at
+    the middle of the defender. None when the outcome has no single contact
     point, as a clash between two attackers does not."""
 
 
@@ -120,6 +127,8 @@ class ImpactEvent:
     strength: float
     """The hit's knockback magnitude, charge included, in px/s."""
     killed: bool = False
+    executed: bool = False
+    """The hit killed a stunned target outright."""
 
 
 def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] | None:
@@ -378,8 +387,11 @@ class ContactSystem:
         self._target_geometry.reset()
         target_list = tuple(targets)
         order = {id(target): index for index, target in enumerate(target_list)}
+        ghosts = tuple(target for target in target_list if target.dodge_ghost is not None)
 
         for box in boxes:
+            if ghosts and box.attacker is not None:
+                self._resolve_ghosts(box, ghosts)
             for target in self._candidates(box, target_list, order, entity_grid):
                 self.metrics.pairs_tested += 1
                 if box.kind == "melee":
@@ -441,6 +453,21 @@ class ContactSystem:
             impact_events=self.impact_events,
         )
 
+    def _resolve_ghosts(self, box: OffensiveBox, ghosts: tuple[Combatant, ...]) -> None:
+        """An attack that reaches the place a dodge just left is a perfect dodge.
+
+        The dodger is long gone from its ghost, so the broadphase would not
+        offer it to the box: the ghosts are tested apart, against every box
+        thrown by a fighter. Hazards and body contact have no attacker and
+        make no perfect dodge.
+        """
+        for target in ghosts:
+            ghost = target.dodge_ghost
+            if ghost is None or not _is_valid_target(box, target):
+                continue
+            if any(swept.colliderect(ghost) for swept in box.swept) and target.on_hit_evaded():
+                self._record_perfect_dodge(target)
+
     def _candidates(
         self,
         box: OffensiveBox,
@@ -490,6 +517,8 @@ class ContactSystem:
             charge_multiplier=box.charge_mult,
             zone_mult=zone_mult,
         )
+        if result.evaded:
+            self._record_perfect_dodge(target)
         if not (result.applied or result.guarded):
             return
         if box.record_contact is not None:
@@ -505,20 +534,16 @@ class ContactSystem:
             )
         )
         if result.guarded:
-            self._record_guard_event(result, target, box)
-            if result.parried and box.attacker.on_parried():
-                self.guard_events.append(GuardEvent("stun", box.attacker))
+            self.guard_events.append(GuardEvent("guard", target, _contact_point(box, target)))
+            self.hit_stop = max(self.hit_stop, GuardSettings.GUARD_HITSTOP)
+            if box.attacker is not None:
+                box.attacker.on_deflected(target.hitbox.centerx)
+            return
         magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
         self.impact = max(self.impact, magnitude)
-        duration = _hit_stop(box.hit, magnitude)
-        if result.parried:
-            duration = max(duration, GuardSettings.PARRY_HITSTOP)
-        if result.killed:
-            duration = max(duration, CombatSettings.KILL_HITSTOP)
-        self.hit_stop = max(self.hit_stop, duration)
+        self.hit_stop = max(self.hit_stop, self._freeze(box.hit, magnitude, result))
         if result.applied:
-            self._record_impact(box, target, magnitude, result.killed)
-            box.attacker.on_damage_landed()
+            self._record_impact(target, magnitude, result)
 
     def _resolve_generic(self, box: OffensiveBox, target: Combatant) -> None:
         """Projectile/hazard/contact hit, keeping their legacy semantics.
@@ -531,12 +556,15 @@ class ContactSystem:
         """
         if box.attacker is not None:
             result = HitResolver.resolve(attacker=box.attacker, target=target, hit=box.hit)
+            if result.evaded:
+                self._record_perfect_dodge(target)
             if not (result.applied or result.guarded):
                 return
-            self._record_guard_event(result, target, box)
+            if result.guarded:
+                self.guard_events.append(GuardEvent("guard", target, _contact_point(box, target)))
             if result.applied:
                 magnitude = pygame.math.Vector2(box.hit.knockback.power).length()
-                self._record_impact(box, target, magnitude, result.killed)
+                self._record_impact(target, magnitude, result)
         else:
             target.receive_damage(
                 amount=box.hit.damage,
@@ -557,22 +585,27 @@ class ContactSystem:
         if box.record_contact is not None:
             box.record_contact(target)
 
-    def _record_impact(
-        self, box: OffensiveBox, target: Combatant, strength: float, killed: bool
-    ) -> None:
-        """Note how hard a hit landed, for the shake."""
-        del box, target
-        self.impact_events.append(ImpactEvent(strength, killed))
+    @staticmethod
+    def _freeze(hit: HitProperties, magnitude: float, result: DamageResult) -> float:
+        """How long the hit stops the world: its own weight, or what it did if longer."""
+        if result.doomed:
+            return FinisherSettings.DOOM_HITSTOP
+        duration = _hit_stop(hit, magnitude)
+        if result.killed:
+            duration = max(duration, CombatSettings.KILL_HITSTOP)
+        if result.executed:
+            duration = max(duration, CombatSettings.EXECUTION_HITSTOP)
+        return duration
 
-    def _record_guard_event(
-        self, result: DamageResult, target: Combatant, box: OffensiveBox
-    ) -> None:
-        """Record guard/parry/break outcomes for event-draining systems."""
-        if not result.guarded:
-            return
-        kind = "guard"
-        if result.parried:
-            kind = "parry"
-        elif result.guard_broken:
-            kind = "break"
-        self.guard_events.append(GuardEvent(kind, target, _contact_point(box, target)))
+    def _record_impact(self, target: Combatant, strength: float, result: DamageResult) -> None:
+        """Note how hard a hit landed, for the shake, and the stun or the doom it caused."""
+        self.impact_events.append(ImpactEvent(strength, result.killed, result.executed))
+        if result.stunned:
+            self.guard_events.append(GuardEvent("stun", target))
+        if result.doomed:
+            self.guard_events.append(GuardEvent("doom", target))
+
+    def _record_perfect_dodge(self, target: Combatant) -> None:
+        """A hit was dodged at the last moment: a short stop marks it."""
+        self.hit_stop = max(self.hit_stop, RushSettings.HITSTOP)
+        self.guard_events.append(GuardEvent("dodge", target))

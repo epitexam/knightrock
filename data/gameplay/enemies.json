@@ -11,7 +11,7 @@
         130,
         60
       ],
-      "health": 60.0,
+      "health": 80.0,
       "attacks": "goblin",
       "attack_name": "claw_swipe",
       "moves": [
@@ -39,17 +39,18 @@
         {
           "name": "head",
           "inflate": [
-            8.0,
-            -28.0
+            4.0,
+            -32.0
           ],
-          "mult": 1.5,
+          "offset_y": -16.0,
+          "mult": 1.25,
           "tags": []
         },
         {
           "name": "torso",
           "inflate": [
             0.0,
-            0.0
+            -32.0
           ],
           "mult": 1.0,
           "tags": []
@@ -58,13 +59,11 @@
           "name": "legs",
           "inflate": [
             0.0,
-            -28.0
+            -32.0
           ],
-          "mult": 0.8,
-          "tags": [],
-          "invuln_states": [
-            "airborne"
-          ]
+          "offset_y": 16.0,
+          "mult": 0.9,
+          "tags": []
         }
       ],
       "chase_speed": 120.0,
@@ -81,9 +80,10 @@
       "jump_height": 650.0,
       "jump_cooldown": 1.0,
       "leap_speed_mult": 1.6,
-      "parry_stun_threshold": 2,
-      "parry_stun_duration": 1.5,
-      "animations": {}
+      "stun_max": 60.0,
+      "stun_duration": 1.8,
+      "animations": {},
+      "guards": true
     },
     "slime": {
       "size": [
@@ -95,7 +95,7 @@
         200,
         220
       ],
-      "health": 40.0,
+      "health": 55.0,
       "attacks": "slime",
       "attack_name": "body_slam",
       "moves": [
@@ -105,8 +105,8 @@
           "weight": 2.0
         },
         {
-          "name": "slime_splash",
-          "range": 40.0,
+          "name": "slime_spit",
+          "range": 150.0,
           "weight": 1.0
         }
       ],
@@ -129,8 +129,8 @@
       "super_armor": false,
       "passive_friction": 8.0,
       "weight": 0.8,
-      "parry_stun_threshold": 3,
-      "parry_stun_duration": 2.0,
+      "stun_max": 40.0,
+      "stun_duration": 2.0,
       "animations": {}
     },
     "dummy": {
@@ -208,8 +208,8 @@
       "super_armor": true,
       "passive_friction": 5.0,
       "weight": 1.0,
-      "parry_stun_threshold": null,
-      "parry_stun_duration": 0.0,
+      "stun_max": null,
+      "stun_duration": 0.0,
       "animations": {}
     },
     "shell": {
@@ -222,9 +222,9 @@
         110,
         60
       ],
-      "health": 90.0,
-      "attacks": "goblin",
-      "attack_name": "claw_swipe",
+      "health": 120.0,
+      "attacks": "shell",
+      "attack_name": "shell_bash",
       "max_health": null,
       "hitbox_inflate": [
         0.0,
@@ -234,7 +234,37 @@
         0.0,
         0.0
       ],
-      "hurtbox_zones": null,
+      "hurtbox_zones": [
+        {
+          "name": "head",
+          "inflate": [
+            4.0,
+            -34.666666666666664
+          ],
+          "offset_y": -17.333333333333332,
+          "mult": 1.25,
+          "tags": []
+        },
+        {
+          "name": "torso",
+          "inflate": [
+            0.0,
+            -34.666666666666664
+          ],
+          "mult": 1.0,
+          "tags": []
+        },
+        {
+          "name": "legs",
+          "inflate": [
+            0.0,
+            -34.666666666666664
+          ],
+          "offset_y": 17.333333333333332,
+          "mult": 0.9,
+          "tags": []
+        }
+      ],
       "chase_speed": 65.0,
       "vision_range": 280.0,
       "attack_range": 55.0,
@@ -249,13 +279,26 @@
       "jump_height": 500.0,
       "jump_cooldown": 1.0,
       "leap_speed_mult": 1.0,
-      "parry_stun_threshold": 3,
-      "parry_stun_duration": 1.4,
+      "stun_max": 100.0,
+      "stun_duration": 1.6,
       "animations": {
         "idle": "assets/graphics/enemies/shell/idle",
         "attack": "assets/graphics/enemies/shell/fire"
       },
-      "reverse": null
+      "reverse": null,
+      "guards": true,
+      "moves": [
+        {
+          "name": "shell_bash",
+          "range": 50.0,
+          "weight": 2.0
+        },
+        {
+          "name": "shell_roll",
+          "range": 170.0,
+          "weight": 1.0
+        }
+      ]
     },
     "tooth": {
       "size": [
@@ -267,18 +310,18 @@
         90,
         120
       ],
-      "health": 50.0,
-      "attacks": "goblin",
-      "attack_name": "claw_swipe",
+      "health": 65.0,
+      "attacks": "tooth",
+      "attack_name": "bite",
       "moves": [
         {
-          "name": "claw_swipe",
-          "range": 50.0,
-          "weight": 2.0
+          "name": "bite",
+          "range": 60.0,
+          "weight": 1.0
         },
         {
-          "name": "claw_reach",
-          "range": 80.0,
+          "name": "snap",
+          "range": 55.0,
           "weight": 1.0
         }
       ],
@@ -291,7 +334,37 @@
         0.0,
         0.0
       ],
-      "hurtbox_zones": null,
+      "hurtbox_zones": [
+        {
+          "name": "head",
+          "inflate": [
+            4.0,
+            -30.666666666666668
+          ],
+          "offset_y": -15.333333333333334,
+          "mult": 1.25,
+          "tags": []
+        },
+        {
+          "name": "torso",
+          "inflate": [
+            0.0,
+            -30.666666666666668
+          ],
+          "mult": 1.0,
+          "tags": []
+        },
+        {
+          "name": "legs",
+          "inflate": [
+            0.0,
+            -30.666666666666668
+          ],
+          "offset_y": 15.333333333333334,
+          "mult": 0.9,
+          "tags": []
+        }
+      ],
       "chase_speed": 165.0,
       "vision_range": 360.0,
       "attack_range": 50.0,
@@ -306,14 +379,15 @@
       "jump_height": 560.0,
       "jump_cooldown": 1.0,
       "leap_speed_mult": 1.4,
-      "parry_stun_threshold": 2,
-      "parry_stun_duration": 1.2,
+      "stun_max": 50.0,
+      "stun_duration": 1.5,
       "animations": {
         "idle": "assets/graphics/enemies/tooth/run",
         "patrol": "assets/graphics/enemies/tooth/run",
         "chase": "assets/graphics/enemies/tooth/run"
       },
-      "reverse": null
+      "reverse": null,
+      "guards": true
     }
   }
 }

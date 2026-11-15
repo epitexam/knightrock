@@ -1,4 +1,4 @@
-"""Guard feedback: the block ring, guard events, parry hit-stop, overlay cues."""
+"""Guard feedback: the block ring, guard events, the guard's stop, overlay cues."""
 
 from types import SimpleNamespace
 
@@ -15,9 +15,14 @@ from src.core.fx import (
 )
 from src.core.fx.tuning import FxGuard
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.level.systems.contact_system import GuardEvent
 from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
+from src.core.settings import Clash as ClashSettings
+from src.core.settings import Finisher as FinisherSettings
 from src.core.settings import Guard as GuardSettings
+from src.core.settings import Rush as RushSettings
+from src.core.settings import Stun as StunSettings
 from src.entities.player import Player
 from tests.unit.helpers import InputStub, make_active_attacker
 
@@ -93,7 +98,7 @@ def test_guard_spawners_respect_budget() -> None:
     assert spawn_shatter_arc(full, _entity()) is None
 
 
-def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:
+def _guard_player(guarding: bool = True) -> Player:
     player = Player(
         pos=(0.0, 0.0),
         groups=Group(),
@@ -101,45 +106,33 @@ def _guard_player(posture: float = 100.0, parry: bool = False) -> Player:
         moving_platforms=[],
         input_manager=InputStub(),  # type: ignore[arg-type]
     )
-    player.state_machine.current_state_name = "guard"
+    player.state_machine.current_state_name = "guard" if guarding else "idle"
     player.facing_right = False
-    player.guard.posture = posture
-    if parry:
-        player.guard.press()
     return player
 
 
-def test_combat_system_records_guard_event() -> None:
+def test_a_hit_taken_without_a_guard_is_no_guard_event() -> None:
+    player = _guard_player(guarding=False)
+    attacker = make_active_attacker(player)
+    system = CombatSystem()
+
+    system.process_attacks([attacker, player])  # type: ignore[list-item]
+
+    assert system.guard_events == []
+    assert player.health < player.max_health
+
+
+def test_a_guarded_blow_is_a_guard_event_with_its_stop() -> None:
     player = _guard_player()
     attacker = make_active_attacker(player)
     system = CombatSystem()
 
     system.process_attacks([attacker, player])  # type: ignore[list-item]
 
-    assert len(system.guard_events) == 1
-    assert system.guard_events[0].kind == "guard"
+    assert [event.kind for event in system.guard_events] == ["guard"]
     assert system.guard_events[0].target is player
-
-
-def test_combat_system_records_parry_event_with_bonus_hitstop() -> None:
-    player = _guard_player(parry=True)
-    attacker = make_active_attacker(player)
-    system = CombatSystem()
-
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-
-    assert [event.kind for event in system.guard_events] == ["parry"]
-    assert system.hit_stop_timer >= GuardSettings.PARRY_HITSTOP
-
-
-def test_combat_system_records_break_event() -> None:
-    player = _guard_player(posture=5.0)
-    attacker = make_active_attacker(player)
-    system = CombatSystem()
-
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-
-    assert [event.kind for event in system.guard_events] == ["break"]
+    assert system.hit_stop_timer >= GuardSettings.GUARD_HITSTOP
+    assert player.health == player.max_health
 
 
 def test_guard_events_clear_each_tick() -> None:
@@ -164,25 +157,6 @@ _NO_DASH = SimpleNamespace(dash_started_this_frame=False)
 
 
 def test_game_loop_drains_guard_events_into_fx_and_trauma() -> None:
-    player = _guard_player(parry=True)
-    attacker = make_active_attacker(player)
-    loop, camera = _loop_with_camera()
-    loop.combat_system.process_attacks([attacker, player])  # type: ignore[list-item]
-    groups = SimpleNamespace(fx_sprites=Group())
-
-    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
-        0.0,
-        loop._collect_guard_events(),
-        _NO_DASH,
-        camera,  # type: ignore[arg-type]
-    )
-
-    assert len(groups.fx_sprites) == 1, "the gold ring alone"
-    assert camera.traumas == [pytest.approx(GuardSettings.PARRY_TRAUMA)]
-    assert loop.combat_system.guard_events == []
-
-
-def test_game_loop_guard_trauma_uses_strongest_event() -> None:
     player = _guard_player()
     attacker = make_active_attacker(player)
     loop, camera = _loop_with_camera()
@@ -198,6 +172,49 @@ def test_game_loop_guard_trauma_uses_strongest_event() -> None:
 
     assert len(groups.fx_sprites) == 1, "the ring alone"
     assert camera.traumas == [pytest.approx(GuardSettings.GUARD_TRAUMA)]
+    assert loop.combat_system.guard_events == []
+
+
+def test_game_loop_guard_trauma_uses_strongest_event() -> None:
+    player = _guard_player()
+    _, camera = _loop_with_camera()
+    groups = SimpleNamespace(fx_sprites=Group())
+    events = [GuardEvent("clash", player), GuardEvent("stun", player), GuardEvent("dodge", player)]
+
+    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
+        0.0,
+        events,
+        _NO_DASH,
+        camera,  # type: ignore[arg-type]
+    )
+
+    assert len(groups.fx_sprites) == 0, "only a guard draws a ring"
+    assert camera.traumas == [pytest.approx(StunSettings.TRAUMA)]
+
+
+@pytest.mark.parametrize(
+    ("kind", "trauma"),
+    [
+        ("guard", GuardSettings.GUARD_TRAUMA),
+        ("stun", StunSettings.TRAUMA),
+        ("doom", FinisherSettings.DOOM_TRAUMA),
+        ("dodge", RushSettings.TRAUMA),
+        ("clash", ClashSettings.TRAUMA),
+    ],
+)
+def test_each_outcome_of_an_exchange_has_its_own_shake(kind: str, trauma: float) -> None:
+    player = _guard_player()
+    _, camera = _loop_with_camera()
+    groups = SimpleNamespace(fx_sprites=Group())
+
+    FeedbackSystem(groups).after_combat(  # type: ignore[arg-type]
+        0.0,
+        [GuardEvent(kind, player)],
+        _NO_DASH,
+        camera,  # type: ignore[arg-type]
+    )
+
+    assert camera.traumas == [pytest.approx(trauma)]
 
 
 def test_game_loop_skips_fx_without_events() -> None:

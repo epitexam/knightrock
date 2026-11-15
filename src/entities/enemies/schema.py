@@ -62,10 +62,15 @@ class EnemyConfig:
     # numbered PNG frames, e.g. {"idle": "assets/graphics/enemies/shell/idle"}.
     # States without an entry keep the last shown animation.
     animations: Mapping[str, str] = field(default_factory=dict)
-    # Parry-stun threshold: consecutive perfect parries needed to dizzy.
-    # None = immune (e.g. dummy).  Set per enemy type in its config.
-    parry_stun_threshold: int | None = None
-    parry_stun_duration: float = 0.0
+    # The size of the stun gauge: heavy blows and parried attacks fill it, and
+    # a full one stuns the enemy for ``stun_duration`` seconds, during which
+    # it can be executed. None is never stunned (the dummy).
+    stun_max: float | None = None
+    stun_duration: float = 0.0
+    # Whether the enemy holds a guard, high or low, while it is not attacking:
+    # a slash at the guarded height is stopped, a punch, a kick or a charged
+    # slash breaks the guard.
+    guards: bool = False
     # Authored initial patrol direction, off the TMX object's ``reverse``
     # property. ``None`` leaves the historical coin toss, so a type that authors
     # no direction behaves exactly as it always did; ``False`` pins the heading

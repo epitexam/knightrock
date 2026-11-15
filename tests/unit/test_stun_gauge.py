@@ -1,6 +1,5 @@
-"""Tests for parry-stun (DIZZY) mechanics: counters, thresholds, state, damage bonus."""
+"""The stun gauge: what fills it, the stun a full one causes, and the execution it opens."""
 
-import inspect
 from types import SimpleNamespace
 
 import pygame
@@ -9,6 +8,7 @@ import pytest
 from src.core.fx import OrbitParticle
 from src.core.level.systems.combat_system import CombatSystem
 from src.core.level.systems.feedback_system import _spawn_guard_fx
+from src.core.settings import Combat, Stun
 from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
 from src.entities.player import Player
@@ -83,10 +83,11 @@ def _make_attacker(config=GOBLIN_CONFIG, player=None) -> Enemy:
     return attacker
 
 
-def test_enemy_copies_parry_stun_config() -> None:
+def test_enemy_copies_its_stun_gauge_from_the_config() -> None:
     e = _enemy()
-    assert e.parry_stun_threshold == 2
-    assert e.parry_stun_duration == 1.5
+    assert e.stun_max == GOBLIN_CONFIG.stun_max
+    assert e.stun_duration == GOBLIN_CONFIG.stun_duration
+    assert e.stun == 0.0
 
 
 def _reset_attacker(attacker: Enemy) -> None:
@@ -104,166 +105,113 @@ def _clear_hit_stop(system: CombatSystem) -> None:
     system.hit_stop_timer = 0.0
 
 
-def test_parry_increments_attacker_parries_taken() -> None:
-    player = _player()
-    player.state_machine.current_state_name = "guard"
-    player.facing_right = True  # face the attacker
-    player.guard.press()  # arm parry window
-    attacker = _make_attacker(player=player)
-    system = CombatSystem()
+def test_a_fighter_with_no_gauge_is_never_stunned() -> None:
+    attacker = _make_attacker()
+    attacker.stun_max = None
 
-    # First parry
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    assert attacker.parries_taken == 1
+    for _ in range(10):
+        assert attacker.add_stun(1000.0) is False
 
-    # Second parry -> triggers DIZZY
-    _reset_attacker(attacker)
-    _clear_hit_stop(system)
-    player.guard.press()  # re-arm parry
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    assert attacker.parries_taken == 0  # reset after threshold
-    assert attacker.state_machine.current_state_name == DIZZY_STATE
-    assert any(ev.kind == "stun" for ev in system.guard_events)
-
-
-def test_slime_needs_three_parries() -> None:
-    player = _player()
-    player.state_machine.current_state_name = "guard"
-    player.facing_right = True  # face the attacker
-    player.guard.press()  # arm parry window
-    attacker = _enemy(SLIME_CONFIG, player=player)
-    attacker.facing_right = False  # attacker faces left towards player
-    system = CombatSystem()
-
-    # First two parries
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    _clear_hit_stop(system)
-    assert attacker.parries_taken == 1
-    assert attacker.state_machine.current_state_name != DIZZY_STATE
-
-    _reset_attacker(attacker)
-    _clear_hit_stop(system)
-    player.guard.press()
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    assert attacker.parries_taken == 2
-    assert attacker.state_machine.current_state_name != DIZZY_STATE
-
-    # Third parry -> DIZZY
-    _reset_attacker(attacker)
-    _clear_hit_stop(system)
-    player.guard.press()
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    assert attacker.parries_taken == 0
-    assert attacker.state_machine.current_state_name == DIZZY_STATE
-
-
-def test_entity_immune_to_dizzy() -> None:
-    """Test an entity with no parry_stun_threshold (immune to dizzy)."""
-    player = _player()
-    player.state_machine.current_state_name = "guard"
-    player.facing_right = True  # face the attacker
-    player.guard.press()  # arm parry window
-    # Use a goblin but make it immune to dizzy
-    attacker = _enemy(GOBLIN_CONFIG, player=player)
-    attacker.parry_stun_threshold = None  # Immune to dizzy
-    attacker.facing_right = False  # attacker faces left towards player
-    system = CombatSystem()
-
-    for _ in range(5):
-        system.process_attacks([attacker, player])  # type: ignore[list-item]
-        _clear_hit_stop(system)
-        _reset_attacker(attacker)
-        player.guard.press()
-
-    assert attacker.parries_taken == 5  # no threshold, keeps counting
+    assert attacker.stun == 0.0
     assert attacker.state_machine.current_state_name != DIZZY_STATE
 
 
-def test_real_hit_resets_attacker_parries_taken() -> None:
-    player = _player()
-    attacker = _enemy(player=player)
-    attacker.facing_right = False
-    system = CombatSystem()
+def test_a_stunned_fighter_takes_no_more_stun() -> None:
+    enemy = _enemy()
 
-    # Parry once
-    player.state_machine.current_state_name = "guard"
-    player.facing_right = True  # face the attacker
-    player.guard.press()  # arm parry window
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    _clear_hit_stop(system)
-    assert attacker.parries_taken == 1
-
-    # Attacker deals real HP damage (not guarded) - need new attack
-    _reset_attacker(attacker)
-    _clear_hit_stop(system)
-    player.state_machine.current_state_name = "idle"
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-
-    assert attacker.parries_taken == 0
+    assert enemy.add_stun(enemy.stun_max) is True
+    assert enemy.add_stun(enemy.stun_max) is False
+    assert enemy.stun == 0.0
 
 
-def test_chip_damage_does_not_reset_parries_taken() -> None:
-    player = _player()
-    player.state_machine.current_state_name = "guard"
-    player.facing_right = True  # face the attacker
-    player.guard.press()  # arm parry window
-    attacker = _enemy(SLIME_CONFIG, player=player)
-    attacker.facing_right = False  # attacker faces left towards player
-    system = CombatSystem()
+def test_the_gauge_holds_then_drains() -> None:
+    enemy = _enemy()
+    enemy.add_stun(30.0)
 
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    _clear_hit_stop(system)
-    assert attacker.parries_taken == 1
+    enemy._tick_stun(Stun.DECAY_DELAY - 0.01)
+    assert enemy.stun == pytest.approx(30.0), "it holds while blows keep coming"
 
-    # Another guarded hit (chip only) - need to re-arm parry
-    _reset_attacker(attacker)
-    _clear_hit_stop(system)
-    player.guard.press()
-    system.process_attacks([attacker, player])  # type: ignore[list-item]
-    assert attacker.parries_taken == 2  # still counts toward threshold (slime threshold=3)
+    enemy._tick_stun(0.02)
+    enemy._tick_stun(1.0)
+    assert enemy.stun == pytest.approx(30.0 - Stun.DECAY_PER_S)
+
+    enemy._tick_stun(10.0)
+    assert enemy.stun == 0.0
 
 
-def test_projectile_parry_does_not_count() -> None:
-    """A parried projectile must not feed the dizzy threshold.
-
-    The threshold counts *hits* the fighter parried, and a projectile carries no
-    ``parries_taken`` of its own. The test used to be a bare ``assert True``
-    justified by a comment -- it passed whatever the projectile system did, so
-    it guarded nothing. It now reads the source: the moment that system starts
-    writing the counter, this fails.
-    """
-    from src.core.level.systems import projectile_system
-
-    source = inspect.getsource(projectile_system)
-    assert "parries_taken" not in source, (
-        "the projectile system writes parries_taken, so a projectile parry "
-        "counts toward the dizzy threshold it should not feed"
-    )
-
-
-def test_dizzy_damage_multiplier() -> None:
+def _strike(enemy: Enemy, **hit: object):
     from src.combat.frame_data import HitProperties
     from src.combat.hit_resolver import HitResolver
     from src.combat.knockback import KnockbackConfig
     from tests.unit.helpers import AttackerStub
 
-    enemy = _enemy()
-    enemy.state_machine.current_state_name = DIZZY_STATE
-    enemy.stagger_timer = 1.0
+    hit.setdefault("knockback", KnockbackConfig(power=(100.0, 0.0)))
+    return HitResolver.resolve(AttackerStub(centerx=80.0), enemy, HitProperties(**hit))
 
-    attacker = AttackerStub(centerx=80.0)
-    result = HitResolver.resolve(
-        attacker,
-        enemy,
-        HitProperties(
-            damage=10,
-            knockback=KnockbackConfig(power=(100.0, 0.0)),
-        ),
-    )
+
+def test_a_blow_fills_the_gauge_by_its_stun() -> None:
+    enemy = _enemy()
+
+    result = _strike(enemy, damage=5, stun=20.0)
+
+    assert result.stunned is False
+    assert enemy.stun == pytest.approx(20.0)
+
+
+def test_the_blow_that_fills_the_gauge_stuns_and_says_so() -> None:
+    enemy = _enemy()
+
+    result = _strike(enemy, damage=5, stun=enemy.stun_max)
+
+    assert result.stunned is True
+    assert enemy.state_machine.current_state_name == DIZZY_STATE
+    assert not enemy.combat.is_hurt, "the stun is the reaction: no hurt state on top of it"
+
+
+def test_a_stunned_fighter_stays_stunned_under_the_blows() -> None:
+    enemy = _enemy()
+    enemy.add_stun(enemy.stun_max)
+    enemy.velocity.update(0.0, 0.0)
+
+    result = _strike(enemy, damage=5, stagger=0.3)
 
     assert result.applied is True
-    # 10 * 1.5 = 15 damage
-    assert result.actual_damage == pytest.approx(15.0)
+    assert enemy.state_machine.current_state_name == DIZZY_STATE
+    assert not enemy.combat.is_hurt
+    assert enemy.velocity.x == 0.0, "and is not pushed out of reach"
+
+
+def test_dizzy_damage_multiplier() -> None:
+    enemy = _enemy()
+    enemy.add_stun(enemy.stun_max)
+
+    result = _strike(enemy, damage=10)
+
+    assert result.applied is True
+    assert result.actual_damage == pytest.approx(10.0 * Combat.DIZZY_DAMAGE_MULT)
+
+
+def test_an_executing_blow_kills_a_stunned_fighter_whatever_its_health() -> None:
+    enemy = _enemy()
+    enemy.add_stun(enemy.stun_max)
+    health = enemy.health
+
+    result = _strike(enemy, damage=1, execute=True)
+
+    assert result.executed is True
+    assert result.killed is True
+    assert result.actual_damage == pytest.approx(health)
+    assert enemy.is_dead
+
+
+def test_an_executing_blow_is_an_ordinary_one_on_a_fighter_not_stunned() -> None:
+    enemy = _enemy()
+
+    result = _strike(enemy, damage=1, execute=True)
+
+    assert result.executed is False
+    assert result.actual_damage == pytest.approx(1.0)
+    assert not enemy.is_dead
 
 
 def test_dizzy_state_exits_after_duration() -> None:
@@ -350,7 +298,7 @@ def test_a_parry_that_stuns_spawns_no_stars_of_its_own() -> None:
 
     entity = SimpleNamespace(
         hitbox=pygame.FRect(100, 100, 40, 48),
-        parry_stun_duration=1.5,
+        stun_duration=1.5,
         facing_right=True,
     )
     group = Group()

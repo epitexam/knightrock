@@ -8,8 +8,8 @@ around (they are spread over ``HitResolver``, ``Entity``, ``Player``,
 changed.
 
 Every hit goes through the real ``ContactSystem.resolve`` with real ``Player``
-and ``Enemy`` objects, so guard, parry, armour, juggle, finisher, parry-stun and
-hit-stop are all on the path. Nothing here ticks an entity, so the art in
+and ``Enemy`` objects, so parry, perfect dodge, armour, juggle, finisher, stun,
+execution and hit-stop are all on the path. Nothing here ticks an entity, so the art in
 ``assets/`` is not needed.
 
 After an *intentional* change to a combat rule, regenerate and read the diff::
@@ -28,9 +28,10 @@ from typing import Any
 import pytest
 from pygame.sprite import Group
 
-from src.combat.frame_data import AttackDefinition, MoveId
+from src.combat.frame_data import AttackDefinition, Height, MoveId
 from src.core.input.input_manager import InputManager
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
+from src.core.settings import Fury, Rush
 from src.data.provider import GameplayData, load_gameplay_data
 from src.entities.enemies.enemy import Enemy
 from src.entities.entity import Entity
@@ -80,13 +81,7 @@ def _player_idle(player: Player) -> None:
 
 
 def _player_guard(player: Player) -> None:
-    player.guard_held = True
     player.state_machine.change_state(PlayerState.GUARD, force=True)
-
-
-def _player_guard_parry(player: Player) -> None:
-    _player_guard(player)
-    player.guard.press()  # opens the parry window
 
 
 def _player_guard_back(player: Player) -> None:
@@ -94,15 +89,20 @@ def _player_guard_back(player: Player) -> None:
     player.facing_right = True  # back to the attacker
 
 
-def _player_crouch_guard(player: Player) -> None:
-    player.down_held = True
-    player.crouch.update(player, 1.0, True)
-    _player_guard(player)
+def _player_recharging(player: Player) -> None:
+    player.state_machine.change_state(PlayerState.RECHARGE, force=True)
 
 
 def _player_dash_early(player: Player) -> None:
+    """A dodge that has only just begun: a hit through it is a dark step."""
     player.dash.request(-1.0)
     player.state_machine.change_state(PlayerState.DASH, force=True)
+
+
+def _player_dash_late(player: Player) -> None:
+    """A dodge whose window has run out: a hit through it is dodged, and that is all."""
+    _player_dash_early(player)
+    player.update_timers(Rush.WINDOW)
 
 
 def _player_airborne(player: Player) -> None:
@@ -113,42 +113,57 @@ def _player_low_health(player: Player) -> None:
     player.health = 6.0
 
 
-def _player_guard_exhausted(player: Player) -> None:
-    _player_guard(player)
-    player.guard.posture = 1.0  # one more blocked hit breaks it
+def _player_dark_side(player: Player) -> None:
+    player.fury.gain(Fury.MAX)
+    player.fury.start_dark()
 
 
 PLAYER_SITUATIONS: dict[str, Callable[[Player], None]] = {
     "idle": _player_idle,
     "guard": _player_guard,
-    "guard_parry": _player_guard_parry,
     "guard_back": _player_guard_back,
-    "crouch_guard": _player_crouch_guard,
+    "recharging": _player_recharging,
     "dash_early": _player_dash_early,
+    "dash_late": _player_dash_late,
     "airborne": _player_airborne,
     "low_health": _player_low_health,
-    "guard_exhausted": _player_guard_exhausted,
-    "guard_parry_stun": _player_guard_parry,
+    "dark_side": _player_dark_side,
 }
 
-#: Situations that also need the attacker set up: one parry short of being stunned.
-ATTACKER_SETUP: dict[str, Callable[[Enemy], None]] = {
-    "guard_parry_stun": lambda goblin: setattr(
-        goblin, "parries_taken", (goblin.parry_stun_threshold or 1) - 1
-    ),
-}
+
+def _nearly_stunned(enemy: Enemy) -> None:
+    """One point short of a full stun gauge."""
+    assert enemy.stun_max is not None
+    enemy.stun = enemy.stun_max - 1.0
 
 
 def _enemy_idle(enemy: Enemy) -> None:
     pass
 
 
+def _guarding(height: Height) -> Callable[[Enemy], None]:
+    def prepare(enemy: Enemy) -> None:
+        enemy.facing_right = False  # facing the attacker, on its left
+        enemy.guard = height
+
+    return prepare
+
+
 def _enemy_airborne(enemy: Enemy) -> None:
     enemy.on_surface["floor"] = False
 
 
-def _enemy_dizzy(enemy: Enemy) -> None:
-    enemy.state_machine.change_state("dizzy", force=True, duration=1.0)
+def _enemy_stunned(enemy: Enemy) -> None:
+    assert enemy.stun_max is not None
+    enemy.add_stun(enemy.stun_max)
+
+
+def _enemy_downed(enemy: Enemy) -> None:
+    enemy.state_machine.change_state("downed", force=True)
+
+
+def _enemy_doomed(enemy: Enemy) -> None:
+    enemy.doom()
 
 
 def _enemy_low_health(enemy: Enemy) -> None:
@@ -161,11 +176,17 @@ def _enemy_otg(enemy: Enemy) -> None:
 
 ENEMY_SITUATIONS: dict[str, tuple[str, Callable[[Enemy], None]]] = {
     "goblin_idle": ("goblin", _enemy_idle),
+    "goblin_guard_high": ("goblin", _guarding(Height.HIGH)),
+    "goblin_guard_low": ("goblin", _guarding(Height.LOW)),
     "goblin_airborne": ("goblin", _enemy_airborne),
-    "goblin_dizzy": ("goblin", _enemy_dizzy),
+    "goblin_stunned": ("goblin", _enemy_stunned),
+    "goblin_nearly_stunned": ("goblin", _nearly_stunned),
+    "goblin_downed": ("goblin", _enemy_downed),
+    "goblin_doomed": ("goblin", _enemy_doomed),
     "goblin_low_health": ("goblin", _enemy_low_health),
     "goblin_otg": ("goblin", _enemy_otg),
     "slime_idle": ("slime", _enemy_idle),
+    "shell_armoured": ("shell", _enemy_idle),
     "dummy_armoured": ("dummy", _enemy_idle),
 }
 
@@ -217,14 +238,20 @@ def _strike(attacker: Entity, target: Entity, definition: AttackDefinition, phas
         "juggle_timer": _round(target.juggle_timer),
         "super_armor_count": target.super_armor_count,
         "parries_given": target.parries_given,
+        "stun": _round(target.stun),
         "attacker_state": _name(attacker.state_machine.current_state_name),
-        "attacker_parries_taken": attacker.parries_taken,
+        "attacker_stun": _round(attacker.stun),
         "attacker_combo": attacker.combat.combo_count,
     }
     if isinstance(target, Player):
-        result["posture"] = _round(target.guard.posture)
-        result["riposte_timer"] = _round(target.guard.riposte_timer)
-        result["lockout_timer"] = _round(target.guard.lockout_timer)
+        result["battery"] = _round(target.battery.amount)
+        result["fury"] = _round(target.fury.amount)
+        result["rush_timer"] = _round(target.rush_timer)
+    if isinstance(attacker, Player):
+        result["attacker_fury"] = _round(attacker.fury.amount)
+        result["attacker_prompt"] = (
+            None if attacker.prompt.kind is None else attacker.prompt.kind.value
+        )
     return result
 
 
@@ -249,7 +276,6 @@ def _matrix(data: GameplayData) -> dict[str, dict]:
                 player = _player(data)
                 prepare(player)
                 attacker = _enemy(data, "goblin", ATTACKER_X)
-                ATTACKER_SETUP.get(situation, lambda _goblin: None)(attacker)
                 rows[f"{owner}.{name}[{phase}] -> player.{situation}"] = _strike(
                     attacker, player, definition, phase
                 )
@@ -283,10 +309,19 @@ def test_every_hit_outcome_matches_the_recorded_one(data: GameplayData) -> None:
 
 
 def test_the_matrix_exercises_every_kind_of_outcome(data: GameplayData) -> None:
-    """A matrix in which nothing is guarded or parried would pin nothing useful."""
-    rows = _matrix(data).values()
+    """A matrix in which nothing is guarded, dodged, stunned or doomed would pin nothing."""
+    matrix = _matrix(data)
+    rows = matrix.values()
     events = {kind for row in rows for kind in row["events"]}
-    assert {"guard", "parry", "break", "stun"} <= events, events
+    assert {"guard", "stun", "doom", "dodge"} <= events, events
+    assert any(row.get("attacker_prompt") == "death_blow" for row in rows), "no death blow"
     assert any(row["dead"] for row in rows), "no finisher or kill in the matrix"
+    executed = [
+        key for key, row in matrix.items() if key.endswith("goblin_stunned") and row["dead"]
+    ]
+    spared = [
+        key for key, row in matrix.items() if key.endswith("goblin_stunned") and not row["dead"]
+    ]
+    assert executed and spared, "a stunned goblin is executed by some moves and not by others"
     assert any(row["state"] == "knockback" for row in rows), "no launch in the matrix"
     assert any(row["contacts"] == 0 for row in rows), "nothing was ever refused"

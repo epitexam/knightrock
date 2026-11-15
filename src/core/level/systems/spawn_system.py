@@ -6,7 +6,7 @@ cooldowns and the spawn logic directly (moved here from the former
 ``DebugController``), so the level no longer drives anything itself.
 
 Test bench: ``DEBUG_ATTACKS`` forces any move of the catalogue on the player
-(the chain links, the launcher, the riposte, the aerials), ``DEBUG_SHOTS``
+(the chain finishers, the launchers, the charged slash, the stab, the aerials), ``DEBUG_SHOTS``
 fires pooled projectiles, and ``DEBUG_JUGGLE_KEY`` pops an airborne dummy
 to juggle.  The per-action helpers are plain methods so tests drive them
 without polling hardware keys.
@@ -47,7 +47,7 @@ DEBUG_SPAWNS = {
 #: rather than leaving a number key that silently does nothing -- which is what a
 #: bare string in this dict would do.
 #:
-#: The air kit is on ``7``-``0`` rather than appended to ``1``-``6`` so the two
+#: The air kit is on ``9``-``0``, after the ground moves, so the two
 #: groups read apart at a glance, which matters more here than usual: the ground
 #: keys work from anywhere and the air keys only work off the ground, so a dev
 #: pressing ``7`` on the floor is holding an airborne move the stance gate will
@@ -55,16 +55,16 @@ DEBUG_SPAWNS = {
 #: returning ``False``, so the reason is a traceback instead of a key that
 #: appears broken.
 DEBUG_ATTACKS: dict[int, MoveId] = {
-    pygame.K_1: move_id("twin_fangs"),
-    pygame.K_2: move_id("sweeping_arc"),
-    pygame.K_3: move_id("uppercut"),
-    pygame.K_4: move_id("riposte"),
-    pygame.K_5: move_id("dash_attack"),
-    pygame.K_6: move_id("heavy_attack"),
-    pygame.K_7: move_id("air_attack"),
-    pygame.K_8: move_id("air_forward"),
-    pygame.K_9: move_id("air_rise"),
-    pygame.K_0: move_id("air_sweep"),
+    pygame.K_1: move_id("slash_high_4"),
+    pygame.K_2: move_id("slash_low_4"),
+    pygame.K_3: move_id("punch_3"),
+    pygame.K_4: move_id("kick_2"),
+    pygame.K_5: move_id("charged_slash"),
+    pygame.K_6: move_id("stab"),
+    pygame.K_7: move_id("death_blow"),
+    pygame.K_8: move_id("throw"),
+    pygame.K_9: move_id("air_slash"),
+    pygame.K_0: move_id("air_kick"),
 }
 
 #: Phase 5 projectile presets fired from the player.

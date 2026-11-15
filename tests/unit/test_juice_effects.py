@@ -45,9 +45,8 @@ from src.core.rendering.renderer import (
 )
 from src.core.rendering.renderer import _ghost_alpha as renderer_alpha
 from src.core.settings import Afterimage, HitFlash, Locomotion, Physics, Simulation
-from src.core.settings import Guard as GuardSettings
 from src.core.sprite_groups import SpriteGroups
-from src.states.player_states import PlayerState
+from src.states.player_states import GUARD_MOVE_MULT, PlayerState
 from tests.fakes import FighterSprite
 from tests.unit.helpers import make_entity
 
@@ -620,12 +619,12 @@ def test_a_move_plays_the_clip_it_names_rather_than_the_one_for_its_posture() ->
     player.state_machine.current_state_name = "attack"
     player.on_surface["floor"] = True
     player.combat.add_attack(
-        move_id("light_attack"),
-        replace(PLAYER_ATTACKS["light_attack"], animation="heavy_attack"),
+        move_id("slash_high_1"),
+        replace(PLAYER_ATTACKS["slash_high_1"], animation="punch_1"),
     )
-    assert player.combat.start_attack(move_id("light_attack")) is Refusal.NONE
+    assert player.combat.start_attack(move_id("slash_high_1")) is Refusal.NONE
 
-    assert player._animation_name() == "heavy_attack"
+    assert player._animation_name() == "punch_1"
 
 
 def test_a_move_with_no_art_of_its_own_still_falls_back_to_the_posture_default() -> None:
@@ -905,7 +904,7 @@ def test_a_run_is_a_comb_of_marks_and_not_a_trail(
 def test_a_guard_shuffle_marks_nothing() -> None:
     """``walk_slow`` is silent, and it is the tier a guard drops into.
 
-    ``Guard.MOVE_MULT`` is 0.35, which is under ``WALK_SLOW_PROMOTE``, so
+    ``GUARD_MOVE_MULT`` is 0.35, which is under ``WALK_SLOW_PROMOTE``, so
     holding a stick forward puts the fighter in ``walk_slow`` -- which makes
     this the most common ground tier in the game by far, and the one that must
     not turn a block into a running start.
@@ -919,7 +918,7 @@ def test_a_guard_shuffle_marks_nothing() -> None:
     scuff blinking under a fighter who is barely moving.
     """
     groups = SpriteGroups()
-    speed = Physics.PLAYER_SPEED * GuardSettings.MOVE_MULT
+    speed = Physics.PLAYER_SPEED * GUARD_MOVE_MULT
     entity = _walker(speed=speed, state=PlayerState.WALK_SLOW.value)
     groups.entity_sprites.add(entity)
     system = FeedbackSystem(groups)

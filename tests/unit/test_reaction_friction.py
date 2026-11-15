@@ -79,7 +79,7 @@ def test_enemy_knockback_recovers_under_one_second() -> None:
         if next_state is not None:
             break
 
-    assert next_state == "idle"
+    assert next_state == "downed", "a launch ends with the enemy on the ground"
     assert frames <= 60
 
 

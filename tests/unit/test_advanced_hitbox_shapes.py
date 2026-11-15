@@ -83,10 +83,13 @@ def test_advanced_obb_can_trade_with_another_advanced_obb() -> None:
 
 
 def test_v2_hitboxes_load_advanced_fields_without_legacy_phase_fields() -> None:
-    raw = attack_definition_to_dict(PLAYER_ATTACKS["light_attack"])
+    raw = attack_definition_to_dict(PLAYER_ATTACKS["punch_1"])
     phase_data = raw["phases"][0]
     for key in ("hitbox_size", "hitbox_offset", "hitbox_keyframes", "extra_hitboxes"):
         phase_data.pop(key)
+    for key in ("hitbox_shape", "hitbox_angle", "hitbox_easing", "hitbox_anchor"):
+        phase_data.pop(key, None)
+    phase_data.pop("hitbox_anchor_offset", None)
     phase_data["hitboxes"] = [
         {
             "shape": "capsule",
@@ -116,13 +119,13 @@ def test_v2_hitboxes_load_advanced_fields_without_legacy_phase_fields() -> None:
 def test_v2_attack_file_roundtrips_through_read_and_write(tmp_path: Path) -> None:
     path = write_attacks_file(
         tmp_path / "attacks.json",
-        {"player": {"light_attack": PLAYER_ATTACKS["light_attack"]}},
+        {"player": {"slash_high_1": PLAYER_ATTACKS["slash_high_1"]}},
         version=2,
     )
 
-    parsed = read_attacks_file(path)["player"]["light_attack"]
+    parsed = read_attacks_file(path)["player"]["slash_high_1"]
 
-    assert parsed == PLAYER_ATTACKS["light_attack"]
+    assert parsed == PLAYER_ATTACKS["slash_high_1"]
 
 
 def test_circle_shape_uses_narrowphase_instead_of_bounding_rect() -> None:

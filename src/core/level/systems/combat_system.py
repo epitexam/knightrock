@@ -59,6 +59,8 @@ def _attacker_ready(
     phase = combat.current_phase
     if not combat.state.is_active or not attack_boxes or phase is None:
         return None
+    if phase.launches:
+        return None  # the shot strikes, not the hand it leaves from
     # Per-index pairing preserved: swept boxes follow the same order
     # as the live boxes; a missing origin (spawn/resize) degenerates to cur.
     if len(swept_boxes) != len(attack_boxes):
@@ -79,6 +81,28 @@ def _record_for(combat: CombatPort) -> Callable[[Combatant], None]:
         combat.record_contact(target.id)
 
     return record
+
+
+def _contact_gate(combat: CombatPort) -> Callable[[str], bool]:
+    """Whether an attack may touch a target, by who it had touched when its box was made.
+
+    An attack cancelled during the pass -- its owner hit or stunned by another
+    box of the same tick -- forgets its targets, and its own box is already
+    made. Read from the live state alone, that box would hit again a target
+    the attack had already reached: a parried blow would land on its parrier
+    on the tick the riposte connects.
+    """
+    touched = frozenset(combat.targets_hit)
+
+    def gate(target_id: str) -> bool:
+        return target_id not in touched and combat.can_contact(target_id)
+
+    return gate
+
+
+def _blades_lock(entry_a: _ReadyAttacker, entry_b: _ReadyAttacker) -> bool:
+    """Two attacks of equal priority cancel each other only when both are marked ``clash``."""
+    return entry_a.phase.hit.clash is Clash.CLASH and entry_b.phase.hit.clash is Clash.CLASH
 
 
 def _clash_point(
@@ -206,7 +230,7 @@ class CombatSystem:
                     swept_shapes=entry.swept_shapes,
                     faction=entry.attacker.faction,
                     owner_id=entry.attacker.id,
-                    can_contact=combat.can_contact,
+                    can_contact=_contact_gate(combat),
                     record_contact=_record_for(combat),
                     attacker=entry.attacker,
                     charge_mult=combat.charge_multiplier,
@@ -228,20 +252,23 @@ class CombatSystem:
                 entry_b = ready[index_b]
                 if entry_a.attacker.faction == entry_b.attacker.faction:
                     continue
-                if id(entry_a.attacker) in clashed or id(entry_b.attacker) in clashed:
-                    continue
-                if id(entry_a.attacker) in losers or id(entry_b.attacker) in losers:
+                settled = clashed | losers
+                if id(entry_a.attacker) in settled or id(entry_b.attacker) in settled:
                     continue
                 if not _hitbox_pairs_overlap(entry_a, entry_b):
                     continue
                 self.metrics.overlaps += 1
+                if self._counter_wins(entry_a, entry_b, losers):
+                    continue
                 pa = entry_a.phase.hit.priority
                 pb = entry_b.phase.hit.priority
                 if pa == pb:
-                    if entry_a.phase.hit.clash is not Clash.CLASH:
+                    if not _blades_lock(entry_a, entry_b):
                         continue
                     entry_a.attacker.combat.cancel_attack()
                     entry_b.attacker.combat.cancel_attack()
+                    entry_a.attacker.on_clash(entry_b.attacker)
+                    entry_b.attacker.on_clash(entry_a.attacker)
                     clashed.add(id(entry_a.attacker))
                     clashed.add(id(entry_b.attacker))
                     self.guard_events.append(GuardEvent("clash", entry_a.attacker))
@@ -255,6 +282,25 @@ class CombatSystem:
                     entry_a.attacker.combat.cancel_attack()
                     losers.add(id(entry_a.attacker))
         return losers, clashed
+
+    def _counter_wins(
+        self, entry_a: _ReadyAttacker, entry_b: _ReadyAttacker, losers: set[int]
+    ) -> bool:
+        """A counter meets a blade: the blade bounces off; ``True`` if that settled the pair.
+
+        A counter is thrown behind the guard, so a blade that meets it bounces
+        off like one that meets the guard, and locks nothing: mashing into the
+        counter is the mistake it punishes.
+        """
+        covered_a = entry_a.attacker.counter_covered
+        if covered_a == entry_b.attacker.counter_covered:
+            return False
+        loser, winner = (entry_b, entry_a) if covered_a else (entry_a, entry_b)
+        loser.attacker.combat.cancel_attack()
+        loser.attacker.on_deflected(winner.attacker.hitbox.centerx)
+        losers.add(id(loser.attacker))
+        self.guard_events.append(GuardEvent("guard", winner.attacker))
+        return True
 
     def update_timer(self, delta_time: float) -> None:
         """Advance the global hit-stop timer."""

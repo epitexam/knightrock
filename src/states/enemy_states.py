@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 from src.combat.frame_data import move_id
 from src.core.settings import AI, EnemyJump, Turn
+from src.core.settings import Combat as CombatSettings
 from src.states.reaction_states import (
     HurtState,
     KnockbackState,
     StaggerState,
+    apply_reaction_drag,
 )
 from src.states.state_machine import State
 from src.states.turn_state import TurnState, request_turn
@@ -33,6 +35,8 @@ class EnemyState(str, Enum):
     KNOCKBACK = "knockback"
     STAGGER = "stagger"
     DIZZY = "dizzy"
+    DOWNED = "downed"
+    DOOMED = "doomed"
     LEDGE = "ledge"
 
 
@@ -438,8 +442,8 @@ class EnemyKnockbackState(KnockbackState["Enemy"]):
         self.entity.move_axis = 0.0
 
     def _resolve_exit(self) -> str:
-        """Recover through hurt if still hurt, otherwise to idle."""
-        return EnemyState.HURT if self.entity.combat.is_hurt else EnemyState.IDLE
+        """A launch ends on the ground: the enemy lies there before it gets up."""
+        return EnemyState.DOWNED
 
 
 class EnemyStaggerState(StaggerState["Enemy"]):
@@ -449,18 +453,55 @@ class EnemyStaggerState(StaggerState["Enemy"]):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
+class EnemyDownedState(State["Enemy"]):
+    """Knocked off its feet: lying on the ground, open to the stab, until it gets up."""
+
+    def __init__(self, entity: Enemy):
+        super().__init__(entity, tags=["downed", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
+        self.entity.combat.reset_hurt_state()
+        self.entity.stagger_timer = CombatSettings.DOWNED_DURATION
+
+    def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
+        if self.entity.stagger_timer <= 0:
+            return EnemyState.IDLE
+        return None
+
+
+class EnemyDoomedState(State["Enemy"]):
+    """Brought to nothing: frozen, waiting for the death blow, and dead without it."""
+
+    def __init__(self, entity: Enemy):
+        super().__init__(entity, tags=["doomed", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
+        self.entity.stagger_timer = kwargs.get("duration", 0.0)
+
+    def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
+        if self.entity.stagger_timer <= 0:
+            self.entity.health = 0.0
+        return None
+
+
 class EnemyDizzyState(State["Enemy"]):
-    """Dizzy reaction from consecutive perfect parries: return to idle when timer clears."""
+    """Stunned by a full stun gauge: helpless, and open to a throw, until the timer clears."""
 
     def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
         duration = kwargs.get("duration", 0.0)
         if duration > 0:
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
         if self.entity.stagger_timer <= 0:
             return EnemyState.IDLE
         return None

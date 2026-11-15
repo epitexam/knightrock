@@ -8,14 +8,16 @@ import pygame
 from pygame.math import Vector2
 from pygame.sprite import Group
 
-from src.combat.frame_data import MoveId, move_id
+from src.combat.frame_data import Height, MoveId, PhaseState, move_id
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
 from src.core.settings import AI, Locomotion
 from src.core.settings import Animation as AnimationSettings
+from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Guard as GuardSettings
 from src.entities.enemies.schema import EnemyConfig, EnemyMove
-from src.entities.entity import Entity
+from src.entities.entity import Entity, EntitySnapshot
 from src.physics import apply_velocity_friction
 from src.physics.spatial_hash import SpatialHash
 from src.states.enemy_states import (
@@ -23,6 +25,8 @@ from src.states.enemy_states import (
     EnemyChargeState,
     EnemyChaseState,
     EnemyDizzyState,
+    EnemyDoomedState,
+    EnemyDownedState,
     EnemyHurtState,
     EnemyIdleState,
     EnemyKnockbackState,
@@ -33,6 +37,15 @@ from src.states.enemy_states import (
 )
 from src.states.ledge_state import LedgeState
 from src.states.state_machine import StateMachine
+
+#: The states an enemy is free in: it turns to face the player and holds its guard.
+_FREE_STATES = (
+    EnemyState.IDLE,
+    EnemyState.PATROL,
+    EnemyState.CHASE,
+    EnemyState.TURN,
+    EnemyState.LEDGE,
+)
 
 
 class PlayerReference(Protocol):
@@ -199,8 +212,25 @@ class Enemy(Entity):
 
         self.pushable = config.pushable
         self.super_armor = config.super_armor
-        self.parry_stun_threshold = config.parry_stun_threshold
-        self.parry_stun_duration = config.parry_stun_duration
+        self.otg_guard_duration = CombatSettings.ENEMY_OTG_INVULN_DURATION
+        # An enemy with no AI has no state to be stunned or doomed in: it has
+        # no gauge, and a blow that kills it kills it.
+        self.stun_max = config.stun_max if config.has_ai else None
+        self.stun_duration = config.stun_duration
+        self.doomable = config.has_ai
+        # The guard: held high or low while the enemy is not attacking, and
+        # dropped for a while once broken.
+        self.guards = config.guards and config.has_ai
+        self.guard: Height | None = None
+        self.guard_timer = 0.0
+        self.guard_broken_timer = 0.0
+        # Blockable blows taken in a row, and how long the count still holds.
+        self.hit_streak = 0
+        self.streak_timer = 0.0
+        # Seconds left to strike back after a blocked blow, and whether the
+        # attack running is that counter -- thrown behind the guard.
+        self.counter_timer = 0.0
+        self.countering = False
 
         self.can_jump = config.can_jump
         self.jump_height = config.jump_height
@@ -245,6 +275,8 @@ class Enemy(Entity):
         self.state_machine.add_state(EnemyState.KNOCKBACK, EnemyKnockbackState(self))
         self.state_machine.add_state(EnemyState.STAGGER, EnemyStaggerState(self))
         self.state_machine.add_state(EnemyState.DIZZY, EnemyDizzyState(self))
+        self.state_machine.add_state(EnemyState.DOWNED, EnemyDownedState(self))
+        self.state_machine.add_state(EnemyState.DOOMED, EnemyDoomedState(self))
         self.state_machine.add_state(
             EnemyState.LEDGE, LedgeState(self, exit_resolver=lambda: EnemyState.IDLE)
         )
@@ -302,16 +334,147 @@ class Enemy(Entity):
 
     def _pre_update(self, delta_time: float) -> None:
         """Update facing direction before combat updates."""
-        if self.config.has_ai and self.player is not None:
-            current = self.state_machine.current_state_name
-            busy = (
-                EnemyState.ATTACK,
-                EnemyState.HURT,
-                EnemyState.KNOCKBACK,
-                EnemyState.STAGGER,
-            )
-            if current not in busy:
-                self.face_player()
+        if (
+            self.config.has_ai
+            and self.player is not None
+            and self.state_machine.current_state_name in _FREE_STATES
+        ):
+            self.face_player()
+        self._tick_guard(delta_time)
+        self._tick_counter(delta_time)
+
+    def _tick_guard(self, delta_time: float) -> None:
+        """Hold a guard while free to, and switch its height now and then."""
+        if not self.guards:
+            return
+        if self.guard_broken_timer > 0.0:
+            self.guard_broken_timer = max(0.0, self.guard_broken_timer - delta_time)
+            self.guard = None
+            return
+        if self.state_machine.current_state_name not in _FREE_STATES:
+            self.guard = None
+            return
+        self.guard_timer -= delta_time
+        if self.guard is None or self.guard_timer <= 0.0:
+            self.guard = Height.HIGH if self.rng.random() < 0.5 else Height.LOW
+            self.guard_timer = self.rng.uniform(GuardSettings.SWITCH_MIN, GuardSettings.SWITCH_MAX)
+
+    def guards_against(self, height: Height, unblockable: bool, source_center_x: float) -> bool:
+        """Whether the guard stops a hit at ``height`` from that side.
+
+        A low guard stops a low hit, a high guard everything else, and only
+        from the front. An unblockable hit goes through and breaks the guard.
+
+        With no guard at that height, a blockable blow from the front still
+        counts: the ``Guard.BLOCK_AFTER_HITS``-th in a row is braced against
+        -- the enemy shakes off the stagger, raises its guard at the blow's
+        height and stops it -- so the same slash mashed is stopped mid-combo.
+        A stopped blow is an opening: the enemy strikes back if it can.
+        """
+        if not self._faces(source_center_x):
+            return False
+        same_height = self.guard is not None and (height is Height.LOW) == (
+            self.guard is Height.LOW
+        )
+        if unblockable:
+            if same_height:
+                self.guard = None
+                self.guard_broken_timer = GuardSettings.BROKEN_TIME
+            return False
+        if same_height or self.counter_covered:
+            self.counter_timer = GuardSettings.COUNTER_WINDOW
+            return True
+        if not self.guards or self.guard_broken_timer > 0.0:
+            return False
+        self.hit_streak += 1
+        self.streak_timer = GuardSettings.STREAK_WINDOW
+        if self.hit_streak < GuardSettings.BLOCK_AFTER_HITS:
+            return False
+        self._brace(height)
+        return True
+
+    def lose_lock(self) -> None:
+        """A lost blade lock throws the enemy off balance and breaks its guard."""
+        super().lose_lock()
+        self.guard = None
+        self.guard_broken_timer = ClashSettings.WIN_OPEN
+        self.hit_streak = 0
+
+    @property
+    def counter_covered(self) -> bool:
+        """Whether the counter in progress still shields the enemy: not in its recovery.
+
+        The recovery of a counter is the opening the player punishes.
+        """
+        return self.countering and self.combat.state.sub_state is not PhaseState.RECOVERY
+
+    def _brace(self, height: Height) -> None:
+        """Shake off the stagger and raise the guard at ``height``, against the blow."""
+        self.hit_streak = 0
+        self.stagger_timer = 0.0
+        self.combat.cancel_attack()
+        self.combat.reset_hurt_state()
+        self.state_machine.change_state(EnemyState.IDLE, force=True)
+        self.guard = Height.LOW if height is Height.LOW else Height.HIGH
+        self.guard_timer = GuardSettings.SWITCH_MAX
+        self.counter_timer = GuardSettings.COUNTER_WINDOW
+
+    def _tick_counter(self, delta_time: float) -> None:
+        """Let the streak lapse, and strike back after a block if the player is in reach.
+
+        The counter is thrown behind the guard: until its recovery, a blockable
+        blow from the front is stopped, so mashing cannot interrupt it; its
+        recovery is the opening.
+        """
+        if self.countering and self.state_machine.current_state_name != EnemyState.ATTACK:
+            self.countering = False
+        if self.streak_timer > 0.0:
+            self.streak_timer = max(0.0, self.streak_timer - delta_time)
+            if self.streak_timer == 0.0:
+                self.hit_streak = 0
+        if self.counter_timer <= 0.0:
+            return
+        self.counter_timer = max(0.0, self.counter_timer - delta_time)
+        if self.state_machine.current_state_name not in _FREE_STATES:
+            return
+        move = self.plan_move()
+        if move is None or not self.is_player_in_range(self.move_range(move)):
+            return
+        if not self.attack_slot_free():
+            return
+        self.counter_timer = 0.0
+        self.countering = True
+        self.state_machine.change_state(EnemyState.ATTACK, move=move)
+
+    def _faces(self, source_center_x: float) -> bool:
+        if source_center_x >= self.hitbox.centerx:
+            return self.facing_right
+        return not self.facing_right
+
+    def save_state(self) -> EntitySnapshot:
+        snapshot = super().save_state()
+        snapshot.extra |= {
+            "guard": None if self.guard is None else self.guard.value,
+            "guard_timer": self.guard_timer,
+            "guard_broken_timer": self.guard_broken_timer,
+            "hit_streak": self.hit_streak,
+            "streak_timer": self.streak_timer,
+            "counter_timer": self.counter_timer,
+            "countering": self.countering,
+        }
+        return snapshot
+
+    def load_state(self, snapshot: EntitySnapshot) -> None:
+        super().load_state(snapshot)
+        extra = snapshot.extra
+        guard = extra.get("guard")
+        self.guard = None if guard is None else Height(guard)
+        self.guard_timer = float(extra.get("guard_timer", 0.0))
+        self.guard_broken_timer = float(extra.get("guard_broken_timer", 0.0))
+        self.hit_streak = int(extra.get("hit_streak", 0))
+        self.streak_timer = float(extra.get("streak_timer", 0.0))
+        self.counter_timer = float(extra.get("counter_timer", 0.0))
+        self.countering = bool(extra.get("countering", False))
 
     def _update_state_machine(self, delta_time: float) -> None:
         """Update AI state machine or apply passive friction if AI is disabled."""
@@ -323,21 +486,6 @@ class Enemy(Entity):
             # rate directly (not scaled by dt a second time) and snap to
             # zero instead of sliding forever on an asymptote.
             apply_velocity_friction(self, self.passive_friction, delta_time)
-
-    def on_parried(self) -> bool:
-        """Count a parried attack; enough in a row and the enemy is stunned (dizzy).
-
-        A config with no threshold counts but is never stunned.
-        """
-        self.parries_taken += 1
-        threshold = self.parry_stun_threshold
-        if threshold is None or self.parries_taken < threshold:
-            return False
-        self.state_machine.change_state(
-            EnemyState.DIZZY, force=True, duration=self.parry_stun_duration
-        )
-        self.parries_taken = 0
-        return True
 
     def can_see_player(self) -> bool:
         """Check if the player is within vision range.

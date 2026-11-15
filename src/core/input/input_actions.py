@@ -10,6 +10,7 @@ class InputAction(StrEnum):
     RESET = "reset"
     ATTACK_1 = "attack1"
     ATTACK_2 = "attack2"
+    SHOOT = "shoot"
     SPECIAL_ATTACK = "special_attack"
     UI_UP = "ui_up"
     UI_DOWN = "ui_down"

@@ -31,12 +31,10 @@ from src.combat.damage_types import DamageType
 from src.combat.frame_data import (
     AttackButton,
     AttackDefinition,
-    BlockMask,
     Clash,
     Height,
     HitboxKeyframe,
     HitboxSpec,
-    HitLevel,
     HitProperties,
     MoveId,
     PhaseDefinition,
@@ -185,11 +183,11 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
             priority=int(raw.get("priority", _HIT_DEFAULTS["priority"])),
             clash=_named(Clash, raw, "clash", where),
             height=_named(Height, raw, "height", where),
-            hit_level=_named(HitLevel, raw, "hit_level", where),
-            block_mask=_named(BlockMask, raw, "block_mask", where),
             tags=_read_tags(raw.get("tags"), f"{where}.tags"),
             flinch=bool(raw.get("flinch", _HIT_DEFAULTS["flinch"])),
             hit_stop=(float(raw["hit_stop"]) if raw.get("hit_stop") is not None else None),
+            stun=float(raw.get("stun", _HIT_DEFAULTS["stun"])),
+            execute=bool(raw.get("execute", _HIT_DEFAULTS["execute"])),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -358,9 +356,21 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 MoveId(name) for name in raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])
             ),
             cancel_on_hit=bool(raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"])),
+            launches=_read_launch(raw.get("launches"), f"{where}.launches"),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
+
+
+def _read_launch(raw: Any, where: str) -> str | None:
+    """A shot name from ``src/combat/shots.py``, or ``None``."""
+    if raw is None:
+        return None
+    from src.entities.shots import SHOTS
+
+    if raw not in SHOTS:
+        raise GameplayDataError(f"{where}: unknown shot {raw!r} (expected one of {sorted(SHOTS)})")
+    return str(raw)
 
 
 def _read_stances(raw: Any, where: str) -> tuple[Stance, ...]:
@@ -414,6 +424,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
                 raw.get("charge_move_multiplier", _ATTACK_DEFAULTS["charge_move_multiplier"])
             ),
             uninterruptible=bool(raw.get("uninterruptible", _ATTACK_DEFAULTS["uninterruptible"])),
+            invincible=bool(raw.get("invincible", _ATTACK_DEFAULTS["invincible"])),
             lunge_speed_multiplier=float(
                 raw.get("lunge_speed_multiplier", _ATTACK_DEFAULTS["lunge_speed_multiplier"])
             ),
@@ -427,7 +438,7 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
 
 
 def _read_follow_ups(raw: Any, where: str) -> tuple[tuple[AttackButton, MoveId], ...]:
-    """Parse ``{"light": "twin_fangs", "heavy": "uppercut"}`` into button/move pairs."""
+    """Parse ``{"slash_high": "high_2", "beat_low": "kick_1"}`` into press/move pairs."""
     if raw is None:
         return ()
     if not isinstance(raw, dict):
@@ -556,11 +567,11 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                     "priority": phase.hit.priority,
                     "clash": phase.hit.clash,
                     "height": phase.hit.height,
-                    "hit_level": phase.hit.hit_level,
-                    "block_mask": phase.hit.block_mask,
                     "tags": list(phase.hit.tags),
                     **({"flinch": True} if phase.hit.flinch else {}),
                     **({"hit_stop": phase.hit.hit_stop} if phase.hit.hit_stop is not None else {}),
+                    **({"stun": phase.hit.stun} if phase.hit.stun else {}),
+                    **({"execute": True} if phase.hit.execute else {}),
                 },
                 "extra_hitboxes": [_hitbox_spec_to_dict(spec) for spec in phase.extra_hitboxes],
                 "hitbox_keyframes": [
@@ -569,6 +580,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                 "reset_targets": phase.reset_targets,
                 "cancel_into": list(phase.cancel_into),
                 **({"cancel_on_hit": True} if phase.cancel_on_hit else {}),
+                **({"launches": phase.launches} if phase.launches else {}),
             }
             for phase in definition.phases
         ],
@@ -581,6 +593,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
         "max_charge_time": definition.max_charge_time,
         "charge_move_multiplier": definition.charge_move_multiplier,
         "uninterruptible": definition.uninterruptible,
+        **({"invincible": True} if definition.invincible else {}),
         "lunge_speed_multiplier": definition.lunge_speed_multiplier,
         "vertical_lunge": definition.vertical_lunge,
         "attack_move_multiplier": definition.attack_move_multiplier,

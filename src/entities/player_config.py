@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from src.combat.frame_data import AttackDefinition, MoveId
 from src.core.colors import Colors
-from src.core.settings import Combat, Guard, Physics
+from src.core.settings import Combat, Physics
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
@@ -66,10 +66,6 @@ class PlayerConfig:
         Duration after leaving a surface where jump is still allowed.
     jump_buffer_duration : float
         Duration to buffer a jump input before landing.
-    guard_posture_max : float
-        Maximum guard posture before break.
-    guard_break_lockout : float
-        Lockout after a guard break.
     max_dash_charges : int
         Maximum number of dash charges.
     dash_speed : float
@@ -112,8 +108,6 @@ class PlayerConfig:
     max_wall_jumps: int | float = float("inf")
     coyote_duration: float = Physics.COYOTE_DURATION
     jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
-    guard_posture_max: float = Guard.MAX_POSTURE
-    guard_break_lockout: float = Guard.BREAK_LOCKOUT
     max_dash_charges: int = Physics.DASH_MAX_CHARGES
     dash_speed: float = Physics.DASH_SPEED
     dash_duration: float = Physics.DASH_DURATION

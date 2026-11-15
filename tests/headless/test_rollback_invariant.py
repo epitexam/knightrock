@@ -15,6 +15,7 @@ out when two machines disagree.
 
 from __future__ import annotations
 
+import random
 from enum import Enum
 from typing import Any
 
@@ -28,6 +29,7 @@ from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.entities.entity import Entity
 from src.entities.player import Player
+from src.entities.player_kit import PromptKind
 from tests.headless.conftest import make_viewport
 
 #: Attribute names that are not simulation state, and why.
@@ -36,6 +38,9 @@ NOT_SNAPSHOTTED = {
     "_prev_pushbox": "sweep origin, re-derived",
     "_prev_hurtboxes": "sweep origin, re-derived",
     "_previous_contact_shape": "sweep origin, re-derived",
+    # Derived from the fury, the dark step and the slot machine before every
+    # update and after every restore; documented on AttackStateMachine.
+    "speed": "attack clock speed, re-derived",
     # Identity and wiring, not state.
     "id": "identity",
     "entity": "back-reference",
@@ -134,7 +139,7 @@ def _components(entity: Entity) -> dict[str, Any]:
     for name, state in getattr(entity.state_machine, "states", {}).items():
         parts[f"state[{name}]"] = state
     if isinstance(entity, Player):
-        for name in ("jump", "guard", "dash", "crouch", "input_handler"):
+        for name in ("jump", "dash", "battery", "fury", "slot", "prompt", "input_handler"):
             parts[name] = getattr(entity, name)
     return parts
 
@@ -161,7 +166,14 @@ def _scramble(level: Level) -> None:
         entity.otg_timer = 0.05 * index
         entity.gravity_scale = 0.5 + 0.1 * index
         entity.parries_given = index
-        entity.parries_taken = index + 1
+        entity.stun = 3.0 * index
+        entity.stun_decay_delay = 0.2 * index
+        if isinstance(entity, Player):
+            entity.rush_timer = 0.4
+            entity.battery.amount = 41.0
+            entity.fury.gain(35.0)
+            entity.slot.spin(random.Random(index))
+            entity.prompt.open(PromptKind.THROW, "e0", random.Random(index))
 
 
 def test_a_restore_brings_back_every_simulated_value() -> None:
@@ -177,7 +189,14 @@ def test_a_restore_brings_back_every_simulated_value() -> None:
     for entity in level.groups.entity_sprites:
         entity.juggle_timer = entity.otg_timer = 0.0
         entity.gravity_scale = 1.0
-        entity.parries_given = entity.parries_taken = 0
+        entity.parries_given = 0
+        entity.stun = entity.stun_decay_delay = 0.0
+        if isinstance(entity, Player):
+            entity.rush_timer = 0.0
+            entity.battery.reset()
+            entity.fury.reset()
+            entity.slot.reset()
+            entity.prompt.reset()
     level.load_state(snapshot)
     restored = _fingerprint(level)
 

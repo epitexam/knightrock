@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3522%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3514%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -55,13 +55,13 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 
 | Capability | What it does |
 |---|---|
-| **Frame-data combat** | Startup / active / recovery phases, chargeable heavies, combos, juggles, OTG guard and multi-hitbox attacks. |
+| **Hack 'n' slash combat** | No More Heroes 2 in 2D: high and low slashes against high and low guards, a blade battery to recharge by hand, beats that stun and throws, death blows on a direction prompt, a slot machine, blade locks, a dark step that slows the world and a fury gauge that opens the dark side -- on frame data with startup / active / recovery phases and multi-hitbox attacks. |
 | **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms, spatial hashing. |
 | **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors; the attacks, enemies and player have no copy in code. |
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3522 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3650 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -72,14 +72,15 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Action | Key |
 |---|---|
 | Move | `Left arrow` / `Right arrow` |
-| Crouch (ground) / fast fall (air) | `Down arrow` |
+| Low stance (ground) / fast fall (air) | `Down arrow` |
 | Jump | `Space` |
-| Dash (cancellable into an attack or guard) | `Left Shift` |
-| Guard (tap = parry) | `Q` |
+| Dodge (passes through enemies) | `Left Shift` |
+| Guard (held); with Down, recharge the battery | `Q` |
 | Reset position (debug builds only) | `R` |
-| Light attack | `A` |
-| Heavy attack (hold to charge, release to swing) | `S` |
-| Special attack | `G` + `H` |
+| Slash (hold to charge) | `A` |
+| Punch / kick (hold to charge); throw a stunned foe | `S` |
+| Shoot (hold to charge) | `D` |
+| Dark side (with a full fury gauge) | `G` + `H` |
 | Pause / resume | `Esc` / `Enter` |
 | Menu navigation | `Enter` / `N` |
 | Back in menus | `Esc` / right click |
@@ -89,22 +90,24 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Action | Button / axis |
 |---|---|
 | Move | Left stick (axis `0`) or D-pad (`0`) |
-| Crouch / fast fall | Left stick (axis `1`) or D-pad (`0`) |
+| Low stance / fast fall | Left stick (axis `1`) or D-pad (`0`) |
 | Jump | `A` (`0`) |
-| Light attack | `X` (`2`) |
-| Heavy attack | `Y` (`3`) |
-| Guard (tap = parry) | `LB` (`4`) |
-| Special attack | `X` + `Y` |
+| Slash (hold to charge) | `X` (`2`) |
+| Punch / kick (hold to charge); throw | `Y` (`3`) |
+| Shoot (hold to charge) | `B` (`1`) |
+| Guard; with Down, recharge | `LB` (`4`) |
+| Dark side (with a full fury gauge) | `X` + `Y` |
 | Dash | Axis `2` (left trigger on Linux) |
 | Reset position (debug builds only) | `View` (`6`) |
 | Pause / resume | `Start` (`7`) |
 | Menu navigation / confirm | Left stick or D-pad / `A` |
 | Back in menus | `B` |
 
-`B` is *Back* in the menus and free in the game, and it never pauses: the
+`B` is *Back* in the menus and the shot in the game, and it never pauses: the
 pause is `Start` on the pad and `Esc` on the keyboard. A settings file still on
 the previous default layout is moved to this one when it is read; a layout the
-player built is kept, with the reset moved off `Start`. Axis numbers are the
+player built is kept, with the reset moved off `Start`; a file from before the
+shot gets it on `B` and `D` unless something else is already there. Axis numbers are the
 joystick API's and differ by platform: on Windows axis `2` is the right stick's
 X, and the dash can be rebound from *Options → Controls*.
 
@@ -119,27 +122,69 @@ Three details of the menu navigation, all in `src/core/settings.py` under
 
 ---
 
-**Moves.** Two attack buttons; what they throw depends on what the fighter is
-doing (`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
+**Moves.** Three attack buttons -- the blade, the body and the shot -- the
+first two thrown high, or low with Down held, and all three charged when held.
+What a press throws depends on what the fighter is doing
+(`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
 
 | Input | Move |
 |---|---|
-| Light, light, light | `light_attack` → `twin_fangs` → `sweeping_arc` (finisher) |
-| Heavy during the light chain | `uppercut` (launcher) |
-| Heavy | `heavy_attack` (hold to charge) |
-| Dash, then light | `dash_attack` (continues into the chain) |
-| Down + light / heavy, on the ground | `crouch_slash` (repeats) / `crouch_sweep` |
-| Light, light in the air | `air_attack` → `air_forward` |
-| Heavy in the air | `air_rise` |
-| Down + heavy in the air | `air_sweep` (dive) |
-| Light or heavy just after a parry | `riposte` (fast, unblockable) |
-| Jump once an attack has hit | cancels it into the jump, to follow a launch up |
+| Slash ×4 | `slash_high_1` cut down → `_2` backhand → `_3` thrust that steps in → `_4` heavy vertical cut (finisher). Down switches any link to its low twin: knee cut, low backhand, low thrust, and a rising cut that launches |
+| Slash held | let go early: `charged_slash`, a wide cut that breaks a guard, harder with the time held. Held to the end: `charged_slash_full`, a bigger cut that throws a crescent forward |
+| Beat ×3 | `punch_1` jab → `punch_2` cross → `punch_3` uppercut (launches); fills the stun gauge |
+| Down + beat ×2 | `kick_1` sweep at the ankles → `kick_2` roundhouse that sends the foe into the wall |
+| Beat held | `charged_kick`: goes through guards and armour, pushes hard |
+| Shoot | `shot`: a short bolt fired from the blade for `Battery.SHOT_COST`; it breaks a wind-up from out of reach |
+| Shoot held | `piercing_shot`: a bolt that goes through every guard and every foe on its line |
+| Beat on a stunned foe in front, on the ground | the throw: a run of directions, then `throw` |
+| Down + slash over a downed foe | `stab`: kills it |
+| A slash that would kill | the foe is doomed: one direction, then `death_blow` |
+| Slash / beat / shoot in the air | `air_slash` / `air_kick` (dive) / `air_shot` |
+
+Every strike is sized to the drawn fighter (about 24 × 33 inside a 40 × 56
+hitbox): a blade about 28 long from the shoulder, a fist about 22, a leg about
+26; nothing reaches more than 48 in front or swings more than 150°, a high blow
+stays above the hips and a low one starts below them, and no two moves of one
+fighter share shape, timing, height and push (`tests/unit/test_move_proportions.py`).
+A phase can launch a shot as it turns active (`launches`, from
+`src/entities/shots.py`): the bolt, the piercing bolt, the crescent of a full
+cut, the slime's lobbed glob.
+
+**Enemies.** Each fighting type has its own moves: the goblin's two claws (an
+overhead swipe, a low reach), the tooth's bite at the head and snap at the
+ankles, the shell's shoulder bash and a roll along the floor that no guard
+stops -- it is jumped -- and the slime's slam and spat glob, which lands low.
+
+**What is drawn** (`src/core/rendering/strike_trails.py`, render only): a blade
+cuts a thin crescent, a heavy cut a wider one; the body leaves a short streak
+and a knuckle or a heel; a charged cut is gold and brighter the longer it was
+held, a full one white-hot with afterimages; the death blow is dark red. A
+held button gathers a ring at the hand that closes as it fills and flashes when
+full. An enemy winding up shows a chevron at the height it will strike -- red,
+or violet when no guard stops it.
 
 A link of a chain starts as soon as the previous one has hit, and a press made a
 little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
-can be. Every `Combat.COMBO_DASH_REFILL_HITS` hits of one combo give a dash
-charge back, and a hit landed out of a dash refunds that dash. A settings file that still binds the old third and fourth attack
-buttons is read with those two dropped.
+can be.
+
+**The combat loop.** Modelled on No More Heroes 2, in 2D (`src/core/settings.py`:
+`Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`):
+
+| Mechanic | Rule |
+|---|---|
+| **Guards** | An enemy that guards (`guards` in `enemies.json`) holds it high or low and switches now and then; a mark on its front edge shows which half. A slash at that height is stopped. Mid-combo it braces: the `Guard.BLOCK_AFTER_HITS`-th blockable blow in a row is stopped at its height, so the same slash mashed stalls. A blocked blow bounces off: the move ends, the player is pushed back (`Guard.DEFLECT_PUSH`), staggers for `Guard.DEFLECT_STAGGER` and pays `Battery.DEFLECT_COST`. The enemy answers with a counter thrown behind the guard until its recovery, which is the opening; a blade that meets the counter bounces off the same way and locks nothing. A punch, a kick or a charged slash breaks the guard for `Guard.BROKEN_TIME`. The player's guard is held and stops everything from the front, for `Battery.GUARD_COST`, except a blow that breaks it. |
+| **Battery** | Every slash costs `Battery.SLASH_COST`; on an empty battery a slash does `Battery.EMPTY_POWER` of its damage. Guard + Down recharges it, standing open. |
+| **Death blow** | A slash that would kill leaves the foe doomed at `Finisher.DOOM_HEALTH`. The fight slows to `Finisher.TIME_SCALE` and one direction is asked: given in time, the death blow lands, fills fury and spins the slot machine. Missed, the foe gets back up with `Finisher.RECOVER_RATIO` of its health. |
+| **Stun and throw** | Beats fill the stun gauge (the strip under an enemy's health bar). A stunned foe in front is grabbed with the beat button: `Throw.STEPS` directions, then the throw, which kills. A wrong one leaves the player open. |
+| **Downed** | A launched foe lies on the ground for `Combat.DOWNED_DURATION`; a low slash over it is the stab that ends it. |
+| **Blade lock** | Two blades that meet (`clash` on both hits) lock: mash the slash `Clash.PRESSES` times in `Clash.WINDOW` and the foe is thrown off balance (`Clash.WIN_STAGGER`) with its guard down for `Clash.WIN_OPEN` -- an opening, not a stun; lose, and it costs health. A counter never locks (see Guards). |
+| **Dark step** | A dodge less than `Rush.WINDOW` before a blow lands -- on the player, or on the spot the dodge left -- slows everything but the player for `Rush.DURATION`; slashes are free and fast meanwhile. |
+| **Fury** | Filled by landing hits, death blows, throws and dark steps; a hit taken costs `Fury.HURT_LOSS`. Its tiers (`Fury.TIERS`) speed the slashes up -- the HUD combo counter gains a `!` per tier. Full, the chord opens the dark side: `Fury.DARK_DURATION` seconds untouchable, faster, every blow a kill. |
+| **Slot machine** | Each death blow spins three reels; three of a kind (`Slot.JACKPOT_CHANCE`) grants a power for `Slot.POWER_DURATION`: stasis (the world slows, every blow kills), blitz (faster, every blow kills) or cleave (slashes `Slot.CLEAVE_MULT` harder). |
+
+During a prompt the player is untouchable and the fight around it nearly
+stops. Every `Combat.COMBO_DASH_REFILL_HITS` hits of one combo give a dash
+charge back, and a hit landed out of a dodge refunds it.
 
 ## In-game options
 
@@ -178,13 +223,12 @@ Every showcase feature is reachable from a single hotkey, live in game.
 
 | Key | Feature | Detail |
 |:---:|---|---|
-| `1` | Multi-hitbox | `twin_fangs` — blade plus a second, disjoint box |
-| `2` | Animated hitbox | `sweeping_arc` — the box grows along its keyframe curve |
-| `3` | Juggle | `sky_launcher` — launches upward with softened gravity (`×0.5`) |
-| `4` | OTG | `otg_slam` — the only attack allowed during the OTG guard |
-| `5` | Extra shapes | `p5_shapes` |
-| `6` | Radial burst | `circle_burst` |
-| `7` `8` `9` `0` | Air kit | `air_attack`, `air_forward`, `air_rise`, `air_sweep` — **in the air only** |
+| `1` `2` | Slash finishers | `slash_high_4`, `slash_low_4` |
+| `3` `4` | Beat finishers | `punch_3` (uppercut, launches), `kick_2` (roundhouse, into the wall) |
+| `5` | Charged slash | `charged_slash` — breaks a guard |
+| `6` | Stab | `stab` — kills a downed foe |
+| `7` `8` | Finishing moves | `death_blow`, `throw` — kill a helpless foe |
+| `9` `0` | Air kit | `air_slash`, `air_kick` — **in the air only** |
 | `V` | Projectile | plain `firebolt`, reuses `HitResolver` |
 | `B` | Piercing projectile | passes through, hits each target once |
 | `C` | Juggle dummy | pops an airborne dummy in front of the player |
@@ -193,9 +237,8 @@ Every showcase feature is reachable from a single hotkey, live in game.
 <details>
 <summary><b>Suggested juggle protocol</b></summary>
 
-Press `C`, then `3` under the dummy (neutral, while airborne) to start the
-juggle. Juggle mid-air with `A` during the jump, then finish on the ground with
-`4` while the OTG guard is active.
+Press `C` to pop an airborne dummy, slash it in the air with `A` during the
+jump, then `6` -- the stab -- once it lands.
 
 Under `DEBUG=1` the overlay shows the offensive boxes plus `Combo (air xN)`,
 `Juggle`, `OTG guard` and the `Shots` counter in the SCENE panel.
@@ -452,13 +495,6 @@ legacy, assist-free behaviour. All of them live in `src/core/settings.py`.
 | `Collision` | `MIN_PENETRATION_PX` | Grazes keep sliding instead of stopping dead. |
 | `Collision` | `MAX_RESOLVE_PX` | Anti-teleport guard; deeper overlaps flag the entity `crushed`. |
 | `PlatformRide` | `STICKY_FACTOR` | Stay mounted on fast-descending platforms. |
-| `Physics` | `CROUCH_HEIGHT_FACTOR` | Crouched hurtbox as a fraction of the standing height. |
-| `Physics` | `CROUCH_HEIGHT_BLEND_TIME` | Seconds to ease into and out of the crouched collider. |
-| `Physics` | `CROUCH_SPEED_MULT` | Crouch-walk speed as a fraction of the fighter's own speed. |
-
-> **The crouch constants live in `Physics`, not `GameFeel`.** They belong to the
-> collider, not to the feel, and their only readers are
-> `src/entities/crouch_posture.py` and `src/states/player_states.py`.
 
 ### Combat and knockback
 
@@ -476,9 +512,10 @@ Combat is frame-data driven: startup / active / recovery phases feed
 | `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
 | `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
 | `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
-| `Combat.KILL_HITSTOP` | The least a killing blow freezes the world. A hit's own `hit_stop` in `attacks.json` replaces the formula (the light chain's finisher uses it). |
+| `Combat.KILL_HITSTOP` / `EXECUTION_HITSTOP` | The least a killing blow, and an execution (a stab, a throw, a death blow), freeze the world. A hit's own `hit_stop` in `attacks.json` replaces the formula: the slash links freeze for two ticks, the finisher for seven. |
+| `Combat.OTG_INVULN_DURATION` / `ENEMY_OTG_INVULN_DURATION` | How long a fighter landing from a launch is safe from ground hits: the player is, an enemy is not, so the blow after a launch lands. |
 | `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
-| `CameraShake.HIT_TRAUMA` / `HIT_DIV` / `KILL_TRAUMA` | Every landed hit shakes a little, a kill a little more; the strongest of the tick wins. |
+| `CameraShake.HIT_TRAUMA` / `HIT_DIV` / `KILL_TRAUMA` / `EXECUTION_TRAUMA` | Every landed hit shakes a little, a kill a little more, an execution the most; the strongest of the tick wins. |
 | `CameraShake` | `MAX_PX`, `DECAY_PER_S`, `FREQUENCY` — the shake envelope itself. |
 
 Three things decide how far a hit sends its target, and nothing else does:
@@ -491,7 +528,7 @@ Three things decide how far a hit sends its target, and nothing else does:
   and knockback.
 
 A hit marked `flinch` in `attacks.json` does not push a grounded target
-sideways: the light chain's links stun without sending the target out of reach.
+sideways: the chains' links stun without sending the target out of reach.
 An airborne target is pushed as usual, so a juggle still carries.
 
 An enemy the last hit kills leaves the simulation on that tick, and a body in
@@ -505,8 +542,17 @@ picks one on entry (from the enemy's own random stream, so a rollback replays th
 choice) and closes in until it is in range. No more than `AI.MAX_ATTACKERS`
 enemies attack the player at once: the others wait at striking distance, which
 is counted from the roster's states each time and stored nowhere. The goblin and
-the tooth add a long low claw, the slime a low splash; a low attack is blocked
-crouching or jumped.
+the tooth add a long claw that sweeps the floor, the slime a splash: both can be
+jumped. The goblin's swipe meets a slash blade to blade (`clash` on both hits).
+
+**A slowed world is the same world on a slower clock.** During a dark step, a
+prompt or stasis, the physics stage hands every entity but the player a share
+of the tick's delta (`Player.world_time_scale`, `PhysicsSystem.process`), as do
+the platforms, the hazards and the projectiles; attacks count frames off that
+delta, so an enemy's swing takes that much longer. Fury, the dark side and
+blitz do the reverse: the player's attack clock runs fast, and the surplus
+frames are spent on the startup and the recovery only -- an active frame is
+never skipped, so a fast swing hits what a slow one would.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/states/reaction_states.py` fires for any entity whose `move_axis` is
@@ -650,7 +696,7 @@ are reviewable in a pull request. The frozen dataclasses stay the runtime model.
 | File | Contents |
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
-| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them; `moves` lists the attacks the AI chooses between. |
+| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them; `moves` lists the attacks the AI chooses between, `stun_max` and `stun_duration` are the stun gauge, `guards` whether the type holds a guard. |
 | `player.json` | Player overrides plus the name of the attack set to use. |
 | `levels.json` | Level id to TMX path mapping. |
 
@@ -784,9 +830,9 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3522 tests · 94 % instruction coverage · 86 % branch
-> coverage · Ruff clean · mypy clean (190 files across `src main.py tools`;
-> `mypy src` alone is 183).[^coverage]
+> **Current baseline:** 3650 tests · 94 % instruction coverage · 84 % branch
+> coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
+> `mypy src` alone is 181).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:
@@ -810,7 +856,7 @@ uv run mypy src main.py tools                         # types
 ```
 
 `C901` has no standalone CI step — it is enforced because it sits in the ruff
-`select` list consumed by the lint step. Ruff covers all four paths, 349 files.
+`select` list consumed by the lint step. Ruff covers all four paths, 369 files.
 
 `tests/` is **deliberately not type-checked**, which is why the mypy command omits
 it.[^mypy-tests] The suite pins behaviour, not annotations, and test doubles are
@@ -862,7 +908,7 @@ Written in French unless stated otherwise.
 | `docs/audit/architectural-recommendations.md` | The recommendations, the alternatives weighed, the target architecture. |
 | `docs/audit/refactoring-roadmap.md` | The staged roadmap the refactoring followed. |
 | `docs/audit/final-report.md` | What was changed, preserved, verified, the debt left, and the open points kept from the old notes. |
-| `docs/audit/combat-dynamism.md` | Why the combat lacked pace, measured, and what was changed. |
+| `docs/audit/combat-dynamism.md` | Why the combat lacked pace, measured, the first reworks (§8-§11), and the full No More Heroes 2 rework (§12). |
 | `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
 
 ---

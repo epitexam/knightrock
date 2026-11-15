@@ -2,10 +2,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from src.combat.frame_data import PhaseState
-from src.core.settings import Guard as GuardSettings
 from src.core.settings import Locomotion, Physics, Turn
 from src.physics import apply_velocity_friction
-from src.states.reaction_states import HurtState, KnockbackState, StaggerState
+from src.states.reaction_states import (
+    HurtState,
+    KnockbackState,
+    StaggerState,
+    apply_reaction_drag,
+)
 from src.states.state_machine import State, StateMachine
 from src.states.turn_state import TurnState
 
@@ -246,53 +250,6 @@ class PlayerChargeState(PlayerBaseState):
         self.entity.combat.charging.cancel()
 
 
-class PlayerCrouchState(PlayerBaseState):
-    """Hold-to-crouch: a low, shuffling ground posture that can still fight.
-
-    The collider height is *not* owned here. It belongs to
-    :class:`~src.entities.crouch_posture.CrouchPosture`, which the player ticks
-    every frame, so the blend runs through this state, through an attack out of
-    it, and through a guard out of it alike. A height owned by the state could
-    only be eased while the state was active, which meant every interrupt --
-    attacking, guarding, dashing -- snapped it back to full in one tick.
-
-    Leaving is gated on the collider having finished standing back up, so a
-    release under a low ceiling -- where the blend stops at the headroom and
-    never arrives -- holds the posture instead of leaving it half-risen.
-
-    Movement is a slow shuffle, not a stop: the fighter keeps whatever
-    horizontal speed they carried in and accelerates from there under a
-    ``CROUCH_SPEED_MULT`` axis. Zeroing the velocity on entry (the old
-    behaviour) meant a fighter at full run lost every pixel of momentum the
-    instant they pressed Down and had to re-accelerate from nothing on the way
-    out. ``_crouch_return`` reads the held direction so the shuffle resumes into
-    the right locomotion tier instead of dropping to idle.
-    """
-
-    def __init__(self, entity: Player):
-        super().__init__(entity, tags=["crouch", "busy"])
-
-    def update(self, delta_time: float) -> str | None:
-        saved_axis = self.entity.move_axis
-        self.entity.move_axis = saved_axis * Physics.CROUCH_SPEED_MULT
-        self.entity.apply_horizontal_movement(delta_time)
-        self.entity.move_axis = saved_axis
-        self.entity.handle_jump()
-        if self.entity.velocity.y < 0:
-            return "jump"
-        if not self.entity.on_surface["floor"]:
-            return "fall"
-        if not _wants_crouch(self.entity) and _is_fully_stood(self.entity):
-            return self._crouch_return()
-        return None
-
-    def _crouch_return(self) -> str:
-        """Ground return that resumes into locomotion when a direction is held."""
-        if self.entity.left_held or self.entity.right_held:
-            return resolve_locomotion_state(self.entity)
-        return "idle"
-
-
 class PlayerAttackState(PlayerBaseState):
     """Represent the PlayerAttack state."""
 
@@ -385,20 +342,60 @@ class PlayerAttackState(PlayerBaseState):
 
 
 class PlayerGuardState(PlayerBaseState):
+    """The guard, held: every blow from the front is stopped, but the guard is
+    slow to move in and a punch, a kick or a charged blow breaks it."""
+
     def __init__(self, entity: Player):
         super().__init__(entity, tags=["guard", "busy"])
 
     def update(self, delta_time: float) -> str | None:
         self.entity.handle_jump()
+        if self.entity.velocity.y < 0:
+            return "jump"
         saved_axis = self.entity.move_axis
-        self.entity.move_axis = saved_axis * GuardSettings.MOVE_MULT
+        self.entity.move_axis = saved_axis * GUARD_MOVE_MULT
         self.entity.apply_horizontal_movement(delta_time)
         self.entity.move_axis = saved_axis
-        if self.entity.guard.posture <= 0:
-            return "stagger"
-        if not self.entity.guard_held or not self.entity.guard.can_use():
+        if not _wants_guard(self.entity) or _wants_recharge(self.entity):
             return self.ground_return()
         return None
+
+
+class PlayerRechargeState(PlayerBaseState):
+    """Guard and Down held on the ground: the blade's battery fills, and the
+    fighter stands there, open."""
+
+    def __init__(self, entity: Player):
+        super().__init__(entity, tags=["recharge", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.velocity.x = 0.0
+
+    def update(self, delta_time: float) -> str | None:
+        apply_velocity_friction(self.entity, Physics.FLOOR_CONTROL, delta_time)
+        self.entity.battery.recharge(delta_time)
+        if not _wants_recharge(self.entity):
+            return self.ground_return()
+        return None
+
+
+class PlayerPromptState(PlayerBaseState):
+    """A prompt is up -- death blow, throw, blade lock: the fighter stands still
+    and untouchable until it is answered."""
+
+    def __init__(self, entity: Player):
+        super().__init__(entity, tags=["prompt", "busy", "invincible"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.velocity.x = 0.0
+
+    def update(self, delta_time: float) -> str | None:
+        self.entity.velocity.x = 0.0
+        if self.entity.prompt.active:
+            return None
+        if self.entity.combat.is_attacking:
+            return "attack"
+        return self.ground_return()
 
 
 class PlayerHurtState(HurtState["Player"]):
@@ -459,6 +456,7 @@ class PlayerDashState(PlayerBaseState):
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
+        self.entity.open_dodge_window()
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
         # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
@@ -537,7 +535,7 @@ class PlayerStaggerState(StaggerState["Player"]):
 
 
 class PlayerDizzyState(State["Player"]):
-    """Represent the PlayerDizzy state from consecutive perfect parries received."""
+    """Stunned by a full stun gauge; the shipped player has no gauge and never is."""
 
     def __init__(self, entity: Player):
         super().__init__(entity, tags=["dizzy", "busy"])
@@ -548,6 +546,7 @@ class PlayerDizzyState(State["Player"]):
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
         if self.entity.stagger_timer <= 0:
             return player_ground_return(self.entity)
         return None
@@ -570,7 +569,8 @@ class PlayerState(str, Enum):
     DASH = "dash"
     STAGGER = "stagger"
     CHARGE = "charge"
-    CROUCH = "crouch"
+    RECHARGE = "recharge"
+    PROMPT = "prompt"
     KNOCKBACK = "knockback"
     DIZZY = "dizzy"
 
@@ -604,30 +604,41 @@ def _can_dash(player: Player) -> bool:
     )
 
 
+#: Movement in the guard, as a share of the fighter's speed.
+GUARD_MOVE_MULT = 0.35
+
+#: The states the guard and the recharge can be entered from: the fighter is
+#: on its feet and doing nothing else.
+_FREE_STATES = (
+    PlayerState.IDLE,
+    PlayerState.WALK_SLOW,
+    PlayerState.WALK,
+    PlayerState.RUN,
+    PlayerState.TURN,
+)
+
+
+def _wants_guard(player: Player) -> bool:
+    return bool(player.guard_held) and bool(player.on_surface.get("floor", False))
+
+
+def _wants_recharge(player: Player) -> bool:
+    return _wants_guard(player) and bool(player.down_held)
+
+
 def _can_guard(player: Player) -> bool:
-    if not (player.guard_held and player.guard.can_use()):
+    """Whether the guard may be raised: held, on the floor, and free to."""
+    if not _wants_guard(player) or _wants_recharge(player):
+        return False
+    return player.state_machine.current_state_name in _FREE_STATES
+
+
+def _can_recharge(player: Player) -> bool:
+    """Whether the recharge may begin: guard and Down held, from the guard or free."""
+    if not _wants_recharge(player):
         return False
     current = player.state_machine.current_state_name
-    # ``CROUCH`` is deliberately absent: crouch-guard is a posture, not a
-    # different move. It used to be refused outright, which both ate the press
-    # (no buffer, unlike the attack path) and left the whole low/overhead half of
-    # ``Guard.HEIGHT_BLOCK`` unreachable in play. ``Player.receive_damage``
-    # reads the crouch flag off the state, so guarding from crouch resolves
-    # those rows.
-    # Allow guard cancel from dash after cancel window
-    if current == PlayerState.DASH:
-        return dash_cancel_open(player)
-    # Allow guard during dash coyote window
-    if bool(player.dash.in_coyote()):
-        return True
-    return current not in (
-        PlayerState.WALL_SLIDE,
-        PlayerState.HURT,
-        PlayerState.KNOCKBACK,
-        PlayerState.DASH,
-        PlayerState.STAGGER,
-        PlayerState.ATTACK,
-    )
+    return current in _FREE_STATES or current == PlayerState.GUARD
 
 
 def _can_attack_interrupt(player: Player) -> bool:
@@ -665,43 +676,8 @@ def _can_attack_interrupt(player: Player) -> bool:
     return True
 
 
-def _wants_crouch(player: Player) -> bool:
-    down = bool(player.down_held)
-    grounded = bool(player.on_surface.get("floor", False))
-    return down and grounded
-
-
-def _is_fully_stood(player: Player) -> bool:
-    """Whether the crouch blend has finished standing the fighter back up.
-
-    Never true under a low ceiling, which is the point: the posture is left once
-    there is room to leave it, not on the tick the button came up.
-    """
-    return bool(player.crouch.is_fully_stood)
-
-
-def _can_crouch(player: Player) -> bool:
-    """Whether the player may crouch from the state they are in.
-
-    ``turn`` is in there because a pivot is locomotion with a lean on it, and a
-    fighter who cannot crouch for the length of the hold has lost a move for
-    two hundred milliseconds because they turned around. The states not listed
-    are genuinely incompatible with it: they have already answered a different
-    question about what the fighter is doing.
-    """
-    if not _wants_crouch(player):
-        return False
-    return player.state_machine.current_state_name in (
-        PlayerState.IDLE,
-        PlayerState.WALK_SLOW,
-        PlayerState.WALK,
-        PlayerState.RUN,
-        PlayerState.TURN,
-    )
-
-
 def configure_player_state_machine(player: Player) -> None:
-    """Build the 17-state player machine (moved from Player, audit F1.1)."""
+    """Build the player's state machine and its interrupts."""
     sm = StateMachine(player)
     player.state_machine = sm
     sm.add_state(PlayerState.IDLE, PlayerIdleState(player))
@@ -714,8 +690,9 @@ def configure_player_state_machine(player: Player) -> None:
     sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))
     sm.add_state(PlayerState.ATTACK, PlayerAttackState(player))
     sm.add_state(PlayerState.CHARGE, PlayerChargeState(player))
-    sm.add_state(PlayerState.CROUCH, PlayerCrouchState(player))
     sm.add_state(PlayerState.GUARD, PlayerGuardState(player))
+    sm.add_state(PlayerState.RECHARGE, PlayerRechargeState(player))
+    sm.add_state(PlayerState.PROMPT, PlayerPromptState(player))
     sm.add_state(PlayerState.HURT, PlayerHurtState(player))
     sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
     sm.add_state(PlayerState.DASH, PlayerDashState(player))
@@ -723,6 +700,7 @@ def configure_player_state_machine(player: Player) -> None:
     sm.add_state(PlayerState.DIZZY, PlayerDizzyState(player))
     sm.set_initial_state(PlayerState.IDLE)
     sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
+    sm.add_interrupt(PlayerState.PROMPT, lambda: player.prompt.active, priority=120)
     sm.add_interrupt(PlayerState.GUARD, lambda: _can_guard(player), priority=60)
-    sm.add_interrupt(PlayerState.CROUCH, lambda: _can_crouch(player), priority=30)
+    sm.add_interrupt(PlayerState.RECHARGE, lambda: _can_recharge(player), priority=61)
     sm.add_interrupt(PlayerState.ATTACK, lambda: _can_attack_interrupt(player), priority=40)

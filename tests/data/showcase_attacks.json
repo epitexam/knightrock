@@ -27,8 +27,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -76,8 +74,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -151,8 +147,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -245,8 +239,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -336,8 +328,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -397,8 +387,6 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "hit_level": "med",
-              "block_mask": "any",
               "tags": []
             },
             "reset_targets": true,
@@ -432,6 +420,553 @@
         "lunge_speed_multiplier": 0.35,
         "vertical_lunge": 0.0,
         "attack_move_multiplier": 0.15
+      },
+      "special_attack": {
+        "phases": [
+          {
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 12.0,
+              "knockback": {
+                "power": [
+                  100.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.5,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  30.0,
+                  30.0
+                ],
+                "offset": [
+                  0.0,
+                  -20.0
+                ],
+                "keyframes": []
+              }
+            ]
+          },
+          {
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 12.0,
+              "knockback": {
+                "power": [
+                  100.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.5,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  40.0,
+                  40.0
+                ],
+                "offset": [
+                  0.0,
+                  -20.0
+                ],
+                "keyframes": []
+              }
+            ]
+          },
+          {
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 12.0,
+              "knockback": {
+                "power": [
+                  100.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.5,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  50.0,
+                  50.0
+                ],
+                "offset": [
+                  0.0,
+                  -20.0
+                ],
+                "keyframes": []
+              }
+            ]
+          },
+          {
+            "startup_frames": 6,
+            "active_frames": 8,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 12.0,
+              "knockback": {
+                "power": [
+                  100.0,
+                  -100.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.5,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  70.0,
+                  70.0
+                ],
+                "offset": [
+                  0.0,
+                  -20.0
+                ],
+                "keyframes": []
+              }
+            ]
+          },
+          {
+            "startup_frames": 3,
+            "active_frames": 10,
+            "recovery_frames": 25,
+            "hit": {
+              "damage": 30.0,
+              "knockback": {
+                "power": [
+                  900.0,
+                  -600.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "pierce",
+              "stagger": 0.8,
+              "super_armor_break": true,
+              "is_finisher": true,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  90.0,
+                  90.0
+                ],
+                "offset": [
+                  0.0,
+                  -20.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 2.0,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": true,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.0,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.1
+      },
+      "sweeping_arc": {
+        "phases": [
+          {
+            "startup_frames": 6,
+            "active_frames": 6,
+            "recovery_frames": 12,
+            "hit": {
+              "damage": 16.0,
+              "knockback": {
+                "power": [
+                  240.0,
+                  0.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.35,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": [],
+              "hit_stop": 0.16
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  40.0,
+                  22.0
+                ],
+                "offset": [
+                  24.0,
+                  -4.0
+                ],
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "size": [
+                      28.0,
+                      14.0
+                    ],
+                    "offset": [
+                      16.0,
+                      -2.0
+                    ]
+                  },
+                  {
+                    "frame": 6,
+                    "size": [
+                      55.0,
+                      28.0
+                    ],
+                    "offset": [
+                      30.0,
+                      -6.0
+                    ]
+                  },
+                  {
+                    "frame": 12,
+                    "size": [
+                      70.0,
+                      34.0
+                    ],
+                    "offset": [
+                      38.0,
+                      -8.0
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "cooldown": 0.0,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": true,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.7,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.4
+      },
+      "twin_fangs": {
+        "phases": [
+          {
+            "startup_frames": 4,
+            "active_frames": 6,
+            "recovery_frames": 6,
+            "hit": {
+              "damage": 8.0,
+              "knockback": {
+                "power": [
+                  60.0,
+                  0.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.15,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": [],
+              "flinch": true
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  45.0,
+                  22.0
+                ],
+                "offset": [
+                  26.0,
+                  -4.0
+                ],
+                "keyframes": []
+              },
+              {
+                "size": [
+                  30.0,
+                  18.0
+                ],
+                "offset": [
+                  20.0,
+                  -24.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 0.0,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.6,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.8
+      },
+      "dash_attack": {
+        "phases": [
+          {
+            "startup_frames": 1,
+            "active_frames": 8,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 16.0,
+              "knockback": {
+                "power": [
+                  550.0,
+                  -80.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "pierce",
+              "stagger": 0.25,
+              "super_armor_break": true,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  70.0,
+                  24.0
+                ],
+                "offset": [
+                  42.0,
+                  -8.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 0.25,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 1.0,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.7
+      },
+      "claw_swipe": {
+        "phases": [
+          {
+            "startup_frames": 16,
+            "active_frames": 5,
+            "recovery_frames": 4,
+            "hit": {
+              "damage": 12.0,
+              "knockback": {
+                "power": [
+                  100.0,
+                  -80.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.1,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  40.0,
+                  20.0
+                ],
+                "offset": [
+                  20.0,
+                  -4.0
+                ],
+                "keyframes": []
+              }
+            ]
+          },
+          {
+            "startup_frames": 2,
+            "active_frames": 5,
+            "recovery_frames": 16,
+            "hit": {
+              "damage": 10.0,
+              "knockback": {
+                "power": [
+                  120.0,
+                  -150.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.15,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "trade",
+              "height": "mid",
+              "tags": []
+            },
+            "reset_targets": true,
+            "cancel_into": [],
+            "hitboxes": [
+              {
+                "size": [
+                  48.0,
+                  24.0
+                ],
+                "offset": [
+                  24.0,
+                  4.0
+                ],
+                "keyframes": []
+              }
+            ]
+          }
+        ],
+        "cooldown": 1.0,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 1.0,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 0.35,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.3
       }
     }
   }

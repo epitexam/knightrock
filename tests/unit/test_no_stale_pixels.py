@@ -26,6 +26,7 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from src.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
 from src.ui.hud import HUD
 from tests.fakes import FighterSprite
 from tests.unit.helpers import make_overlay
@@ -64,10 +65,12 @@ class Player:
 
     health = 100
     max_health = 100
-    guard = SimpleNamespace(posture=50, max_posture=100, lockout_timer=0.0)
+    battery = Battery()
+    fury = FuryGauge()
+    slot = SlotMachine()
+    prompt = PromptController()
     dash = SimpleNamespace(charges=2, max_charges=2, recharge_timer=0.0)
-    combo_count = 0
-    combo_timer = 0.0
+    combat = SimpleNamespace(combo_count=0, combo_timer=0.0)
 
 
 def make_world() -> tuple[Renderer, SpriteGroups, Enemy, HUD, Player]:

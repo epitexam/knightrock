@@ -333,20 +333,19 @@ def test_an_attack_inside_the_hold_commes_out_the_new_way() -> None:
 def test_the_pivot_does_not_cost_the_player_a_move() -> None:
     """Two hundred milliseconds of lean must not take a button away.
 
-    Crouch is the one that would: its gate enumerates the states it may be
-    entered from, so a state nobody added is a state where the player cannot
-    crouch.
+    A low slash thrown inside the hold comes out as a low slash: the press
+    reads Down off the fighter, not off the state.
     """
     input_manager = InputManager()
     player = _player(input_manager)
     _run_at_full_speed(player, input_manager, 1.0)
+    _run(player, input_manager, frames=1, axis=-1.0)
+    assert _state(player) == PlayerState.TURN.value
 
-    _run(player, input_manager, frames=1, axis=-1.0, down=True)
+    _run(player, input_manager, frames=1, axis=-1.0, attack=True, down=True)
 
-    assert _state(player) in (PlayerState.TURN.value, PlayerState.CROUCH.value)
-    if _state(player) == PlayerState.TURN.value:
-        _run(player, input_manager, frames=1, axis=-1.0, down=True)
-        assert _state(player) == PlayerState.CROUCH.value
+    assert _state(player) == PlayerState.ATTACK.value
+    assert player.combat.state.attack_name == "slash_low_1"
 
 
 def test_a_jump_inside_the_hold_still_turns_the_fighter() -> None:

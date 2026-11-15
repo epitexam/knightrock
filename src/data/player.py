@@ -115,8 +115,6 @@ def read_player_config(
             ),
             coyote_duration=float(raw.get("coyote_duration", base.coyote_duration)),
             jump_buffer_duration=float(raw.get("jump_buffer_duration", base.jump_buffer_duration)),
-            guard_posture_max=float(raw.get("guard_posture_max", base.guard_posture_max)),
-            guard_break_lockout=float(raw.get("guard_break_lockout", base.guard_break_lockout)),
             max_dash_charges=int(raw.get("max_dash_charges", base.max_dash_charges)),
             dash_speed=float(raw.get("dash_speed", base.dash_speed)),
             dash_duration=float(raw.get("dash_duration", base.dash_duration)),

@@ -10,7 +10,13 @@ player loses. Run it before and after a tuning change and compare.
     uv run python tests/benchmarks/combat_feel.py --seconds 10 --json
 
 The player keeps within reach of the enemy (``KEEP_PX``) and presses a button
-on every other tick: the best a human masher can do. No art is needed.
+on every other tick: the best a human masher can do. A prompt -- the death
+blow, a throw, a blade lock -- is answered as soon as it shows. No art is
+needed.
+
+``mash_slash_vs_<enemy>`` kills with the blade and the death blow;
+``mash_beat_vs_<enemy>`` stuns with the body and throws. ``perfect_dodge_ticks``
+is how many ticks before a blow lands a dash still slows the world.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
+from src.combat.frame_data import PhaseState  # noqa: E402
 from src.combat.refusal import Refusal  # noqa: E402
 from src.core.input.input_actions import InputAction  # noqa: E402
 from src.core.input.input_manager import InputManager  # noqa: E402
@@ -49,6 +56,7 @@ from src.data.provider import shipped_gameplay_data  # noqa: E402
 from src.entities.enemies.enemy import Enemy  # noqa: E402
 from src.entities.enemies.factory import create_enemy  # noqa: E402
 from src.entities.player import Player  # noqa: E402
+from src.entities.player_kit import Direction  # noqa: E402
 
 DT = 1 / 60
 #: How close the scripted player stays to its enemy, edge to edge.
@@ -122,7 +130,7 @@ def _duel(
 ) -> dict[str, float | None]:
     level, pad, player, foe = _arena(enemy, ai, health)
     started = _count_starts(player)
-    landed = frozen = 0
+    landed = frozen = stunned_at = 0
     taken = 0.0
     foe_health, player_health = foe.health, player.health
     ticks = int(seconds * 60)
@@ -130,10 +138,14 @@ def _duel(
     for tick in range(ticks):
         pad.held = script(tick)
         pad.axis = _follow(player, foe)
+        if player.prompt.active:
+            pad.axis, pad.held = _answer(player, tick)
         frozen += level.gameplay_loop.combat_system.in_hit_stop
         level.update(DT)
         landed += foe.health < foe_health
         foe_health = foe.health
+        if not stunned_at and foe.is_stunned:
+            stunned_at = tick + 1
         taken += max(0.0, player_health - player.health)
         player_health = player.health
         if foe.is_dead:
@@ -147,6 +159,7 @@ def _duel(
         "hits_per_s": round(landed / elapsed, 2),
         "landed_ratio": round(landed / swings, 2) if swings else 0.0,
         "kill_s": round(killed_at, 2) if killed_at is not None else None,
+        "stun_s": round(stunned_at / 60, 2) if stunned_at else None,
         "hp_lost": round(taken, 1),
         "hit_stop_share": round(frozen / ticks, 2),
     }
@@ -170,6 +183,25 @@ def _count_starts(player: Player) -> list[int]:
     return count
 
 
+#: The stick and the buttons that give each direction a prompt asks for.
+_DIRECTIONS: dict[Direction, tuple[float, frozenset[InputAction]]] = {
+    Direction.LEFT: (-1.0, frozenset()),
+    Direction.RIGHT: (1.0, frozenset()),
+    Direction.UP: (0.0, frozenset({InputAction.JUMP})),
+    Direction.DOWN: (0.0, frozenset({InputAction.MOVE_DOWN})),
+}
+
+
+def _answer(player: Player, tick: int) -> tuple[float, frozenset[InputAction]]:
+    """The answer to the prompt up: its direction every other tick, or the slash mashed."""
+    if tick % 2 == 0:
+        return 0.0, frozenset()
+    expected = player.prompt.expected
+    if expected is None:
+        return 0.0, frozenset({InputAction.ATTACK_1})
+    return _DIRECTIONS[expected]
+
+
 def _follow(player: Player, foe: Enemy) -> float:
     dx = foe.hitbox.centerx - player.hitbox.centerx
     gap = abs(dx) - (foe.hitbox.w + player.hitbox.w) / 2
@@ -184,19 +216,57 @@ def _idle(_tick: int) -> frozenset[InputAction]:
     return frozenset()
 
 
+def _dodges_perfectly(lead: int) -> bool:
+    """Whether a dash thrown ``lead`` ticks before a goblin's blow lands slows the world."""
+    level, pad, player, foe = _arena("goblin")
+    for _ in range(600):
+        state = foe.combat.state
+        phase = state.current_phase_def
+        if (
+            phase is not None
+            and state.sub_state is PhaseState.STARTUP
+            and phase.startup_frames - state.frame_counter == lead + 1
+        ):
+            break
+        level.update(DT)
+    else:
+        return False
+    pad.axis = -1.0 if foe.hitbox.centerx > player.hitbox.centerx else 1.0
+    pad.held = frozenset({InputAction.DASH})
+    level.update(DT)
+    pad.held = frozenset()
+    pad.axis = 0.0
+    for _ in range(lead + 10):
+        level.update(DT)
+        if player.rush_timer > 0.0:
+            return True
+    return False
+
+
+def _perfect_dodge_ticks() -> int:
+    """The longest lead, in ticks, at which a dash away is still a perfect dodge."""
+    lead = 0
+    while lead < 60 and _dodges_perfectly(lead):
+        lead += 1
+    return lead
+
+
 def measure(seconds: float) -> dict[str, object]:
     """Every figure of the report, keyed by what it measures."""
     report: dict[str, object] = {}
     for name, button in (
-        ("light", InputAction.ATTACK_1),
-        ("heavy", InputAction.ATTACK_2),
+        ("slash", InputAction.ATTACK_1),
+        ("beat", InputAction.ATTACK_2),
     ):
         report[f"mash_{name}_vs_target"] = _duel(
             _mash(button), seconds, "goblin", ai=False, health=1e6
         )
     for enemy in FIGHTERS:
-        report[f"mash_light_vs_{enemy}"] = _duel(_mash(InputAction.ATTACK_1), 3 * seconds, enemy)
+        report[f"mash_slash_vs_{enemy}"] = _duel(_mash(InputAction.ATTACK_1), 3 * seconds, enemy)
+    for enemy in FIGHTERS:
+        report[f"mash_beat_vs_{enemy}"] = _duel(_mash(InputAction.ATTACK_2), 3 * seconds, enemy)
     report["idle_vs_goblin"] = _duel(_idle, seconds, "goblin")
+    report["perfect_dodge_ticks"] = _perfect_dodge_ticks()
     attacks = shipped_gameplay_data().attack_sets
     report["enemy_warning_ms"] = {
         f"{owner}.{name}": round(attack.phases[0].startup_frames / 60 * 1000)
