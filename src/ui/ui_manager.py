@@ -1,4 +1,5 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any
 
 import pygame
@@ -551,6 +552,27 @@ class UIManager:
     def draw_hud(self, player: Any) -> None:
         """Always-on player gauges: health and rally, blood, dash, combo (UI-7)."""
         self.hud.draw(player)
+
+    @contextmanager
+    def drawing_within(self, area: pygame.Rect | None) -> Iterator[None]:
+        """Lay out and paint inside ``area`` of the target, not the whole of it.
+
+        Under the *zoom* fit the window shows a crop of the target: anchored to
+        the target's corners, the gauges are painted in the part that is cut
+        off. Painting into a subsurface of the shown part puts every corner
+        anchor on a corner the player sees, with no layout knowing about it.
+        """
+        surface = self.renderer.surface
+        bounds = surface.get_rect()
+        shown = bounds if area is None else area.clip(bounds)
+        if shown == bounds or shown.width <= 0 or shown.height <= 0:
+            yield
+            return
+        self.renderer.surface = surface.subsurface(shown)
+        try:
+            yield
+        finally:
+            self.renderer.surface = surface
 
     # -- the WorldOverlay port -------------------------------------------------
     #

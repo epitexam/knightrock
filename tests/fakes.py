@@ -199,6 +199,7 @@ def game_shape(**fields: Any) -> SimpleNamespace:
         "ui": None,
         "clock": None,
         "notice_lines": (),
+        "shown_area": None,
         "notice": lambda *lines, seconds=4.0: None,
         "render_alpha": lambda: 0.0,
     }

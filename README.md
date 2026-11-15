@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3662%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3666%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3662 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3666 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -373,7 +373,9 @@ and the player chooses how big it is. Three rules replace all of that:
 - **how the picture fits is the player's choice**: bars, whole-pixel art (each art
   pixel an exact *k*×*k* block, bars taking the rest), or zoom to fill, which crops
   the overflow. All three show *at most* the framing — zoom shows strictly less,
-  so a video setting can never show more level than another.
+  so a video setting can never show more level than another. The HUD is laid out
+  in the part of the target the window shows (`Game.shown_area`), so under zoom
+  the gauges sit on the corners the player sees, not on the cropped-off ones.
 
 Resizing the window rebuilds the render target, re-reads the pixel density and
 re-lays out the interface — the same cascade as a window rebuild, which is why it
@@ -831,7 +833,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3662 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3666 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
 > `mypy src` alone is 181).[^coverage]
 

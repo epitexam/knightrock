@@ -191,6 +191,17 @@ class Game:
             return self.settings.ui_scale
         return self.settings.ui_scale * self.presentation.density
 
+    @property
+    def shown_area(self) -> pygame.Rect | None:
+        """The part of the target the window shows, in target pixels.
+
+        All of it under bars or whole pixels; the centre under the zoom fit,
+        which crops the picture to fill the window. ``None`` before a display.
+        """
+        if self.presentation is None:
+            return None
+        return pygame.Rect(self.presentation.picture.source)
+
     def _draw_target(self) -> pygame.Surface:
         """The surface every scene draws into."""
         return self.screen.target

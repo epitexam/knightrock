@@ -324,13 +324,17 @@ class GameplayScene(Scene):
         # declared about them any more: the next frame erases the whole target,
         # so a shrinking bar or an expiring combo cannot leave a stripe behind.
         ui = self._ui
-        if ui is not None:
+        if ui is None:
+            return
+        # Inside the part of the target the window shows: under the zoom fit
+        # the rest is cropped off, and the gauges anchored to its corners with it.
+        with ui.drawing_within(self.game.shown_area):
             ui.draw_hud(self.level.player)
-        notice = self.game.notice_lines
-        if ui is not None and notice:
-            ui.hud.draw_notice(notice)
-        if self.frozen:
-            self._draw_frozen_tag()
+            notice = self.game.notice_lines
+            if notice:
+                ui.hud.draw_notice(notice)
+            if self.frozen:
+                self._draw_frozen_tag()
 
     def _draw_frozen_tag(self) -> None:
         """Paint a red FROZEN marker, top-center, while the sim is held."""
