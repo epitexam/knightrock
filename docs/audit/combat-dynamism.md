@@ -779,3 +779,29 @@ recapturées ; l'ancien catalogue ayant été écrasé avant, la preuve « seule
 cause » des recaptures précédentes n'a pas pu être refaite. À noter : les
 pieds du personnage dessiné sont ~8 unités au-dessus du bas de sa boîte, donc
 du sol -- à vérifier côté sprite.
+
+### La charge fait grandir le coup ; X et Y deviennent deux familles (2026-11-15)
+
+Retour du développeur : aucune différence entre les coups de X et de Y, et la
+charge n'influence ni la taille ni la portée du coup. Vérifié dans l'historique :
+la charge n'a jamais agi que sur les dégâts, la poussée et l'étourdissement
+(`HitResolver`) ; jamais sur la forme. Et une charge pleine relançait son coup
+de palier à ×1, donc parfois moins fort qu'une charge presque pleine.
+
+- **La charge fait grandir le coup.** `HitboxManager` met à l'échelle toute la
+  forme (taille et décalage) de `1 + Combat.CHARGE_REACH_GAIN × (m − 1)` : à
+  pleine charge, la lame est 1,5 fois plus longue et porte 1,5 fois plus loin.
+  Les tirs aussi (`charged`, `src/entities/shots.py`) : plus gros, dégâts,
+  poussée et étourdissement multipliés.
+- **Le palier plein garde la puissance de la charge** et ajoute son extra
+  (croissant, perçage) ; `charged_slash_full` repart de la même base que
+  `charged_slash`.
+- **X et Y.** Le corps démarre plus tard (4 à 7 images contre 3), gèle plus
+  longtemps à l'impact (0,07 à 0,12 s contre 0,03), pousse fort (110 à 480
+  contre 30) ; le sabre reste rapide et long. À l'image : entaille nette pour
+  la lame, gerbe orange pour le corps, flash pour un coup chargé, dessinés
+  au-dessus du flash de l'ennemi touché (avant, ils étaient dessous).
+
+Équilibre inchangé dans le fond (10 duels de 12 s) : le marteleur ne gagne
+contre aucun ennemi qui garde, le lecteur bat gobelin, dent et coquille en
+3,1 à 3,6 s.

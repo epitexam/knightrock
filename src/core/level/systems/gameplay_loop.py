@@ -242,11 +242,11 @@ class GameplayLoop(CombatLoop):
 
     def _launch_shots(self, combatants: Iterable[Combatant]) -> None:
         """Put in flight every shot a phase threw this tick, from the hand forward."""
-        from src.entities.shots import SHOTS
+        from src.entities.shots import SHOTS, charged
 
         for fighter in combatants:
-            for name, _charge in fighter.combat.state.take_launches():
-                spec = SHOTS[name]
+            for name, charge in fighter.combat.state.take_launches():
+                spec = charged(SHOTS[name], charge)
                 side = 1.0 if fighter.facing_right else -1.0
                 width, height = spec.config.size
                 x = fighter.hitbox.centerx + spec.muzzle[0] * side - width / 2.0

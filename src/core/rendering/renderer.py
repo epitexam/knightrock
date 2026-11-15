@@ -507,10 +507,12 @@ class Renderer:
         blits = self._collect_visible_blits(groups)
         for surface, screen_rect in blits:
             self.surface.blit(surface, screen_rect)
-        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
-        self.strike_trails.draw(self.surface, self.camera)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
+        # After the hit flashes: a struck fighter flashes white, and the mark
+        # of the blow that struck it has to show on top of that.
+        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
+        self.strike_trails.draw(self.surface, self.camera)
         if debug_enabled:
             overlays = perf_counter()
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)

@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3650 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3656 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -146,6 +146,7 @@ hitbox): a blade about 28 long from the shoulder, a fist about 22, a leg about
 26; nothing reaches more than 48 in front or swings more than 150°, a high blow
 stays above the hips and a low one starts below them, and no two moves of one
 fighter share shape, timing, height and push (`tests/unit/test_move_proportions.py`).
+A charge grows what it throws: at the charge multiplier `m` (1 let go at once, 2 held to the end) the blow hits `m` times harder, pushes and stuns `m` times more, and its shape and reach are `1 + Combat.CHARGE_REACH_GAIN × (m − 1)` times the uncharged one's; a full charge keeps that power and adds its tier's extra (the crescent, the pierce). A charged shot grows the same way. The blade and the body are two kinds of blow: the blade is quicker, longer and pushes little; the body starts later, freezes longer on a hit, pushes hard, stuns and goes through guards (`tests/headless/test_charge_and_buttons.py`).
 A phase can launch a shot as it turns active (`launches`, from
 `src/entities/shots.py`): the bolt, the piercing bolt, the crescent of a full
 cut, the slime's lobbed glob.
@@ -161,7 +162,7 @@ and a knuckle or a heel; a charged cut is gold and brighter the longer it was
 held, a full one white-hot with afterimages; the death blow is dark red. A
 held button gathers a ring at the hand that closes as it fills and flashes when
 full. An enemy winding up shows a chevron at the height it will strike -- red,
-or violet when no guard stops it.
+or violet when no guard stops it. A blow that lands leaves its mark at the tip: a sharp cut for the blade, a burst of lines for the body, a cut with a flash for a charged one, drawn over the struck fighter's flash.
 
 A link of a chain starts as soon as the previous one has hit, and a press made a
 little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
@@ -830,7 +831,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3650 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3656 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
 > `mypy src` alone is 181).[^coverage]
 

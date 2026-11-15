@@ -106,6 +106,11 @@ class Physics:
 class Combat:
     """Combat, damage, and stagger mechanics."""
 
+    #: A charged move grows with its charge: at the charge multiplier ``m``
+    #: (1 to 2) its shape and its reach are ``1 + GAIN * (m - 1)`` times the
+    #: uncharged one's -- half again as long, held to the end.
+    CHARGE_REACH_GAIN = 0.5
+
     HURT_DURATION = 0.4
     PLAYER_HURT_DURATION = 0.12
     INVINCIBILITY_DURATION = 0.18

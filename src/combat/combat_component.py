@@ -373,8 +373,9 @@ class CombatComponent:
         name, multiplier = pending
         started, power = name, multiplier
         if full is not None and self.charging.is_full:
-            # A full charge throws its own, stronger move at its own power.
-            started, power = full, 1.0
+            # A full charge throws its own move, at the full charge's power:
+            # the tier adds to the charge, never replaces it.
+            started = full
         # The handler is cleared first because ``start_attack`` refuses outright
         # while a charge is in progress -- releasing has to make room before it
         # can be asked. A refusal therefore puts the charge back, which is what

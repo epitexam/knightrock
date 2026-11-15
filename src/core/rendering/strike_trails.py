@@ -70,20 +70,31 @@ class Look:
     """A soft halo this wide around the edge, in screen px."""
     samples: int = 10
     """How many samples the swath keeps: more is a longer wake."""
+    impact: str = "cut"
+    """What a landed blow leaves at the tip: ``"cut"`` a sharp slash mark,
+    ``"burst"`` a shock of lines, ``"flash"`` a cut with a white flash."""
 
 
 BLADE = Look((180, 220, 255), (250, 252, 255), 0.09, 150, 2, "blade")
 HEAVY_BLADE = Look((165, 205, 255), (255, 255, 255), 0.14, 175, 3, "blade", glow=4)
-CHARGED = Look((255, 205, 110), (255, 248, 215), 0.18, 185, 3, "blade", glow=6, samples=12)
-CHARGED_FULL = Look((255, 236, 170), (255, 255, 255), 0.26, 215, 4, "blade", glow=10, samples=16)
-DEATH = Look((70, 0, 18), (255, 50, 70), 0.32, 220, 3, "blade", glow=8, samples=16)
-BODY = Look((255, 205, 150), (255, 240, 215), 0.07, 120, 2, "limb")
-CHARGED_BODY = Look((255, 160, 70), (255, 235, 190), 0.16, 175, 3, "limb", glow=6, samples=12)
-THROW = Look((255, 225, 190), (255, 255, 255), 0.22, 160, 3, "ring")
-ENEMY = Look((255, 95, 75), (255, 205, 180), 0.10, 160, 2, "limb")
+CHARGED = Look(
+    (255, 205, 110), (255, 248, 215), 0.18, 185, 3, "blade", glow=6, samples=12, impact="flash"
+)
+CHARGED_FULL = Look(
+    (255, 236, 170), (255, 255, 255), 0.26, 215, 4, "blade", glow=10, samples=16, impact="flash"
+)
+DEATH = Look((70, 0, 18), (255, 50, 70), 0.32, 220, 3, "blade", glow=8, samples=16, impact="flash")
+BODY = Look((255, 170, 90), (255, 235, 200), 0.10, 150, 3, "limb", impact="burst")
+CHARGED_BODY = Look(
+    (255, 140, 50), (255, 235, 190), 0.16, 185, 4, "limb", glow=6, samples=12, impact="burst"
+)
+THROW = Look((255, 225, 190), (255, 255, 255), 0.22, 160, 3, "ring", impact="burst")
+ENEMY = Look((255, 95, 75), (255, 205, 180), 0.10, 160, 2, "limb", impact="burst")
 ENEMY_BLADE = Look((255, 95, 75), (255, 205, 180), 0.10, 160, 2, "blade")
-ENEMY_UNBLOCKABLE = Look((190, 110, 255), (240, 215, 255), 0.14, 180, 3, "limb", glow=5)
-ENEMY_RING = Look((255, 95, 75), (255, 205, 180), 0.14, 150, 3, "ring")
+ENEMY_UNBLOCKABLE = Look(
+    (190, 110, 255), (240, 215, 255), 0.14, 180, 3, "limb", glow=5, impact="burst"
+)
+ENEMY_RING = Look((255, 95, 75), (255, 205, 180), 0.14, 150, 3, "ring", impact="burst")
 
 #: Charge colours: gathering, then full.
 CHARGE_COLORS: dict[str, tuple[Color, Color]] = {
@@ -105,6 +116,8 @@ SHOT_COLORS: dict[str, tuple[Color, Color]] = {
 }
 #: How long a shot's trail lingers, in seconds.
 SHOT_TTL = 0.12
+#: How long an impact shows, in seconds.
+IMPACT_TTL = 0.16
 
 
 #: The player's moves drawn their own way; the rest follow their shape.
@@ -154,6 +167,19 @@ class _Trail:
     """A charged cut's opacity grows with the charge it was thrown at."""
     samples: list[_Sample] = field(default_factory=list)
     live: ShapePose | None = None
+    hits: int = 0
+    """Targets the strike had hit when last sampled: a new one is an impact."""
+
+
+@dataclass
+class _Impact:
+    point: Point
+    angle: float
+    kind: str
+    color: Color
+    size: float
+    """1 for a plain blow; a charged one is bigger."""
+    age: float = 0.0
 
 
 @dataclass
@@ -220,6 +246,7 @@ class StrikeTrails:
         self._charges: dict[int, _Charge] = {}
         self._warnings: list[_Warning] = []
         self._shots: dict[int, _Shot] = {}
+        self._impacts: list[_Impact] = []
         self._clock = 0.0
 
     def __len__(self) -> int:
@@ -230,6 +257,9 @@ class StrikeTrails:
     def update(self, fighters: Iterable[Any], dt: float, shots: Iterable[Any] = ()) -> None:
         """Age every sample, then sample the fighters and the shots in flight."""
         self._clock += dt
+        for impact in self._impacts:
+            impact.age += dt
+        self._impacts = [i for i in self._impacts if i.age < IMPACT_TTL]
         for trail in self._trails.values():
             trail.live = None
             for sample in trail.samples:
@@ -254,6 +284,7 @@ class StrikeTrails:
             return
         state = combat.state
         if not state.is_active:
+            self._late_impacts(fighter, combat)
             return
         shapes = combat.attack_shapes
         phase = combat.current_phase
@@ -272,6 +303,10 @@ class StrikeTrails:
                     trail.strength = 1.0
                 self._trails[key] = trail
             trail.live = shape
+            hits = len(state.targets_hit)
+            if hits > trail.hits:
+                self._impact(trail, shape)
+            trail.hits = hits
             inner, outer = _segment(shape)
             radius = shape.size[1] / 2.0
             if shape.kind is ShapeKind.CIRCLE:
@@ -287,6 +322,33 @@ class StrikeTrails:
                 continue
             trail.samples.append(_Sample(inner, outer, radius))
             del trail.samples[: -trail.look.samples]
+
+    def _late_impacts(self, fighter: Any, combat: Any) -> None:
+        """A hit counted after the last live frame -- a two-frame jab -- still leaves its mark."""
+        state = combat.state
+        if not state.is_attacking:
+            return
+        hits = len(state.targets_hit)
+        prefix = (id(fighter), int(combat.attacks_started), int(state.phase_index))
+        for key, trail in self._trails.items():
+            if key[:3] != prefix or hits <= trail.hits or not trail.samples:
+                continue
+            last = trail.samples[-1]
+            angle = math.degrees(
+                math.atan2(last.outer[1] - last.inner[1], last.outer[0] - last.inner[0])
+            )
+            self._impact(trail, ShapePose(ShapeKind.CAPSULE, (0.0, 0.0), last.outer, angle))
+            trail.hits = hits
+
+    def _impact(self, trail: _Trail, shape: ShapePose) -> None:
+        """A blow landed: mark it at the tip, the way its family hits."""
+        look = trail.look
+        point = shape.position if shape.kind is ShapeKind.CIRCLE else _segment(shape)[1]
+        size = 1.0
+        if look in (CHARGED, CHARGED_FULL, CHARGED_BODY, DEATH):
+            size = 1.6
+        self._impacts.append(_Impact(point, shape.angle, look.impact, look.edge, size))
+        del self._impacts[:-12]
 
     def _sample_charge(self, fighter: Any, dt: float) -> bool:
         combat = getattr(fighter, "combat", None)
@@ -375,6 +437,8 @@ class StrikeTrails:
             self._draw_charge(surface, charge, screen, density)
         for warning in self._warnings:
             self._draw_warning(surface, warning, screen, density)
+        for impact in self._impacts:
+            self._draw_impact(surface, impact, screen, density)
 
     @staticmethod
     def _layer(
@@ -434,11 +498,12 @@ class StrikeTrails:
             pygame.draw.line(layer, (*look.edge, 255), la, lb, max(1, look.rim - 1))
         else:
             # A limb: a short streak behind the tip, and the knuckle or the heel.
-            tip = max(2, int(round(min(shape.size[1] / 2.0, 5.0) * density)))
+            tip = max(3, int(round((shape.size[1] / 2.0 + 1.0) * density)))
             back = (lb[0] + (la[0] - lb[0]) * 0.45, lb[1] + (la[1] - lb[1]) * 0.45)
             if look.glow:
                 pygame.draw.circle(layer, (*look.core, 70), lb, tip + look.glow)
-            pygame.draw.line(layer, (*look.core, 170), back, lb, max(2, tip))
+            pygame.draw.line(layer, OUTLINE, back, lb, tip * 2 + 2)
+            pygame.draw.line(layer, (*look.core, 190), back, lb, tip * 2)
             pygame.draw.circle(layer, OUTLINE, lb, tip + 1)
             pygame.draw.circle(layer, (*look.core, 235), lb, tip)
             pygame.draw.circle(layer, (*look.edge, 255), lb, max(1, tip // 2))
@@ -528,6 +593,55 @@ class StrikeTrails:
         f = warning.facing
         chevron = [(x - f * size, y - size), (x + f * size, y), (x - f * size, y + size)]
         pygame.draw.lines(layer, (*color, alpha), False, chevron, max(2, int(2 * density)))
+        surface.blit(layer, (left, top))
+
+    def _draw_impact(
+        self, surface: pygame.Surface, impact: _Impact, screen: Screen, density: float
+    ) -> None:
+        t = impact.age / IMPACT_TTL
+        fade = 1.0 - t
+        grow = (0.8 + 0.9 * t) * impact.size * density
+        center = screen(impact.point)
+        reach = 18.0 * grow + 4
+        made = self._layer(
+            surface,
+            [(center[0] - reach, center[1] - reach), (center[0] + reach, center[1] + reach)],
+        )
+        if made is None:
+            return
+        layer, (left, top) = made
+        x, y = center[0] - left, center[1] - top
+        alpha = int(255 * fade)
+        if impact.kind == "burst":
+            # A shock: a ring that widens, and short lines thrown out from it.
+            radius = max(3, int(13 * grow))
+            pygame.draw.circle(
+                layer, (*impact.color, alpha), (x, y), radius, max(1, int(2 * density))
+            )
+            for k in range(8):
+                a = k * math.pi / 4 + 0.3
+                r0, r1 = radius * 0.9, radius * 0.9 + 7 * grow * fade + 2
+                p0 = (x + math.cos(a) * r0, y + math.sin(a) * r0)
+                p1 = (x + math.cos(a) * r1, y + math.sin(a) * r1)
+                pygame.draw.line(layer, OUTLINE, p0, p1, max(2, int(3 * density)))
+                pygame.draw.line(layer, (*impact.color, alpha), p0, p1, max(1, int(2 * density)))
+        else:
+            # A cut: a sharp mark across the blade's line, and a flash if charged.
+            if impact.kind == "flash":
+                pygame.draw.circle(layer, (255, 255, 255, int(160 * fade)), (x, y), int(12 * grow))
+            a = math.radians(impact.angle + 90.0)
+            half = 18.0 * grow
+            dx, dy = math.cos(a) * half, math.sin(a) * half
+            pygame.draw.line(
+                layer, OUTLINE, (x - dx, y - dy), (x + dx, y + dy), max(3, int(4 * density))
+            )
+            pygame.draw.line(
+                layer,
+                (*impact.color, alpha),
+                (x - dx, y - dy),
+                (x + dx, y + dy),
+                max(1, int(2 * density)),
+            )
         surface.blit(layer, (left, top))
 
     def _draw_shot(

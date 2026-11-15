@@ -12,7 +12,7 @@ blade spits, the full-charge one that pierces, the slime's lobbed glob.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import Height, HitProperties
@@ -20,7 +20,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind
 from src.entities.projectile import ProjectileConfig
 
-__all__ = ["SHOTS", "ShotSpec"]
+__all__ = ["SHOTS", "ShotSpec", "charged"]
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,8 @@ SHOTS: dict[str, ShotSpec] = {
             lifetime=0.32,
             shape=ShapeKind.OBB,
             hit=HitProperties(
-                damage=10.0,
-                knockback=KnockbackConfig(power=(260.0, -80.0)),
+                damage=7.0,
+                knockback=KnockbackConfig(power=(160.0, -50.0)),
                 damage_type=DamageType.SLASH,
                 stagger=0.3,
                 unblockable=True,
@@ -122,3 +122,30 @@ SHOTS: dict[str, ShotSpec] = {
         muzzle=(10.0, -4.0),
     ),
 }
+
+
+def charged(spec: ShotSpec, charge_multiplier: float) -> ShotSpec:
+    """``spec`` thrown at ``charge_multiplier``: bigger, harder, as a charged blow is.
+
+    The size grows like a charged blow's reach (``Combat.CHARGE_REACH_GAIN``);
+    damage, push and stun by the multiplier itself, as the resolver scales a
+    melee hit.
+    """
+    if charge_multiplier <= 1.0:
+        return spec
+    from src.combat.hitbox_manager import charge_reach_scale
+
+    grow = charge_reach_scale(charge_multiplier)
+    config = spec.config
+    hit = config.hit
+    power = hit.knockback.power
+    hit = replace(
+        hit,
+        damage=hit.damage * charge_multiplier,
+        stun=hit.stun * charge_multiplier,
+        knockback=replace(
+            hit.knockback, power=(power[0] * charge_multiplier, power[1] * charge_multiplier)
+        ),
+    )
+    size = (config.size[0] * grow, config.size[1] * grow)
+    return replace(spec, config=replace(config, size=size, hit=hit))

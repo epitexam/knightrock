@@ -1512,14 +1512,14 @@
       "punch_1": {
         "phases": [
           {
-            "startup_frames": 3,
+            "startup_frames": 4,
             "active_frames": 2,
-            "recovery_frames": 6,
+            "recovery_frames": 8,
             "hit": {
-              "damage": 4.0,
+              "damage": 5.0,
               "knockback": {
                 "power": [
-                  30.0,
+                  110.0,
                   0.0
                 ],
                 "mode": "from_attacker"
@@ -1536,7 +1536,7 @@
               "height": "mid",
               "tags": [],
               "flinch": true,
-              "hit_stop": 0.05,
+              "hit_stop": 0.07,
               "stun": 18.0
             },
             "reset_targets": true,
@@ -1604,6 +1604,17 @@
                   {
                     "frame": 4,
                     "size": [
+                      8.0,
+                      8.0
+                    ],
+                    "offset": [
+                      8.0,
+                      4.0
+                    ]
+                  },
+                  {
+                    "frame": 5,
+                    "size": [
                       18.5,
                       8.0
                     ],
@@ -1613,7 +1624,7 @@
                     ]
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       22.0,
                       8.0
@@ -1652,15 +1663,15 @@
       "punch_2": {
         "phases": [
           {
-            "startup_frames": 4,
+            "startup_frames": 5,
             "active_frames": 3,
-            "recovery_frames": 7,
+            "recovery_frames": 10,
             "hit": {
-              "damage": 5.0,
+              "damage": 6.0,
               "knockback": {
                 "power": [
-                  60.0,
-                  0.0
+                  190.0,
+                  -20.0
                 ],
                 "mode": "from_attacker"
               },
@@ -1676,7 +1687,7 @@
               "height": "mid",
               "tags": [],
               "flinch": true,
-              "hit_stop": 0.06,
+              "hit_stop": 0.09,
               "stun": 22.0
             },
             "reset_targets": true,
@@ -1760,6 +1771,18 @@
                   {
                     "frame": 5,
                     "size": [
+                      8.0,
+                      9.0
+                    ],
+                    "offset": [
+                      9.99,
+                      4.28
+                    ],
+                    "angle": 4.0
+                  },
+                  {
+                    "frame": 6,
+                    "size": [
                       18.0,
                       9.0
                     ],
@@ -1770,7 +1793,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 7,
                     "size": [
                       24.0,
                       9.0
@@ -1782,7 +1805,7 @@
                     "angle": 4.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
                     "size": [
                       26.0,
                       9.0
@@ -1823,15 +1846,15 @@
       "punch_3": {
         "phases": [
           {
-            "startup_frames": 5,
+            "startup_frames": 6,
             "active_frames": 4,
-            "recovery_frames": 14,
+            "recovery_frames": 16,
             "hit": {
-              "damage": 6.0,
+              "damage": 8.0,
               "knockback": {
                 "power": [
                   40.0,
-                  -400.0
+                  -420.0
                 ],
                 "mode": "from_attacker"
               },
@@ -1847,7 +1870,7 @@
               "height": "mid",
               "tags": [],
               "flinch": true,
-              "hit_stop": 0.08,
+              "hit_stop": 0.12,
               "stun": 26.0
             },
             "reset_targets": true,
@@ -1882,10 +1905,10 @@
                       9.0
                     ],
                     "offset": [
-                      12.95,
-                      17.19
+                      12.86,
+                      17.27
                     ],
-                    "angle": 46.0
+                    "angle": 46.67
                   },
                   {
                     "frame": 2,
@@ -1894,10 +1917,10 @@
                       9.0
                     ],
                     "offset": [
-                      13.43,
-                      16.69
+                      13.27,
+                      16.86
                     ],
-                    "angle": 42.0
+                    "angle": 43.33
                   },
                   {
                     "frame": 3,
@@ -1906,10 +1929,10 @@
                       9.0
                     ],
                     "offset": [
-                      13.88,
-                      16.16
+                      13.66,
+                      16.43
                     ],
-                    "angle": 38.0
+                    "angle": 40.0
                   },
                   {
                     "frame": 4,
@@ -1918,13 +1941,25 @@
                       9.0
                     ],
                     "offset": [
-                      14.29,
-                      15.59
+                      14.02,
+                      15.97
                     ],
-                    "angle": 34.0
+                    "angle": 36.67
                   },
                   {
                     "frame": 5,
+                    "size": [
+                      20.0,
+                      9.0
+                    ],
+                    "offset": [
+                      14.35,
+                      15.5
+                    ],
+                    "angle": 33.33
+                  },
+                  {
+                    "frame": 6,
                     "size": [
                       20.0,
                       9.0
@@ -1936,7 +1971,7 @@
                     "angle": 30.0
                   },
                   {
-                    "frame": 6,
+                    "frame": 7,
                     "size": [
                       20.0,
                       9.0
@@ -1948,7 +1983,7 @@
                     "angle": -18.12
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
                     "size": [
                       20.0,
                       9.0
@@ -1960,7 +1995,7 @@
                     "angle": -52.5
                   },
                   {
-                    "frame": 8,
+                    "frame": 9,
                     "size": [
                       20.0,
                       9.0
@@ -1972,7 +2007,7 @@
                     "angle": -73.12
                   },
                   {
-                    "frame": 9,
+                    "frame": 10,
                     "size": [
                       20.0,
                       9.0
@@ -2008,15 +2043,15 @@
       "kick_1": {
         "phases": [
           {
-            "startup_frames": 4,
+            "startup_frames": 5,
             "active_frames": 4,
-            "recovery_frames": 8,
+            "recovery_frames": 10,
             "hit": {
-              "damage": 5.0,
+              "damage": 6.0,
               "knockback": {
                 "power": [
-                  40.0,
-                  -60.0
+                  60.0,
+                  -220.0
                 ],
                 "mode": "from_attacker"
               },
@@ -2032,7 +2067,7 @@
               "height": "low",
               "tags": [],
               "flinch": true,
-              "hit_stop": 0.05,
+              "hit_stop": 0.08,
               "stun": 16.0
             },
             "reset_targets": true,
@@ -2072,10 +2107,10 @@
                       9.0
                     ],
                     "offset": [
-                      11.77,
-                      22.57
+                      11.66,
+                      22.7
                     ],
-                    "angle": 41.25
+                    "angle": 42.0
                   },
                   {
                     "frame": 2,
@@ -2084,10 +2119,10 @@
                       9.0
                     ],
                     "offset": [
-                      12.31,
-                      21.91
+                      12.1,
+                      22.18
                     ],
-                    "angle": 37.5
+                    "angle": 39.0
                   },
                   {
                     "frame": 3,
@@ -2096,13 +2131,25 @@
                       9.0
                     ],
                     "offset": [
-                      12.81,
-                      21.22
+                      12.52,
+                      21.64
                     ],
-                    "angle": 33.75
+                    "angle": 36.0
                   },
                   {
                     "frame": 4,
+                    "size": [
+                      26.0,
+                      9.0
+                    ],
+                    "offset": [
+                      12.9,
+                      21.08
+                    ],
+                    "angle": 33.0
+                  },
+                  {
+                    "frame": 5,
                     "size": [
                       26.0,
                       9.0
@@ -2114,7 +2161,7 @@
                     "angle": 30.0
                   },
                   {
-                    "frame": 5,
+                    "frame": 6,
                     "size": [
                       26.0,
                       9.0
@@ -2126,7 +2173,7 @@
                     "angle": 19.06
                   },
                   {
-                    "frame": 6,
+                    "frame": 7,
                     "size": [
                       26.0,
                       9.0
@@ -2138,7 +2185,7 @@
                     "angle": 11.25
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
                     "size": [
                       26.0,
                       9.0
@@ -2150,7 +2197,7 @@
                     "angle": 6.56
                   },
                   {
-                    "frame": 8,
+                    "frame": 9,
                     "size": [
                       26.0,
                       9.0
@@ -2191,14 +2238,14 @@
       "kick_2": {
         "phases": [
           {
-            "startup_frames": 6,
+            "startup_frames": 7,
             "active_frames": 4,
-            "recovery_frames": 14,
+            "recovery_frames": 16,
             "hit": {
-              "damage": 7.0,
+              "damage": 9.0,
               "knockback": {
                 "power": [
-                  440.0,
+                  480.0,
                   -120.0
                 ],
                 "mode": "from_attacker"
@@ -2215,7 +2262,7 @@
               "height": "mid",
               "tags": [],
               "flinch": true,
-              "hit_stop": 0.08,
+              "hit_stop": 0.12,
               "stun": 20.0
             },
             "reset_targets": true,
@@ -2250,10 +2297,10 @@
                       10.0
                     ],
                     "offset": [
-                      7.94,
-                      21.77
+                      7.83,
+                      21.82
                     ],
-                    "angle": 66.67
+                    "angle": 67.14
                   },
                   {
                     "frame": 2,
@@ -2262,10 +2309,10 @@
                       10.0
                     ],
                     "offset": [
-                      8.73,
-                      21.4
+                      8.51,
+                      21.51
                     ],
-                    "angle": 63.33
+                    "angle": 64.29
                   },
                   {
                     "frame": 3,
@@ -2274,10 +2321,10 @@
                       10.0
                     ],
                     "offset": [
-                      9.5,
-                      20.99
+                      9.17,
+                      21.17
                     ],
-                    "angle": 60.0
+                    "angle": 61.43
                   },
                   {
                     "frame": 4,
@@ -2286,10 +2333,10 @@
                       10.0
                     ],
                     "offset": [
-                      10.24,
-                      20.53
+                      9.82,
+                      20.8
                     ],
-                    "angle": 56.67
+                    "angle": 58.57
                   },
                   {
                     "frame": 5,
@@ -2298,13 +2345,25 @@
                       10.0
                     ],
                     "offset": [
-                      10.96,
-                      20.03
+                      10.45,
+                      20.39
                     ],
-                    "angle": 53.33
+                    "angle": 55.71
                   },
                   {
                     "frame": 6,
+                    "size": [
+                      30.0,
+                      10.0
+                    ],
+                    "offset": [
+                      11.06,
+                      19.96
+                    ],
+                    "angle": 52.86
+                  },
+                  {
+                    "frame": 7,
                     "size": [
                       30.0,
                       10.0
@@ -2316,7 +2375,7 @@
                     "angle": 50.0
                   },
                   {
-                    "frame": 7,
+                    "frame": 8,
                     "size": [
                       30.0,
                       10.0
@@ -2328,7 +2387,7 @@
                     "angle": 17.19
                   },
                   {
-                    "frame": 8,
+                    "frame": 9,
                     "size": [
                       30.0,
                       10.0
@@ -2340,7 +2399,7 @@
                     "angle": -6.25
                   },
                   {
-                    "frame": 9,
+                    "frame": 10,
                     "size": [
                       30.0,
                       10.0
@@ -2352,7 +2411,7 @@
                     "angle": -20.31
                   },
                   {
-                    "frame": 10,
+                    "frame": 11,
                     "size": [
                       30.0,
                       10.0
@@ -2588,11 +2647,11 @@
             "active_frames": 4,
             "recovery_frames": 2,
             "hit": {
-              "damage": 18.0,
+              "damage": 12.0,
               "knockback": {
                 "power": [
-                  320.0,
-                  -120.0
+                  220.0,
+                  -80.0
                 ],
                 "mode": "from_attacker"
               },
@@ -2608,126 +2667,126 @@
               "height": "mid",
               "tags": [],
               "hit_stop": 0.12,
-              "stun": 25.0
+              "stun": 15.0
             },
             "reset_targets": true,
             "cancel_into": [],
             "hitboxes": [
               {
                 "size": [
-                  40.0,
+                  34.0,
                   8.0
                 ],
                 "offset": [
-                  -4.45,
-                  -18.13
+                  -3.18,
+                  -15.41
                 ],
                 "keyframes": [
                   {
                     "frame": 0,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      -4.45,
-                      -18.13
+                      -3.18,
+                      -15.41
                     ],
                     "angle": -115.0
                   },
                   {
                     "frame": 1,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      -3.25,
-                      -18.64
+                      -2.16,
+                      -15.84
                     ],
                     "angle": -111.25
                   },
                   {
                     "frame": 2,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      -2.01,
-                      -19.07
+                      -1.11,
+                      -16.21
                     ],
                     "angle": -107.5
                   },
                   {
                     "frame": 3,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      -0.75,
-                      -19.43
+                      -0.04,
+                      -16.51
                     ],
                     "angle": -103.75
                   },
                   {
                     "frame": 4,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      0.53,
-                      -19.7
+                      1.05,
+                      -16.74
                     ],
                     "angle": -100.0
                   },
                   {
                     "frame": 5,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      20.51,
-                      -11.29
+                      18.03,
+                      -9.6
                     ],
                     "angle": -34.38
                   },
                   {
                     "frame": 6,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      23.53,
-                      4.33
+                      20.6,
+                      3.68
                     ],
                     "angle": 12.5
                   },
                   {
                     "frame": 7,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      19.18,
-                      13.02
+                      16.9,
+                      11.07
                     ],
                     "angle": 40.62
                   },
                   {
                     "frame": 8,
                     "size": [
-                      40.0,
+                      34.0,
                       8.0
                     ],
                     "offset": [
-                      16.86,
-                      15.32
+                      14.93,
+                      13.02
                     ],
                     "angle": 50.0
                   }
