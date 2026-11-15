@@ -123,6 +123,14 @@ IMPACT_TTL = 0.16
 #: hitbox centre, y down), and their colour.
 SPEED_LINE_ROWS = (-12.0, -4.0, 4.0, 12.0)
 SPEED_LINE_COLOR: Color = (215, 240, 255)
+#: How long the speed lines outlast the dash, fading, in seconds.
+DASH_LINGER = 0.14
+#: The dark step: the ring it throws out, and the world's tint while it lasts.
+RUSH_RING_TTL = 0.45
+RUSH_COLOR: Color = (170, 110, 255)
+RUSH_TINT: tuple[int, int, int, int] = (60, 20, 110, 55)
+#: How long the tint takes to come in and go out, in seconds of the rush.
+RUSH_FADE = 0.2
 
 
 #: The player's moves drawn their own way; the rest follow their shape.
@@ -203,6 +211,8 @@ class _Dash:
     direction: float
     """+1 moving right, -1 moving left."""
     speed: float
+    age: float = 0.0
+    """Time since the dash was last seen: the lines fade out over ``DASH_LINGER``."""
 
 
 @dataclass
@@ -221,6 +231,10 @@ class _Shot:
     heading: Point = (1.0, 0.0)
     size: tuple[float, float] = (8.0, 8.0)
     live: bool = False
+
+
+def _impact_ttl(impact: _Impact) -> float:
+    return RUSH_RING_TTL if impact.kind == "rush" else IMPACT_TTL
 
 
 def _segment(shape: ShapePose) -> tuple[Point, Point]:
@@ -261,7 +275,9 @@ class StrikeTrails:
         self._warnings: list[_Warning] = []
         self._shots: dict[int, _Shot] = {}
         self._impacts: list[_Impact] = []
-        self._dashes: list[_Dash] = []
+        self._dashes: dict[int, _Dash] = {}
+        self._rushing: dict[int, float] = {}
+        """The fighters in a dark step, and how much of it is left (seconds)."""
         self._clock = 0.0
 
     def __len__(self) -> int:
@@ -274,22 +290,27 @@ class StrikeTrails:
         self._clock += dt
         for impact in self._impacts:
             impact.age += dt
-        self._impacts = [i for i in self._impacts if i.age < IMPACT_TTL]
+        self._impacts = [i for i in self._impacts if i.age < _impact_ttl(i)]
         for trail in self._trails.values():
             trail.live = None
             for sample in trail.samples:
                 sample.age += dt
             trail.samples = [s for s in trail.samples if s.age < trail.look.ttl]
         self._warnings = []
-        self._dashes = []
+        for dash in self._dashes.values():
+            dash.age += dt
+        self._dashes = {k: d for k, d in self._dashes.items() if d.age < DASH_LINGER}
+        rushing: dict[int, float] = {}
         charging: set[int] = set()
         for fighter in fighters:
             self._sample(fighter)
-            self._sample_dash(fighter)
+            self._sample_dash(fighter, dt)
+            self._sample_rush(fighter, rushing)
             if self._sample_charge(fighter, dt):
                 charging.add(id(fighter))
             self._sample_warning(fighter)
         self._charges = {key: charge for key, charge in self._charges.items() if key in charging}
+        self._rushing = rushing
         self._trails = {
             key: trail for key, trail in self._trails.items() if trail.samples or trail.live
         }
@@ -383,7 +404,7 @@ class StrikeTrails:
         charge.full_for = charge.full_for + dt if ratio >= 1.0 else 0.0
         return True
 
-    def _sample_dash(self, fighter: Any) -> None:
+    def _sample_dash(self, fighter: Any, dt: float) -> None:
         if getattr(fighter, "faction", "") != "player":
             return
         machine = getattr(fighter, "state_machine", None)
@@ -395,7 +416,25 @@ class StrikeTrails:
             return
         direction = 1.0 if speed > 0.0 else -1.0
         back_x = fighter.hitbox.centerx - direction * fighter.hitbox.width / 2.0
-        self._dashes.append(_Dash((back_x, fighter.hitbox.centery), direction, abs(speed)))
+        back = (back_x, fighter.hitbox.centery)
+        record = self._dashes.get(id(fighter))
+        # New only if it was not dashing on the last update: a live dash has
+        # aged by exactly this update's dt when it is sampled again.
+        if record is None or record.age > dt + 1e-9:
+            # A dash begins: the air it leaves claps shut behind it.
+            angle = 0.0 if direction > 0.0 else 180.0
+            self._impacts.append(_Impact(back, angle, "whoosh", SPEED_LINE_COLOR, 1.0))
+        self._dashes[id(fighter)] = _Dash(back, direction, abs(speed))
+
+    def _sample_rush(self, fighter: Any, rushing: dict[int, float]) -> None:
+        """A dark step: a ring the moment it starts, and the world tinted while it lasts."""
+        left = float(getattr(fighter, "rush_timer", 0.0) or 0.0)
+        if left <= 0.0:
+            return
+        if id(fighter) not in self._rushing:
+            center = (fighter.hitbox.centerx, fighter.hitbox.centery)
+            self._impacts.append(_Impact(center, 0.0, "rush", RUSH_COLOR, 1.0))
+        rushing[id(fighter)] = left
 
     def _sample_warning(self, fighter: Any) -> None:
         if getattr(fighter, "faction", "player") == "player" or getattr(fighter, "is_dead", False):
@@ -455,6 +494,7 @@ class StrikeTrails:
             moved = camera.apply(pygame.FRect(point[0], point[1], 0.0, 0.0))
             return (moved.x, moved.y)
 
+        self._draw_rush_tint(surface)
         for trail in self._trails.values():
             if trail.look.live == "ring":
                 self._draw_rings(surface, trail, screen, density)
@@ -462,7 +502,7 @@ class StrikeTrails:
             self._draw_swath(surface, trail, screen)
             if trail.live is not None:
                 self._draw_live(surface, trail, screen, density)
-        for dash in self._dashes:
+        for dash in self._dashes.values():
             self._draw_speed_lines(surface, dash, screen, density)
         for shot in self._shots.values():
             self._draw_shot(surface, shot, screen, density)
@@ -650,14 +690,31 @@ class StrikeTrails:
         layer, (left, top) = made
         for a, b, beat in lines:
             la, lb = (a[0] - left, a[1] - top), (b[0] - left, b[1] - top)
-            pygame.draw.line(
-                layer, (*SPEED_LINE_COLOR, int(90 + 120 * beat)), la, lb, max(1, int(density))
-            )
+            fade = 1.0 - dash.age / DASH_LINGER
+            alpha = int((90 + 120 * beat) * fade)
+            pygame.draw.line(layer, (*SPEED_LINE_COLOR, alpha), la, lb, max(1, int(density)))
         surface.blit(layer, (left, top))
+
+    def _draw_rush_tint(self, surface: pygame.Surface) -> None:
+        """The world on a slow clock, tinted: in and out over ``RUSH_FADE``."""
+        if not self._rushing:
+            return
+        left = max(self._rushing.values())
+        level = min(1.0, left / RUSH_FADE)
+        r, g, b, a = RUSH_TINT
+        tint = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        tint.fill((r, g, b, int(a * level)))
+        surface.blit(tint, (0, 0))
 
     def _draw_impact(
         self, surface: pygame.Surface, impact: _Impact, screen: Screen, density: float
     ) -> None:
+        if impact.kind == "rush":
+            self._draw_rush_ring(surface, impact, screen, density)
+            return
+        if impact.kind == "whoosh":
+            self._draw_whoosh(surface, impact, screen, density)
+            return
         t = impact.age / IMPACT_TTL
         fade = 1.0 - t
         grow = (0.8 + 0.9 * t) * impact.size * density
@@ -701,6 +758,61 @@ class StrikeTrails:
                 (x - dx, y - dy),
                 (x + dx, y + dy),
                 max(1, int(2 * density)),
+            )
+        surface.blit(layer, (left, top))
+
+    def _draw_rush_ring(
+        self, surface: pygame.Surface, impact: _Impact, screen: Screen, density: float
+    ) -> None:
+        """A ring that sweeps out from the dark step, thick and bright, then thin."""
+        t = impact.age / RUSH_RING_TTL
+        grow = 1.0 - (1.0 - t) ** 3
+        radius = max(3, int((10.0 + 90.0 * grow) * density))
+        center = screen(impact.point)
+        made = self._layer(
+            surface,
+            [(center[0] - radius, center[1] - radius), (center[0] + radius, center[1] + radius)],
+        )
+        if made is None:
+            return
+        layer, (left, top) = made
+        local = (center[0] - left, center[1] - top)
+        fade = 1.0 - t
+        width = max(1, int((6.0 * fade + 1.0) * density))
+        pygame.draw.circle(layer, (*impact.color, int(220 * fade)), local, radius, width)
+        pygame.draw.circle(
+            layer, (255, 255, 255, int(180 * fade)), local, max(1, radius - width), 1
+        )
+        surface.blit(layer, (left, top))
+
+    def _draw_whoosh(
+        self, surface: pygame.Surface, impact: _Impact, screen: Screen, density: float
+    ) -> None:
+        """Two arcs of displaced air behind the dash's start, opening away from it."""
+        t = impact.age / IMPACT_TTL
+        fade = 1.0 - t
+        center = screen(impact.point)
+        reach = int(30 * density) + 4
+        made = self._layer(
+            surface,
+            [(center[0] - reach, center[1] - reach), (center[0] + reach, center[1] + reach)],
+        )
+        if made is None:
+            return
+        layer, (left, top) = made
+        x, y = center[0] - left, center[1] - top
+        behind = -1.0 if impact.angle == 0.0 else 1.0
+        # The arcs bulge away from the dash, like air clapping shut behind it.
+        if behind < 0:
+            start, stop = math.pi / 2, 3 * math.pi / 2
+        else:
+            start, stop = -math.pi / 2, math.pi / 2
+        for k, scale in enumerate((0.6, 1.0)):
+            r = (8.0 + 14.0 * t) * scale * density
+            rect = pygame.Rect(0, 0, max(2, int(r * 1.2)), max(2, int(r * 2.4)))
+            rect.center = (int(x + behind * (4 + 10 * t + 6 * k) * density), int(y))
+            pygame.draw.arc(
+                layer, (*impact.color, int(200 * fade)), rect, start, stop, max(1, int(2 * density))
             )
         surface.blit(layer, (left, top))
 

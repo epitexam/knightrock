@@ -20,7 +20,7 @@ from src.core.fx.particles import ShieldArcParticle
 from src.core.fx.spawners import spawn_guard_arc
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer, _ghost_tint
-from src.core.rendering.strike_trails import StrikeTrails
+from src.core.rendering.strike_trails import DASH_LINGER, StrikeTrails
 from src.core.settings import Afterimage
 from src.core.sprite_groups import SpriteGroups
 from tests.unit.test_juice_effects import DashSprite
@@ -83,11 +83,42 @@ def test_a_dashing_fighter_trails_speed_lines_behind_it() -> None:
     trails.update([dasher], 1 / 60)
 
     assert len(trails._dashes) == 1
-    assert trails._dashes[0].back[0] < dasher.hitbox.centerx, "the lines run behind"
+    (dash,) = trails._dashes.values()
+    assert dash.back[0] < dasher.hitbox.centerx, "the lines run behind"
 
+    # The dash over, the lines linger a moment, then go.
     dasher.state_machine.current_state_name = "run"
     trails.update([dasher], 1 / 60)
+    assert trails._dashes, "they outlast the dash, fading"
+    trails.update([dasher], DASH_LINGER)
     assert not trails._dashes
+
+
+def test_a_dash_starts_with_a_whoosh_and_a_dark_step_with_a_ring_and_a_tint() -> None:
+    trails = StrikeTrails()
+    dasher = SimpleNamespace(
+        faction="player",
+        state_machine=SimpleNamespace(current_state_name="dash"),
+        velocity=pygame.math.Vector2(900.0, 0.0),
+        hitbox=pygame.FRect(100, 100, 40, 56),
+        facing_right=True,
+        is_dead=False,
+        combat=None,
+        rush_timer=0.0,
+    )
+    trails.update([dasher], 1 / 60)
+    trails.update([dasher], 1 / 60)
+    assert [impact.kind for impact in trails._impacts] == ["whoosh"], "one, at the start"
+
+    dasher.rush_timer = 1.0
+    trails.update([dasher], 1 / 60)
+    assert "rush" in [impact.kind for impact in trails._impacts]
+    surface = pygame.Surface((200, 200))
+    surface.fill((200, 200, 200))
+    camera = Camera(Framing(200.0, 200.0))
+    camera.set_world_size(200, 200)
+    trails.draw(surface, camera)
+    assert surface.get_at((5, 5))[:3] != (200, 200, 200), "the world is tinted"
 
 
 def _entity(facing: bool = True) -> SimpleNamespace:
