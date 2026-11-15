@@ -458,6 +458,17 @@ class Afterimage:
     """One stamp per frame while the dash runs, which is eight or nine for a
     140ms dash. Slower than a frame and the trail thins out; faster and the stamps
     land on top of each other and stop being countable."""
+    SPACING = 22.0
+    """World px a dashing fighter covers between two stamps: far enough apart
+    that each reads as a separate silhouette, close enough to be one trail."""
+    DEEP_TINT = (90, 200, 255)
+    """The tint the stamps reach nearest the fighter; the first is the pale
+    ``FXColors.speed_ghost``."""
+    LIFT = (10, 55, 95)
+    """What the deepest stamp is lightened by, added over its tinted shading."""
+    TINT_STEPS = 3
+    """How many stamps it takes to get from the pale tint to the deep one: a
+    dash leaves four or five, so the last ones are fully in colour."""
     LEVELS = (255, 170, 90)
     """The opacity ladder, brightest first, walked as the ghost ages.
 

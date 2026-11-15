@@ -39,6 +39,7 @@ from src.combat.frame_data import Height, PhaseState
 from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color
 from src.core.rendering.camera import Camera
+from src.states import state_names
 
 #: A sample is taken only if the tip moved at least this far (world px).
 MIN_STEP = 1.0
@@ -118,6 +119,10 @@ SHOT_COLORS: dict[str, tuple[Color, Color]] = {
 SHOT_TTL = 0.12
 #: How long an impact shows, in seconds.
 IMPACT_TTL = 0.16
+#: Speed lines behind a dashing fighter: their heights on the body (from the
+#: hitbox centre, y down), and their colour.
+SPEED_LINE_ROWS = (-12.0, -4.0, 4.0, 12.0)
+SPEED_LINE_COLOR: Color = (215, 240, 255)
 
 
 #: The player's moves drawn their own way; the rest follow their shape.
@@ -192,6 +197,15 @@ class _Charge:
 
 
 @dataclass
+class _Dash:
+    back: Point
+    """The middle of the fighter's trailing edge."""
+    direction: float
+    """+1 moving right, -1 moving left."""
+    speed: float
+
+
+@dataclass
 class _Warning:
     point: Point
     facing: float
@@ -247,6 +261,7 @@ class StrikeTrails:
         self._warnings: list[_Warning] = []
         self._shots: dict[int, _Shot] = {}
         self._impacts: list[_Impact] = []
+        self._dashes: list[_Dash] = []
         self._clock = 0.0
 
     def __len__(self) -> int:
@@ -266,9 +281,11 @@ class StrikeTrails:
                 sample.age += dt
             trail.samples = [s for s in trail.samples if s.age < trail.look.ttl]
         self._warnings = []
+        self._dashes = []
         charging: set[int] = set()
         for fighter in fighters:
             self._sample(fighter)
+            self._sample_dash(fighter)
             if self._sample_charge(fighter, dt):
                 charging.add(id(fighter))
             self._sample_warning(fighter)
@@ -366,6 +383,20 @@ class StrikeTrails:
         charge.full_for = charge.full_for + dt if ratio >= 1.0 else 0.0
         return True
 
+    def _sample_dash(self, fighter: Any) -> None:
+        if getattr(fighter, "faction", "") != "player":
+            return
+        machine = getattr(fighter, "state_machine", None)
+        if machine is None or machine.current_state_name != state_names.DASH:
+            return
+        velocity = getattr(fighter, "velocity", None)
+        speed = 0.0 if velocity is None else float(velocity.x)
+        if abs(speed) < 1.0:
+            return
+        direction = 1.0 if speed > 0.0 else -1.0
+        back_x = fighter.hitbox.centerx - direction * fighter.hitbox.width / 2.0
+        self._dashes.append(_Dash((back_x, fighter.hitbox.centery), direction, abs(speed)))
+
     def _sample_warning(self, fighter: Any) -> None:
         if getattr(fighter, "faction", "player") == "player" or getattr(fighter, "is_dead", False):
             return
@@ -431,6 +462,8 @@ class StrikeTrails:
             self._draw_swath(surface, trail, screen)
             if trail.live is not None:
                 self._draw_live(surface, trail, screen, density)
+        for dash in self._dashes:
+            self._draw_speed_lines(surface, dash, screen, density)
         for shot in self._shots.values():
             self._draw_shot(surface, shot, screen, density)
         for charge in self._charges.values():
@@ -593,6 +626,33 @@ class StrikeTrails:
         f = warning.facing
         chevron = [(x - f * size, y - size), (x + f * size, y), (x - f * size, y + size)]
         pygame.draw.lines(layer, (*color, alpha), False, chevron, max(2, int(2 * density)))
+        surface.blit(layer, (left, top))
+
+    def _draw_speed_lines(
+        self, surface: pygame.Surface, dash: _Dash, screen: Screen, density: float
+    ) -> None:
+        """Streaks behind a dash, longer the faster it goes, each flickering on its own beat."""
+        base = min(60.0, dash.speed * 0.06)
+        points = []
+        lines = []
+        for row, dy in enumerate(SPEED_LINE_ROWS):
+            beat = 0.5 + 0.5 * math.sin(self._clock * 40.0 + row * 1.9)
+            length = base * (0.55 + 0.45 * beat)
+            gap = 3.0 + 4.0 * ((row * 7) % 3)
+            start = (dash.back[0] - dash.direction * gap, dash.back[1] + dy)
+            end = (start[0] - dash.direction * length, start[1])
+            a, b = screen(start), screen(end)
+            lines.append((a, b, beat))
+            points += [a, b]
+        made = self._layer(surface, points)
+        if made is None:
+            return
+        layer, (left, top) = made
+        for a, b, beat in lines:
+            la, lb = (a[0] - left, a[1] - top), (b[0] - left, b[1] - top)
+            pygame.draw.line(
+                layer, (*SPEED_LINE_COLOR, int(90 + 120 * beat)), la, lb, max(1, int(density))
+            )
         surface.blit(layer, (left, top))
 
     def _draw_impact(

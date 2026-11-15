@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-3658%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3662%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -61,7 +61,7 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 3658 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3662 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -162,7 +162,7 @@ and a knuckle or a heel; a charged cut is gold and brighter the longer it was
 held, a full one white-hot with afterimages; the death blow is dark red. A
 held button gathers a ring at the hand that closes as it fills and flashes when
 full. An enemy winding up shows a chevron at the height it will strike -- red,
-or violet when no guard stops it. A blow that lands leaves its mark at the tip: a sharp cut for the blade, a burst of lines for the body, a cut with a flash for a charged one, drawn over the struck fighter's flash. A block throws up a shield of light on the side of the blow -- a crescent that pushes outward, a brief bubble, sparks off its face -- gold for a perfect block.
+or violet when no guard stops it. A blow that lands leaves its mark at the tip: a sharp cut for the blade, a burst of lines for the body, a cut with a flash for a charged one, drawn over the struck fighter's flash. A dash leaves stamps of the fighter spaced by the distance covered (`Afterimage.SPACING`), pale at the back and cyan nearer the fighter, with speed lines behind it; a block throws up a shield of light on the side of the blow -- a crescent that pushes outward, a brief bubble, sparks off its face -- gold for a perfect block.
 
 A link of a chain starts as soon as the previous one has hit, and a press made a
 little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
@@ -831,7 +831,7 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 3658 tests · 94 % instruction coverage · 84 % branch
+> **Current baseline:** 3662 tests · 94 % instruction coverage · 84 % branch
 > coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
 > `mypy src` alone is 181).[^coverage]
 

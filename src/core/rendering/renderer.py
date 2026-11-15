@@ -1,3 +1,4 @@
+import math
 from collections import deque
 from collections.abc import Callable, Iterable
 from itertools import chain
@@ -276,6 +277,21 @@ def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
     return ghost
 
 
+def _ghost_tint(index: int) -> Color:
+    """The tint of the ``index``-th ghost of a dash: pale first, then the dash's cyan.
+
+    The trail reads in the direction of travel: the oldest stamp, furthest
+    behind, is the palest, and each one nearer the fighter is more saturated.
+    """
+    t = min(1.0, index / max(1, Afterimage.TINT_STEPS))
+    pale, deep = FXColors.speed_ghost, Afterimage.DEEP_TINT
+    return (
+        round(pale[0] + (deep[0] - pale[0]) * t),
+        round(pale[1] + (deep[1] - pale[1]) * t),
+        round(pale[2] + (deep[2] - pale[2]) * t),
+    )
+
+
 def _ghost_alpha(ttl: float) -> int:
     """The opacity a ghost of this remaining life is stamped at.
 
@@ -320,6 +336,10 @@ class Renderer:
         #: The strikes in flight, drawn from the live attack shapes.
         self.strike_trails = StrikeTrails()
         self._ghost_timer: float = 0.0
+        #: Where the last ghost of each dashing fighter was stamped, and how
+        #: many this dash has left: a ghost is stamped only once the fighter
+        #: has moved on, and each is a little more saturated than the last.
+        self._ghost_marks: dict[int, tuple[float, float, int]] = {}
         # Scaled sprite surfaces: ``id(image) -> (image, scaled)``. Scaling a
         # surface every frame for every visible sprite is expensive, so each
         # image is scaled once and reused; the key used to carry the camera zoom
@@ -800,11 +820,23 @@ class Renderer:
         rather than the whole level: ``all_sprites`` meant a full-group
         ``is_player_dashing`` scan several times a second.
         """
+        dashing: set[int] = set()
         for sprite in groups.entity_sprites:
             if not is_player_dashing(sprite):
                 continue
+            dashing.add(id(sprite))
             if not self.camera.is_visible(sprite.rect):
                 continue
+            # Spaced by the distance covered, not by the clock: stamps a frame
+            # apart on a fighter that moved a few pixels land on one another
+            # and the trail reads as one grey smear.
+            mark = self._ghost_marks.get(id(sprite))
+            center = sprite.rect.center
+            if mark is not None and math.dist(center, mark[:2]) < Afterimage.SPACING:
+                continue
+            count = 0 if mark is None else mark[2] + 1
+            self._ghost_marks[id(sprite)] = (center[0], center[1], count)
+            tint = _ghost_tint(count)
             # Zoomed for the camera, and deliberately *not* run through
             # ``dash_frame``. The stretch is what the live sprite is doing --
             # it is a cue for the movement, read while it happens. Stamping a
@@ -813,11 +845,21 @@ class Renderer:
             # pancakes rather than a trail of the fighter. A manga afterimage
             # is the character's own shape; the shape is what the player
             # recognises, so that is what gets copied.
-            ghost = self._scaled_image_once(_monochrome(sprite.image, FXColors.speed_ghost))
+            ghost = _monochrome(sprite.image, tint)
+            if count > 0:
+                # A dark sprite multiplied by a tint stays dark: the later
+                # stamps are lifted towards the dash's cyan so the colour shows.
+                lift = min(1.0, count / max(1, Afterimage.TINT_STEPS))
+                ghost.fill(
+                    tuple(round(c * lift) for c in Afterimage.LIFT),
+                    special_flags=pygame.BLEND_RGB_ADD,
+                )
+            ghost = self._scaled_image_once(ghost)
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
             self._ghosts = self._ghosts[-Afterimage.MAX :]
+        self._ghost_marks = {key: mark for key, mark in self._ghost_marks.items() if key in dashing}
 
     def _draw_ghosts(self, ghost_draws: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
         for surface, screen_rect in ghost_draws:
