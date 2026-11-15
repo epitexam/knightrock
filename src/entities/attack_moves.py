@@ -5,6 +5,7 @@ is Down held on the ground. What a press throws depends, most specific first,
 on what the fighter is doing:
 
 1. a downed enemy within reach turns a low slash into the stab that ends it;
+   out of a dash (or just after one) a slash is the dash slash;
 2. a running move continues its chain with the press (``follow_ups`` in
    ``attacks.json``);
 3. in the air, the slash and the dive;
@@ -52,6 +53,7 @@ AIR_STARTERS: dict[AttackButton, MoveId] = {
 
 STAB = move_id("stab")
 CHARGED_SLASH = move_id("charged_slash")
+DASH_SLASH = move_id("dash_slash")
 CHARGED_SLASH_FULL = move_id("charged_slash_full")
 CHARGED_KICK = move_id("charged_kick")
 SHOT = move_id("shot")
@@ -68,6 +70,7 @@ SLASHES: frozenset[MoveId] = frozenset(
         STAB,
         CHARGED_SLASH,
         CHARGED_SLASH_FULL,
+        DASH_SLASH,
     }
 )
 
@@ -102,6 +105,8 @@ class MoveContext:
     """The move in progress, whose chain the press may continue."""
     downed_in_reach: bool = False
     """A downed enemy lies within reach in front: a low slash stabs it."""
+    dashing: bool = False
+    """The fighter is dashing, or has just stopped: a slash is the dash slash."""
 
 
 def press_for(action: InputAction, low: bool) -> AttackButton | None:
@@ -119,6 +124,12 @@ def resolve_move(press: AttackButton, context: MoveContext) -> MoveId | None:
         and context.downed_in_reach
     ):
         return STAB
+    if (
+        context.dashing
+        and context.stance is Stance.GROUND
+        and press in (AttackButton.SLASH_HIGH, AttackButton.SLASH_LOW)
+    ):
+        return DASH_SLASH
     if context.running is not None:
         follow_up = context.running.follow_up(press)
         if follow_up is not None:

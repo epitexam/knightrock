@@ -221,6 +221,7 @@ class PlayerInputHandler:
             stance=player.stance,
             running=combat.current_attack_def if combat.is_attacking else None,
             downed_in_reach=player.downed_in_reach() is not None,
+            dashing=player.is_dashing or player.dash.in_coyote(),
         )
 
     def _start(self, action: InputAction, low: bool) -> bool:

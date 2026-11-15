@@ -3052,6 +3052,177 @@
         "vertical_lunge": 0.0,
         "attack_move_multiplier": 0.5
       },
+      "dash_slash": {
+        "phases": [
+          {
+            "startup_frames": 2,
+            "active_frames": 5,
+            "recovery_frames": 12,
+            "hit": {
+              "damage": 9.0,
+              "knockback": {
+                "power": [
+                  220.0,
+                  -40.0
+                ],
+                "mode": "from_attacker"
+              },
+              "damage_type": "slash",
+              "stagger": 0.12,
+              "super_armor_break": false,
+              "is_finisher": false,
+              "juggle_gravity_mult": 1.0,
+              "otg_allowed": false,
+              "unblockable": false,
+              "priority": 0,
+              "clash": "clash",
+              "height": "mid",
+              "tags": [],
+              "flinch": true,
+              "hit_stop": 0.06,
+              "stun": 2.0
+            },
+            "reset_targets": true,
+            "cancel_into": [
+              "punch_1",
+              "kick_1",
+              "shot"
+            ],
+            "cancel_on_hit": true,
+            "hitboxes": [
+              {
+                "size": [
+                  32.0,
+                  6.0
+                ],
+                "offset": [
+                  19.11,
+                  -5.18
+                ],
+                "keyframes": [
+                  {
+                    "frame": 0,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      19.11,
+                      -5.18
+                    ],
+                    "angle": -35.0
+                  },
+                  {
+                    "frame": 1,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      19.86,
+                      -4.0
+                    ],
+                    "angle": -30.0
+                  },
+                  {
+                    "frame": 2,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      20.5,
+                      -2.76
+                    ],
+                    "angle": -25.0
+                  },
+                  {
+                    "frame": 3,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      21.93,
+                      2.55
+                    ],
+                    "angle": -5.2
+                  },
+                  {
+                    "frame": 4,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      21.75,
+                      6.83
+                    ],
+                    "angle": 10.2
+                  },
+                  {
+                    "frame": 5,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      20.92,
+                      9.79
+                    ],
+                    "angle": 21.2
+                  },
+                  {
+                    "frame": 6,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      20.15,
+                      11.46
+                    ],
+                    "angle": 27.8
+                  },
+                  {
+                    "frame": 7,
+                    "size": [
+                      32.0,
+                      6.0
+                    ],
+                    "offset": [
+                      19.86,
+                      12.0
+                    ],
+                    "angle": 30.0
+                  }
+                ],
+                "shape": "obb",
+                "angle": -35.0
+              }
+            ]
+          }
+        ],
+        "cooldown": 0.0,
+        "stances": [
+          "ground"
+        ],
+        "animation": "attack",
+        "lock_direction": true,
+        "combo_reset": false,
+        "chargeable": false,
+        "max_charge_time": 1.0,
+        "charge_move_multiplier": 0.4,
+        "uninterruptible": false,
+        "lunge_speed_multiplier": 2.4,
+        "vertical_lunge": 0.0,
+        "attack_move_multiplier": 0.9,
+        "follow_ups": {
+          "beat_high": "punch_1",
+          "beat_low": "kick_1",
+          "shoot": "shot"
+        }
+      },
       "stab": {
         "phases": [
           {

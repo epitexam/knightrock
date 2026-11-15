@@ -168,7 +168,7 @@ def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_m
 
 
 def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
-    """Dash then slash: the attack takes over and the dash perks drop with it."""
+    """Dash then slash: the dash slash takes over and the dash perks drop with it."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
     _step(player, mock_input_manager, 1, press=InputAction.DASH)
@@ -179,7 +179,7 @@ def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
     _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "attack"
-    assert player.combat.state.attack_name == "slash_high_1"
+    assert player.combat.state.attack_name == "dash_slash"
     assert player.is_invincible is False  # i-frames belong to the dash state
     assert player.hitbox.width > squished_width  # dash squish restored on exit
 
