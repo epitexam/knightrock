@@ -3,8 +3,10 @@
 import logging.config
 import os
 import sys
+from dataclasses import replace
 
 from src.application.game import Game
+from src.application.runtime_config import RuntimeConfig
 
 LOGGING_CONFIG: dict = {
     "version": 1,
@@ -33,14 +35,16 @@ def _setup_logging() -> None:
 def main() -> None:
     """Run the game with INFO console logging."""
     _setup_logging()
-    Game().run()
+    Game(config=RuntimeConfig.from_environment()).run()
 
 
 def main_debug() -> None:
     """Run the game with the debug overlay enabled."""
+    # The overlay's leaf helpers still read DEBUG at call time; keep the env
+    # write for them while the application layer uses the explicit config.
     os.environ["DEBUG"] = "1"
     _setup_logging()
-    Game().run()
+    Game(config=replace(RuntimeConfig.from_environment(), debug=True)).run()
 
 
 def _run_from_argv(argv: list[str]) -> None:

@@ -1,5 +1,4 @@
 import logging
-import os
 import traceback
 from pathlib import Path
 from time import perf_counter
@@ -8,7 +7,8 @@ import pygame
 from pygame.joystick import JoystickType
 
 from src.application.runtime_clock import FrameClock, PygameFrameClock
-from src.application.save_game import SaveGame, default_save_path
+from src.application.runtime_config import RuntimeConfig
+from src.application.save_game import SaveGame
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
 from src.application.screen import Screen
@@ -44,17 +44,6 @@ logger = logging.getLogger(__name__)
 #: limit is ignored (the menu says so) rather than becoming a second pacer.
 DISPLAY_SAFETY_CEILING_FPS = max(Display.FPS * 4, MAX_FRAME_LIMIT)
 
-#: SDL environment set before ``pygame.init()``.
-#:
-#: High-DPI has to be requested here: SDL reads it when the video subsystem
-#: comes up. pygame-ce 2.5.7 has no ``HIDPI`` flag, so this variable is the
-#: whole mechanism. With a scaled desktop and no hint, SDL matches the pixel
-#: size to the window size and the compositor resamples the result.
-SDL_HINTS = {
-    "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS": "1",
-    "SDL_VIDEO_HIDPI": "1",
-}
-
 
 class Game:
     """Application runtime: display, input, and the scene stack.
@@ -71,13 +60,15 @@ class Game:
         save_path: Path | None = None,
         bindings_path: Path | None = None,
         frame_clock: FrameClock | None = None,
+        config: RuntimeConfig | None = None,
     ) -> None:
-        for name, value in SDL_HINTS.items():
-            os.environ[name] = value
+        self.config = config if config is not None else RuntimeConfig.from_environment()
         #: The window, the picture drawn into it and the screens around it.
         self.screen = Screen()
         self.joysticks: dict[int, JoystickType] = {}
-        self.settings_store = SettingsStore(bindings_path)
+        self.settings_store = SettingsStore(
+            bindings_path if bindings_path is not None else self.config.settings_path
+        )
         self.settings = self.settings_store.load()
         self.input_bindings = self.settings.bindings
         self.input_router = EventRouter(self.input_bindings, joystick_reader=lambda: self.joysticks)
@@ -95,7 +86,7 @@ class Game:
         self.level_manager = LevelManager(
             self.gameplay_data.levels if self.gameplay_data.levels else LEVEL_PATHS
         )
-        self._save_path = save_path if save_path is not None else default_save_path()
+        self._save_path = save_path if save_path is not None else self.config.save_path
         self.save_game = SaveGame.load(self._save_path)
         self.events = EventBus()
         # The one line in the application layer that knows the audio system
@@ -149,6 +140,7 @@ class Game:
         Public so tests and the manual acceptance run share the real boot path
         instead of reimplementing part of it.
         """
+        self.config.apply_sdl_hints()
         pygame.init()
         pygame.joystick.init()
         # After pygame.init(), and never fatal: a machine with no sound card
