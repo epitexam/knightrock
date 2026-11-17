@@ -23,6 +23,9 @@ from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.rendering.camera import Camera
 from src.core.rendering.tile_chunk_index import CHUNK_TILES, TileChunkIndex
 from src.core.settings import World
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 TILE = World.TILE_SIZE
 

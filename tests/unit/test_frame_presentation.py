@@ -20,9 +20,12 @@ from src.core.level.level import Level
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from tests.conftest import requires_assets
 from tests.fakes import FighterSprite
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
 from tests.unit.helpers import make_overlay
+
+pytestmark = requires_assets
 
 
 @pytest.fixture()

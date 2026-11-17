@@ -32,9 +32,10 @@ from src.core.display.viewport import Viewport
 from src.core.input.input_manager import InputManager
 from src.core.level.level import Level
 from src.core.settings import Simulation
+from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data
 
-pytestmark = pytest.mark.usefixtures("_independence_display")
+pytestmark = [pytest.mark.usefixtures("_independence_display"), requires_assets]
 
 #: Deliberately spans a 16:9 panel, a 16:10 one and a small window, and both
 #: render scales: none of them may reach the world.

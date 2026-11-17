@@ -5,6 +5,9 @@ import pygame
 from src.entities.enemies.schema import EnemyConfig
 from src.entities.player import Player
 from src.states.player_states import PlayerIdleState, PlayerRunState
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 
 def test_player_starts_on_idle_animation(mock_input_manager):

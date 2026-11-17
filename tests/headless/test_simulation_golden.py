@@ -28,8 +28,11 @@ from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
 from src.core.sprites import MovingPlatform
+from tests.conftest import requires_assets
 from tests.fakes import HazardStub
 from tests.headless.conftest import make_viewport
+
+pytestmark = requires_assets
 
 SEED = 20260913
 TICKS = 300

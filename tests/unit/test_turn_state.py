@@ -39,6 +39,9 @@ from src.entities.player import Player
 from src.states.player_states import PlayerState
 from src.states.state_machine import StateMachine
 from src.states.turn_state import request_turn
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 TICK = 1 / 60
 

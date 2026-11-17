@@ -46,6 +46,9 @@ from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.settings import Simulation
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 #: Window shapes worth surviving: the common ones, the awkward aspect ratios,
 #: and sizes below the framing, which is where a "fit" calculation goes

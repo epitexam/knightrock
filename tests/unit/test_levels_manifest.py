@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from src.core.paths import PROJECT_ROOT, resource_path
+from tests.conftest import requires_assets
 
 MANIFEST = Path(resource_path("data/levels_manifest.json"))
 LEVELS_DIR = PROJECT_ROOT / "assets" / "data"
@@ -29,17 +30,19 @@ _MAP_ATTRIBUTES = {
     "tileheight": re.compile(r'\btileheight="(\d+)"'),
 }
 
-pytestmark = pytest.mark.skipif(
-    not LEVELS_DIR.is_dir(),
-    reason="assets/ is git-ignored and absent in CI; the manifest is checked there by "
-    "test_framing_contract.py instead",
-)
+pytestmark = requires_assets
 
 
 def _tmx_files() -> list[Path]:
+    # On a bare checkout (assets/ is git-ignored) fall back to the *paths* named
+    # in the tracked manifest. The parametrize below then keeps the same case
+    # count with or without assets, so the README's test count stays true; the
+    # requires_assets marker skips the cases before their bodies read a file.
     files = sorted(LEVELS_DIR.glob("levels/*.tmx")) + sorted(LEVELS_DIR.glob("overworld/*.tmx"))
-    assert files, f"no .tmx found under {LEVELS_DIR}; the assets are not where we expect"
-    return files
+    if files:
+        return files
+    document = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    return [PROJECT_ROOT / str(level["file"]) for level in document["levels"]]
 
 
 def _read_manifest() -> dict[str, tuple[int, int]]:
@@ -49,6 +52,7 @@ def _read_manifest() -> dict[str, tuple[int, int]]:
 
 def test_every_level_on_disk_is_in_the_manifest() -> None:
     """A level added without a manifest entry is a level nothing checks."""
+    assert _tmx_files(), "no .tmx found under assets/data; the assets are not where we expect"
     manifest = _read_manifest()
     on_disk = {str(path.relative_to(PROJECT_ROOT)) for path in _tmx_files()}
     assert on_disk == set(manifest), (

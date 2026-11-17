@@ -8,6 +8,9 @@ from src.core.settings import Battery as BatterySettings
 from src.core.settings import Physics
 from src.entities.player import Player
 from src.states.player_states import _can_dash
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 
 @pytest.fixture

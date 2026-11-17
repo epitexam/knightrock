@@ -33,8 +33,9 @@ from src.application.scenes.gameover_scene import GameOverScene
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.pause_scene import PauseScene
 from src.core.settings import Debug, Simulation
+from tests.conftest import requires_assets
 
-pytestmark = pytest.mark.usefixtures("_headless_pygame_display")
+pytestmark = [pytest.mark.usefixtures("_headless_pygame_display"), requires_assets]
 
 
 def _changed_bytes(target: pygame.Surface, previous: bytes) -> int:

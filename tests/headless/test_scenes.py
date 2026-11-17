@@ -22,7 +22,10 @@ from src.core.display.viewport import Viewport
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Gameplay
+from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
+
+pytestmark = requires_assets
 
 
 class RecordingScene(Scene):

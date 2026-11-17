@@ -20,6 +20,9 @@ from src.core.level.level_manager import LEVEL_PATHS, LevelManager
 from src.core.level.world_builder import WorldBuilder
 from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 
 @pytest.fixture(scope="module", autouse=True)

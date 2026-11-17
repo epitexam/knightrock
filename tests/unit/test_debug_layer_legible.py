@@ -30,6 +30,9 @@ from src.core.settings import Debug
 from src.ui.panel_renderer import PanelRenderer, close_box_rect
 from src.ui.styles import TEXT_MUTED
 from src.ui.world_ui import WorldUI
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 WINDOW = (2176, 1224)
 DENSITY = WINDOW[0] / 1152.0

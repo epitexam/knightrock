@@ -18,6 +18,9 @@ from src.core.level.world_builder import (
 )
 from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 
 def make_obj(name: str, x: float, y: float, w: float, h: float, **props) -> ObjectData:

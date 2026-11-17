@@ -25,6 +25,9 @@ from src.core.level.level import Level
 from src.entities.enemies.factory import create_enemy
 from src.entities.entity import Entity
 from src.entities.projectile import FIREBOLT_CONFIG
+from tests.conftest import requires_assets
+
+pytestmark = requires_assets
 
 
 @pytest.fixture(scope="module", autouse=True)

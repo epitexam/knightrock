@@ -23,7 +23,10 @@ from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.world_builder import _build_static_hazard
 from src.core.paths import PROJECT_ROOT
 from src.core.sprite_groups import SpriteGroups
+from tests.conftest import requires_assets
 from tests.fakes import BodyStub
+
+pytestmark = requires_assets
 
 TILE = 64
 

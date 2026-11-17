@@ -9,7 +9,10 @@ import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
 from src.core.sprites import Sprite
+from tests.conftest import requires_assets
 from tests.headless.conftest import make_programmatic_level_data
+
+pytestmark = requires_assets
 
 
 def test_level_builds_player_and_world(build_level) -> None:

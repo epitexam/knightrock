@@ -12,7 +12,10 @@ import random
 
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+from tests.conftest import requires_assets
 from tests.headless.conftest import make_viewport
+
+pytestmark = requires_assets
 
 TICKS = 180  # 3 simulated seconds: plenty of pushes, chases, and hits
 SEED = 20260913
