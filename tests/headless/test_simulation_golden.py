@@ -202,7 +202,7 @@ def build_respawn_level() -> Level:
 # patrolling, which shifts goblin/slime positions from tick 1 onward.  The
 # other two scenarios do not observe patrol translation (enemies either
 # chase immediately or leave the frame of interest), so they stay valid.
-PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
+# PHYSICS was cc0cb54c… here, before the next recapture below.
 # Re-captured PHYSICS and RESPAWN for the per-pair contact damage cooldown
 # (commit "fix(combat): a contact pair may not damage twice in a row"):
 # MomentumGate asks whether the target is already hurt, but the contact box
@@ -221,7 +221,7 @@ PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905
 # cooldown is armed by a contact that landed, no longer by a pair that was only
 # near. The first body contact lands on tick 9 instead of 12, the first hazard
 # hit on tick 3 instead of 24; the cadence after a contact is unchanged.
-PHYSICS_DIGEST = "e84b65bae71fbf106e8adcc9d42bc86d6c5a382a5c571f9a544cfda825ead734"
+# PHYSICS was e84b65ba… here, before the next recapture below.
 # RIDE re-captured again for the combat retune (2026-11-12, docs/audit/
 # combat-dynamism.md): the goblin's claw now has a 16-frame startup and a
 # 16-frame recovery, and hit-stop starts from 30ms instead of 50ms.

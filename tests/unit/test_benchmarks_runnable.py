@@ -18,7 +18,7 @@ import pytest
 BENCHMARKS = Path(__file__).resolve().parent.parent / "benchmarks"
 
 
-def _run(name: str, argv: list[str]) -> dict[str, float]:
+def _run(name: str, argv: list[str]) -> str:
     """Run a benchmark's ``main`` and capture what it put on stdout."""
     import io
     from contextlib import redirect_stdout

@@ -18,7 +18,7 @@ from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
 from src.core.events import EventBus, UiEffect, UiFeedback
-from src.core.input.event_router import RoutedInput
+from src.core.input.event_router import EventRouter
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
@@ -394,7 +394,7 @@ def test_the_dispatcher_owns_no_presentation_state(manager: SceneManager) -> Non
 
     assert sorted(vars(dispatcher)) == ["_events", "_router"]
     assert isinstance(dispatcher._events, EventBus)
-    assert isinstance(dispatcher._router, RoutedInput.__module__ and object)
+    assert isinstance(dispatcher._router, EventRouter)
 
 
 def test_one_input_reaches_exactly_one_subscriber_call(

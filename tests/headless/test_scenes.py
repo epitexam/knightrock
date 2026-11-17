@@ -905,7 +905,10 @@ def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
     for view_type in (MenuView, ControlsView, GridView):
         assert isinstance(view_type.set_surface, type(MenuView.set_surface))
         assert isinstance(view_type.set_scale, type(MenuView.set_scale))
-    assert ScaledView is not None
+        # The protocol's members really exist on each view, not just the two
+        # hooks the loop above compares against MenuView.
+        for member in ScaledView.__protocol_attrs__:
+            assert hasattr(view_type, member), f"{view_type.__name__}.{member}"
 
 
 # -- leaving the window -------------------------------------------------------
