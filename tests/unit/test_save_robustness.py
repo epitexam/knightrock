@@ -35,6 +35,16 @@ def test_a_boolean_is_not_an_accepted_level_id() -> None:
     assert save.unlocked_levels == [0]
 
 
+def test_a_missing_save_is_silent(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A first launch has no save; that is not a corruption to warn about."""
+
+    with caplog.at_level(logging.WARNING):
+        save = SaveGame.load(tmp_path / "missing.json")
+
+    assert save == SaveGame()
+    assert "save" not in caplog.text.lower()
+
+
 def test_a_corrupted_save_is_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     path = tmp_path / "savegame.json"
     path.write_text("{not json", encoding="utf-8")

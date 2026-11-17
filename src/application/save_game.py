@@ -88,6 +88,9 @@ class SaveGame:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             return cls.from_dict(data)
+        except FileNotFoundError:
+            # A first launch has no save yet: that is not a problem to report.
+            return cls()
         except OSError, json.JSONDecodeError:
             logger.warning(
                 "Unable to read the save at %s; starting a fresh one", path, exc_info=True
