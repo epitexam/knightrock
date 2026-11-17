@@ -103,17 +103,19 @@ def update_contact_state(
     """Update floor/left/right contact flags for an entity."""
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
+    hitbox = entity.hitbox
 
+    # Built from scalars rather than Vector2/FRect temporaries: this runs for
+    # every entity every tick (and up to 6 ticks per frame).
     floor_rect = pygame.FRect(
-        entity.hitbox.bottomleft, (entity.hitbox.width, Collision.PROBE_THICKNESS_PX)
+        hitbox.left, hitbox.bottom, hitbox.width, Collision.PROBE_THICKNESS_PX
     )
-    right_rect = pygame.FRect(
-        Vector2(entity.hitbox.topright) + Vector2(0, hq),
-        (Collision.PROBE_WIDTH_PX, hh),
-    )
+    right_rect = pygame.FRect(hitbox.right, hitbox.top + hq, Collision.PROBE_WIDTH_PX, hh)
     left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft) + Vector2(-Collision.WALL_PROBE_OFFSET_PX, hq),
-        (Collision.PROBE_WIDTH_PX, hh),
+        hitbox.left - Collision.WALL_PROBE_OFFSET_PX,
+        hitbox.top + hq,
+        Collision.PROBE_WIDTH_PX,
+        hh,
     )
 
     on = entity.on_surface
