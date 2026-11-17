@@ -72,12 +72,8 @@ class AssetLibrary:
         player animations (graceful degradation when dash assets aren't
         available yet). For other cases, raises FileNotFoundError.
 
-        A fallback is cached under the key that was *asked for* as well as
-        the one it resolved to. The recursion returns the fallback's frames,
-        but the requester's key was never populated, so every subsequent call
-        repeated the ``is_dir()`` that discovered the fallback in the first
-        place -- a stat syscall per call, per animation, per frame, for as
-        long as the game ran.
+        The fallback is cached under both the key that was asked for and the
+        one it resolved to, so the ``is_dir()`` that discovers it runs once.
 
         Parameters
         ----------

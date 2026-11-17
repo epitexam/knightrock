@@ -175,16 +175,32 @@ class GameplayLoop(CombatLoop):
         level: TickOwner,
         rollback: RollbackSystem,
     ) -> None:
-        """Run every stage of one tick, in their historical order.
+        """Run every stage of one tick, in the order below.
 
-        The debug spawner runs first with the raw frame delta (it only
-        decays cooldowns and spawns), then hit-stop decides the simulation
-        delta: a suspended tick skips the world stages but still advances
-        the camera, notifications and tick bookkeeping. The order is
-        load-bearing: spawner, platforms, hazards, entity integration,
-        movement feedback, separation and melee, projectiles, combat feedback,
-        contact and hazard damage, deaths reaped, respawn, progression, camera,
-        notifications, tick counter.
+        Stage          | Purpose                         | Order invariant
+        ---------------|---------------------------------|----------------------
+        spawner        | decay cooldowns, debug spawns   | raw delta, before hit-stop
+        hit-stop       | decide the simulation delta     | a frozen tick skips the world
+        sweep origins  | capture this tick's geometry    | before any movement or attack
+        platforms      | move carried platforms          | before entity integration
+        hazards        | move hazards                    | before entity integration
+        physics        | integrate entities              | before separation / melee
+        feedback       | movement feedback               | after physics
+        launch shots   | drain phase launches            | before combat resolution
+        combat+separation | melee pairs, push apart      | after physics, before projectiles
+        projectiles    | advance and resolve shots       | after launch, after melee
+        damage         | contact and hazard damage       | after all offensive boxes exist
+        deaths         | reap the dead                   | after damage
+        respawn        | place the respawned             | after reaping
+        progression    | exit flag                       | after respawn
+        camera         | ease toward the player          | frozen ticks still run it
+        notifications  | emit level milestones           | frozen ticks still run it
+        tick counter   | record the rollback snapshot    | last, after everything above
+
+        The entity grid is rebuilt at the start of ``process_combat_and_separation``,
+        *before* separation pushes entities apart; the damage systems that follow
+        reuse that same grid. Reordering either step silently changes collision
+        results, which is why the order is listed here in one place.
         """
         for fighter in groups.entity_sprites:
             fighter.render_hints.previous_center = fighter.hitbox.center

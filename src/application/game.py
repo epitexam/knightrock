@@ -449,13 +449,11 @@ class Game:
         """How far the presentation sits into the pending simulation tick.
 
         The loop accumulates real time and drains it in fixed steps, so after
-        the last tick a fraction of a step is always left over. That fraction
-        is how far ahead of the simulation the picture is: 0 means the
-        picture matches the last completed tick exactly, 1 that a whole tick
-        is already owed.         Handing it to the renderer blends each sprite from
-        its last drawn position towards the one the next tick will write,
-        which is what removes the judder of a fixed-step sim on a
-        variable-rate display.
+        the last tick a fraction of a step is always left over. The renderer
+        uses that fraction to offset each sprite *backwards* from the last
+        completed tick towards the previous one (``1 - alpha``), which is what
+        removes the judder of a fixed-step sim on a variable-rate display.
+        There is no "next tick" position to interpolate towards yet.
 
         While a scene is holding the world still, the answer is 1 and not a
         fraction. The leftover in the accumulator keeps being fed real time and
