@@ -25,6 +25,7 @@ from src.core.level.systems.contact_system import (
 )
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
+from src.entities.id_factory import IdFactory
 from src.entities.projectile import Projectile, ProjectileConfig
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHash, collider_box
@@ -54,10 +55,14 @@ class ProjectileSystem:
         pool: ObjectPool[Projectile] | None = None,
         spatial_hash: SpatialHash | None = None,
         contact_system: ContactSystem | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         self.groups = groups
+        factory = id_factory if id_factory is not None else IdFactory()
         self.pool: ObjectPool[Projectile] = (
-            pool if pool is not None else ObjectPool(Projectile, reset=_reset_projectile)
+            pool
+            if pool is not None
+            else ObjectPool(lambda: Projectile(id_factory=factory), reset=_reset_projectile)
         )
         self.spatial_hash = spatial_hash
         self.contact_system: ContactSystem = (

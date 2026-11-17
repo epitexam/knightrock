@@ -25,6 +25,7 @@ from src.core.settings import Slot as SlotSettings
 from src.core.settings import Throw as ThrowSettings
 from src.entities.attack_moves import DEATH_BLOW, SHOTS, SLASHES, THROW
 from src.entities.entity import Entity, EntitySnapshot
+from src.entities.id_factory import IdFactory
 from src.entities.player_animation import PLAYER_ANIMATIONS
 from src.entities.player_config import PlayerConfig
 from src.entities.player_controllers import DashController, JumpController
@@ -91,6 +92,7 @@ class Player(Entity):
         input_manager: InputManager,
         config: PlayerConfig | None = None,
         spatial_hash: SpatialHash | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         """Initialise the player.
 
@@ -148,6 +150,7 @@ class Player(Entity):
             hurt_duration=config.hurt_duration,
             invincibility_duration=config.invincibility_duration,
             spatial_hash=spatial_hash,
+            id_factory=id_factory,
         )
 
         self.speed = config.speed

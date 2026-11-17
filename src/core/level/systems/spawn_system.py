@@ -23,6 +23,7 @@ from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
 from src.entities.enemies.schema import EnemyConfig
+from src.entities.id_factory import IdFactory
 from src.entities.projectile import (
     FIREBOLT_CONFIG,
     PIERCING_BOLT_CONFIG,
@@ -98,6 +99,7 @@ class SpawnSystem:
         spatial_hash: SpatialHash | None = None,
         projectile_system: ProjectileSystem | None = None,
         enemy_configs: Mapping[str, EnemyConfig] | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         self.groups = groups
         #: The configurations the level's own enemies were built from, so a
@@ -106,6 +108,7 @@ class SpawnSystem:
         self.enemy_configs: Mapping[str, EnemyConfig] = enemy_configs or {}
         self.spatial_hash = spatial_hash
         self.projectile_system = projectile_system
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
         #: Attack name looped by the debug replay key, ``None`` when off.
@@ -263,6 +266,7 @@ class SpawnSystem:
                 collision_sprites=self.groups.collision_sprites,
                 player_reference=player,  # type: ignore[arg-type]
                 spatial_hash=self.spatial_hash,
+                id_factory=self.id_factory,
             )
         except KeyError:
             return None
@@ -287,6 +291,7 @@ class SpawnSystem:
             collision_sprites=self.groups.collision_sprites,
             player_reference=player,
             spatial_hash=self.spatial_hash,
+            id_factory=self.id_factory,
         )
         self.groups.add_fighter(enemy)
         self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

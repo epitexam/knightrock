@@ -18,6 +18,7 @@ from src.core.settings import Combat as CombatSettings
 from src.core.settings import Guard as GuardSettings
 from src.entities.enemies.schema import EnemyConfig, EnemyMove
 from src.entities.entity import Entity, EntitySnapshot
+from src.entities.id_factory import IdFactory
 from src.physics import apply_velocity_friction
 from src.physics.spatial_hash import SpatialHash
 from src.states.enemy_states import (
@@ -129,6 +130,7 @@ class Enemy(Entity):
         rng: random.Random | None = None,
         enemy_type: str | None = None,
         spatial_hash: SpatialHash | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         """Initialize an enemy from its configuration.
 
@@ -172,6 +174,7 @@ class Enemy(Entity):
             hurt_duration=CombatSettings.HURT_DURATION,
             rng=rng,
             spatial_hash=spatial_hash,
+            id_factory=id_factory,
         )
 
         self.config = config

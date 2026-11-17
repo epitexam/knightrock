@@ -28,6 +28,7 @@ from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit, MovingPlatform, Sprite
 from src.data.provider import GameplayData, shipped_gameplay_data
 from src.entities.enemies.factory import create_enemy
+from src.entities.id_factory import IdFactory
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
 
@@ -345,8 +346,14 @@ class WorldBuilder:
     static images (if they have one) or logged as ignored.
     """
 
-    def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
+    def __init__(
+        self,
+        level_data: LevelData,
+        gameplay_data: GameplayData | None = None,
+        id_factory: IdFactory | None = None,
+    ) -> None:
         self.level_data = level_data
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
         #: The values the fighters are built from; the shipped files when none
         #: is given, so a level never builds from anything else.
         self.gameplay_data: GameplayData = (
@@ -412,6 +419,7 @@ class WorldBuilder:
                         input_manager,
                         config=config,
                         spatial_hash=self.spatial_hash,
+                        id_factory=self.id_factory,
                     )
                     groups.add_fighter(player)
                     return player
@@ -452,6 +460,7 @@ class WorldBuilder:
                 config=config,
                 spatial_hash=self.spatial_hash,
                 reverse=reverse,
+                id_factory=self.id_factory,
             )
             groups.add_fighter(entity)
         elif OBJECT_FACTORIES.has(obj.name):

@@ -1,5 +1,11 @@
 """Identifiers are injectable, so independent worlds do not share a sequence."""
 
+import os
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+import pygame
 from pygame.sprite import Group
 
 from src.entities.entity import Entity
@@ -40,6 +46,42 @@ def test_an_explicit_id_still_wins_over_the_factory() -> None:
     )
 
     assert entity.id == "named"
+
+
+def test_two_levels_own_independent_id_sequences() -> None:
+    from src.core.input.input_manager import InputManager
+    from src.core.level.level import Level
+    from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
+
+    pygame.init()
+    pygame.display.set_mode((320, 240))
+
+    def build() -> Level:
+        player = ObjectData(
+            name="player",
+            x=100.0,
+            y=100.0,
+            width=0.0,
+            height=0.0,
+            gid=None,
+            image=None,
+            points=None,
+            properties={},
+        )
+        data = LevelData(
+            width=20,
+            height=10,
+            tile_size=64,
+            object_layers={"Entities": ObjectLayerData(name="Entities", objects=[player])},
+            config=LevelConfig(),
+        )
+        return Level(pygame.Surface((1152, 648)), data, InputManager())
+
+    first, second = build(), build()
+
+    assert first.player.id == "e0"
+    assert second.player.id == "e0"
+    assert first.id_factory is not second.id_factory
 
 
 def test_default_construction_still_uses_the_shared_sequence() -> None:

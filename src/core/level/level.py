@@ -37,6 +37,7 @@ from src.core.settings import Debug, World
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
+from src.entities.id_factory import IdFactory
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
 
@@ -121,7 +122,8 @@ class Level:
         # grid, so that every entity it creates is wired into it from the start.
         self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
 
-        self.world_builder = WorldBuilder(level_data, gameplay_data)
+        self.id_factory = IdFactory()
+        self.world_builder = WorldBuilder(level_data, gameplay_data, id_factory=self.id_factory)
         # The grid is bound *before* the build so every entity comes out of the
         # world builder already wired. Entities created by a registry or object
         # factory behind the builder's back are still swept up by the pass
@@ -169,6 +171,7 @@ class Level:
             self.groups,
             spatial_hash=self.spatial_hash,
             contact_system=self.contact_system,
+            id_factory=self.id_factory,
         )
         # Assembled after the projectile system so it can be *given* rather
         # than assigned in afterwards. It used to be created before the world
@@ -184,6 +187,7 @@ class Level:
             self.spatial_hash,
             projectile_system=self.projectile_system,
             enemy_configs=self.world_builder.gameplay_data.enemies,
+            id_factory=self.id_factory,
         )
 
         self.gameplay_loop = GameplayLoop(

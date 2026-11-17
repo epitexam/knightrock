@@ -8,6 +8,7 @@ from pygame.sprite import Group
 
 from src.entities.enemies.enemy import Enemy, PlayerReference
 from src.entities.enemies.schema import EnemyConfig
+from src.entities.id_factory import IdFactory
 from src.physics.spatial_hash import SpatialHash
 
 
@@ -20,6 +21,7 @@ def create_enemy(
     config: EnemyConfig | None = None,
     spatial_hash: SpatialHash | None = None,
     reverse: bool | None = None,
+    id_factory: IdFactory | None = None,
 ) -> Enemy:
     """Create the enemy called ``name``.
 
@@ -65,4 +67,5 @@ def create_enemy(
         config=config,
         enemy_type=name,
         spatial_hash=spatial_hash,
+        id_factory=id_factory,
     )
