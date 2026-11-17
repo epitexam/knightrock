@@ -503,6 +503,29 @@ class ImpactDecalParticle(FxParticle):
         self.image = self.steps[spread_step(self.life, len(self.steps), FxDecal.RING_STEP_OPENS)]
 
 
+#: The block crescent used to repaint ~458 trig-sampled points *every tick*.
+#: Like ShatterArcParticle it is a pure function of quantized age, so a ladder
+#: of 24 steps (finer than the ~16 frames of its lifetime) bounds the work to
+#: one paint per variation instead of one per frame.
+_SHIELD_ARC_STEPS = 24
+_shield_arc_cache: dict[tuple[int, bool], list[pygame.Surface]] = {}
+
+
+def shield_arc_frames(side: float, parried: bool) -> list[pygame.Surface]:
+    """The shared crescent ladder for one side and one parry colour."""
+    key = (1 if side >= 0.0 else -1, parried)
+    cached = _shield_arc_cache.get(key)
+    if cached is None:
+        cached = [
+            ShieldArcParticle._paint_step(  # noqa: SLF001 - the ladder's own step
+                index / (_SHIELD_ARC_STEPS - 1), key[0], key[1]
+            )
+            for index in range(_SHIELD_ARC_STEPS)
+        ]
+        _shield_arc_cache[key] = cached
+    return cached
+
+
 class ShieldArcParticle(FxParticle):
     family: ClassVar[str] = "shield_arc"
 
@@ -536,27 +559,28 @@ class ShieldArcParticle(FxParticle):
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
-        """The bubble, the crescent and the sparks, at the current age.
+        """The ladder's first frame, used by ``FxParticle.__init__``."""
+        return shield_arc_frames(self.side, self.parried)[0]
 
-        Drawn with :func:`draw_arc_stroke` rather than ``draw.arc``, which
-        ignores its start and stop angles and closes the loop whatever they say.
-        """
-        span = self.max_ttl if self.max_ttl > 0.0 else 1.0
-        t = min(1.0, max(0.0, self.age / span))
+    @staticmethod
+    def _paint_step(t: float, side_sign: int, parried: bool) -> pygame.Surface:
+        """Paint one frame of the ladder, from a quantized age and fixed style."""
         grow = 1.0 - (1.0 - t) ** 2
         reach = FxGuard.ARC_RADIUS + FxGuard.ARC_PUSH + FxGuard.SPARK_REACH
         side_px = 2 * snap(reach) + FxGuard.ARC_MARGIN
         surface = pygame.Surface((side_px, side_px), pygame.SRCALPHA)
         middle = (snap(side_px / 2.0), snap(side_px / 2.0))
         radius = FxGuard.ARC_RADIUS * 0.7 + FxGuard.ARC_PUSH * grow
-        facing = 0.0 if self.side >= 0.0 else 180.0
+        facing = 0.0 if side_sign >= 0 else 180.0
+        body = FXColors.parry_spark if parried else FXColors.shield_arc
+        kick = FXColors.parry_core if parried else Colors.off_white
         # The bubble: a faint full ring, only at the start.
         if t < 0.45:
-            pygame.draw.circle(surface, self.body, middle, snap(radius * 0.9), 1)
+            pygame.draw.circle(surface, body, middle, snap(radius * 0.9), 1)
         # The shield: a thick crescent facing the blow, white along its face.
         half = FxGuard.ARC_FLASH + 30.0
         draw_arc_stroke(
-            surface, middle, radius, facing - half, facing + half, self.body, FxGuard.ARC_BAND
+            surface, middle, radius, facing - half, facing + half, body, FxGuard.ARC_BAND
         )
         draw_arc_stroke(
             surface,
@@ -564,7 +588,7 @@ class ShieldArcParticle(FxParticle):
             radius + FxGuard.ARC_BAND / 2.0,
             facing - FxGuard.ARC_FLASH,
             facing + FxGuard.ARC_FLASH,
-            self.kick,
+            kick,
             FxGuard.ARC_KICK_WIDTH,
         )
         # The sparks: thrown off the shield's face, outward and fading.
@@ -578,7 +602,7 @@ class ShieldArcParticle(FxParticle):
                 middle[0] + math.cos(angle) * (start + length),
                 middle[1] + math.sin(angle) * (start + length),
             )
-            pygame.draw.line(surface, self.kick, a, b, 1)
+            pygame.draw.line(surface, kick, a, b, 1)
         return surface
 
     def update(self, delta_time: float) -> None:
@@ -587,7 +611,10 @@ class ShieldArcParticle(FxParticle):
             self.kill()
             return
         self.age += delta_time
-        self.image = self._paint()
+        span = self.max_ttl if self.max_ttl > 0.0 else 1.0
+        t = min(1.0, max(0.0, self.age / span))
+        step = min(_SHIELD_ARC_STEPS - 1, round(t * (_SHIELD_ARC_STEPS - 1)))
+        self.image = shield_arc_frames(self.side, self.parried)[step]
         self._integrate(delta_time)
         self._fade()
         self.rect = self.image.get_frect(center=self.pos)
@@ -1438,4 +1465,5 @@ def clear_frame_cache() -> None:
     _PUFF_MOTES.clear()
     _DASH_MOTES.clear()
     _shard_cache.clear()
+    _shield_arc_cache.clear()
     _vortex_cache = []
