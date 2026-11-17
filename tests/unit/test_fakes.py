@@ -12,7 +12,9 @@ import typing
 import pygame
 
 from src.combat.combatant_protocol import Combatant
-from tests.fakes import BodyStub
+from src.data.provider import shipped_gameplay_data
+from src.entities.player_controllers import DashController, JumpController
+from tests.fakes import _CONTROLLER_FIELDS, BodyStub
 
 #: What the contact, hazard and pairing systems read from a body.
 CONTACT_PIPELINE_READS = (
@@ -48,3 +50,17 @@ def test_the_body_stand_in_has_every_field_the_pipeline_reads() -> None:
     missing = [name for name in CONTACT_PIPELINE_READS if not hasattr(body, name)]
 
     assert not missing, missing
+
+
+def test_the_controller_field_map_matches_the_real_controllers() -> None:
+    """A renamed controller field must not leave player_shape tests passing.
+
+    BodyStub is pinned above; the flat-name map for jump/dash had no such
+    guard. Both are now checked against the real classes.
+    """
+    config = shipped_gameplay_data().player
+    real = {"jump": JumpController(config), "dash": DashController(config)}
+
+    for name, mapping in _CONTROLLER_FIELDS.items():
+        missing = [attr for attr in mapping.values() if not hasattr(real[name], attr)]
+        assert not missing, f"{name}: {missing}"
