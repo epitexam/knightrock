@@ -152,6 +152,8 @@ class SpatialHash:
         # move, then the AI's ledge and landing probes -- and between two
         # changes of the grid the answer cannot differ.
         self._queries: dict[tuple[int, int, int, int], list[SpatialHashMember]] = {}
+        # Reused for span computation; a query never keeps a reference to it.
+        self._query_box = pygame.FRect(0, 0, 0, 0)
 
     def add(self, sprite: SpatialHashMember) -> None:
         """Register a sprite in every cell its hitbox overlaps (idempotent).
@@ -176,7 +178,7 @@ class SpatialHash:
         for cell in cells:
             self.grid[cell].append(sprite)
         self._cells_by_sprite[key] = (sprite, cells)
-        self._queries.clear()
+        self._invalidate_queries(cells)
 
     def add_all(self, sprites: Iterable[SpatialHashMember]) -> None:
         """Register multiple sprites.
@@ -198,8 +200,8 @@ class SpatialHash:
             # Either never registered, or the id now belongs to someone else.
             # Removing "its" cells here would empty another sprite's buckets.
             return
-        self._queries.clear()
         cells = entry[1]
+        self._invalidate_queries(cells)
         for cell in cells:
             bucket = self.grid.get(cell)
             if bucket is None:
@@ -259,14 +261,12 @@ class SpatialHash:
             List of sprites that might collide. May include false positives.
         """
         margin = QUERY_MARGIN_PX
-        span = self._cell_span(
-            pygame.FRect(
-                hitbox.left - margin,
-                hitbox.top - margin,
-                hitbox.width + 2 * margin,
-                hitbox.height + 2 * margin,
-            )
-        )
+        query = self._query_box
+        query.left = hitbox.left - margin
+        query.top = hitbox.top - margin
+        query.width = hitbox.width + 2 * margin
+        query.height = hitbox.height + 2 * margin
+        span = self._cell_span(query)
         cached = self._queries.get(span)
         if cached is not None:
             return list(cached)
@@ -292,12 +292,11 @@ class SpatialHash:
     ) -> None:
         """Append query members into caller-owned buffers without allocating a result list."""
         margin = QUERY_MARGIN_PX
-        query = pygame.FRect(
-            hitbox.left - margin,
-            hitbox.top - margin,
-            hitbox.width + 2 * margin,
-            hitbox.height + 2 * margin,
-        )
+        query = self._query_box
+        query.left = hitbox.left - margin
+        query.top = hitbox.top - margin
+        query.width = hitbox.width + 2 * margin
+        query.height = hitbox.height + 2 * margin
         for cell in self._cells_for_box(query):
             for sprite in self.grid.get(cell, ()):
                 key = id(sprite)
@@ -309,6 +308,22 @@ class SpatialHash:
     def _box_of(sprite: SpatialHashMember) -> pygame.Rect | pygame.FRect | None:
         """Return a sprite's hitbox, falling back to its rect."""
         return collider_box(sprite)
+
+    def _invalidate_queries(self, cells: tuple[tuple[int, int], ...]) -> None:
+        """Drop only cached searches whose cell range touches ``cells``.
+
+        A moving platform re-buckets every tick; clearing the whole cache there
+        meant a fighter's move, ledge and landing probes never shared a result.
+        A cached search can only be stale if it covered a cell that changed, so
+        the rest stay valid.
+        """
+        if not self._queries or not cells:
+            return
+        touched = set(cells)
+        for span in list(self._queries):
+            x0, x1, y0, y1 = span
+            if any(x0 <= cx <= x1 and y0 <= cy <= y1 for cx, cy in touched):
+                del self._queries[span]
 
     def _cell_span(self, box: pygame.Rect | pygame.FRect) -> tuple[int, int, int, int]:
         """The first and last cell column and row the box overlaps: ``(x0, x1, y0, y1)``."""

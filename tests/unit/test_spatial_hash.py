@@ -38,6 +38,17 @@ def test_a_duck_typed_query_needs_no_spatial_hash_type() -> None:
     assert query.get_nearby(pygame.FRect(100, 100, 40, 48)) == [sprite]
 
 
+def test_query_cache_is_invalidated_when_a_covered_cell_changes() -> None:
+    """A sprite moving into a cached cell range must invalidate that query."""
+    grid = SpatialHash(cell_size=64)
+    grid.get_nearby(pygame.FRect(100, 100, 40, 48))
+    assert len(grid._queries) == 1  # noqa: SLF001
+
+    grid.add(BoxSprite(pygame.FRect(100, 100, 40, 48)))
+
+    assert not grid._queries  # noqa: SLF001
+
+
 class BoxSprite:
     """Minimal spatial-hash member exposing a ``hitbox``."""
 
