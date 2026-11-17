@@ -34,6 +34,7 @@ from src.ui.styles import (
     TEXT_TITLE,
     TEXT_WARN,
 )
+from src.ui.text_cache import TextCache
 
 #: The lowest text scale a table too wide for its window may shrink to: the
 #: item text at the pixel font's own grid, 8px, which it is drawn to be read at.
@@ -115,7 +116,10 @@ class GridView:
         self._panel_size: tuple[int, ...] = (0, 0)
         self._strip_cache: pygame.Surface | None = None
         self._strip_size: tuple[int, int] = (0, 0)
-        self._text_cache: dict[tuple[int, str, tuple[int, int, int], int], pygame.Surface] = {}
+        self._text_cache = TextCache(
+            self.TEXT_CACHE_LIMIT,
+            lambda font, text, color, width: self._fit(font, text, width, color),
+        )
 
     @property
     def row_rects(self) -> list[pygame.Rect]:
@@ -623,14 +627,7 @@ class GridView:
         The grid issues roughly 30 ``render`` calls per frame; without this each
         one allocated a Surface, which showed up as micro-freezes.
         """
-        key = (id(font), text, color, max_width)
-        cached = self._text_cache.get(key)
-        if cached is None:
-            cached = self._fit(font, text, max_width, color)
-            if len(self._text_cache) >= self.TEXT_CACHE_LIMIT:
-                self._text_cache.clear()
-            self._text_cache[key] = cached
-        return cached
+        return self._text_cache.render(font, text, color, max_width)
 
     @staticmethod
     def _fit(

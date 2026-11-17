@@ -15,6 +15,7 @@ from src.ui.styles import (
     TEXT_MUTED,
     TEXT_WARN,
 )
+from src.ui.text_cache import TextCache
 
 #: A panel title's colour: the menus' section headings.
 PANEL_TITLE_COLOR = TEXT_WARN
@@ -492,9 +493,7 @@ class PanelRenderer:
         self._screen_scale = screen_scale(density) * self._panel_scale
         self._build_fonts()
 
-        self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
-        self._text_cache_hits = 0
-        self._text_cache_misses = 0
+        self._text_cache = TextCache(text_cache_capacity)
         self._background_cache: OrderedDict[
             tuple[int, int, tuple[int, int, int, int]], pygame.Surface
         ] = OrderedDict()
@@ -632,33 +631,18 @@ class PanelRenderer:
     @property
     def text_cache_stats(self) -> dict[str, int]:
         return {
-            "hits": self._text_cache_hits,
-            "misses": self._text_cache_misses,
+            "hits": self._text_cache.hits,
+            "misses": self._text_cache.misses,
             "entries": len(self._text_cache),
         }
 
     def clear_text_cache(self) -> None:
         self._text_cache.clear()
-        self._text_cache_hits = 0
-        self._text_cache_misses = 0
 
     def render_text(
         self, text: str, font: pygame.font.Font, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        key = (text, id(font), color)
-        cached = self._text_cache.get(key)
-        if cached is not None:
-            self._text_cache.move_to_end(key)
-            self._text_cache_hits += 1
-            return cached
-        self._text_cache_misses += 1
-        # No antialiasing: a pixel font blurred at its edges is not one.
-        rendered = font.render(text, False, color)
-        if self.text_cache_capacity:
-            self._text_cache[key] = rendered
-            if len(self._text_cache) > self.text_cache_capacity:
-                self._text_cache.popitem(last=False)
-        return rendered
+        return self._text_cache.render(font, text, color)
 
     def measure_panel(
         self,

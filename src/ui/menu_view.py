@@ -19,6 +19,7 @@ from src.ui.styles import (
     TEXT_TITLE,
     TEXT_WARN,
 )
+from src.ui.text_cache import TextCache
 
 #: The menu's text sizes, in design pixels of a 648-tall picture.
 DESIGN_TITLE = 32
@@ -116,8 +117,8 @@ class MenuView:
         self._sticky_width = 0
         # Rendered-text cache. One .render() per frame per item allocates a
         # Surface and triggers GC, which shows up as micro-freezes at 60fps.
-        # Keyed by (font id, text, colour); invalidated on selection change.
-        self._text_cache: dict[tuple[int, str, tuple[int, int, int]], pygame.Surface] = {}
+        # Keyed by (font id, text, colour, width); invalidated on selection change.
+        self._text_cache = TextCache(512)
         self._text_cache_key: (
             tuple[tuple[str, ...], tuple[str, ...], int, float, str, int] | None
         ) = None
@@ -670,13 +671,7 @@ class MenuView:
     def _render_cached(
         self, font: pygame.font.Font, text: str, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        key = (id(font), text, color)
-        cached = self._text_cache.get(key)
-        if cached is None:
-            # No antialiasing: a pixel font blurred at its edges is not one.
-            cached = font.render(text, False, color)
-            self._text_cache[key] = cached
-        return cached
+        return self._text_cache.render(font, text, color)
 
     def _wrap_text(
         self,
