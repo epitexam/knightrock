@@ -22,16 +22,16 @@ from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
 from src.core.settings import (
-    EnemyJump,
     HitFlash,
-    Ledge,
     Locomotion,
     Physics,
     Turn,
     resolve_turn_profile,
 )
-from src.core.settings import Finisher as FinisherSettings
 from src.core.settings import Stun as StunSettings
+from src.entities.components.animation_publisher import AnimationPublisher
+from src.entities.components.doom import DoomTracker
+from src.entities.components.environment import EnvironmentScanner
 from src.entities.components.movement import MovementComponent
 from src.entities.components.reaction import (
     ReactionComponent,
@@ -48,9 +48,8 @@ from src.physics import (
     move_entity,
     resolve_collisions,
 )
-from src.physics.collisions import CollisionSprite, get_nearby_sprites
+from src.physics.collisions import CollisionSprite
 from src.physics.movement import WallJumpLock
-from src.physics.spatial_hash import collider_box
 from src.states import state_names
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
@@ -250,6 +249,12 @@ class Entity(Sprite):
         self.facing_right: bool = True
         # Built after vitals and combat: a reaction drives both.
         self._reaction = ReactionComponent(self)
+        # Pure ground probes, kept out of the tick template and combat facade.
+        self._environment = EnvironmentScanner(self)
+        # Animation is presentation: its publisher never feeds a game rule.
+        self._animation_publisher = AnimationPublisher(self)
+        # Doom/finisher transition rules, kept out of the combatant facade.
+        self._doom = DoomTracker(self)  # type: ignore[arg-type]
         # Subclasses attach an Animator; without one the flat surface is drawn.
         self.animator: Animator | None = None
 
@@ -635,44 +640,26 @@ class Entity(Sprite):
 
     @property
     def is_doomed(self) -> bool:
-        """Whether the fighter was brought to nothing and waits for the death blow."""
-        return bool(self.state_machine.current_state_name == state_names.DOOMED)
+        """Whether the fighter waits for the death blow; see :class:`DoomTracker`."""
+        return self._doom.is_doomed
 
     @property
     def is_helpless(self) -> bool:
-        """Stunned, on the ground or doomed: an ``execute`` hit kills it outright."""
-        return self.state_machine.current_state_name in (
-            state_names.DIZZY,
-            state_names.DOWNED,
-            state_names.DOOMED,
-        )
+        """Stunned, downed or doomed; see :class:`DoomTracker`."""
+        return self._doom.is_helpless
 
     def doom(self) -> None:
-        """Leave the fighter doomed: all but dead, frozen, waiting for the death blow.
-
-        It dies on its own once ``Finisher.DOOM_TIME`` has run on its clock.
-        """
-        self.combat.cancel_attack()
-        self.combat.reset_hurt_state()
-        self.stun = 0.0
-        self.velocity.x = 0.0
-        self.health = min(self.health, FinisherSettings.DOOM_HEALTH)
-        self.state_machine.change_state(
-            state_names.DOOMED, force=True, duration=FinisherSettings.DOOM_TIME
-        )
+        """Enter the doomed state; see :class:`DoomTracker`."""
+        self._doom.doom()
 
     def recover_from_doom(self) -> None:
-        """A death blow missed: the doomed fighter gets back up, with some health back."""
-        if not self.is_doomed or self.is_dead:
-            return
-        self.health = max(self.health, self.max_health * FinisherSettings.RECOVER_RATIO)
-        self.stagger_timer = 0.0
-        self.state_machine.change_state("idle", force=True)
+        """Get up after a missed death blow; see :class:`DoomTracker`."""
+        self._doom.recover_from_doom()
 
     @property
     def finish(self) -> Finish:
-        """What this fighter's blow does to a target it would kill: it kills it."""
-        return Finish.NONE
+        """What this fighter's blow does to a target it would kill."""
+        return self._doom.finish
 
     def guards_against(self, height: Height, unblockable: bool, source_center_x: float) -> bool:
         """Whether this fighter's guard stops the hit. No guard by default."""
@@ -896,80 +883,14 @@ class Entity(Sprite):
         return 1.0 if self.facing_right else -1.0
 
     def is_at_ledge(self) -> bool:
-        """Return True when grounded with no ground ahead of the walk.
-
-        A probe hangs off the front foot (``Ledge.PROBE_AHEAD_PX`` wide,
-        ``Ledge.PROBE_DROP_PX`` deep): any collider inside means ground,
-        nothing inside means void. The walk direction leads (locomotion
-        states set ``move_axis`` before probing); facing is only the idle
-        fallback. Airborne entities are falling, not at a ledge.
-        Deterministic (no randomness); shared by every entity, only the
-        enemy AI acts on it.
-        """
-        if not self.on_surface.get("floor", False):
-            return False
-        ahead_right = self._walk_direction() > 0.0
-        ahead = Ledge.PROBE_AHEAD_PX
-        skin = Ledge.PROBE_SKIN_PX
-        drop = Ledge.PROBE_DROP_PX
-        if ahead_right:
-            probe = pygame.FRect(self.hitbox.right, self.hitbox.bottom - skin, ahead, skin + drop)
-        else:
-            probe = pygame.FRect(
-                self.hitbox.left - ahead, self.hitbox.bottom - skin, ahead, skin + drop
-            )
-        nearby = get_nearby_sprites(
-            self,
-            spatial_hash=self.spatial_hash,
-            collision_sprites=self.collision_sprites,
-        )
-        for sprite in nearby:
-            box = collider_box(sprite)
-            if box is not None and probe.colliderect(box):
-                return False
-        return True
+        """Whether grounded with no ground ahead; see :class:`EnvironmentScanner`."""
+        return self._environment.is_at_ledge()
 
     def find_landing_ahead(
         self, max_dist: float, max_rise: float, max_drop: float
     ) -> tuple[float, float] | None:
-        """Next landable ground ahead: (distance from the front foot, drop).
-
-        Samples forward in ``GAP_SCAN_STEP_PX`` increments: the first
-        collider whose top sits between ``max_rise`` above and ``max_drop``
-        below the feet wins, and its depth below the feet is returned
-        alongside the distance. Walls (tops out of band) never match.
-        Returns None past ``max_dist``. Deterministic; shared by every
-        entity.
-        """
-        if max_dist <= 0.0:
-            return None
-        direction = self._walk_direction()
-        front = self.hitbox.right if direction > 0.0 else self.hitbox.left
-        boxes: list[Any] = []
-        for sprite in get_nearby_sprites(
-            self,
-            spatial_hash=self.spatial_hash,
-            collision_sprites=self.collision_sprites,
-        ):
-            box = collider_box(sprite)
-            if box is not None:
-                boxes.append(box)
-        step = EnemyJump.GAP_SCAN_STEP_PX
-        distance = max(step, Ledge.PROBE_AHEAD_PX + step)
-        while distance <= max_dist:
-            center = front + direction * distance
-            sample = pygame.FRect(
-                center - 2.0, self.hitbox.bottom - max_rise, 4.0, max_rise + max_drop
-            )
-            for box in boxes:
-                if (
-                    sample.colliderect(box)
-                    and box.top >= self.hitbox.bottom - max_rise
-                    and box.top <= self.hitbox.bottom + max_drop
-                ):
-                    return distance, box.top - self.hitbox.bottom
-            distance += step
-        return None
+        """Next landable ground ahead; see :class:`EnvironmentScanner`."""
+        return self._environment.find_landing_ahead(max_dist, max_rise, max_drop)
 
     def is_wall_sliding(self) -> bool:
         """Return True if the entity is currently sliding down a wall."""
@@ -1240,24 +1161,8 @@ class Entity(Sprite):
         return None
 
     def _update_animator(self, delta_time: float) -> None:
-        """Tick the optional animator and publish its surface as ``image``.
-
-        The display surface is scaled to the sprite rect so the physics
-        rect stays authoritative; entities without an
-        animator keep their flat colored surface.
-        """
-        if self.animator is None:
-            return
-        name = self._animation_name()
-        if name is not None:
-            self.animator.play(name)
-        self.animator.update(delta_time)
-        surface = self.animator.surface(
-            (round(self.rect.width), round(self.rect.height)),
-            self.facing_right,
-        )
-        if surface is not None:
-            self.image = surface
+        """Delegate to :class:`AnimationPublisher`; subclasses keep the art key."""
+        self._animation_publisher.update(delta_time)
 
     def _update_state_machine(self, delta_time: float) -> None:
         """Update the state machine. Can be overridden to disable AI dynamically."""
