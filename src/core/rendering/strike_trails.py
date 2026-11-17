@@ -132,6 +132,10 @@ RUSH_TINT: tuple[int, int, int, int] = (60, 20, 110, 55)
 #: How long the tint takes to come in and go out, in seconds of the rush.
 RUSH_FADE = 0.2
 
+#: A 0.2s fade at 60fps visits ~12 distinct alphas; 16 leaves headroom without
+#: pinning a full-screen surface per possible alpha (56 of them at 1080p).
+_RUSH_TINT_CACHE_MAX = 16
+
 
 #: The player's moves drawn their own way; the rest follow their shape.
 NAMED_LOOKS: dict[str, Look] = {
@@ -279,7 +283,7 @@ class StrikeTrails:
         self._rushing: dict[int, float] = {}
         """The fighters in a dark step, and how much of it is left (seconds)."""
         self._rush_tints: dict[tuple[tuple[int, int], int], pygame.Surface] = {}
-        """Full-screen rush tints, one per size and integer alpha (<= 55)."""
+        """Rush tints, bounded: a 0.2s fade uses ~12 of the 56 possible alphas."""
         self._clock = 0.0
 
     def __len__(self) -> int:
@@ -710,8 +714,14 @@ class StrikeTrails:
         if tint is None:
             tint = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
             tint.fill((r, g, b, alpha))
+            if len(self._rush_tints) >= _RUSH_TINT_CACHE_MAX:
+                self._rush_tints.pop(next(iter(self._rush_tints)))
             self._rush_tints[key] = tint
         surface.blit(tint, (0, 0))
+
+    def clear_tints(self) -> None:
+        """Drop the full-screen tints after a display-format change or resize."""
+        self._rush_tints.clear()
 
     def _draw_impact(
         self, surface: pygame.Surface, impact: _Impact, screen: Screen, density: float

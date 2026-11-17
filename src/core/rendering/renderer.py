@@ -403,6 +403,7 @@ class Renderer:
         self.overlay.set_surface(surface, self.camera.density)
         self._scaled_cache.clear()
         self._flash_cache.clear()
+        self.strike_trails.clear_tints()
 
     @property
     def _density(self) -> float:
