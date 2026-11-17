@@ -85,5 +85,10 @@ class Refusal(Enum):
 
     @property
     def is_retryable(self) -> bool:
-        """Whether the same press, unchanged, could succeed later."""
-        return self is Refusal.COOLDOWN
+        """Whether the same press, unchanged, could succeed later.
+
+        A move on cooldown will be ready; a move refused because the running
+        one cannot be cancelled yet will be, once its cancel window opens --
+        that is how a press made during one link of a chain becomes the next.
+        """
+        return self in (Refusal.COOLDOWN, Refusal.NO_CANCEL)

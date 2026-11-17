@@ -54,6 +54,7 @@ class CombatSnapshot:
     charge_state: ChargeSnapshot
     air_combo_count: int = 0
     combo_armed: bool = False
+    attacks_started: int = 0
     geometry_checksum: str = field(default="", compare=False)
 
 
@@ -105,6 +106,9 @@ class CombatComponent:
         self.is_hurt: bool = False
         self._hurt_timer: float = 0.0
         self._hurt_duration: float = hurt_duration
+        #: Every attack started, chained ones included: how the attack state
+        #: tells a new link of a chain from the move it was already playing.
+        self.attacks_started: int = 0
 
     def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """Register a new attack definition.
@@ -225,12 +229,21 @@ class CombatComponent:
 
     @property
     def air_combo_count(self) -> int:
-        """Air-juggle hits landed in the current window (Phase 5 #4)."""
+        """Air-juggle hits landed in the current window."""
         return self.combo.air_count
 
-    def record_hit_landed(self, airborne: bool) -> None:
-        """Count a connected hit, tracking air juggles (Phase 5 #4)."""
-        self.combo.on_hit_landed(airborne)
+    def record_hit_landed(self, airborne: bool) -> bool:
+        """Count a connected hit, tracking air juggles; whether the combo moved."""
+        return self.combo.on_hit_landed(airborne)
+
+    @property
+    def attack_speed(self) -> float:
+        """How fast the running attack's clock goes; 1.0 is the frame data as written."""
+        return self.state.speed
+
+    @attack_speed.setter
+    def attack_speed(self, value: float) -> None:
+        self.state.speed = value
 
     @property
     def movement_multiplier(self) -> float:
@@ -307,9 +320,10 @@ class CombatComponent:
             return Refusal.BUSY
 
         self._cooldowns[name] = definition.cooldown
+        self.attacks_started += 1
         self.combo.on_attack_started(definition.combo_reset)
 
-        # P1 starter seed (D1): all starts happen during ``Entity.update``,
+        # P1 starter seed: all starts happen during ``Entity.update``,
         # i.e. AFTER the tick-frontier capture, so without seeding ``prev``
         # here the first ACTIVE tick would stay discrete. Position the
         # startup frame-0 geometry in the pool, then copy it as origin.
@@ -335,7 +349,7 @@ class CombatComponent:
             return False
         return self.charging.start_charge(name)
 
-    def release_charge(self) -> Refusal:
+    def release_charge(self, full: MoveId | None = None) -> Refusal:
         """Release the current charge and execute the attack.
 
         Transactional in the way a charge release has to be. The handler used to
@@ -357,12 +371,17 @@ class CombatComponent:
             return Refusal.CHARGING
 
         name, multiplier = pending
+        started, power = name, multiplier
+        if full is not None and self.charging.is_full:
+            # A full charge throws its own move, at the full charge's power:
+            # the tier adds to the charge, never replaces it.
+            started = full
         # The handler is cleared first because ``start_attack`` refuses outright
         # while a charge is in progress -- releasing has to make room before it
         # can be asked. A refusal therefore puts the charge back, which is what
         # makes the release a transaction rather than a destruction.
         self.charging.cancel()
-        refusal = self.start_attack(name, multiplier)
+        refusal = self.start_attack(started, power)
         if refusal is not Refusal.NONE:
             self.charging.restore_pending(name, multiplier)
         return refusal
@@ -436,6 +455,7 @@ class CombatComponent:
             charge_state=self.charging.save_state(),
             air_combo_count=self.combo.air_count,
             combo_armed=self.combo.is_armed,
+            attacks_started=self.attacks_started,
             geometry_checksum=geometry_checksum(self.attack_boxes, self.attack_shapes),
         )
 
@@ -457,6 +477,7 @@ class CombatComponent:
             snapshot.combo_armed,
         )
         self._cooldowns = dict(snapshot.cooldowns)
+        self.attacks_started = snapshot.attacks_started
         self.charging.load_state(snapshot.charge_state)
         # P1 (D3, re-derivation): no snapshot field. ``prev`` is re-derived
         # at the next frontier capture; forgetting it here keeps the restore
@@ -535,6 +556,7 @@ class NullCombatComponent:
     """
 
     def __init__(self) -> None:
+        self.attacks_started: int = 0
         self.is_attacking: bool = False
         self.is_hurt: bool = False
         self.attack_box: pygame.FRect | None = None
@@ -581,9 +603,10 @@ class NullCombatComponent:
         """Always returns ``0``."""
         return 0
 
-    def record_hit_landed(self, airborne: bool) -> None:
-        """No-op."""
+    def record_hit_landed(self, airborne: bool) -> bool:
+        """Never counts: there is no combo."""
         del airborne
+        return False
 
     def add_attack(self, name: MoveId, definition: AttackDefinition) -> None:
         """No-op."""
@@ -610,9 +633,10 @@ class NullCombatComponent:
         """Always returns ``False``."""
         return False
 
-    def release_charge(self) -> bool:
-        """Always returns ``False``."""
-        return False
+    def release_charge(self, full: MoveId | None = None) -> Refusal:
+        """Never starts an attack, with the same return contract as the real one."""
+        del full
+        return Refusal.UNKNOWN
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """No-op."""
@@ -695,6 +719,8 @@ class _NullHitboxManager:
 class _NullChargeHandler:
     is_charging = False
     movement_multiplier = 1.0
+    charge_timer = 0.0
+    attack_name: MoveId | None = None
 
     def cancel(self) -> None:
         """No-op."""
@@ -713,9 +739,14 @@ class _NullAttackState:
 
     is_active: bool = False
     is_attacking: bool = False
+    sub_state: PhaseState = PhaseState.IDLE
 
     def __init__(self) -> None:
         self.targets_hit: set[str] = set()
+
+    def take_launches(self) -> list[tuple[str, float]]:
+        """Never anything: nothing is ever thrown."""
+        return []
 
 
 class _NullComboTracker:

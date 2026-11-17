@@ -91,14 +91,3 @@ def test_input_manager_attack_edges_are_independent() -> None:
     manager.update()
     assert manager.just_released(InputAction.ATTACK_1) is True
     assert manager.just_pressed(InputAction.ATTACK_2) is False
-
-
-def test_set_provider_replaces_the_source() -> None:
-    manager = InputManager()
-    manager.set_provider(
-        ScriptedInputProvider([InputState(held_actions=frozenset({InputAction.GUARD}))])  # type: ignore[arg-type]
-    )
-
-    manager.update()
-
-    assert manager.held(InputAction.GUARD) is True

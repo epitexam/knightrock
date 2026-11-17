@@ -68,6 +68,21 @@ class ChargeHandler:
             return 1.0
         return self._attacks[self._attack_name].charge_move_multiplier
 
+    @property
+    def is_full(self) -> bool:
+        """Whether the charge has reached its attack's ``max_charge_time``."""
+        if not self.is_charging or self._attack_name is None:
+            return False
+        return self.charge_timer >= self._attacks[self._attack_name].max_charge_time
+
+    @property
+    def ratio(self) -> float:
+        """How far the charge has come, from 0 to 1."""
+        if not self.is_charging or self._attack_name is None:
+            return 0.0
+        max_time = max(self._attacks[self._attack_name].max_charge_time, 0.001)
+        return min(1.0, self.charge_timer / max_time)
+
     def start_charge(self, name: MoveId) -> bool:
         """Begin charging an attack.
 

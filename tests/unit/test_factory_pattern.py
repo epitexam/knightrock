@@ -4,9 +4,9 @@ import pygame
 import pytest
 from pygame.sprite import Group
 
-from src.entities.enemies.configs import ENEMY_CONFIGS
+from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
-from src.entities.enemies.factory import create_enemy, is_enemy_type
+from src.entities.enemies.factory import create_enemy
 from src.entities.enemies.schema import EnemyConfig
 
 
@@ -20,17 +20,15 @@ class MockPlayer:
 class TestFactoryPattern:
     """Test factory pattern implementation."""
 
-    def test_is_enemy_type_returns_true_for_valid_types(self):
-        """Test that is_enemy_type returns True for valid enemy types."""
-        assert is_enemy_type("goblin") is True
-        assert is_enemy_type("dummy") is True
-        assert is_enemy_type("slime") is True
+    def test_an_enemy_without_a_config_is_built_from_enemies_json(self):
+        """No config given: the shipped file, never a copy kept in code (audit C4)."""
+        for name, config in shipped_gameplay_data().enemies.items():
+            enemy = create_enemy(name=name, pos=(0, 0), groups=Group(), collision_sprites=Group())
+            assert enemy.config == config
 
-    def test_is_enemy_type_returns_false_for_invalid_types(self):
-        """Test that is_enemy_type returns False for invalid enemy types."""
-        assert is_enemy_type("invalid") is False
-        assert is_enemy_type("goblin2") is False
-        assert is_enemy_type("") is False
+    def test_an_unknown_enemy_type_raises(self):
+        with pytest.raises(KeyError):
+            create_enemy(name="goblin2", pos=(0, 0), groups=Group(), collision_sprites=Group())
 
     def test_create_enemy_creates_enemy_instance(self):
         """Test that create_enemy returns an Enemy instance."""
@@ -47,7 +45,8 @@ class TestFactoryPattern:
         )
 
         assert isinstance(enemy, Enemy)
-        assert enemy.config == ENEMY_CONFIGS["goblin"]
+        assert enemy.config == shipped_gameplay_data().enemies["goblin"]
+        assert enemy.player is player_ref
 
     def test_create_enemy_stores_the_registry_type_name(self):
         """Test that the factory records the type for debug labels."""
@@ -89,7 +88,7 @@ class TestFactoryPattern:
         )
 
         assert isinstance(enemy, Enemy)
-        assert enemy.config == ENEMY_CONFIGS["dummy"]
+        assert enemy.config == shipped_gameplay_data().enemies["dummy"]
         assert enemy.player is None
 
     def test_create_enemy_with_slime_config(self):
@@ -107,7 +106,7 @@ class TestFactoryPattern:
         )
 
         assert isinstance(enemy, Enemy)
-        assert enemy.config == ENEMY_CONFIGS["slime"]
+        assert enemy.config == shipped_gameplay_data().enemies["slime"]
 
     def test_create_enemy_invalid_type_raises_keyerror(self):
         """Test that create_enemy raises KeyError for invalid enemy type."""
@@ -137,7 +136,7 @@ class TestFactoryPattern:
             player_reference=player_ref,
         )
 
-        config = ENEMY_CONFIGS["goblin"]
+        config = shipped_gameplay_data().enemies["goblin"]
         assert enemy.chase_speed == config.chase_speed
         assert enemy.patrol_speed == config.chase_speed * 0.5  # derived default
         assert enemy.speed == enemy.patrol_speed  # initial cruise
@@ -151,33 +150,23 @@ class TestFactoryPattern:
 
     def test_enemy_configs_are_dataclasses(self):
         """Test that all enemy configs are proper dataclasses."""
-        for config in ENEMY_CONFIGS.values():
+        for config in shipped_gameplay_data().enemies.values():
             assert isinstance(config, EnemyConfig)
-            # Check that it has all required fields
-            assert hasattr(config, "size")
-            assert hasattr(config, "color")
-            assert hasattr(config, "health")
-            assert hasattr(config, "attacks")
-            assert hasattr(config, "chase_speed")
-            assert hasattr(config, "patrol_speed")
-            assert hasattr(config, "vision_range")
 
 
 class TestNoDirectSubclassUsage:
     """Test that Goblin and TrainingDummy are not used directly."""
 
-    def test_goblin_not_importable_from_enemies(self):
-        """Test that Goblin cannot be imported from enemies module."""
-        import importlib
+    def test_no_concrete_enemy_module_exists(self):
+        """The factory is the only way to build an enemy; no per-type module exists.
 
-        # These should NOT be available as direct subclasses.
-        with pytest.raises(ImportError):
-            importlib.import_module("src.entities.enemies.goblin")
-            raise ImportError("Goblin must not be importable as a class")
+        The first version raised ``ImportError`` itself inside ``pytest.raises``,
+        so it passed whether or not the modules existed.
+        """
+        import importlib.util
 
-        with pytest.raises(ImportError):
-            importlib.import_module("src.entities.enemies.training_dummy")
-            raise ImportError("TrainingDummy must not be importable as a class")
+        for module in ("src.entities.enemies.goblin", "src.entities.enemies.training_dummy"):
+            assert importlib.util.find_spec(module) is None, module
 
     def test_the_enemies_package_re_exports_nothing(self):
         """The factory is the only way in, and the package says so by staying empty.

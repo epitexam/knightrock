@@ -4,36 +4,39 @@ from typing import TYPE_CHECKING
 
 import pygame
 
-from src.application.scene import Scene
 from src.application.scenes.gameplay_scene import GameplayScene
-from src.core.colors import Colors
+from src.application.scenes.menu_page import MenuPage
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
+from src.ui.fonts import MENU_FONT_GRID, menu_font_size
 from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.ui.menu_view import DESIGN_ITEM, MenuView
+from src.ui.text import t
+from src.ui.title_backdrop import TitleBackdrop
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.scene_context import SceneContext
 
 
-class MenuScene(Scene):
-    TITLE = "KNIGHTROCK"
-    CONFIRM_TITLE = "QUIT?"
-    CONFIRM_ITEMS = (MenuItem("no", "No, go back"), MenuItem("yes", "Yes, quit"))
+class MenuScene(MenuPage):
+    opaque = True
+    covers_panels_below = False
+    TITLE = t("title.game")
+    CONFIRM_TITLE = t("title.quit")
+    CONFIRM_ITEMS = (MenuItem("no", t("row.quit_no")), MenuItem("yes", t("row.quit_yes")))
 
-    def __init__(self, game: Game) -> None:
-        super().__init__(game)
+    def __init__(self, game: SceneContext) -> None:
         save = game.save_game
         has_progress = save.last_level_id != 0 or len(save.unlocked_levels) > 1
         items: tuple[MenuItem, ...]
         self.options: tuple[str, ...]
         if has_progress:
             items = (
-                MenuItem("continue", f"Continue (level {save.last_level_id})"),
-                MenuItem("new_game", "New game"),
-                MenuItem("levels", "Level select"),
-                MenuItem("options", "Options"),
-                MenuItem("quit", "Quit"),
+                MenuItem("continue", t("row.continue", level=save.last_level_id)),
+                MenuItem("new_game", t("row.new_game")),
+                MenuItem("levels", t("row.levels"), kind="page"),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("quit", t("row.quit")),
             )
             self.options = (
                 f"ENTER: continue (level {save.last_level_id})",
@@ -44,16 +47,16 @@ class MenuScene(Scene):
             )
         else:
             items = (
-                MenuItem("play", "Play"),
-                MenuItem("levels", "Level select"),
-                MenuItem("options", "Options"),
-                MenuItem("quit", "Quit"),
+                MenuItem("play", t("row.play")),
+                MenuItem("levels", t("row.levels"), kind="page"),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("quit", t("row.quit")),
             )
             self.options = ("ENTER: play", "ESC: quit")
-        self.model = MenuModel(items)
-        self.view: MenuView = MenuView()
+        super().__init__(game, items)
+        self.backdrop = TitleBackdrop()
         self.confirm_model = MenuModel(self.CONFIRM_ITEMS)
-        self.confirm_view = MenuView()
+        self.confirm_view = MenuView(game.ui_scale)
         self._confirming = False
 
     @property
@@ -73,10 +76,10 @@ class MenuScene(Scene):
     def _disarm_quit(self) -> None:
         self._confirming = False
 
-    def update(self, delta_time: float) -> None:
-        return None
-
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
+        if routed_input.variant == "device_removed":
+            # A controller dropping out is not the player asking to quit.
+            return None
         if self._confirming:
             return self._handle_confirm(routed_input)
         action, _ = self.model.handle_routed(
@@ -94,13 +97,9 @@ class MenuScene(Scene):
         elif action == "new_game":
             self.game.scene_manager.switch(GameplayScene(self.game, 0))
         elif action == "levels":
-            from src.application.scenes.level_select_scene import LevelSelectScene
-
-            self.game.scene_manager.push(LevelSelectScene(self.game))
+            self.game.scene_manager.navigator.push_level_select()
         elif action == "options":
-            from src.application.scenes.options_scene import OptionsScene
-
-            self.game.scene_manager.push(OptionsScene(self.game))
+            self.game.scene_manager.navigator.push_options()
         return action
 
     def _handle_confirm(self, routed_input: RoutedInput) -> str | None:
@@ -118,7 +117,7 @@ class MenuScene(Scene):
             routed_input.variant,
         )
         if action == "yes":
-            self.game.running = False
+            self.game.quit()
         elif action == "no":
             self._disarm_quit()
             return MenuAction.BACK
@@ -128,10 +127,21 @@ class MenuScene(Scene):
         self.view.set_scale(scale)
         self.confirm_view.set_scale(scale)
 
+    def update(self, delta_time: float) -> None:
+        self.backdrop.update(delta_time)
+
     def draw(self, surface: pygame.Surface) -> None:
-        surface.fill(Colors.dark_grey)
-        panel = self.view.draw(surface, self.TITLE, self.model, top=180)
+        # The embers are squares of the menu font's own pixel.
+        unit = menu_font_size(DESIGN_ITEM, self.game.ui_scale) // MENU_FONT_GRID
+        self.backdrop.draw(surface, unit)
+        super().draw(surface)
+
+    def draw_over(self, surface: pygame.Surface, panel: pygame.Rect) -> None:
         if self._confirming:
+            self.confirm_view.set_scale(self.game.ui_scale)
             self.confirm_view.draw(
-                surface, self.CONFIRM_TITLE, self.confirm_model, top=panel.bottom + 24
+                surface,
+                self.CONFIRM_TITLE,
+                self.confirm_model,
+                top=MenuView.design_y(panel.bottom, surface) + 24,
             )

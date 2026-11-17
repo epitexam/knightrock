@@ -1,4 +1,4 @@
-"""Axe G reception: per-tick HitCandidate dump (hitbox_amelioration.md).
+"""Axe G reception: per-tick HitCandidate dump.
 
 - off by default: nothing written, buffer empty;
 - a bounded ring (maxlen): the oldest candidates drop out;

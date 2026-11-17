@@ -1,7 +1,7 @@
-"""PlatformSystem: moving-platform stage of the level tick (audit F1.2 / §4).
+"""PlatformSystem: moving-platform stage of the level tick.
 
 Extracted from ``Level.update`` so the level becomes a facade over its
-systems (audit §4: ``core/level/systems/platform_system``).
+systems.
 """
 
 from src.core.sprite_groups import SpriteGroups
@@ -15,7 +15,7 @@ class PlatformSystem:
 
     The platforms move first each tick and the spatial hash must follow:
     entity collision queries read the grid, so a platform that is not
-    re-bucketed would still be found at its previous position (PERF-01).
+    re-bucketed would still be found at its previous position.
     """
 
     def __init__(self, groups: SpriteGroups, spatial_hash: SpatialHash) -> None:

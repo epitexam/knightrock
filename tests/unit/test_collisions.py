@@ -5,11 +5,18 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
+from src.core.settings import Combat
 from src.physics.collisions import get_nearby_sprites, hitbox_collide, resolve_collisions
 
 
 class StubEntity:
     """Minimal entity compatible with CollisionEntity."""
+
+    def wall_bounce_factor(self) -> float:
+        """The entity decides its own wall bounce, physics stays state-agnostic."""
+        if self.state_machine.current_state_name == "knockback":
+            return Combat.WALL_BOUNCE_FACTOR
+        return 0.0
 
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()
@@ -18,6 +25,9 @@ class StubEntity:
         self.velocity = pygame.math.Vector2(0, 0)
         self.on_surface = {"floor": False, "left": False, "right": False}
         self.collision_sprites = []
+        self.move_axis = 0.0
+        self.crushed = False
+        self.state_machine = SimpleNamespace(current_state_name=None)
         self.floor_contacts = 0
         self.wall_contacts = 0
 
@@ -29,6 +39,24 @@ class StubEntity:
 
     def _on_wall_contact(self) -> None:
         self.wall_contacts += 1
+
+
+def test_a_collider_needs_no_state_machine_to_bounce_off_a_wall() -> None:
+    """Physics asks the entity for a bounce factor, not for its state names."""
+    entity = StubEntity(pygame.FRect(62, 150, 40, 48))
+    entity.old_hitbox = pygame.FRect(60, 150, 40, 48)
+    entity.velocity.x = 100.0
+    del entity.state_machine
+    entity.wall_bounce_factor = lambda: 0.5  # type: ignore[method-assign]
+    wall = SimpleNamespace(
+        rect=pygame.FRect(100, 100, 32, 200),
+        hitbox=pygame.FRect(100, 100, 32, 200),
+        old_hitbox=pygame.FRect(100, 100, 32, 200),
+    )
+
+    resolve_collisions(entity, "horizontal", [wall])
+
+    assert entity.velocity.x == pytest.approx(-50.0)
 
 
 @pytest.fixture()

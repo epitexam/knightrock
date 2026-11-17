@@ -1,18 +1,18 @@
-"""SpawnSystem: debug-spawn head of the level pipeline (audit F1.2, Phase 3 #2).
+"""SpawnSystem: debug-spawn head of the level pipeline.
 
 Runs first each tick, before the platforms move, so a runtime-spawned enemy
 joins the world before any stage reads it.  It owns the debug-spawn
 cooldowns and the spawn logic directly (moved here from the former
 ``DebugController``), so the level no longer drives anything itself.
 
-Phase 5 test bench: ``DEBUG_ATTACKS`` forces the showcase attacks (twin
-blades, animated sweep, launcher, OTG slam) on the player, ``DEBUG_SHOTS``
+Test bench: ``DEBUG_ATTACKS`` forces any move of the catalogue on the player
+(the chain finishers, the launchers, the charged slash, the stab, the aerials), ``DEBUG_SHOTS``
 fires pooled projectiles, and ``DEBUG_JUGGLE_KEY`` pops an airborne dummy
 to juggle.  The per-action helpers are plain methods so tests drive them
 without polling hardware keys.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import pygame
@@ -22,6 +22,8 @@ from src.combat.refusal import Refusal
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
 from src.entities.enemies.factory import create_enemy
+from src.entities.enemies.schema import EnemyConfig
+from src.entities.id_factory import IdFactory
 from src.entities.projectile import (
     FIREBOLT_CONFIG,
     PIERCING_BOLT_CONFIG,
@@ -46,7 +48,7 @@ DEBUG_SPAWNS = {
 #: rather than leaving a number key that silently does nothing -- which is what a
 #: bare string in this dict would do.
 #:
-#: The air kit is on ``7``-``0`` rather than appended to ``1``-``6`` so the two
+#: The air kit is on ``9``-``0``, after the ground moves, so the two
 #: groups read apart at a glance, which matters more here than usual: the ground
 #: keys work from anywhere and the air keys only work off the ground, so a dev
 #: pressing ``7`` on the floor is holding an airborne move the stance gate will
@@ -54,16 +56,16 @@ DEBUG_SPAWNS = {
 #: returning ``False``, so the reason is a traceback instead of a key that
 #: appears broken.
 DEBUG_ATTACKS: dict[int, MoveId] = {
-    pygame.K_1: move_id("twin_fangs"),
-    pygame.K_2: move_id("sweeping_arc"),
-    pygame.K_3: move_id("sky_launcher"),
-    pygame.K_4: move_id("otg_slam"),
-    pygame.K_5: move_id("p5_shapes"),
-    pygame.K_6: move_id("circle_burst"),
-    pygame.K_7: move_id("air_attack"),
-    pygame.K_8: move_id("air_forward"),
-    pygame.K_9: move_id("air_rise"),
-    pygame.K_0: move_id("air_sweep"),
+    pygame.K_1: move_id("slash_high_4"),
+    pygame.K_2: move_id("slash_low_4"),
+    pygame.K_3: move_id("punch_3"),
+    pygame.K_4: move_id("kick_2"),
+    pygame.K_5: move_id("charged_slash"),
+    pygame.K_6: move_id("stab"),
+    pygame.K_7: move_id("death_blow"),
+    pygame.K_8: move_id("throw"),
+    pygame.K_9: move_id("air_slash"),
+    pygame.K_0: move_id("air_kick"),
 }
 
 #: Phase 5 projectile presets fired from the player.
@@ -96,10 +98,17 @@ class SpawnSystem:
         groups: SpriteGroups,
         spatial_hash: SpatialHash | None = None,
         projectile_system: ProjectileSystem | None = None,
+        enemy_configs: Mapping[str, EnemyConfig] | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         self.groups = groups
+        #: The configurations the level's own enemies were built from, so a
+        #: bench spawn is the same goblin as a placed one (audit C4). ``None``
+        #: falls back to the shipped files inside ``create_enemy``.
+        self.enemy_configs: Mapping[str, EnemyConfig] = enemy_configs or {}
         self.spatial_hash = spatial_hash
         self.projectile_system = projectile_system
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
         #: Attack name looped by the debug replay key, ``None`` when off.
@@ -108,7 +117,7 @@ class SpawnSystem:
 
     @property
     def spawn_cooldown_max(self) -> float:
-        """Longest remaining debug-spawn cooldown (audit F5.2)."""
+        """Longest remaining debug-spawn cooldown."""
         return max([*self.spawn_cooldowns.values(), *self.debug_cooldowns.values(), 0.0])
 
     def process(self, delta_time: float, player: Player) -> None:
@@ -192,9 +201,7 @@ class SpawnSystem:
         ``COOLDOWN`` and ``BUSY`` stay quiet: pressing a showcase key twice in a
         row is not a mistake, and a bench that raised on it would be unusable.
         """
-        start = getattr(getattr(player, "combat", None), "start_attack", None)
-        if not callable(start):
-            return False
+        start = player.combat.start_attack
         if not player.combat.has_attack(attack_name):
             raise KeyError(
                 f"Debug bench attack {str(attack_name)!r} is not in the player's table; "
@@ -224,8 +231,7 @@ class SpawnSystem:
         """Restart the looped attack once idle and its cooldown is ready."""
         if self.attack_replay is None:
             return
-        combat = getattr(player, "combat", None)
-        if combat is None or getattr(combat, "is_attacking", False):
+        if player.combat.is_attacking:
             return
         if not self._debug_ready(self.attack_replay):
             return
@@ -238,36 +244,33 @@ class SpawnSystem:
         """Fire a pooled projectile from the player toward its facing."""
         if self.projectile_system is None:
             return None
-        direction = 1.0 if getattr(player, "facing_right", True) else -1.0
-        hitbox = getattr(player, "hitbox", None)
-        if hitbox is None:
-            return None
+        direction = 1.0 if player.facing_right else -1.0
+        hitbox = player.hitbox
         return self.projectile_system.spawn(
             config,
             pos=(hitbox.centerx, hitbox.centery),
             velocity=(DEBUG_SHOT_SPEED * direction, -50.0),
-            faction=getattr(player, "faction", "player"),
+            faction=player.faction,
         )
 
     def spawn_juggle_dummy(self, player: Player) -> Any | None:
-        """Pop an airborne dummy ahead of the player to juggle (Phase 5 #4)."""
-        hitbox = getattr(player, "hitbox", None)
-        if hitbox is None:
-            return None
-        offset_x = 140 if getattr(player, "facing_right", True) else -140
+        """Pop an airborne dummy ahead of the player to juggle."""
+        hitbox = player.hitbox
+        offset_x = 140 if player.facing_right else -140
         try:
             enemy = create_enemy(
                 "dummy",
+                config=self.enemy_configs.get("dummy"),
                 pos=(hitbox.centerx + offset_x, hitbox.top - 150.0),
                 groups=(self.groups.all_sprites,),
                 collision_sprites=self.groups.collision_sprites,
                 player_reference=player,  # type: ignore[arg-type]
                 spatial_hash=self.spatial_hash,
+                id_factory=self.id_factory,
             )
         except KeyError:
             return None
-        self.groups.combat_sprites.add(enemy)
-        self.groups.entity_sprites.add(enemy)
+        self.groups.add_fighter(enemy)
         enemy.velocity.y = -550.0
         enemy.on_surface["floor"] = False
         return enemy
@@ -282,12 +285,13 @@ class SpawnSystem:
         offset_x = 100 if player.facing_right else -100
         enemy = create_enemy(
             enemy_name,
+            config=self.enemy_configs.get(enemy_name),
             pos=(player.hitbox.centerx + offset_x, player.hitbox.top),
             groups=(self.groups.all_sprites,),
             collision_sprites=self.groups.collision_sprites,
             player_reference=player,
             spatial_hash=self.spatial_hash,
+            id_factory=self.id_factory,
         )
-        self.groups.combat_sprites.add(enemy)
-        self.groups.entity_sprites.add(enemy)
+        self.groups.add_fighter(enemy)
         self.spawn_cooldowns[enemy_name] = Respawn.DEBUG_SPAWN_COOLDOWN_S

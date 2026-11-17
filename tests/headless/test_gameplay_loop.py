@@ -5,14 +5,14 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
 from tests.unit.helpers import activate, entity_at
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
 
 def test_hit_stop_suspends_simulation_for_its_duration() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
 
     loop.combat_system.hit_stop_timer = 0.05
     suspended_delta = loop.begin_tick(1 / 60)
@@ -28,7 +28,7 @@ def test_hit_stop_suspends_simulation_for_its_duration() -> None:
 
 
 def test_begin_tick_returns_full_delta_without_hit_stop() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
 
     delta = loop.begin_tick(1 / 60)
 
@@ -36,7 +36,7 @@ def test_begin_tick_returns_full_delta_without_hit_stop() -> None:
 
 
 def test_remove_dead_entities_spares_the_player() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     player = PlayerStub()
     corpse = CorpseStub()
 
@@ -47,7 +47,7 @@ def test_remove_dead_entities_spares_the_player() -> None:
 
 
 def test_remove_dead_entities_keeps_living_entities() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     living = CorpseStub(is_dead=False)
 
     loop.remove_dead_entities([living], None)
@@ -56,7 +56,7 @@ def test_remove_dead_entities_keeps_living_entities() -> None:
 
 
 def test_process_combat_and_separation_is_noop_while_suspended() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     loop.separation_system = SeparationStub()
 
     loop.process_combat_and_separation(0.0, [], [])
@@ -148,6 +148,30 @@ def _noop_rollback() -> SimpleNamespace:
     return SimpleNamespace(record=lambda level: None)
 
 
+def _noop_projectile_stage(calls: list[str]) -> SimpleNamespace:
+    """Projectile double: records its stage and has no events to drain."""
+    return SimpleNamespace(
+        process=lambda *args: calls.append("projectiles"),
+        guard_events=[],
+        impact_events=[],
+    )
+
+
+def _noop_feedback_stage(calls: list[str]) -> SimpleNamespace:
+    """Feedback double: records its two entry points in the tick."""
+    return SimpleNamespace(
+        after_movement=lambda delta_time: calls.append("feedback_movement"),
+        after_combat=lambda impact, events, player, camera, impacts: calls.append(
+            "feedback_combat"
+        ),
+    )
+
+
+def _idle_player(world_time_scale: float = 1.0) -> SimpleNamespace:
+    """Player double: no dash started this tick, and the world at its own clock."""
+    return SimpleNamespace(dash_started_this_frame=False, world_time_scale=world_time_scale)
+
+
 def _noop_level() -> SimpleNamespace:
     """Tick-owner double: rollback disabled, counter ignored, snapshot hook."""
     return SimpleNamespace(tick=0, rollback_enabled=False, save_state=lambda: SimpleNamespace())
@@ -168,6 +192,8 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
         camera_system=_noop_camera_stage("camera", calls),
         notification_system=_noop_tail_stage("notifications", calls),
         tick_system=_noop_tick_stage("tick", calls),
+        projectile_system=_noop_projectile_stage(calls),
+        feedback_system=_noop_feedback_stage(calls),
     )
     loop.separation_system = SimpleNamespace(
         # Returns the entities it displaced; the loop re-syncs the attack boxes
@@ -178,19 +204,25 @@ def test_update_sequences_the_stages_in_their_historical_order() -> None:
     )
     loop.combat_system = SimpleNamespace(
         in_hit_stop=False,
+        impact=0.0,
+        guard_events=[],
+        impact_events=[],
         update_timer=lambda delta_time: None,
         process_attacks=lambda combatants, grid=None: calls.append("combat"),
     )
 
-    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+    loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
     assert calls == [
         "spawn",
         "platform",
         "hazard",
         "physics",
+        "feedback_movement",
         "separation",
         "combat",
+        "projectiles",
+        "feedback_combat",
         "contact_damage",
         "hazard_damage",
         "respawn",
@@ -216,68 +248,20 @@ def test_update_is_a_noop_while_suspended_with_full_wiring() -> None:
         camera_system=_noop_camera_stage("camera", calls),
         notification_system=_noop_tail_stage("notifications", calls),
         tick_system=_noop_tick_stage("tick", calls),
+        projectile_system=_noop_projectile_stage(calls),
+        feedback_system=_noop_feedback_stage(calls),
     )
     loop.combat_system.hit_stop_timer = 0.05
 
-    loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
+    loop.update(1 / 60, _empty_groups(), _idle_player(), _noop_level(), _noop_rollback())
 
     assert calls == ["spawn", "camera", "notifications", "tick"]
 
 
-def test_update_with_invalid_wiring_mutates_nothing() -> None:
-    """Invalid wiring is rejected before any mutation."""
-    from types import SimpleNamespace
-
-    spawn_calls: list[str] = []
-    tick_calls: list[str] = []
-
-    class RollbackSpy:
-        def __init__(self) -> None:
-            self.records = 0
-
-        def record(self, level) -> None:
-            self.records += 1
-
-    loop = GameplayLoop(
-        spawn_system=SimpleNamespace(process=lambda *a: spawn_calls.append("spawn")),
-        camera_system=_noop_camera_stage("camera", []),
-        notification_system=_noop_tail_stage("notifications", []),
-        tick_system=SimpleNamespace(process=lambda *a: tick_calls.append("tick")),
-    )
-    loop.combat_system.hit_stop_timer = 0.0
-    rollback = RollbackSpy()
-    level = _noop_level()
-    groups = _empty_groups()
-
-    with pytest.raises(RuntimeError, match="platform_system"):
-        loop.update(1 / 60, groups, None, level, rollback)
-
-    assert spawn_calls == []
-    assert tick_calls == []
-    assert loop.combat_system.hit_stop_timer == 0.0
-    assert rollback.records == 0
-    assert level.tick == 0
-
-
-def test_combat_only_update_fails_before_mutation() -> None:
-    loop = GameplayLoop.combat_only()
-    with pytest.raises(RuntimeError):
-        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
-
-
-def test_update_without_the_world_stages_fails_fast() -> None:
-    calls: list[str] = []
-    loop = GameplayLoop(
-        spawn_system=_noop_spawn_stage("spawn", calls),
-        camera_system=_noop_camera_stage("camera", calls),
-        notification_system=_noop_tail_stage("notifications", calls),
-        tick_system=_noop_tick_stage("tick", calls),
-    )
-
-    with pytest.raises(RuntimeError, match="platform_system"):
-        loop.update(1 / 60, _empty_groups(), None, _noop_level(), _noop_rollback())
-
-    assert calls == []
+def test_a_loop_cannot_be_built_without_its_stages() -> None:
+    """Every stage is a required argument: a loop that exists can run a tick."""
+    with pytest.raises(TypeError, match="platform_system"):
+        GameplayLoop(camera_system=_noop_camera_stage("camera", []))  # type: ignore[call-arg]
 
 
 def _box_positions(entity) -> tuple[tuple[float, float], ...]:
@@ -303,7 +287,7 @@ def test_a_fighter_pushed_by_separation_gets_its_attack_box_moved_with_it() -> N
     empty air, or misses one that should have connected -- either way, a hitbox
     that disagrees with the sprite above it by exactly the push distance.
     """
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     swing = attack(phase(startup=1, active=30, recovery=1, size=(40.0, 20.0), offset=(30.0, 0.0)))
     attacker = entity_at(0.0, faction="player", definition=swing)
     blocker = entity_at(20.0, faction="enemy")
@@ -336,7 +320,7 @@ def test_a_fighter_nobody_pushed_ends_the_tick_where_it_started() -> None:
     which is the failure a "sync the pair instead of the entity" implementation
     would make.
     """
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     swing = attack(phase(startup=1, active=30, recovery=1, size=(40.0, 20.0), offset=(30.0, 0.0)))
     attacker = entity_at(0.0, faction="player", definition=swing)
     groups = SimpleNamespace(

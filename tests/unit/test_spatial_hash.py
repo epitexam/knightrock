@@ -12,13 +12,41 @@ from typing import cast
 import pygame
 
 from src.core.level.level import Level
-from src.core.settings import World
+from src.core.settings import Physics, Simulation, World
 from src.physics.spatial_hash import (
     QUERY_MARGIN_PX,
     SpatialHash,
     SpatialHashMember,
 )
+from src.physics.spatial_query import LinearQuery, make_query
 from tests.unit.helpers import make_entity
+
+
+def test_query_margin_covers_one_tick_of_max_fall() -> None:
+    """The hidden broad-phase invariant, made explicit as a test."""
+    fall_per_tick = Physics.MAX_FALL_SPEED * Simulation.TIMESTEP
+
+    assert fall_per_tick <= QUERY_MARGIN_PX
+
+
+def test_a_duck_typed_query_needs_no_spatial_hash_type() -> None:
+    """make_query chooses by injection, never by isinstance on the index."""
+    sprite = BoxSprite(pygame.FRect(100, 100, 40, 48))
+    query = make_query(None, [sprite])
+
+    assert isinstance(query, LinearQuery)
+    assert query.get_nearby(pygame.FRect(100, 100, 40, 48)) == [sprite]
+
+
+def test_query_cache_is_invalidated_when_a_covered_cell_changes() -> None:
+    """A sprite moving into a cached cell range must invalidate that query."""
+    grid = SpatialHash(cell_size=64)
+    grid.get_nearby(pygame.FRect(100, 100, 40, 48))
+    assert len(grid._queries) == 1  # noqa: SLF001
+
+    grid.add(BoxSprite(pygame.FRect(100, 100, 40, 48)))
+
+    assert not grid._queries  # noqa: SLF001
 
 
 class BoxSprite:
@@ -174,7 +202,7 @@ def test_move_entity_falls_back_without_spatial_hash(monkeypatch):
 
     monkeypatch.setattr("src.physics.movement.get_nearby_sprites", fake_get_nearby)
 
-    entity = make_entity()  # no spatial_hash attribute -> fallback path
+    entity = make_entity()  # spatial_hash is None -> fallback path
     move_entity(entity, 1 / 60)  # type: ignore[arg-type]
 
     assert seen["spatial_hash"] is None

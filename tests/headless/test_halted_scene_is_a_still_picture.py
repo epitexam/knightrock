@@ -23,14 +23,15 @@ whole repaint.
 """
 
 import pathlib
+import time
 
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.gameover_scene import GameOverScene
 from src.application.scenes.gameplay_scene import GameplayScene
 from src.application.scenes.pause_scene import PauseScene
-from src.core.game import Game
 from src.core.settings import Debug, Simulation
 
 pytestmark = pytest.mark.usefixtures("_headless_pygame_display")
@@ -128,6 +129,13 @@ def test_a_halted_scene_repaints_identical_pixels(playing: Game) -> None:
     playing.scene_manager.push(PauseScene(playing, 0))
     for _ in range(3):
         _advance(playing)
+    # The page cross-fade is motion on purpose; the still picture is the one
+    # after it. Waited for by the clock rather than a frame count, because a
+    # headless frame takes a few milliseconds and the fade lasts 0.15 s.
+    deadline = time.monotonic() + 2.0
+    while playing.scene_manager.transitioning and time.monotonic() < deadline:
+        _advance(playing)
+    assert not playing.scene_manager.transitioning, "the fade never finished"
 
     target = playing.presentation.surface if playing.presentation is not None else None
     assert target is not None

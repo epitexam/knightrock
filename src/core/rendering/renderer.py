@@ -1,8 +1,9 @@
+import math
 from collections import deque
 from collections.abc import Callable, Iterable
 from itertools import chain
 from time import perf_counter
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
@@ -10,9 +11,14 @@ from src.core.colors import BG_COLORS, Color, Colors, FXColors
 from src.core.level.level_data import LevelConfig
 from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import NullOverlay, WorldOverlay
+from src.core.rendering.strike_trails import StrikeTrails
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.settings import Afterimage, HitFlash, ParryFlash, Turn
+from src.core.settings import Afterimage, HitFlash, Interpolation, ParryFlash
 from src.core.sprite_groups import SpriteGroups
+from src.states import state_names
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 DASH_STRETCH_X = 1.6
 """Horizontal cartoon stretch applied to dashing players (render-only)."""
@@ -21,12 +27,11 @@ DASH_STRETCH_Y = 0.6
 """Vertical squash paired with the dash stretch (render-only)."""
 
 
-def is_player_dashing(sprite: object) -> bool:
-    """Whether the sprite is a player currently in its dash state."""
-    if getattr(sprite, "faction", None) != "player":
-        return False
-    state_machine = getattr(sprite, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "dash"
+def is_player_dashing(sprite: Entity) -> bool:
+    """Whether the entity is a player currently in its dash state."""
+    return (
+        sprite.faction == "player" and sprite.state_machine.current_state_name == state_names.DASH
+    )
 
 
 def dash_frame(
@@ -42,10 +47,10 @@ def dash_frame(
     return stretched, stretched.get_rect(center=screen_rect.center)
 
 
-def turn_offset_px(sprite: object) -> float:
+def turn_offset_px(sprite: Entity) -> float:
     """The trailing draw offset a pivoting fighter gets, in pixels.
 
-    Read off ``turn_ratio``, which :class:`PlayerTurnState` publishes and
+    Read off ``render_hints.turn_ratio``, which :class:`PlayerTurnState` publishes and
     clears: the ratio is the hold's own countdown, so the offset reaches zero
     on the same tick the facing lands and the flip has nothing left to correct.
 
@@ -63,27 +68,25 @@ def turn_offset_px(sprite: object) -> float:
     mark in the direction its own feet are already travelling, which is the one
     direction the eye is not reading.
     """
-    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    ratio = sprite.render_hints.turn_ratio
     if ratio <= 0.0:
         return 0.0
-    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
-    lead = float(getattr(sprite, "turn_lead_px", Turn.LEAD_PX) or 0.0)
-    return travel * lead * ratio
+    travel = -1.0 if sprite.facing_right else 1.0
+    return travel * sprite.turn_lead_px * ratio
 
 
-def turn_skew_px(sprite: object) -> float:
+def turn_skew_px(sprite: Entity) -> float:
     """The lean a pivoting fighter gets, in pixels at the top of the sprite.
 
     Signed like :func:`turn_offset_px`, and for the same stability reason, so
     the figure is dragged as one piece: the body goes over *and* the top of it
     leads further than the feet do.
     """
-    ratio = float(getattr(sprite, "turn_ratio", 0.0) or 0.0)
+    ratio = sprite.render_hints.turn_ratio
     if ratio <= 0.0:
         return 0.0
-    travel = -1.0 if bool(getattr(sprite, "facing_right", True)) else 1.0
-    skew = float(getattr(sprite, "turn_skew_px", Turn.SKEW_PX) or 0.0)
-    return travel * skew * ratio
+    travel = -1.0 if sprite.facing_right else 1.0
+    return travel * sprite.turn_skew_px * ratio
 
 
 def turn_frame(
@@ -118,10 +121,14 @@ def turn_frame(
     return sheared, moved
 
 
-#: ``(id(source), skew) -> sheared``, so a pivot shears each frame once per
-#: distinct lean rather than once per draw. Sized off the sources in play: a
-#: fighter pivoting touches a handful of animation frames per hold.
-_SHEAR_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+#: ``(id(source), skew) -> (source, sheared)``, so a pivot shears each frame
+#: once per distinct lean rather than once per draw. Sized off the sources in
+#: play: a fighter pivoting touches a handful of animation frames per hold.
+#: The source is kept in the value for the same reason the scaled and flash
+#: caches keep theirs: a key built from ``id`` alone can be hit by a freed
+#: surface whose id was recycled, which would hand back a stale, wrongly sized
+#: blit.
+_SHEAR_CACHE: dict[tuple[int, int], tuple[pygame.Surface, pygame.Surface]] = {}
 _SHEAR_CACHE_MAX = 64
 
 
@@ -180,8 +187,8 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
     """
     key = (id(image), skew)
     cached = _SHEAR_CACHE.get(key)
-    if cached is not None:
-        return cached
+    if cached is not None and cached[0] is image:
+        return cached[1]
 
     width, height = image.get_size()
     base = -min(0, skew)
@@ -197,8 +204,40 @@ def _sheared(image: pygame.Surface, skew: int) -> pygame.Surface:
 
     if len(_SHEAR_CACHE) >= _SHEAR_CACHE_MAX:
         _evict_half_shear_cache()
-    _SHEAR_CACHE[key] = out
+    _SHEAR_CACHE[key] = (image, out)
     return out
+
+
+#: Working set, not a budget. The shipped level draws 38 distinct images
+#: through the scale cache at one density; a bound set to that number rebuilds
+#: the cache every frame, which is what made the shear cache's own first bound
+#: cost 95us a frame. Four times the measured set gives room for the debug
+#: spawn bench, which is the caller that keeps churning new Surfaces -- and at
+#: roughly 8 Ko a retained blend, 512 entries is a few megabytes of worst case
+#: instead of the unbounded growth the caches had, where every spawned enemy
+#: left one behind for the rest of the session.
+SCALE_CACHE_MAX = 512
+FLASH_CACHE_MAX = 512
+
+
+def _evict_half(cache: dict) -> None:
+    """Drop the oldest half of a cache rather than all of it.
+
+    Wiping the lot is what a cache full of entries you are still using does to
+    itself: the next frame rebuilds them, and the frame after finds the cache
+    full again. Measured with eight animation frames in play -- each rebuild
+    sweeping the whole table -- that was a 100% rebuild rate at 95 microseconds
+    a frame, sustained, in exchange for saving about a megabyte.
+
+    Dropping half and letting it refill means an oversized working set costs
+    some rebuilds rather than all of them. Insertion order is the eviction
+    order here, which is not a real LRU: with a handful of fighters and a
+    skew that walks down then back up, what is oldest is nearly always what is
+    needed least, and the alternative -- ordering on last use -- means a write
+    on every hit, which is the thing being optimised.
+    """
+    for stale in list(cache)[: len(cache) // 2]:
+        del cache[stale]
 
 
 def _evict_half_shear_cache() -> None:
@@ -217,8 +256,12 @@ def _evict_half_shear_cache() -> None:
     needed least, and the alternative -- ordering on last use -- means a write
     on every hit, which is the thing being optimised.
     """
-    for stale in list(_SHEAR_CACHE)[: len(_SHEAR_CACHE) // 2]:
-        del _SHEAR_CACHE[stale]
+    _evict_half(_SHEAR_CACHE)
+
+
+def clear_shear_cache() -> None:
+    """Drop sheared surfaces derived from an obsolete display format."""
+    _SHEAR_CACHE.clear()
 
 
 def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
@@ -237,6 +280,21 @@ def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
     ghost = pygame.transform.grayscale(image.copy())
     ghost.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
     return ghost
+
+
+def _ghost_tint(index: int) -> Color:
+    """The tint of the ``index``-th ghost of a dash: pale first, then the dash's cyan.
+
+    The trail reads in the direction of travel: the oldest stamp, furthest
+    behind, is the palest, and each one nearer the fighter is more saturated.
+    """
+    t = min(1.0, index / max(1, Afterimage.TINT_STEPS))
+    pale, deep = FXColors.speed_ghost, Afterimage.DEEP_TINT
+    return (
+        round(pale[0] + (deep[0] - pale[0]) * t),
+        round(pale[1] + (deep[1] - pale[1]) * t),
+        round(pale[2] + (deep[2] - pale[2]) * t),
+    )
 
 
 def _ghost_alpha(ttl: float) -> int:
@@ -280,7 +338,13 @@ class Renderer:
         self.overlay: WorldOverlay = overlay if overlay is not None else NullOverlay()
         self.background_color = self._resolve_background_color(config)
         self._ghosts: list[tuple[pygame.Surface, pygame.FRect, float]] = []
+        #: The strikes in flight, drawn from the live attack shapes.
+        self.strike_trails = StrikeTrails()
         self._ghost_timer: float = 0.0
+        #: Where the last ghost of each dashing fighter was stamped, and how
+        #: many this dash has left: a ghost is stamped only once the fighter
+        #: has moved on, and each is a little more saturated than the last.
+        self._ghost_marks: dict[int, tuple[float, float, int]] = {}
         # Scaled sprite surfaces: ``id(image) -> (image, scaled)``. Scaling a
         # surface every frame for every visible sprite is expensive, so each
         # image is scaled once and reused; the key used to carry the camera zoom
@@ -292,8 +356,11 @@ class Renderer:
         # Flash silhouettes, keyed by ``(id(image), tint)`` like
         # ``_scaled_cache`` and holding the source for the same reason.
         self._flash_cache: dict[tuple[int, Color], tuple[pygame.Surface, pygame.Surface]] = {}
-        self._dashing_player: object | None = None
-        self._turning_player: object | None = None
+        self._dashing_player: Entity | None = None
+        self._turning_player: Entity | None = None
+        #: ``id(fighter) -> (dx, dy)`` this frame: how far behind its simulated
+        #: position a fighter is drawn. Only fighters that moved are in it.
+        self._lag: dict[int, tuple[float, float]] = {}
         #: Chunked culls over the frozen tile planes, or None when the world
         #: has none to index. Installed by the level after the world is built;
         #: a renderer that was handed a bare group (every test that draws a
@@ -336,6 +403,7 @@ class Renderer:
         self.overlay.set_surface(surface, self.camera.density)
         self._scaled_cache.clear()
         self._flash_cache.clear()
+        self.strike_trails.clear_tints()
 
     @property
     def _density(self) -> float:
@@ -361,6 +429,8 @@ class Renderer:
         if cached is not None:
             return cached[1]
         scaled = self._rescale(image)
+        if len(self._scaled_cache) >= SCALE_CACHE_MAX:
+            _evict_half(self._scaled_cache)
         self._scaled_cache[key] = (image, scaled)
         return scaled
 
@@ -384,6 +454,8 @@ class Renderer:
             return cached[1]
         mask = pygame.mask.from_surface(image)
         silhouette = mask.to_surface(setcolor=(*color, 255), unsetcolor=(0, 0, 0, 0))
+        if len(self._flash_cache) >= FLASH_CACHE_MAX:
+            _evict_half(self._flash_cache)
         self._flash_cache[key] = (image, silhouette)
         return silhouette
 
@@ -454,6 +526,7 @@ class Renderer:
         repaint has no such window.
         """
         self.camera.begin_frame(alpha)
+        self._lag = self._interpolation_lag(groups, alpha)
         self._dashing_player = self._find_dashing_player(groups)
         self._turning_player = self._find_turning_player(groups)
         self.surface.fill(self.background_color)
@@ -462,12 +535,52 @@ class Renderer:
             self.surface.blit(surface, screen_rect)
         self._draw_ghosts(self._update_afterimages(groups, dt))
         self._draw_flashes(self._collect_flashes(groups))
+        # After the hit flashes: a struck fighter flashes white, and the mark
+        # of the blow that struck it has to show on top of that.
+        self.strike_trails.update(groups.entity_sprites, dt, groups.projectile_sprites)
+        self.strike_trails.draw(self.surface, self.camera)
         if debug_enabled:
             overlays = perf_counter()
             self.overlay.draw_debug_overlays(groups.every_sprite, self.camera, dt)
             self._record_debug_sample("world_ui_ms", (perf_counter() - overlays) * 1000.0)
 
-    def _find_dashing_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
+    @staticmethod
+    def _interpolation_lag(groups: SpriteGroups, alpha: float) -> dict[int, tuple[float, float]]:
+        """How far behind its simulated position each moving fighter is drawn.
+
+        A frame drawn ``alpha`` of the way into the pending tick shows a fighter
+        that far from where the last tick began to where it ended, the same
+        blend the camera makes -- so a fighter and the camera following it
+        move together instead of the fighter stepping at 60 Hz under it.
+        """
+        lag: dict[int, tuple[float, float]] = {}
+        if not Interpolation.ENABLED:
+            return lag
+        behind = 1.0 - min(max(alpha, 0.0), 1.0)
+        if behind <= 0.0:
+            return lag
+        limit = Interpolation.MAX_STEP_PX
+        for fighter in groups.entity_sprites:
+            previous = fighter.render_hints.previous_center
+            if previous is None:
+                continue
+            center = fighter.hitbox.center
+            dx, dy = previous[0] - center[0], previous[1] - center[1]
+            if (dx == 0.0 and dy == 0.0) or abs(dx) > limit or abs(dy) > limit:
+                continue
+            lag[id(fighter)] = (dx * behind, dy * behind)
+        return lag
+
+    def _drawn_rect(
+        self, sprite: pygame.sprite.Sprite, rect: pygame.FRect | pygame.Rect
+    ) -> pygame.FRect | pygame.Rect:
+        """``rect`` moved to where this frame draws the sprite."""
+        lag = self._lag.get(id(sprite))
+        if lag is None:
+            return rect
+        return pygame.FRect(rect.x + lag[0], rect.y + lag[1], rect.width, rect.height)
+
+    def _find_dashing_player(self, groups: SpriteGroups) -> Entity | None:
         """The one sprite that can be a dashing player, or None.
 
         ``is_player_dashing`` needs three attribute lookups to answer, and
@@ -477,19 +590,19 @@ class Renderer:
         """
         for sprite in groups.entity_sprites:
             if is_player_dashing(sprite):
-                return cast("pygame.sprite.Sprite", sprite)
+                return sprite
         return None
 
-    def _find_turning_player(self, groups: SpriteGroups) -> pygame.sprite.Sprite | None:
+    def _find_turning_player(self, groups: SpriteGroups) -> Entity | None:
         """The one sprite mid-pivot, or None.
 
         The same shape and the same reason as :meth:`_find_dashing_player`:
-        ``turn_ratio`` is one attribute lookup on the entity, asked once here
+        the pivot ratio is one lookup on the entity, asked once here
         instead of of every visible sprite in the blit loop.
         """
         for sprite in groups.entity_sprites:
-            if float(getattr(sprite, "turn_ratio", 0.0) or 0.0) > 0.0:
-                return cast("pygame.sprite.Sprite", sprite)
+            if sprite.render_hints.turn_ratio > 0.0:
+                return sprite
         return None
 
     def _collect_visible_blits(
@@ -560,9 +673,18 @@ class Renderer:
         static_index: TileChunkIndex | None,
         viewport: pygame.FRect,
     ) -> Iterable[pygame.sprite.Sprite]:
-        """The frozen tile plane, through its chunk index when there is one."""
+        """The frozen tile plane, through its chunk index when there is one.
+
+        Without an index the plane falls back to a linear scan. The index is
+        refused by the level when a moving sprite reached the frozen plane, and
+        a chunked plane refused without a fallback draws nothing at all -- the
+        terrain disappears and the player falls through the floor. The scan is
+        the same result, only slower, which for a world with no valid index is
+        the right trade. The exact ``is_visible`` test still runs downstream on
+        every candidate, so the walker hands over the whole plane.
+        """
         if static_index is None:
-            return ()
+            return groups.static_sprites
         return static_index.candidates(viewport)
 
     def _sprite_planes(
@@ -599,16 +721,17 @@ class Renderer:
         image_source = sprite.image
         if rect is None or image_source is None or not colliderect(rect):
             return
-        screen_rect = self.camera.apply_snapped(rect)
+        screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, rect))
         image = self._scaled_image(image_source)
         # Only a player can be dashing, and a player is an entity, so this
         # branch is resolved by identity rather than by a ``getattr`` walk
         # over every tile of the level.
         if self._dashing_player is not None and sprite is self._dashing_player:
             image, screen_rect = dash_frame(image, screen_rect)
-        if self._turning_player is not None and sprite is self._turning_player:
+        turning = self._turning_player
+        if turning is not None and sprite is turning:
             image, screen_rect = turn_frame(
-                image, screen_rect, turn_offset_px(sprite), turn_skew_px(sprite)
+                image, screen_rect, turn_offset_px(turning), turn_skew_px(turning)
             )
         blits.append((image, screen_rect))
 
@@ -627,8 +750,8 @@ class Renderer:
         """
         flashes: list[tuple[pygame.Surface, pygame.Rect]] = []
         for sprite in groups.entity_sprites:
-            hurt = float(getattr(sprite, "flash_timer", 0.0) or 0.0)
-            parried = float(getattr(sprite, "parry_flash_timer", 0.0) or 0.0)
+            hurt = sprite.render_hints.flash_timer
+            parried = sprite.render_hints.parry_flash_timer
             if hurt <= 0.0 and parried <= 0.0:
                 continue
             if not self.camera.is_visible(sprite.rect):
@@ -640,7 +763,7 @@ class Renderer:
                 strength = max(strength, ParryFlash.ALPHA * min(1.0, parried / ParryFlash.DURATION))
             overlay = self._silhouette(sprite.image, color).copy()
             overlay.set_alpha(int(255 * min(1.0, strength)))
-            screen_rect = self.camera.apply_snapped(sprite.rect)
+            screen_rect = self.camera.apply_snapped(self._drawn_rect(sprite, sprite.rect))
             overlay = self._scaled_image_once(overlay)
             if is_player_dashing(sprite):
                 overlay, screen_rect = dash_frame(overlay, screen_rect)
@@ -703,11 +826,23 @@ class Renderer:
         rather than the whole level: ``all_sprites`` meant a full-group
         ``is_player_dashing`` scan several times a second.
         """
+        dashing: set[int] = set()
         for sprite in groups.entity_sprites:
             if not is_player_dashing(sprite):
                 continue
+            dashing.add(id(sprite))
             if not self.camera.is_visible(sprite.rect):
                 continue
+            # Spaced by the distance covered, not by the clock: stamps a frame
+            # apart on a fighter that moved a few pixels land on one another
+            # and the trail reads as one grey smear.
+            mark = self._ghost_marks.get(id(sprite))
+            center = sprite.rect.center
+            if mark is not None and math.dist(center, mark[:2]) < Afterimage.SPACING:
+                continue
+            count = 0 if mark is None else mark[2] + 1
+            self._ghost_marks[id(sprite)] = (center[0], center[1], count)
+            tint = _ghost_tint(count)
             # Zoomed for the camera, and deliberately *not* run through
             # ``dash_frame``. The stretch is what the live sprite is doing --
             # it is a cue for the movement, read while it happens. Stamping a
@@ -716,17 +851,27 @@ class Renderer:
             # pancakes rather than a trail of the fighter. A manga afterimage
             # is the character's own shape; the shape is what the player
             # recognises, so that is what gets copied.
-            ghost = self._scaled_image_once(_monochrome(sprite.image, FXColors.speed_ghost))
+            ghost = _monochrome(sprite.image, tint)
+            if count > 0:
+                # A dark sprite multiplied by a tint stays dark: the later
+                # stamps are lifted towards the dash's cyan so the colour shows.
+                lift = min(1.0, count / max(1, Afterimage.TINT_STEPS))
+                ghost.fill(
+                    tuple(round(c * lift) for c in Afterimage.LIFT),
+                    special_flags=pygame.BLEND_RGB_ADD,
+                )
+            ghost = self._scaled_image_once(ghost)
             # The world rect is copied because the player's own rect is mutated
             # in place every tick, which would drag the ghost along with it.
             self._ghosts.append((ghost, pygame.FRect(sprite.rect), Afterimage.TTL))
             self._ghosts = self._ghosts[-Afterimage.MAX :]
+        self._ghost_marks = {key: mark for key, mark in self._ghost_marks.items() if key in dashing}
 
     def _draw_ghosts(self, ghost_draws: list[tuple[pygame.Surface, pygame.Rect]]) -> None:
         for surface, screen_rect in ghost_draws:
             self.surface.blit(surface, screen_rect)
 
-    def draw_health_bars(self, entities: Iterable[pygame.sprite.Sprite]) -> list[pygame.Rect]:
+    def draw_health_bars(self, entities: Iterable[Entity]) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy.
 
         The bars are anchored to the rects this frame blitted, not to the
@@ -741,7 +886,13 @@ class Renderer:
         ``Level.draw`` discards the result: the only readers today are the
         tests that assert which rects were painted.
         """
-        return self.overlay.draw_health_bars(entities, self.camera)
+        fighters = tuple(entities)
+        screen_rects = {
+            id(entity): self.camera.apply(self._drawn_rect(entity, entity.hitbox))
+            for entity in fighters
+            if id(entity) in self._lag
+        }
+        return self.overlay.draw_health_bars(fighters, self.camera, screen_rects or None)
 
     def draw_debug_panels(self, **counters: Any) -> None:
         """Ask the overlay to draw the screen-side debug panels.

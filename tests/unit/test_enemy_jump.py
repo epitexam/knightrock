@@ -10,7 +10,7 @@ import pytest
 from pygame.math import Vector2
 
 from src.core.settings import Turn
-from src.entities.enemies.configs import ENEMY_CONFIGS
+from src.data.provider import shipped_gameplay_data
 from src.entities.enemies.enemy import Enemy
 from src.entities.enemies.schema import EnemyConfig
 from src.states.enemy_states import EnemyChaseState, EnemyState
@@ -44,6 +44,9 @@ def _jumper_stub(*, wall: bool = False, above: bool = False) -> SimpleNamespace:
         combat=SimpleNamespace(),
         player=SimpleNamespace(hitbox=pygame.FRect(300, player_y, 40, 48)),
         is_player_in_range=Mock(return_value=False),
+        plan_move=Mock(return_value="claw_swipe"),
+        move_range=Mock(return_value=60.0),
+        attack_slot_free=Mock(return_value=True),
         can_see_player=Mock(return_value=True),
         is_at_ledge=Mock(return_value=False),
         apply_horizontal_movement=Mock(),
@@ -57,9 +60,9 @@ def _jumper_stub(*, wall: bool = False, above: bool = False) -> SimpleNamespace:
 
 
 def test_only_configured_types_can_jump() -> None:
-    assert ENEMY_CONFIGS["goblin"].can_jump is True
-    assert ENEMY_CONFIGS["slime"].can_jump is False
-    assert ENEMY_CONFIGS["dummy"].can_jump is False
+    assert shipped_gameplay_data().enemies["goblin"].can_jump is True
+    assert shipped_gameplay_data().enemies["slime"].can_jump is False
+    assert shipped_gameplay_data().enemies["dummy"].can_jump is False
 
 
 def test_chaser_hops_at_a_wall() -> None:

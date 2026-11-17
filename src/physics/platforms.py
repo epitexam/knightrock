@@ -3,12 +3,14 @@ from typing import Any, cast
 
 import pygame
 
+from src.physics.spatial_hash import collider_box, is_one_way
+
 _BLOCK_DIVISORS = (1, 2, 4, 8, 16, 32)
 
 
 def _blocks(sprite: Any, candidate: pygame.Rect) -> bool:
     """Whether ``sprite``'s box overlaps ``candidate``."""
-    box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+    box = collider_box(sprite)
     return box is not None and box.colliderect(candidate)
 
 
@@ -37,13 +39,13 @@ def _static_blockers(platform: Any, candidate: pygame.Rect) -> Iterable[Any] | N
     if spatial_hash is not None:
         return cast(
             "Iterable[Any]",
-            (s for s in spatial_hash.get_nearby(candidate) if s is not platform),
+            (
+                s
+                for s in spatial_hash.get_nearby(candidate)
+                if s is not platform and not is_one_way(s)
+            ),
         )
-    return (
-        s
-        for s in static_sprites
-        if not hasattr(s, "waypoints") and not getattr(s, "one_way", False)
-    )
+    return (s for s in static_sprites if not hasattr(s, "waypoints") and not is_one_way(s))
 
 
 def _limit_to_clear(platform: Any, step: pygame.math.Vector2) -> tuple[pygame.math.Vector2, bool]:

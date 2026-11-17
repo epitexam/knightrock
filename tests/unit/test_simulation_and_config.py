@@ -6,19 +6,22 @@ from unittest.mock import Mock
 import pygame
 import pytest
 
+from src.combat.combat_component import NullCombatComponent
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData
-from src.core.level.systems.gameplay_loop import GameplayLoop
+from src.core.level.systems.feedback_system import FeedbackSystem
+from src.core.level.systems.gameplay_loop import CombatLoop, GameplayLoop
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.physics_system import PhysicsSystem
 from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
-from src.core.settings import Guard, Physics
+from src.core.rendering.render_hints import RenderHints
+from src.core.settings import Physics
 from src.entities.player_config import PlayerConfig
-from src.entities.player_controllers import DashController, GuardController
+from src.entities.player_controllers import DashController
 from src.physics.movement import resolve_jump
-from src.states.player_states import PlayerDashState, PlayerGuardState
+from src.states.player_states import GUARD_MOVE_MULT, PlayerDashState, PlayerGuardState
 
 
 class TrackingGroup(list):
@@ -28,9 +31,12 @@ class TrackingGroup(list):
         super().__init__(sprites)
         self.update = Mock()
 
+    def add(self, *sprites):
+        self.extend(sprites)
+
 
 def test_hit_stop_suspends_the_tick_that_expires_it() -> None:
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
     loop.combat_system.hit_stop_timer = 0.01
 
     effective_delta = loop.begin_tick(0.02)
@@ -76,6 +82,10 @@ def wire_world_systems(level: Level, groups, player) -> None:
         camera_system=level.camera_system,
         notification_system=level.notification_system,
         tick_system=level.tick_system,
+        projectile_system=SimpleNamespace(  # type: ignore[arg-type]
+            process=Mock(), guard_events=[], impact_events=[]
+        ),
+        feedback_system=FeedbackSystem(groups),
     )
     level.gameplay_loop.combat_system.hit_stop_timer = 0.1
     # ``process`` now reports the entities it displaced, which the loop iterates
@@ -96,8 +106,16 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
         hitbox=pygame.FRect(0, 0, 48, 56),
         respawn=Mock(),
         die=Mock(),
+        render_hints=RenderHints(),
+        update=Mock(),
     )
-    dead_enemy = SimpleNamespace(is_dead=True, kill=Mock())
+    dead_enemy = SimpleNamespace(
+        is_dead=True,
+        kill=Mock(),
+        hitbox=pygame.FRect(200, 0, 48, 56),
+        render_hints=RenderHints(),
+        update=Mock(),
+    )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),
         hazard_sprites=TrackingGroup(),
@@ -108,6 +126,7 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     )
 
     level = Level.__new__(Level)
+    level.input_manager = Mock()
     level.player = player  # type: ignore[assignment]
     level.groups = groups  # type: ignore[assignment]
     level.tick = 0
@@ -134,7 +153,8 @@ def test_level_hit_stop_freezes_simulation_side_effects(monkeypatch) -> None:
     level.tick_system.process.assert_called_once_with(level, level.rollback)  # type: ignore[attr-defined]
     groups.moving_platforms.update.assert_not_called()
     groups.hazard_sprites.update.assert_not_called()
-    groups.entity_sprites.update.assert_not_called()
+    player.update.assert_not_called()
+    dead_enemy.update.assert_not_called()
     groups.fx_sprites.update.assert_not_called()
     level.spatial_hash.update_all.assert_not_called()  # type: ignore[attr-defined]
     level.gameplay_loop.separation_system.process.assert_not_called()
@@ -159,14 +179,33 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         is_dead=False,
         hitbox=pygame.FRect(0, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
+        dash_started_this_frame=False,
+        render_hints=RenderHints(),
+        dash=None,
+        velocity=pygame.math.Vector2(),
+        state_machine=SimpleNamespace(current_state_name=None),
         respawn=Mock(),
         die=Mock(),
+        faction="player",
+        world_time_scale=1.0,
+        update=Mock(),
+        combat=NullCombatComponent(),
     )
     dead_enemy = SimpleNamespace(
         is_dead=True,
         hitbox=pygame.FRect(200, 0, 48, 56),
         on_surface={"floor": False, "left": False, "right": False},
         kill=Mock(),
+        image=pygame.Surface((48, 56)),
+        rect=pygame.FRect(200, 0, 48, 56),
+        facing_right=True,
+        render_hints=RenderHints(),
+        dash=None,
+        velocity=pygame.math.Vector2(),
+        state_machine=SimpleNamespace(current_state_name=None),
+        faction="enemy",
+        combat=NullCombatComponent(),
+        update=Mock(),
     )
     groups = SimpleNamespace(
         moving_platforms=TrackingGroup(),
@@ -177,6 +216,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
         exit_sprites=TrackingGroup(),
     )
     level = Level.__new__(Level)
+    level.input_manager = Mock()
     level.player = player  # type: ignore[assignment]
     level.groups = groups  # type: ignore[assignment]
     level.tick = 0
@@ -194,9 +234,11 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
 
     level.update(0.016)
 
+    level.input_manager.update.assert_called_once()  # a live tick reads the input
     groups.moving_platforms.update.assert_called_once_with(pytest.approx(0.016))
     groups.hazard_sprites.update.assert_called_once_with(pytest.approx(0.016))
-    groups.entity_sprites.update.assert_called_once_with(pytest.approx(0.016))
+    player.update.assert_called_once_with(pytest.approx(0.016))
+    dead_enemy.update.assert_called_once_with(pytest.approx(0.016))
     groups.fx_sprites.update.assert_called_once_with(pytest.approx(0.016))
     level.spatial_hash.update_all.assert_called_once()  # type: ignore[attr-defined]
     level.gameplay_loop.separation_system.process.assert_called_once()
@@ -220,10 +262,7 @@ def test_level_runs_every_pipeline_stage_when_the_tick_is_live(monkeypatch) -> N
 
 
 def test_wall_jump_uses_entity_configuration() -> None:
-    entity = SimpleNamespace(
-        velocity=pygame.Vector2(),
-        speed=320.0,
-        on_surface={"floor": False, "left": True, "right": False},
+    jump = SimpleNamespace(
         jump_buffer_timer=0.2,
         coyote_timer=0.0,
         jump_height=500.0,
@@ -235,37 +274,27 @@ def test_wall_jump_uses_entity_configuration() -> None:
         wall_jumps_left=2,
         midair_jumps_left=1,
     )
+    entity = SimpleNamespace(
+        velocity=pygame.Vector2(),
+        speed=320.0,
+        on_surface={"floor": False, "left": True, "right": False},
+        jump=jump,
+    )
 
     resolve_jump(entity)  # type: ignore[arg-type]
 
     assert entity.velocity.y == pytest.approx(-612.0)
     assert entity.velocity.x == pytest.approx(560.0)
-    assert entity.wall_jump_lock_timer == pytest.approx(0.27)
-    assert entity.wall_jumps_left == 1
-    assert entity.jump_buffer_timer == 0.0
+    assert jump.wall_jump_lock_timer == pytest.approx(0.27)
+    assert jump.wall_jumps_left == 1
+    assert jump.jump_buffer_timer == 0.0
 
 
-@pytest.mark.parametrize(
-    ("posture", "expected"),
-    [
-        (50.0, "guard"),
-        (5.0, "break"),
-    ],
-)
-def test_guard_take_hit_uses_exposed_posture_configuration(posture: float, expected: str) -> None:
-    guard = GuardController(PlayerConfig(guard_posture_max=100.0, guard_break_lockout=1.2))
-    guard.posture = posture
-
-    outcome, _, _ = guard.take_hit(10.0, False)
-
-    assert outcome == expected
-
-
-def test_guard_state_moves_slowly_and_releases() -> None:
+def _guarding_entity(**changes: object) -> SimpleNamespace:
     entity = SimpleNamespace(
         move_axis=1.0,
-        guard=GuardController(PlayerConfig(guard_posture_max=100.0, guard_break_lockout=1.2)),
         guard_held=True,
+        down_held=False,
         velocity=pygame.Vector2(),
         speed=350.0,
         floor_control=25.0,
@@ -278,14 +307,27 @@ def test_guard_state_moves_slowly_and_releases() -> None:
         right_held=True,
         state_machine=SimpleNamespace(current_state_name="guard"),
     )
+    for name, value in changes.items():
+        setattr(entity, name, value)
+    return entity
+
+
+def test_the_guard_moves_slowly_and_drops_with_the_button() -> None:
+    entity = _guarding_entity()
     state = PlayerGuardState(entity)
 
     assert state.update(1 / 60) is None
-    assert entity.saw_axis == pytest.approx(Guard.MOVE_MULT)
+    assert entity.saw_axis == pytest.approx(GUARD_MOVE_MULT)
     assert entity.move_axis == pytest.approx(1.0)
 
     entity.guard_held = False
     assert state.update(1 / 60) == "walk_slow"
+
+
+def test_down_added_to_the_guard_leaves_it_for_the_recharge() -> None:
+    entity = _guarding_entity(down_held=True)
+
+    assert PlayerGuardState(entity).update(1 / 60) is not None
 
 
 def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
@@ -294,7 +336,6 @@ def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
             PlayerConfig(
                 dash_speed=1200.0,
                 dash_duration=0.5,
-                dash_friction=2.0,
                 dash_recharge_time=0.85,
                 dash_gravity_mult=0.4,
             ),
@@ -303,10 +344,12 @@ def test_dash_uses_exposed_recharge_and_gravity_configuration() -> None:
         facing_right=True,
         left_held=False,
         right_held=False,
+        move_axis=0.0,
         velocity=pygame.Vector2(),
         hitbox=pygame.FRect(0, 0, 50, 60),
         normal_gravity=2000.0,
         on_surface={"floor": False, "left": False, "right": False},
+        open_dodge_window=lambda: None,
     )
     entity.dash.charges = 2
     state = PlayerDashState(entity)
@@ -328,5 +371,3 @@ def test_player_config_defaults_follow_central_settings() -> None:
     assert config.speed == Physics.PLAYER_SPEED
     assert config.dash_recharge_time == Physics.DASH_RECHARGE_TIME
     assert config.dash_gravity_mult == Physics.DASH_GRAVITY_MULT
-    assert config.guard_posture_max == Guard.MAX_POSTURE
-    assert config.guard_break_lockout == Guard.BREAK_LOCKOUT

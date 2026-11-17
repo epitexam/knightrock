@@ -12,27 +12,14 @@ import pytest
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.separation_system import SeparationSystem
 from src.core.settings import Combat as CombatSettings
+from tests.fakes import BodyStub
 
 
-class PairEntity(pygame.sprite.Sprite):
-    """Minimal entity stub for the pairing systems."""
-
-    def __init__(self, x: float, faction: str, speed: float = 500.0):
-        super().__init__()
-        self.hitbox = pygame.FRect(x, 0, 40, 40)
-        self.velocity = pygame.Vector2(speed, 0)
-        self.faction = faction
-        self.is_dead = False
-        self.pushable = True
-        self.on_surface = {"floor": True, "left": False, "right": False}
-        self.combat = type("CombatStub", (), {"is_hurt": False})()
-        self.damage_taken = 0.0
-
-    def receive_damage(self, amount: float = 0.0, **_) -> None:
-        self.damage_taken += amount
-
-    def sync_rects(self) -> None:  # separation calls it after pushing
-        pass
+def PairEntity(  # noqa: N802 - reads as the class it used to be
+    x: float, faction: str, speed: float = 500.0, entity_id: str | None = None
+) -> BodyStub:
+    """A 40px body at ``x`` moving right at ``speed``."""
+    return BodyStub(pygame.FRect(x, 0, 40, 40), faction, speed=speed, entity_id=entity_id)
 
 
 def test_contact_damage_applies_to_fast_overlapping_pair():
@@ -44,15 +31,42 @@ def test_contact_damage_applies_to_fast_overlapping_pair():
     assert b.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
 
 
-def test_contact_damage_ignores_slow_pair():
-    # The momentum threshold is covered in test_contact_unified.py; this file
-    # only needs the pair to be below it, which two zero-speed entities are.
-    a, b = PairEntity(0, "player", speed=0.0), PairEntity(20, "enemy", speed=0.0)
+def test_contact_damage_applies_once_per_pair_per_cooldown():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    system = ContactDamageSystem()
 
-    ContactDamageSystem().process(pygame.sprite.Group(a, b))
+    for _ in range(60):
+        system.process(pygame.sprite.Group(a, b))
 
-    assert a.damage_taken == 0.0
-    assert b.damage_taken == 0.0
+    amount = CombatSettings.CONTACT_DAMAGE_AMOUNT
+    assert a.damage_taken <= 6 * amount, (
+        f"{a.damage_taken} damage over one second of overlap: the pair re-applies "
+        "every tick and the is_hurt gate never stops it"
+    )
+
+
+def test_the_contact_cooldown_is_per_pair():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    other = PairEntity(20, "enemy", entity_id="e2")
+    system = ContactDamageSystem()
+
+    system.process(pygame.sprite.Group(a, b))
+    assert a.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
+    assert other.damage_taken == 0.0
+
+    system.process(pygame.sprite.Group(a, other))
+    assert other.damage_taken == CombatSettings.CONTACT_DAMAGE_AMOUNT
+
+
+def test_the_contact_cooldown_forgets_an_entity_that_left_the_level():
+    a, b = PairEntity(0, "player"), PairEntity(20, "enemy")
+    system = ContactDamageSystem()
+
+    system.process(pygame.sprite.Group(a, b))
+    assert system._cooldowns
+
+    system.process(pygame.sprite.Group())
+    assert not system._cooldowns
 
 
 def test_contact_damage_ignores_same_faction_pair():

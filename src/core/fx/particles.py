@@ -41,7 +41,8 @@ from src.core.fx.draw import (
     star_shape,
     streak_points,
 )
-from src.core.settings import (
+from src.core.fx.tuning import (
+    Corpse,
     DashDust,
     Dust,
     DustGrain,
@@ -502,16 +503,43 @@ class ImpactDecalParticle(FxParticle):
         self.image = self.steps[spread_step(self.life, len(self.steps), FxDecal.RING_STEP_OPENS)]
 
 
+#: The block crescent used to repaint ~458 trig-sampled points *every tick*.
+#: Like ShatterArcParticle it is a pure function of quantized age, so a ladder
+#: of 24 steps (finer than the ~16 frames of its lifetime) bounds the work to
+#: one paint per variation instead of one per frame.
+_SHIELD_ARC_STEPS = 24
+_shield_arc_cache: dict[tuple[int, bool], list[pygame.Surface]] = {}
+
+
+def shield_arc_frames(side: float, parried: bool) -> list[pygame.Surface]:
+    """The shared crescent ladder for one side and one parry colour."""
+    key = (1 if side >= 0.0 else -1, parried)
+    cached = _shield_arc_cache.get(key)
+    if cached is None:
+        cached = [
+            ShieldArcParticle._paint_step(  # noqa: SLF001 - the ladder's own step
+                index / (_SHIELD_ARC_STEPS - 1), key[0], key[1]
+            )
+            for index in range(_SHIELD_ARC_STEPS)
+        ]
+        _shield_arc_cache[key] = cached
+    return cached
+
+
 class ShieldArcParticle(FxParticle):
     family: ClassVar[str] = "shield_arc"
 
-    """The block: one fine ring, brighter where the hit landed.
+    """The block: a shield of light thrown up where the hit landed.
 
-    A hairline rather than an inked band. The rim it used to carry was a
-    comic-panel outline, five pixels of it, and at this size the ring read as
-    a heavy drawn shape with nothing light about it. One thin stroke plus a
-    short brighter kick on the side the block came from says the same thing
-    -- a shield taking a hit, from a direction -- with a fifth of the ink.
+    Animated rather than stamped, because a block is an event and not a
+    state: in its first instant a faint bubble closes round the contact, a
+    thick crescent faces the blow and pushes outward, and sparks are thrown
+    off its face -- then all of it fades. The crescent is the shield, the
+    bubble says the whole guard took it, the sparks say it was turned away;
+    everything bright is on the side the blow came from.
+
+    The sparks are painted in the ring's own surface, not thrown as particles:
+    they live and die with it and spend nothing from the particle budget.
     """
 
     fade_in: ClassVar[float] = FxGuard.ARC_FADE_IN
@@ -527,31 +555,69 @@ class ShieldArcParticle(FxParticle):
         self.body = FXColors.parry_spark if parried else FXColors.shield_arc
         self.kick = FXColors.parry_core if parried else Colors.off_white
         self.parried = parried
+        self.age = 0.0
         super().__init__(pos, ttl)
 
     def _paint(self) -> pygame.Surface:
-        """A one-pixel ring, and a two-pixel kick over the side that was hit.
+        """The ladder's first frame, used by ``FxParticle.__init__``."""
+        return shield_arc_frames(self.side, self.parried)[0]
 
-        Drawn with ``pygame.draw.circle`` rather than ``draw.arc``, which
-        ignores its start and stop angles and closes the loop whatever they
-        say -- every set of spans handed to it produced the same full ring.
-        """
-        radius = snap(FxGuard.ARC_RADIUS)
-        side = 2 * radius + FxGuard.ARC_MARGIN
-        surface = pygame.Surface((side, side), pygame.SRCALPHA)
-        middle = side / 2.0
-        pygame.draw.circle(surface, self.body, (snap(middle), snap(middle)), radius, 1)
-        facing = 0.0 if self.side >= 0.0 else 180.0
+    @staticmethod
+    def _paint_step(t: float, side_sign: int, parried: bool) -> pygame.Surface:
+        """Paint one frame of the ladder, from a quantized age and fixed style."""
+        grow = 1.0 - (1.0 - t) ** 2
+        reach = FxGuard.ARC_RADIUS + FxGuard.ARC_PUSH + FxGuard.SPARK_REACH
+        side_px = 2 * snap(reach) + FxGuard.ARC_MARGIN
+        surface = pygame.Surface((side_px, side_px), pygame.SRCALPHA)
+        middle = (snap(side_px / 2.0), snap(side_px / 2.0))
+        radius = FxGuard.ARC_RADIUS * 0.7 + FxGuard.ARC_PUSH * grow
+        facing = 0.0 if side_sign >= 0 else 180.0
+        body = FXColors.parry_spark if parried else FXColors.shield_arc
+        kick = FXColors.parry_core if parried else Colors.off_white
+        # The bubble: a faint full ring, only at the start.
+        if t < 0.45:
+            pygame.draw.circle(surface, body, middle, snap(radius * 0.9), 1)
+        # The shield: a thick crescent facing the blow, white along its face.
+        half = FxGuard.ARC_FLASH + 30.0
+        draw_arc_stroke(
+            surface, middle, radius, facing - half, facing + half, body, FxGuard.ARC_BAND
+        )
         draw_arc_stroke(
             surface,
-            (snap(middle), snap(middle)),
-            radius,
+            middle,
+            radius + FxGuard.ARC_BAND / 2.0,
             facing - FxGuard.ARC_FLASH,
             facing + FxGuard.ARC_FLASH,
-            self.kick,
+            kick,
             FxGuard.ARC_KICK_WIDTH,
         )
+        # The sparks: thrown off the shield's face, outward and fading.
+        for index in range(FxGuard.SPARKS):
+            share = index / max(1, FxGuard.SPARKS - 1)
+            angle = math.radians(facing - FxGuard.SPARK_FAN + 2 * FxGuard.SPARK_FAN * share)
+            start = radius + 2.0 + FxGuard.SPARK_REACH * grow * (0.6 + 0.4 * (index % 2))
+            length = max(1.0, FxGuard.SPARK_LENGTH * (1.0 - t))
+            a = (middle[0] + math.cos(angle) * start, middle[1] + math.sin(angle) * start)
+            b = (
+                middle[0] + math.cos(angle) * (start + length),
+                middle[1] + math.sin(angle) * (start + length),
+            )
+            pygame.draw.line(surface, kick, a, b, 1)
         return surface
+
+    def update(self, delta_time: float) -> None:
+        self.ttl -= delta_time
+        if self.ttl <= 0.0:
+            self.kill()
+            return
+        self.age += delta_time
+        span = self.max_ttl if self.max_ttl > 0.0 else 1.0
+        t = min(1.0, max(0.0, self.age / span))
+        step = min(_SHIELD_ARC_STEPS - 1, round(t * (_SHIELD_ARC_STEPS - 1)))
+        self.image = shield_arc_frames(self.side, self.parried)[step]
+        self._integrate(delta_time)
+        self._fade()
+        self.rect = self.image.get_frect(center=self.pos)
 
 
 class ShatterArcParticle(FxParticle):
@@ -778,6 +844,68 @@ class SweatParticle(FxParticle):
             max(1.0, radius / 3.0),
         )
         return surface
+
+
+class CorpseParticle(FxParticle):
+    family: ClassVar[str] = "corpse"
+
+    """The body of a fighter killed this tick, thrown by the hit that did it.
+
+    The one particle that is handed its pixels instead of painting them: it is
+    the fighter's own last frame, so what flies off is recognisably what was
+    standing there. See :class:`Corpse` for the motion.
+
+    The tumble is a ladder of rotations built on demand and kept, one per
+    notch, because a body visits a dozen notches at most and most of them
+    twice.
+    """
+
+    gravity: ClassVar[float] = Corpse.GRAVITY
+    drag: ClassVar[float] = Corpse.DRAG
+    alpha_steps: ClassVar[int] = Corpse.ALPHA_STEPS
+
+    def __init__(
+        self,
+        image: pygame.Surface,
+        pos: tuple[float, float] | Vector2,
+        velocity: tuple[float, float] | Vector2,
+        ground_y: float | None = None,
+    ) -> None:
+        self._body = image.copy()
+        self._turns: dict[int, pygame.Surface] = {0: self._body}
+        self._angle = 0.0
+        self._half_height = image.get_height() / 2.0
+        self.ground_y = ground_y
+        super().__init__(pos, Corpse.TTL)
+        self.velocity = Vector2(velocity)
+        self._spin = math.copysign(Corpse.SPIN, self.velocity.x) if self.velocity.x else 0.0
+
+    def _paint(self) -> pygame.Surface:
+        return self._body
+
+    def _integrate(self, delta_time: float) -> None:
+        super()._integrate(delta_time)
+        feet = self.pos.y + self._half_height
+        if self.ground_y is not None and feet >= self.ground_y and self.velocity.y > 0.0:
+            self.pos.y = self.ground_y - self._half_height
+            self.velocity.y = -self.velocity.y * Corpse.BOUNCE
+            self.velocity.x *= Corpse.GROUND_KEEP
+            self._spin *= Corpse.GROUND_KEEP
+        self._angle += self._spin * delta_time
+        notch = int(self._angle // Corpse.SPIN_STEP) * Corpse.SPIN_STEP % 360
+        turned = self._turns.get(notch)
+        if turned is None:
+            # Clockwise for a body thrown to the right: pygame turns the other way.
+            turned = pygame.transform.rotate(self._body, -notch)
+            self._turns[notch] = turned
+        self.image = turned
+
+    def _fade(self) -> None:
+        if self.life <= Corpse.FADE_FROM:
+            self.image.set_alpha(255)
+            return
+        gone = (self.life - Corpse.FADE_FROM) / (1.0 - Corpse.FADE_FROM)
+        self.image.set_alpha(life_alpha(gone, 0.0, self.alpha_steps))
 
 
 def _shade(color: Color, amount: float) -> Color:
@@ -1148,8 +1276,7 @@ def puff_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pyga
     moment of landing.
 
     A continuous radius would mean a surface per particle, which is the
-    allocation ``notes/refacto.md`` already flags as the FX plane's main
-    remaining cost, and a landing is exactly when four of them happen at once.
+    allocation that is the FX plane's main remaining cost, and a landing is exactly when four of them happen at once.
     A display format change invalidates the cache along with everything else.
     """
     key = (_puff_bucket(radius), round(tint, 3), variant % max(1, Dust.PUFF_VARIANTS))
@@ -1266,8 +1393,8 @@ def dash_frames(radius: float, tint: float = 0.0, variant: int = 0) -> list[pyga
     The landing ladder's contract, and the reason for it applies twice over
     here. A dash lays puffs on a cadence rather than in a single fan, so there
     are more of them alive at once, and a continuous radius would mean a
-    surface per particle -- exactly the allocation ``notes/refacto.md``
-    flags as the plane's main remaining cost. Keyed on the discrete radii in
+    surface per particle -- exactly the allocation that is the plane's main
+    remaining cost. Keyed on the discrete radii in
     ``DashDust.BUCKETS``, the discrete tones in ``DashDust.TINT`` and the
     discrete silhouettes in ``DashDust.VARIANTS``, and built once per session.
 
@@ -1338,4 +1465,5 @@ def clear_frame_cache() -> None:
     _PUFF_MOTES.clear()
     _DASH_MOTES.clear()
     _shard_cache.clear()
+    _shield_arc_cache.clear()
     _vortex_cache = []

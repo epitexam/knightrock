@@ -30,7 +30,6 @@ __all__ = [
     "ellipse_ring",
     "ink_shape",
     "lobe_shape",
-    "polygon_bounds",
     "regular_points",
     "inked_polygon",
     "life_alpha",
@@ -492,19 +491,6 @@ def _offset_polygon(points: list[tuple[int, int]], distance: float) -> list[tupl
         scale = distance * 2.0 / length if length < 2.0 else distance
         moved.append((snap(here[0] + nx / length * scale), snap(here[1] + ny / length * scale)))
     return moved
-
-
-def polygon_bounds(
-    points: Iterable[tuple[float, float]], at: tuple[float, float] = (0, 0)
-) -> tuple[int, int, int, int]:
-    """The left, top, width and height a set of points needs, with a pixel spare."""
-    vertices = [(snap(point[0] + at[0]), snap(point[1] + at[1])) for point in points]
-    if not vertices:
-        return (0, 0, 1, 1)
-    xs = [point[0] for point in vertices]
-    ys = [point[1] for point in vertices]
-    left, top = min(xs) - 1, min(ys) - 1
-    return (left, top, max(1, max(xs) - left + 2), max(1, max(ys) - top + 2))
 
 
 def draw_inked_polygon(

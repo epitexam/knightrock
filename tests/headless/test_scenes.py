@@ -368,13 +368,13 @@ def test_the_camera_viewport_ignores_the_window(manager: SceneManager):
     of it is shown.
     """
     from src.core.display.framing import DEFAULT_FRAMING
-    from src.core.display.letterbox import letterbox
+    from src.core.display.letterbox import picture
 
     gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
     manager.switch(gameplay)
 
     for window in ((640, 360), (1280, 720), (1920, 1080), (2560, 1440), (1000, 1000)):
-        size = letterbox(window, DEFAULT_FRAMING).size
+        size = picture(window, DEFAULT_FRAMING).dest.size
         surface = Viewport(DEFAULT_FRAMING, size).surface
         gameplay.set_surface(surface)
 
@@ -470,7 +470,7 @@ def test_game_over_retry_restarts_the_level(manager: SceneManager):
 
 def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
     """LevelCompleted → unlock level_unlock + JSON write (Phase 2 #6)."""
-    from src.application.events import LevelCompleted
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
 
@@ -482,7 +482,7 @@ def test_level_completed_event_unlocks_and_persists_progression(game_runtime):
 
 
 def test_completed_level_without_unlock_value_still_persists_last_level(game_runtime):
-    from src.application.events import LevelCompleted
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0))
 
@@ -491,8 +491,8 @@ def test_completed_level_without_unlock_value_still_persists_last_level(game_run
 
 
 def test_menu_offers_continue_when_progress_exists(game_runtime):
-    from src.application.events import LevelCompleted
     from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.events import LevelCompleted
 
     game_runtime.events.emit(LevelCompleted(level_id=0, unlock_level_id=1))
     game_runtime.scene_manager.switch(MenuScene(game_runtime))
@@ -510,8 +510,8 @@ def test_menu_offers_continue_when_progress_exists(game_runtime):
 
 
 def test_menu_continue_starts_at_last_level(game_runtime, monkeypatch):
-    from src.application.events import LevelCompleted
     from src.application.scenes.gameplay_scene import GameplayScene
+    from src.core.events import LevelCompleted
     from tests.headless.conftest import make_programmatic_level_data
 
     # Level 1 has no TMX yet: stub the manager loading.
@@ -905,4 +905,61 @@ def test_every_shipped_view_satisfies_the_scale_protocol() -> None:
     for view_type in (MenuView, ControlsView, GridView):
         assert isinstance(view_type.set_surface, type(MenuView.set_surface))
         assert isinstance(view_type.set_scale, type(MenuView.set_scale))
-    assert ScaledView is not None
+        # The protocol's members really exist on each view, not just the two
+        # hooks the loop above compares against MenuView.
+        for member in ScaledView.__protocol_attrs__:
+            assert hasattr(view_type, member), f"{view_type.__name__}.{member}"
+
+
+# -- leaving the window -------------------------------------------------------
+
+
+@pytest.mark.parametrize("away", [pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED])
+def test_leaving_the_window_pauses_the_level(manager: SceneManager, monkeypatch, away: int):
+    """A level left running behind another window is one the player returns to dead."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(away))
+
+    assert isinstance(manager.current, PauseScene)
+
+
+def test_leaving_the_window_twice_stacks_one_pause(manager: SceneManager, monkeypatch):
+    """Minimising sends both events; the second reaches the pause page, not the level."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: False))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+    manager.handle_event(pygame.event.Event(pygame.WINDOWMINIMIZED))
+    manager.pop()
+
+    assert manager.current is gameplay
+
+
+def test_leaving_the_window_in_debug_mode_changes_nothing(manager: SceneManager, monkeypatch):
+    """Looking away at a log is half of a debug session."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: True))
+    gameplay = GameplayScene(manager.game, level=_make_level(manager.game))
+    manager.switch(gameplay)
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+
+    assert manager.current is gameplay
+
+
+def test_leaving_the_window_on_a_menu_changes_nothing(manager: SceneManager):
+    manager.switch(MenuScene(manager.game))
+    menu = manager.current
+
+    manager.handle_event(pygame.event.Event(pygame.WINDOWFOCUSLOST))
+
+    assert manager.current is menu

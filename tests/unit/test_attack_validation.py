@@ -75,7 +75,8 @@ def test_json_attack_outside_sprite_envelope_is_rejected() -> None:
         validate_attacks({"kick": definition})
 
 
-def test_json_attack_with_too_short_cooldown_is_rejected() -> None:
+def test_json_attack_with_a_cooldown_shorter_than_itself_is_accepted() -> None:
+    """A basic move is paced by its frame data; its cooldown may be zero."""
     raw = {
         "phases": [
             {
@@ -91,8 +92,22 @@ def test_json_attack_with_too_short_cooldown_is_rejected() -> None:
     }
     definition = read_attack_definition(raw, "data/gameplay/attacks.json#player.slam")
 
-    with pytest.raises(GameplayDataError, match=r"slam': cooldown"):
-        validate_attacks({"slam": definition})
+    validate_attacks({"slam": definition})
+
+
+def test_a_self_cancel_on_a_move_still_cooling_down_is_rejected() -> None:
+    """Cancelling into itself is a chain only if the cooldown is over by then."""
+    looped = replace(_valid_attack().phases[0], cancel_into=(move_id("slam"),))
+    looping = replace(_valid_attack(), phases=(looped,), cooldown=5.0)
+
+    with pytest.raises(GameplayDataError, match="cancels into itself"):
+        validate_attacks({"slam": looping})
+
+
+def test_a_self_cancel_on_a_move_without_cooldown_is_a_chain() -> None:
+    looped = replace(_valid_attack().phases[0], cancel_into=(move_id("slam"),))
+
+    validate_attacks({"slam": replace(_valid_attack(), phases=(looped,), cooldown=0.0)})
 
 
 def test_non_positive_box_size_is_rejected_with_named_message() -> None:
@@ -164,7 +179,7 @@ def test_a_cancel_into_the_attack_itself_is_rejected() -> None:
 def test_a_cancel_into_a_posture_it_cannot_be_thrown_from_is_rejected() -> None:
     """An air chain into a ground move was loadable, and playable.
 
-    ``air_attack.cancel_into = ("light_attack",)`` passed every existing check
+    ``air_attack.cancel_into = ("slash_high_1",)`` passed every existing check
     for as long as it existed, and nothing stopped a fighter chaining from
     mid-air into a standing swing. The move's own ``stances`` are what make the
     crossing visible.
@@ -375,7 +390,7 @@ def test_a_comment_key_in_an_attack_set_is_dropped(tmp_path) -> None:
                 "sets": {
                     "player": {
                         "_comment": "tuned for the 2p pass, do not reorder",
-                        "kick": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"]),
+                        "kick": attack_definition_to_dict(PLAYER_ATTACKS["slash_high_1"]),
                     }
                 },
             }
@@ -399,7 +414,10 @@ def test_intermediate_phase_without_target_reset_warns() -> None:
 
 def test_load_attacks_validates_before_registering() -> None:
     combat = _CombatStub()
-    broken = replace(_valid_attack(), cooldown=0.0)
+    broken = replace(
+        _valid_attack(),
+        phases=(replace(_valid_attack().phases[0], cancel_into=(move_id("nope"),)),),
+    )
 
     with pytest.raises(GameplayDataError):
         load_attacks(combat, {"kick": broken})  # type: ignore[arg-type]
@@ -484,24 +502,18 @@ def test_a_vertical_lunge_survives_the_round_trip() -> None:
 
 
 def test_the_shipped_aerials_carry_the_impulses_they_need() -> None:
-    """The shipped data against the rule, which is the only place both exist.
+    """In the air the body dives and the blade leaves the arc alone.
 
-    Each aerial is asserted against the direction its button already means on
-    the floor: ATTACK_3 launches on the ground so it rises in the air, ATTACK_2
-    is the heavy hit down here so it falls up there, and the neutral one leaves
-    the arc alone. A table where all four had the same sign would satisfy the
-    validation and be the missing feature replaced by a worse one.
+    A table where both had the same sign would satisfy the validation and lose
+    the dive.
     """
+    from src.combat.frame_data import AttackButton
+    from src.entities.attack_moves import MoveContext, resolve_move
+
     player = PLAYER_ATTACKS
-    from src.core.input.input_actions import InputAction
-    from src.entities.attack_moves import BUTTON_MOVES
+    slash = resolve_move(AttackButton.SLASH_HIGH, MoveContext(Stance.AIR))
+    dive = resolve_move(AttackButton.BEAT_HIGH, MoveContext(Stance.AIR))
 
-    aerial = {
-        action.value: moves[Stance.AIR]
-        for action, moves in BUTTON_MOVES.items()
-        if Stance.AIR in moves
-    }
-
-    assert player[aerial[InputAction.ATTACK_3.value]].vertical_lunge > 0
-    assert player[aerial[InputAction.ATTACK_2.value]].vertical_lunge < 0
-    assert player[aerial[InputAction.ATTACK_1.value]].vertical_lunge == 0.0
+    assert slash is not None and dive is not None
+    assert player[dive].vertical_lunge < 0
+    assert player[slash].vertical_lunge == 0.0

@@ -1,10 +1,14 @@
 from types import SimpleNamespace
 
 import pygame
+import pytest
 
 from src.application.scenes.controls_scene import ControlsScene
+from src.application.scenes.option_screen import OptionScreen
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import FRAME_LIMITS, UserSettings
+from src.core.display import letterbox
+from src.core.display.monitors import degraded
 from src.core.input.event_router import EventRouter, InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.ui.controls_view import RowKind
@@ -24,6 +28,25 @@ def _game() -> SimpleNamespace:
             density=2.0,
         ),
         stage=None,
+        # The video screen asks the runtime what displays exist, so a stand-in
+        # has to answer. One screen with no names: enough for the rows that are
+        # about pacing and scaling, and it keeps the screen-picker row out of a
+        # screen-picker-agnostic test.
+        topology=lambda: degraded(((2304, 1296),)),
+        # The screen the window is on, which is what the VSync row reports: the
+        # primary's rate would be a claim about a screen the window may not be on.
+        window_monitor=lambda: degraded(((2304, 1296),)).primary,
+        # Rule W's answer for the stand-in: the panel the window is on, which the
+        # size list is derived from -- same panel as the VSync row, since a
+        # stand-in has nothing to disagree with itself about.
+        monitor=lambda: degraded(((2304, 1296),)).primary,
+        # The fit policy the runtime would draw with, resolved by the same pure
+        # rule the runtime reads -- see the video-screen stand-in for why a
+        # stand-in that answered ``settings.fit`` instead would read as
+        # identical and be wrong for the migration the read-out exists for.
+        effective_fit=lambda: letterbox.effective_fit(
+            game.settings.fit, game.settings.pixel_perfect
+        ),
         # The views are laid out at the preference times the density; a stand-in
         # has to hand them something, and 1.0 keeps the assertions readable.
         ui_scale=1.0,
@@ -54,7 +77,7 @@ def test_controls_exposes_keyboard_and_gamepad_columns() -> None:
     ]
     assert controls.rows[0].keyboard is not None
     assert controls.rows[0].gamepad is not None
-    assert controls.view.COLUMN_HEADERS == ("KEYBOARD / MOUSE", "GAMEPAD")
+    assert controls.view.column_headers == ("KEYBOARD / MOUSE", "GAMEPAD")
 
 
 def test_gamepad_button_capture_is_independent_from_keyboard() -> None:
@@ -185,7 +208,7 @@ def test_menu_controls_expose_the_stick_y_inversion() -> None:
     # to: a state under KEYBOARD / MOUSE reads as a key bound to a switch.
     assert row.keyboard is None
     assert row.gamepad is not None
-    assert row.gamepad.text == "inverted"
+    assert row.gamepad.text == "Inverted"
     assert row.rebindable is False, "it is a toggle, not a remappable slot"
 
     controls.handle_routed(_confirm())
@@ -233,21 +256,21 @@ def test_the_options_at_the_bottom_are_options_and_not_binding_slots() -> None:
     # The toggle is the one option with a value, and it is the stick's.
     menu_rows = ControlsScene(_game(), ControlsScene.MENU_SECTION).rows
     toggle = next(row for row in menu_rows if row.label == "Invert stick Y")
-    assert toggle.gamepad is not None and toggle.gamepad.text == "normal"
+    assert toggle.gamepad is not None and toggle.gamepad.text == "Normal"
 
 
 def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
-    """Invert Y, Reset and Back are all selectable, so all get a focus ring."""
+    """Invert Y, Reset and Back are all selectable, so the bar lands on each.
+
+    An option row is one target, so the bar covers the whole row -- sampled at
+    its right end, past any text.
+    """
+    from src.ui.styles import SELECTION_BG
+
     pygame.font.init()
     game = _game()
     controls = ControlsScene(game, ControlsScene.MENU_SECTION)
     surface = pygame.Surface((1024, 720))
-    calls: list[tuple[int, int, int, int, int]] = []
-    original_rect = pygame.draw.rect
-
-    def record_rect(target, color, rect, width=0):
-        calls.append((*rect, width))
-        return original_rect(target, color, rect, width)
 
     _move_to(controls, "reset")
     reset_index = controls.model.current_index
@@ -255,22 +278,19 @@ def test_controls_focus_is_rendered_on_the_footer_rows() -> None:
     invert_index = controls.model.current_index
     back_index = controls.model.current_index + 1
 
-    pygame.draw.rect = record_rect
-    try:
-        for selected in (invert_index, reset_index, back_index):
-            before = len(calls)
-            controls.view.draw(
-                surface,
-                "MENU CONTROLS",
-                "Keyboard / mouse",
-                controls.rows,
-                selected_row=selected,
-                selected_column=0,
-                top=80,
-            )
-            assert any(width == 1 for *_, width in calls[before:]), selected
-    finally:
-        pygame.draw.rect = original_rect
+    for selected in (invert_index, reset_index, back_index):
+        surface.fill((0, 0, 0))
+        controls.view.draw(
+            surface,
+            "MENU CONTROLS",
+            "",
+            controls.rows,
+            selected_row=selected,
+            selected_column=0,
+            top=80,
+        )
+        row = controls.view.row_rects[selected]
+        assert surface.get_at((row.right - 2, row.centery))[:3] == SELECTION_BG, selected
 
 
 def test_video_menu_cycles_every_value_row_and_resets() -> None:
@@ -296,67 +316,48 @@ def test_video_menu_cycles_every_value_row_and_resets() -> None:
             scene.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.GAMEPAD))
         assert scene.model.current_index == row(name)
 
-    focus("display")
-    assert game.settings.display is not None
-    first_mode = game.settings.display
-    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
-    assert game.settings.display is not first_mode
+    # The window size is a list, and the row that owns it has to be reachable by
+    # the same walk every other row is: the display row this replaced is gone,
+    # and nothing may go with it. The list's own contents are checked in the
+    # video-screen tests; what this pins is that the row is live and opens.
+    focus("size")
+    size_list = _open_list(scene, "size")
+    assert size_list.options, "the window-size row opened an empty list"
 
     # A press sets the value rather than toggling it: left is off, right is on,
     # so the two directions cannot behave identically.
-    focus("pixel_perfect")
-    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
-    assert game.settings.pixel_perfect is False
-    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
-    assert game.settings.pixel_perfect is True
-
     focus("vsync")
+    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
+    assert game.settings.vsync is False
     scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
     assert game.settings.vsync is True
 
-    focus("frame_limit")
-    limits = set()
+    # Frame limit is a list now, and it opens on a gamepad press like anything
+    # else. Every value has to be reachable *through the list*, which is the
+    # point: a list the gamepad cannot walk is a list only a mouse can use.
+    limits: set[object] = set()
     for _ in range(len(FRAME_LIMITS)):
         limits.add(game.settings.frame_limit)
-        scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+        list_screen = _open_list(scene, "frame_limit")
+        for option in list_screen.options:
+            _focus_option(list_screen, f"option:{list_screen.options.index(option)}")
+            list_screen.handle_routed(_confirm())
+            limits.add(game.settings.frame_limit)
     assert limits == set(FRAME_LIMITS), "every frame limit must be reachable"
 
     focus("scale")
     before = game.settings.ui_scale
-    scene.handle_routed(RoutedInput(InputAction.UI_RIGHT, InputDevice.GAMEPAD))
+    scale_list = _open_list(scene, "scale")
+    _focus_option(scale_list, "option:2")
+    scale_list.handle_routed(_confirm())
     assert game.settings.ui_scale != before
 
     _move_to_video(scene, "reset")
     scene.handle_routed(_confirm())
     defaults = UserSettings()
-    assert game.settings.display is defaults.display
     assert game.settings.pixel_perfect == defaults.pixel_perfect
     assert game.settings.frame_limit == defaults.frame_limit
     assert game.settings.ui_scale == defaults.ui_scale
-
-
-def test_the_whole_pixel_row_says_so_on_a_window_too_small_for_one() -> None:
-    """The one row that can be unavailable, and it has to say which it is.
-
-    Whole-pixel art needs a whole multiple of the framing to snap to, and a
-    window narrower than the framing has none. The row is then disabled and
-    labelled, rather than silently accepting a setting that does nothing --
-    which is what a row reading "off" on a window it cannot honour would be.
-    """
-    game = _game()
-    game.presentation.window_size = (800, 600)
-    game.presentation.stage = pygame.Surface((800, 600))
-    scene = VideoScene(game)
-    item = next(item for item in scene.model.items if item.action == "pixel_perfect")
-
-    assert not item.enabled
-    assert "too small" in item.value
-
-    game.presentation.window_size = (2304, 1296)
-    game.presentation.stage = pygame.Surface((2304, 1296))
-    scene = VideoScene(game)
-    item = next(item for item in scene.model.items if item.action == "pixel_perfect")
-    assert item.enabled
 
 
 def test_every_video_row_reports_its_value_in_its_own_column() -> None:
@@ -364,6 +365,8 @@ def test_every_video_row_reports_its_value_in_its_own_column() -> None:
     scene = VideoScene(_game())
 
     for item in scene.model.items:
+        if item.kind == "header":
+            continue  # A section heading is a title, not a setting.
         if item.action in ("reset", "back"):
             assert item.value == ""
         else:
@@ -380,18 +383,60 @@ def _move_to_video(scene: VideoScene, action: str) -> None:
     scene.model.set_items(scene.model.items, index)
 
 
-def test_video_menu_cycles_the_ui_scale() -> None:
-    """UI scale moved here from the Options hub; it cycles like the presets."""
+def _open_list(scene: VideoScene, row: str) -> OptionScreen:
+    """Open ``row``'s list through the real push and return what came out.
+
+    Through ``handle_routed`` rather than by calling ``_open`` directly, so the
+    press that opens it is the one a player makes.
+    """
+    pushed: list[object] = []
+    scene.game.scene_manager.push = pushed.append
+    _move_to_video(scene, row)
+    scene.handle_routed(_confirm())
+    assert pushed, f"the {row!r} row opened nothing"
+    screen = pushed[0]
+    assert isinstance(screen, OptionScreen)
+    return screen
+
+
+def _focus_option(screen: OptionScreen, action: str) -> None:
+    """Put a list's cursor on ``action``, walking up to the top first.
+
+    From the top every time, because the list does not wrap: walking down from
+    wherever the cursor happens to be cannot reach an entry above it, and a test
+    that visited the options in order would pass while a player who scrolled down
+    and then wanted to go back could not.
+    """
+    for _ in range(len(screen.model.items)):
+        screen.handle_routed(RoutedInput(InputAction.UI_UP, InputDevice.KEYBOARD))
+    for _ in range(len(screen.model.items) + 2):
+        current = screen.model.current_item
+        if current is not None and current.action == action:
+            return
+        screen.handle_routed(RoutedInput(InputAction.UI_DOWN, InputDevice.KEYBOARD))
+    raise AssertionError(f"the list never reached {action!r}")
+
+
+def test_video_menu_opens_the_ui_scale_list_and_it_applies_on_selection() -> None:
+    """UI scale moved here from the Options hub; it is now a list, not a cycle.
+
+    Three values would cycle acceptably, but a list is what every other setting
+    of this size uses and it is where the consequence lives -- "text at 2.00x on
+    this screen", which the old row could not say. Apply happens on the pick, not
+    on the highlight, so browsing the list changes nothing.
+    """
     game = _game()
     scene = VideoScene(game)
     _move_to_video(scene, "scale")
 
-    scene.handle_routed(_confirm())
-    assert game.settings.ui_scale == 1.2
-    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
+    list_screen = _open_list(scene, "scale")
+    assert list_screen.title == "UI SCALE"
+    # Opening it changed nothing.
     assert game.settings.ui_scale == 1.0
-    scene.handle_routed(RoutedInput(InputAction.UI_LEFT, InputDevice.GAMEPAD))
-    assert game.settings.ui_scale == 0.8
+
+    _focus_option(list_screen, "option:2")
+    list_screen.handle_routed(_confirm())
+    assert game.settings.ui_scale == 1.2
 
 
 def test_video_menu_keeps_the_focus_on_the_row_it_just_edited() -> None:
@@ -410,7 +455,9 @@ def test_video_reset_also_restores_the_ui_scale() -> None:
     game = _game()
     scene = VideoScene(game)
     _move_to_video(scene, "scale")
-    scene.handle_routed(_confirm())
+    list_screen = _open_list(scene, "scale")
+    _focus_option(list_screen, "option:2")
+    list_screen.handle_routed(_confirm())
     assert game.settings.ui_scale != UserSettings().ui_scale
 
     _move_to_video(scene, "reset")
@@ -510,7 +557,7 @@ def test_keyboard_capture_prompt_replaces_only_the_armed_cell() -> None:
     assert keyboard[2] == "LEFT"
 
     gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
-    assert "Press button / axis / d-pad…" not in gamepad, "the other column is untouched"
+    assert "Press a button…" not in gamepad, "the other column is untouched"
 
 
 def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
@@ -521,23 +568,27 @@ def test_gamepad_capture_prompt_replaces_only_the_armed_cell() -> None:
     controls.handle_routed(_confirm())
 
     gamepad = [row.gamepad.text for row in controls.rows if row.gamepad is not None]
-    assert gamepad.count("Press button / axis / d-pad…") == 1
-    assert gamepad[0] == "Press button / axis / d-pad…"
-    assert gamepad[1] == "axis 1 / hat 0"
+    assert gamepad.count("Press a button…") == 1
+    assert gamepad[0] == "Press a button…"
+    assert gamepad[1] == "Axis 1 / D-pad"
 
     keyboard = [row.keyboard.text for row in controls.rows if row.keyboard is not None]
     assert "Press a key…" not in keyboard
 
 
-def test_the_window_row_only_reports_and_nothing_is_ever_pushed() -> None:
-    """The read-out line is inert, and there is no resolution screen to open.
+def test_the_window_row_only_reports_and_opens_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The read-out line is inert, and the rows that do open lists are the others.
 
-    The size used to be a setting with a picker behind it, and the picker was
-    the only place in the game that could claim what the player's screen was.
-    Now the window belongs to the window manager, so the last row is a report of
-    what the game derived from it: a row the model will not even select, because
-    it is disabled, and one that can therefore not be activated by any route.
+    The window's size is a *choice* now and it lives on its own row with a list
+    behind it; the read-out at the bottom is the opposite case -- a report of what
+    the game derived from the window, which the player can change. It is drawn
+    disabled on purpose: a report row that opened something would be reporting a
+    choice it does not make.
+
+    What this pins is that the report stays inert while the lists exist.
     """
+    # The read-out is a diagnostic, shown with the debug overlay on.
+    monkeypatch.setenv("DEBUG", "1")
     pushed: list[object] = []
     game = _game()
     game.scene_manager.push = pushed.append
@@ -550,12 +601,22 @@ def test_the_window_row_only_reports_and_nothing_is_ever_pushed() -> None:
     assert "2.00x" in report.value
 
     # The model refuses to put the selection on a disabled row, so the press
-    # that would have opened a picker cannot be aimed at it in the first place.
+    # that would have opened something cannot be aimed at it in the first place:
+    # the selection lands on the nearest row that is usable, which is the point.
     scene.model.set_items(scene.model.items, scene.model.items.index(report))
     assert scene.model.current_item is not report
     assert scene.model.current_item.enabled  # type: ignore[union-attr]
 
-    # And nothing on any row it *can* reach opens a screen either.
+    # And the read-out owns no list at all -- a direct open is a no-op, not a
+    # push that happens to be unreachable from the model.
+    pushed.clear()
+    scene._open("info")
+    assert pushed == [], "the read-out row opened something"
+
+    # Every other row that can be reached either cycles a value or opens a
+    # list. The lists are the point of the check, not a violation of it: they
+    # are built from what the driver and the topology report, so none of them
+    # claims anything the game cannot check about the player's screen.
     for index, item in enumerate(scene.model.items):
         if not item.enabled:
             continue
@@ -565,7 +626,11 @@ def test_the_window_row_only_reports_and_nothing_is_ever_pushed() -> None:
         if item.action in ("reset",):
             game.settings = before
 
-    assert pushed == [], "the video screen must never push a screen"
+    for screen in pushed:
+        assert isinstance(screen, OptionScreen), f"a row pushed a {type(screen).__name__}"
+        assert all(
+            option.enabled or option.detail or option.label == "" for option in screen.options
+        ), "a list offered an entry it could not apply without saying so"
 
 
 def test_one_stick_press_moves_exactly_one_row() -> None:
@@ -619,3 +684,21 @@ def test_repeated_presses_walk_one_row_at_a_time() -> None:
         )
 
     assert controls.model.current_index == 3
+
+
+def test_the_panel_keeps_its_width_when_a_capture_starts() -> None:
+    """The prompt's width is reserved, so the panel does not widen under the player."""
+    pygame.font.init()
+    controls = ControlsScene(_game(), ControlsScene.GAMEPLAY_SECTION)
+    surface = pygame.Surface((1152, 648))
+
+    def width() -> int:
+        return controls.view.draw(
+            surface, "", "", controls.rows, selected_row=0, selected_column=1, top=80
+        ).width
+
+    before = width()
+    controls._select_column(1)
+    controls._activate()
+    assert controls.capturing
+    assert width() == before

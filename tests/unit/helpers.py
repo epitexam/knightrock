@@ -8,12 +8,14 @@ test_damage_resolution, test_combat_behaviors). Single source, reused via
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pygame
 from pygame.sprite import Group
 
+from src.combat.combatant_protocol import Finish
 from src.combat.frame_data import (
     FRAME_RATE,
     AttackDefinition,
@@ -24,6 +26,7 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.core.input.input_state import InputState
+from src.data.attacks import read_attacks_file
 from src.entities.entity import Entity
 from src.entities.hurtbox_zones import HurtboxZoneDef
 from src.ui.world_overlay_cards import CardLayer
@@ -164,7 +167,9 @@ class _ActiveAttackerCombat(SimpleNamespace):
             attack_box=attack_box,
             attack_boxes=(attack_box,),
             swept_attack_boxes=(attack_box,),
-            current_phase=SimpleNamespace(hit=hit),
+            attack_shapes=(),
+            swept_attack_shapes=(),
+            current_phase=SimpleNamespace(hit=hit, launches=None),
             charge_multiplier=1.0,
             targets_hit=targets_hit,
             can_contact=lambda target_id: target_id not in targets_hit,
@@ -178,9 +183,10 @@ class _ActiveAttackerCombat(SimpleNamespace):
     def air_combo_count(self) -> int:
         return self._air_count
 
-    def record_hit_landed(self, airborne: bool) -> None:
+    def record_hit_landed(self, airborne: bool) -> bool:
         if airborne:
             self._air_count += 1
+        return False
 
 
 def make_active_attacker(target: Entity) -> SimpleNamespace:
@@ -194,6 +200,7 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
     return SimpleNamespace(
         id="attacker",
         is_dead=False,
+        dodge_ghost=None,
         faction="enemy",
         hitbox=pygame.FRect(-20.0, 0.0, 10.0, 10.0),
         combat=combat,
@@ -205,6 +212,13 @@ def make_active_attacker(target: Entity) -> SimpleNamespace:
         swept_hurtbox=lambda: target.swept_hurtbox(),
         swept_hurtboxes=lambda: target.swept_hurtboxes(),
         capture_sweep_origin=target.capture_sweep_origin,
+        # The Combatant hooks a melee contact calls on its attacker: a plain
+        # fighter whose blows kill and who is owed nothing for a hit.
+        finish=Finish.NONE,
+        counter_covered=False,
+        on_clash=lambda other: None,
+        on_deflected=lambda source_center_x: None,
+        on_hit_confirmed=lambda target, combo_advanced, result: None,
     )
 
 
@@ -215,6 +229,8 @@ class SpyCombat:
     hit_interrupts: list[bool] = field(default_factory=list)
     is_hurt: bool = False
     hurt_timer: float = 0.0
+    #: Nothing running: no attack to make the fighter untouchable.
+    current_attack_def: None = None
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         self.hit_interrupts.append(interrupt)
@@ -235,9 +251,14 @@ class SpyStateMachine:
     """Record forced state changes without requiring concrete game states."""
 
     changes: list[tuple[str, dict[str, object]]] = field(default_factory=list)
+    current_state_name: str | None = None
 
     def change_state(self, name: str, **kwargs: object) -> None:
         self.changes.append((name, kwargs))
+
+    def has_tag(self, tag: str) -> bool:
+        """A machine with no states carries no tags (nothing makes it invincible)."""
+        return False
 
 
 class InputStub:
@@ -261,7 +282,13 @@ class AttackerStub:
 
     def __init__(self, centerx: float = 0.0) -> None:
         self.hitbox = pygame.FRect(centerx - 5.0, 0.0, 10.0, 10.0)
-        self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: None)
+        self.combat = SimpleNamespace(air_combo_count=0, record_hit_landed=lambda airborne: False)
+
+    #: Its blows kill what they would kill.
+    finish = Finish.NONE
+
+    def on_hit_confirmed(self, target: object, combo_advanced: bool, result: object) -> None:
+        """Owed nothing for a hit."""
 
 
 __all__ = [
@@ -388,3 +415,12 @@ def card_rows(card: CardLayer, sprite: Any) -> list[str] | None:
     if segments is None:
         return None
     return [" ".join(text.strip() for text, _ in row) for row in segments]
+
+
+#: The moves that exercise the hitbox engine without being in the game
+#: (``p5_shapes``, ``circle_burst``, ``sky_launcher``, ``otg_slam`` and the
+#: five-phase ``special_attack``): they are not in the player's catalogue, and
+#: live here for the tests that need their shapes.
+SHOWCASE = read_attacks_file(
+    Path(__file__).resolve().parents[1] / "data" / "showcase_attacks.json"
+)["showcase"]

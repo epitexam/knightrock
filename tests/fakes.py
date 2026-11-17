@@ -1,0 +1,231 @@
+"""Stand-ins shaped like the real objects, shared by the tests that need them.
+
+A stand-in that drifts from the object it imitates tests nothing: the wall-jump
+lock was dead in the game for months because its tests used stand-ins with a
+shape the real Player did not have.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+
+import pygame
+
+from src.combat.combat_component import NullCombatComponent
+from src.combat.knockback import KnockbackConfig
+from src.combat.shapes import ShapeKind, ShapePose, SweptShape
+from src.core.rendering.render_hints import RenderHints
+from src.core.sprites import Sprite
+from src.entities.player_kit import Battery, FuryGauge, PromptController, SlotMachine
+
+#: Where the real Player keeps each controller field: flat test name -> attribute
+#: on the controller. Flat names keep the tests short; the stand-in stores them
+#: where the game reads them.
+_CONTROLLER_FIELDS: dict[str, dict[str, str]] = {
+    "jump": {
+        "jump_buffer_timer": "jump_buffer_timer",
+        "coyote_timer": "coyote_timer",
+        "midair_jumps_left": "midair_jumps_left",
+        "wall_jumps_left": "wall_jumps_left",
+        "jump_height": "jump_height",
+        "wall_jump_height": "wall_jump_height",
+    },
+    "dash": {
+        "dash_charges": "charges",
+        "max_dash_charges": "max_charges",
+        "dash_penalty_timer": "penalty_timer",
+        "dash_recharge_timer": "recharge_timer",
+        "dash_speed": "speed",
+        "dash_duration": "duration",
+        "dash_requested": "requested",
+    },
+}
+
+
+def player_shape(**fields: Any) -> SimpleNamespace:
+    """A player stand-in with the real Player's ``jump`` and ``dash`` controllers.
+
+    Pass a controller (``dash=DashController(...)``) to use it; the flat fields
+    for that controller are set on it. The battery, the fury gauge, the slot
+    machine and the prompt are the real ones, at rest, unless the test passes
+    its own.
+    """
+    controllers = {name: fields.pop(name, None) or SimpleNamespace() for name in _CONTROLLER_FIELDS}
+    fields.setdefault("battery", Battery())
+    fields.setdefault("fury", FuryGauge())
+    fields.setdefault("slot", SlotMachine())
+    fields.setdefault("prompt", PromptController())
+    for name, mapping in _CONTROLLER_FIELDS.items():
+        for flat, attribute in mapping.items():
+            if flat in fields:
+                setattr(controllers[name], attribute, fields.pop(flat))
+    fields["combat"] = combat_shape(fields.get("combat"))
+    return SimpleNamespace(**{**_ENTITY_DEFAULTS, **fields}, **controllers)
+
+
+#: Timers every real Entity carries, at rest. A test that cares sets its own.
+_ENTITY_DEFAULTS: dict[str, Any] = {
+    "stagger_timer": 0.0,
+    "invincibility_timer": 0.0,
+    "gravity_scale": 1.0,
+    "juggle_timer": 0.0,
+    "otg_timer": 0.0,
+    "rush_timer": 0.0,
+    "attack_speed": 1.0,
+}
+
+
+def combat_shape(combat: Any) -> Any:
+    """A combat component with every member the real one has.
+
+    No Entity is without one: a fighter with no attacks carries a
+    ``NullCombatComponent``. So ``None`` becomes that, and a partial stand-in
+    gets the members it left out from it.
+    """
+    null = NullCombatComponent()
+    if combat is None:
+        return null
+    if getattr(combat, "charging", None) is None:
+        combat.charging = null.charging
+    for member in ("attack_shapes", "attack_anchors", "hurt_timer", "is_hurt"):
+        if not hasattr(combat, member):
+            setattr(combat, member, getattr(null, member))
+    for member in ("combo_count", "air_combo_count", "combo_timer"):
+        if not hasattr(combat, member):
+            setattr(combat, member, 0)
+    return combat
+
+
+class FighterSprite(pygame.sprite.Sprite):
+    """A sprite with what the renderer and the FX pass read on every ``Entity``.
+
+    ``entity_sprites`` holds entities, so the code that walks it reads these
+    fields directly. A stand-in put in that group starts from this shape and
+    overrides what its test is about.
+    """
+
+    faction = "enemy"
+    facing_right = True
+    is_dead = False
+    is_invincible = False
+    dash = None
+    turn_lead_px = 0.0
+    turn_skew_px = 0.0
+
+    def __init__(self, *groups: Any) -> None:
+        super().__init__(*groups)
+        self.render_hints = RenderHints()
+        self.state_machine = SimpleNamespace(current_state_name=None)
+
+
+class BodyStub(pygame.sprite.Sprite):
+    """A body the contact pipeline can touch: every ``Combatant`` field it reads.
+
+    For the pairing, hazard and contact tests, which care about *whether* and
+    *how often* a body is hit, not about health or states. The production code
+    reads these fields directly, so a stand-in missing one fails loudly instead
+    of being tolerated -- ``test_fakes.py`` checks this shape against the
+    protocol, so it cannot drift from it either.
+
+    ``damage_taken`` adds up every ``receive_damage`` amount.
+    """
+
+    _next_id = 0
+
+    def __init__(
+        self,
+        box: pygame.FRect,
+        faction: str = "player",
+        speed: float = 0.0,
+        entity_id: str | None = None,
+    ) -> None:
+        super().__init__()
+        if entity_id is None:
+            BodyStub._next_id += 1
+            entity_id = f"body{BodyStub._next_id}"
+        self.id = entity_id
+        self.hitbox = box
+        self.velocity = pygame.Vector2(speed, 0.0)
+        self.faction = faction
+        self.is_dead = False
+        self.is_invincible = False
+        self.dodge_ghost = None
+        self.pushable = True
+        self.on_surface = {"floor": True, "left": False, "right": False}
+        self.combat = SimpleNamespace(is_hurt=False)
+        self.contact_shape = ShapePose(ShapeKind.AABB, box.size, box.center)
+        self.damage_taken = 0.0
+
+    @property
+    def hurtbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    @property
+    def hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        return (self.hitbox,)
+
+    hurtbox_mult: tuple[float, ...] = (1.0,)
+    hurtbox_tags: tuple[tuple[str, ...], ...] = ((),)
+
+    def swept_hurtboxes(self) -> tuple[pygame.FRect, ...]:
+        return (self.hitbox,)
+
+    def swept_hurtbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    def swept_pushbox(self) -> pygame.FRect:
+        return self.hitbox
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        return (SweptShape(None, self.contact_shape),)
+
+    def sync_rects(self) -> None:  # separation calls it after pushing
+        pass
+
+    def receive_damage(self, amount: float = 0.0, **_: object) -> None:
+        self.damage_taken += amount
+
+
+def game_shape(**fields: Any) -> SimpleNamespace:
+    """A ``Game`` with what a scene reads from it, at rest.
+
+    No interface yet, no notice, no tick fraction to interpolate. The scene
+    reads these directly, so a stand-in starts from them and overrides what its
+    test is about.
+    """
+    defaults: dict[str, Any] = {
+        "ui": None,
+        "clock": None,
+        "notice_lines": (),
+        "shown_area": None,
+        "notice": lambda *lines, seconds=4.0: None,
+        "render_alpha": lambda: 0.0,
+    }
+    return SimpleNamespace(**{**defaults, **fields})
+
+
+class HazardStub(Sprite):
+    """A hazard the pipeline can read: a real ``Sprite`` with a damage and a knockback.
+
+    ``rect`` is the very rectangle passed in, so a test that moves it moves the
+    hazard. ``previous`` is where it was at the last tick boundary, for a
+    hazard that sweeps; without one it has not moved.
+    """
+
+    def __init__(
+        self,
+        rect: pygame.FRect,
+        *,
+        damage: float = 25.0,
+        knockback: KnockbackConfig | None = None,
+        previous: pygame.FRect | None = None,
+    ) -> None:
+        super().__init__(
+            rect.topleft, surf=pygame.Surface((max(1, int(rect.w)), max(1, int(rect.h))))
+        )
+        self.rect = rect
+        self.damage = damage
+        self.knockback = knockback
+        self.sync_contact_shape()
+        self._previous_contact_rect = previous

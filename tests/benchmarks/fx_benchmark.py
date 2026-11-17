@@ -24,7 +24,7 @@ Run it from the repo root::
 
     uv run python tests/benchmarks/fx_benchmark.py
 
-Medians of unprofiled runs, per the rule in ``notes/audit_p1_measured.md``:
+Medians of unprofiled runs:
 profiling charges a Python-level call far more than it costs, and every line
 this plane draws with is one.
 """
@@ -70,7 +70,8 @@ from src.core.fx import (
     spawners,
 )
 from src.core.fx import particles as particles
-from src.core.settings import Dust, FootstepDust, FxGuard
+from src.core.fx.tuning import Dust, FootstepDust, FxGuard
+from src.core.rendering.render_hints import RenderHints
 
 #: The frame this plane has to fit inside, at 60 Hz.
 FRAME_BUDGET_US = 1000.0 / 60.0 * 1000.0
@@ -109,7 +110,7 @@ def _entity(x: float = 100.0) -> object:
         hitbox=pygame.FRect(x, 36.0, 40, 48),
         velocity=pygame.math.Vector2(1100.0, 0.0),
         facing_right=True,
-        landed_impact=0.0,
+        render_hints=RenderHints(),
     )
 
 

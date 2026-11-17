@@ -3,15 +3,16 @@ from typing import Any
 import pygame
 
 from src.core.settings import Separation as Sep
+from src.entities.entity import Entity
 from src.physics.entity_grid import EntityGrid, overlapping_pairs
 
 
 class SeparationSystem:
     def process(
         self,
-        entity_sprites: pygame.sprite.Group,
+        entity_sprites: pygame.sprite.Group[Entity],
         entity_grid: EntityGrid | None = None,
-    ) -> list[Any]:
+    ) -> list[Entity]:
         """Push overlapping entities apart on the dominant overlap axis.
 
         Pair candidates come from the per-tick :class:`EntityGrid` when one
@@ -31,8 +32,8 @@ class SeparationSystem:
         alternative -- re-syncing all of them unconditionally -- charged every
         fighter for the ones that happened to be standing near someone.
         """
-        entities = [e for e in entity_sprites if hasattr(e, "hitbox") and hasattr(e, "on_surface")]
-        moved: list[Any] = []
+        entities = list(entity_sprites)
+        moved: list[Entity] = []
 
         if entity_grid is not None:
             pairs = overlapping_pairs(entities, entity_grid)
@@ -45,7 +46,7 @@ class SeparationSystem:
 
         for ent_a, ent_b in pairs:
             # Skip separation if either entity is invincible (e.g., dashing) - allows phasing through
-            if getattr(ent_a, "is_invincible", False) or getattr(ent_b, "is_invincible", False):
+            if ent_a.is_invincible or ent_b.is_invincible:
                 continue
             if not (ent_a.pushable or ent_b.pushable):
                 continue

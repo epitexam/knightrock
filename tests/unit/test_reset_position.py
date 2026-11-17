@@ -4,9 +4,11 @@ import pygame
 from pygame.sprite import Group
 
 from src.core.input.input_manager import InputManager
+from src.core.settings import Battery as BatterySettings
 from src.entities.enemies.factory import create_enemy
 from src.entities.entity import Entity
 from src.entities.player import Player
+from src.entities.player_kit import PromptKind
 
 
 class MockPlayer:
@@ -192,7 +194,11 @@ class TestResetPosition:
         player.velocity.x = 100
         player.health = 50
         player.dash.charges = 0
-        player.guard.posture = 0
+        player.battery.amount = 10.0
+        player.fury.gain(60.0)
+        player.slot.spin(player.rng)
+        player.prompt.open(PromptKind.CLASH, "e1", player.rng)
+        player.rush_timer = 0.5
 
         # Reset position
         player.reset_position()
@@ -207,8 +213,12 @@ class TestResetPosition:
         # Check that dash charges are reset
         assert player.dash.charges == player.dash.max_charges
 
-        # Check that guard posture is reset
-        assert player.guard.posture == player.guard.max_posture
+        # The battery, the fury, the slot machine, the prompt and the rush start over too
+        assert player.battery.amount == BatterySettings.MAX
+        assert player.fury.amount == 0.0
+        assert not player.slot.spinning
+        assert not player.prompt.active
+        assert player.rush_timer == 0.0
 
     def test_player_reset_position_resets_state_machine(self):
         """Test that Player.reset_position resets state machine to idle."""

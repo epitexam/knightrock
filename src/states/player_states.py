@@ -1,13 +1,20 @@
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.combat.refusal import Refusal
-from src.core.settings import Guard as GuardSettings
-from src.core.settings import Locomotion, Physics, Turn
+from src.combat.frame_data import PhaseState
+from src.core.settings import Locomotion, Physics
 from src.physics import apply_velocity_friction
-from src.states.reaction_states import HurtState, KnockbackState, StaggerState
+from src.states.reaction_states import (
+    HurtState,
+    KnockbackState,
+    StaggerState,
+    apply_reaction_drag,
+)
 from src.states.state_machine import State, StateMachine
 from src.states.turn_state import TurnState
+
+if TYPE_CHECKING:
+    from src.entities.player import Player
 
 
 def _classify_ratio(ratio: float) -> str:
@@ -19,7 +26,7 @@ def _classify_ratio(ratio: float) -> str:
     return PlayerState.WALK_SLOW.value
 
 
-def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
+def resolve_locomotion_state(entity: Player, from_state: str | None = None) -> str:
     """Pick walk_slow/walk/run from |velocity.x| / entity.speed with hysteresis.
 
     ``from_state`` overrides the tier the hysteresis is measured against, and
@@ -31,14 +38,12 @@ def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
     to continue from.
     """
     vx = abs(float(entity.velocity.x))
-    base = float(getattr(entity, "speed", 0.0) or 0.0) or Physics.PLAYER_SPEED
+    base = float(entity.speed) or Physics.PLAYER_SPEED
     if base <= 0.0:
         return PlayerState.WALK_SLOW.value
     ratio = vx / base
     if from_state is None:
-        from_state = str(
-            getattr(getattr(entity, "state_machine", None), "current_state_name", "") or ""
-        )
+        from_state = str(entity.state_machine.current_state_name or "")
     if from_state in (PlayerState.RUN.value, PlayerState.RUN):
         if ratio < Locomotion.WALK_DEMOTE:
             return PlayerState.WALK.value
@@ -56,7 +61,7 @@ def resolve_locomotion_state(entity: Any, from_state: str | None = None) -> str:
     return _classify_ratio(ratio)
 
 
-def player_ground_return(entity: Any) -> str:
+def player_ground_return(entity: Player) -> str:
     """Return the landing state name for the player.
 
     Shared by every reaction state so the landing decision lives in one
@@ -69,10 +74,10 @@ def player_ground_return(entity: Any) -> str:
     return "fall"
 
 
-class PlayerBaseState(State):
+class PlayerBaseState(State["Player"]):
     """Represent the PlayerBase state."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Player, tags: list[str] | None = None):
         """Initialize the PlayerBaseState instance."""
         super().__init__(entity, tags)
 
@@ -131,7 +136,7 @@ class PlayerWalkSlowState(PlayerGroundLocomotionState):
     """Slow ground tier (Guard MOVE_MULT, partial analog stick)."""
 
 
-class PlayerTurnState(TurnState):
+class PlayerTurnState(TurnState["Player"]):
     """The player's pivot: where to go, and how the player leaves the floor.
 
     All of the hold itself -- arming it, keeping the fighter moving, freezing
@@ -215,9 +220,11 @@ class PlayerWallSlideState(PlayerBaseState):
 
 
 class PlayerChargeState(PlayerBaseState):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Represent the PlayerCharge state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerChargeState instance with charge tags."""
         super().__init__(entity, tags=["charge", "busy"])
 
@@ -231,63 +238,37 @@ class PlayerChargeState(PlayerBaseState):
             return self.ground_return()
         return None
 
+    def exit(self, next_state: str | None = None) -> None:
+        """Drop the charge on the way out, unless an attack is taking it over.
 
-class PlayerCrouchState(PlayerBaseState):
-    """Hold-to-crouch: a low, shuffling ground posture that can still fight.
-
-    The collider height is *not* owned here. It belongs to
-    :class:`~src.entities.crouch_posture.CrouchPosture`, which the player ticks
-    every frame, so the blend runs through this state, through an attack out of
-    it, and through a guard out of it alike. A height owned by the state could
-    only be eased while the state was active, which meant every interrupt --
-    attacking, guarding, dashing -- snapped it back to full in one tick.
-
-    Leaving is gated on the collider having finished standing back up, so a
-    release under a low ceiling -- where the blend stops at the headroom and
-    never arrives -- holds the posture instead of leaving it half-risen.
-
-    Movement is a slow shuffle, not a stop: the fighter keeps whatever
-    horizontal speed they carried in and accelerates from there under a
-    ``CROUCH_SPEED_MULT`` axis. Zeroing the velocity on entry (the old
-    behaviour) meant a fighter at full run lost every pixel of momentum the
-    instant they pressed Down and had to re-accelerate from nothing on the way
-    out. ``_crouch_return`` reads the held direction so the shuffle resumes into
-    the right locomotion tier instead of dropping to idle.
-    """
-
-    def __init__(self, entity: Any):
-        super().__init__(entity, tags=["crouch", "busy"])
-
-    def update(self, delta_time: float) -> str | None:
-        saved_axis = self.entity.move_axis
-        self.entity.move_axis = saved_axis * Physics.CROUCH_SPEED_MULT
-        self.entity.apply_horizontal_movement(delta_time)
-        self.entity.move_axis = saved_axis
-        self.entity.handle_jump()
-        if self.entity.velocity.y < 0:
-            return "jump"
-        if not self.entity.on_surface["floor"]:
-            return "fall"
-        if not _wants_crouch(self.entity) and _is_fully_stood(self.entity):
-            return self._crouch_return()
-        return None
-
-    def _crouch_return(self) -> str:
-        """Ground return that resumes into locomotion when a direction is held."""
-        if self.entity.left_held or self.entity.right_held:
-            return resolve_locomotion_state(self.entity)
-        return "idle"
+        Leaving this state by any other route -- a dash, a hurt, a state the
+        machine reached for -- left ``charging`` standing, and a standing charge
+        keeps growing, keeps multiplying the movement, and makes
+        ``start_attack`` refuse the release: the heavy was unreachable until
+        something hit the fighter.
+        """
+        if next_state == "attack":
+            return
+        self.entity.combat.charging.cancel()
 
 
 class PlayerAttackState(PlayerBaseState):
+    snapshot_fields = ("_started",)
+
     """Represent the PlayerAttack state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerAttackState instance with attack tags."""
         super().__init__(entity, tags=["attack", "busy"])
+        self._started = 0
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state and apply forward momentum if grounded.
+        """Start the move's momentum, and remember which attack it was."""
+        self._started = self.entity.combat.attacks_started
+        self._lunge()
+
+    def _lunge(self) -> None:
+        """Apply the running move's momentum: forward on the ground, vertical in the air.
 
         Off the ground the horizontal lunge is skipped -- a fighter who lunges
         on the ground overshoots the target -- and the vertical impulse takes its
@@ -315,7 +296,7 @@ class PlayerAttackState(PlayerBaseState):
             direction = 1.0 if self.entity.facing_right else -1.0
             self.entity.velocity.x = direction * self.entity.speed * multiplier
         elif attack is not None and attack.vertical_lunge:
-            impulse = -self.entity.jump_height * attack.vertical_lunge
+            impulse = -self.entity.jump.jump_height * attack.vertical_lunge
             if impulse < 0.0:
                 self.entity.velocity.y = min(self.entity.velocity.y, impulse)
             else:
@@ -327,51 +308,107 @@ class PlayerAttackState(PlayerBaseState):
             self.entity.combat.state.end()
 
     def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
-        """Update the current state and check for buffered combo inputs."""
+        """Move, give each new link of a chain its own lunge, and leave when done.
+
+        A chain link starts while this state is running -- the input handler
+        cancels one move into the next -- so the state is not re-entered and
+        would not lunge again; the attack counter is how it sees the new move.
+        A press for after the attack is the input handler's buffer, not this
+        state's.
+        """
+        if self._jump_cancel():
+            return "jump"
+        started = self.entity.combat.attacks_started
+        if started != self._started:
+            self._started = started
+            self._lunge()
         self.entity.apply_horizontal_movement(delta_time)
-
         if not self.entity.combat.is_attacking:
-            if self.entity.state_machine.consume_input("attack"):
-                attack_name = self.entity._buffered_attack_name
-                self.entity._buffered_attack_name = None
-                # Re-asked at *consumption*, not trusted from when it was
-                # buffered. A press buffered during a sweep and consumed after
-                # the fighter stood up has to be refused for the wrong posture,
-                # which is what ``start_attack`` answers -- and what the old
-                # code could not, since it cleared the name and fired whatever
-                # it had stored.
-                if attack_name and self.entity.combat.start_attack(attack_name) is Refusal.NONE:
-                    return ("attack", {"force": True})
-
             return self.ground_return()
         return None
 
+    def _jump_cancel(self) -> bool:
+        """Jump out of an attack that has hit, to follow a launched target up.
+
+        Only once the running phase has touched someone: a whiff stays
+        committed. The jump is the ordinary one -- from the ground, off a
+        wall or in the air while a midair jump is left -- so the press is
+        spent only if a jump actually happened.
+        """
+        player = self.entity
+        state = player.combat.state
+        if not (player.jump.has_buffered_jump() and state.targets_hit):
+            return False
+        if state.sub_state not in (PhaseState.ACTIVE, PhaseState.RECOVERY):
+            return False
+        player.handle_jump()
+        return player.jump.jump_buffer_timer <= 0.0
+
 
 class PlayerGuardState(PlayerBaseState):
-    def __init__(self, entity: Any):
+    """The guard, held: every blow from the front is stopped, but the guard is
+    slow to move in and a punch, a kick or a charged blow breaks it."""
+
+    def __init__(self, entity: Player):
         super().__init__(entity, tags=["guard", "busy"])
 
     def update(self, delta_time: float) -> str | None:
         self.entity.handle_jump()
+        if self.entity.velocity.y < 0:
+            return "jump"
         saved_axis = self.entity.move_axis
-        self.entity.move_axis = saved_axis * GuardSettings.MOVE_MULT
+        self.entity.move_axis = saved_axis * GUARD_MOVE_MULT
         self.entity.apply_horizontal_movement(delta_time)
         self.entity.move_axis = saved_axis
-        if self.entity.guard.posture <= 0:
-            return "stagger"
-        if not self.entity.guard_held or not self.entity.guard.can_use():
+        if not _wants_guard(self.entity) or _wants_recharge(self.entity):
             return self.ground_return()
         return None
 
 
-class PlayerHurtState(HurtState):
+class PlayerRechargeState(PlayerBaseState):
+    """Guard and Down held on the ground: the blade's battery fills, and the
+    fighter stands there, open."""
+
+    def __init__(self, entity: Player):
+        super().__init__(entity, tags=["recharge", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.velocity.x = 0.0
+
+    def update(self, delta_time: float) -> str | None:
+        apply_velocity_friction(self.entity, Physics.FLOOR_CONTROL, delta_time)
+        self.entity.battery.recharge(delta_time)
+        if not _wants_recharge(self.entity):
+            return self.ground_return()
+        return None
+
+
+class PlayerPromptState(PlayerBaseState):
+    """A prompt is up -- death blow, throw, blade lock: the fighter stands still
+    and untouchable until it is answered."""
+
+    def __init__(self, entity: Player):
+        super().__init__(entity, tags=["prompt", "busy", "invincible"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.velocity.x = 0.0
+
+    def update(self, delta_time: float) -> str | None:
+        self.entity.velocity.x = 0.0
+        if self.entity.prompt.active:
+            return None
+        if self.entity.combat.is_attacking:
+            return "attack"
+        return self.ground_return()
+
+
+class PlayerHurtState(HurtState["Player"]):
     """Player hurt reaction: light knockback, then recover on the ground."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(
             entity,
             exit_resolver=self._hurt_exit,
-            friction=Physics.HURT_FRICTION,
             tags=["hurt", "invincible"],
             on_enter=self._hurt_enter,
         )
@@ -392,10 +429,10 @@ class PlayerHurtState(HurtState):
         return player_ground_return(self.entity)
 
 
-class PlayerKnockbackState(KnockbackState):
+class PlayerKnockbackState(KnockbackState["Player"]):
     """Player knockback reaction: strong launch, then ground recovery."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(
             entity,
             exit_resolver=self._knockback_exit,
@@ -415,31 +452,50 @@ class PlayerKnockbackState(KnockbackState):
 
 
 class PlayerDashState(PlayerBaseState):
-    """Represent the PlayerDash state."""
+    snapshot_fields = ("direction", "reversed")
 
-    def __init__(self, entity: Any):
+    """The dash: a burst that eases into the run, the same length every time.
+
+    The speed follows one curve, from ``dash.speed`` at the press down to the
+    exit speed at the end (``Physics.DASH_CURVE``): the run speed when the
+    stick still points the way of the dash, so the dash hands over to the run
+    without a stop, or ``Physics.DASH_EXIT_IDLE`` when it does not, a short
+    glide the ground then stops. The way is chosen at the press; a push the
+    other way in the first ``Physics.DASH_REVERSE_WINDOW`` turns it round,
+    once -- a press read a frame late is still the player's.
+
+    It used to hold full speed for as long as the stick was held and decay
+    fast when it was not, so the same press went 180 px or 64 px, and it set
+    the speed to zero on its last frame, which the run then had to climb back
+    from: a stop in the middle of every dash-into-run.
+    """
+
+    def __init__(self, entity: Player):
         """Initialize the PlayerDashState instance with dashing tags."""
         super().__init__(entity, tags=["dash", "invincible"])
+        self.direction = 1.0
+        self.reversed = False
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
         """Enter the state, consume dash charge, and squish hitbox."""
+        self.entity.open_dodge_window()
         self.entity.dash.consume_charge()
         self.entity.dash.apply_squish(self.entity.hitbox)
-        # Dash direction follows captured request move_axis if set, otherwise current input (move_axis), otherwise facing
-        request_axis = getattr(self.entity.dash, "request_move_axis", 0.0)
-        move_axis = request_axis if request_axis != 0.0 else getattr(self.entity, "move_axis", 0.0)
-        direction = (
-            1.0
-            if move_axis > 0
-            else -1.0
-            if move_axis < 0
-            else (1.0 if self.entity.facing_right else -1.0)
-        )
-        self.entity.velocity.x = self.entity.dash.speed * direction
+        # The way of the press, else the stick now, else the facing.
+        request_axis = self.entity.dash.request_move_axis
+        move_axis = request_axis if request_axis != 0.0 else self.entity.move_axis
+        if move_axis > 0:
+            self.direction = 1.0
+        elif move_axis < 0:
+            self.direction = -1.0
+        else:
+            self.direction = 1.0 if self.entity.facing_right else -1.0
+        self.reversed = False
+        self.entity.velocity.x = self.entity.dash.speed * self.direction
         self.entity.velocity.y = 0.0
         self.entity.dash.duration_timer = self.entity.dash.duration
         # Signal dash start for screen shake/trauma
-        self.entity._dash_started_this_frame = True
+        self.entity.dash_started_this_frame = True
 
     def exit(self, next_state: str | None = None) -> None:
         """Exit the state and restore the original hitbox width."""
@@ -449,63 +505,64 @@ class PlayerDashState(PlayerBaseState):
         # Start dash coyote window for attack/guard after dash ends
         self.entity.dash.start_coyote()
 
+    def _exit_speed(self) -> float:
+        """The run speed while the stick holds the dash's way, a short glide otherwise."""
+        if self.entity.move_axis * self.direction > 0.0:
+            return float(self.entity.speed)
+        return Physics.DASH_EXIT_IDLE
+
     def update(self, delta_time: float) -> str | None:
-        """Update the current state, applying dash friction and air control."""
-        self.entity.dash.duration_timer -= delta_time
-        # Full directional control: input directly influences velocity for snappy changes
-        move_axis = getattr(self.entity, "move_axis", 0.0)
-        if move_axis != 0.0:
-            target_vx = self.entity.dash.speed * move_axis
-            # Strong acceleration toward target velocity for instant direction response (Brawlhalla-style)
-            control_accel = Physics.DASH_AIR_CONTROL * delta_time
-            diff = target_vx - self.entity.velocity.x
-            # If trying to reverse direction, apply extra impulse for instant turn
-            if diff * self.entity.velocity.x < 0:  # Opposite signs = reversing
-                control_accel *= 5.0  # 5x stronger when reversing
-            if abs(diff) > control_accel:
-                self.entity.velocity.x += control_accel if diff > 0 else -control_accel
-            else:
-                self.entity.velocity.x = target_vx
-            # No friction while actively controlling - player has full authority
-        else:
-            # No input: apply friction to slow down naturally
-            friction = max(0.0, 1.0 - self.entity.dash.friction * delta_time)
-            apply_velocity_friction(self.entity, friction, delta_time)
+        """Follow the speed curve, turn round on an early push back, bounce off walls."""
+        dash = self.entity.dash
+        dash.duration_timer -= delta_time
+        elapsed = dash.duration - dash.duration_timer
+        if (
+            not self.reversed
+            and elapsed <= Physics.DASH_REVERSE_WINDOW
+            and self.entity.move_axis * self.direction < 0.0
+        ):
+            self.direction = -self.direction
+            self.reversed = True
+            self.entity.facing_right = self.direction > 0.0
+        share = min(1.0, max(0.0, elapsed / max(dash.duration, 1e-6)))
+        exit_speed = self._exit_speed()
+        speed = exit_speed + (dash.speed - exit_speed) * (1.0 - share) ** Physics.DASH_CURVE
+        self.entity.velocity.x = speed * self.direction
 
         # Wall bounce: if dashing into a wall, bounce off with momentum retention
-        if self.entity.on_surface.get("left", False) and self.entity.velocity.x < 0:
+        if self.entity.on_surface.get("left", False) and self.direction < 0:
+            self.direction = 1.0
             self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
             self.entity.facing_right = True
-        elif self.entity.on_surface.get("right", False) and self.entity.velocity.x > 0:
+        elif self.entity.on_surface.get("right", False) and self.direction > 0:
+            self.direction = -1.0
             self.entity.velocity.x = -self.entity.velocity.x * Physics.DASH_WALL_BOUNCE
             self.entity.facing_right = False
 
-        self.entity.velocity.y += (
-            self.entity.normal_gravity * self.entity.dash.gravity_mult * delta_time
-        )
-        if self.entity.dash.duration_timer <= 0 or abs(self.entity.velocity.x) < 10.0:
-            self.entity.velocity.x = 0.0
+        self.entity.velocity.y += self.entity.normal_gravity * dash.gravity_mult * delta_time
+        if dash.duration_timer <= 0:
+            # The exit speed is kept: the run picks it up, or the ground stops it.
+            self.entity.velocity.x = exit_speed * self.direction
             return self.ground_return()
         return None
 
 
-class PlayerStaggerState(StaggerState):
+class PlayerStaggerState(StaggerState["Player"]):
     """Represent the PlayerStagger state."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         """Initialize the PlayerStaggerState instance with stagger tags."""
         super().__init__(
             entity,
             exit_resolver=lambda: player_ground_return(self.entity),
-            friction=Physics.STAGGER_FRICTION,
             tags=["stagger", "busy"],
         )
 
 
-class PlayerDizzyState(State):
-    """Represent the PlayerDizzy state from consecutive perfect parries received."""
+class PlayerDizzyState(State["Player"]):
+    """Stunned by a full stun gauge; the shipped player has no gauge and never is."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Player):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -514,21 +571,25 @@ class PlayerDizzyState(State):
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.stagger_timer > 0:
-            self.entity.stagger_timer -= delta_time
+        apply_reaction_drag(self.entity, delta_time)
         if self.entity.stagger_timer <= 0:
             return player_ground_return(self.entity)
         return None
 
 
 class PlayerState(str, Enum):
-    """Enumeration of player states for type safety and refactoring reliability."""
+    """Player-facing subset of the canonical state vocabulary.
+
+    Values are literals because mypy types ``.value`` as ``str`` only for
+    literal enum values. ``test_state_names`` checks every one against
+    :class:`~src.states.state_names.StateName`, so they cannot drift.
+    """
 
     IDLE = "idle"
     WALK_SLOW = "walk_slow"
     WALK = "walk"
     RUN = "run"
-    TURN = Turn.STATE
+    TURN = "turn"
     JUMP = "jump"
     FALL = "fall"
     WALL_SLIDE = "wall_slide"
@@ -538,12 +599,13 @@ class PlayerState(str, Enum):
     DASH = "dash"
     STAGGER = "stagger"
     CHARGE = "charge"
-    CROUCH = "crouch"
+    RECHARGE = "recharge"
+    PROMPT = "prompt"
     KNOCKBACK = "knockback"
     DIZZY = "dizzy"
 
 
-def dash_cancel_open(player: Any) -> bool:
+def dash_cancel_open(player: Player) -> bool:
     """Whether a dash has run long enough to be cancelled (attack/guard).
 
     ``Physics.DASH_CANCEL_WINDOW`` is measured from the dash start, so the
@@ -562,7 +624,7 @@ def dash_cancel_open(player: Any) -> bool:
     return bool(elapsed >= Physics.DASH_CANCEL_WINDOW)
 
 
-def _can_dash(player: Any) -> bool:
+def _can_dash(player: Player) -> bool:
     """Check if the player can currently interrupt to dash."""
     return player.dash.can_use() and player.state_machine.current_state_name not in (
         PlayerState.DASH,
@@ -572,33 +634,44 @@ def _can_dash(player: Any) -> bool:
     )
 
 
-def _can_guard(player: Any) -> bool:
-    if not (player.guard_held and player.guard.can_use()):
+#: Movement in the guard, as a share of the fighter's speed.
+GUARD_MOVE_MULT = 0.35
+
+#: The states the guard and the recharge can be entered from: the fighter is
+#: on its feet and doing nothing else.
+_FREE_STATES = (
+    PlayerState.IDLE,
+    PlayerState.WALK_SLOW,
+    PlayerState.WALK,
+    PlayerState.RUN,
+    PlayerState.TURN,
+)
+
+
+def _wants_guard(player: Player) -> bool:
+    return bool(player.guard_held) and bool(player.on_surface.get("floor", False))
+
+
+def _wants_recharge(player: Player) -> bool:
+    return _wants_guard(player) and bool(player.down_held)
+
+
+def _can_guard(player: Player) -> bool:
+    """Whether the guard may be raised: held, on the floor, and free to."""
+    if not _wants_guard(player) or _wants_recharge(player):
+        return False
+    return player.state_machine.current_state_name in _FREE_STATES
+
+
+def _can_recharge(player: Player) -> bool:
+    """Whether the recharge may begin: guard and Down held, from the guard or free."""
+    if not _wants_recharge(player):
         return False
     current = player.state_machine.current_state_name
-    # ``CROUCH`` is deliberately absent: crouch-guard is a posture, not a
-    # different move. It used to be refused outright, which both ate the press
-    # (no buffer, unlike the attack path) and left the whole low/overhead half of
-    # ``Guard.HEIGHT_BLOCK`` unreachable in play. ``Player.receive_damage``
-    # reads the crouch flag off the state, so guarding from crouch resolves
-    # those rows.
-    # Allow guard cancel from dash after cancel window
-    if current == PlayerState.DASH:
-        return dash_cancel_open(player)
-    # Allow guard during dash coyote window
-    if bool(player.dash.in_coyote()):
-        return True
-    return current not in (
-        PlayerState.WALL_SLIDE,
-        PlayerState.HURT,
-        PlayerState.KNOCKBACK,
-        PlayerState.DASH,
-        PlayerState.STAGGER,
-        PlayerState.ATTACK,
-    )
+    return current in _FREE_STATES or current == PlayerState.GUARD
 
 
-def _can_attack_interrupt(player: Any) -> bool:
+def _can_attack_interrupt(player: Player) -> bool:
     """Check if the player can currently interrupt to attack.
 
     ``Player.may_attack_now()`` is deliberately *not* a precondition, and
@@ -633,43 +706,8 @@ def _can_attack_interrupt(player: Any) -> bool:
     return True
 
 
-def _wants_crouch(player: Any) -> bool:
-    down = bool(getattr(player, "down_held", False))
-    grounded = bool(player.on_surface.get("floor", False))
-    return down and grounded
-
-
-def _is_fully_stood(player: Any) -> bool:
-    """Whether the crouch blend has finished standing the fighter back up.
-
-    Never true under a low ceiling, which is the point: the posture is left once
-    there is room to leave it, not on the tick the button came up.
-    """
-    return bool(getattr(getattr(player, "crouch", None), "is_fully_stood", True))
-
-
-def _can_crouch(player: Any) -> bool:
-    """Whether the player may crouch from the state they are in.
-
-    ``turn`` is in there because a pivot is locomotion with a lean on it, and a
-    fighter who cannot crouch for the length of the hold has lost a move for
-    two hundred milliseconds because they turned around. The states not listed
-    are genuinely incompatible with it: they have already answered a different
-    question about what the fighter is doing.
-    """
-    if not _wants_crouch(player):
-        return False
-    return player.state_machine.current_state_name in (
-        PlayerState.IDLE,
-        PlayerState.WALK_SLOW,
-        PlayerState.WALK,
-        PlayerState.RUN,
-        PlayerState.TURN,
-    )
-
-
-def configure_player_state_machine(player: Any) -> None:
-    """Build the 17-state player machine (moved from Player, audit F1.1)."""
+def configure_player_state_machine(player: Player) -> None:
+    """Build the player's state machine and its interrupts."""
     sm = StateMachine(player)
     player.state_machine = sm
     sm.add_state(PlayerState.IDLE, PlayerIdleState(player))
@@ -682,8 +720,9 @@ def configure_player_state_machine(player: Any) -> None:
     sm.add_state(PlayerState.WALL_SLIDE, PlayerWallSlideState(player))
     sm.add_state(PlayerState.ATTACK, PlayerAttackState(player))
     sm.add_state(PlayerState.CHARGE, PlayerChargeState(player))
-    sm.add_state(PlayerState.CROUCH, PlayerCrouchState(player))
     sm.add_state(PlayerState.GUARD, PlayerGuardState(player))
+    sm.add_state(PlayerState.RECHARGE, PlayerRechargeState(player))
+    sm.add_state(PlayerState.PROMPT, PlayerPromptState(player))
     sm.add_state(PlayerState.HURT, PlayerHurtState(player))
     sm.add_state(PlayerState.KNOCKBACK, PlayerKnockbackState(player))
     sm.add_state(PlayerState.DASH, PlayerDashState(player))
@@ -691,6 +730,7 @@ def configure_player_state_machine(player: Any) -> None:
     sm.add_state(PlayerState.DIZZY, PlayerDizzyState(player))
     sm.set_initial_state(PlayerState.IDLE)
     sm.add_interrupt(PlayerState.DASH, lambda: _can_dash(player), priority=80)
+    sm.add_interrupt(PlayerState.PROMPT, lambda: player.prompt.active, priority=120)
     sm.add_interrupt(PlayerState.GUARD, lambda: _can_guard(player), priority=60)
-    sm.add_interrupt(PlayerState.CROUCH, lambda: _can_crouch(player), priority=30)
+    sm.add_interrupt(PlayerState.RECHARGE, lambda: _can_recharge(player), priority=61)
     sm.add_interrupt(PlayerState.ATTACK, lambda: _can_attack_interrupt(player), priority=40)

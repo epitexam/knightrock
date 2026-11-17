@@ -20,30 +20,24 @@ import hashlib
 import random
 
 import pygame
-import pytest
 
 from src.combat.knockback import NULL_KNOCKBACK
 from src.core.input.input_manager import InputManager
+from src.core.input.input_provider import InputProvider
 from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.paths import PROJECT_ROOT
 from src.core.sprites import MovingPlatform
+from tests.fakes import HazardStub
 from tests.headless.conftest import make_viewport
 
 SEED = 20260913
 TICKS = 300
 
-# Building a real Level loads the player/enemy animations from ``assets/``,
-# which is untracked (see .gitignore): a bare checkout cannot run these
-# scenarios.  The pre-existing headless tests have exactly the same
-# requirement, so this is a pre-existing CI limitation, not a new one.
-PLAYER_ASSET_DIR = PROJECT_ROOT / "assets" / "graphics" / "player"
-
-requires_assets = pytest.mark.skipif(
-    not PLAYER_ASSET_DIR.is_dir(),
-    reason="needs the untracked assets/graphics tree to build a real Level",
-)
+# The scenarios build a programmatic LevelData with no art dependency:
+# Animator.preload skips missing clip directories, so these run on a bare
+# checkout just as they do with assets/ present. Keep them ungated -- they are
+# the only whole-pipeline regression net and must run in CI.
 
 
 def _object(name: str, x: float, y: float) -> ObjectData:
@@ -68,9 +62,19 @@ def _build(level_config: LevelConfig, objects: list[ObjectData]) -> Level:
         object_layers={"Entities": ObjectLayerData(name="Entities", objects=objects)},
         config=level_config,
     )
-    input_manager = InputManager()
-    input_manager.apply_remote_state(InputState(move_axis=1.0))
-    return Level(make_viewport().surface, data, input_manager)
+    return Level(make_viewport().surface, data, InputManager(_HoldRight()))
+
+
+class _HoldRight(InputProvider):
+    """A pad held right for the whole scenario.
+
+    The level reads its input on every simulated tick, so the hold has to be what
+    each read returns. It used to be planted once with ``apply_remote_state``,
+    which only worked while nothing ever polled.
+    """
+
+    def poll(self) -> InputState:
+        return InputState(move_axis=1.0)
 
 
 def build_physics_level() -> Level:
@@ -146,11 +150,9 @@ def build_ride_level() -> Level:
     )
     level.spatial_hash.add(platform)
 
-    hazard = pygame.sprite.Sprite()
-    hazard.hitbox = pygame.FRect(150.0, 150.0, 40.0, 40.0)
-    hazard.rect = hazard.hitbox.copy()
-    hazard.damage = 7.0
-    hazard.knockback = NULL_KNOCKBACK
+    hazard = HazardStub(
+        pygame.FRect(150.0, 150.0, 40.0, 40.0), damage=7.0, knockback=NULL_KNOCKBACK
+    )
     level.groups.hazard_sprites.add(hazard)
 
     exit_sprite = pygame.sprite.Sprite()
@@ -192,24 +194,61 @@ def build_respawn_level() -> Level:
 # patrolling, which shifts goblin/slime positions from tick 1 onward.  The
 # other two scenarios do not observe patrol translation (enemies either
 # chase immediately or leave the frame of interest), so they stay valid.
-PHYSICS_DIGEST = "cc0cb54c97aca29d61bd4f489c8467646b7e3241b090c017fb04446d648905ff"
-RIDE_DIGEST = "3c103b21909777fba17a79c801f239dca30a1ac69b93cda8340a11ad9fc9a5a8"
-RESPAWN_DIGEST = "185434b4ab2ea9cd6d9be8a7a7a32e74530f568b3220f59576845668d0686100"
+# PHYSICS was cc0cb54c… here, before the next recapture below.
+# Re-captured PHYSICS and RESPAWN for the per-pair contact damage cooldown
+# (commit "fix(combat): a contact pair may not damage twice in a row"):
+# MomentumGate asks whether the target is already hurt, but the contact box
+# resolves with ``interrupt=False``, which never put a target in the hurt
+# state -- so the guard could not fire and an overlapping pair re-applied the
+# damage every tick. 12 ticks, ~0.2s, about a quarter of the player's own
+# i-frame window. The goblin-on-goblin overlap in these scenarios is what
+# moves.
+# Re-captured RIDE for the per-target hazard cooldown (commit
+# "fix(combat): give hazards a per-target damage cooldown"): a saw
+# re-emits its box every tick and no enemy configures an invincibility
+# window, so a lifetime rider died inside the cooldown window and never
+# reached the exit. 24 ticks, ~0.4s, roughly the player's own i-frame
+# window.  PHYSICS and RESPAWN carry no hazard and are unaffected.
+# Re-captured PHYSICS and RIDE for audit C2 (2026-11-12): a contact or hazard
+# cooldown is armed by a contact that landed, no longer by a pair that was only
+# near. The first body contact lands on tick 9 instead of 12, the first hazard
+# hit on tick 3 instead of 24; the cadence after a contact is unchanged.
+# PHYSICS was e84b65ba… here, before the next recapture below.
+# RIDE re-captured again for the combat retune (2026-11-12, docs/audit/
+# combat-dynamism.md): the goblin's claw now has a 16-frame startup and a
+# 16-frame recovery, and hit-stop starts from 30ms instead of 50ms.
+# RIDE re-captured for the knockback rework (2026-11-13): the push of a hit
+# now decays the same way in hurt, stagger and knockback (a ground slide that
+# stops, a light air drag) instead of one exponential rate per state. PHYSICS
+# and RESPAWN did not move.
+# All three re-captured for the combat rework (2026-11-14): the enemies' data
+# changed -- the goblin's claws deal 12 and 14 instead of 8 and 9, and a goblin
+# has 80 health instead of 60 (the digest hashes health). Proven the sole
+# cause: with the enemy damage and health as they were, the three digests of
+# the commit before are reproduced bit for bit, so the stun gauge, the
+# per-entity clock, the parry and the rest of the rework moved nothing here.
+# PHYSICS and RIDE re-captured for the move catalogue rework (2026-11-15): the
+# goblin's claws are now short arcs from the shoulder (22 px instead of a box
+# reaching 66), the slime's splash became a lobbed glob, and a blow stopped by
+# a guard makes its thrower recoil. The previous catalogue was overwritten
+# before a bit-for-bit check could be run, so the sole-cause proof of the
+# earlier re-captures is not available for this one; RESPAWN, which only
+# falls and respawns, did not move.
+PHYSICS_DIGEST = "c84740a6cd47840a75bbc0eb206b1b8e5f75c82c216ed3b0aa00c6b1fba79d92"
+RIDE_DIGEST = "e86caa42e85d9db9217dee6f85c417eaa3c412bcbb42b2126ad0a013b2eecd5d"
+RESPAWN_DIGEST = "3e37730c583750c0b95d7d1c785eaff271f81cd96a5c248c8125c9f6a867ec46"
 
 
-@requires_assets
 def test_physics_ai_and_contact_damage_are_unchanged() -> None:
     """300 ticks of gravity, AI, separation and contact damage."""
     assert run(build_physics_level()) == PHYSICS_DIGEST
 
 
-@requires_assets
 def test_moving_platform_hazard_and_exit_are_unchanged() -> None:
     """300 ticks riding a moving platform through a hazard and onto the exit."""
     assert run(build_ride_level()) == RIDE_DIGEST
 
 
-@requires_assets
 def test_death_border_and_respawn_are_unchanged() -> None:
     """300 ticks of falling below the death border, dying and respawning."""
     assert run(build_respawn_level()) == RESPAWN_DIGEST

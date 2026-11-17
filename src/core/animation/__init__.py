@@ -1,4 +1,4 @@
-"""Sprite animation: per-state frame sequencing (Phase 2 #1).
+"""Sprite animation: per-state frame sequencing.
 
 Import from ``src.core.animation.animator``; nothing is re-exported here.
 """

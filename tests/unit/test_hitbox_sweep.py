@@ -1,4 +1,4 @@
-"""P1 sweep CCD tests (hitbox_amelioration.md, reception P1).
+"""P1 sweep CCD tests (reception P1).
 
 Cas (b), (b') et (b'') : ordre de tick REEL verifie code — capture,
 `start_attack` (seed pool+prev), `update`, mouvement (lunge), sync,
@@ -203,6 +203,10 @@ class _CountingGrid(EntityGrid):
     def near(self, box):  # noqa: ANN001, ANN202 (test double)
         self.queries += 1
         return super().near(box)
+
+    def append_near(self, box, nearby, seen):  # noqa: ANN001, ANN202 (test double)
+        self.queries += 1
+        return super().append_near(box, nearby, seen)
 
 
 def _parity_pass(use_grid: bool) -> tuple[int, int, int, int]:
@@ -426,28 +430,62 @@ def test_sweep_max_displacement_invariant_holds() -> None:
         kb_max * charge_max,
     )
     required = vmax * SimulationSettings.TIMESTEP * 1.5
-    assert kb_max == pytest.approx(1081.67, abs=0.01)
-    assert required == pytest.approx(54.08, abs=0.05)
+    assert kb_max == pytest.approx(809.20, abs=0.01)
+    assert required == pytest.approx(40.45, abs=0.05)
     assert required <= CombatSettings.SWEEP_MAX_DISPLACEMENT_PX
 
 
 def test_case_e_p0_goldens_and_census_revalidate() -> None:
     """(e) P0.1 goldens + census revalidated after the P1 sweep landed.
 
-    Frozen trajectory anchors and the sub-4px lethal-jump inventory must
+    Frozen trajectory anchors and the lethal-jump inventory must
     still hold: any data edit that fails this is a wanted change to
     re-sign off in the report, not a silent regression.
     """
     from src.combat.attack_data import PLAYER_ATTACKS
+    from tests.unit.helpers import SHOWCASE
     from tests.unit.test_hitbox_pipeline import _drive, _lethal_jumps
 
-    dash = _drive("dash_attack", PLAYER_ATTACKS)
+    dash = _drive("dash_attack", SHOWCASE)
     assert dash[0][0] == "active"
     assert all(box == (62.0, 12.0, 70.0, 24.0) for _, _, box in dash if box is not None)
 
-    sweep = _drive("sweeping_arc", PLAYER_ATTACKS)
+    sweep = _drive("sweeping_arc", SHOWCASE)
     assert sweep[5] == ("active", 0, (50.0, 14.0, 55.0, 28.0))
 
-    for name in PLAYER_ATTACKS:
+    for name, definition in PLAYER_ATTACKS.items():
         jumps = _lethal_jumps(PLAYER_ATTACKS, name)
-        assert max(jumps, default=0.0) < 4.0, f"{name}: lethal jump needs sweep"
+        limit = CombatSettings.SWEEP_MAX_DISPLACEMENT_PX if _is_arc(definition) else 4.0
+        assert max(jumps, default=0.0) < limit, f"{name}: lethal jump of {max(jumps):.1f} px"
+
+
+def _is_arc(definition) -> bool:  # noqa: ANN001
+    """A swung or thrust move: its box moves over its keyframes, so the sweep covers it."""
+    return any(len(phase.hitbox_keyframes) > 1 for phase in definition.phases)
+
+
+def test_the_sweep_catches_a_target_between_two_poses_of_a_turning_blade() -> None:
+    """The blade turns tens of degrees a frame: near its tip, consecutive poses
+    leave a gap. A small target in that gap is touched by neither pose and is
+    still hit, because the sweep turns the blade through the frame."""
+    from src.combat.attack_data import PLAYER_ATTACKS
+    from src.combat.shapes import ShapeKind, ShapePose, shape_aabb_intersects, swept_intersects_aabb
+
+    phase = PLAYER_ATTACKS["slash_high_1"].phases[0]
+    first = phase.startup_frames + 1
+    poses = []
+    for frame in (first, first + 1):
+        (size, offset), angle = phase.hitbox_shape_at(frame)
+        poses.append(ShapePose(ShapeKind.OBB, size, offset, angle))
+    start, end = poses
+    middle = math.radians((start.angle + end.angle) / 2)
+    half = start.size[0] / 2.0
+    pivot_x = start.position[0] - half * math.cos(math.radians(start.angle))
+    pivot_y = start.position[1] - half * math.sin(math.radians(start.angle))
+    reach = start.size[0] * 0.97
+    target = pygame.FRect(0, 0, 2.0, 2.0)
+    target.center = (pivot_x + reach * math.cos(middle), pivot_y + reach * math.sin(middle))
+
+    assert not shape_aabb_intersects(start, target)
+    assert not shape_aabb_intersects(end, target)
+    assert swept_intersects_aabb(start, end, target)

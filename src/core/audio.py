@@ -3,7 +3,7 @@
 This system is a **consumer, and nothing else**. It never asks *who* did
 something, never imports the input router, the menu model, the scenes or the
 views, and holds no UI state. It is handed facts on the
-:class:`~src.application.events.EventBus` and answers them with a sound:
+:class:`~src.core.events.EventBus` and answers them with a sound:
 
 * :class:`UiFeedback` — an interface interaction a screen actually performed;
 * ``LevelStarted`` / ``PlayerDied`` / ``LevelCompleted`` — the simulation
@@ -29,7 +29,7 @@ from enum import StrEnum
 
 import pygame
 
-from src.application.events import (
+from src.core.events import (
     EventBus,
     LevelCompleted,
     LevelStarted,

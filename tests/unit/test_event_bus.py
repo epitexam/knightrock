@@ -2,7 +2,8 @@
 
 import pytest
 
-from src.application.events import (
+from src.core.events import (
+    MAX_RECORDED_FAILURES,
     Event,
     EventBus,
     LevelCompleted,
@@ -177,6 +178,18 @@ def test_a_subscriber_may_unsubscribe_during_delivery() -> None:
     bus.emit(LevelStarted(level_id=0))
 
     assert seen == ["leaving", "staying", "leaving"]
+
+
+def test_the_failure_log_is_bounded() -> None:
+    """A permanently broken subscriber must not grow the log for a whole session."""
+    bus = EventBus()
+    bus.subscribe(LevelCompleted, exploding)
+
+    for _ in range(MAX_RECORDED_FAILURES + 20):
+        bus.emit(LevelCompleted(level_id=1))
+
+    assert len(bus.failures) == MAX_RECORDED_FAILURES
+    assert bus.failures[-1].event == LevelCompleted(level_id=1)
 
 
 def test_clear_also_forgets_the_failures() -> None:

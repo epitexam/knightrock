@@ -6,6 +6,20 @@ from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
 @dataclass(frozen=True)
+class EnemyMove:
+    """One attack an enemy may choose, and how close it must be to throw it.
+
+    ``range`` is the distance between the two fighters' centres under which
+    the move is thrown; ``weight`` is how often it is picked against the
+    type's other moves.
+    """
+
+    name: str
+    range: float
+    weight: float = 1.0
+
+
+@dataclass(frozen=True)
 class EnemyConfig:
     """Reusable data needed to create an enemy type."""
 
@@ -14,6 +28,9 @@ class EnemyConfig:
     health: float
     attacks: Mapping[MoveId, AttackDefinition]
     attack_name: str | None = None
+    # The attacks the AI chooses between. Empty means the one ``attack_name``
+    # thrown at ``attack_range``, which is what a type with a single move says.
+    moves: Sequence[EnemyMove] = ()
     max_health: float | None = None
     hitbox_inflate: Sequence[float] = (0.0, 0.0)
     hurtbox_inflate: Sequence[float] = (0.0, 0.0)
@@ -30,6 +47,9 @@ class EnemyConfig:
     pushable: bool = True
     super_armor: bool = False
     passive_friction: float = 10.0
+    # Divides every knockback this type takes: 1.0 is the goblin, above it a
+    # hit moves the enemy less and launches it later, below it more and sooner.
+    weight: float = 1.0
     # Per-type jump kit: only types with can_jump hop, and only while
     # chasing (wall ahead, player above). 0.0 height never jumps.
     can_jump: bool = False
@@ -40,12 +60,24 @@ class EnemyConfig:
     leap_speed_mult: float = 1.0
     # State name (lowercase EnemyState key) -> sprite-sheet directory of
     # numbered PNG frames, e.g. {"idle": "assets/graphics/enemies/shell/idle"}.
-    # States without an entry keep the last shown animation (Phase 2 #1).
+    # States without an entry keep the last shown animation.
     animations: Mapping[str, str] = field(default_factory=dict)
-    # Parry-stun threshold: consecutive perfect parries needed to dizzy.
-    # None = immune (e.g. dummy).  Set per enemy type in its config.
-    parry_stun_threshold: int | None = None
-    parry_stun_duration: float = 0.0
+    # The size of the stun gauge: heavy blows and parried attacks fill it, and
+    # a full one stuns the enemy for ``stun_duration`` seconds, during which
+    # it can be executed. None is never stunned (the dummy).
+    stun_max: float | None = None
+    stun_duration: float = 0.0
+    # Whether the enemy holds a guard, high or low, while it is not attacking:
+    # a slash at the guarded height is stopped, a punch, a kick or a charged
+    # slash breaks the guard.
+    guards: bool = False
+    # Authored initial patrol direction, off the TMX object's ``reverse``
+    # property. ``None`` leaves the historical coin toss, so a type that authors
+    # no direction behaves exactly as it always did; ``False`` pins the heading
+    # forward and ``True`` the other way. The three states matter: a property
+    # written on every placement is a statement about that placement, and
+    # folding "false" into "absent" would answer half of them with noise.
+    reverse: bool | None = None
     # Pivot sub-group: the name of a profile in ``settings.PROFILES`` to layer
     # onto the "enemy" group, e.g. "enemy_goblin".  None means the group as it
     # is, which for enemies is off -- so this is what turns the pivot on for one

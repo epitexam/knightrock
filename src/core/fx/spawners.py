@@ -16,13 +16,14 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol
 
 import pygame
 from pygame.math import Vector2
 
 from src.core.colors import Color, Colors, FXColors
 from src.core.fx.particles import (
+    CorpseParticle,
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
@@ -39,7 +40,8 @@ from src.core.fx.particles import (
     puff_tint,
     puff_variant,
 )
-from src.core.settings import (
+from src.core.fx.tuning import (
+    Corpse,
     DashDust,
     Dust,
     DustGrain,
@@ -70,6 +72,7 @@ FX_FAMILY_BUDGETS: dict[str, int] = {
     "shield_arc": 4,
     "shatter_arc": 4,
     "sweat": 6,
+    "corpse": 6,
 }
 """Per-family caps, on top of :data:`MAX_FX_SPRITES`.
 
@@ -124,6 +127,26 @@ otherwise mean a particle spending from a budget that does not exist.
     """
 
 
+class FxBody(Protocol):
+    """Where a fighter stands and which way it faces: all a guard ring reads."""
+
+    hitbox: pygame.FRect
+    facing_right: bool
+
+
+class FxSubject(FxBody, Protocol):
+    """What a spawner reads of the fighter an effect comes from.
+
+    Every ``Entity`` has all of it, so an effect never has to ask whether a
+    field is there.
+    """
+
+    rect: pygame.FRect
+    image: pygame.Surface
+    velocity: Vector2
+    on_surface: dict[str, bool]
+
+
 _fx_rng: random.Random = random.Random()
 """The FX module's own stream, deliberately outside the snapshot.
 
@@ -140,9 +163,9 @@ so the FX plane was already inconsistent afterwards, and no golden hashes it.
 """
 
 
-def facing_side(entity: Any) -> float:
+def facing_side(entity: FxBody) -> float:
     """+1 when the entity faces right, -1 when it faces left."""
-    return 1.0 if bool(getattr(entity, "facing_right", True)) else -1.0
+    return 1.0 if entity.facing_right else -1.0
 
 
 def _has_room(fx_group: pygame.sprite.Group, family: str | None = None, count: int = 1) -> bool:
@@ -173,7 +196,7 @@ def _landing_strength(impact: float) -> float:
 
 def spawn_landing_dust(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> list[DustParticle]:
     """Fan ``Dust.COUNT`` sheets out of the entity's feet.
@@ -189,8 +212,8 @@ def spawn_landing_dust(
     dissolves instead of vanishing on one frame -- which it did, six identical
     puffs sharing one TTL and one frame index.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or not _has_room(fx_group, "landing_dust", Dust.COUNT):
+    hitbox = entity.hitbox
+    if not _has_room(fx_group, "landing_dust", Dust.COUNT):
         return []
     rng = _fx_rng
     strength = _landing_strength(impact)
@@ -222,7 +245,7 @@ def spawn_landing_dust(
 
 def spawn_landing_grains(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> list[GrainParticle]:
     """Throw the spray of grit around a hard landing.
@@ -240,8 +263,8 @@ def spawn_landing_grains(
     because the plane is painted *under* the moving layer and a grain that
     crossed his path would be a speck over his own feet.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or not _has_room(fx_group, "dust_grain", DustGrain.LANDING_COUNT):
+    hitbox = entity.hitbox
+    if not _has_room(fx_group, "dust_grain", DustGrain.LANDING_COUNT):
         return []
     rng = _fx_rng
     side = facing_side(entity)
@@ -298,13 +321,11 @@ def _profile(index: int) -> float:
 
 def spawn_impact_decal(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     impact: float = Dust.MIN_FALL_SPEED,
 ) -> ImpactDecalParticle | None:
     """A ground mark under a hard landing, scaled by the fall speed."""
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return None
+    hitbox = entity.hitbox
     if not _has_room(fx_group, "impact_decal"):
         return None
     decal = ImpactDecalParticle(
@@ -315,7 +336,7 @@ def spawn_impact_decal(
     return decal
 
 
-def _dash_side(entity: Any) -> float:
+def _dash_side(entity: FxSubject) -> float:
     """Which way the fighter is travelling, as +1 or -1.
 
     The sign of the velocity rather than the facing, because a dash's
@@ -328,7 +349,7 @@ def _dash_side(entity: Any) -> float:
     At 1100 px/s the sign is not a close call, so the only case that reaches
     the fallback is a fighter that is not moving.
     """
-    speed = float(getattr(getattr(entity, "velocity", None), "x", 0.0) or 0.0)
+    speed = float(entity.velocity.x)
     if abs(speed) > 1.0:
         return 1.0 if speed > 0.0 else -1.0
     return facing_side(entity)
@@ -336,7 +357,7 @@ def _dash_side(entity: Any) -> float:
 
 def spawn_dash_dust(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     burst: bool = False,
 ) -> list[DashDustParticle]:
     """Throw dust out of the trailing edge of a dashing fighter.
@@ -358,9 +379,7 @@ def spawn_dash_dust(
     landing fan's are: a fan that shares one TTL dies on one frame and reads
     as a blink.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return []
+    hitbox = entity.hitbox
     count = DashDust.BURST_COUNT if burst else DashDust.TICK_COUNT
     if count <= 0 or not _has_room(fx_group, "dash_dust", count):
         return []
@@ -399,7 +418,7 @@ def spawn_dash_dust(
 
 def spawn_dash_grains(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     burst: bool = False,
 ) -> list[GrainParticle]:
     """Throw the grit off a dashing fighter's heels.
@@ -414,9 +433,7 @@ def spawn_dash_grains(
     a tick that threw as much spray as the burst would fill the whole line of
     it and bury the ribbon, which is the only thing the dash is marking.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return []
+    hitbox = entity.hitbox
     count = DustGrain.DASH_BURST_COUNT if burst else DustGrain.DASH_TICK_COUNT
     if count <= 0 or not _has_room(fx_group, "dust_grain", count):
         return []
@@ -445,7 +462,7 @@ def spawn_dash_grains(
     return grains
 
 
-def _step_anchor(entity: Any, side: float, foot: bool) -> float:
+def _step_anchor(entity: FxSubject, side: float, foot: bool) -> float:
     """Where along the fighter this foot's step is laid, in px.
 
     Behind the heel, and alternating between two depths so the comb reads as
@@ -466,7 +483,7 @@ def _step_anchor(entity: Any, side: float, foot: bool) -> float:
 
 def spawn_footstep_dust(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     foot: bool,
     tier: FootstepTier,
 ) -> list[FootstepDustParticle]:
@@ -510,9 +527,7 @@ def spawn_footstep_dust(
     that forgot it would silently lay a run's spread under a walking fighter and
     nothing would say so. The one thing this function must never do is guess.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return []
+    hitbox = entity.hitbox
     count = FootstepDust.COUNT
     if count <= 0 or not _has_room(fx_group, "footstep_dust", count):
         return []
@@ -543,7 +558,7 @@ def spawn_footstep_dust(
 
 def spawn_footstep_grains(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     foot: bool = False,
 ) -> list[GrainParticle]:
     """Throw the grit off one foot, into the same ``dust_grain`` budget.
@@ -561,9 +576,7 @@ def spawn_footstep_grains(
     the grit before it sheds the mark, and here the mark is the one the comb
     is made of.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return []
+    hitbox = entity.hitbox
     count = FootstepDust.GRAINS
     if count <= 0 or not _has_room(fx_group, "dust_grain", count):
         return []
@@ -590,7 +603,9 @@ def spawn_footstep_grains(
     return grains
 
 
-def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vector2, float] | None:
+def _guard_stance(
+    entity: FxBody, contact: tuple[float, float] | None
+) -> tuple[Vector2, float] | None:
     """Where a guard's ring stands, and which way it opens.
 
     The contact point when the caller knows it, which is the only thing that
@@ -602,9 +617,7 @@ def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vec
     the hit came from. It used to open towards the guard's own facing, which
     put it on the wrong side of the body for every back-turned block.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return None
+    hitbox = entity.hitbox
     if contact is None:
         side = facing_side(entity)
         offset = side * hitbox.width * FxGuard.ARC_FALLBACK_OFFSET
@@ -617,7 +630,7 @@ def _guard_stance(entity: Any, contact: tuple[float, float] | None) -> tuple[Vec
 
 def spawn_guard_arc(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxBody,
     parried: bool = False,
     contact: tuple[float, float] | None = None,
 ) -> ShieldArcParticle | None:
@@ -636,7 +649,7 @@ def spawn_guard_arc(
 
 def spawn_shatter_arc(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxBody,
     contact: tuple[float, float] | None = None,
 ) -> ShatterArcParticle | None:
     """The ring breaking, on the side the guard gave way on.
@@ -654,7 +667,7 @@ def spawn_shatter_arc(
 
 def spawn_dizzy_stars(
     fx_group: pygame.sprite.Group,
-    entity: Any,
+    entity: FxSubject,
     count: int = FxDizzy.STAR_COUNT,
     ttl: float = FxDizzy.STAR_TTL,
 ) -> list[OrbitParticle]:
@@ -666,8 +679,8 @@ def spawn_dizzy_stars(
     parry, where it read as part of the block instead of as the state the
     block earned.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or count <= 0:
+    hitbox = entity.hitbox
+    if count <= 0:
         return []
     if not _has_room(fx_group, "dizzy_star", count):
         return []
@@ -692,15 +705,15 @@ def spawn_dizzy_stars(
     return stars
 
 
-def spawn_dizzy_vortex(fx_group: pygame.sprite.Group, entity: Any) -> DizzyVortexParticle | None:
+def spawn_dizzy_vortex(
+    fx_group: pygame.sprite.Group, entity: FxSubject
+) -> DizzyVortexParticle | None:
     """A purple swirl at the feet of a dizzy entity.
 
     At the feet rather than over the head, because the head already has the
     circling stars on it and the two were drawn on top of each other.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None:
-        return None
+    hitbox = entity.hitbox
     if not _has_room(fx_group, "dizzy_vortex"):
         return None
     vortex = DizzyVortexParticle(
@@ -711,15 +724,15 @@ def spawn_dizzy_vortex(fx_group: pygame.sprite.Group, entity: Any) -> DizzyVorte
     return vortex
 
 
-def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatParticle]:
+def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: FxSubject) -> list[SweatParticle]:
     """Pop ``Sweat.COUNT`` comic teardrops off the side of the head.
 
     Emitted while the entity sits out its dash penalty: each fat teardrop
     beads beside the crown, kicked sideways and briefly up before gravity
     drags it down.
     """
-    hitbox = getattr(entity, "hitbox", None)
-    if hitbox is None or Sweat.COUNT <= 0:
+    hitbox = entity.hitbox
+    if Sweat.COUNT <= 0:
         return []
     if not _has_room(fx_group, "sweat", Sweat.COUNT):
         return []
@@ -745,14 +758,43 @@ def spawn_sweat_drops(fx_group: pygame.sprite.Group, entity: Any) -> list[SweatP
     return drops
 
 
+def spawn_corpse(fx_group: pygame.sprite.Group, entity: FxSubject) -> CorpseParticle | None:
+    """Throw the body of a fighter that just died, the way its last hit pushed it.
+
+    Called while the fighter still exists, on the tick it is reaped: its
+    velocity is the killing hit's knockback, already divided by its weight,
+    and its image is the frame it died on. A fighter that was standing gives
+    the body a floor to rebound from; one killed in the air has none, and the
+    body simply falls out of its fade.
+
+    With no push to speak of -- a hazard, a jab -- the body still leaves:
+    backwards, off the way the fighter faced.
+    """
+    if not _has_room(fx_group, "corpse"):
+        return None
+    image, rect = entity.image, entity.rect
+    push = Vector2(entity.velocity) * Corpse.BOOST
+    side = math.copysign(1.0, push.x) if push.x else -facing_side(entity)
+    velocity = (side * max(abs(push.x), Corpse.MIN_KICK), min(push.y, Corpse.MIN_POP))
+    grounded = bool(entity.on_surface.get("floor", False))
+    corpse = CorpseParticle(
+        image,
+        rect.center,
+        velocity,
+        ground_y=float(entity.hitbox.bottom) if grounded else None,
+    )
+    fx_group.add(corpse)
+    return corpse
+
+
 def iter_landing_entities(entities: Iterable[Any]) -> Iterable[tuple[Any, float]]:
     """Yield ``(entity, impact)`` for entities that just landed hard.
 
-    ``Entity.update`` records the pre-move fall speed into ``landed_impact`` on
+    ``Entity.update`` records the pre-move fall speed into its render hints on
     the landing tick and zeroes it otherwise; this filters on
     ``Dust.MIN_FALL_SPEED`` so light hops stay clean.
     """
     for entity in entities:
-        impact = float(getattr(entity, "landed_impact", 0.0) or 0.0)
+        impact = entity.render_hints.landed_impact
         if impact >= Dust.MIN_FALL_SPEED:
             yield entity, impact

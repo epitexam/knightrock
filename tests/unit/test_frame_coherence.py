@@ -22,6 +22,7 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.core.sprite_groups import SpriteGroups
+from tests.fakes import FighterSprite
 
 pytestmark = pytest.mark.usefixtures("_coherent_display")
 
@@ -52,7 +53,7 @@ class Tile(pygame.sprite.Sprite):
         self.rect = pygame.FRect(x, y, TILE, TILE)
 
 
-class Body(pygame.sprite.Sprite):
+class Body(FighterSprite):
     """An entity: carries a hitbox, and the bars attach to it."""
 
     faction = "enemy"
@@ -244,7 +245,7 @@ def test_a_dash_ghost_stays_anchored_to_the_world_while_the_camera_moves() -> No
     assert after.x < before.x, "the ghost must travel with the world, not the window"
 
 
-class DashingPlayer(pygame.sprite.Sprite):
+class DashingPlayer(FighterSprite):
     """A player in the dash state, which is what spawns the ghost trail."""
 
     faction = "player"

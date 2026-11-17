@@ -26,6 +26,7 @@ from pygame.math import Vector2
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.core.colors import Color, Colors
 from src.core.rendering.camera import Camera
+from src.core.sprites import Sprite as WorldSprite
 from src.ui.panel_renderer import PanelRenderer
 from src.ui.styles import PANEL_BORDER
 from src.ui.world_overlay_bars import health_bar_rect
@@ -328,6 +329,10 @@ class GeoLayer:
                     camera.apply(reference),
                     width=self.stroke(),
                 )
+                # A hazard fitted to its art hurts through less than its frame:
+                # show the part that does, in the colour of things that hit.
+                if isinstance(sprite, WorldSprite) and sprite.contact_area is not None:
+                    self.shapes.draw_shape(sprite.contact_shape, Colors.debug_attack_box, camera)
             return
         screen = camera.apply(collider)
         # The chip dodges its own entity's health bar, and is registered so

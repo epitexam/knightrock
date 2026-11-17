@@ -6,12 +6,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pygame
+import pytest
 from pygame.sprite import Group
 
 from src.combat.attack_data import PLAYER_ATTACKS
 from src.combat.combat_component import CombatComponent, NullCombatComponent
-from src.combat.refusal import Refusal
 from src.core.level.systems.combat_system import CombatSystem
+from src.core.settings import Battery as BatterySettings
 from src.entities.player import Player
 from src.entities.player_config import PlayerConfig
 from src.states.player_states import PlayerAttackState
@@ -43,49 +44,48 @@ def test_combat_system_consumes_guarded_contact_once() -> None:
     player.facing_right = False
     attacker = make_active_attacker(player)
     system = CombatSystem()
-    initial_posture = player.guard.posture
 
     combatants = [attacker, player]  # type: ignore[list-item]
     system.process_attacks(combatants)
-    posture_after_first_contact = player.guard.posture
     system.hit_stop_timer = 0.0
     system.process_attacks(combatants)
 
-    assert posture_after_first_contact < initial_posture
-    assert player.guard.posture == posture_after_first_contact
+    assert player.health == player.max_health
+    assert player.battery.amount == pytest.approx(
+        BatterySettings.MAX - BatterySettings.GUARD_COST
+    ), "the same attack is not guarded twice"
     assert player.id in attacker.combat.targets_hit
 
 
-def test_buffered_attack_restarts_the_attack_state() -> None:
+def test_a_new_chain_link_lunges_without_leaving_the_attack_state() -> None:
+    """The next link starts while the state runs, so the state sees it by the counter."""
+    attack = SimpleNamespace(lunge_speed_multiplier=0.5, vertical_lunge=0.0)
     combat = SimpleNamespace(
-        is_attacking=False,
-        # The consumption re-asks whether the move can start *now*, so the stub
-        # answers in the new vocabulary. The old one cleared the buffered name
-        # and fired whatever it had stored, which is what let a press buffered
-        # before the fighter stood up land after it.
-        start_attack=Mock(return_value=Refusal.NONE),
-        state=SimpleNamespace(current_attack_def=None, end=Mock()),
+        is_attacking=True,
+        attacks_started=1,
+        state=SimpleNamespace(current_attack_def=attack, end=Mock()),
     )
-    state_machine = SimpleNamespace(consume_input=Mock(return_value=True))
     entity = SimpleNamespace(
         combat=combat,
-        state_machine=state_machine,
-        _buffered_attack_name="light_attack",
         apply_horizontal_movement=Mock(),
-        on_surface={"floor": False},
+        on_surface={"floor": True},
         facing_right=True,
         velocity=pygame.Vector2(),
-        speed=450.0,
+        speed=400.0,
+        jump=SimpleNamespace(has_buffered_jump=lambda: False),
     )
-    state = PlayerAttackState(entity)
+    state = PlayerAttackState(entity)  # type: ignore[arg-type]
+    state.enter()
+    entity.velocity.x = 0.0  # the first lunge has been spent
 
-    transition = state.update(1 / 60)
-    state.exit("attack")
+    assert state.update(1 / 60) is None
+    assert entity.velocity.x == 0.0, "the same link does not lunge twice"
 
-    assert transition == ("attack", {"force": True})
-    combat.start_attack.assert_called_once_with("light_attack")
+    combat.attacks_started = 2  # the input handler chained the next link
+    state.update(1 / 60)
+
+    assert entity.velocity.x == pytest.approx(200.0)
     combat.state.end.assert_not_called()
-    assert entity._buffered_attack_name is None
 
 
 def test_combat_snapshot_restores_cooldowns_charge_and_combo() -> None:
@@ -93,9 +93,9 @@ def test_combat_snapshot_restores_cooldowns_charge_and_combo() -> None:
     combat = entity.combat
     assert isinstance(combat, CombatComponent)
 
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     combat.state.end()
-    assert combat.start_charge("heavy_attack")
+    assert combat.start_charge("charged_slash")
     combat.update(0.1)
     snapshot = combat.save_state()
     json.dumps(asdict(snapshot))
@@ -124,8 +124,6 @@ def test_null_combat_component_is_reset_substitutable() -> None:
 
 def test_player_copies_all_behavioral_configuration() -> None:
     config = PlayerConfig(
-        guard_posture_max=120.0,
-        guard_break_lockout=2.0,
         dash_recharge_time=0.85,
         dash_gravity_mult=0.4,
     )
@@ -138,7 +136,5 @@ def test_player_copies_all_behavioral_configuration() -> None:
         config=config,
     )
 
-    assert player.guard.break_lockout == 2.0
-    assert player.guard.max_posture == 120.0
     assert player.dash.recharge_time == 0.85
     assert player.dash.gravity_mult == 0.4

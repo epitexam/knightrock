@@ -125,3 +125,36 @@ def test_surface_returns_none_for_empty_size(
 def test_empty_specs_rejected(library: AssetLibrary) -> None:
     with pytest.raises(ValueError):
         Animator(library, {}, default="")
+
+
+def test_preload_reads_every_clip_before_it_plays(
+    specs: dict[str, AnimationSpec], library: AssetLibrary
+) -> None:
+    animator = Animator(library, specs, default="loop")
+
+    animator.preload()
+
+    assert all(f"f:{spec.directory}" in library._frame_cache for spec in specs.values())
+
+
+def test_preload_leaves_a_missing_clip_for_later(
+    specs: dict[str, AnimationSpec], library: AssetLibrary, tmp_path: Path
+) -> None:
+    """A level must still build without the art; the clip reports when it plays."""
+    missing = AnimationSpec("gone", str(tmp_path / "nowhere"))
+    animator = Animator(library, {**specs, "gone": missing}, default="loop")
+
+    animator.preload()  # no raise
+
+
+def test_a_cleared_library_drops_the_scaled_frames(
+    specs: dict[str, AnimationSpec], library: AssetLibrary
+) -> None:
+    """A new display format clears the library; frames scaled for the old one must go."""
+    animator = Animator(library, specs, default="loop")
+    before = animator.surface((10, 10), True)
+
+    library.clear()
+    after = animator.surface((10, 10), True)
+
+    assert after is not before

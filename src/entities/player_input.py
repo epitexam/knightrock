@@ -1,157 +1,237 @@
-"""Player input reading extracted from ``Player`` (audit F1.1, Phase 2 #3).
+"""The player's input, read once per tick: movement, stance, attacks and prompts.
 
-``Player`` used to concentrate keyboard/gamepad reading (axes, jump/dash
-buffers, charge attacks and combos) on top of physics, states and combat.
-:class:`PlayerInputHandler` takes over that single responsibility: it reads
-the :class:`InputManager` every tick and drives the controllers + the combat
-component.  ``Player`` only keeps orchestration (``_pre_update``).
+While a prompt is up the fight is frozen around the player, so nothing but the
+prompt is read: the directions it asks for, or the slash mashed in a blade
+lock.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.combat.frame_data import MoveId
+from src.combat.frame_data import Stance
 from src.core.input.input_actions import InputAction
-from src.core.settings import GameFeel
+from src.core.settings import Debug, GameFeel
 from src.core.settings import Input as InputSettings
-from src.entities.attack_moves import move_for_button
+from src.entities.attack_moves import CHARGES, MoveContext, press_for, resolve_move
+from src.entities.player_kit import Direction
 from src.physics.movement import apply_jump_cut
 from src.states.turn_state import request_turn
 
 if TYPE_CHECKING:
     from src.entities.player import Player
 
-#: The attack buttons, in the order they are considered.
-#:
-#: The order is the contract of :meth:`PlayerInputHandler._handle_attack_request`:
-#: a tick can only start one attack, so the first button pressed wins. It was
-#: implicit in the branch order of an ``if``/``elif`` ladder and pinned by a test
-#: that scraped the source text; naming it states the same thing without the
-#: scraping. SPECIAL first, then the numbered attacks in order, so a light does
-#: not eat a heavy thrown on the same tick.
-#:
-#: Step 4 of the spine refactor replaces this with a lookup into the move table
-#: declared in ``player.json``; it stays here until then.
+#: The attack buttons, in the order they are considered: a tick starts one
+#: attack, so the first pressed wins.
 ATTACK_BUTTONS: tuple[InputAction, ...] = (
-    InputAction.SPECIAL_ATTACK,
     InputAction.ATTACK_1,
     InputAction.ATTACK_2,
-    InputAction.ATTACK_3,
-    InputAction.ATTACK_4,
+    InputAction.SHOOT,
 )
 
 
 class PlayerInputHandler:
-    """Reads every input each tick and drives abilities and attacks."""
+    """Reads every input each tick and drives movement, attacks and prompts."""
 
     def __init__(self, player: Player) -> None:
         self._player = player
-        self.buffered_attack_name: MoveId | None = None
+        #: The attack button pressed and not yet played, the stance it was
+        #: pressed in, and how long it is still worth playing. The *button*,
+        #: not a move: the move is chosen when it fires, so a press made during
+        #: one link of a chain becomes the next link once the first lets it
+        #: through.
+        self.buffered_action: InputAction | None = None
+        self.buffered_low: bool = False
+        self.buffer_timer: float = 0.0
+        #: How long each attack button has been held, for the charge.
+        self.held_for: dict[InputAction, float] = dict.fromkeys(ATTACK_BUTTONS, 0.0)
+        #: The button whose charge is building, released to throw it.
+        self.charge_button: InputAction | None = None
+        #: The stick's side and Down on the last tick: a prompt reads a new push.
+        self.last_axis: int = 0
+        self.last_down: bool = False
 
-    def update(self) -> None:
-        """Read movement/ability input, then process attack input."""
+    def update(self, delta_time: float = 1 / 60) -> None:
+        """Read the prompt's input if one is up; movement and attacks otherwise."""
+        directions = self._directions()
+        if self._player.prompt.active:
+            self._player.move_axis = 0.0
+            self._feed_prompt(directions)
+            return
         self._read_input()
-        self._handle_attack_input()
+        self._handle_attack_input(delta_time)
+
+    def clear_buffer(self) -> None:
+        """Forget a pending attack press."""
+        self.buffered_action = None
+        self.buffered_low = False
+        self.buffer_timer = 0.0
+
+    def _directions(self) -> list[Direction]:
+        """The directions pushed this tick: a new side of the stick, Down, Jump."""
+        im = self._player.input_manager
+        axis = im.axis(InputAction.MOVE_X)
+        side = (
+            1
+            if axis > InputSettings.AXIS_DEADZONE
+            else -1
+            if axis < -InputSettings.AXIS_DEADZONE
+            else 0
+        )
+        down = im.held(InputAction.MOVE_DOWN)
+        pushed: list[Direction] = []
+        if side != 0 and side != self.last_axis:
+            pushed.append(Direction.RIGHT if side > 0 else Direction.LEFT)
+        if down and not self.last_down:
+            pushed.append(Direction.DOWN)
+        if im.just_pressed(InputAction.JUMP):
+            pushed.append(Direction.UP)
+        self.last_axis = side
+        self.last_down = down
+        return pushed
+
+    def _feed_prompt(self, directions: list[Direction]) -> None:
+        player = self._player
+        for direction in directions:
+            if not player.prompt.active:
+                return
+            player.answer_prompt(direction)
+        if player.prompt.active and player.input_manager.just_pressed(InputAction.ATTACK_1):
+            player.mash_prompt()
 
     def _read_input(self) -> None:
-        """Read all input and update facing direction and buffers."""
+        """Read movement, guard, jump and dash, and face the stick."""
         player = self._player
         im = player.input_manager
         player.move_axis = im.axis(InputAction.MOVE_X)
         player.left_held = player.move_axis < -InputSettings.AXIS_DEADZONE
         player.right_held = player.move_axis > InputSettings.AXIS_DEADZONE
-        player.guard_held = im.held(InputAction.GUARD)
         player.down_held = im.held(InputAction.MOVE_DOWN)
+        player.guard_held = im.held(InputAction.GUARD)
         player.fast_fall = player.down_held
-
-        if im.just_pressed(InputAction.GUARD):
-            player.guard.press()
 
         # A ground reversal enters the pivot state instead of mirroring, so the
         # facing is held while the feet are already rolling the other way.
-        # This has to be asked here, where the facing would otherwise be
-        # written: the input read runs before the state machine, so a decision
-        # taken from a state's own update would be a frame too late to stop the
-        # mirror it is meant to delay.
-        if not request_turn(player):
+        # Asked here, where the facing would otherwise be written: the input
+        # read runs before the state machine, so a decision taken from a
+        # state's own update would be a frame too late to stop the mirror.
+        # The dash turns itself round (``PlayerDashState``): a ground pivot
+        # entered from it would end the dash, its invincibility with it.
+        if not player.is_dashing and not request_turn(player):
             player.face_movement()
 
         if im.just_pressed(InputAction.JUMP):
             player.jump.buffer_press()
-
         if im.just_released(InputAction.JUMP):
             apply_jump_cut(player, GameFeel.JUMP_CUT_DIVISOR)
-
         if im.just_pressed(InputAction.DASH):
             player.dash.request(player.move_axis)
 
-        if im.just_pressed(InputAction.RESET):
+        # A test-bench key: back to the spawn at full health. Debug builds only.
+        if Debug.is_enabled() and im.just_pressed(InputAction.RESET):
             player.reset_position()
 
-    def _handle_attack_input(self) -> None:
-        """Process attack input with charge attacks, buffering, and combos."""
-        if self._handle_charging():
-            return
-        self._handle_attack_request()
-
-    def _handle_charging(self) -> bool:
+    def _handle_attack_input(self, delta_time: float) -> None:
+        """The dark-side chord, then the charge, then the attack presses."""
         player = self._player
         im = player.input_manager
-        if not player.combat.charging.is_charging:
+        if im.just_pressed(InputAction.SPECIAL_ATTACK):
+            player.fury.start_dark()
+            self.clear_buffer()
+            return
+        for button in ATTACK_BUTTONS:
+            self.held_for[button] = self.held_for[button] + delta_time if im.held(button) else 0.0
+        if self._handle_charging():
+            return
+        if im.just_pressed(InputAction.ATTACK_2) and player.try_grab():
+            self.clear_buffer()
+            return
+        self._handle_attack_request(delta_time)
+        self._maybe_start_charge()
+
+    def _handle_charging(self) -> bool:
+        """Hold a charge while its button is; let it go, a full one as its stronger move."""
+        player = self._player
+        charging = player.combat.charging
+        if not charging.is_charging:
+            self.charge_button = None
             return False
-        # A charge is dropped when the fighter stops being able to use it, not
-        # when a *press* would be refused. The old gate conflated the two, so a
-        # fighter who charged while hurt had the charge cancelled by a condition
-        # that had nothing to do with the charge.
         if player.combat.is_hurt:
-            player.combat.charging.cancel()
+            charging.cancel()
+            self.charge_button = None
             return True
-        if im.just_released(InputAction.ATTACK_2):
-            player.combat.release_charge()
+        button = self.charge_button
+        released = button is None or not player.input_manager.held(button)
+        if released or (player.battery.is_empty and button is not InputAction.ATTACK_2):
+            full = None if button is None else CHARGES[button].full
+            player.combat.release_charge(full)
+            self.charge_button = None
         return True
 
-    def _handle_attack_request(self) -> None:
-        """Start the highest-priority attack button that was pressed this tick.
+    def _maybe_start_charge(self) -> None:
+        """A button held past ``CHARGE_DELAY`` with nothing running starts its charge.
 
-        No gate here: every "can I attack" question is answered by
-        ``CombatComponent.start_attack``, which is the only place that knows
-        about cooldowns, cancellations, the fighter's state and its posture. A
-        gate in front of it would be a second answer to the same question, and
-        the two are exactly what used to drift apart.
+        The blade and the shot draw on the battery, so an empty one charges
+        neither; the body needs nothing.
         """
         player = self._player
-        for action in ATTACK_BUTTONS:
-            if not player.input_manager.just_pressed(action):
+        if player.combat.is_attacking or player.stance is not Stance.GROUND:
+            return
+        for button in ATTACK_BUTTONS:
+            if self.held_for[button] < InputSettings.CHARGE_DELAY:
                 continue
-            self._start(action)
+            if player.battery.is_empty and button is not InputAction.ATTACK_2:
+                continue
+            if player.combat.start_charge(CHARGES[button].move):
+                self.charge_button = button
+                player.state_machine.change_state("charge", force=True)
             return
 
-    def _start(self, action: InputAction) -> None:
-        """Throw the move bound to one button, or buffer it if it can be retried.
+    def _handle_attack_request(self, delta_time: float) -> None:
+        """Buffer the attack button pressed this tick, then try to play the buffer.
 
-        The buffer is the reason the refusal has to be read rather than
-        discarded: a press refused on cooldown is worth keeping, because the
-        same press unchanged will work once the timer runs down. One refused
-        because the fighter is in the wrong posture or is hurt is not -- keeping
-        it would fire a move the player has long since stopped asking for.
+        Every "can I attack" question is answered by
+        ``CombatComponent.start_attack``. A press it refuses for a reason that
+        will pass -- a cancel window not open yet -- stays buffered for
+        ``ATTACK_BUFFER_WINDOW`` and is tried again every tick.
         """
+        player = self._player
+        pressed = next(
+            (action for action in ATTACK_BUTTONS if player.input_manager.just_pressed(action)),
+            None,
+        )
+        if pressed is not None:
+            self.buffered_action = pressed
+            self.buffered_low = player.low_stance
+            self.buffer_timer = InputSettings.ATTACK_BUFFER_WINDOW
+        elif self.buffered_action is not None:
+            self.buffer_timer -= delta_time
+            if self.buffer_timer <= 0.0:
+                self.clear_buffer()
+        if self.buffered_action is not None and not self._start(
+            self.buffered_action, self.buffered_low
+        ):
+            return
+        self.clear_buffer()
+
+    def _context(self) -> MoveContext:
+        player = self._player
+        combat = player.combat
+        return MoveContext(
+            stance=player.stance,
+            running=combat.current_attack_def if combat.is_attacking else None,
+            downed_in_reach=player.downed_in_reach() is not None,
+            dashing=player.is_dashing or player.dash.in_coyote(),
+        )
+
+    def _start(self, action: InputAction, low: bool) -> bool:
+        """Throw the move for one press now; ``False`` while it is worth retrying."""
         player = self._player
         if not player.may_attack_now():
-            return
-        move = move_for_button(action, player.stance)
+            return False
+        press = press_for(action, low)
+        move = None if press is None else resolve_move(press, self._context())
         if move is None:
-            # Nothing on this button from here. Dropped without a buffer, and
-            # without falling back to the standing version: a fighter who holds
-            # Down and presses the uppercut gets nothing, rather than a
-            # standing uppercut from a crouched collider.
-            return
-
-        if action is InputAction.ATTACK_2 and player.combat.start_charge(move):
-            player.state_machine.change_state("charge", force=True)
-            return
-
-        refusal = player.combat.start_attack(move)
-        if refusal.is_retryable:
-            self.buffered_attack_name = move
-            player.state_machine.buffer_input("attack", window=InputSettings.ATTACK_BUFFER_WINDOW)
+            return True
+        refusal = player.start_move(move)
+        return not refusal.is_retryable

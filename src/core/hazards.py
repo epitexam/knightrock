@@ -1,9 +1,10 @@
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Protocol
 
 import pygame
 
+from src.combat.knockback import KnockbackConfig
 from src.core.animation.animator import AnimationSpec, Animator
 from src.core.asset_library import shared_library
 from src.core.level.systems.hazard_damage import HazardDamageSystem
@@ -16,10 +17,47 @@ class AnimatedSprite(Protocol):
     animator: Animator | None
     rect: pygame.FRect
     image: pygame.Surface
+    flip_x: bool
+    flip_y: bool
+    _mirrored: dict[int, tuple[pygame.Surface, pygame.Surface]]
+
+
+#: Below this alpha a pixel is antialiasing or glow, not something that cuts.
+ART_ALPHA = 64
+
+
+def art_bounds(frames: Iterable[pygame.Surface], size: tuple[float, float]) -> pygame.FRect:
+    """Where the art of ``frames`` is drawn in a sprite of ``size``: their opaque union.
+
+    Measured on every frame, since an animation can reach further on some, and
+    scaled to ``size`` because the animator stretches each frame to the sprite.
+    The whole sprite when nothing is opaque, so a contact never vanishes.
+    """
+    union: pygame.FRect | None = None
+    for frame in frames:
+        width, height = frame.get_size()
+        if width == 0 or height == 0:
+            continue
+        bounds = frame.get_bounding_rect(min_alpha=ART_ALPHA)
+        if bounds.width == 0 or bounds.height == 0:
+            continue
+        scale_x, scale_y = size[0] / width, size[1] / height
+        scaled = pygame.FRect(
+            bounds.x * scale_x, bounds.y * scale_y, bounds.w * scale_x, bounds.h * scale_y
+        )
+        union = scaled if union is None else union.union(scaled)
+    return union if union is not None else pygame.FRect(0.0, 0.0, size[0], size[1])
+
+
+def mirrored(frames: Iterable[pygame.Surface], flip_x: bool, flip_y: bool) -> list[pygame.Surface]:
+    """``frames`` as a sprite mirrored by ``flip_x`` / ``flip_y`` draws them."""
+    if not (flip_x or flip_y):
+        return list(frames)
+    return [pygame.transform.flip(frame, flip_x, flip_y) for frame in frames]
 
 
 def build_hazard_animator(animations: Mapping[str, str], default: str) -> Animator:
-    """Create an Animator for hazard sprite sheets (Phase 2 #1)."""
+    """Create an Animator for hazard sprite sheets."""
     specs = {
         name: AnimationSpec(name, directory, frame_duration=0.12, loop=True)
         for name, directory in animations.items()
@@ -33,12 +71,28 @@ def _tick_animation(sprite: AnimatedSprite, delta_time: float, facing_right: boo
     if animator is None:
         return
     animator.update(delta_time)
-    surface = animator.surface((round(sprite.rect.width), round(sprite.rect.height)), facing_right)
-    if surface is not None:
-        sprite.image = surface
+    facing = facing_right != sprite.flip_x
+    surface = animator.surface((round(sprite.rect.width), round(sprite.rect.height)), facing)
+    if surface is None:
+        return
+    if sprite.flip_y:
+        # Mirrored once per frame surface the animator hands back (it caches
+        # those), keeping the source so a recycled id cannot match.
+        entry = sprite._mirrored.get(id(surface))
+        if entry is None or entry[0] is not surface:
+            entry = (surface, pygame.transform.flip(surface, False, True))
+            sprite._mirrored[id(surface)] = entry
+        surface = entry[1]
+    sprite.image = surface
 
 
 class OrbitingHazard(Sprite):
+    #: Mirrored in the level editor: the art, its animation and its contact follow.
+    flip_x: bool = False
+    flip_y: bool = False
+    #: The push of a contact; ``None`` is ``HazardDamageSystem.DEFAULT_KNOCKBACK``.
+    knockback: KnockbackConfig | None = None
+
     def __init__(
         self,
         pos: tuple[float, float],
@@ -53,6 +107,7 @@ class OrbitingHazard(Sprite):
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.animator = animator
+        self._mirrored: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
         self.center = pygame.math.Vector2(pos[0], pos[1])
         self.radius = radius
         self.start_angle = math.radians(start_angle)
@@ -88,6 +143,12 @@ class OrbitingHazard(Sprite):
 
 
 class SpanHazard(Sprite):
+    #: Mirrored in the level editor: the art, its animation and its contact follow.
+    flip_x: bool = False
+    flip_y: bool = False
+    #: The push of a contact; ``None`` is ``HazardDamageSystem.DEFAULT_KNOCKBACK``.
+    knockback: KnockbackConfig | None = None
+
     def __init__(
         self,
         pos: tuple[float, float],
@@ -101,6 +162,7 @@ class SpanHazard(Sprite):
     ):
         super().__init__(pos, color=None, surf=surf, groups=groups)
         self.animator = animator
+        self._mirrored: dict[int, tuple[pygame.Surface, pygame.Surface]] = {}
         if span is not None:
             point_a, point_b = (pygame.math.Vector2(p) for p in span)
         else:

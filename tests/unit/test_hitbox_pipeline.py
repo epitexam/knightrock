@@ -9,8 +9,9 @@ from src.combat.attack_data import GOBLIN_ATTACKS, PLAYER_ATTACKS, SLIME_ATTACKS
 from src.combat.attack_state import AttackStateMachine
 from src.combat.frame_data import AttackDefinition, HitProperties, PhaseDefinition, Stance
 from src.core.level.systems.combat_system import CombatSystem
-from src.core.level.systems.gameplay_loop import GameplayLoop
-from tests.unit.helpers import activate, entity_at, make_entity
+from src.core.level.systems.gameplay_loop import CombatLoop
+from src.core.settings import Combat as CombatSettings
+from tests.unit.helpers import SHOWCASE, activate, entity_at, make_entity
 from tests.unit.helpers import make_attack as attack
 from tests.unit.helpers import make_phase as phase
 
@@ -69,7 +70,7 @@ def test_attack_box_is_resynchronized_after_entity_separation() -> None:
     other = entity_at(10.0, faction="same")
     activate(attacker)
     initial_center = attacker.combat.attack_box.center
-    loop = GameplayLoop.combat_only()
+    loop = CombatLoop()
 
     loop.process_combat_and_separation(
         1 / 60,
@@ -333,7 +334,7 @@ def test_invalid_frame_data_fails_fast() -> None:
         entity_at(0.0, definition=attack(invalid_cancel))
 
 
-# ── P0.1 golden trajectoires + recensement (hitbox_amelioration.md) ─────────
+# ── P0.1 golden trajectoires + recensement ─────────
 #
 # The trajectories below freeze the prediction geometry frame by frame
 # (`attack_state.animation_frame`), owner fixed at x=0. Any change to these
@@ -374,7 +375,7 @@ def _drive(name: str, attacks: dict) -> list[tuple[str, int, tuple | None]]:
 
 
 def test_golden_dash_attack_trajectory() -> None:
-    frames = _drive("dash_attack", PLAYER_ATTACKS)
+    frames = _drive("dash_attack", SHOWCASE)
 
     assert len(frames) == 13
     # Pas de frame startup : startup=1 bascule en ACTIVE avant le 1er sync.
@@ -384,9 +385,9 @@ def test_golden_dash_attack_trajectory() -> None:
 
 
 def test_golden_sweeping_arc_trajectory() -> None:
-    frames = _drive("sweeping_arc", PLAYER_ATTACKS)
+    frames = _drive("sweeping_arc", SHOWCASE)
 
-    assert len(frames) == 17
+    assert len(frames) == SHOWCASE["sweeping_arc"].total_frames
     assert [sub for sub, _, _ in frames].count("startup") == 5
     assert [sub for sub, _, _ in frames].count("active") == 6
     assert frames[0] == ("startup", 0, (38.333, 17.333, 32.5, 16.333))
@@ -396,7 +397,7 @@ def test_golden_sweeping_arc_trajectory() -> None:
 
 
 def test_golden_sky_launcher_trajectory() -> None:
-    frames = _drive("sky_launcher", PLAYER_ATTACKS)
+    frames = _drive("sky_launcher", SHOWCASE)
 
     assert len(frames) == 22
     assert [sub for sub, _, _ in frames].count("startup") == 6
@@ -412,7 +413,7 @@ def test_golden_special_attack_phase_transitions() -> None:
     de la phase precedente) et change de taille (offset (0,-20) constant,
     pas de keyframes). Premier ACTIVE de phase N = boite du startup de N.
     """
-    frames = _drive("special_attack", PLAYER_ATTACKS)
+    frames = _drive("special_attack", SHOWCASE)
 
     assert len(frames) == 110  # 4 * 18 + 38
     # Frontieres internes entre phases (le tick final idle ramene phase 0).
@@ -444,51 +445,36 @@ def test_golden_claw_swipe_phase_transitions() -> None:
 
     Phase 0 : 40x20 offset (20,-4) -> centre (40,16) ; phase 1 : 48x24
     offset (24,4) -> centre (44,24). Le premier tick de phase 1 expose la
-    geometrie du startup de phase 1 (jamais l ACTIVE de phase 0).
+    geometrie du startup de phase 1 (jamais l ACTIVE de phase 0). Pinned on
+    the claw's static two-box form, kept in the showcase set: the shipped claw
+    now swings.
     """
-    frames = _drive("claw_swipe", GOBLIN_ATTACKS)
+    first, second = SHOWCASE["claw_swipe"].phases
+    frames = _drive("claw_swipe", SHOWCASE)
+    boundary = first.total_frames - 1  # the tick phase 1 begins on
 
-    assert len(frames) == 25  # 13 + 12
+    assert len(frames) == first.total_frames + second.total_frames
     boundaries = [i for i in range(1, len(frames) - 1) if frames[i][1] != frames[i - 1][1]]
-    assert boundaries == [12]
-    assert [sub for sub, _, _ in frames].count("startup") == 5
-    assert [sub for sub, _, _ in frames].count("active") == 10
+    assert boundaries == [boundary]
+    assert [sub for sub, _, _ in frames].count("startup") == (
+        first.startup_frames + second.startup_frames - 1
+    )
+    assert [sub for sub, _, _ in frames].count("active") == (
+        first.active_frames + second.active_frames
+    )
     assert frames[0] == ("startup", 0, (40.0, 16.0, 40.0, 20.0))
-    assert frames[12] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
+    assert frames[boundary] == ("startup", 1, (44.0, 24.0, 48.0, 24.0))
     assert all(
-        box == (40.0, 16.0, 40.0, 20.0) for _, ph, box in frames[:12] if box is not None and ph == 0
+        box == (40.0, 16.0, 40.0, 20.0)
+        for _, ph, box in frames[:boundary]
+        if box is not None and ph == 0
     )
     assert all(
         box == (44.0, 24.0, 48.0, 24.0)
-        for _, ph, box in frames[12:-1]
+        for _, ph, box in frames[boundary:-1]
         if box is not None and ph == 1
     )
     assert frames[-1] == ("idle", 0, None)
-
-
-def _crouched_attacker(attacks: dict):
-    """A player holding Down, for the survey's crouch-only moves.
-
-    Only a player has a crouch posture, so a bare entity cannot stand in for
-    one: it resolves to GROUND or AIR from floor contact and has no way to be
-    asked for CROUCH.
-    """
-    from src.entities.player import Player
-    from src.entities.player_config import PlayerConfig
-    from tests.unit.helpers import InputStub
-
-    player = Player(
-        pos=(0.0, 0.0),
-        groups=Group(),
-        collision_sprites=Group(),
-        moving_platforms=[],
-        input_manager=InputStub(),
-        config=PlayerConfig(attacks=dict(attacks)),
-    )
-    player.faction = "A"
-    player.on_surface["floor"] = True
-    player.crouch._wanted = True
-    return player
 
 
 def _lethal_jumps(attacks: dict, name: str) -> list[float]:
@@ -498,15 +484,11 @@ def _lethal_jumps(attacks: dict, name: str) -> list[float]:
     `_attacker_ready`, donc seuls ces sauts peuvent changer un contact en P1.
     """
     # Launched from a posture the move declares it can be thrown from: the
-    # posture is part of the move now, not a state name, so a survey over every
-    # move has to supply one. AIR flips floor contact off; CROUCH needs a real
-    # player, since only a player owns a crouch.
+    # posture is part of the move, so a survey over every move has to supply
+    # one. AIR flips floor contact off.
     stance = next(iter(attacks[name].stances))
-    if stance is Stance.CROUCH:
-        owner = _crouched_attacker(attacks)
-    else:
-        owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
-        owner.on_surface["floor"] = stance is Stance.GROUND
+    owner = make_entity(pos=(0.0, 0.0), faction="A", attacks=dict(attacks))
+    owner.on_surface["floor"] = stance is Stance.GROUND
     assert owner.combat.start_attack(name), f"{name} from {stance}"
     jumps: list[float] = []
     prev: tuple[float, float] | None = None
@@ -535,6 +517,7 @@ def test_census_no_lethal_window_jump_needs_sweep_on_static_owner() -> None:
     worst: dict[str, float] = {}
     for set_name, sets in (
         ("player", PLAYER_ATTACKS),
+        ("showcase", {name: SHOWCASE[name] for name in ("sweeping_arc", "dash_attack")}),
         ("goblin", GOBLIN_ATTACKS),
         ("slime", SLIME_ATTACKS),
     ):
@@ -542,6 +525,20 @@ def test_census_no_lethal_window_jump_needs_sweep_on_static_owner() -> None:
             jumps = _lethal_jumps(sets, name)
             worst[f"{set_name}.{name}"] = max(jumps, default=0.0)
 
-    assert worst["player.sweeping_arc"] == pytest.approx(2.427, abs=0.01)
+    assert worst["showcase.sweeping_arc"] == pytest.approx(2.427, abs=0.01)
+    arcs = {
+        f"{set_name}.{name}"
+        for set_name, sets in (
+            ("player", PLAYER_ATTACKS),
+            ("goblin", GOBLIN_ATTACKS),
+            ("slime", SLIME_ATTACKS),
+        )
+        for name, definition in sets.items()
+        if any(len(phase.hitbox_keyframes) > 1 for phase in definition.phases)
+    }
     for key, value in worst.items():
-        assert value < 4.0, f"{key}: saut letal {value:.2f} px >= seuil sweep"
+        # A swung or thrust box moves through the window by design: the sweep covers it,
+        # and ``test_the_sweep_catches_a_target_between_two_poses_of_a_turning_blade``
+        # says so. Every other box still stays put.
+        limit = CombatSettings.SWEEP_MAX_DISPLACEMENT_PX if key in arcs else 4.0
+        assert value < limit, f"{key}: saut letal {value:.2f} px >= seuil"

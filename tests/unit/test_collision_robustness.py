@@ -1,15 +1,23 @@
 """Collision robustness: slide-on-graze, bounded resolve, crush, sticky carry."""
 
+from types import SimpleNamespace
+
 import pygame
 import pytest
 
-from src.core.settings import Collision, PlatformRide
+from src.core.settings import Collision, Combat, PlatformRide
 from src.physics.collisions import resolve_collisions
 from src.physics.movement import _revert_carry_crush, apply_moving_platform, move_entity
 
 
 class RobustEntity:
     """Collision entity with crush/carry bookkeeping like the real one."""
+
+    def wall_bounce_factor(self) -> float:
+        """The entity decides its own wall bounce, physics stays state-agnostic."""
+        if self.state_machine.current_state_name == "knockback":
+            return Combat.WALL_BOUNCE_FACTOR
+        return 0.0
 
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()
@@ -31,6 +39,7 @@ class RobustEntity:
         self.gravity_scale = 1.0
         self.fast_fall = False
         self.spatial_hash = None
+        self.state_machine = SimpleNamespace(current_state_name=None)
 
     def sync_rects(self) -> None:
         self.rect.midbottom = self.hitbox.midbottom
@@ -49,8 +58,6 @@ class RobustEntity:
 
 
 def _tile(box: pygame.FRect):
-    from types import SimpleNamespace
-
     return SimpleNamespace(rect=box, hitbox=box.copy(), old_hitbox=box.copy())
 
 
@@ -187,3 +194,17 @@ def test_full_move_resets_crush_flag() -> None:
     move_entity(entity, 1 / 60)
 
     assert entity.crushed is False
+
+
+def test_a_ground_snap_agrees_with_the_collider() -> None:
+    entity = RobustEntity(pygame.FRect(50, 98, 40, 48))
+    entity.old_hitbox = pygame.FRect(50, 98, 40, 48)
+    entity.velocity = pygame.math.Vector2(0, 40.0)
+    entity.max_fall_speed = 1500.0
+    floor = _tile(pygame.FRect(0, 148, 200, 32))
+    entity.collision_sprites = [floor]
+
+    move_entity(entity, 1 / 60)
+
+    assert entity.hitbox.bottom == pytest.approx(148.0)
+    assert entity.rect.bottom == pytest.approx(entity.hitbox.bottom)

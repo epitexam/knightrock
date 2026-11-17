@@ -8,9 +8,10 @@ frozen dataclasses as the runtime model:
 
 - files are **strict**: unknown keys, missing fields, bad versions and
   unknown attack references raise :class:`GameplayDataError`;
-- if a file is missing (older bundle, modder setup), the loader falls
-  back to the historical Python values with a warning, so the game never
-  refuses to boot for a data problem.
+- ``attacks.json``, ``enemies.json`` and ``player.json`` are required: there is
+  no second Python copy to fall back to, so a missing or malformed balance file
+  refuses to boot rather than starting on values nobody reviewed. Only
+  ``levels.json`` has a built-in fallback path.
 
 Layout
 ------

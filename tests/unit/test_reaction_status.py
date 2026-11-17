@@ -10,7 +10,6 @@ import pytest
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
-from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
 from src.entities.components.reaction import (
     VELOCITY_KINDS,
@@ -34,7 +33,7 @@ def test_shared_state_names_match_the_enums() -> None:
 def test_velocity_kinds_cover_applied_pushes_only() -> None:
     """Overlay-red kinds: every applied push, never the stagger lock."""
     actual = set(VELOCITY_KINDS)
-    assert actual == {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
+    assert actual == {ReactionKind.PUSH, ReactionKind.LAUNCH}
     assert ReactionKind.STAGGER not in VELOCITY_KINDS
     assert ReactionKind.PARRIED not in VELOCITY_KINDS
 
@@ -50,7 +49,7 @@ def test_apply_knockback_arms_push_status() -> None:
         magnitude=pytest.approx(Vector2(300.0, -100.0).length()),
         direction=1.0,
     )
-    assert owner.reaction_age == pytest.approx(ReactionMark.DURATION)
+    assert owner.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION)
 
 
 def test_apply_knockback_direction_follows_the_source_side() -> None:
@@ -84,7 +83,7 @@ def test_zero_power_knockback_does_not_arm() -> None:
     component.apply_knockback(KnockbackConfig(power=(0.0, 0.0)), source_center_x=None)
 
     assert component.status is None
-    assert owner.reaction_age == 0.0
+    assert owner.render_hints.reaction_age == 0.0
 
 
 def test_heavy_knockback_arms_launch_and_drives_the_state_machine() -> None:
@@ -141,26 +140,11 @@ def test_absorbed_stagger_does_not_arm() -> None:
     assert component.status is None
 
 
-def test_note_guard_push_arms_guarded_status() -> None:
+def test_note_parry_arms_parried_status() -> None:
     owner = _narrow_owner()
     component = ReactionComponent(owner)
 
-    component.note_guard_push(KnockbackConfig(power=(300.0, -100.0)), source_center_x=None)
-
-    assert component.status == ReactionStatus(
-        kind=ReactionKind.GUARDED,
-        magnitude=pytest.approx(300.0 * GuardSettings.PUSH_FACTOR),
-        direction=1.0,
-    )
-
-
-def test_note_guard_push_parried_arms_parried_status() -> None:
-    owner = _narrow_owner()
-    component = ReactionComponent(owner)
-
-    component.note_guard_push(
-        KnockbackConfig(power=(300.0, -100.0)), source_center_x=None, parried=True
-    )
+    component.note_parry(KnockbackConfig(power=(300.0, -100.0)), source_center_x=None)
 
     assert component.status == ReactionStatus(
         kind=ReactionKind.PARRIED,
@@ -188,11 +172,11 @@ def test_reaction_age_decays_in_entity_update() -> None:
     entity = make_entity()
     entity._reaction.apply_knockback(KnockbackConfig(power=(300.0, 0.0)), source_center_x=None)
 
-    assert entity.reaction_age == pytest.approx(ReactionMark.DURATION)
+    assert entity.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION)
     entity.update(0.1)
-    assert entity.reaction_age == pytest.approx(ReactionMark.DURATION - 0.1)
+    assert entity.render_hints.reaction_age == pytest.approx(ReactionMark.DURATION - 0.1)
     entity.update(ReactionMark.DURATION)
-    assert entity.reaction_age == 0.0
+    assert entity.render_hints.reaction_age == 0.0
     # The cause itself survives the freshness window; only freshness expires.
     assert entity.reaction_status is not None
     assert entity.reaction_status.kind is ReactionKind.PUSH
@@ -214,9 +198,9 @@ def test_rollback_round_trip_without_the_field() -> None:
     entity._reaction.apply_knockback(KnockbackConfig(power=(300.0, 0.0)), source_center_x=None)
     snapshot = entity.save_state()
 
-    entity.reaction_age = 0.123
+    entity.render_hints.reaction_age = 0.123
     entity.load_state(snapshot)
 
-    assert entity.reaction_age == pytest.approx(0.123)
+    assert entity.render_hints.reaction_age == pytest.approx(0.123)
     assert entity.reaction_status is not None
     assert entity.reaction_status.kind is ReactionKind.PUSH

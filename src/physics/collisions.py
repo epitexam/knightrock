@@ -1,11 +1,12 @@
 from collections.abc import Iterable
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, Combat, GameFeel, Separation
-from src.physics.spatial_hash import SpatialHash
+from src.core.settings import Collision, GameFeel
+from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
+from src.physics.spatial_query import make_query
 
 
 class CollisionSprite(Protocol):
@@ -23,6 +24,12 @@ class CollisionEntity(Protocol):
     velocity: Vector2
     on_surface: dict[str, bool]
     collision_sprites: Iterable[CollisionSprite]
+    move_axis: float
+    crushed: bool
+
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns (0 when not knocked)."""
+        ...
 
     def sync_rects(self) -> None: ...
 
@@ -47,7 +54,7 @@ def _extract_collider(
     if old_box is None:
         rect = getattr(sprite, "rect", None)
         old_box = rect if rect is not None else box
-    return old_box, bool(getattr(sprite, "one_way", False))
+    return old_box, is_one_way(sprite)
 
 
 def _shift_is_free(
@@ -59,7 +66,7 @@ def _shift_is_free(
     for other in nearby_sprites:
         if other is ignore:
             continue
-        box = getattr(other, "hitbox", getattr(other, "rect", None))
+        box = collider_box(other)
         if box is not None and shifted.colliderect(box):
             return False
     return True
@@ -67,8 +74,8 @@ def _shift_is_free(
 
 def hitbox_collide(a: CollisionSprite, b: CollisionSprite) -> bool:
     """Return whether the hitboxes of two sprites overlap."""
-    box_a = getattr(a, "hitbox", a.rect)
-    box_b = getattr(b, "hitbox", b.rect)
+    box_a = collider_box(a)
+    box_b = collider_box(b)
     if isinstance(box_a, (pygame.FRect, pygame.Rect)) and isinstance(
         box_b, (pygame.FRect, pygame.Rect)
     ):
@@ -84,26 +91,9 @@ def get_nearby_sprites(
     """Return the collision sprites near the given sprite.
 
     Uses spatial hash for O(1) lookup when available, otherwise falls back
-    to the original O(n) search (PERF-01).
+    to the original O(n) search.
     """
-    # Only use spatial_hash if it's actually a SpatialHash instance
-    if isinstance(spatial_hash, SpatialHash):
-        # The grid stores heterogeneous members (rect-only tiles as well as
-        # hitbox-bearing sprites); every consumer re-derives the box with
-        # getattr, so narrowing the member type back to CollisionSprite is
-        # safe here.
-        return cast(list[CollisionSprite], spatial_hash.get_nearby(sprite.hitbox))
-
-    # Fallback to original O(n) search for backward compatibility
-    if collision_sprites is None:
-        return []
-    search_area = sprite.hitbox.inflate(Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
-    return [
-        other
-        for other in collision_sprites
-        if (box := getattr(other, "hitbox", getattr(other, "rect", None))) is not None
-        and search_area.colliderect(box)
-    ]
+    return make_query(spatial_hash, collision_sprites).get_nearby(sprite.hitbox)
 
 
 def update_contact_state(
@@ -113,27 +103,29 @@ def update_contact_state(
     """Update floor/left/right contact flags for an entity."""
     hq = entity.hitbox.height / 4
     hh = entity.hitbox.height / 2
+    hitbox = entity.hitbox
 
+    # Built from scalars rather than Vector2/FRect temporaries: this runs for
+    # every entity every tick (and up to 6 ticks per frame).
     floor_rect = pygame.FRect(
-        entity.hitbox.bottomleft, (entity.hitbox.width, Collision.PROBE_THICKNESS_PX)
+        hitbox.left, hitbox.bottom, hitbox.width, Collision.PROBE_THICKNESS_PX
     )
-    right_rect = pygame.FRect(
-        Vector2(entity.hitbox.topright) + Vector2(0, hq),
-        (Collision.PROBE_WIDTH_PX, hh),
-    )
+    right_rect = pygame.FRect(hitbox.right, hitbox.top + hq, Collision.PROBE_WIDTH_PX, hh)
     left_rect = pygame.FRect(
-        Vector2(entity.hitbox.topleft) + Vector2(-Collision.WALL_PROBE_OFFSET_PX, hq),
-        (Collision.PROBE_WIDTH_PX, hh),
+        hitbox.left - Collision.WALL_PROBE_OFFSET_PX,
+        hitbox.top + hq,
+        Collision.PROBE_WIDTH_PX,
+        hh,
     )
 
     on = entity.on_surface
     on["floor"] = on["right"] = on["left"] = False
 
     for sprite in collision_sprites:
-        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        box = collider_box(sprite)
         if box is None:
             continue
-        one_way = getattr(sprite, "one_way", False)
+        one_way = is_one_way(sprite)
         # A one-way platform only supports an entity resting on its top:
         # an entity inside its body (jumping through) gets no contact.
         if floor_rect.colliderect(box) and (
@@ -155,15 +147,8 @@ def update_contact_state(
 
 
 def _flag_crushed(entity: CollisionEntity) -> None:
-    """Mark a deep-overlap correction (guarded for foreign test stubs)."""
-    if hasattr(entity, "crushed"):
-        entity.crushed = True
-
-
-def _is_knocked(entity: CollisionEntity) -> bool:
-    """Whether the entity is flying in its knockback reaction state."""
-    state_machine = getattr(entity, "state_machine", None)
-    return getattr(state_machine, "current_state_name", None) == "knockback"
+    """Mark a deep-overlap correction."""
+    entity.crushed = True
 
 
 def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:
@@ -205,8 +190,7 @@ def _try_corner_correct(
     corner = GameFeel.CORNER_CORRECT_PX
     if corner <= 0 or entity.velocity.y >= 0:
         return False
-    move_axis = float(getattr(entity, "move_axis", 0.0) or 0.0)
-    direction = 1.0 if move_axis > 0 else -1.0 if move_axis < 0 else 0.0
+    direction = 1.0 if entity.move_axis > 0 else -1.0 if entity.move_axis < 0 else 0.0
     if direction == 0.0:
         return False
     for offset in (direction * corner, -direction * corner):
@@ -268,8 +252,9 @@ def _resolve_horizontal(
         entity.hitbox.left = _resolve_with_cap(
             entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
         )
-    if _is_knocked(entity) and Combat.WALL_BOUNCE_FACTOR > 0:
-        entity.velocity.x = -entity.velocity.x * Combat.WALL_BOUNCE_FACTOR
+    bounce = entity.wall_bounce_factor()
+    if bounce > 0:
+        entity.velocity.x = -entity.velocity.x * bounce
     elif penetration >= Collision.MIN_PENETRATION_PX:
         entity.velocity.x = 0
 

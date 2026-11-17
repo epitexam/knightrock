@@ -1,12 +1,11 @@
 """Player configuration dataclass for data-driven player initialization."""
 
-import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from src.combat.frame_data import AttackDefinition, MoveId
 from src.core.colors import Colors
-from src.core.settings import Combat, Guard, Physics
+from src.core.settings import Combat, Physics
 from src.entities.hurtbox_zones import HurtboxZoneDef
 
 
@@ -67,18 +66,12 @@ class PlayerConfig:
         Duration after leaving a surface where jump is still allowed.
     jump_buffer_duration : float
         Duration to buffer a jump input before landing.
-    guard_posture_max : float
-        Maximum guard posture before break.
-    guard_break_lockout : float
-        Lockout after a guard break.
     max_dash_charges : int
         Maximum number of dash charges.
     dash_speed : float
         Horizontal speed during a dash.
     dash_duration : float
         Duration of a dash in seconds.
-    dash_friction : float
-        Friction applied during a dash.
     dash_penalty_duration : float
         Duration of penalty after a dash.
     dash_recharge_time : float
@@ -113,12 +106,9 @@ class PlayerConfig:
     max_wall_jumps: int | float = float("inf")
     coyote_duration: float = Physics.COYOTE_DURATION
     jump_buffer_duration: float = Physics.JUMP_BUFFER_DURATION
-    guard_posture_max: float = Guard.MAX_POSTURE
-    guard_break_lockout: float = Guard.BREAK_LOCKOUT
     max_dash_charges: int = Physics.DASH_MAX_CHARGES
     dash_speed: float = Physics.DASH_SPEED
     dash_duration: float = Physics.DASH_DURATION
-    dash_friction: float = Physics.DASH_FRICTION
     dash_penalty_duration: float = Physics.DASH_PENALTY_TIME
     dash_recharge_time: float = Physics.DASH_RECHARGE_TIME
     dash_gravity_mult: float = Physics.DASH_GRAVITY_MULT
@@ -128,38 +118,3 @@ class PlayerConfig:
     faction: str = "player"
     # P2 multi-hurtbox: None = legacy fallback on ``hurtbox_inflate``.
     hurtbox_zones: tuple[HurtboxZoneDef, ...] | None = None
-
-
-DEFAULT_PLAYER_CONFIG = PlayerConfig(
-    size=(48.0, 56.0),
-    color=Colors.pink,
-    health=100.0,
-    max_health=100.0,
-    hitbox_inflate=(-8.0, 0.0),
-    speed=Physics.PLAYER_SPEED,
-    floor_control=Physics.FLOOR_CONTROL,
-    air_control=Physics.AIR_CONTROL,
-    jump_height=Physics.JUMP_FORCE,
-    wall_jump_height=Physics.JUMP_FORCE * 0.90 * 1.15,
-    wall_jump_push_multiplier=1.3,
-    wall_jump_lock_duration=0.18,
-    wall_jump_min_lock=0.08,
-    wall_slide_speed=Physics.WALL_SLIDE_SPEED,
-    max_midair_jumps=1,
-    max_wall_jumps=math.inf,
-    coyote_duration=Physics.COYOTE_DURATION,
-    jump_buffer_duration=Physics.JUMP_BUFFER_DURATION,
-    guard_posture_max=Guard.MAX_POSTURE,
-    guard_break_lockout=Guard.BREAK_LOCKOUT,
-    max_dash_charges=Physics.DASH_MAX_CHARGES,
-    dash_speed=Physics.DASH_SPEED,
-    dash_duration=Physics.DASH_DURATION,
-    dash_friction=Physics.DASH_FRICTION,
-    dash_penalty_duration=Physics.DASH_PENALTY_TIME,
-    dash_recharge_time=Physics.DASH_RECHARGE_TIME,
-    dash_gravity_mult=Physics.DASH_GRAVITY_MULT,
-    dash_coyote_time=Physics.DASH_COYOTE_TIME,
-    hurt_duration=Combat.PLAYER_HURT_DURATION,
-    invincibility_duration=Combat.INVINCIBILITY_DURATION,
-    faction="player",
-)

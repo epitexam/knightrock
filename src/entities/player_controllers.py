@@ -1,15 +1,9 @@
-"""Player capability controllers extracted from ``Player``.
-
-``Player`` composes jump, guard, and dash mechanics. Each controller owns
-its timers and exposes ``can_use`` / ``update``. ``Player`` passes
-orchestration flags (``on_floor``, ``is_guarding``) in by the caller.
-"""
+"""The player's jump and dash: each controller owns its timers and its snapshot."""
 
 from dataclasses import dataclass
 
 import pygame
 
-from src.core.settings import Guard as GuardSettings
 from src.entities.player_config import PlayerConfig
 
 DASH_HITBOX_SQUISH = 0.6
@@ -25,14 +19,6 @@ class JumpSnapshot:
     wall_jump_lock_timer: float
     midair_jumps_left: int
     wall_jumps_left: int | float
-
-
-@dataclass(frozen=True)
-class GuardSnapshot:
-    posture: float
-    lockout_timer: float
-    parry_timer: float
-    riposte_timer: float
 
 
 @dataclass(frozen=True)
@@ -112,7 +98,7 @@ class JumpController:
         self.wall_jumps_left = self.max_wall_jumps
 
     def save_state(self) -> JumpSnapshot:
-        """Capture runtime state for rollback (Phase 3 #3)."""
+        """Capture runtime state for rollback."""
         return JumpSnapshot(
             jump_buffer_timer=self.jump_buffer_timer,
             coyote_timer=self.coyote_timer,
@@ -128,94 +114,6 @@ class JumpController:
         self.wall_jump_lock_timer = snapshot.wall_jump_lock_timer
         self.midair_jumps_left = snapshot.midair_jumps_left
         self.wall_jumps_left = snapshot.wall_jumps_left
-
-
-class GuardController:
-    """Directional guard posture with a parry window and break lockout."""
-
-    def __init__(self, config: PlayerConfig) -> None:
-        self.max_posture: float = config.guard_posture_max
-        self.break_lockout: float = config.guard_break_lockout
-        self.posture: float = self.max_posture
-        self.lockout_timer: float = 0.0
-        self.parry_timer: float = 0.0
-        self.riposte_timer: float = 0.0
-
-    def can_use(self) -> bool:
-        return self.lockout_timer <= 0 and self.posture > 0
-
-    def press(self) -> None:
-        if self.lockout_timer <= 0:
-            self.parry_timer = GuardSettings.PARRY_WINDOW
-
-    def update(self, delta_time: float, is_guarding: bool) -> None:
-        if self.lockout_timer > 0:
-            self.lockout_timer -= delta_time
-        if self.parry_timer > 0:
-            self.parry_timer -= delta_time
-        if self.riposte_timer > 0:
-            self.riposte_timer -= delta_time
-        if not is_guarding and self.posture < self.max_posture:
-            self.posture = min(
-                self.posture + delta_time * GuardSettings.REGEN_PER_S,
-                self.max_posture,
-            )
-
-    def take_hit(
-        self,
-        amount: float,
-        in_air: bool,
-        unblockable: bool = False,
-        height: str = "mid",
-        crouching: bool = False,
-        block_mask: str = "any",
-        hit_level: str = "med",
-    ) -> tuple[str, float, bool]:
-        if unblockable:
-            return ("none", 0.0, False)
-        if block_mask not in GuardSettings.BLOCK_MASK_POSTURE:
-            raise ValueError(f"Unknown block mask: {block_mask}")
-        required_crouching = GuardSettings.BLOCK_MASK_POSTURE[block_mask]
-        if required_crouching is not None and required_crouching != crouching:
-            return ("none", 0.0, False)
-        if not GuardSettings.HEIGHT_BLOCK.get((height, crouching), True):
-            return ("none", 0.0, False)
-        if self.parry_timer > 0:
-            self.posture = self.max_posture
-            self.riposte_timer = GuardSettings.RIPOSTE_WINDOW
-            self.parry_timer = 0.0
-            return ("parry", 0.0, True)
-        mult = (
-            GuardSettings.AIR_POSTURE_MULT if in_air else 1.0
-        ) * GuardSettings.POSTURE_COST_MULT.get(hit_level, 1.0)
-        self.posture -= amount * GuardSettings.POSTURE_COST_RATIO * mult
-        chip = amount * GuardSettings.CHIP_RATIO
-        if self.posture <= 0:
-            self.posture = 0.0
-            self.lockout_timer = self.break_lockout
-            self.riposte_timer = 0.0
-            return ("break", chip, False)
-        return ("guard", chip, False)
-
-    def reset(self) -> None:
-        self.posture = self.max_posture
-        self.lockout_timer = 0.0
-        self.parry_timer = 0.0
-        self.riposte_timer = 0.0
-
-    def save_state(self) -> GuardSnapshot:
-        return GuardSnapshot(
-            posture=self.posture,
-            lockout_timer=self.lockout_timer,
-            parry_timer=self.parry_timer,
-            riposte_timer=self.riposte_timer,
-        )
-
-    def load_state(self, snapshot: GuardSnapshot) -> None:
-        self.posture = snapshot.posture
-        self.lockout_timer = snapshot.lockout_timer
-        self.parry_timer = snapshot.parry_timer
-        self.riposte_timer = snapshot.riposte_timer
 
 
 class DashController:
@@ -237,7 +135,6 @@ class DashController:
         self.max_charges: int = config.max_dash_charges
         self.speed: float = config.dash_speed
         self.duration: float = config.dash_duration
-        self.friction: float = config.dash_friction
         self.penalty_duration: float = config.dash_penalty_duration
         self.recharge_time: float = config.dash_recharge_time
         self.gravity_mult: float = config.dash_gravity_mult
@@ -279,6 +176,12 @@ class DashController:
             self.recharge_timer = self.recharge_time
         if self.charges == 0:
             self.penalty_timer = self.penalty_duration
+
+    def refill(self) -> None:
+        """Give every charge back at once, and lift the penalty for having spent them all."""
+        self.charges = self.max_charges
+        self.recharge_timer = 0.0
+        self.penalty_timer = 0.0
 
     def update(self, delta_time: float) -> None:
         """Run the penalty window, then recharge spent charges."""
@@ -329,7 +232,7 @@ class DashController:
         self.coyote_timer = 0.0
 
     def save_state(self) -> DashSnapshot:
-        """Capture runtime state for rollback (Phase 3 #3)."""
+        """Capture runtime state for rollback."""
         return DashSnapshot(
             charges=self.charges,
             recharge_timer=self.recharge_timer,

@@ -1,4 +1,4 @@
-"""Shared typed-JSON plumbing for gameplay data (Phase 3 #4)."""
+"""Shared typed-JSON plumbing for gameplay data."""
 
 from __future__ import annotations
 
@@ -63,6 +63,37 @@ def reject_unknown(raw: dict[str, Any], allowed: frozenset[str] | set[str], wher
             f"{where}: unknown field(s) {', '.join(repr(key) for key in unknown)}; "
             f"expected one of {', '.join(sorted(allowed))}"
         )
+
+
+# -- shared scalar validators -----------------------------------------------
+# A gameplay JSON file is hand-edited. Python's coercions are too forgiving
+# for that: bool("false") is True, and float("12") accepts a typo that should
+# have been a JSON number. These validators refuse anything but the declared
+# JSON type, naming the field in the error.
+
+
+def read_bool(value: Any, where: str) -> bool:
+    """A JSON boolean at ``where``; strings such as ``"false"`` are refused."""
+    if not isinstance(value, bool):
+        raise GameplayDataError(f"{where}: expected a boolean, got {value!r}")
+    return value
+
+
+def read_number(value: Any, where: str) -> float:
+    """A JSON number at ``where``; numeric strings and booleans are refused."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise GameplayDataError(f"{where}: expected a number, got {value!r}")
+    return float(value)
+
+
+def read_int(value: Any, where: str) -> int:
+    """A JSON integer at ``where``; integral floats are accepted, strings are not."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise GameplayDataError(f"{where}: expected an integer, got {value!r}")
+    number = float(value)
+    if not number.is_integer():
+        raise GameplayDataError(f"{where}: expected an integer, got {value!r}")
+    return int(number)
 
 
 # -- shared shape validators ------------------------------------------------

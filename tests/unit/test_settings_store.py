@@ -10,7 +10,6 @@ from src.application.settings_store import (
     SettingsStore,
     UserSettings,
 )
-from src.core.display.mode import DisplayMode
 
 
 def _write_v1(tmp_path: Path, *, width: int, height: int, fullscreen: bool) -> Path:
@@ -43,7 +42,7 @@ def _write_legacy(tmp_path: Path, version: int, video: dict[str, object]) -> Pat
 def test_settings_store_roundtrips_video_ui_and_bindings(tmp_path: Path) -> None:
     store = SettingsStore(tmp_path / "settings.json")
     settings = UserSettings(
-        display=DisplayMode.WINDOW,
+        window_size=(1600, 900),
         pixel_perfect=True,
         vsync=True,
         frame_limit=144,
@@ -56,32 +55,78 @@ def test_settings_store_roundtrips_video_ui_and_bindings(tmp_path: Path) -> None
     assert loaded == settings
     payload = json.loads(store.path.read_text(encoding="utf-8"))
     assert payload["version"] == SETTINGS_FORMAT_VERSION
-    assert payload["video"]["display"] == "window"
+    assert payload["window"]["size"] == [1600, 900]
     assert payload["video"]["pixel_perfect"] is True
     assert payload["video"]["frame_limit"] == 144
     assert payload["ui"]["scale"] == 1.2
 
 
-def test_the_saved_file_holds_no_window_size(tmp_path: Path) -> None:
-    """The regression, stated as a test: nothing may describe the window.
+def test_an_old_file_carrying_a_screen_and_a_mode_still_loads(tmp_path: Path) -> None:
+    """The keys that named a screen and a display mode were dropped, not banned.
 
-    Every key here used to exist. ``width``/``height``/``size_mode`` were a claim
-    about the player's monitor that the game could not check and that went stale
-    the moment the window moved; ``render_scale`` was a claim about how a fixed
-    target should be sharpened, and it was the setting that got frozen -- written
-    back once at launch and then believed forever, so the menu said 2x while the
-    game drew at 1x. With the target being the window, all four have nothing left
-    to say.
+    A settings file written before that still carries them, and refusing to load
+    it would cost the player every binding they had rebound -- which is the
+    expensive half to rebuild and the half that must never be lost over a video
+    key the game no longer knows what to do with.
+    """
+    payload = UserSettings(
+        window_size=(1600, 900), vsync=True, frame_limit=144, pixel_perfect=True
+    ).to_dict()
+    assert isinstance(payload, dict)
+    payload["video"]["display"] = "borderless"
+    payload["video"]["monitor"] = "VG271U M3"
+    payload["video"]["fullscreen_mode"] = [2560, 1440]
+    payload["window"]["position"] = [0, 0]
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = SettingsStore(path).load()
+
+    assert loaded == UserSettings(
+        window_size=(1600, 900), vsync=True, frame_limit=144, pixel_perfect=True
+    )
+    for gone in ("display", "monitor", "fullscreen_mode", "window_position"):
+        assert not hasattr(loaded, gone), f"{gone} is gone and cannot come back"
+
+
+def test_the_saved_file_holds_no_unhonourable_window_claim(tmp_path: Path) -> None:
+    """The regression, restated against the claims that survived it.
+
+    This used to be ``test_the_saved_file_holds_no_window_size``, and it was
+    right for v3: every key in the file was a claim the game could not check, so
+    none of them could be stored. One of them has since been made *checkable*,
+    and that is what allows it back:
+
+    - a **window size** is a request the stage clamps to the panel it opens on and
+      never writes back, so a size from a 4K desk survives arriving at a laptop
+      instead of being overwritten. It is the one window number the player chose,
+      and the one number this menu still owns.
+
+    What is still refused is the rest: ``render_scale`` described a fixed render
+    target that no longer exists, ``smoothing`` described a per-frame resample
+    that no longer happens, and the screen picker and the display mode described a
+    request the window manager has the last word on. None has anything to say.
+
+    ``window.screen`` is not the screen picker coming back. It is the *name* of
+    the screen the window closed on, remembered and never chosen: at launch it
+    either matches a screen that is there or it matches nothing and the primary
+    is used. An index or a position could name the wrong panel on another
+    machine; a name that is absent can only be ignored.
     """
     store = SettingsStore(tmp_path / "settings.json")
     store.save(UserSettings())
-    video = json.loads(store.path.read_text(encoding="utf-8"))["video"]
+    payload = json.loads(store.path.read_text(encoding="utf-8"))
 
-    assert set(video) == {"display", "pixel_perfect", "vsync", "frame_limit"}
-    assert not hasattr(UserSettings(), "width")
-    assert not hasattr(UserSettings(), "size_mode")
-    assert not hasattr(UserSettings(), "render_scale")
-    assert not hasattr(UserSettings(), "smoothing")
+    assert set(payload["video"]) == {
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
+    assert set(payload["window"]) == {"size", "last", "screen", "fullscreen"}
+    for dead in ("width", "height", "size_mode", "render_scale", "smoothing"):
+        assert not hasattr(UserSettings(), dead), f"{dead} is gone and cannot come back"
+        assert dead not in payload["video"], f"{dead} has nothing left to describe"
 
 
 def test_a_v2_file_keeps_its_bindings_and_drops_its_window_claims(tmp_path: Path) -> None:
@@ -110,7 +155,7 @@ def test_a_v2_file_keeps_its_bindings_and_drops_its_window_claims(tmp_path: Path
     loaded = store.load()
 
     assert loaded.bindings == UserSettings().bindings
-    assert loaded.display is DisplayMode.FULLSCREEN
+    assert not hasattr(loaded, "display")
     assert loaded.vsync is True
     assert loaded.frame_limit == 144
     assert not hasattr(loaded, "width")
@@ -128,19 +173,18 @@ def test_uncapped_survives_the_round_trip(tmp_path: Path) -> None:
 
 
 def test_a_v1_file_is_read_and_gains_the_new_fields(tmp_path: Path) -> None:
-    """A v1 player who asked for fullscreen gets borderless, not a mode change.
+    """A v1 player keeps their controls and takes the default window.
 
-    That mapping is a decision, not a rename: v1 fullscreen asked the driver for
-    a mode, which is the thing that blanks a hybrid-GPU laptop. The size it also
-    carried is dropped rather than honoured -- it came off a fixed catalogue, so
-    honouring it would leave the game as the only component that still believes
-    in a window size.
+    ``fullscreen: true`` asked the driver for a mode, which is the thing that
+    blanks a hybrid-GPU laptop, and the size it also carried came off a fixed
+    catalogue. Both are dropped rather than honoured: the game is a resizable
+    window now, and a player who wants it big drags it.
     """
     store = SettingsStore(_write_v1(tmp_path, width=1600, height=900, fullscreen=True))
 
     loaded = store.load()
 
-    assert loaded.display is DisplayMode.BORDERLESS
+    assert not hasattr(loaded, "display")
     assert loaded.pixel_perfect is False
     assert loaded.frame_limit == DEFAULT_FRAME_LIMIT
     assert loaded.vsync is True
@@ -151,10 +195,13 @@ def test_a_v1_file_is_read_and_gains_the_new_fields(tmp_path: Path) -> None:
     ), "saving after a migration upgrades the file"
 
 
-def test_a_v1_windowed_file_becomes_a_window(tmp_path: Path) -> None:
+def test_a_v1_windowed_file_keeps_its_choices(tmp_path: Path) -> None:
     path = _write_v1(tmp_path, width=1280, height=720, fullscreen=False)
 
-    assert SettingsStore(path).load().display is DisplayMode.WINDOW
+    loaded = SettingsStore(path).load()
+
+    assert not hasattr(loaded, "display")
+    assert loaded.vsync is True
 
 
 @pytest.mark.parametrize(
@@ -162,7 +209,6 @@ def test_a_v1_windowed_file_becomes_a_window(tmp_path: Path) -> None:
     [
         {"frame_limit": 5},
         {"frame_limit": 5000},
-        {"display": "holographic"},
         {"pixel_perfect": "yes"},
         {"vsync": 1},
     ],

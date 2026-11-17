@@ -1,45 +1,27 @@
 """BUG-03: hazards (saw/spike/floor_spike) must deal damage on overlap."""
 
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pygame
 
 from src.core.level.systems.hazard_damage import HazardDamageSystem
+from tests.fakes import BodyStub, HazardStub
 
 
-def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False) -> SimpleNamespace:
-    return SimpleNamespace(
-        is_dead=is_dead,
-        hitbox=hitbox,
-        velocity=pygame.Vector2(0, 0),
-        receive_damage=Mock(return_value=None),
-    )
+def make_entity(hitbox: pygame.FRect, *, is_dead: bool = False, entity_id: str = "e1") -> BodyStub:
+    """A body with a ``receive_damage`` spy."""
+    body = BodyStub(hitbox, entity_id=entity_id)
+    body.is_dead = is_dead
+    body.receive_damage = Mock(return_value=None)  # type: ignore[method-assign]
+    return body
 
 
-class FakeHazard:
-    def __init__(
-        self,
-        rect: pygame.FRect,
-        *,
-        damage: float = 25.0,
-        knockback=None,
-    ) -> None:
-        self.rect = rect
-        self.damage = damage
-        self.knockback = knockback
+FakeHazard = HazardStub
 
 
-class _MovingHazard:
-    def __init__(self, previous: pygame.FRect, current: pygame.FRect) -> None:
-        self.rect = current
-        self._previous = previous
-        self.damage = 25.0
-
-    def swept_contact_rect(self) -> pygame.FRect:
-        from src.combat.sweep import swept_box
-
-        return swept_box(self._previous, self.rect)
+def _MovingHazard(previous: pygame.FRect, current: pygame.FRect) -> HazardStub:  # noqa: N802
+    """A hazard that moved from ``previous`` to ``current`` during the tick."""
+    return HazardStub(current, previous=previous)
 
 
 def test_moving_hazard_sweeps_target_between_positions() -> None:
@@ -69,7 +51,7 @@ def test_hazard_applies_configured_damage() -> None:
 
 def test_hazard_uses_default_damage_when_unspecified() -> None:
     entity = make_entity(pygame.FRect(0, 0, 40, 40))
-    hazard = SimpleNamespace(rect=pygame.FRect(10, 10, 64, 64))
+    hazard = HazardStub(pygame.FRect(10, 10, 64, 64), damage=HazardDamageSystem.DEFAULT_DAMAGE)
     system = HazardDamageSystem()
 
     system.process([entity], [hazard])
@@ -100,6 +82,50 @@ def test_hazard_ignores_dead_entities() -> None:
 def test_hazard_defaults_are_non_zero_threat() -> None:
     assert HazardDamageSystem.DEFAULT_DAMAGE > 0
     assert HazardDamageSystem.DEFAULT_KNOCKBACK.power != (0.0, 0.0)
+
+
+def test_a_hazard_damages_the_same_target_once_per_cooldown() -> None:
+    """A saw re-emits its box every tick; the target may not be damaged by it.
+
+    An enemy configures no invincibility window, so without a per-target
+    cooldown a twenty-damage saw kills a hundred-hit-point enemy in five ticks.
+    """
+    entity = make_entity(pygame.FRect(0, 0, 40, 40))
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    for _ in range(60):
+        system.process([entity], [hazard])
+
+    calls = entity.receive_damage.call_count
+    assert calls <= 3, f"{calls} hits in one second of contact: the cooldown is not holding"
+
+
+def test_the_cooldown_is_per_target_and_not_global() -> None:
+    """A saw that stops damaging one target still damages the next."""
+    first = make_entity(pygame.FRect(0, 0, 40, 40), entity_id="e1")
+    second = make_entity(pygame.FRect(0, 0, 40, 40), entity_id="e2")
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    system.process([first], [hazard])
+    assert first.receive_damage.call_count == 1
+    assert second.receive_damage.call_count == 0
+
+    system.process([first, second], [hazard])
+    assert second.receive_damage.call_count == 1
+
+
+def test_the_cooldown_forgets_a_hazard_that_left_the_level() -> None:
+    entity = make_entity(pygame.FRect(0, 0, 40, 40))
+    hazard = FakeHazard(pygame.FRect(10, 10, 64, 64), damage=25.0)
+    system = HazardDamageSystem()
+
+    system.process([entity], [hazard])
+    assert system._cooldowns
+
+    system.process([entity], [])
+    assert not system._cooldowns
 
 
 # -- the per-hazard box cache -------------------------------------------------
@@ -170,9 +196,13 @@ def test_a_hazard_that_leaves_the_level_releases_its_box() -> None:
 
 
 def test_the_cache_survives_an_unhashable_producer() -> None:
-    """Producers are duck-typed, and a stand-in need not be hashable."""
+    """The cache is keyed by identity, so a hazard need not be hashable."""
+
+    class Unhashable(HazardStub):
+        __hash__ = None  # type: ignore[assignment]
+
     system = HazardDamageSystem()
-    hazard = SimpleNamespace(rect=pygame.FRect(10, 10, 64, 64), damage=25.0)
+    hazard = Unhashable(pygame.FRect(10, 10, 64, 64))
 
     first = system.produce_boxes([], [hazard])
     second = system.produce_boxes([], [hazard])

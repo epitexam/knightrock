@@ -1,70 +1,107 @@
-"""Video settings: how to occupy the screen, and how it is presented.
+"""Video settings: the window's size, and how the picture is presented.
 
-Sole owner of the display settings. They used to be duplicated in the Options
-hub, which let the player change the same value from two places; the Options
-screen is now navigation only.
-
-There is no resolution row, and that is the point rather than an omission. A
-list of window sizes is a claim about the player's monitor that the game cannot
-check -- offering 2560x1440 to a 1366x768 laptop is what that costs -- and a
-remembered size is a claim that goes stale: in borderless the window is the
-desktop's size whatever the file says, and the row would go on displaying a
-number the game was not using. The window is now the only source of truth, the
-player resizes it with the window manager, and the picture follows. So every row
-here is something the game can actually honour: a mode, whole-pixel art, a
-refresh, a cadence, a text size.
+The only owner of the display settings; Options is navigation only. The rows
+are the ``ROWS`` table. A setting with many values opens a list
+(:class:`~src.application.scenes.option_screen.OptionScreen`) built in
+:mod:`src.application.scenes.video_options`; a two-state setting toggles with
+←/→. The sizes offered come from the panel the window is on, never from a
+fixed catalogue.
 """
 
-from typing import TYPE_CHECKING
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.application.scene import Scene
-from src.application.settings_store import (
-    FRAME_LIMITS,
-    PANEL_SCALES,
-    UI_SCALES,
-    UserSettings,
-)
-from src.core.display.detection import desktop_refresh_rates
+from src.application.scenes import video_options
+from src.application.scenes.menu_page import MenuPage
+from src.application.scenes.option_screen import Option, OptionScreen
+from src.application.settings_store import UserSettings
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import (
-    already_a_whole_multiple,
-    fits_whole_pixel,
-    letterbox,
-)
-from src.core.display.mode import DisplayMode
+from src.core.display.letterbox import FitPolicy, density_for, picture
 from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.settings import Debug
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.ui.menu_model import MenuAction, MenuItem
+from src.ui.text import t
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.scene_context import SceneContext
 
-#: The modes offered as a cycle, ``AUTO`` first: it is a real choice -- "decide
-#: again next launch, on whatever machine I am on" -- and the row shows what it
-#: resolves to until the player picks something else.
-DISPLAY_VALUES = (
-    DisplayMode.AUTO,
-    DisplayMode.BORDERLESS,
-    DisplayMode.WINDOW,
-    DisplayMode.FULLSCREEN,
-)
+#: What a submenu builder returns: a title, the options, the value in force,
+#: and what to call with the one picked.
+Submenu = tuple[str, tuple[Option, ...], Any, Callable[[Any], None]]
 
 
-class VideoScene(Scene):
-    TITLE = "VIDEO"
-    SCALE_VALUES: tuple[float, ...] = UI_SCALES
-    PANEL_SCALE_VALUES: tuple[float, ...] = PANEL_SCALES
+@dataclass(frozen=True)
+class Row:
+    """One row of the Video screen: what it reads, and what pressing it does.
+
+    A row does exactly one thing -- opens a list, toggles a setting, runs an
+    action, or only reports -- and the one row allowed to do none of them is
+    Back. A row with nothing to do is refused when the table is built, which is
+    what makes the "dead row" this screen produced twice impossible.
+    """
+
+    action: str
+    label: str
+    value: Callable[[VideoScene], str] | None = None
+    #: Builds the list the row opens.
+    submenu: Callable[[VideoScene], Submenu] | None = None
+    #: The boolean setting the row toggles.
+    toggle: str | None = None
+    #: What the row does when pressed.
+    run: Callable[[VideoScene], None] | None = None
+    #: A read-out: shown, never focused.
+    readout: bool = False
+    #: A section heading: shown, never focused.
+    header: bool = False
+    #: Only shown with ``DEBUG`` on.
+    debug_only: bool = False
+    #: The line shown under the list while the row is focused.
+    note: Callable[[VideoScene], str] | None = None
+
+    def __post_init__(self) -> None:
+        jobs = sum(
+            (
+                self.submenu is not None,
+                self.toggle is not None,
+                self.run is not None,
+                self.readout,
+                self.header,
+            )
+        )
+        if jobs > 1 or (jobs == 0 and self.action != "back"):
+            raise ValueError(f"The {self.action!r} row must do exactly one thing")
+
+
+def _kind(row: Row) -> str:
+    """What the view says a press on ``row`` does."""
+    if row.header:
+        return "header"
+    if row.submenu is not None:
+        return "list"
+    if row.toggle is not None:
+        return "toggle"
+    return ""
+
+
+class VideoScene(MenuPage):
+    scrollable = True
+    TITLE = t("title.video")
     VALUE_FLASH_SECONDS = 0.5
-    FOOTER = "↑↓ row · ←→ change · Esc back"
+    FOOTER = "footer.values"
+    #: The help line of the lists this screen opens.
+    SUBMENU_FOOTER = "footer.page"
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         super().__init__(game)
-        self.model = MenuModel()
-        self.view: MenuView = MenuView(game.ui_scale)
         self._signature = self._current_signature()
         self._flash_row = -1
         self._flash_remaining = 0.0
@@ -76,64 +113,84 @@ class VideoScene(Scene):
         """The settings this screen renders, used to skip redundant rebuilds."""
         settings = self.game.settings
         return (
-            settings.display,
             settings.pixel_perfect,
             settings.vsync,
+            settings.fullscreen,
             settings.frame_limit,
             settings.ui_scale,
             settings.panel_scale,
+            settings.fit,
             # The debug row is conditional on this, and the rebuild is skipped
             # when the signature is unchanged -- so without the flag in the
             # signature, flipping DEBUG mid-session would leave the menu
             # describing a set of rows the model does not have.
             Debug.is_enabled(),
+            # The rate the window is actually on, so the VSync row follows the
+            # window from one panel to another.
             self._screen_refresh_rate(),
             self._window_size(),
         )
 
     def _rebuild(self, selected_action: str | None = None) -> None:
-        settings = self.game.settings
-        items = (
-            MenuItem("display", "Display", self._display_label()),
+        """The rows from :attr:`ROWS`, focus kept on ``selected_action``."""
+        items = tuple(
             MenuItem(
-                "pixel_perfect",
-                "Whole-pixel art",
-                self._pixel_perfect_label(),
-                fits_whole_pixel(self._window_size(), DEFAULT_FRAMING),
-            ),
-            MenuItem("vsync", "VSync", self._vsync_label()),
-            MenuItem("frame_limit", "Frame limit", self._frame_limit_label()),
-            MenuItem("scale", "UI scale", f"{settings.ui_scale:.1f}x"),
-            # Debug only, because it is the one row here the game cannot honour
-            # for a player who never sees the overlay: without ``DEBUG`` there
-            # are no panels to size. Gated on ``Debug.is_enabled()`` rather than
-            # a stored flag, since ``--debug`` is nothing but the environment
-            # variable and this screen is built after the game is up.
-            *(
-                (
-                    MenuItem(
-                        "panel_scale",
-                        "Debug panel scale",
-                        f"{settings.panel_scale:g}x",
-                    ),
-                )
-                if Debug.is_enabled()
-                else ()
-            ),
-            MenuItem("reset", "Reset video settings"),
-            MenuItem("back", "Back"),
-            MenuItem("info", "Window", self._window_label(), enabled=False),
+                row.action,
+                t(row.label),
+                row.value(self) if row.value is not None else "",
+                enabled=not (row.readout or row.header),
+                kind=_kind(row),
+            )
+            for row in self.ROWS
+            if not row.debug_only or Debug.is_enabled()
         )
         selected = next(
             (index for index, item in enumerate(items) if item.action == selected_action), 0
         )
         self.model.set_items(items, selected)
 
-    def _display_label(self) -> str:
-        mode = self.game.settings.display
-        if mode is DisplayMode.AUTO:
-            return f"auto ({detection_resolution(self)})"
-        return mode.value
+    def _row(self, action: str) -> Row | None:
+        return next((row for row in self.ROWS if row.action == action), None)
+
+    def description(self) -> str:
+        """The focused row's note, in the player's words."""
+        current = self.model.current_item
+        return self._note_of(current.action) if current is not None else ""
+
+    def notes(self) -> tuple[str, ...]:
+        return tuple(self._note_of(item.action) for item in self.model.items)
+
+    def _note_of(self, action: str) -> str:
+        row = self._row(action)
+        return row.note(self) if row is not None and row.note is not None else ""
+
+    def _on_off(self, value: bool) -> str:
+        return t("value.on") if value else t("value.off")
+
+    def _fullscreen_label(self) -> str:
+        return self._on_off(self.game.settings.fullscreen)
+
+    def _ui_scale_label(self) -> str:
+        return f"{self.game.settings.ui_scale:.1f}x"
+
+    def _ui_scale_note(self) -> str:
+        density = 1.0 if self.game.presentation is None else self.game.presentation.density
+        return t("note.ui_scale", effective=self.game.settings.ui_scale * density)
+
+    def _panel_scale_label(self) -> str:
+        return f"{self.game.settings.panel_scale:g}x"
+
+    def _fit_label(self) -> str:
+        """The policy the game draws with, which is not always the stored one."""
+        return t(f"fit.{self.game.effective_fit().value}")
+
+    def _fit_note(self) -> str:
+        return t(f"fit.note.{self.game.effective_fit().value}")
+
+    def _size_label(self) -> str:
+        """The size the window has right now, not the one remembered for next launch."""
+        width, height = self._window_size()
+        return t("value.size", width=width, height=height)
 
     def _window_size(self) -> tuple[int, int]:
         """The window the picture is actually in.
@@ -151,76 +208,46 @@ class VideoScene(Scene):
         return (round(DEFAULT_FRAMING.width), round(DEFAULT_FRAMING.height))
 
     def _window_label(self) -> str:
-        """What the game derived from the window, so the player can see it.
+        """The debug read-out: target size, density, and whether there are bars.
 
-        The information the resolution row used to withhold by showing a number
-        the game was not using. Two facts, both derived and neither stored: how
-        big the picture is inside the window, and how many pixels a world unit
-        gets there.
+        Computed with the fit in force (:meth:`Game.effective_fit`), not the saved
+        one, the same way the presentation computes it.
         """
-        size = self._window_size()
-        rect = letterbox(size, DEFAULT_FRAMING, pixel_perfect=self.game.settings.pixel_perfect)
-        bars = "" if rect.size == tuple(size) else " + bars"
-        return f"{rect.width}x{rect.height} at {rect.width / DEFAULT_FRAMING.width:.2f}x{bars}"
-
-    def _pixel_perfect_label(self) -> str:
-        """The whole-pixel row, which has to be able to say "not here" twice.
-
-        Two different windows where the setting is honoured and the picture does
-        not move: one too small to hold a whole multiple at all, and one already
-        sized to one. The first is a refusal and says so; the second is the row
-        working perfectly and has nothing to do, which without saying so reads as
-        a dead row -- the label flips while the screen sits still, which is what
-        a dead row looks like.
-
-        The order is load-bearing rather than incidental: the two branches ask
-        the same question in opposite directions and the refusal is the one that
-        has to win, or a window too small for the art would be told there is
-        nothing left to do.
-        """
-        size = self._window_size()
-        if not fits_whole_pixel(size, DEFAULT_FRAMING):
-            return "off (window too small)"
-        if self.game.settings.pixel_perfect and already_a_whole_multiple(size, DEFAULT_FRAMING):
-            return "on (already whole)"
-        return self._on_off(self.game.settings.pixel_perfect)
+        fitted = picture(self._window_size(), DEFAULT_FRAMING, self.game.effective_fit())
+        density = density_for(fitted.target.size, DEFAULT_FRAMING)
+        bars = "" if fitted.covered else " + bars"
+        return f"{fitted.target.width}x{fitted.target.height} at {density:.2f}x{bars}"
 
     def _vsync_label(self) -> str:
+        """On or off. Whether the driver honoured it is in the note: a request."""
+        return self._on_off(self.game.settings.vsync)
+
+    def _vsync_note(self) -> str:
+        """What VSync does here, at which screen's rate.
+
+        The driver cannot be asked whether it honoured the flag, so the note says
+        "requested". The rate is left out when the window's screen is unknown.
+        """
+        if not self.game.settings.vsync:
+            return t("note.vsync.off")
         rate = self._screen_refresh_rate()
-        suffix = f" {rate} Hz screen" if rate else ""
-        if self.game.settings.vsync and not self._vsync_is_active():
-            # The driver did not honour the request, and saying so is the whole
-            # point of checking: the setting looks alive either way, and the only
-            # symptom otherwise is a frame rate that never settles.
-            #
-            # What it must not do is answer "off". The player asked for on, the
-            # player pressed something that visibly did land, and a row that
-            # reads "off" after an "on" press is a row that reads as broken --
-            # which is the same symptom the sentence was supposed to prevent, and
-            # the exact reason these two rows were reported as dead. So the
-            # setting is reported first and the driver's refusal is the caveat
-            # on it, not the headline in place of it.
-            return f"on (not honoured){suffix}"
-        return f"{self._on_off(self.game.settings.vsync)}{suffix}"
+        return t("note.vsync.on", rate=rate) if rate else t("note.vsync.on.unknown")
 
     def _frame_limit_label(self) -> str:
         limit = self.game.settings.frame_limit
-        return "Uncapped" if limit is None else str(limit)
+        return t("value.uncapped") if limit is None else str(limit)
 
-    @staticmethod
-    def _on_off(value: bool) -> str:
-        return "on" if value else "off"
+    def _frame_limit_note(self) -> str:
+        """The limit is inert under VSync: the present paces, and the row says so."""
+        return t("note.frame_limit.vsync" if self.game.settings.vsync else "note.frame_limit")
 
-    @staticmethod
-    def _screen_refresh_rate() -> int:
-        rates = desktop_refresh_rates()
-        return rates[0] if rates else 0
+    def _screen_refresh_rate(self) -> int:
+        """The refresh rate of the screen the window is on, or 0 when unknown.
 
-    def _vsync_is_active(self) -> bool:
-        try:
-            return bool(pygame.display.is_vsync())
-        except pygame.error:
-            return False
+        Not the primary's: on a two-screen desk that is the wrong number.
+        """
+        monitor = self.game.window_monitor()
+        return monitor.refresh_rate if monitor is not None else 0
 
     # --------------------------------------------------------------- cycling
 
@@ -242,61 +269,106 @@ class VideoScene(Scene):
         self._flash_row = self.model.current_index if current is not None else -1
         self._flash_remaining = self.VALUE_FLASH_SECONDS if self._flash_row >= 0 else 0.0
 
-    def handle_routed(self, routed: RoutedInput) -> str | None:
-        if routed.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
-            if routed.variant != "device_removed":
-                self.game.scene_manager.pop()
-                return MenuAction.BACK
-            return None
-        if self._handle_row_value_navigation(routed):
-            return MenuAction.ACTIVATE
-        action, _ = self.model.handle_routed(
-            routed.action, routed.position, self.view.item_rects, routed.variant
-        )
-        if action in self.CYCLING_ROWS:
-            # A click on a value row steps it forward, the same as →.
-            #
-            # It used to do nothing, which is the same as a dead row: the focus
-            # moved, so the click *looked* like it had landed, and the value
-            # only changed if you then pressed a direction or Enter. Six of the
-            # nine rows were dead to the mouse that way, and the only ones that
-            # worked were the three handled by name below -- which is a bug that
-            # reads as "this menu is awkward" rather than as a bug, because a
-            # row that highlights on click looks alive.
-            self._cycle(action, InputAction.UI_RIGHT, click=True)
-        elif action == "reset":
-            self._reset()
-        elif action == "back":
-            self.game.scene_manager.pop()
-            return MenuAction.BACK
-        return action
+    def handle_value_keys(self, routed: RoutedInput) -> str | None:
+        return MenuAction.ACTIVATE if self._handle_row_value_navigation(routed) else None
 
-    #: Rows whose value a press -- or a click -- steps. Every other row on this
-    #: screen is named in :meth:`handle_routed` (``reset``, ``back``) or is not
-    #: an action at all (``info``, which only reports). A row in neither set is a
-    #: row that does nothing, and this list is the check that there is no such
-    #: row: ``test_every_row_does_something`` reads it against the real model.
-    CYCLING_ROWS = (
-        "display",
-        "pixel_perfect",
-        "vsync",
-        "frame_limit",
-        "scale",
-        "panel_scale",
-    )
+    def act(self, action: str) -> None:
+        row = self._row(action)
+        if row is None:
+            return
+        if row.submenu is not None:
+            # A click on a list row opens the list, the same as → and as Enter.
+            self._open(action)
+        elif row.toggle is not None:
+            self._cycle_bool(InputAction.UI_RIGHT, row.toggle, click=True)
+        elif row.run is not None:
+            row.run(self)
+
+    def _open(self, action: str) -> None:
+        """Push the list a row owns."""
+        row = self._row(action)
+        if row is None or row.submenu is None:
+            logger.warning("The %r row has no list to open", action)
+            return
+        title, options, selected, apply = row.submenu(self)
+        self.game.scene_manager.push(
+            OptionScreen(
+                self.game,
+                title,
+                options,
+                apply,
+                selected=selected,
+                footer=self.SUBMENU_FOOTER,
+                # Back on the row that opened the list, not on the first row.
+                on_back=lambda: self._rebuild(action),
+            )
+        )
+
+    def _submenu_fit(self) -> Submenu:
+        return (
+            t("title.fit"),
+            video_options.fit_options(self._window_size()),
+            self.game.effective_fit(),
+            self._apply_fit,
+        )
+
+    def _apply_fit(self, policy: FitPolicy) -> None:
+        """Choose a fit policy, keeping the whole-pixel flag consistent with it.
+
+        ``pixel_perfect`` is the older name for the integer policy and a v3 file
+        may still carry it, so it is written alongside rather than left to
+        override the choice on the next launch -- which is what used to happen.
+        """
+        self._apply(
+            self.game.settings.with_video(fit=policy, pixel_perfect=policy is FitPolicy.INTEGER)
+        )
+
+    def _submenu_size(self) -> Submenu:
+        """The list behind the window-size row, for the panel the window is on."""
+        monitor = self.game.monitor()
+        return (
+            t("title.window_size"),
+            video_options.window_size_options(
+                monitor, self.game.settings.window_size, self._window_size()
+            ),
+            self.game.settings.window_size,
+            self._apply_window_size,
+        )
+
+    def _apply_window_size(self, size: tuple[int, int] | None) -> None:
+        """Ask for a window size, or ``None`` to forget it and keep the dragged size."""
+        self._apply(self.game.settings.with_video(window_size=size))
+
+    def _submenu_frame_limit(self) -> Submenu:
+        return (
+            t("title.frame_limit"),
+            video_options.frame_limit_options(self.game.settings.vsync),
+            self.game.settings.frame_limit,
+            lambda value: self._apply(self.game.settings.with_video(frame_limit=value)),
+        )
+
+    def _submenu_scale(self) -> Submenu:
+        density = 1.0 if self.game.presentation is None else self.game.presentation.density
+        return (
+            t("title.ui_scale"),
+            video_options.ui_scale_options(self.game.settings.ui_scale, density),
+            self.game.settings.ui_scale,
+            lambda value: self._apply(self.game.settings.with_video(ui_scale=value)),
+        )
+
+    def _submenu_panel_scale(self) -> Submenu:
+        return (
+            t("title.panel_scale"),
+            video_options.panel_scale_options(),
+            self.game.settings.panel_scale,
+            lambda value: self._apply(self.game.settings.with_video(panel_scale=value)),
+        )
 
     def _handle_row_value_navigation(self, routed: RoutedInput) -> bool:
-        """←/→ adjust the focused row's value, and Enter does the same.
+        """←/→ and Enter act on the focused value row.
 
-        Every value row acts on all three, so a gamepad never lands on a row it
-        cannot use.
-
-        A row that is *not* usable -- the whole-pixel art on a window too small
-        to hold one, the window read-out -- swallows the press instead of
-        passing it on. The alternative was worse than a dead key: the menu model
-        answers an action on a disabled row by activating the nearest enabled
-        one, so Enter on the read-out line silently changed the display mode. A
-        row that cannot be used has to do nothing, visibly.
+        On a disabled row they are swallowed: passed on, the model would act on the
+        nearest enabled row instead.
         """
         current = self.model.current_item
         if current is None:
@@ -309,55 +381,20 @@ class VideoScene(Scene):
             return False
         if not current.enabled:
             return True
-        return self._cycle(current.action, routed.action)
-
-    def _cycle(self, name: str, action: InputAction, *, click: bool = False) -> bool:
-        """Step one row's value: forwards on a click and on →, back on ←.
-
-        One implementation for both paths, deliberately. The two used to be
-        separate lists naming the same rows, which is exactly how a click ended
-        up wired to three of them and a key to six. A row the pointer cannot
-        reach is a row the pointer cannot use.
-        """
-        cyclers = {
-            "display": lambda: self._cycle_enum(action, DISPLAY_VALUES, "display"),
-            "pixel_perfect": lambda: self._cycle_bool(action, "pixel_perfect", click=click),
-            "vsync": lambda: self._cycle_bool(action, "vsync", click=click),
-            "frame_limit": lambda: self._cycle_frame_limit(action),
-            "scale": lambda: self._cycle_scale(action),
-            "panel_scale": lambda: self._cycle_panel_scale(action),
-        }
-        cycler = cyclers.get(name)
-        if cycler is None:
+        row = self._row(current.action)
+        if row is None:
             return False
-        cycler()
-        return True
-
-    def _cycle_enum(self, action: InputAction, values: tuple, name: str) -> None:
-        current = getattr(self.game.settings, name)
-        index = values.index(current) if current in values else 0
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(self.game.settings.with_video(**{name: values[(index + step) % len(values)]}))
+        if row.submenu is not None:
+            self._open(current.action)
+            return True
+        if row.toggle is not None:
+            self._cycle_bool(routed.action, row.toggle)
+            return True
+        return False
 
     def _cycle_bool(self, action: InputAction, name: str, *, click: bool = False) -> None:
-        # A left/right press sets the value rather than toggling it: toggling
-        # makes ← and → behave identically, which reads as one of them broken.
-        #
-        # A click is not that. It is one discrete gesture with no direction to
-        # read a value out of, so on a row that already reads "on" it has to
-        # flip. Setting it instead made the row answer half the time, which is
-        # the same as a row that reads as dead -- and the two together are what
-        # made the screen look broken rather than merely terse.
-        #
-        # **Confirm is a click.** It is the same discrete gesture with no
-        # direction, which makes it the case above and not the one below, and it
-        # used to be handled as ← anyway: it fell through to the same
-        # `action is UI_RIGHT` test, so every confirm set the row *off* and none
-        # could ever be turned on. Whole-pixel art and VSync were the two rows
-        # it hit, and with a gamepad -- where confirm is how you press a button,
-        # not how you step a value -- both were dead in the only direction a
-        # player would try. Arrow keys worked, so the rows looked alive to a
-        # test written with arrow keys and dead to a player holding one.
+        # ← sets off and → sets on, so the two keys differ. A click or Enter has
+        # no direction and flips: treated as ←, Enter could never turn a row on.
         current = getattr(self.game.settings, name)
         if click or action is InputAction.UI_CONFIRM:
             value = not current
@@ -365,51 +402,18 @@ class VideoScene(Scene):
             value = action is InputAction.UI_RIGHT
         self._apply(self.game.settings.with_video(**{name: value}))
 
-    def _cycle_frame_limit(self, action: InputAction) -> None:
-        current = self.game.settings.frame_limit
-        index = FRAME_LIMITS.index(current) if current in FRAME_LIMITS else 0
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(
-            self.game.settings.with_video(
-                frame_limit=FRAME_LIMITS[(index + step) % len(FRAME_LIMITS)]
-            )
-        )
-
-    def _cycle_scale(self, action: InputAction) -> None:
-        current = self.game.settings.ui_scale
-        index = self.SCALE_VALUES.index(current) if current in self.SCALE_VALUES else 1
-        step = -1 if action is InputAction.UI_LEFT else 1
-        size = len(self.SCALE_VALUES)
-        self._apply(
-            self.game.settings.with_video(ui_scale=self.SCALE_VALUES[(index + step) % size])
-        )
-
-    def _cycle_panel_scale(self, action: InputAction) -> None:
-        """Step the debug-panel scale, on its own ladder.
-
-        ``PANEL_SCALE_VALUES`` and not ``SCALE_VALUES``: the panels start from
-        ``Debug.FONT_SIZE = 24`` over a design frame, so the interface ladder's
-        lowest step (0.8) is not a reduction at all -- at 1.0 only one of the
-        five placeable panels finds a slot on a 640x480 window. This ladder goes
-        to 0.4 for that, and 0.5 is where the full stack fits.
-        """
-        current = self.game.settings.panel_scale
-        values = self.PANEL_SCALE_VALUES
-        index = values.index(current) if current in values else 4
-        step = -1 if action is InputAction.UI_LEFT else 1
-        self._apply(self.game.settings.with_video(panel_scale=values[(index + step) % len(values)]))
-
     def _reset(self) -> None:
-        """Put every video setting back to its default, and only those.
+        """Put the video settings back to their defaults, and only those.
 
-        The bindings are carried over untouched: this is the video screen, and
-        a player who resets it should not lose the controls they just rebound.
+        The bindings are kept, and so is the window size: it is where the player
+        dragged the window, not a picture choice. ``fit`` and ``pixel_perfect``
+        reset together, as they are one setting.
         """
         defaults = UserSettings()
         self._apply(
             self.game.settings.with_video(
-                display=defaults.display,
                 pixel_perfect=defaults.pixel_perfect,
+                fit=defaults.fit,
                 vsync=defaults.vsync,
                 frame_limit=defaults.frame_limit,
                 ui_scale=defaults.ui_scale,
@@ -419,37 +423,80 @@ class VideoScene(Scene):
 
     def _apply(self, settings: UserSettings) -> None:
         selected_action = self.model.current_item.action if self.model.current_item else None
-        self.game.apply_settings(settings)
+        try:
+            self.game.apply_settings(settings)
+        except pygame.error as error:
+            # The platform refused the window. ``apply_settings`` rolled back, so
+            # the game is still in the state it was in: say so rather than crash.
+            logger.warning("The display refused the new settings: %s", error)
+            self.game.notice("The display refused that setting.", "Nothing was changed.")
         self._rebuild(selected_action)
         self._signature = self._current_signature()
         self._flash_value_change()
 
-    def set_ui_scale(self, scale: float) -> None:
-        self.view.set_scale(scale)
+    def highlighted(self) -> int:
+        return self._flash_row
 
     def draw(self, surface: pygame.Surface) -> None:
         if self._current_signature() != self._signature:
             self._signature = self._current_signature()
             focused = self.model.current_item.action if self.model.current_item else None
             self._rebuild(focused)
-        self.view.set_scale(self.game.ui_scale)
-        self.view.draw(
-            surface,
-            self.TITLE,
-            self.model,
-            top=150,
-            highlighted=self._flash_row,
-            footers=(self.FOOTER,),
-        )
+        super().draw(surface)
 
+    # ------------------------------------------------------------- the table
 
-def detection_resolution(scene: VideoScene) -> str:
-    """What AUTO resolves to on this machine, for the row that has not been decided.
-
-    Read from the platform rather than remembered, which is the difference
-    between a label that is right and one that is right until the player moves
-    the window to another screen.
-    """
-    from src.core.display.detection import auto_display_mode, desktop_size
-
-    return auto_display_mode(DEFAULT_FRAMING, desktop_size()).value
+    #: Every row on this screen, in order. The single place a row is declared.
+    ROWS: tuple[Row, ...] = (
+        Row("section:window", "section.window", header=True),
+        Row(
+            "size",
+            "video.size",
+            _size_label,
+            submenu=_submenu_size,
+            note=lambda scene: t("note.size"),
+        ),
+        Row(
+            "fullscreen",
+            "video.fullscreen",
+            _fullscreen_label,
+            toggle="fullscreen",
+            note=lambda scene: t("note.fullscreen"),
+        ),
+        Row("section:picture", "section.picture", header=True),
+        Row("fit", "video.fit", _fit_label, submenu=_submenu_fit, note=_fit_note),
+        Row("section:performance", "section.performance", header=True),
+        Row("vsync", "video.vsync", _vsync_label, toggle="vsync", note=_vsync_note),
+        Row(
+            "frame_limit",
+            "video.frame_limit",
+            _frame_limit_label,
+            submenu=_submenu_frame_limit,
+            note=_frame_limit_note,
+        ),
+        Row("section:interface", "section.interface", header=True),
+        Row(
+            "scale", "video.ui_scale", _ui_scale_label, submenu=_submenu_scale, note=_ui_scale_note
+        ),
+        Row(
+            "panel_scale",
+            "video.panel_scale",
+            _panel_scale_label,
+            submenu=_submenu_panel_scale,
+            # No overlay without DEBUG, so nothing to size.
+            debug_only=True,
+        ),
+        Row("reset", "video.reset", run=_reset, note=lambda scene: t("note.reset")),
+        Row("back", "row.back"),
+        # A diagnostic, in the debug overlay's terms: the target, its density, bars.
+        Row(
+            "info",
+            "video.readout",
+            _window_label,
+            readout=True,
+            debug_only=True,
+        ),
+    )
+    #: The rows that open a list, and the rows that toggle, read off the table.
+    SUBMENUS = tuple(row.action for row in ROWS if row.submenu is not None)
+    CYCLING_ROWS = tuple(row.action for row in ROWS if row.toggle is not None)

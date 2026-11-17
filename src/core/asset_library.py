@@ -1,4 +1,4 @@
-"""Nascent lazy asset loading with display-format conversion (audit F4.1, Phase 1 #3).
+"""Nascent lazy asset loading with display-format conversion.
 
 Entities currently render colored rectangles. The shipped art (a hundred
 spritesheets under ``assets/graphics/``) is unused. This module is the
@@ -26,6 +26,9 @@ class AssetLibrary:
     def __init__(self) -> None:
         self._cache: dict[str, pygame.Surface] = {}
         self._frame_cache: dict[str, list[pygame.Surface]] = {}
+        #: Bumped by :meth:`clear`, so whoever derived surfaces from this
+        #: library's frames can tell theirs are from an older display format.
+        self.generation = 0
 
     def image(self, relative_path: str | Path, *, alpha: bool = True) -> pygame.Surface:
         """Return the cached converted surface for ``relative_path``.
@@ -56,11 +59,6 @@ class AssetLibrary:
         self._cache[key] = surface
         return surface
 
-    def preload(self, relative_paths: list[str | Path]) -> None:
-        """Warm the cache for a batch of paths."""
-        for relative_path in relative_paths:
-            self.image(relative_path)
-
     def frames(self, relative_directory: str | Path) -> list[pygame.Surface]:
         """Return the cached converted frame list for a sprite-sheet directory.
 
@@ -74,12 +72,8 @@ class AssetLibrary:
         player animations (graceful degradation when dash assets aren't
         available yet). For other cases, raises FileNotFoundError.
 
-        A fallback is cached under the key that was *asked for* as well as
-        the one it resolved to. The recursion returns the fallback's frames,
-        but the requester's key was never populated, so every subsequent call
-        repeated the ``is_dir()`` that discovered the fallback in the first
-        place -- a stat syscall per call, per animation, per frame, for as
-        long as the game ran.
+        The fallback is cached under both the key that was asked for and the
+        one it resolved to, so the ``is_dir()`` that discovers it runs once.
 
         Parameters
         ----------
@@ -145,6 +139,7 @@ class AssetLibrary:
         """Drop the whole cache (level transition or memory pressure)."""
         self._cache.clear()
         self._frame_cache.clear()
+        self.generation += 1
 
 
 _SHARED_LIBRARY: AssetLibrary | None = None

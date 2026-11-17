@@ -44,10 +44,11 @@ from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
 from src.core.rendering.renderer import Renderer
 from src.ui.ui_manager import UIManager
+from tests.fakes import player_shape
 
 
 def _player() -> SimpleNamespace:
-    return SimpleNamespace(
+    return player_shape(
         state_machine=SimpleNamespace(
             current_state_name="idle", previous_state_name=None, history=[]
         ),
@@ -64,9 +65,7 @@ def _player() -> SimpleNamespace:
         invincibility_timer=0.0,
         health=100.0,
         max_health=100.0,
-        guard_posture=50.0,
-        guard_posture_max=100.0,
-        guard_lockout_timer=0.0,
+        guard_recovery_timer=0.0,
         guard_riposte_timer=0.0,
         dash_charges=2,
         max_dash_charges=2,
@@ -79,7 +78,6 @@ def _player() -> SimpleNamespace:
         wall_jump_height=600.0,
         dash_speed=800.0,
         dash_duration=0.12,
-        dash_friction=15.0,
         gravity_scale=1.0,
         otg_timer=0.0,
     )
@@ -174,7 +172,7 @@ def _menu_samples(size: tuple[int, int], iterations: int) -> dict[str, float]:
     dummy SDL driver has no fast renderer, so these are CPU-only figures and
     the absolute values are not representative of a real window.
     """
-    from src.core.game import Game
+    from src.application.game import Game
 
     game = Game()
     game.initialize_display()

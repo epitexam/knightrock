@@ -7,6 +7,6 @@ tick.  Transport and remote reconciliation remain future work.
 """
 
 from src.core.rollback.rollback import RollbackSystem
-from src.core.rollback.snapshots import LevelSnapshot, PlatformSnapshot
+from src.core.rollback.snapshots import LevelSnapshot, PlatformSnapshot, ProjectileSnapshot
 
-__all__ = ["LevelSnapshot", "PlatformSnapshot", "RollbackSystem"]
+__all__ = ["LevelSnapshot", "PlatformSnapshot", "ProjectileSnapshot", "RollbackSystem"]

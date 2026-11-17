@@ -16,16 +16,15 @@ from dataclasses import replace
 import pygame
 import pytest
 
-from src.application.scenes.pause_scene import PauseScene
+from src.application.game import Game
 from src.application.scenes.video_scene import VideoScene
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
-from src.core.display.mode import DisplayMode
-from src.core.game import Game
+from src.core.display.letterbox import FitPolicy, picture
 from src.core.input.event_router import EventRouter, InputDevice
 from src.core.input.input_actions import InputAction
 from src.core.settings import Input as InputSettings
 from src.ui.controls_view import BindingCell, BindingRow, ControlsView
+from src.ui.fonts import menu_font
 from src.ui.grid_view import GridView
 from src.ui.menu_model import MenuItem, MenuModel
 from src.ui.menu_view import MenuView
@@ -81,11 +80,13 @@ def counter(monkeypatch):
     return install
 
 
-def _count_sysfont(monkeypatch):
-    """Count ``pygame.font.SysFont`` constructions, returning a counter."""
+def _count_font_builds(monkeypatch):
+    """Count font constructions, returning a counter."""
     made: list[tuple] = []
-    original = pygame.font.SysFont
-    monkeypatch.setattr(pygame.font, "SysFont", lambda *a, **k: made.append(a) or original(*a, **k))
+    original = menu_font
+    monkeypatch.setattr(
+        "src.ui.menu_view.menu_font", lambda *a, **k: made.append(a) or original(*a, **k)
+    )
     return lambda: len(made)
 
 
@@ -100,7 +101,7 @@ def test_unchanged_scale_does_not_rebuild_menu_fonts(monkeypatch, surface) -> No
     model = MenuModel([MenuItem("one", "One"), MenuItem("two", "Two")])
     view = MenuView(1.0)
     view.draw(surface, "TITLE", model, top=120)
-    made = _count_sysfont(monkeypatch)
+    made = _count_font_builds(monkeypatch)
 
     view.set_scale(1.0)
     view.draw(surface, "TITLE", model, top=120)
@@ -114,7 +115,7 @@ def test_changed_scale_still_rebuilds_menu_fonts(monkeypatch, surface) -> None:
     model = MenuModel([MenuItem("one", "One")])
     view = MenuView(1.0)
     view.draw(surface, "TITLE", model, top=120)
-    made = _count_sysfont(monkeypatch)
+    made = _count_font_builds(monkeypatch)
 
     view.set_scale(1.2)
     view.draw(surface, "TITLE", model, top=120)
@@ -302,23 +303,24 @@ class _CountingSurface(pygame.Surface):
 
 
 def test_pause_overlay_is_not_refilled_per_frame(manager) -> None:
-    """The overlay is a constant colour, so refilling it per frame is wasted.
+    """The veil under a menu page is a constant colour, so refilling it per frame is wasted.
 
     A full-screen ``SRCALPHA`` fill was the most expensive operation in the
-    pause frame, and the result was pixel-identical every time.
+    pause frame, and the result was pixel-identical every time. The veil is the
+    scene stack's now, cached per target size.
     """
-    scene = PauseScene(manager.game, level_id=0)
-    manager.switch(scene)
-    scene.draw(pygame.display.get_surface())
-    overlay = _CountingSurface(scene._overlay.get_size(), pygame.SRCALPHA)
-    overlay.fill(scene._overlay_color)
-    scene._overlay = overlay
+    surface = pygame.display.get_surface()
+    first = manager._veil_for(surface.get_size())
+    overlay = _CountingSurface(first.get_size(), pygame.SRCALPHA)
+    overlay.fill(manager.VEIL)
+    manager._veil = overlay
     overlay.fills = 0
 
-    scene.draw(pygame.display.get_surface())
-    scene.draw(pygame.display.get_surface())
+    manager._veil_for(surface.get_size())
+    manager._veil_for(surface.get_size())
 
     assert overlay.fills == 0
+    assert manager._veil is overlay
 
 
 def test_applying_only_the_ui_scale_keeps_the_window(manager, counter) -> None:
@@ -332,21 +334,23 @@ def test_applying_only_the_ui_scale_keeps_the_window(manager, counter) -> None:
     assert count() == 0
 
 
-def test_applying_a_display_mode_change_rebuilds_the_window(manager, counter) -> None:
-    """A mode is the only thing left that can replace the window."""
+def test_applying_a_window_size_change_rebuilds_the_window(manager, counter) -> None:
+    """A chosen size is the only thing left that can replace the window."""
     game = manager.game
     manager.switch(VideoScene(game))
     count = counter(pygame.display, "set_mode")
     before = game.presentation.surface
 
-    game.apply_settings(replace(game.settings, display=DisplayMode.WINDOW))
+    game.apply_settings(replace(game.settings, window_size=(1400, 900)))
 
     assert count() == 1
-    # The target is only replaced when its *size* moved. Under the dummy driver
-    # both modes hand back the same size, so the honest claim is that the
-    # picture is in step with the new window -- not that a new surface exists.
-    assert game.presentation.surface.get_size() == game.stage.size or True
-    assert game.presentation.surface.get_size() == before.get_size()
+    # The window is rebuilt at the size the player chose rather than the one the
+    # panel decides, so the picture that comes back is a different size. What
+    # still has to hold is the invariant underneath -- the picture is fitted
+    # inside the window it is in, and never larger than it on either axis.
+    assert game.presentation.surface.get_size() != before.get_size()
+    assert game.presentation.surface.get_size()[0] <= game.stage.size[0]
+    assert game.presentation.surface.get_size()[1] <= game.stage.size[1]
 
 
 def test_whole_pixel_art_rebuilds_the_target_without_rebuilding_the_window(
@@ -391,30 +395,26 @@ def test_the_letterbox_setting_and_the_letterbox_itself_cannot_disagree(manager)
     """
     game = manager.game
     manager.switch(VideoScene(game))
-    fitted = letterbox((2560, 1440), DEFAULT_FRAMING).size
-    whole = letterbox((2560, 1440), DEFAULT_FRAMING, pixel_perfect=True).size
+    fitted = picture((2560, 1440), DEFAULT_FRAMING).dest.size
+    whole = picture((2560, 1440), DEFAULT_FRAMING, FitPolicy.INTEGER).dest.size
     assert fitted != whole, "this test needs a window where the two answers differ"
 
-    for display in (DisplayMode.WINDOW, DisplayMode.BORDERLESS, DisplayMode.FULLSCREEN):
-        for pixel_perfect in (False, True):
-            game.apply_settings(
-                replace(game.settings, display=display, pixel_perfect=pixel_perfect)
-            )
+    for pixel_perfect in (False, True):
+        game.apply_settings(replace(game.settings, pixel_perfect=pixel_perfect))
 
-            # The setting reached the letterbox, whichever path was taken.
-            assert game.presentation.pixel_perfect is pixel_perfect
+        # The setting reached the letterbox, whichever path was taken.
+        assert game.presentation.pixel_perfect is pixel_perfect
 
-            # And on a window where the two answers differ, the picture is the
-            # one the flag asks for. Pinned after the change, because applying a
-            # display mode rebuilds the window from the desktop.
-            game.presentation.retarget(pygame.Surface((2560, 1440)))  # type: ignore[arg-type]
-            game._retarget()
-            expected = whole if pixel_perfect else fitted
-            assert game.presentation.rect.size == expected, (
-                f"{display.value} pixel_perfect={pixel_perfect}: the picture is "
-                f"{game.presentation.rect.size}, expected {expected}"
-            )
-            assert game.presentation.surface.get_size() == expected
+        # And on a window where the two answers differ, the picture is the
+        # one the flag asks for. Pinned after the change, because the letterbox
+        # lives on the presentation and a rebuild reads it.
+        game.presentation.retarget(pygame.Surface((2560, 1440)))  # type: ignore[arg-type]
+        game._retarget()
+        expected = whole if pixel_perfect else fitted
+        assert game.presentation.rect.size == expected, (
+            f"pixel_perfect={pixel_perfect}: the picture is "
+            f"{game.presentation.rect.size}, expected {expected}"
+        )
 
 
 def test_whole_pixel_art_is_a_no_op_on_a_window_that_cannot_hold_one(manager, counter) -> None:

@@ -2,7 +2,7 @@
 
 Extracted from ``Entity`` (audit Phase 3 #2) so knockback, heavy launch, and
 stagger live in a dedicated component wired in like ``vitals``/``combat``
-instead of sitting inline on the entity aggregate (audit F2.2).
+instead of sitting inline on the entity aggregate.
 
 The component owns the *rules*, not the state: velocity and contacts belong
 to movement, health and status timers to vitals, hurt state to combat, and
@@ -15,14 +15,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Any, Final, Protocol
 
 import pygame
 from pygame.math import Vector2
 
 from src.combat.knockback import KnockbackConfig
+from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Combat as CombatSettings
-from src.core.settings import Guard as GuardSettings
 from src.core.settings import ReactionMark
 from src.states.reaction_states import KNOCKBACK_STATE, STAGGER_STATE
 
@@ -33,6 +33,7 @@ __all__ = [
     "ReactionStatus",
     "VELOCITY_KINDS",
     "compute_knockback_direction",
+    "push_direction",
 ]
 
 
@@ -40,7 +41,6 @@ class ReactionKind(Enum):
     PUSH = "push"
     LAUNCH = "launch"
     STAGGER = "stagger"
-    GUARDED = "guarded"
     PARRIED = "parried"
 
 
@@ -48,9 +48,7 @@ class ReactionKind(Enum):
 #: vectors red while the status is fresh *or* while the knockback state still
 #: carries the entity; stagger only locks the state machine without an impulse,
 #: so it stays a locomotion-colored vector.
-VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset(
-    {ReactionKind.PUSH, ReactionKind.LAUNCH, ReactionKind.GUARDED}
-)
+VELOCITY_KINDS: Final[frozenset[ReactionKind]] = frozenset({ReactionKind.PUSH, ReactionKind.LAUNCH})
 
 
 @dataclass(frozen=True)
@@ -103,6 +101,21 @@ def compute_knockback_direction(
     return 1.0 if facing_right else -1.0
 
 
+def push_direction(
+    knockback: KnockbackConfig,
+    hitbox_centerx: float,
+    source_center_x: float | None,
+    facing_right: bool,
+) -> float:
+    """Which way a knockback pushes: its own sign when ``fixed``, else away from the source.
+
+    The one place the two modes are told apart, for a push and for a parry.
+    """
+    if knockback.mode == "fixed":
+        return 1.0 if knockback.power[0] >= 0.0 else -1.0
+    return compute_knockback_direction(hitbox_centerx, source_center_x, facing_right)
+
+
 class ReactionCombatPort(Protocol):
     """Combat operations available to Reaction."""
 
@@ -117,7 +130,6 @@ class ReactionStatePort(Protocol):
     def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None: ...
 
 
-@runtime_checkable
 class ReactionOwner(Protocol):
     """Narrow owner view operated on by ReactionComponent."""
 
@@ -128,9 +140,11 @@ class ReactionOwner(Protocol):
     stagger_timer: float
     super_armor: bool
     super_armor_count: int
-    # Render-only freshness of the last reaction; decayed in Entity.update,
-    # armed here and never snapshotted.
-    reaction_age: float
+    #: Divides every knockback the owner takes; 1.0 is the reference fighter.
+    weight: float
+    # Its ``reaction_age`` is the render-only freshness of the last reaction:
+    # armed here, decayed in Entity.update and never snapshotted.
+    render_hints: RenderHints
 
     @property
     def combat(self) -> ReactionCombatPort: ...
@@ -159,7 +173,23 @@ class ReactionComponent:
     def _arm(self, kind: ReactionKind, magnitude: float, direction: float) -> None:
         """Record the reaction cause and refresh the render-only freshness age."""
         self.status = ReactionStatus(kind=kind, magnitude=magnitude, direction=direction)
-        self._owner.reaction_age = ReactionMark.DURATION
+        self._owner.render_hints.reaction_age = ReactionMark.DURATION
+
+    def felt(self, knockback: KnockbackConfig) -> KnockbackConfig:
+        """The knockback as this owner takes it: the hit's, divided by its weight.
+
+        Applied here, before anything reads the power, so the one division
+        decides the speed of the push, how far it slides *and* whether it is
+        heavy enough to launch: a blow that sends a slime flying only shoves a
+        shell back.
+        """
+        weight = self._owner.weight
+        if weight == 1.0:
+            return knockback
+        return KnockbackConfig(
+            power=(knockback.power[0] / weight, knockback.power[1] / weight),
+            mode=knockback.mode,
+        )
 
     def apply_knockback(
         self,
@@ -178,18 +208,16 @@ class ReactionComponent:
         if knockback.power == (0.0, 0.0):
             return
 
+        knockback = self.felt(knockback)
         owner = self._owner
-        direction: float
-        if knockback.mode == "fixed":
-            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
-            owner.velocity.x = knockback.power[0]
-            owner.velocity.y = knockback.power[1]
-        else:
-            direction = compute_knockback_direction(
-                owner.hitbox.centerx, source_center_x, owner.facing_right
-            )
-            owner.velocity.x = knockback.power[0] * direction
-            owner.velocity.y = knockback.power[1]
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
+        )
+        # A fixed push already carries its sign in the power; a relative one
+        # gets it from the side the source is on.
+        signed = knockback.power[0] if knockback.mode == "fixed" else knockback.power[0] * direction
+        owner.velocity.x = signed
+        owner.velocity.y = knockback.power[1]
         self._arm(
             ReactionKind.PUSH,
             Vector2(knockback.power[0], knockback.power[1]).length(),
@@ -219,6 +247,7 @@ class ReactionComponent:
             ``True`` when the heavy-knockback launch state was entered.
         """
         owner = self._owner
+        knockback = self.felt(knockback)
         kb_power_x, kb_power_y = knockback.power
         magnitude = Vector2(kb_power_x, kb_power_y).length()
         if magnitude < CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
@@ -227,8 +256,8 @@ class ReactionComponent:
         # Cancel an active action before selecting knockback as the definitive
         # reaction. This avoids a simultaneous hurt/knockback state.
         owner.combat.on_hit(interrupt=True)
-        direction = compute_knockback_direction(
-            owner.hitbox.centerx, source_center_x, owner.facing_right
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
         )
         owner.state_machine.change_state(
             KNOCKBACK_STATE,
@@ -243,23 +272,13 @@ class ReactionComponent:
         self._arm(ReactionKind.LAUNCH, magnitude, direction)
         return True
 
-    def note_guard_push(
-        self,
-        knockback: KnockbackConfig,
-        source_center_x: float | None,
-        parried: bool = False,
-    ) -> None:
-        if knockback.mode == "fixed":
-            direction = 1.0 if knockback.power[0] >= 0.0 else -1.0
-        else:
-            direction = compute_knockback_direction(
-                self._owner.hitbox.centerx, source_center_x, self._owner.facing_right
-            )
-        if parried:
-            self._arm(ReactionKind.PARRIED, 0.0, direction)
-            return
-        push = abs(knockback.power[0]) * GuardSettings.PUSH_FACTOR
-        self._arm(ReactionKind.GUARDED, push, direction)
+    def note_parry(self, knockback: KnockbackConfig, source_center_x: float | None) -> None:
+        """Record a parried hit: no push, only the side it came from."""
+        owner = self._owner
+        direction = push_direction(
+            knockback, owner.hitbox.centerx, source_center_x, owner.facing_right
+        )
+        self._arm(ReactionKind.PARRIED, 0.0, direction)
 
     def stagger(self, duration: float) -> None:
         """Apply stagger, handling super armor and stunlock protection.

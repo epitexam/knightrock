@@ -7,18 +7,28 @@ import logging
 from collections.abc import Sequence
 
 import pygame
+from pygame.sprite import Group
 
+from src.core.asset_library import shared_library
 from src.core.colors import Colors
-from src.core.hazards import OrbitingHazard, SpanHazard, build_hazard_animator
+from src.core.hazards import (
+    OrbitingHazard,
+    SpanHazard,
+    art_bounds,
+    build_hazard_animator,
+    mirrored,
+)
 from src.core.input.input_manager import InputManager
-from src.core.level.level_data import LevelData, ObjectData
+from src.core.level import properties as props
+from src.core.level.level_data import DATA_LAYER_NAME, LevelData, ObjectData, ObjectLayerData
 from src.core.level.level_registry import Registry
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.core.sprites import LevelExit, MovingPlatform, Sprite
-from src.data.provider import GameplayData
-from src.entities.enemies.factory import create_enemy, is_enemy_type
+from src.data.provider import GameplayData, shipped_gameplay_data
+from src.entities.enemies.factory import create_enemy
+from src.entities.id_factory import IdFactory
 from src.entities.player import Player
 from src.physics.spatial_hash import SpatialHash
 
@@ -102,8 +112,9 @@ def _explicit_waypoints(obj: ObjectData) -> list[tuple[float, float]] | None:
             points.append((float(x_str), float(y_str)))
         return points
     if "end_x" in obj.properties or "end_y" in obj.properties:
-        end_x = float(obj.properties.get("end_x", obj.x))
-        end_y = float(obj.properties.get("end_y", obj.y))
+        where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+        end_x = props.number(obj.properties, "end_x", obj.x, where=where)
+        end_y = props.number(obj.properties, "end_y", obj.y, where=where)
         return [(obj.x, obj.y), (end_x, end_y)]
     return None
 
@@ -138,11 +149,18 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
     'platform_height' properties, default 2 tiles x half a tile.
     """
     half_tile = World.TILE_SIZE // 2
-    width = max(float(obj.properties.get("platform_width", World.TILE_SIZE * 2)), half_tile)
-    height = max(float(obj.properties.get("platform_height", half_tile)), half_tile)
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    width = max(
+        props.number(obj.properties, "platform_width", World.TILE_SIZE * 2, where=where),
+        half_tile,
+    )
+    height = max(
+        props.number(obj.properties, "platform_height", half_tile, where=where),
+        half_tile,
+    )
     surf = pygame.Surface((width, height))
     surf.fill(Colors.gold)
-    speed = float(obj.properties.get("speed", 100))
+    speed = props.number(obj.properties, "speed", 100, where=where)
     half = pygame.math.Vector2(width / 2, height / 2)
     start, end = _rect_path(obj)
     waypoints = _explicit_waypoints(obj)
@@ -164,6 +182,10 @@ def _build_moving_platform(obj: ObjectData, groups: SpriteGroups) -> None:
     groups.moving_platforms.add(platform)
 
 
+SAW_ART = "assets/graphics/enemies/saw/animation"
+FLOOR_SPIKES_ART = "assets/graphics/enemies/floor_spikes"
+
+
 def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     """Create a linearly moving hazard (saw) patrolling the object rectangle.
 
@@ -172,15 +194,16 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     forth at the 'speed' property (default 100 px/s).  Sprite size: 'size'
     property, else the animation's natural frame size, else one tile.
     """
-    speed = float(obj.properties.get("speed", 100))
-    flip = bool(obj.properties.get("flip", False))
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    speed = props.number(obj.properties, "speed", 100, where=where)
+    flip = props.flag(obj.properties, "flip", False, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator({"spin": "assets/graphics/enemies/saw/animation"}, "spin")
+        animator = build_hazard_animator({"spin": SAW_ART}, "spin")
     except FileNotFoundError:
         animator = None
     if "size" in obj.properties:
-        side = float(obj.properties["size"])
+        side = props.number(obj.properties, "size", 0, where=where)
         size = (side, side)
     elif animator is not None:
         size = animator.frame_size
@@ -202,6 +225,9 @@ def _build_span_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         animator=animator,
         span=(span_a, span_b),
     )
+    # The blade is a disc in a square frame: it cuts with the disc.
+    frames = shared_library().frames(SAW_ART) if animator is not None else [surf]
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
 
@@ -210,13 +236,14 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     size = max(obj.width, obj.height, 1)
     surf = pygame.Surface((size, size), pygame.SRCALPHA)
     pygame.draw.circle(surf, Colors.red, (size / 2, size / 2), size / 2)
-    radius = float(obj.properties.get("radius", 0))
-    start_angle = float(obj.properties.get("start_angle", 0))
-    end_angle = float(obj.properties.get("end_angle", 360))
-    speed = float(obj.properties.get("speed", 50))
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    radius = props.number(obj.properties, "radius", 0, where=where)
+    start_angle = props.number(obj.properties, "start_angle", 0, where=where)
+    end_angle = props.number(obj.properties, "end_angle", 360, where=where)
+    speed = props.number(obj.properties, "speed", 50, where=where)
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     hazard = OrbitingHazard(
-        (obj.x, obj.y),
+        (obj.x + obj.width / 2, obj.y + obj.height / 2),
         surf,
         radius,
         start_angle,
@@ -225,6 +252,8 @@ def _build_orbiting_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
         groups.all_sprites,
         damage=damage,
     )
+    # Drawn as a circle in its square: it hurts with the circle.
+    hazard.fit_contact(pygame.FRect(0.0, 0.0, size, size), round_shape=True)
     groups.hazard_sprites.add(hazard)
 
 
@@ -234,22 +263,70 @@ def _build_static_hazard(obj: ObjectData, groups: SpriteGroups) -> None:
     if surf is None:
         surf = pygame.Surface((max(obj.width, 1), max(obj.height, 1)))
         surf.fill(Colors.red)
-    damage = float(obj.properties.get("damage", HazardDamageSystem.DEFAULT_DAMAGE))
+    elif obj.flip_x or obj.flip_y:
+        # Mirrored in Tiled (a spike hung from a ceiling): PyTMX gives the tile
+        # back unflipped, so it is turned here.
+        surf = pygame.transform.flip(surf, obj.flip_x, obj.flip_y)
+    where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+    damage = props.number(obj.properties, "damage", HazardDamageSystem.DEFAULT_DAMAGE, where=where)
     try:
-        animator = build_hazard_animator(
-            {"spikes": "assets/graphics/enemies/floor_spikes"}, "spikes"
-        )
+        animator = build_hazard_animator({"spikes": FLOOR_SPIKES_ART}, "spikes")
     except FileNotFoundError:
         animator = None
     hazard = SpanHazard(
         (obj.x, obj.y), surf, 0.0, False, groups.all_sprites, damage=damage, animator=animator
     )
+    hazard.flip_x, hazard.flip_y = obj.flip_x, obj.flip_y
+    # The spikes fill half of their tile -- the bottom half, or the top one for
+    # a mirrored ceiling spike: only they hurt, not the air beside them.
+    frames = (
+        mirrored(shared_library().frames(FLOOR_SPIKES_ART), obj.flip_x, obj.flip_y)
+        if animator is not None
+        else [surf]
+    )
+    hazard.fit_contact(art_bounds(frames, hazard.rect.size))
     groups.hazard_sprites.add(hazard)
 
 
 def _build_exit(obj: ObjectData, groups: SpriteGroups) -> None:
-    """Create the level exit flag."""
-    groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites))
+    """Create the level exit flag.
+
+    The trigger follows the object's own rectangle rather than a fixed tile
+    squared off at its top-left corner: a flag 68x186 authored in Tiled used to
+    be reachable from a 64x64 box 186 px above its own top edge, so the exit
+    was two body heights over the flag's head.
+    """
+    groups.exit_sprites.add(LevelExit((obj.x, obj.y), groups.all_sprites, (obj.width, obj.height)))
+
+
+#: Object layers whose sprites sit *behind* the world, not in it.
+#:
+#: Every map ships the same object layers in the same order, and the first one
+#: is the background props -- drawn in Tiled between the BG tiles and the
+#: Terrain tiles, so they read as scenery the level sits in front of. The world
+#: builder used to file every decorative object in the moving plane, which is
+#: drawn *after* the frozen tiles, so those props were painted on top of the
+#: terrain they were placed behind.
+#:
+#: The rule is the name, for the same reason the tile-layer handlers are: the
+#: layers are called ``BG``/``BG details``/``Terrain``/``Platforms``/``FG``
+#: across all eight maps, and the classification is the builder's, not
+#: Tiled's z.
+BACKGROUND_LAYER_PREFIX = "BG"
+
+
+def _decor_group(layer: ObjectLayerData, groups: SpriteGroups) -> Group:
+    """Where an unnamed decorative object's sprite belongs.
+
+    A background layer's props are scenery, and scenery that never moves
+    belongs in the frozen plane with the tiles: the chunk index covers them,
+    the cull is the O(log n) one, and they draw where the document put them.
+    """
+    return (
+        groups.static_sprites
+        if layer.name.startswith(BACKGROUND_LAYER_PREFIX)
+        else groups.all_sprites
+    )
 
 
 OBJECT_FACTORIES.register("helicopter")(_build_moving_platform)
@@ -269,9 +346,19 @@ class WorldBuilder:
     static images (if they have one) or logged as ignored.
     """
 
-    def __init__(self, level_data: LevelData, gameplay_data: GameplayData | None = None) -> None:
+    def __init__(
+        self,
+        level_data: LevelData,
+        gameplay_data: GameplayData | None = None,
+        id_factory: IdFactory | None = None,
+    ) -> None:
         self.level_data = level_data
-        self.gameplay_data = gameplay_data
+        self.id_factory = id_factory if id_factory is not None else IdFactory()
+        #: The values the fighters are built from; the shipped files when none
+        #: is given, so a level never builds from anything else.
+        self.gameplay_data: GameplayData = (
+            gameplay_data if gameplay_data is not None else shipped_gameplay_data()
+        )
         #: Shared collision grid handed to every entity this builder creates.
         #: Set by :meth:`bind_spatial_hash` before :meth:`build`; an entity
         #: born without it falls back to a linear scan of every collidable in
@@ -304,17 +391,24 @@ class WorldBuilder:
             )
 
         for object_layer in self.level_data.object_layers.values():
-            if object_layer.name == "Data":
+            if object_layer.name == DATA_LAYER_NAME:
                 continue
             for obj in object_layer.objects:
-                self._build_object(obj, groups, player)
+                self._build_object(obj, groups, player, object_layer.name)
 
         return player
 
     def _build_player(self, groups: SpriteGroups, input_manager: InputManager) -> Player | None:
-        """Locate the player object and instantiate it."""
-        config = self.gameplay_data.player if self.gameplay_data is not None else None
+        """Locate the player object and instantiate it.
+
+        The ``Data`` layer is skipped, as it is in :meth:`build`: it carries the
+        level's settings, not its world, and a definition that happened to be
+        named ``player`` there is not a spawn.
+        """
+        config = self.gameplay_data.player
         for layer in self.level_data.object_layers.values():
+            if layer.name == DATA_LAYER_NAME:
+                continue
             for obj in layer.objects:
                 if obj.name == "player":
                     player = Player(
@@ -325,13 +419,19 @@ class WorldBuilder:
                         input_manager,
                         config=config,
                         spatial_hash=self.spatial_hash,
+                        id_factory=self.id_factory,
                     )
-                    groups.combat_sprites.add(player)
-                    groups.entity_sprites.add(player)
+                    groups.add_fighter(player)
                     return player
         return None
 
-    def _build_object(self, obj: ObjectData, groups: SpriteGroups, player: Player | None) -> None:
+    def _build_object(
+        self,
+        obj: ObjectData,
+        groups: SpriteGroups,
+        player: Player | None,
+        layer_name: str = "",
+    ) -> None:
         """
         Build a single object from an object layer.
 
@@ -340,9 +440,16 @@ class WorldBuilder:
         """
         if obj.name == "player":
             return
-        if is_enemy_type(obj.name):
-            config = (
-                self.gameplay_data.enemies.get(obj.name) if self.gameplay_data is not None else None
+        config = self.gameplay_data.enemies.get(obj.name)
+        if config is not None:
+            where = f"a {obj.name!r} object at ({obj.x:g}, {obj.y:g})"
+            # Absent is not false: an enemy that authors no direction keeps the
+            # coin toss, and one that does gets what it was given. Collapsing
+            # the two would pin every unplaced enemy to the same heading.
+            reverse = (
+                props.flag(obj.properties, "reverse", False, where=where)
+                if "reverse" in obj.properties
+                else None
             )
             entity = create_enemy(
                 obj.name,
@@ -352,12 +459,15 @@ class WorldBuilder:
                 player_reference=player,
                 config=config,
                 spatial_hash=self.spatial_hash,
+                reverse=reverse,
+                id_factory=self.id_factory,
             )
-            groups.combat_sprites.add(entity)
-            groups.entity_sprites.add(entity)
+            groups.add_fighter(entity)
         elif OBJECT_FACTORIES.has(obj.name):
             OBJECT_FACTORIES.dispatch(obj.name, obj, groups)
         elif obj.image is not None:
-            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=groups.all_sprites)
+            layer = self.level_data.object_layers.get(layer_name)
+            target = _decor_group(layer, groups) if layer else groups.all_sprites
+            Sprite(pos=(obj.x, obj.y), surf=obj.image, groups=target)
         else:
-            logger.debug("Object '%s' has no factory or image, ignored", obj.name)
+            logger.warning("Object '%s' has no factory or image, ignored", obj.name)

@@ -1,4 +1,4 @@
-"""Typed JSON loader for the level registry (Phase 3 #4).
+"""Typed JSON loader for the level registry.
 
 ``levels.json`` is the data-driven replacement for the ``LEVEL_PATHS``
 dict hardcoded in ``level_manager.py`` (kept as the built-in fallback)::
@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from src.core.paths import confined_resource_path
 from src.data.errors import GameplayDataError, read_json_object, reject_unknown
 
 LEVELS_FILENAME = "levels.json"
@@ -35,6 +36,17 @@ def read_levels_file(path: str | Path) -> dict[int, str]:
             raise GameplayDataError(f"{path}: level id {raw_id!r} is not an integer") from exc
         if not isinstance(raw_path, str) or not raw_path:
             raise GameplayDataError(f"{path}: level {level_id} path must be a string")
+        try:
+            confined_resource_path(raw_path)
+        except ValueError as exc:
+            raise GameplayDataError(
+                f"{path}: level {level_id} path must be relative to the project root"
+            ) from exc
+        level_path = Path(raw_path)
+        if level_path.suffix.lower() != ".tmx":
+            raise GameplayDataError(f"{path}: level {level_id} path must end in .tmx")
+        if level_id in levels:
+            raise GameplayDataError(f"{path}: duplicate level id {level_id}")
         levels[level_id] = raw_path
     return levels
 

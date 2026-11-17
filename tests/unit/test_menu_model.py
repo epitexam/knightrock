@@ -128,3 +128,133 @@ def test_menu_model_accepts_the_scales_the_game_actually_produces(scale: float) 
     from src.ui.menu_view import MenuView
 
     assert MenuView(scale=scale)._scale == scale
+
+
+# --- pages and edges -------------------------------------------------------
+
+
+def test_a_page_is_how_many_rows_the_window_shows() -> None:
+    """A page is the window's, not a fixed count.
+
+    The point of the key is "where I am looking now", so a
+    smaller window must mean a smaller page -- otherwise the
+    key lands somewhere the player cannot see, which is
+    worse than not having it.
+    """
+    model = MenuModel([MenuItem(f"row {i}", str(i)) for i in range(30)])
+    rects = [pygame.Rect(0, 0, 10, 10) for _ in range(5)]
+
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    assert model.current_index == 5
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    assert model.current_index == 10
+
+    # A window showing two rows pages by two.
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects[:2])
+    assert model.current_index == 12
+
+
+def test_a_page_clamps_at_the_end_of_the_list() -> None:
+    """A page that would run off the end lands on the last row.
+
+    The alternative is refusing to move, which leaves the
+    player one page short of the end with no way to close
+    the gap except row by row.
+    """
+    model = MenuModel([MenuItem(f"row {i}", str(i)) for i in range(12)])
+    rects = [pygame.Rect(0, 0, 10, 10) for _ in range(5)]
+
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    assert model.current_index == 11
+
+
+def test_a_page_lands_on_the_nearest_row_the_way_it_was_going() -> None:
+    """The row a page lands on may be locked; the page still means
+    something, which is the nearest row the way it was going -- the
+    same reading a single step gives.
+    """
+    model = MenuModel(
+        [
+            MenuItem("row 0", "0"),
+            MenuItem("row 1", "1"),
+            MenuItem("locked", "", enabled=False),
+            MenuItem("row 3", "3"),
+            MenuItem("row 4", "4"),
+            MenuItem("row 5", "5"),
+        ]
+    )
+    rects = [pygame.Rect(0, 0, 10, 10) for _ in range(2)]
+
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    # A page of two from row 0 lands on row 2, which is locked, so
+    # the page continues to row 3.
+    assert model.current_index == 3
+
+
+def test_home_and_end_jump_to_the_edges_of_the_list() -> None:
+    """The whole list in one press, in both directions."""
+    model = MenuModel([MenuItem(f"row {i}", str(i)) for i in range(30)])
+    rects = [pygame.Rect(0, 0, 10, 10) for _ in range(5)]
+
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects)
+    model.handle_routed(InputAction.UI_END, None, rects)
+    assert model.current_index == 29
+    model.handle_routed(InputAction.UI_HOME, None, rects)
+    assert model.current_index == 0
+
+
+def test_home_and_end_skip_a_locked_edge() -> None:
+    """A locked first row must not make Home refuse: the scan works
+    inward from the edge, so the key lands on the first row that
+    can be.
+    """
+    model = MenuModel(
+        [
+            MenuItem("locked first", "", enabled=False),
+            MenuItem("first usable", "1"),
+            MenuItem("middle", "2"),
+            MenuItem("last usable", "3"),
+            MenuItem("locked last", "", enabled=False),
+        ]
+    )
+    rects = [pygame.Rect(0, 0, 10, 10)]
+
+    model.handle_routed(InputAction.UI_HOME, None, rects)
+    assert model.current_index == 1
+    model.handle_routed(InputAction.UI_END, None, rects)
+    assert model.current_index == 3
+
+
+def test_a_page_takes_the_selection_from_the_pointer() -> None:
+    """A page is a keyboard move, so the pointer must stop being
+    treated as the thing that moved the selection -- the same rule
+    as an arrow key, or the two devices fight over the row.
+
+    The observable half of that rule: hovering the row the pointer
+    is already on reports a change again, because the keyboard
+    forgot where the pointer was.
+    """
+    model = MenuModel([MenuItem(f"row {i}", str(i)) for i in range(10)])
+    rects = [pygame.Rect(0, i * 10, 10, 10) for i in range(10)]
+
+    model.hover((5, 55), rects)
+    assert model.hovered_index == 5
+    model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects[:2])
+    assert model.current_index == 7
+    # The pointer is on row 5 and has not moved, yet the hover
+    # reports a change: the keyboard move cleared its memory.
+    assert model.hover((5, 55), rects) == "hover"
+
+
+def test_a_page_moves_an_empty_list_nowhere() -> None:
+    model = MenuModel()
+    rects: list[pygame.Rect] = []
+
+    assert model.handle_routed(InputAction.UI_PAGE_DOWN, None, rects) == (
+        None,
+        None,
+    )
+    assert model.handle_routed(InputAction.UI_END, None, rects) == (None, None)
+    assert model.current_index == -1

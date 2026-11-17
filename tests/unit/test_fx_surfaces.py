@@ -31,7 +31,7 @@ from src.core.fx import (
     vortex_frames,
 )
 from src.core.fx import particles as particles
-from src.core.settings import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
+from src.core.fx.tuning import DashDust, Dust, FootstepDust, FxDizzy, FxGuard
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -208,7 +208,7 @@ def test_a_hard_landing_does_not_paint_a_new_puff_surface() -> None:
 
     The reason the ladder is keyed on a discrete radius and a discrete tone
     rather than on whatever the spawner asked for: this is the allocation
-    ``notes/refacto.md`` flags as the FX plane's main remaining cost, and a
+    that is the FX plane's main remaining cost, and a
     landing is exactly when a dozen of them happen on the same tick.
 
     The bound is the grid, not the fan. The radius carries a jitter, so any

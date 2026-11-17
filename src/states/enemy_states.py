@@ -1,38 +1,47 @@
 """State machine states for enemies (AI)."""
 
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.core.settings import AI, EnemyJump, Turn
+from src.combat.frame_data import move_id
+from src.core.settings import AI, EnemyJump
+from src.core.settings import Combat as CombatSettings
 from src.states.reaction_states import (
     HurtState,
     KnockbackState,
     StaggerState,
+    apply_reaction_drag,
 )
 from src.states.state_machine import State
 from src.states.turn_state import TurnState, request_turn
 
+if TYPE_CHECKING:
+    from src.entities.enemies.enemy import Enemy
+
 
 class EnemyState(str, Enum):
-    """Enemy state names: typed equivalent of the player PlayerState.
+    """Enemy-facing subset of the canonical state vocabulary.
 
-    String-based for drop-in compatibility with StateMachine keys.
+    Literals keep ``.value`` typed as ``str`` by mypy; ``test_state_names``
+    checks every one against :class:`~src.states.state_names.StateName`.
     """
 
     IDLE = "idle"
     PATROL = "patrol"
     CHASE = "chase"
-    TURN = Turn.STATE
+    TURN = "turn"
     ATTACK = "attack"
     CHARGE = "charge"
     HURT = "hurt"
     KNOCKBACK = "knockback"
     STAGGER = "stagger"
     DIZZY = "dizzy"
+    DOWNED = "downed"
+    DOOMED = "doomed"
     LEDGE = "ledge"
 
 
-class EnemyTurnState(TurnState):
+class EnemyTurnState(TurnState["Enemy"]):
     """An enemy's pivot: the shared hold with an enemy's way back.
 
     Registered like every other enemy state, so the pivot is *available* to
@@ -67,7 +76,9 @@ class EnemyTurnState(TurnState):
         return EnemyState.PATROL
 
 
-class EnemyIdleState(State):
+class EnemyIdleState(State["Enemy"]):
+    snapshot_fields = ("timer",)
+
     """Idle state: the enemy stands still for a short duration."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -79,13 +90,15 @@ class EnemyIdleState(State):
         self.timer -= delta_time
         if self.timer <= 0:
             if self.entity.can_see_player():
-                self.entity.state_machine.change_state(EnemyState.CHASE)
+                return EnemyState.CHASE
             else:
-                self.entity.state_machine.change_state(EnemyState.PATROL)
+                return EnemyState.PATROL
         return None
 
 
-class EnemyPatrolState(State):
+class EnemyPatrolState(State["Enemy"]):
+    snapshot_fields = ("patrol_timer", "direction")
+
     """Patrol state: the enemy moves back and forth in a single direction."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -100,8 +113,7 @@ class EnemyPatrolState(State):
         # probing (facing may lag a turn behind and must not steer this).
         self.entity.move_axis = self.direction
         if self.entity.is_at_ledge():
-            self.entity.state_machine.change_state(EnemyState.LEDGE)
-            return None
+            return EnemyState.LEDGE
         # A patrol reversal -- the enemy reaching the end of its beat -- is the
         # one enemy pivot that reads well: the fighter is already turning, and
         # nothing about it announces the change. Asked here because this is
@@ -112,8 +124,7 @@ class EnemyPatrolState(State):
         self.entity.apply_horizontal_movement(delta_time)
 
         if self.entity.can_see_player():
-            self.entity.state_machine.change_state(EnemyState.CHASE)
-            return None
+            return EnemyState.CHASE
 
         self.patrol_timer -= delta_time
         if self.patrol_timer <= 0:
@@ -127,27 +138,41 @@ class EnemyPatrolState(State):
         self.entity.move_axis = 0.0
 
 
-class EnemyChaseState(State):
+class EnemyChaseState(State["Enemy"]):
+    snapshot_fields = ("jump_cooldown_timer", "leap_glide_timer", "planned_move")
+
     """Chase state: the enemy moves towards the player."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the chase with a ready jump cooldown."""
         super().__init__(entity, tags or [])
         # Rollback-safe by construction: plain scalars, auto-captured in
         # StateMachineSnapshot.state_attrs like every other state scalar.
         self.jump_cooldown_timer = 0.0
         self.leap_glide_timer = 0.0
+        # The attack this chase closes in for, chosen on entry.
+        self.planned_move = ""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state, face the player, and pick up chase speed."""
+        """Enter the state, face the player, pick up chase speed and choose the attack."""
         self.entity.face_player()
         self.entity.speed = self.entity.chase_speed
         self.leap_glide_timer = 0.0
+        self.planned_move = self.entity.plan_move() or ""
 
-    def update(self, delta_time: float) -> str | None:
-        """Update the state, move towards the player, and check attack range."""
+    def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
+        """Close in for the chosen attack and throw it once in range and a slot is free.
+
+        In range with every slot taken, the enemy holds where it is, facing
+        the player, and throws the attack the moment another enemy is done.
+        """
         if self.entity.player is None:
-            self.entity.state_machine.change_state(EnemyState.IDLE)
+            return EnemyState.IDLE
+        reach = self.entity.move_range(self.planned_move or None)
+        if self.entity.is_player_in_range(reach) and not self.entity.attack_slot_free():
+            self.entity.move_axis = 0.0
+            self.entity.face_player()
+            self.entity.apply_horizontal_movement(delta_time)
             return None
 
         player_center = self.entity.player.hitbox.centerx
@@ -172,16 +197,15 @@ class EnemyChaseState(State):
             leapt = self._try_gap_jump() or self._try_risky_jump()
             jumped = leapt or self._try_drop()
         if not jumped and at_ledge:
-            self.entity.state_machine.change_state(EnemyState.LEDGE)
-            return None
+            return EnemyState.LEDGE
 
         if not leapt and not self._glide_step(delta_time):
             self.entity.apply_horizontal_movement(delta_time)
 
-        if self.entity.is_player_in_range():
-            self.entity.state_machine.change_state(EnemyState.ATTACK)
+        if self.entity.is_player_in_range(reach):
+            return EnemyState.ATTACK, {"move": self.planned_move}
         elif not self.entity.can_see_player():
-            self.entity.state_machine.change_state(EnemyState.IDLE)
+            return EnemyState.IDLE
         return None
 
     def _glide_step(self, delta_time: float) -> bool:
@@ -210,8 +234,8 @@ class EnemyChaseState(State):
         self.jump_cooldown_timer = max(0.0, self.jump_cooldown_timer - delta_time)
         entity = self.entity
         if (
-            not getattr(entity, "can_jump", False)
-            or float(getattr(entity, "jump_height", 0.0) or 0.0) <= 0.0
+            not entity.can_jump
+            or entity.jump_height <= 0.0
             or not entity.on_surface.get("floor", False)
             or self.jump_cooldown_timer > 0.0
         ):
@@ -228,7 +252,7 @@ class EnemyChaseState(State):
         if not (wall_ahead or player_above):
             return False
         entity.velocity.y = -entity.jump_height
-        self.jump_cooldown_timer = float(getattr(entity, "jump_cooldown", 1.0) or 0.0)
+        self.jump_cooldown_timer = entity.jump_cooldown
         return True
 
     def _try_gap_jump(self) -> bool:
@@ -260,7 +284,7 @@ class EnemyChaseState(State):
         self._leap(entity, direction)
         return True
 
-    def _leap_context(self) -> tuple[Any, float, float] | None:
+    def _leap_context(self) -> tuple[Enemy, float, float] | None:
         """Shared preconditions for void leaps: jumper, ready, grounded.
 
         Returns (entity, direction, hop_range) or None. The cooldown was
@@ -269,8 +293,8 @@ class EnemyChaseState(State):
         """
         entity = self.entity
         if (
-            not getattr(entity, "can_jump", False)
-            or float(getattr(entity, "jump_height", 0.0) or 0.0) <= 0.0
+            not entity.can_jump
+            or entity.jump_height <= 0.0
             or self.jump_cooldown_timer > 0.0
             or entity.move_axis == 0.0
             or not entity.on_surface.get("floor", False)
@@ -280,11 +304,11 @@ class EnemyChaseState(State):
         return entity, direction, entity.jump_range()
 
     @staticmethod
-    def _sight_range(entity: Any) -> float:
+    def _sight_range(entity: Enemy) -> float:
         """How far ahead the leap cares about the player: vision, else SEEK."""
-        return float(getattr(entity, "vision_range", 0.0) or 0.0) or EnemyJump.SEEK_RANGE_PX
+        return entity.vision_range or EnemyJump.SEEK_RANGE_PX
 
-    def _leap(self, entity: Any, direction: float) -> None:
+    def _leap(self, entity: Enemy, direction: float) -> None:
         """Fire the leap: vertical impulse plus a sprint boost forward.
 
         The boost is what carries running jumps past a standing hop's
@@ -293,10 +317,8 @@ class EnemyChaseState(State):
         brain only attempts leaps the legs can actually finish.
         """
         entity.velocity.y = -entity.jump_height
-        entity.velocity.x = (
-            direction * entity.speed * float(getattr(entity, "leap_speed_mult", 1.0) or 0.0)
-        )
-        self.jump_cooldown_timer = float(getattr(entity, "jump_cooldown", 1.0) or 0.0)
+        entity.velocity.x = direction * entity.speed * entity.leap_speed_mult
+        self.jump_cooldown_timer = entity.jump_cooldown
         self.leap_glide_timer = float(entity.leap_air_time())
 
     def _try_risky_jump(self) -> bool:
@@ -341,7 +363,7 @@ class EnemyChaseState(State):
         player = entity.player
         if (
             player is None
-            or not getattr(entity, "can_jump", False)
+            or not entity.can_jump
             or entity.move_axis == 0.0
             or not entity.on_surface.get("floor", False)
         ):
@@ -359,36 +381,34 @@ class EnemyChaseState(State):
         )
 
 
-class EnemyAttackState(State):
+class EnemyAttackState(State["Enemy"]):
     """Attack state: the enemy performs its attack."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the EnemyAttackState instance."""
         super().__init__(entity, tags or ["attack", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
-        """Enter the state, face the player, and start the attack."""
-        self.entity.face_player()
+        """Enter the state, face the player, and start the chosen attack.
 
-        if self.entity.attack_name is not None:
-            self.entity.combat.start_attack(self.entity.attack_name)
-        self._started = True
+        ``move`` is the chase's choice; without one, the type's ``attack_name``.
+        """
+        self.entity.face_player()
+        name = kwargs.get("move") or self.entity.attack_name
+        if name is not None:
+            self.entity.combat.start_attack(move_id(name))
 
     def update(self, delta_time: float) -> str | None:
         """Update the state and return to idle when the attack finishes."""
         if not self.entity.combat.is_attacking:
-            self.entity.state_machine.change_state(EnemyState.IDLE)
+            return EnemyState.IDLE
         return None
 
-    def exit(self, next_state: str | None = None) -> None:
-        """Exit the state."""
-        self._started = False
 
-
-class EnemyChargeState(State):
+class EnemyChargeState(State["Enemy"]):
     """Charge state: the enemy is charging an attack."""
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: Enemy, tags: list[str] | None = None):
         """Initialize the EnemyChargeState instance."""
         super().__init__(entity, tags or ["charge", "busy"])
 
@@ -396,27 +416,27 @@ class EnemyChargeState(State):
         """Update the state and transition to attack when charge is released."""
         if not self.entity.combat.charging.is_charging:
             if self.entity.combat.is_attacking:
-                self.entity.state_machine.change_state(EnemyState.ATTACK)
+                return EnemyState.ATTACK
             else:
-                self.entity.state_machine.change_state(EnemyState.IDLE)
+                return EnemyState.IDLE
         return None
 
 
-class EnemyHurtState(HurtState):
+class EnemyHurtState(HurtState["Enemy"]):
     """Hurt reaction: return to idle when the hurt timer clears.
 
-    Shares the generic :class:`HurtState` logic (ARCH-05); enemies hold no
-    knockback impulse and no friction on hurt.
+    Shares the generic :class:`HurtState` logic, the slide of the push
+    included; the push itself was applied by ``ReactionComponent``.
     """
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
-class EnemyKnockbackState(KnockbackState):
+class EnemyKnockbackState(KnockbackState["Enemy"]):
     """Knockback reaction: return to hurt/idle when the enemy stops sliding."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(
             entity,
             exit_resolver=self._resolve_exit,
@@ -429,31 +449,66 @@ class EnemyKnockbackState(KnockbackState):
         self.entity.move_axis = 0.0
 
     def _resolve_exit(self) -> str:
-        """Recover through hurt if still hurt, otherwise to idle."""
-        return EnemyState.HURT if self.entity.combat.is_hurt else EnemyState.IDLE
+        """A launch ends on the ground: the enemy lies there before it gets up."""
+        return EnemyState.DOWNED
 
 
-class EnemyStaggerState(StaggerState):
+class EnemyStaggerState(StaggerState["Enemy"]):
     """Stagger reaction: return to idle when the stagger timer clears."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
         super().__init__(entity, exit_resolver=lambda: EnemyState.IDLE, tags=[])
 
 
-class EnemyDizzyState(State):
-    """Dizzy reaction from consecutive perfect parries: return to idle when timer clears."""
+class EnemyDownedState(State["Enemy"]):
+    """Knocked off its feet: lying on the ground, open to the stab, until it gets up."""
 
-    def __init__(self, entity: Any):
+    def __init__(self, entity: Enemy):
+        super().__init__(entity, tags=["downed", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
+        self.entity.combat.reset_hurt_state()
+        self.entity.stagger_timer = CombatSettings.DOWNED_DURATION
+
+    def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
+        if self.entity.stagger_timer <= 0:
+            return EnemyState.IDLE
+        return None
+
+
+class EnemyDoomedState(State["Enemy"]):
+    """Brought to nothing: frozen, waiting for the death blow, and dead without it."""
+
+    def __init__(self, entity: Enemy):
+        super().__init__(entity, tags=["doomed", "busy"])
+
+    def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
+        self.entity.stagger_timer = kwargs.get("duration", 0.0)
+
+    def update(self, delta_time: float) -> str | None:
+        apply_reaction_drag(self.entity, delta_time)
+        if self.entity.stagger_timer <= 0:
+            self.entity.health = 0.0
+        return None
+
+
+class EnemyDizzyState(State["Enemy"]):
+    """Stunned by a full stun gauge: helpless, and open to a throw, until the timer clears."""
+
+    def __init__(self, entity: Enemy):
         super().__init__(entity, tags=["dizzy", "busy"])
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
+        self.entity.move_axis = 0.0
         duration = kwargs.get("duration", 0.0)
         if duration > 0:
             self.entity.stagger_timer = duration
 
     def update(self, delta_time: float) -> str | None:
-        if self.entity.stagger_timer > 0:
-            self.entity.stagger_timer -= delta_time
+        apply_reaction_drag(self.entity, delta_time)
         if self.entity.stagger_timer <= 0:
             return EnemyState.IDLE
         return None

@@ -1,4 +1,4 @@
-"""Attack loading and strict validation (P4.2).
+"""Attack loading and strict validation.
 
 ``load_attacks`` is the single entry point for attack definitions (builtin
 tables and gameplay JSON both go through it), so it is also where malformed
@@ -113,14 +113,14 @@ def _validate_phase(name: str, phase_index: int, phase: PhaseDefinition) -> None
 
 
 def _validate_attack(name: str, definition: AttackDefinition) -> None:
-    """Timing rules of one attack."""
-    duration = definition.total_frames / FRAME_RATE
-    if definition.cooldown < duration:
-        raise GameplayDataError(
-            f"Attack {name!r}: cooldown {definition.cooldown:.3f}s is shorter than the "
-            f"attack duration {duration:.3f}s ({definition.total_frames} frames at "
-            f"{FRAME_RATE} Hz)"
-        )
+    """Timing rules of one attack.
+
+    A cooldown may be shorter than the attack, or zero. It used to have to
+    outlast the attack, which made every move a single blow followed by a wait:
+    the basic moves of a hack and slash are paced by their own frame data and
+    their cancel windows, and a cooldown is for the moves that must not be
+    spammed (a special, a launcher).
+    """
     last_index = len(definition.phases) - 1
     _validate_vertical_lunge(name, definition)
     for index, phase in enumerate(definition.phases):
@@ -196,10 +196,11 @@ def _validate_cancels(
     Two ways a ``cancel_into`` name passes the existence check and is still
     wrong:
 
-    * it names the attack itself. The cooldown gate runs before the cancel gate,
-      and every move is still on cooldown at its own last frame, so
+    * it names the attack itself while the attack is still on cooldown at its
+      own last frame. The cooldown gate runs before the cancel gate, so such a
       ``light_attack -> light_attack`` was accepted at load time and dead in
-      play.
+      play. A self-cancel on a move whose cooldown runs out within it is a
+      chain (light, light, light) and is accepted.
     * it names a move whose ``stances`` do not include this one's. That was the
       ``air_attack -> light_attack`` chain: an air chain into a ground move.
 
@@ -209,12 +210,13 @@ def _validate_cancels(
     before it can be thrown again. Refusing mutual cancels would have rejected a
     table that works.
     """
+    _validate_follow_ups(name, definition, attacks)
     for index, phase in enumerate(definition.phases):
         for target in phase.cancel_into:
-            if target == name:
+            if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
                 raise GameplayDataError(
                     f"Attack {name!r} phase {index}: cancels into itself ({target!r}), "
-                    "which the cooldown gate makes unreachable"
+                    f"which its {definition.cooldown:g}s cooldown makes unreachable"
                 )
             missing = set(attacks[target].stances) - set(definition.stances)
             if missing:
@@ -223,6 +225,45 @@ def _validate_cancels(
                     f"reachable from {'/'.join(sorted(s.value for s in definition.stances))} "
                     f"(it needs {'/'.join(sorted(s.value for s in missing))})"
                 )
+
+
+def _validate_follow_ups(
+    name: MoveId,
+    definition: AttackDefinition,
+    attacks: Mapping[MoveId, AttackDefinition],
+) -> None:
+    """Refuse a chain link that names nothing, or that no phase lets through.
+
+    A follow-up is started like any move, through ``start_attack``, so it only
+    fires where a phase's ``cancel_into`` allows it. One that no phase lists
+    would load and never chain.
+    """
+    reachable = {target for phase in definition.phases for target in phase.cancel_into}
+    for button, target in definition.follow_ups:
+        if target not in attacks:
+            raise GameplayDataError(
+                f"Attack {name!r}: follow-up on {button.value!r} names unknown move {target!r}"
+            )
+        if target not in reachable:
+            raise GameplayDataError(
+                f"Attack {name!r}: follow-up on {button.value!r} is {target!r}, which no "
+                "phase lists in cancel_into, so the chain could never fire"
+            )
+
+
+#: A frozen attack mapping is validated once at data load, then registered on
+#: every fighter built from it. Re-running the full cross-attack validation per
+#: entity cost ~0.1 ms for a 25-attack set (12 enemies + 1 player per level).
+#: The mapping is held strongly so a recycled id cannot report a stale pass.
+_validated_tables: dict[int, Mapping[MoveId, AttackDefinition]] = {}
+
+
+def _validated(attacks: Mapping[MoveId, AttackDefinition]) -> None:
+    key = id(attacks)
+    if _validated_tables.get(key) is attacks:
+        return
+    validate_attacks(attacks)
+    _validated_tables[key] = attacks
 
 
 def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:
@@ -241,6 +282,6 @@ def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinit
         Any frame-data rule above is violated; the message names the attack,
         the phase index and the field at fault.
     """
-    validate_attacks(attacks)
+    _validated(attacks)
     for name, definition in attacks.items():
         combat.add_attack(name, definition)

@@ -1,17 +1,22 @@
 """Manages level loading and caching with automatic progression."""
 
+import logging
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from pathlib import Path
 
 from pytmx.util_pygame import load_pygame
 
-from src.core.level.level_data import LevelData
+from src.core.level.level_data import LevelData, LevelDataError
+from src.core.level.properties import LevelPropertyError
 from src.core.paths import resource_path
+
+logger = logging.getLogger(__name__)
 
 LEVEL_PATHS: dict[int, str] = {
     0: "assets/data/levels/1.tmx",
 }
-"""Level registry: map ``id -> TMX path`` (audit F8.1, Phase 2 #4).
+"""Level registry: map ``id -> TMX path``.
 
 Replaces imperative ``level_manager.register(0, ...)`` calls: a new level is
 declared here (and its ``level_unlock`` progression in the TMX *Data* layer
@@ -41,6 +46,17 @@ class UnknownLevelError(LookupError):
         )
 
 
+class LevelLoadError(ValueError):
+    """The level file is there, but it cannot be turned into a level.
+
+    pytmx signals a truncated map with a ``ParseError`` and a missing tileset
+    with a bare ``Exception``, neither of which says anything about which map
+    was being read. ``LevelManager`` is the one place that knows, so this is
+    where the path and the original cause are attached. A ``ValueError`` so
+    that a caller which already handled a bad value keeps handling it.
+    """
+
+
 class LevelManager:
     """
     Loads and caches level data from disk.
@@ -63,6 +79,15 @@ class LevelManager:
         """
         self.level_paths[level_id] = path
 
+    def invalidate(self) -> None:
+        """Drop every cached level, so the next :meth:`get` re-reads it.
+
+        PyTMX converts each tile against the display format that was current at
+        load time. A display change makes those surfaces stale, and the cache
+        would keep handing them back for the rest of the session.
+        """
+        self._cache.clear()
+
     def get(self, level_id: int) -> LevelData:
         """
         Retrieve parsed level data, loading it if not yet cached.
@@ -76,6 +101,7 @@ class LevelManager:
         Raises:
             UnknownLevelError: ``level_id`` is not in the registry.
             FileNotFoundError: The level is registered but its file is missing.
+            LevelLoadError: The file is there but cannot be turned into a level.
         """
         if level_id not in self._cache:
             if level_id not in self.level_paths:
@@ -88,8 +114,21 @@ class LevelManager:
                     "be present (clone the repository with assets, or restore "
                     "the missing file)."
                 )
-            tmx_map = load_pygame(absolute_path)
-            self._cache[level_id] = LevelData.from_tmx(tmx_map)
+            try:
+                tmx_map = load_pygame(absolute_path)
+                level_data = LevelData.from_tmx(tmx_map)
+            except LevelDataError, LevelPropertyError:
+                raise
+            except ET.ParseError as error:
+                raise LevelLoadError(f"{absolute_path} cannot be loaded: {error}") from error
+            except Exception as error:  # noqa: BLE001 - pytmx raises a bare type
+                # pytmx signals a missing tileset with a plain Exception, so
+                # this branch cannot be removed. Log the traceback: an adapter
+                # bug landing here must be visible as one, not silently filed
+                # as "a bad map file".
+                logger.error("Unable to load level %s", absolute_path, exc_info=error)
+                raise LevelLoadError(f"{absolute_path} cannot be loaded: {error}") from error
+            self._cache[level_id] = level_data
         return self._cache[level_id]
 
     def next_id(self, level_id: int) -> int | None:

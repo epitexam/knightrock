@@ -71,13 +71,6 @@ def test_clear_drops_cache(png_paths: dict[str, Path]) -> None:
     assert first is not second
 
 
-def test_preload_warms_cache(png_paths: dict[str, Path]) -> None:
-    library = AssetLibrary()
-    library.preload([png_paths["alpha"], png_paths["opaque"]])
-
-    assert library.image(png_paths["alpha"]) is library.image(png_paths["alpha"])
-
-
 def test_missing_file_raises_error(tmp_path: Path) -> None:
     library = AssetLibrary()
 

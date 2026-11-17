@@ -2,7 +2,7 @@
 
 Extracted as a world stage like the other ``core/level/systems`` stages.
 Targets are resolved through the unified
-:class:`~src.core.level.systems.contact_system.ContactSystem` (P4.1), which
+:class:`~src.core.level.systems.contact_system.ContactSystem`, which
 owns the per-tick grid prune (O(n . k) instead of projectiles x entities;
 exhaustive without a grid) and the shared hit resolution: ranged hits go
 through :class:`~src.combat.hit_resolver.HitResolver` so they share armor,
@@ -17,12 +17,18 @@ import pygame
 
 from src.combat.combatant_protocol import Combatant
 from src.combat.shapes import ShapeKind, shape_aabb_intersects, swept_intersects_aabb
-from src.core.level.systems.contact_system import ContactSystem, GuardEvent, OffensiveBox
+from src.core.level.systems.contact_system import (
+    ContactSystem,
+    GuardEvent,
+    ImpactEvent,
+    OffensiveBox,
+)
 from src.core.object_pool import ObjectPool
 from src.core.sprite_groups import SpriteGroups
+from src.entities.id_factory import IdFactory
 from src.entities.projectile import Projectile, ProjectileConfig
 from src.physics.entity_grid import EntityGrid
-from src.physics.spatial_hash import SpatialHash
+from src.physics.spatial_hash import SpatialHash, collider_box
 
 __all__ = ["ProjectileSystem"]
 
@@ -49,16 +55,21 @@ class ProjectileSystem:
         pool: ObjectPool[Projectile] | None = None,
         spatial_hash: SpatialHash | None = None,
         contact_system: ContactSystem | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         self.groups = groups
+        factory = id_factory if id_factory is not None else IdFactory()
         self.pool: ObjectPool[Projectile] = (
-            pool if pool is not None else ObjectPool(Projectile, reset=_reset_projectile)
+            pool
+            if pool is not None
+            else ObjectPool(lambda: Projectile(id_factory=factory), reset=_reset_projectile)
         )
         self.spatial_hash = spatial_hash
         self.contact_system: ContactSystem = (
             contact_system if contact_system is not None else ContactSystem()
         )
         self.guard_events: list[GuardEvent] = []
+        self.impact_events: list[ImpactEvent] = []
 
     def spawn(
         self,
@@ -81,6 +92,7 @@ class ProjectileSystem:
     ) -> None:
         """Advance every projectile and resolve contacts."""
         self.guard_events.clear()
+        self.impact_events.clear()
         if delta_time <= 0.0:
             return
         for projectile in list(self.groups.projectile_sprites):
@@ -105,7 +117,7 @@ class ProjectileSystem:
             if self.spatial_hash is not None
             else self.groups.collision_sprites
         ):
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+            box = collider_box(sprite)
             if box is None:
                 continue
             box = pygame.FRect(box)
@@ -152,6 +164,7 @@ class ProjectileSystem:
         )
         outcome = self.contact_system.resolve((box,), self.groups.entity_sprites, entity_grid)
         self.guard_events.extend(outcome.guard_events)
+        self.impact_events.extend(outcome.impact_events)
         if outcome.metrics.contacts and not config.pierce:
             self._release(projectile)
 

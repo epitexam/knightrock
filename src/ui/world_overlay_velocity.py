@@ -37,6 +37,7 @@ from src.ui.world_overlay_metrics import (
     VELOCITY_TAIL_RADIUS,
     VELOCITY_TAIL_WIDTH,
 )
+from src.ui.world_overlay_shared import reaction_age
 
 __all__ = [
     "VelocityLayer",
@@ -158,7 +159,7 @@ def is_parry_flash(sprite: pygame.sprite.Sprite) -> bool:
         return False
     if status.kind is not ReactionKind.PARRIED:
         return False
-    return float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0
+    return reaction_age(sprite) > 0.0
 
 
 def is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
@@ -182,7 +183,7 @@ def is_reaction_push(sprite: pygame.sprite.Sprite) -> bool:
     status = getattr(sprite, "reaction_status", None)
     if not isinstance(status, ReactionStatus) or status.kind not in VELOCITY_KINDS:
         return False
-    if float(getattr(sprite, "reaction_age", 0.0) or 0.0) > 0.0:
+    if reaction_age(sprite) > 0.0:
         return True
     state_machine = getattr(sprite, "state_machine", None)
     return getattr(state_machine, "current_state_name", None) == KNOCKBACK_STATE

@@ -1,6 +1,6 @@
 """Momentum-based contact damage between opposing entities (P4.1 pipeline)."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from src.combat.combatant_protocol import Combatant
@@ -10,10 +10,6 @@ from src.combat.shapes import ShapeKind
 from src.core.level.systems.contact_system import ContactSystem, OffensiveBox
 from src.core.settings import Combat as CombatSettings
 from src.physics.entity_grid import EntityGrid
-
-
-def _always_contact(_target_id: str) -> bool:
-    return True
 
 
 class MomentumGate:
@@ -39,15 +35,17 @@ class MomentumGate:
         other_speed = other.velocity.length()
         if max(self.speed, other_speed) < CombatSettings.CONTACT_DAMAGE_THRESHOLD:
             return False
-        if getattr(other, "is_invincible", False):
+        if other.is_invincible:
             return False
-        if getattr(getattr(other, "combat", None), "is_hurt", False):
+        if other.combat.is_hurt:
             return False
         return self.speed >= other_speed
 
 
 class ContactDamageSystem:
     """Applies contact damage when entities overlap, based on momentum threshold."""
+
+    CONTACT_COOLDOWN_TICKS = 12
 
     def __init__(self, contact_system: ContactSystem | None = None) -> None:
         self.contact_system: ContactSystem = (
@@ -66,6 +64,42 @@ class ContactDamageSystem:
             damage=CombatSettings.CONTACT_DAMAGE_AMOUNT,
             knockback=NULL_KNOCKBACK,
         )
+        #: ``(id(entity), target_id) -> ticks left before that entity may
+        #: damage that target again``.
+        self._cooldowns: dict[tuple[int, str], int] = {}
+        #: Pairs whose contact landed this tick; their cooldown starts once the
+        #: tick is resolved, however many boxes touched them.
+        self._armed: set[tuple[int, str]] = set()
+
+    def _can_contact(self, entity_key: int) -> Callable[[str], bool]:
+        """The contact gate for one entity: closed while its cooldown runs.
+
+        ``MomentumGate`` asks whether the target is already hurt, but contact
+        damage resolves with ``interrupt=False``, which never puts a target in
+        the hurt state -- so the pair that should have stopped repeating did
+        not, and an overlap re-applied the damage every tick. The cooldown is
+        the half of that guarantee that actually holds: a pair reacts once,
+        then waits.
+
+        Only read here. The pipeline asks this of every *candidate*, before it
+        knows whether the two touch, so arming the wait here started it for
+        pairs that were merely near each other -- and the first real contact
+        could then go unpunished for the rest of it (audit C2). It is armed by
+        :meth:`_record`, once a contact has actually landed.
+        """
+
+        def can_contact(target_id: str) -> bool:
+            return self._cooldowns.get((entity_key, target_id), 0) <= 0
+
+        return can_contact
+
+    def _record(self, entity_key: int) -> Callable[[Combatant], None]:
+        """Arm the cooldown of a pair whose contact just landed."""
+
+        def record_contact(target: Combatant) -> None:
+            self._armed.add((entity_key, target.id))
+
+        return record_contact
 
     def produce_boxes(self, entity_sprites: Iterable[Combatant]) -> tuple[OffensiveBox, ...]:
         """One candidate box per moving-eligible entity (momentum-gated).
@@ -84,7 +118,7 @@ class ContactDamageSystem:
         boxes: list[OffensiveBox] = []
         live: set[int] = set()
         for entity in entity_sprites:
-            if getattr(entity, "is_dead", False) or getattr(entity, "is_invincible", False):
+            if entity.is_dead or entity.is_invincible:
                 continue
             key = id(entity)
             live.add(key)
@@ -97,6 +131,8 @@ class ContactDamageSystem:
         if len(self._boxes) != len(live):
             for key in [known for known in self._boxes if known not in live]:
                 del self._boxes[key]
+            for pair in [pair for pair in self._cooldowns if pair[0] not in live]:
+                del self._cooldowns[pair]
         return tuple(boxes)
 
     def _build_box(self, entity: Combatant) -> OffensiveBox:
@@ -106,9 +142,10 @@ class ContactDamageSystem:
             swept=(entity.hitbox,),
             swept_shapes=(),
             hit=self._hit,
-            faction=getattr(entity, "faction", None),
-            owner_id=getattr(entity, "id", "") or "",
-            can_contact=_always_contact,
+            faction=entity.faction,
+            owner_id=entity.id,
+            can_contact=self._can_contact(id(entity)),
+            record_contact=self._record(id(entity)),
             kind="contact",
             interrupt=False,
             accept=MomentumGate(entity.velocity.length()),
@@ -131,11 +168,9 @@ class ContactDamageSystem:
     @staticmethod
     def _swept_shapes(entity: Combatant) -> tuple:
         """The shape sweep for an entity, or nothing for a plain AABB one."""
-        contact_shape = getattr(entity, "contact_shape", None)
-        if contact_shape is None or contact_shape.kind is ShapeKind.AABB:
+        if entity.contact_shape.kind is ShapeKind.AABB:
             return ()
-        factory = getattr(entity, "swept_contact_shapes", None)
-        return factory() if callable(factory) else ()
+        return entity.swept_contact_shapes()
 
     def process(
         self,
@@ -151,4 +186,11 @@ class ContactDamageSystem:
         just slower.
         """
         entities = tuple(entity_sprites)
+        self._armed = set()
         self.contact_system.resolve(self.produce_boxes(entities), entities, entity_grid)
+        for pair in self._armed:
+            self._cooldowns[pair] = self.CONTACT_COOLDOWN_TICKS
+        for pair in [pair for pair, left in self._cooldowns.items() if left <= 1]:
+            del self._cooldowns[pair]
+        for pair in self._cooldowns:
+            self._cooldowns[pair] -= 1

@@ -2,7 +2,7 @@
 
 The pivot is a **state**, and that is the whole design. A delay is a value that
 has to be undone by everyone who can interrupt the thing holding it -- an
-attack, a dash, a guard, a hit -- and each of those has to know the rule exists
+attack, a dash, a parry, a hit -- and each of those has to know the rule exists
 and to call something to release it. A state is the machine's own answer: it is
 entered and exited, so anything that interrupts it leaves through
 :meth:`TurnState.exit`, which is where the facing is finally committed. "An
@@ -28,10 +28,13 @@ is still set, because it costs nothing and because a subclass that starts
 writing the facing from outside would silently need it.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.core.settings import Locomotion, Turn
-from src.states.state_machine import State
+from src.states.state_machine import EntityT, State
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 #: The tag that stops a state from re-writing the fighter's facing.
 #:
@@ -43,7 +46,7 @@ from src.states.state_machine import State
 FACING_LOCKED = "facing_locked"
 
 
-def request_turn(entity: Any) -> bool:
+def request_turn(entity: Entity) -> bool:
     """Enter this fighter's pivot state if its axis is a ground reversal.
 
     Asked from wherever the fighter decides its ``move_axis``, in place of
@@ -63,7 +66,7 @@ def request_turn(entity: Any) -> bool:
     * the fighter is not on the floor, so this is a jump turn and the arc
       already reads it;
     * there is no speed behind it. ``turn_min_speed_px_s`` is the floor, and a
-      fighter shuffling under a raised guard is above it.
+      fighter shuffling in the parry stance is above it.
 
     The last two are what make this a pivot rather than a slow response to a
     tap, and the speed one is why a fighter who lets go and immediately presses
@@ -91,7 +94,9 @@ def request_turn(entity: Any) -> bool:
     return bool(entity.state_machine.current_state_name == Turn.STATE)
 
 
-class TurnState(State):
+class TurnState(State[EntityT]):
+    snapshot_fields = ("held", "target", "timer", "resume", "commit")
+
     """A fighter mid-pivot: feet turned, head still catching up.
 
     It is a locomotion state in every other respect. The fighter keeps its
@@ -108,7 +113,7 @@ class TurnState(State):
     enemy it is a decision about the player, not about speed.
     """
 
-    def __init__(self, entity: Any, tags: list[str] | None = None):
+    def __init__(self, entity: EntityT, tags: list[str] | None = None):
         super().__init__(entity, [*(tags or []), FACING_LOCKED])
         #: The facing held for the duration, restored if the pivot is dropped.
         self.held: bool = True
@@ -128,7 +133,7 @@ class TurnState(State):
         self.held = self.entity.facing_right
         self.timer = self.entity.turn_delay_s
         self.commit = True
-        self.entity.turn_ratio = 1.0
+        self.entity.render_hints.turn_ratio = 1.0
 
     def exit(self, next_state: str | None = None) -> None:
         """Release the mirror, applying the pivot unless it was abandoned.
@@ -141,7 +146,7 @@ class TurnState(State):
         """
         if self.commit:
             self.entity.facing_right = self.target
-        self.entity.turn_ratio = 0.0
+        self.entity.render_hints.turn_ratio = 0.0
 
     def update(self, delta_time: float) -> str | None:
         """Keep rolling, hold the facing, and hand back to the fighter's own
@@ -163,7 +168,7 @@ class TurnState(State):
         # Published as a ratio rather than recomputed by the renderer from the
         # timer: this is the one place that knows both ends of it.
         delay = self.entity.turn_delay_s
-        self.entity.turn_ratio = max(0.0, self.timer / delay) if delay > 0.0 else 0.0
+        self.entity.render_hints.turn_ratio = max(0.0, self.timer / delay) if delay > 0.0 else 0.0
         if self.timer <= 0.0:
             return self.resume_state()
         return None

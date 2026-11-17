@@ -32,10 +32,15 @@ from unittest.mock import patch
 import pygame
 import pytest
 
-from src.application.scenes.video_scene import DISPLAY_VALUES, VideoScene
-from src.application.settings_store import SettingsStore, UserSettings
-from src.core.display.mode import DisplayMode
-from src.core.game import Game
+from src.application.game import Game
+from src.application.scenes.option_screen import OptionScreen
+from src.application.scenes.video_scene import VideoScene
+from src.application.settings_store import (
+    SETTINGS_FORMAT_VERSION,
+    SettingsStore,
+    UserSettings,
+)
+from src.core.display.letterbox import FitPolicy
 from src.core.input.input_actions import InputAction
 
 
@@ -54,29 +59,39 @@ def _debug_on(monkeypatch: pytest.MonkeyPatch) -> None:
 pytestmark = pytest.mark.usefixtures("_video_display", "_debug_on")
 
 #: The rows that carry a value, and how to read it back out of the settings.
-#: ``AUTO`` is excluded: it is resolved at launch against the machine, so what
-#: persists is the player's *request* for that, which is a separate test below.
+#: Every row on the screen except the two that open a list, each of which is
+#: covered by a test of its own further down.
 VALUE_ROWS = {
-    "pixel_perfect": lambda settings: settings.pixel_perfect,
     "vsync": lambda settings: settings.vsync,
     "frame_limit": lambda settings: settings.frame_limit,
     "scale": lambda settings: settings.ui_scale,
     "panel_scale": lambda settings: settings.panel_scale,
+    "fit": lambda settings: settings.fit,
 }
 
-#: What each row is worth cycling to from the defaults: a value that is not the
+#: What each row is worth changing to from the defaults: a value that is not the
 #: default, so "it persisted" cannot be confused with "it never changed".
+#:
+#: For a row that cycles, that is the next value along. For a row that opens a
+#: list, it is the entry the test picks -- named rather than by index, because a
+#: list is built from what the driver and the topology report and those orderings
+#: are not this file's to predict.
 CYCLED_TO = {
-    "pixel_perfect": True,
     "vsync": True,
     "frame_limit": 120,
     "scale": 1.2,
     # The panel ladder ascends ``0.4 0.5 0.6 0.8 1.0 1.2`` and the default is
-    # 1.0, so one forward click lands on 1.2. Not 0.5, which is what the
-    # interface ladder's spacing would suggest -- the two ladders are unrelated
-    # and the cyclicers index their own.
+    # 1.0, so one forward step lands on 1.2. Not 0.5, which is what the interface
+    # ladder's spacing would suggest -- the two ladders are unrelated.
     "panel_scale": 1.2,
+    # Whole-pixel art used to be a row here and is now an entry in the fit list,
+    # because it is that same setting and having both produced a row that changed
+    # its label and changed nothing on screen.
+    "fit": FitPolicy.ZOOM,
 }
+
+#: Rows that open a list rather than cycling a value.
+LIST_ROWS = frozenset(VideoScene.SUBMENUS)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -106,6 +121,41 @@ def _row_index(scene: VideoScene, action: str) -> int:
     index = next((i for i, item in enumerate(scene.model.items) if item.action == action), None)
     assert index is not None, f"row {action!r} does not exist"
     return index
+
+
+def _pick_in_list(game: Game, scene: VideoScene, row: str, wanted: object) -> None:
+    """Open ``row``'s list with a pointer and pick ``wanted`` out of it.
+
+    The pointer path all the way down, because the whole point of this file is
+    that the route a player takes is the one that gets tested: a click on the
+    row converted through the game's own letterbox handling, then a click on the
+    entry in the list that opens, in the list's own coordinates.
+    """
+    index = _row_index(scene, row)
+    _click(scene, index)
+    list_scene = game.scene_manager.current
+    assert isinstance(list_scene, OptionScreen), f"the {row!r} row opened nothing"
+    entry = next((i for i, option in enumerate(list_scene.options) if option.value == wanted), None)
+    assert entry is not None, f"{wanted!r} is not offered in the {row!r} list"
+    _click_list(list_scene, entry)
+
+
+def _click_list(list_scene: OptionScreen, index: int) -> None:
+    """Click a row of a list, at the rectangle its view drew.
+
+    The same conversion the parent's rows go through, on the list's own surface:
+    the letterbox offset belongs to the window, not to any one screen.
+    """
+    game = list_scene.game
+    assert game.presentation is not None
+    list_scene.draw(game.presentation.surface)
+    centre = list_scene.view.item_rects[index].center
+    position = (
+        centre[0] + game.presentation.rect.x,
+        centre[1] + game.presentation.rect.y,
+    )
+    event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position)
+    game.scene_manager.handle_event(game._to_target_coordinates(event))
 
 
 def _click(scene: VideoScene, index: int) -> None:
@@ -145,9 +195,9 @@ def _rebound_bindings(game: Game):
 def _relaunch(store: SettingsStore, tmp_path: Path) -> UserSettings:
     """A second runtime, reading the file the first one wrote.
 
-    ``_initialize`` and not ``load`` alone, because the launch is where three of
-    the historical bugs lived: it resolved ``AUTO``, re-derived a sharpness and
-    rewrote a size. Reading the file is not enough to catch those.
+    ``_initialize`` and not ``load`` alone, because the launch is where the
+    historical bugs lived: it used to resolve ``AUTO``, re-derive a sharpness and
+    rewrite a size. Reading the file is not enough to catch those.
     """
     game = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
     game._initialize()
@@ -158,7 +208,7 @@ def _relaunch(store: SettingsStore, tmp_path: Path) -> UserSettings:
 def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
     """The whole claim, per row, on the runtime the player actually uses."""
     game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(pixel_perfect=False, vsync=False))
+    game.apply_settings(game.settings.with_video(vsync=False))
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
@@ -166,12 +216,19 @@ def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
     index = _row_index(scene, row)
     assert scene.model.items[index].enabled, f"row {row!r} is not usable on this window"
 
-    # 1. the click moves the setting
     before = VALUE_ROWS[row](game.settings)
-    _click(scene, index)
+
+    # 1. the change moves the setting -- a click that cycles for a short row, and
+    # a click that opens a list and then a pick for a long one. Both are the whole
+    # route a player takes, so neither gets a shortcut the player does not have.
+    if row in LIST_ROWS:
+        _pick_in_list(game, scene, row, CYCLED_TO[row])
+    else:
+        _click(scene, index)
+
     after = VALUE_ROWS[row](game.settings)
     assert after != before
-    assert after == CYCLED_TO[row], f"one click must land on the next value, got {after!r}"
+    assert after == CYCLED_TO[row], f"the press must land on {CYCLED_TO[row]!r}, got {after!r}"
 
     # 2. the frame writes it
     game.step()
@@ -179,53 +236,41 @@ def test_a_row_survives_a_relaunch(row: str, tmp_path: Path) -> None:
 
     # 3. the next launch reads it back
     assert VALUE_ROWS[row](_relaunch(store, tmp_path)) == after
-    assert written["version"] == 3
+    assert written["version"] == SETTINGS_FORMAT_VERSION
 
 
-def test_the_display_mode_survives_a_relaunch(tmp_path: Path) -> None:
-    """A mode is the one row whose value the launch used to overwrite.
+def test_the_window_size_survives_a_relaunch(tmp_path: Path) -> None:
+    """The size is a request the player made, and the launch honours it.
 
-    ``AUTO`` resolves against the machine every launch, which is the point of it.
-    A *chosen* mode must not be re-resolved, or the row would answer once and
-    then quietly go back to whatever the desktop looks like today.
+    A chosen size is asked for as it stands, clamped to the panel it opens on and
+    never written back -- so a size from a 4K desk survives arriving at a laptop
+    instead of being overwritten, which is what a size in the file always used to
+    get wrong.
     """
     game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(display=DisplayMode.WINDOW))
     game.scene_manager.push(VideoScene(game))
     scene = game.scene_manager.current
     assert isinstance(scene, VideoScene)
     scene.draw(game.presentation.surface)
 
-    # Cycle to whatever is not WINDOW, whichever end of the ladder that is.
-    for _ in range(len(DISPLAY_VALUES)):
-        _click(scene, _row_index(scene, "display"))
-        if game.settings.display is not DisplayMode.WINDOW:
-            break
-    chosen = game.settings.display
-    assert chosen is not DisplayMode.WINDOW
-    game.step()
-
-    assert _relaunch(store, tmp_path).display is chosen
-
-
-def test_auto_is_still_auto_on_the_next_launch(tmp_path: Path) -> None:
-    """The opposite contract, and it is the reason ``AUTO`` exists.
-
-    ``AUTO`` says "decide again next time, on whatever machine I am on", so the
-    file has to keep saying it. A launch that wrote the resolved mode back would
-    freeze the answer on the first machine the file ever met -- which is exactly
-    what a window size was, and it is why a docked laptop came back wrong.
-    """
-    game, store = _runtime(tmp_path)
-    game.apply_settings(game.settings.with_video(display=DisplayMode.AUTO))
+    _click(scene, _row_index(scene, "size"))
+    list_scene = game.scene_manager.current
+    assert isinstance(list_scene, OptionScreen)
+    entry = next(
+        (i for i, option in enumerate(list_scene.options) if isinstance(option.value, tuple)),
+        None,
+    )
+    assert entry is not None, "the window-size list offers no size"
+    wanted = list_scene.options[entry].value
+    _click_list(list_scene, entry)
+    assert game.settings.window_size == wanted
     game.step()
 
     written = json.loads(store.path.read_text(encoding="utf-8"))
-    assert written["video"]["display"] == "auto"
+    assert written["window"]["size"] == list(wanted)
 
     relaunched = _relaunch(store, tmp_path)
-    assert relaunched.display.is_concrete, "the launch has to resolve it to build a window"
-    assert json.loads(store.path.read_text(encoding="utf-8"))["video"]["display"] == "auto"
+    assert relaunched.window_size == wanted
 
 
 def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path) -> None:
@@ -255,14 +300,24 @@ def test_the_reset_row_resets_the_video_settings_and_nothing_else(tmp_path: Path
 
 
 def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) -> None:
-    """The structural version of the same claim, and the reason it now holds.
+    """The structural version of the same claim, restated against what survives it.
 
-    A setting that describes the window is a claim the game cannot check, and the
-    three that used to be here were all wrong in practice: the size was rewritten
-    at launch whenever it did not fit, the render scale was written back once and
-    then believed forever, and in borderless the window was the desktop's size
-    while the menu displayed the stored one. With nothing left in the file that
-    can disagree with the window, there is nothing to reconcile.
+    A setting that *is* the window is a claim the game cannot check, and the ones
+    that used to be here were all wrong in practice: the size was rewritten at
+    launch whenever it did not fit, the render scale was written back once and then
+    believed forever, and in borderless the window was the desktop's size while the
+    menu displayed the stored one.
+
+    One window key is back and it cannot go stale, because it is not an assertion
+    about the window: ``window.size`` is a request the stage clamps to the panel it
+    opens on and never writes back. The genuinely uncheckable ones stay gone -- the
+    screen picker and the display mode among them, because a window manager owns
+    where the window sits and which mode the driver runs -- and the assertion below
+    is that they are gone.
+
+    ``window.screen`` is a remembered *name*, not a pick: matched against the
+    screens that are there at launch, ignored when none carries it. It cannot go
+    stale in the way an index or a position can, which is why it is allowed.
     """
     game, store = _runtime(tmp_path)
 
@@ -274,12 +329,29 @@ def test_no_setting_describes_the_window_so_none_can_go_stale(tmp_path: Path) ->
     game.apply_settings(game.settings.with_video(vsync=True))
     game.step()
 
-    video = json.loads(store.path.read_text(encoding="utf-8"))["video"]
-    assert set(video) == {"display", "pixel_perfect", "vsync", "frame_limit"}
-    assert not {"width", "height", "size_mode", "render_scale", "smoothing"} & set(video)
+    written = json.loads(store.path.read_text(encoding="utf-8"))
+    video, window = written["video"], written["window"]
+    assert set(video) == {
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
+    assert set(window) == {"size", "last", "screen", "fullscreen"}
+    assert not {
+        "width",
+        "height",
+        "size_mode",
+        "render_scale",
+        "smoothing",
+        "display",
+        "monitor",
+        "fullscreen_mode",
+        "position",
+    } & (set(video) | set(window))
 
     # And the settings object agrees with the file, field for field.
-    fresh = UserSettings.from_dict(json.loads(store.path.read_text(encoding="utf-8")))
+    fresh = UserSettings.from_dict(written)
     assert fresh == game.settings
 
 
@@ -386,7 +458,7 @@ def test_a_settings_file_without_the_key_keeps_the_default_size(tmp_path) -> Non
 
 
 def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
-    """It is a size preference, and ``video`` is held to four exact keys.
+    """It is a size preference, and ``video`` is held to an exact key set.
 
     That exactness exists so no setting can describe the window and disagree with
     it. A panel scale cannot -- it says how big to draw on the window, not how big
@@ -399,7 +471,12 @@ def test_the_panel_scale_is_not_stored_under_video(tmp_path) -> None:
 
     written = json.loads(store.path.read_text())
 
-    assert set(written["video"]) == {"display", "pixel_perfect", "vsync", "frame_limit"}
+    assert set(written["video"]) == {
+        "pixel_perfect",
+        "fit",
+        "vsync",
+        "frame_limit",
+    }
     assert "panel_scale" in written["ui"]
 
 
@@ -513,3 +590,143 @@ def test_a_panel_scale_that_is_not_positive_is_refused_at_construction_too(
         PanelRenderer(pygame.Surface((640, 480)), panel_scale=0.0)
     with pytest.raises(ValueError, match="panel scale must be positive"):
         PanelRenderer(pygame.Surface((640, 480)), panel_scale=-1.0)
+
+
+def test_a_free_window_reopens_at_the_size_it_closed_at(tmp_path: Path) -> None:
+    """With no size chosen, the next launch opens where the last one closed.
+
+    Written once, on the way out -- so a session of resizes does not rewrite the
+    file, which :func:`test_a_window_that_moves_does_not_rewrite_the_settings`
+    still holds -- and only as where to open, never as a choice.
+    """
+    game, store = _runtime(tmp_path)
+    assert game.settings.window_size is None
+    game.presentation.retarget(pygame.Surface((1280, 720)))  # type: ignore[union-attr]
+    game._retarget()
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched.settings.last_window_size == (1280, 720)
+    assert relaunched.settings.window_size is None, "remembered, not chosen"
+    assert relaunched._asked_window_size() == (1280, 720)
+
+
+def test_a_chosen_size_is_not_shadowed_by_the_last_one(tmp_path: Path) -> None:
+    game, store = _runtime(tmp_path)
+    game.apply_settings(game.settings.with_video(window_size=(1600, 900)))
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched._asked_window_size() == (1600, 900)
+
+
+def test_fullscreen_covers_the_screen_and_gives_the_window_back(tmp_path: Path) -> None:
+    """Desktop fullscreen, then back: the window returns to its own size.
+
+    No ``set_mode``: the desktop keeps its mode, so there is nothing for a driver
+    to refuse. And the windowed size is what the next launch keeps.
+    """
+    game, store = _runtime(tmp_path)
+    game.apply_settings(game.settings.with_video(window_size=None))
+    game.presentation.retarget(pygame.display.get_surface())  # type: ignore[union-attr]
+    game._retarget()
+    windowed = game.presentation.window_size  # type: ignore[union-attr]
+
+    with patch.object(pygame.display, "set_mode", side_effect=AssertionError("a mode change")):
+        game.toggle_fullscreen()
+    assert game.settings.fullscreen is True
+    assert game.stage.fullscreen and game.stage.windowed_size == windowed  # type: ignore[union-attr]
+    assert game._asked_window_size() == windowed, "the window's size is the windowed one"
+
+    game.toggle_fullscreen()
+    assert game.settings.fullscreen is False
+    assert game.presentation.window_size == windowed  # type: ignore[union-attr]
+    assert game.settings.window_size is None, "the toggle is not a drag"
+
+
+def test_alt_enter_is_the_fullscreen_key() -> None:
+    from src.application.game import Game
+
+    alt_enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=pygame.KMOD_LALT)
+    enter = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, mod=0)
+
+    assert Game._is_fullscreen_key(alt_enter)
+    assert not Game._is_fullscreen_key(enter)
+
+
+# -- the screen the window closed on -------------------------------------------
+
+
+def test_the_screen_the_window_closed_on_is_remembered_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Written on the way out with the size, and read back by the next launch."""
+    game, store = _runtime(tmp_path)
+    monkeypatch.setattr(game.screen, "screen_name", lambda: 'DP-3 24"')
+
+    game._remember_the_window()
+    game.flush_settings()
+
+    relaunched = Game(save_path=tmp_path / "save2.json", bindings_path=store.path)
+    assert relaunched.settings.last_window_screen == 'DP-3 24"'
+
+
+def test_the_screen_is_remembered_even_with_a_chosen_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chosen size says how big, not where: the two are remembered apart."""
+    game, _store = _runtime(tmp_path)
+    game.settings = game.settings.with_video(window_size=(1600, 900))
+    monkeypatch.setattr(game.screen, "screen_name", lambda: "DP-2")
+
+    game._remember_the_window()
+
+    assert game.settings.last_window_screen == "DP-2"
+    assert game.settings.last_window_size is None
+
+
+def test_an_unnamed_screen_leaves_the_last_known_one_in_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, _store = _runtime(tmp_path)
+    game.settings = game.settings.with_video(last_window_screen="DP-2")
+    monkeypatch.setattr(game.screen, "screen_name", lambda: None)
+
+    game._remember_the_window()
+
+    assert game.settings.last_window_screen == "DP-2"
+
+
+def test_the_screen_name_round_trips_through_the_file() -> None:
+    from src.application.settings_store import UserSettings
+
+    settings = UserSettings().with_video(last_window_screen='DP-3 24"')
+
+    data = settings.to_dict()
+
+    assert data["window"]["screen"] == 'DP-3 24"'  # type: ignore[index]
+    assert UserSettings.from_dict(data).last_window_screen == 'DP-3 24"'
+
+
+@pytest.mark.parametrize("bad", [3, ["DP-2"], "x" * 500])
+def test_a_screen_that_is_not_a_name_is_rejected(bad: object) -> None:
+    from src.application.settings_store import UserSettings
+
+    data = UserSettings().to_dict()
+    data["window"]["screen"] = bad  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="window.screen"):
+        UserSettings.from_dict(data)
+
+
+def test_a_file_from_before_the_screen_was_remembered_still_loads() -> None:
+    from src.application.settings_store import UserSettings
+
+    data = UserSettings().to_dict()
+    del data["window"]["screen"]  # type: ignore[attr-defined]
+
+    assert UserSettings.from_dict(data).last_window_screen is None

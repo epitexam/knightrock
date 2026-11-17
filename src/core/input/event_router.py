@@ -5,6 +5,7 @@ from enum import StrEnum
 
 import pygame
 
+from src.core.input.device_registry import DeviceRegistry
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings
 from src.core.settings import Input as InputSettings
@@ -33,6 +34,7 @@ UI_BUTTON_PRIORITY: tuple[InputAction, ...] = (
     InputAction.UI_CONFIRM,
     InputAction.UI_BACK,
     InputAction.UI_CANCEL,
+    InputAction.UI_PAUSE,
 )
 
 # Only the navigation directions auto-repeat on the keyboard: repeating a
@@ -43,6 +45,8 @@ REPEATABLE_UI_ACTIONS: frozenset[InputAction] = frozenset(
         InputAction.UI_DOWN,
         InputAction.UI_LEFT,
         InputAction.UI_RIGHT,
+        InputAction.UI_PAGE_UP,
+        InputAction.UI_PAGE_DOWN,
     }
 )
 
@@ -53,6 +57,7 @@ class EventRouter:
         bindings: InputBindings | None = None,
         clock: Callable[[], float] | None = None,
         joystick_reader: Callable[[], object] | None = None,
+        devices: DeviceRegistry | None = None,
     ) -> None:
         self._bindings = bindings or InputBindings()
         self._active_axes: dict[tuple[int, int], InputAction] = {}
@@ -64,6 +69,7 @@ class EventRouter:
         self._key_next_repeat: dict[int, float] = {}
         self._clock = clock or time.monotonic
         self._joystick_reader = joystick_reader
+        self.devices = devices
         self._connected_joysticks: dict[int, object] = {}
 
     def route(self, event: pygame.event.Event) -> RoutedInput | None:
@@ -77,6 +83,19 @@ class EventRouter:
                 InputAction.UI_POINTER_MOVE,
                 InputDevice.MOUSE,
                 position=tuple(getattr(event, "pos", (0, 0))),
+            )
+        if event.type == pygame.MOUSEWHEEL:
+            # Routed rather than dropped, because a list the mouse cannot scroll
+            # is a half-built control: this menu's option lists are scrolled, and
+            # the wheel was the one input that did not move them.
+            #
+            # ``y`` is +1 for "scroll up". The value is carried on the routed
+            # input so the scene can step by more than a row: touchpads produce
+            # fractional ``precise_y`` and trackpoints produce several notches.
+            return RoutedInput(
+                InputAction.UI_SCROLL_UP if getattr(event, "y", 0) > 0 else InputAction.UI_SCROLL,
+                InputDevice.MOUSE,
+                value=abs(float(getattr(event, "y", 1))),
             )
         if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, "button", 0) == 1:
             return RoutedInput(
@@ -130,7 +149,13 @@ class EventRouter:
         if key == self._bindings.menu.new_game_key:
             self._arm_key(key, InputAction.UI_CONFIRM, repeatable=False)
             return RoutedInput(InputAction.UI_CONFIRM, InputDevice.KEYBOARD, variant="new_game")
-        for action, binding in self._bindings.menu.keyboard.items():
+        keyboard = self._bindings.menu.keyboard
+        # The fixed priority first, as for the pad: Escape is Back and Pause,
+        # and must route as Back whatever order the file lists them in.
+        ordered = [a for a in UI_BUTTON_PRIORITY if a in keyboard]
+        ordered += [a for a in keyboard if a not in UI_BUTTON_PRIORITY]
+        for action in ordered:
+            binding = keyboard[action]
             keys = binding if isinstance(binding, tuple) else (binding,)
             if key in keys:
                 self._arm_key(key, action, repeatable=action in REPEATABLE_UI_ACTIONS)
@@ -186,9 +211,13 @@ class EventRouter:
 
     def notify_joystick_connected(self, instance_id: int, joystick: object) -> None:
         self._connected_joysticks[instance_id] = joystick
+        if self.devices is not None:
+            self.devices.connect(joystick)  # type: ignore[arg-type]
 
     def notify_joystick_removed(self, instance_id: int) -> None:
         self._connected_joysticks.pop(instance_id, None)
+        if self.devices is not None:
+            self.devices.disconnect(instance_id)
         for key in tuple(self._active_axes):
             if key[0] == instance_id:
                 self._active_axes.pop(key, None)
@@ -333,6 +362,10 @@ class EventRouter:
         return repeats
 
     def _resolve_joystick(self, instance_id: int) -> object | None:
+        if self.devices is not None:
+            shared = self.devices.get(instance_id)
+            if shared is not None:
+                return shared
         if instance_id in self._connected_joysticks:
             return self._connected_joysticks[instance_id]
         if self._joystick_reader is not None:

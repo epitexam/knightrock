@@ -1,14 +1,12 @@
-"""Framed grid panel shared by the menu screens that show columns of values.
+"""Framed grid panel: the controls screen's table of bindings.
 
-The controls screen and the resolution picker are the same picture: a bordered
-panel with a title, an optional context line, column headers, one row per entry,
-a full-width strip on the focused row and one hint line per footer. Only the
-*content* differs, so the panel itself is drawn once, here, and each screen
-supplies its own headers and rows.
+A titled panel, an optional context line, column headers, one row per entry and
+hint lines underneath, in the menus' look: the pixel font, the pixel-art frame
+and one gold bar on what a press acts on.
 
-The renderer is deliberately dumb. It draws what it is given and publishes what
-it painted — ``row_rects`` for the rows, ``cell_at`` for the cells — so the
-screen can hit-test them with its own vocabulary.
+The renderer draws what it is given and publishes what it painted --
+``row_rects`` for the rows, ``cell_at`` for the cells -- so the screen can
+hit-test them with its own vocabulary.
 """
 
 from __future__ import annotations
@@ -18,20 +16,33 @@ from dataclasses import dataclass
 
 import pygame
 
+from src.ui.fonts import MENU_FONT_GRID, menu_font, menu_font_size
+from src.ui.menu_view import DESIGN_ITEM, DESIGN_SMALL, DESIGN_TITLE
 from src.ui.metrics import (
     MIN_ROW_RATIO,
     MIN_TEXT_RATIO,
     Metrics,
 )
+from src.ui.pixel import line_step, pixel_frame
 from src.ui.styles import (
-    PANEL_BG,
-    PANEL_BORDER,
+    SELECTION_BG,
+    SELECTION_FLASH,
+    SELECTION_TEXT,
     TEXT_CRIT,
+    TEXT_FAINT,
     TEXT_MUTED,
-    TEXT_OK,
     TEXT_TITLE,
     TEXT_WARN,
 )
+from src.ui.text_cache import TextCache
+
+#: The lowest text scale a table too wide for its window may shrink to: the
+#: item text at the pixel font's own grid, 8px, which it is drawn to be read at.
+WIDTH_FLOOR = MENU_FONT_GRID / DESIGN_ITEM
+
+#: The focused row's band, behind the solid bar of the focused cell: the row
+#: says where you are, the bar says what a press acts on.
+ROW_BAND_ALPHA = 40
 
 #: What ``_layout`` hands back: the panel, the label gutter's x and the first
 #: row's y, the column x positions, the cell and label widths, the row height and
@@ -61,27 +72,13 @@ class GridRow:
 
     label: str
     cells: tuple[GridCell | None, ...] = ()
+    #: Whether a click *acts* rather than only focusing; the screen decides
+    #: what acting means.
     activatable: bool = True
-    """Whether clicking this row *acts*, as opposed to only moving the focus.
-
-    The panel does not interpret it: it reports it in :class:`CellHit` and lets
-    the screen decide. A toggle or a Back row is ``activatable``; a row whose
-    click would open a capture it could never fill is not.
-    """
+    #: A choice of the screen (invert Y, reset, back) rather than a value. Option
+    #: rows open a group with a section gap above them, so they do not read as
+    #: more things to assign.
     option: bool = False
-    """This row is an *option* of the screen, not one of its values.
-
-    A mapping screen is two kinds of thing in one table: the rows you assign a
-    key to, and the rows you pick -- invert the Y axis, reset, go back. Painted
-    the same way, the second kind reads as the first, so a player counts
-    "Reset to defaults" among the things to be remapped and looks for a key to
-    press on it.
-
-    So an option row opens a group: a :attr:`~Metrics.section_gap` above it, and
-    its own text in the muted colour. The gap is the part that matters -- it is
-    what makes the block read as a block, from the top of the table, without a
-    caption.
-    """
 
 
 @dataclass(frozen=True)
@@ -89,14 +86,9 @@ class CellHit:
     row: int
     column: int
     rect: pygame.Rect
+    #: Whether a click here acts rather than only focusing. Every drawn cell is
+    #: hit-testable either way, so hovering never skips a row.
     activatable: bool = True
-    """Whether a click here acts, as opposed to only focusing.
-
-    Non-activatable rows (a toggle, Reset, Back) must still be hoverable,
-    otherwise the pointer focus silently skips them: ``cell_at`` is what the
-    screen queries on hover, and a row missing from ``_cells`` can never
-    receive the focus highlight.
-    """
 
 
 class GridView:
@@ -121,10 +113,16 @@ class GridView:
         #: panel would otherwise have to re-derive the layout it just asked for.
         self._last_panel_rect: pygame.Rect | None = None
         self._panel_cache: pygame.Surface | None = None
-        self._panel_size: tuple[int, int] = (0, 0)
+        self._panel_size: tuple[int, ...] = (0, 0)
         self._strip_cache: pygame.Surface | None = None
         self._strip_size: tuple[int, int] = (0, 0)
-        self._text_cache: dict[tuple[int, str, tuple[int, int, int], int], pygame.Surface] = {}
+        self._text_cache = TextCache(
+            self.TEXT_CACHE_LIMIT,
+            lambda font, text, color, width: self._fit(font, text, width, color),
+        )
+        # Text widths are measured ~90-150 times/frame on the controls screen
+        # for strings that never change while it is up (bug/perf MEDIUM-1).
+        self._size_cache: dict[tuple[int, str], int] = {}
 
     @property
     def row_rects(self) -> list[pygame.Rect]:
@@ -169,25 +167,28 @@ class GridView:
         selected_column: int,
         top: int,
         footers: tuple[str, ...] = (),
+        reserve: tuple[str, ...] = (),
     ) -> pygame.Rect:
-        layout = self._layout(surface, subtitle, rows, column_headers, top, footers)
+        """Draw the panel. ``reserve`` are texts a cell may show later -- a
+        capture prompt -- that the columns are as wide as from the start, so the
+        panel does not widen under the player when one appears."""
+        layout = self._layout(surface, subtitle, rows, column_headers, top, footers, reserve)
         self._ensure_fonts()
         assert self._fonts is not None
         _, item_font, small_font = self._fonts
         panel_rect, x, y, columns, cell_width, label_width, row_height, _ = layout
-        metrics = self._metrics
-        padding, gap = metrics.padding, metrics.gap
-        # The gutter was *measured* in the content scale, so the air left after a
-        # label has to be counted in that scale too: taking it from the player's
-        # scale took a pixel more than the layout gave, and the longest label in
-        # the table lost it to an ellipsis.
+        # Everything inside the frame is in the content scale, the one the
+        # layout measured with: air taken from the player's scale is air the
+        # layout did not count, and with a text that shrank far it adds up to
+        # rows hanging out of the panel.
         content = Metrics(self._text_scale)
+        metrics = content
+        padding, gap = content.padding, content.gap
         section_gap = self._section_gap(content, row_height)
 
-        y = self._draw_head(surface, layout, title, subtitle, column_headers)
+        y = self._draw_head(surface, layout, title, subtitle, column_headers, selected_column)
         self._cells = []
         self._row_rects = []
-        focus_rect: pygame.Rect | None = None
         # The text sits in the middle of its band, so a row that grew a taller
         # font grew around it instead of pushing it towards the row above.
         text_inset = max(0, (row_height - item_font.get_linesize()) // 2)
@@ -202,17 +203,19 @@ class GridView:
                 y += section_gap
             row_rect = pygame.Rect(x, y, panel_rect.width - padding * 2, row_height)
             self._row_rects.append(row_rect)
-            if index == selected_row:
+            focused = index == selected_row
+            # An option row is one target, so the bar covers it whole; a binding
+            # row is a band, and the bar sits on the cell a press would capture.
+            whole_row = focused and row.option
+            if whole_row:
+                surface.fill(SELECTION_BG, row_rect.inflate(inner_pad * 2, 0))
+            elif focused:
                 surface.blit(self._strip_for(row_rect.size), row_rect)
-                # The ring starts as the whole row: on a row that is an option
-                # and not a cell, the row *is* the target, and there is no cell
-                # to box. A cell in the focused column narrows it, below.
-                focus_rect = row_rect
             surface.blit(
                 self._render_cached(
                     item_font,
                     row.label,
-                    TEXT_MUTED if row.option else TEXT_OK,
+                    SELECTION_TEXT if whole_row else TEXT_TITLE,
                     label_width - content.gap,
                 ),
                 (x, y + text_inset),
@@ -221,38 +224,40 @@ class GridView:
                 if cell is None:
                     continue
                 cell_x = columns[column]
+                # The hit box is the drawn row band, not a box around the glyphs,
+                # so two rows never claim the same pixel.
+                hit = pygame.Rect(cell_x - inner_pad, y, cell_width, row_height)
+                on_bar = whole_row or (focused and column == selected_column)
+                if on_bar and not whole_row:
+                    # A cell waiting for a press is lit, like a value that changed.
+                    surface.fill(SELECTION_FLASH if cell.warn else SELECTION_BG, hit)
                 surface.blit(
                     self._render_cached(
                         item_font,
                         cell.text,
-                        self._cell_color(cell, row.option),
+                        SELECTION_TEXT if on_bar else self._cell_color(cell, row.option),
                         cell_width - inner_pad,
                     ),
                     (cell_x, y + text_inset),
                 )
-                # The hit box is the drawn row band, not a box around the glyphs:
-                # it used to start 2px above its own row, which overlapped the
-                # row above it, so a click near a boundary acted on whichever of
-                # the two rectangles was tested first.
-                hit = pygame.Rect(cell_x - inner_pad, y, cell_width, row_height)
-                if index == selected_row and column == selected_column:
-                    focus_rect = hit
                 # Every drawn cell is registered: hovering a row that cannot be
                 # acted on must still move the focus. The ``activatable`` flag
                 # then tells the screen whether a click acts or only focuses.
                 self._cells.append(CellHit(index, column, hit, row.activatable))
             y += row_height
 
-        if focus_rect is not None:
-            pygame.draw.rect(surface, TEXT_WARN, focus_rect, 1)
-
+        # The help line is muted like every menu's; a line above it is news
+        # (a capture, a change) and is in the colour that asks to be read.
+        step = line_step(small_font) + gap // 2
         footer_y = panel_rect.bottom - padding - small_font.get_linesize()
-        for footer in reversed(footers):
+        for offset, footer in enumerate(reversed(footers)):
             surface.blit(
-                self._render_cached(small_font, footer, TEXT_WARN, panel_rect.width),
+                self._render_cached(
+                    small_font, footer, TEXT_MUTED if offset == 0 else TEXT_WARN, panel_rect.width
+                ),
                 (_centred_x(panel_rect, small_font.size(footer)[0]), footer_y),
             )
-            footer_y -= small_font.get_linesize() + gap // 2
+            footer_y -= step
         return panel_rect
 
     def _draw_head(
@@ -262,23 +267,23 @@ class GridView:
         title: str,
         subtitle: str,
         column_headers: tuple[str, ...],
+        selected_column: int = -1,
     ) -> int:
-        """The panel, its title, the subtitle and the column titles.
+        """The panel, its title, the subtitle and the column titles; returns the first row's y.
 
-        Returns the y the first row starts at. The column titles are drawn here
-        rather than where they are painted, and *this* is why: the layout
-        reserved the height of that band, and the drawing has to consume it or
-        the first row lands on the titles -- two texts at the same y, which
-        reads as "the title is glued to the column" rather than as the bug it
-        is. A layout that reserves space it does not spend is invisible in
-        every screenshot and obvious in two numbers.
+        The focused column's title is lit and the others faint. The header band
+        the layout reserved is consumed here, so the first row never lands on
+        the titles.
         """
         assert self._fonts is not None
-        title_font, _, small_font = self._fonts
+        title_font, item_font, small_font = self._fonts
         panel_rect, _, y, columns, cell_width, _, _, header_height = layout
-        padding, gap = self._metrics.padding, self._metrics.gap
+        content = Metrics(self._text_scale)
+        padding, gap = content.padding, content.gap
 
-        surface.blit(self._panel_for(panel_rect.size), panel_rect)
+        # One pixel of the item font's grid, as on the menus' panels.
+        unit = max(1, item_font.get_height() // 8)
+        surface.blit(self._panel_for(panel_rect.size, unit), panel_rect)
         # The title is centred because every other title in the game is, and a
         # left-aligned one above a centred subtitle reads as a mistake.
         painted = self._render_cached(title_font, title, TEXT_TITLE, panel_rect.width)
@@ -297,7 +302,8 @@ class GridView:
         self._header_rects = []
         for index, header in enumerate(column_headers):
             cell_x = columns[index]
-            painted_header = self._render_cached(small_font, header, TEXT_MUTED, cell_width)
+            color = TEXT_WARN if index == selected_column else TEXT_FAINT
+            painted_header = self._render_cached(small_font, header, color, cell_width)
             surface.blit(painted_header, (cell_x, y))
             self._header_rects.append(
                 pygame.Rect(cell_x, y, painted_header.get_width(), header_height)
@@ -312,27 +318,28 @@ class GridView:
         column_headers: tuple[str, ...],
         top: int,
         footers: tuple[str, ...],
+        reserve: tuple[str, ...] = (),
     ) -> Layout:
-        """Panel, label gutter, cell columns, and the header band's top and height.
+        """Panel, label gutter, cell columns, and the header band.
 
-        The order matters and it is the whole of the responsiveness: the *text*
-        decides how much room it needs, so it is measured first, at a scale it
-        has been given the chance to give up. Only then is the panel sized around
-        it -- driven by the content, not by a 900px desktop cap that ignored both
-        the window and the text inside it.
-
-        The row height is then the height of the text plus its padding. The old
-        version took ``min(34, ...)`` of that and got 34 while the text was 49:
-        a clickable band 44% the size of the label it labelled, so clicking the
-        row you read selected the row above. A row may be tight; it may not be
-        shorter than its own glyphs.
+        The text scale is settled first, then the panel is sized around the
+        measured text. A row is never shorter than its own glyphs.
         """
         metrics = self._metrics
         margin = metrics.margin
         budget = surface.get_height() - top - margin
         section_gaps = self._section_gap_count(rows)
         self._settle_text_scale(
-            surface, len(rows), top, footers, budget, subtitle, column_headers, section_gaps
+            surface,
+            len(rows),
+            top,
+            footers,
+            budget,
+            subtitle,
+            column_headers,
+            section_gaps,
+            rows=rows,
+            reserve=reserve,
         )
         self._ensure_fonts()
         assert self._fonts is not None
@@ -346,7 +353,7 @@ class GridView:
 
         columns_count = max(1, len(column_headers))
         label_width, cell_width, width = self._column_widths(
-            rows, column_headers, item_font, small_font, margin, padding, gap, surface
+            rows, column_headers, item_font, small_font, margin, padding, gap, surface, reserve
         )
 
         row_height = self._row_height(item_font, gap)
@@ -390,26 +397,23 @@ class GridView:
         subtitle: str,
         column_headers: Sequence[str],
         section_gaps: int = 0,
+        *,
+        rows: Sequence[GridRow] = (),
+        reserve: tuple[str, ...] = (),
     ) -> None:
-        """The largest text scale whose panel fits in ``budget``, found by measuring.
+        """The largest text scale whose panel fits the window, found by measuring.
 
-        Not computed from the design constants, because they are wrong about the
-        font: a 22px Consolas has a line box taller than 22, and on a machine
-        without Consolas the fallback has a different one again. So the height is
-        *measured* with the real fonts and the scale corrected by the ratio, at
-        most three times -- after the first, the answer is within a pixel or two,
-        because font height is very nearly linear in size.
-
-        The floor is :data:`MIN_TEXT_RATIO`: a scale the window cannot afford at
-        any legible size keeps the legible size and overflows, which is the trade
-        this makes on purpose. A label nobody can read is not an option, and a
-        window smaller than the interface at the player's own chosen scale is
-        theirs to resolve.
+        Height is held to ``budget`` with a floor of :data:`MIN_TEXT_RATIO`;
+        width is held to the window with the lower :data:`WIDTH_FLOOR`, because
+        a column cut off at the edge is worse than the font at its native 8px.
+        Font sizes snap to the pixel grid, so the scale is corrected by the
+        measured ratio a few times.
         """
         metrics = self._metrics
         floor = metrics.scale * MIN_TEXT_RATIO
         text_scale = self._text_scale if self._text_scale <= metrics.scale else metrics.scale
-        for _ in range(3):
+        available = surface.get_width() - metrics.margin * 2
+        for _ in range(5):
             self._text_scale = text_scale
             self._ensure_fonts()
             assert self._fonts is not None
@@ -428,9 +432,28 @@ class GridView:
                 section_gaps,
                 self._section_gap(content, self._row_height(item_font, content.gap)),
             )
-            if height <= budget or text_scale <= floor:
+            _, _, width = self._column_widths(
+                rows,
+                tuple(column_headers),
+                item_font,
+                small_font,
+                metrics.margin,
+                content.padding,
+                content.gap,
+                surface,
+                reserve,
+                capped=False,
+            )
+            tall = height > budget and text_scale > floor
+            wide = width > available and text_scale > WIDTH_FLOOR
+            if not (tall or wide):
                 break
-            text_scale = max(floor, text_scale * budget / max(1, height))
+            target = text_scale * 0.95
+            if tall:
+                target = min(target, text_scale * budget / max(1, height))
+            if wide:
+                target = min(target, text_scale * available / max(1, width))
+            text_scale = max(WIDTH_FLOOR if wide else floor, target)
         self._text_scale = text_scale
         self._ensure_fonts()
 
@@ -439,25 +462,22 @@ class GridView:
         """The colour one cell is painted in.
 
         A cell that is asking for something is red whatever row it is on, a
-        cell with nothing to say is muted, and a cell on an option row is muted
-        too: the whole block is one register, and a value painted in the value
-        colour inside it would claim to be a binding.
+        cell with nothing to say is faint, and a cell on an option row is muted:
+        a value painted in the binding colour there would claim to be a binding.
         """
         if cell.warn:
             return TEXT_CRIT
-        if cell.muted or option:
+        if cell.muted:
+            return TEXT_FAINT
+        if option:
             return TEXT_MUTED
-        return TEXT_OK
+        return TEXT_TITLE
 
     @staticmethod
     def _section_gap_count(rows: Sequence[GridRow]) -> int:
-        """How many section gaps ``rows`` asks for.
+        """How many section gaps ``rows`` asks for: one per group of option rows.
 
-        One per *group* of option rows, not one per option row: a block of three
-        choices is separated from the values above it once, and keeps the list's
-        own row pitch inside itself. Counted from the rows rather than kept as a
-        number the caller passes, because ``draw`` and ``_layout`` must spend the
-        same gaps or the panel is sized for a list that is not the one it paints.
+        Counted from the rows so ``draw`` and ``_layout`` spend the same gaps.
         """
         return sum(
             1
@@ -467,14 +487,10 @@ class GridView:
 
     @staticmethod
     def _section_gap(content: Metrics, row_height: int) -> int:
-        """The air that opens a group, and never less than a row.
+        """The air that opens a group, never less than a row.
 
-        ``content.section_gap`` is a multiple of the *text* scale, and a list
-        that does not fit shrinks that scale while the font -- and therefore the
-        row -- stays legible. On a small window the token ends up below the row
-        it was meant to separate, and the block of options is then not set apart
-        at all: the gap is the only thing marking the group, so it is floored on
-        the row.
+        The gap is the only thing marking the group, and the token shrinks with
+        the text while the row does not.
         """
         return max(content.section_gap, row_height)
 
@@ -521,7 +537,7 @@ class GridView:
             + row_height * row_count
             + section_gap * section_gaps
             + content.gap * (1 + footer_count)
-            + small_font.get_linesize() * footer_count
+            + line_step(small_font) * footer_count
         )
 
     def _column_widths(
@@ -534,16 +550,19 @@ class GridView:
         padding: int,
         gap: int,
         surface: pygame.Surface,
+        reserve: tuple[str, ...] = (),
+        *,
+        capped: bool = True,
     ) -> tuple[int, int, int]:
         """The gutter, the widest cell, and the panel width that holds them.
 
-        Measured, not assumed: a fixed 34% gutter leaves a short label a hole the
-        size of a long one, and the panel stops being as wide as its own content.
+        Measured from the text. ``capped=False`` leaves the gutter as wide as
+        its longest label, the width the text scale is settled against.
         """
         columns_count = max(1, len(column_headers))
-        label_width = max((item_font.size(row.label)[0] for row in rows), default=0)
+        label_width = max((self._width(item_font, row.label) for row in rows), default=0)
         for header in column_headers:
-            label_width = max(label_width, small_font.size(header)[0])
+            label_width = max(label_width, self._width(small_font, header))
         # Plus the air the drawing leaves after a label: the first column starts
         # at the end of the gutter, and ``draw`` paints a label in
         # ``gutter - gap``, so a gutter measured without it cut the air out of
@@ -554,60 +573,61 @@ class GridView:
         for row in rows:
             for cell in row.cells:
                 if cell is not None:
-                    cell_width = max(cell_width, item_font.size(cell.text)[0])
+                    cell_width = max(cell_width, self._width(item_font, cell.text))
         for header in column_headers:
-            cell_width = max(cell_width, small_font.size(header)[0])
-        cell_width += small_font.size(" ")[0] * 2
+            cell_width = max(cell_width, self._width(small_font, header))
+        for text in reserve:
+            cell_width = max(cell_width, self._width(item_font, text))
+        cell_width += self._width(small_font, " ") * 2
         # A gutter wider than half the panel leaves cells no room, so cap it at
         # a third and give the rest to the values, which are the wider text.
-        label_width = min(label_width, self._max_panel_width(surface, margin) // 3)
+        if capped:
+            label_width = min(label_width, self._max_panel_width(surface, margin) // 3)
         width = padding * 2 + label_width + cell_width * columns_count + gap * (columns_count - 1)
         return label_width, cell_width, width
 
     def _max_panel_width(self, surface: pygame.Surface, margin: int) -> int:
         return max(self._metrics.px(200), surface.get_width() - margin * 2)
 
-    def _ensure_fonts(self) -> None:
-        """The three faces at the scale the list can afford, rebuilt only on change.
+    def _width(self, font: pygame.font.Font, text: str) -> int:
+        """Memoised text width; fonts are stable between font rebuilds."""
+        key = (id(font), text)
+        width = self._size_cache.get(key)
+        if width is None:
+            width = font.size(text)[0]
+            self._size_cache[key] = width
+        return width
 
-        The rendered-text cache is keyed on ``id(font)``, so rebuilding these
-        every frame -- which a layout pass that wants a fresh font will happily
-        do -- would miss the whole cache and re-render thirty strings a frame.
-        The key also means a stale entry is worse than a missing one, so the
-        cache is emptied at the only moment the fonts change: a resize.
+    def _ensure_fonts(self) -> None:
+        """The three faces at the settled text scale, rebuilt only when it changes.
+
+        The text cache is keyed on ``id(font)``, so it is emptied when the
+        fonts are replaced.
         """
         if self._fonts is not None and self._font_key == self._text_scale:
             return
         self._fonts = (
-            pygame.font.SysFont(
-                "Consolas", self._metrics.title_text_at(self._text_scale), bold=True
-            ),
-            pygame.font.SysFont("Consolas", self._metrics.item_text_at(self._text_scale)),
-            pygame.font.SysFont("Consolas", self._metrics.small_text_at(self._text_scale)),
+            menu_font(menu_font_size(DESIGN_TITLE, self._text_scale)),
+            menu_font(menu_font_size(DESIGN_ITEM, self._text_scale)),
+            menu_font(menu_font_size(DESIGN_SMALL, self._text_scale)),
         )
         if self._font_key is not None:
             self._text_cache.clear()
+            self._size_cache.clear()
         self._font_key = self._text_scale
 
-    def _panel_for(self, size: tuple[int, int]) -> pygame.Surface:
-        """Return the filled panel background, rebuilt only when resized.
-
-        Allocating and filling a full-panel ``SRCALPHA`` surface every frame
-        was the single most expensive part of this view.
-        """
-        if self._panel_cache is None or self._panel_size != size:
-            panel = pygame.Surface(size, pygame.SRCALPHA)
-            panel.fill((*PANEL_BG[:3], 235))
-            pygame.draw.rect(panel, PANEL_BORDER, panel.get_rect(), 2)
-            self._panel_cache = panel
-            self._panel_size = size
+    def _panel_for(self, size: tuple[int, int], unit: int = 1) -> pygame.Surface:
+        """The menus' pixel-art panel, rebuilt only when its size changes."""
+        if self._panel_cache is None or self._panel_size != (*size, unit):
+            self._panel_cache = pixel_frame(size[0], size[1], unit)
+            self._panel_size = (*size, unit)
         return self._panel_cache
 
     def _strip_for(self, size: tuple[int, int]) -> pygame.Surface:
-        """Return the focus highlight strip, rebuilt only when resized."""
+        """The focused row's faint band, rebuilt only when resized."""
         if self._strip_cache is None or self._strip_size != size:
             strip = pygame.Surface(size, pygame.SRCALPHA)
-            strip.fill((*TEXT_WARN[:3], 35))
+            strip.fill((*SELECTION_BG[:3], ROW_BAND_ALPHA))
             self._strip_cache = strip
             self._strip_size = size
         return self._strip_cache
@@ -620,39 +640,33 @@ class GridView:
         The grid issues roughly 30 ``render`` calls per frame; without this each
         one allocated a Surface, which showed up as micro-freezes.
         """
-        key = (id(font), text, color, max_width)
-        cached = self._text_cache.get(key)
-        if cached is None:
-            cached = self._fit(font, text, max_width, color)
-            if len(self._text_cache) >= self.TEXT_CACHE_LIMIT:
-                self._text_cache.clear()
-            self._text_cache[key] = cached
-        return cached
+        return self._text_cache.render(font, text, color, max_width)
 
     @staticmethod
     def _fit(
         font: pygame.font.Font, text: str, max_width: int, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        """Render ``text`` truncated to ``max_width`` with a trailing ellipsis.
+        """Render ``text`` cut to ``max_width``, with a trailing ellipsis.
 
-        The longest fitting prefix is found by binary search: a prefix's width
-        grows monotonically with its length, and the previous
-        shrink-one-character-at-a-time loop re-measured the whole remaining
-        string on every iteration, which is quadratic and cost 0.83ms for a
-        single long label.
+        The longest fitting prefix is found by binary search, measuring the
+        prefix *with* the ellipsis so the result never overhangs.
         """
+        # No antialiasing: a pixel font blurred at its edges is not one.
         if not text or font.size(text)[0] <= max_width:
-            return font.render(text, True, color)
+            return font.render(text, False, color)
+        marker = "…"
         low, high = 0, len(text)
         while low < high:
             middle = (low + high + 1) // 2
-            if font.size(text[:middle])[0] <= max_width:
+            if font.size(text[:middle] + marker)[0] <= max_width:
                 low = middle
             else:
                 high = middle - 1
         if low == 0:
-            return font.render("", True, color)
-        return font.render(f"{text[: low - 1]}…", True, color)
+            # Not even the marker fits. An empty cell is honest; a marker that
+            # overhangs is the defect this search exists to remove.
+            return font.render("", False, color)
+        return font.render(f"{text[:low].rstrip()}{marker}", False, color)
 
 
 def _centred_x(panel: pygame.Rect, width: int) -> int:

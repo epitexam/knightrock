@@ -4,6 +4,7 @@ import pytest
 from src.core.input.input_actions import InputAction
 from src.core.input.input_manager import InputManager
 from src.core.input.input_state import InputState
+from src.core.settings import Battery as BatterySettings
 from src.core.settings import Physics
 from src.entities.player import Player
 from src.states.player_states import _can_dash
@@ -71,20 +72,79 @@ def test_player_dash_charges(player_setup):
     assert _can_dash(player)
 
 
-# --- Dash attack (F / attack4) ---
+# --- Slash and beat, high and low ---
 
 
-def test_attack4_starts_the_dash_attack(mock_input_manager):
-    """The lunge move is bound to attack4 and applies its full-speed lunge."""
+def test_the_slash_is_high_and_down_makes_it_low(mock_input_manager):
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
+    assert player.combat.state.attack_name == "slash_high_1"
 
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    _step(
+        player,
+        mock_input_manager,
+        1,
+        press=InputAction.ATTACK_1,
+        hold=frozenset({InputAction.MOVE_DOWN}),
+    )
+    assert player.combat.state.attack_name == "slash_low_1"
 
-    assert player.state_machine.current_state_name == "attack"
-    assert player.combat.state.attack_name == "dash_attack"
-    # dash_attack.lunge_speed_multiplier is 1.0: the whole run speed forward.
-    assert player.velocity.x == pytest.approx(player.speed, rel=0.05)
+
+def test_the_beat_button_punches_and_kicks(mock_input_manager):
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_2)
+    assert player.combat.state.attack_name == "punch_1"
+
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    _step(
+        player,
+        mock_input_manager,
+        1,
+        press=InputAction.ATTACK_2,
+        hold=frozenset({InputAction.MOVE_DOWN}),
+    )
+    assert player.combat.state.attack_name == "kick_1"
+
+
+def test_a_slash_spends_battery_and_a_refused_one_does_not(mock_input_manager):
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    full = player.battery.amount
+
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)  # buffered, refused
+
+    assert player.battery.amount == pytest.approx(full - BatterySettings.SLASH_COST)
+
+
+def test_a_slash_on_an_empty_battery_is_weak(mock_input_manager):
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    player.battery.amount = 0.0
+
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
+
+    assert player.combat.charge_multiplier == pytest.approx(BatterySettings.EMPTY_POWER)
+
+
+def test_holding_the_slash_charges_it(mock_input_manager):
+    player = _make_player(mock_input_manager)
+    _step(player, mock_input_manager, 2)
+    hold = frozenset({InputAction.ATTACK_1})
+
+    _step(player, mock_input_manager, 40, hold=hold)
+
+    assert player.combat.charging.is_charging
+    assert player.state_machine.current_state_name == "charge"
+
+    _step(player, mock_input_manager, 1)
+
+    assert player.combat.state.attack_name == "charged_slash"
 
 
 def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_manager):
@@ -101,14 +161,14 @@ def test_attack_is_refused_while_the_dash_is_committed(monkeypatch, mock_input_m
     assert player.state_machine.current_state_name == "dash"
 
     # One frame in: 0.016s elapsed, under the 0.03s window.
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "dash"
     assert player.combat.is_attacking is False
 
 
 def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
-    """Dash then F: the attack takes over and the dash perks drop with it."""
+    """Dash then slash: the dash slash takes over and the dash perks drop with it."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
     _step(player, mock_input_manager, 1, press=InputAction.DASH)
@@ -116,27 +176,24 @@ def test_attack_cancels_the_dash_once_the_window_is_open(mock_input_manager):
     assert player.is_invincible is True
     squished_width = player.hitbox.width
 
-    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_4)
+    _step(player, mock_input_manager, 1, press=InputAction.ATTACK_1)
 
     assert player.state_machine.current_state_name == "attack"
-    assert player.combat.state.attack_name == "dash_attack"
+    assert player.combat.state.attack_name == "dash_slash"
     assert player.is_invincible is False  # i-frames belong to the dash state
     assert player.hitbox.width > squished_width  # dash squish restored on exit
 
 
-def test_guard_still_cancels_the_dash(mock_input_manager):
-    """The guard cancel predates the attack one: keep both working."""
+def test_the_guard_waits_for_the_dash_to_end(mock_input_manager):
+    """A dash runs its course; the guard held through it rises once it is over."""
     player = _make_player(mock_input_manager)
     _step(player, mock_input_manager, 2)
     _step(player, mock_input_manager, 1, press=InputAction.DASH)
     assert player.state_machine.current_state_name == "dash"
+    hold = frozenset({InputAction.GUARD})
 
-    _step(
-        player,
-        mock_input_manager,
-        1,
-        press=InputAction.GUARD,
-        hold=frozenset({InputAction.GUARD}),
-    )
+    _step(player, mock_input_manager, 1, hold=hold)
+    assert player.state_machine.current_state_name == "dash"
 
+    _step(player, mock_input_manager, 30, hold=hold)
     assert player.state_machine.current_state_name == "guard"

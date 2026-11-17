@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any
 
 import pygame
@@ -53,15 +54,11 @@ class UIManager:
         self.hud = HUD(self.renderer)
         self._compact_panel_focus = PANEL_STATE
 
+    #: The panels F10 steps through in the compact layout, in order.
+    COMPACT_ORDER = (PANEL_COMBAT, PANEL_STATE, PANEL_STATS, PANEL_SCENE, PANEL_KEYS, PANEL_LEGEND)
+
     def cycle_compact_panel(self) -> str:
-        order = (
-            PANEL_COMBAT,
-            PANEL_STATE,
-            PANEL_STATS,
-            PANEL_SCENE,
-            PANEL_KEYS,
-            PANEL_LEGEND,
-        )
+        order = self.COMPACT_ORDER
         for _ in order:
             self._compact_panel_focus = order[
                 (order.index(self._compact_panel_focus) + 1) % len(order)
@@ -69,6 +66,18 @@ class UIManager:
             if not self.renderer.interaction.is_closed(self._compact_panel_focus):
                 break
         return self._compact_panel_focus
+
+    def _panel_footers(self) -> dict[str, str]:
+        """How to get around the panels, said on the panel being looked at.
+
+        In the compact layout that is the one panel shown, with where it sits in
+        the F10 cycle; with every panel shown it is said once, on PERFORMANCE.
+        """
+        if not compact_panels():
+            return {PANEL_PERFORMANCE: "F11 one at a time"}
+        focus = self._compact_panel_focus
+        position = self.COMPACT_ORDER.index(focus) + 1
+        return {focus: f"F10 next {position}/{len(self.COMPACT_ORDER)} · F11 all"}
 
     def compact_panel_focus(self) -> str:
         return self._compact_panel_focus
@@ -80,6 +89,7 @@ class UIManager:
         scene_host: SceneHost | None = None,
     ) -> int:
         panel_id = self._compact_panel_focus
+        self.renderer.footers = self._panel_footers()
         if panel_id == PANEL_COMBAT:
             height = self.draw_combat_panel(layout)
             if height > 0:
@@ -215,51 +225,38 @@ class UIManager:
     def _attack_button_rows(player: Any) -> list[tuple[str, tuple[int, int, int]]]:
         """What each attack button would throw from where the fighter is standing.
 
-        This is the gate, rendered -- not a report of what the gate last decided.
-        ``start_attack`` tests posture before cooldown, and both are readable from
-        ``player.stance``, ``BUTTON_MOVES`` and ``combat.cooldowns``, so the
-        reason for a refusal is visible *before* the press rather than logged
-        after it. Nothing has to publish a refusal for that: ``refusal.py`` notes
-        no consumer exists yet, and the obvious one is a log, when the cheaper
-        answer is to show the rule.
-
-        The rows come from iterating ``BUTTON_MOVES``, never from a list written
-        out here. A button added to the table appears without a UI edit -- the
-        property whose absence let ``air_rise`` drift to a guard height its
-        grounded counterpart did not have.
-
-        A button with no move in this posture shows a dash. Printing the standing
-        move instead would claim it works from here, which is the one thing it
-        must not say.
+        This is the gate, rendered -- not a report of what the gate last decided:
+        each button, high then low, resolved from the fighter's posture with
+        nothing running, as :func:`resolve_move` would. A press with no move in
+        this posture shows a dash.
         """
-        from src.core.input.input_actions import InputAction
-        from src.entities.attack_moves import BUTTON_MOVES, move_for_button
+        from src.combat.frame_data import AttackButton
+        from src.entities.attack_moves import MoveContext, resolve_move
 
-        # Read the way the rest of this panel reads: duck-typed off a real player.
-        # A player with no stance resolves every button to ``None`` rather than
-        # raising, which is the right failure for a debug overlay -- it draws an
-        # empty table instead of taking the frame down.
+        # Duck-typed off a real player: a player with no stance draws an empty
+        # table instead of taking the frame down.
         stance: Any = getattr(player, "stance", None)
         cooldowns = getattr(getattr(player, "combat", None), "cooldowns", {}) or {}
         rows: list[tuple[str, tuple[int, int, int]]] = [
             (f"Stance  {getattr(stance, 'value', stance)}", TEXT_OK)
         ]
-        for action in BUTTON_MOVES:
-            # The action, not the key it defaults to. ``SPECIAL_ATTACK`` has no
-            # keyboard binding at all and the rest are rebindable, so printing a
-            # letter would be a claim this panel cannot keep -- the same mistake
-            # as a guard height a move's grounded twin did not have.
-            label = "special" if action is InputAction.SPECIAL_ATTACK else action.value
-            name = move_for_button(action, stance)
-            if name is None:
-                text, color = f"{label:<7} —", TEXT_MUTED
+        # One row per button, high then low: four rows would not fit the
+        # small displays the panel stack has to hold.
+        for button, presses in (
+            ("Slash", (AttackButton.SLASH_HIGH, AttackButton.SLASH_LOW)),
+            ("Beat", (AttackButton.BEAT_HIGH, AttackButton.BEAT_LOW)),
+        ):
+            names = [
+                resolve_move(press, MoveContext(stance)) if stance is not None else None
+                for press in presses
+            ]
+            shown = " · ".join("—" if name is None else str(name) for name in names)
+            cooling = [float(cooldowns.get(name, 0.0)) for name in names if name is not None]
+            remaining = max(cooling, default=0.0)
+            if remaining > 0.0:
+                rows.append((f"{button:<6}{shown} {remaining:.1f}s", TEXT_WARN))
             else:
-                remaining = float(cooldowns.get(name, 0.0))
-                if remaining > 0.0:
-                    text, color = f"{label:<7} {name} {remaining:.1f}s", TEXT_WARN
-                else:
-                    text, color = f"{label:<7} {name}", TEXT_MUTED
-            rows.append((text, color))
+                rows.append((f"{button:<6}{shown}", TEXT_MUTED))
         return rows
 
     def draw_help_panel(
@@ -284,37 +281,30 @@ class UIManager:
             return 0
         states = layers or {}
 
-        def mark(key: str) -> str:
+        def layer(key: str, name: str) -> str:
             if key not in states:
-                return ""
-            return " [ON]" if states[key] else " [OFF]"
+                return f"{name}"
+            return f"{name} {'on' if states[key] else 'off'}"
 
-        # The bench list is reference, identical every frame, and it was fifteen rows for
-        # a sentence's worth of facts -- F1 through F5 one per line, which is five
-        # rows to say there are five toggles. Merging it is what keeps the panel
-        # placeable at 640x480: the live block adds six rows, and this panel is the
-        # tallest in the stack, so every bench row it did not need was a row the
-        # column flow could not find a slot for.
-        # One range for the whole top row rather than ``1-6`` and ``7-0``: the
-        # split reads as two ranges, and a reader checking whether their key is
-        # listed has to work out which half it is in. The distinction that matters
-        # is in the note beside it, not in the range itself.
-        # ``1-6`` and ``7-0`` rather than one ``1-0``: two explicit ranges, because a
-        # range written high-to-low is a thing a reader has to work out, and
-        # "which half of the row is my key in" is not a question a legend should
-        # raise. Splitting it is also what let the legend drop the air half when
-        # the air kit landed -- one range would have covered it by accident.
+        # Every key with its name, and every layer with its state: a row that
+        # says "F1-F5 layers" leaves the reader to press each one to find out.
+        layer_rows = [
+            f"F1 {layer('boxes', 'boxes')} · F2 {layer('labels', 'labels')}"
+            f" · F3 {layer('velocities', 'speed')}",
+            f"F4 {layer('statics', 'statics')} · F5 {layer('panels', 'panels')}",
+        ]
         bench = [
-            "1-6 showcase · 7-0 air kit (in the air)",
+            "1-8 showcase · 9-0 air kit (in the air)",
             "V/B shots · C dummy · G/P/T spawn",
-            f"F1-F5 layers{mark('boxes')}",
-            "F6-F9 sim · F10 next · F11 layout",
+            *layer_rows,
+            "F6 freeze · F7 step · F8 replay · F9 export",
             "× close · drag",
         ]
         if compact:
             bench = [
                 "1-0 attacks · V/B shots · G/P/T spawn",
-                "F1-F5 layers · F6-F11 tools · × close",
+                *layer_rows,
+                "F6 freeze · F7 step · F8 replay · F9 export",
             ]
 
         lines: list[str] = []
@@ -470,11 +460,9 @@ class UIManager:
             f"Spawn CD   {spawn_cooldown:.3f}",
         ]
         if compact_panels():
-            lines = [
-                lines[0],
-                lines[1],
-                f"F10 view  {self.compact_panel_focus().upper()}",
-            ]
+            # FPS and frame time; the way around the panels is on the panel
+            # being looked at, not here.
+            lines = lines[:2]
 
         if compact_panels():
             primary_ui_ms = world_ms + panels_ms
@@ -551,7 +539,7 @@ class UIManager:
         self,
         entities: Iterable[pygame.sprite.Sprite],
         camera: Camera,
-        screen_rects: dict[int, pygame.Rect] | None = None,
+        screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
     ) -> list[pygame.Rect]:
         """Draw the HP bars; return the rects they occupy.
 
@@ -562,8 +550,29 @@ class UIManager:
         return self.world_ui.draw_health_bars(entities, camera, screen_rects)
 
     def draw_hud(self, player: Any) -> None:
-        """Always-on player gauges: health, guard posture, dash, combo (UI-7)."""
+        """Always-on player gauges: health and rally, blood, dash, combo (UI-7)."""
         self.hud.draw(player)
+
+    @contextmanager
+    def drawing_within(self, area: pygame.Rect | None) -> Iterator[None]:
+        """Lay out and paint inside ``area`` of the target, not the whole of it.
+
+        Under the *zoom* fit the window shows a crop of the target: anchored to
+        the target's corners, the gauges are painted in the part that is cut
+        off. Painting into a subsurface of the shown part puts every corner
+        anchor on a corner the player sees, with no layout knowing about it.
+        """
+        surface = self.renderer.surface
+        bounds = surface.get_rect()
+        shown = bounds if area is None else area.clip(bounds)
+        if shown == bounds or shown.width <= 0 or shown.height <= 0:
+            yield
+            return
+        self.renderer.surface = surface.subsurface(shown)
+        try:
+            yield
+        finally:
+            self.renderer.surface = surface
 
     # -- the WorldOverlay port -------------------------------------------------
     #
@@ -590,9 +599,11 @@ class UIManager:
         self.renderer.interaction.begin_frame()
         if not self.world_ui.layers.get("panels", True):
             return
+        self.renderer.footers = self._panel_footers()
         layout = PanelLayout(
             self.renderer.surface.get_width(),
-            self.renderer.surface.get_height(),
+            # Above the HUD's gauges, which are drawn on every frame.
+            self.renderer.surface.get_height() - self.hud.reserved_height(),
             scale=self.renderer.screen_scale,
         )
         self.draw_performance_panel(

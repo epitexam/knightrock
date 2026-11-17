@@ -125,14 +125,14 @@ def test_taking_a_hit_kills_the_combo() -> None:
     combat = entity.combat
     assert isinstance(combat, CombatComponent)
 
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     combat.record_hit_landed(airborne=False)
     assert combat.combo_count == 1
     # Let the cooldown lapse and the swing recover, standing in for the
     # follow-up a player would land inside the combo window.
     combat.state.end()
     combat.update(0.4)
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     combat.record_hit_landed(airborne=False)
     assert combat.combo_count == 2
 
@@ -156,7 +156,7 @@ def test_taking_a_hit_cannot_be_credited_to_the_attack_it_interrupted() -> None:
     combat = entity.combat
     assert isinstance(combat, CombatComponent)
 
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     combat.on_hit()
 
     assert combat.combo.is_armed is False
@@ -176,7 +176,7 @@ def test_the_arming_rolls_back_with_the_frame_it_belongs_to() -> None:
     combat = entity.combat
     assert isinstance(combat, CombatComponent)
 
-    assert combat.start_attack("light_attack")
+    assert combat.start_attack("slash_high_1")
     armed_snapshot = combat.save_state()
 
     combat.on_hit()

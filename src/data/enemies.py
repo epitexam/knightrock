@@ -1,4 +1,4 @@
-"""Typed JSON loader for enemy configs (Phase 3 #4).
+"""Typed JSON loader for enemy configs.
 
 ``enemies.json`` maps enemy type names to :class:`EnemyConfig` values::
 
@@ -18,15 +18,18 @@ from pathlib import Path
 from typing import Any
 
 from src.combat.frame_data import AttackDefinition, MoveId
+from src.core.paths import confined_resource_path
 from src.data.attacks import read_attack_definition
 from src.data.errors import (
     GameplayDataError,
     pair_of_floats,
+    read_bool,
     read_json_object,
+    read_number,
     reject_unknown,
     triple_of_ints,
 )
-from src.entities.enemies.schema import EnemyConfig
+from src.entities.enemies.schema import EnemyConfig, EnemyMove
 from src.entities.hurtbox_zones import hurtbox_zones_to_dict, read_hurtbox_zones
 
 ENEMIES_FILENAME = "enemies.json"
@@ -39,6 +42,22 @@ def _required(mapping: dict[str, Any], key: str, where: str) -> Any:
     return mapping[key]
 
 
+def _read_stun_max(raw: Any, where: str) -> float:
+    """The size of the stun gauge: above zero, or a blow of any weight would fill it."""
+    stun_max = read_number(raw, f"{where}.stun_max")
+    if not stun_max > 0.0:
+        raise GameplayDataError(f"{where}: 'stun_max' must be above 0, got {raw!r}")
+    return stun_max
+
+
+def _read_weight(raw: Any, where: str) -> float:
+    """A knockback divisor: a number above zero (zero would launch to infinity)."""
+    weight = read_number(raw, f"{where}.weight")
+    if not weight > 0.0:
+        raise GameplayDataError(f"{where}: 'weight' must be above 0, got {raw!r}")
+    return weight
+
+
 def _read_animations(raw: Any, where: str) -> dict[str, str]:
     if raw is None:
         return {}
@@ -47,7 +66,44 @@ def _read_animations(raw: Any, where: str) -> dict[str, str]:
     for state, directory in raw.items():
         if not isinstance(directory, str):
             raise GameplayDataError(f"{where}.{state}: directory must be a string")
+        try:
+            confined_resource_path(directory)
+        except ValueError as exc:
+            raise GameplayDataError(
+                f"{where}.{state}: directory must be relative to the project root"
+            ) from exc
     return dict(raw)
+
+
+def _read_moves(
+    raw: Any, where: str, attacks: dict[MoveId, AttackDefinition]
+) -> tuple[EnemyMove, ...]:
+    """The moves list: each names one of the type's attacks, a range and a weight."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GameplayDataError(f"{where}: 'moves' must be a list")
+    moves: list[EnemyMove] = []
+    for index, entry in enumerate(raw):
+        at = f"{where}.moves[{index}]"
+        if not isinstance(entry, dict):
+            raise GameplayDataError(f"{at}: a move must be an object")
+        reject_unknown(entry, frozenset({"name", "range", "weight"}), at)
+        name = _required(entry, "name", at)
+        if name not in attacks:
+            raise GameplayDataError(f"{at}: {name!r} is not one of this enemy's attacks")
+        try:
+            move = EnemyMove(
+                name=str(name),
+                range=read_number(_required(entry, "range", at), f"{at}.range"),
+                weight=read_number(entry.get("weight", 1.0), f"{at}.weight"),
+            )
+        except (TypeError, ValueError) as exc:
+            raise GameplayDataError(f"{at}: invalid move value: {exc}") from exc
+        if not (move.range > 0.0 and move.weight > 0.0):
+            raise GameplayDataError(f"{at}: 'range' and 'weight' must be above 0")
+        moves.append(move)
+    return tuple(moves)
 
 
 def read_enemy_config(
@@ -76,10 +132,15 @@ def read_enemy_config(
         return EnemyConfig(
             size=pair_of_floats(_required(raw, "size", where), f"{where}.size"),
             color=triple_of_ints(_required(raw, "color", where), f"{where}.color"),
-            health=float(_required(raw, "health", where)),
+            health=read_number(_required(raw, "health", where), f"{where}.health"),
             attacks=attacks,
             attack_name=raw.get("attack_name"),
-            max_health=(float(raw["max_health"]) if raw.get("max_health") is not None else None),
+            moves=_read_moves(raw.get("moves"), where, attacks),
+            max_health=(
+                read_number(raw["max_health"], f"{where}.max_health")
+                if raw.get("max_health") is not None
+                else None
+            ),
             hitbox_inflate=pair_of_floats(
                 raw.get("hitbox_inflate", [0.0, 0.0]), f"{where}.hitbox_inflate"
             ),
@@ -88,28 +149,44 @@ def read_enemy_config(
             ),
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
             hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
-            chase_speed=float(raw.get("chase_speed", 120.0)),
+            chase_speed=read_number(raw.get("chase_speed", 120.0), f"{where}.chase_speed"),
             patrol_speed=(
-                float(raw["patrol_speed"]) if raw.get("patrol_speed") is not None else None
-            ),
-            vision_range=float(raw.get("vision_range", 300.0)),
-            attack_range=float(raw.get("attack_range", 60.0)),
-            patrol_interval=float(raw.get("patrol_interval", 2.0)),
-            idle_duration=float(raw.get("idle_duration", 0.5)),
-            has_ai=bool(raw.get("has_ai", True)),
-            pushable=bool(raw.get("pushable", True)),
-            super_armor=bool(raw.get("super_armor", False)),
-            passive_friction=float(raw.get("passive_friction", 10.0)),
-            can_jump=bool(raw.get("can_jump", False)),
-            jump_height=float(raw.get("jump_height", 500.0)),
-            jump_cooldown=float(raw.get("jump_cooldown", 1.0)),
-            leap_speed_mult=float(raw.get("leap_speed_mult", 1.0)),
-            parry_stun_threshold=(
-                int(raw["parry_stun_threshold"])
-                if raw.get("parry_stun_threshold") is not None
+                read_number(raw["patrol_speed"], f"{where}.patrol_speed")
+                if raw.get("patrol_speed") is not None
                 else None
             ),
-            parry_stun_duration=float(raw.get("parry_stun_duration", 0.0)),
+            vision_range=read_number(raw.get("vision_range", 300.0), f"{where}.vision_range"),
+            attack_range=read_number(raw.get("attack_range", 60.0), f"{where}.attack_range"),
+            patrol_interval=read_number(
+                raw.get("patrol_interval", 2.0), f"{where}.patrol_interval"
+            ),
+            idle_duration=read_number(raw.get("idle_duration", 0.5), f"{where}.idle_duration"),
+            has_ai=read_bool(raw.get("has_ai", True), f"{where}.has_ai"),
+            pushable=read_bool(raw.get("pushable", True), f"{where}.pushable"),
+            super_armor=read_bool(raw.get("super_armor", False), f"{where}.super_armor"),
+            passive_friction=read_number(
+                raw.get("passive_friction", 10.0), f"{where}.passive_friction"
+            ),
+            weight=_read_weight(raw.get("weight", 1.0), where),
+            can_jump=read_bool(raw.get("can_jump", False), f"{where}.can_jump"),
+            jump_height=read_number(raw.get("jump_height", 500.0), f"{where}.jump_height"),
+            jump_cooldown=read_number(raw.get("jump_cooldown", 1.0), f"{where}.jump_cooldown"),
+            leap_speed_mult=read_number(
+                raw.get("leap_speed_mult", 1.0), f"{where}.leap_speed_mult"
+            ),
+            stun_max=(
+                _read_stun_max(raw["stun_max"], where) if raw.get("stun_max") is not None else None
+            ),
+            stun_duration=read_number(raw.get("stun_duration", 0.0), f"{where}.stun_duration"),
+            guards=read_bool(raw.get("guards", False), f"{where}.guards"),
+            # None is not a JSON value: the key is simply absent when the type
+            # authors no direction. Present and false are different -- the first
+            # keeps the historical coin toss, the second pins the heading.
+            reverse=(
+                read_bool(raw["reverse"], f"{where}.reverse")
+                if raw.get("reverse") is not None
+                else None
+            ),
             # Pivot sub-group name. Left as-is rather than validated against
             # ``settings.PROFILES``: an unknown name resolves to the shipped
             # defaults, and a level that names a group nobody defined should
@@ -155,6 +232,16 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
             name: attack_definition_to_dict(attack) for name, attack in config.attacks.items()
         },
         "attack_name": config.attack_name,
+        **(
+            {
+                "moves": [
+                    {"name": move.name, "range": move.range, "weight": move.weight}
+                    for move in config.moves
+                ]
+            }
+            if config.moves
+            else {}
+        ),
         "max_health": config.max_health,
         "hitbox_inflate": list(config.hitbox_inflate),
         "hurtbox_inflate": list(config.hurtbox_inflate),
@@ -174,12 +261,15 @@ def enemy_config_to_dict(config: EnemyConfig) -> dict[str, Any]:
         "pushable": config.pushable,
         "super_armor": config.super_armor,
         "passive_friction": config.passive_friction,
+        "weight": config.weight,
         "can_jump": config.can_jump,
         "jump_height": config.jump_height,
         "jump_cooldown": config.jump_cooldown,
         "leap_speed_mult": config.leap_speed_mult,
-        "parry_stun_threshold": config.parry_stun_threshold,
-        "parry_stun_duration": config.parry_stun_duration,
+        "stun_max": config.stun_max,
+        "stun_duration": config.stun_duration,
+        "guards": config.guards,
         **({"turn_profile": config.turn_profile} if config.turn_profile is not None else {}),
+        **({"reverse": config.reverse} if config.reverse is not None else {}),
         "animations": dict(config.animations),
     }

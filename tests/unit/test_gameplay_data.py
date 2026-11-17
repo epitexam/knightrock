@@ -21,9 +21,13 @@ from src.data.enemies import ENEMIES_FILENAME, enemy_config_to_dict, read_enemie
 from src.data.errors import GameplayDataError
 from src.data.levels import LEVELS_FILENAME, levels_to_dict, read_levels_file
 from src.data.player import PLAYER_FILENAME, read_player_file
-from src.data.provider import GameplayData, gameplay_data_root, load_gameplay_data
+from src.data.provider import (
+    GameplayData,
+    gameplay_data_root,
+    load_gameplay_data,
+    shipped_gameplay_data,
+)
 from src.entities.enemies.schema import EnemyConfig
-from src.entities.enemies.types.goblin import GOBLIN_CONFIG
 from src.entities.player_config import PlayerConfig
 
 
@@ -58,7 +62,7 @@ def _grounded_player(input_manager: InputManager):
 def _attacks_doc() -> dict:
     return {
         "version": 1,
-        "sets": {"test_set": {"punch": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"])}},
+        "sets": {"test_set": {"punch": attack_definition_to_dict(PLAYER_ATTACKS["slash_high_1"])}},
     }
 
 
@@ -72,7 +76,7 @@ def test_read_attacks_file_roundtrips(tmp_path: Path) -> None:
 
     assert isinstance(sets["test_set"]["punch"], AttackDefinition)
     assert attack_definition_to_dict(sets["test_set"]["punch"]) == attack_definition_to_dict(
-        PLAYER_ATTACKS["light_attack"]
+        PLAYER_ATTACKS["slash_high_1"]
     )
 
 
@@ -105,7 +109,7 @@ def test_read_attacks_file_extra_hitbox_keyframes_roundtrip(tmp_path: Path) -> N
             "offset": [-30.0, 0.0],
             "keyframes": [
                 {"frame": 0, "size": [20.0, 20.0], "offset": [-30.0, 0.0]},
-                {"frame": 9, "size": [40.0, 20.0], "offset": [-10.0, 0.0]},
+                {"frame": 6, "size": [40.0, 20.0], "offset": [-10.0, 0.0]},
             ],
         }
     ]
@@ -115,14 +119,14 @@ def test_read_attacks_file_extra_hitbox_keyframes_roundtrip(tmp_path: Path) -> N
     phase = sets["test_set"]["punch"].phases[0]
 
     assert len(phase.extra_hitboxes[0].keyframes) == 2
-    # Third of the way along the 0->9 curve interpolates linearly.
-    size, offset = phase.extra_box_at(0, 3)
+    # Third of the way along the 0->6 curve interpolates linearly.
+    (size, offset), _angle = phase.extra_shape_at(0, 2)
     assert size[0] == pytest.approx(20.0 + 20.0 / 3)
     assert offset[0] == pytest.approx(-30.0 + 20.0 / 3)
     serialized = attack_definition_to_dict(sets["test_set"]["punch"])["phases"][0]["extra_hitboxes"]
     assert serialized[0]["keyframes"] == [
         {"frame": 0, "size": [20.0, 20.0], "offset": [-30.0, 0.0]},
-        {"frame": 9, "size": [40.0, 20.0], "offset": [-10.0, 0.0]},
+        {"frame": 6, "size": [40.0, 20.0], "offset": [-10.0, 0.0]},
     ]
 
 
@@ -148,7 +152,7 @@ def test_read_attacks_file_hitbox_keyframes_roundtrip(tmp_path: Path) -> None:
     doc = _attacks_doc()
     doc["sets"]["test_set"]["punch"]["phases"][0]["hitbox_keyframes"] = [
         {"frame": 0, "size": [20.0, 20.0], "offset": [10.0, 0.0]},
-        {"frame": 9, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
+        {"frame": 6, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
     ]
     path = _write(tmp_path / "attacks.json", doc)
 
@@ -156,9 +160,9 @@ def test_read_attacks_file_hitbox_keyframes_roundtrip(tmp_path: Path) -> None:
     phase = sets["test_set"]["punch"].phases[0]
 
     assert len(phase.hitbox_keyframes) == 2
-    assert phase.hitbox_keyframes[1].frame == 9
-    # A third of the way along the 0->9 curve interpolates linearly.
-    size, offset = phase.hitbox_at(3)
+    assert phase.hitbox_keyframes[1].frame == 6
+    # A third of the way along the 0->6 curve interpolates linearly.
+    size, offset = phase.hitbox_at(2)
     assert size[0] == pytest.approx(20.0 + 20.0 / 3)
     assert size[1] == 20.0
     assert offset[0] == pytest.approx(10.0 + 20.0 / 3)
@@ -167,7 +171,7 @@ def test_read_attacks_file_hitbox_keyframes_roundtrip(tmp_path: Path) -> None:
         "hitbox_keyframes"
     ] == [
         {"frame": 0, "size": [20.0, 20.0], "offset": [10.0, 0.0]},
-        {"frame": 9, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
+        {"frame": 6, "size": [40.0, 20.0], "offset": [30.0, 0.0]},
     ]
 
 
@@ -292,7 +296,7 @@ def test_read_enemies_file_explicit_patrol_speed(tmp_path: Path) -> None:
 
 
 def test_enemy_config_to_dict_omits_default_patrol_speed() -> None:
-    assert "patrol_speed" not in enemy_config_to_dict(GOBLIN_CONFIG)
+    assert "patrol_speed" not in enemy_config_to_dict(shipped_gameplay_data().enemies["goblin"])
 
 
 def test_read_enemies_file_unknown_attack_set_raises(tmp_path: Path) -> None:
@@ -473,7 +477,7 @@ def test_enemies_file_rejects_an_unknown_enemy_field(tmp_path: Path) -> None:
                     "size": [36, 48],
                     "color": [200, 60, 60],
                     "health": 60.0,
-                    "attacks": {"a": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"])},
+                    "attacks": {"a": attack_definition_to_dict(PLAYER_ATTACKS["slash_high_1"])},
                     "attack_ranges": 90.0,
                 }
             },
@@ -542,7 +546,6 @@ _OVERRIDE_SAMPLES: dict[str, object] = {
     "max_dash_charges": 5,
     "dash_speed": 1100.0,
     "dash_duration": 0.08,
-    "dash_friction": 25.0,
     "dash_penalty_duration": 2.0,
     "dash_recharge_time": 0.35,
     "dash_gravity_mult": 0.0,
@@ -614,7 +617,7 @@ def test_load_gameplay_data_uses_json_when_present(tmp_path: Path) -> None:
                     "size": [40, 50],
                     "color": [10, 200, 10],
                     "health": 25.0,
-                    "attacks": {"bite": attack_definition_to_dict(PLAYER_ATTACKS["light_attack"])},
+                    "attacks": {"bite": attack_definition_to_dict(PLAYER_ATTACKS["slash_high_1"])},
                 }
             },
         },
@@ -690,7 +693,7 @@ def test_a_single_stance_may_be_spelled_without_a_list(tmp_path: Path) -> None:
         "version": 1,
         "sets": {
             "test_set": {
-                "punch": attack_definition_to_dict(PLAYER_ATTACKS["air_attack"]),
+                "punch": attack_definition_to_dict(PLAYER_ATTACKS["air_slash"]),
             }
         },
     }
@@ -735,7 +738,7 @@ def test_an_attack_reachable_from_nowhere_is_rejected() -> None:
     """An empty whitelist would make a move permanently unstartable."""
     with pytest.raises(ValueError, match="cannot be empty"):
         replace(
-            PLAYER_ATTACKS["light_attack"],
+            PLAYER_ATTACKS["slash_high_1"],
             stances=(),
         )
 
@@ -743,7 +746,7 @@ def test_an_attack_reachable_from_nowhere_is_rejected() -> None:
 def test_a_duplicated_stance_is_rejected() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         replace(
-            PLAYER_ATTACKS["light_attack"],
+            PLAYER_ATTACKS["slash_high_1"],
             stances=(Stance.GROUND, Stance.AIR, Stance.GROUND),
         )
 
@@ -751,9 +754,8 @@ def test_a_duplicated_stance_is_rejected() -> None:
 def test_the_posture_a_fighter_is_in_is_resolved_most_specific_first() -> None:
     """The postures overlap, so the order is the answer.
 
-    Sliding a wall is also airborne, and the crouch needs a floor -- resolve in
-    the other order and a wall-slide reads as AIR or a crouch reads as GROUND,
-    each of which quietly changes which moves are live.
+    Sliding a wall is also airborne: resolve in the other order and a
+    wall-slide reads as AIR, which quietly changes which moves are live.
     """
     input_manager = InputManager()
     player = _grounded_player(input_manager)
@@ -767,11 +769,6 @@ def test_the_posture_a_fighter_is_in_is_resolved_most_specific_first() -> None:
     player.left_held = True
     player.velocity.y = 100.0
     assert player.stance is Stance.WALL
-
-    player.on_surface["floor"] = True
-    player.left_held = False
-    player.crouch._wanted = True
-    assert player.stance is Stance.CROUCH
 
 
 def test_the_shipped_files_survive_a_full_write_read_round_trip(
@@ -832,3 +829,37 @@ def test_the_shipped_attacks_file_is_exactly_what_the_serializer_writes(
         shipped.read_text(encoding="utf-8")
         == json.dumps(attacks_document(data.attack_sets, 2), indent=2, allow_nan=False) + "\n"
     )
+
+
+@pytest.mark.parametrize("missing", [ENEMIES_FILENAME, PLAYER_FILENAME])
+def test_load_gameplay_data_refuses_to_boot_without_its_fighters(
+    tmp_path: Path, missing: str
+) -> None:
+    """The enemies and the player are required too: their Python copies are gone (C4)."""
+    root = tmp_path / "data"
+    _write(root / "attacks.json", _attacks_doc())
+    _write(root / "enemies.json", {"version": 1, "enemies": {}})
+    _write(root / "player.json", {"version": 1, "player": {}})
+    (root / missing).unlink()
+
+    with pytest.raises((FileNotFoundError, GameplayDataError)):
+        load_gameplay_data(root)
+
+
+def test_a_named_hit_field_becomes_its_enum_member() -> None:
+    from src.combat.frame_data import Clash, Height, HitProperties
+
+    hit = HitProperties(damage=1, clash="clash", height="low")  # type: ignore[arg-type]
+
+    assert (hit.clash, hit.height) == (Clash.CLASH, Height.LOW)
+
+
+def test_an_unknown_hit_height_names_its_place_in_the_file(tmp_path: Path) -> None:
+    doc = _attacks_doc()
+    first_set = next(iter(doc["sets"].values()))
+    first_attack = next(iter(first_set.values()))
+    first_attack["phases"][0]["hit"]["height"] = "sideways"
+    path = _write(tmp_path / "attacks.json", doc)
+
+    with pytest.raises(GameplayDataError, match=r"\.hit\.height: 'sideways' is not one of"):
+        read_attacks_file(path)

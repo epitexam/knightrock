@@ -2,7 +2,7 @@
 Shared color constants and palettes.
 
 ``src/ui/styles.py`` remains the canonical theme for debug/HUD panels
-(audit F6.2); ``Colors`` is the gameplay/rendering palette. To avoid
+; ``Colors`` is the gameplay/rendering palette. To avoid
 two diverging sources of truth, the theme aliases below re-export the
 same values.
 """
@@ -179,8 +179,6 @@ class FXColors:
     the dash has none: the only mark it has is the sprite itself.
     """
 
-    guard_spark: ClassVar[Color] = (96, 226, 238)
-    guard_core: ClassVar[Color] = (226, 250, 255)
     parry_spark: ClassVar[Color] = (255, 206, 64)
     parry_core: ClassVar[Color] = (255, 252, 236)
     break_spark: ClassVar[Color] = (244, 96, 72)
@@ -197,13 +195,11 @@ class FXColors:
     sweat_shine: ClassVar[Color] = (240, 255, 255)
 
     decal: ClassVar[Color] = (168, 160, 148)
-    decal_ink: ClassVar[Color] = (92, 86, 78)
     shield_arc: ClassVar[Color] = (132, 232, 242)
-    shield_ink: ClassVar[Color] = (18, 74, 96)
 
 
 #: Valid ``LevelConfig.bg`` names: avoids ``getattr(Colors, cfg.bg)``
-#: typos by failing closed on unknown values (audit F5.1).
+#: typos by failing closed on unknown values.
 BG_COLORS: dict[str, Color] = {
     "black": Colors.black,
     "dark_grey": Colors.dark_grey,

@@ -8,18 +8,24 @@ from types import SimpleNamespace
 
 import pygame
 
+from src.application.scene_navigator import SceneNavigator
 from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
 from src.application.settings_store import UserSettings
+from src.core.display import letterbox
+from src.core.display.monitors import Monitor, Topology, degraded
 from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
+from src.core.settings import Debug
 
 
-def _game() -> SimpleNamespace:
+def _game(topology=None) -> SimpleNamespace:
+    desk = degraded(((1152, 648),)) if topology is None else topology
+    manager = SimpleNamespace(push=lambda _: None, pop=lambda: None)
     game = SimpleNamespace(
         settings=UserSettings(),
-        scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
+        scene_manager=manager,
         # The views are laid out at the preference times the density, and the
         # video screen reports the window it is in; a stand-in provides both.
         ui_scale=1.0,
@@ -29,12 +35,29 @@ def _game() -> SimpleNamespace:
             window_size=(1152, 648),
             density=1.0,
         ),
+        # The video screen asks the runtime what displays exist, so a stand-in
+        # has to answer. One screen by default: enough for the rows about pacing
+        # and scaling, and it keeps the desk out of a test about navigation.
+        topology=lambda: desk,
+        # The screen the window is on, which is what the VSync row reports -- the
+        # primary's rate is a claim about a screen the window may not be on.
+        window_monitor=lambda: desk.primary,
+        # Rule W's answer for the stand-in: the panel the window is on, which the
+        # size list is derived from; see test_video_scene for why it mirrors the
+        # VSync row here.
+        monitor=lambda: desk.primary,
+        # The fit policy the runtime would draw with, resolved by the same pure
+        # rule the runtime reads; see test_video_scene for why.
+        effective_fit=lambda: letterbox.effective_fit(
+            game.settings.fit, game.settings.pixel_perfect
+        ),
     )
 
     def apply_settings(settings: UserSettings) -> None:
         game.settings = settings
 
     game.apply_settings = apply_settings
+    manager.navigator = SceneNavigator(game)
     return game
 
 
@@ -106,21 +129,63 @@ def test_options_back_via_gamepad_and_mouse() -> None:
 
 
 def test_video_menu_owns_every_display_setting() -> None:
-    """Eight rows, and none of them is a number about the player's screen.
+    """Every display row, and none of them a fixed number about the player's screen.
 
-    The four that are gone were the ones that could not be honoured: a
-    resolution list is a claim about a monitor the game cannot measure, a render
-    scale and a smoothing flag described a fixed target that no longer exists,
-    and both of the latter were the settings that went stale -- the sharpness was
-    written back once at launch and then believed forever.
+    The rows that stayed away are the ones that could not be honoured: a
+    hardcoded resolution list is a claim about a monitor the game cannot measure,
+    a render scale and a smoothing flag described a fixed target that no longer
+    exists -- the sharpness was also the setting that went stale, written back
+    once at launch and then believed forever -- and a display mode asked the
+    driver for a mode change that can blank out a hybrid-GPU laptop.
+
+    The one display choice that came back is the window size, and it is the one
+    the game can check: it is a request the stage clamps to the panel it opens on
+    and never writes back.
+
+    The single-screen stand-in here has no names, and there is no screen row to
+    miss either way -- where the window sits is the window manager's business.
     """
-    assert _actions(VideoScene(_game())) == [
-        "display",
-        "pixel_perfect",
+    expected = [
+        "section:window",
+        "size",
+        "fullscreen",
+        "section:picture",
+        "fit",
+        "section:performance",
         "vsync",
         "frame_limit",
+        "section:interface",
         "scale",
-        "reset",
-        "back",
-        "info",
     ]
+    # The debug rows are conditional on the overlay being on, and this file is run
+    # both with and without DEBUG=1 -- so they are placed by where they belong in
+    # the order rather than asserted absent, which would fail the debug run.
+    if Debug.is_enabled():
+        expected.append("panel_scale")
+    expected += ["reset", "back"]
+    if Debug.is_enabled():
+        expected.append("info")
+
+    assert _actions(VideoScene(_game())) == expected
+
+
+def test_there_is_no_screen_picker_however_many_screens_there_are() -> None:
+    """Where the window sits is the window manager's business, not a row.
+
+    There used to be a screen row whenever the desktop had more than one panel,
+    and it was the only display setting that could claim something the game could
+    not keep: a window manager can refuse a move, and the row would then read a
+    screen the window was not on. The game opens centred on the primary and the
+    player drags it from there, which is a request the desktop cannot silently
+    refuse -- so there is no row to go stale.
+    """
+    assert "monitor" not in _actions(VideoScene(_game()))
+
+    desk = Topology(
+        monitors=(
+            Monitor(0, "DP-1", (0, 0, 2560, 1440), (0, 0, 2560, 1440), 144),
+            Monitor(1, "HDMI-1", (2560, 0, 1920, 1080), (2560, 0, 1920, 1080), 60),
+        ),
+        named=True,
+    )
+    assert "monitor" not in _actions(VideoScene(_game(topology=desk)))

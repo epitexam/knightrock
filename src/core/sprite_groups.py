@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pygame
+
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
 
 
 @dataclass
@@ -34,7 +38,9 @@ class SpriteGroups:
     collision_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     moving_platforms: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     combat_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
-    entity_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
+    entity_sprites: pygame.sprite.Group[Entity] = field(default_factory=pygame.sprite.Group)
+    """The fighters -- the player and the enemies -- and nothing else, so a
+    system that walks it reads an ``Entity`` and not a sprite it has to probe."""
     fx_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     hazard_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     projectile_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
@@ -45,6 +51,18 @@ class SpriteGroups:
     """The frozen tile layers that draw *under* the world (``Terrain``,
     ``BG``, ``Platforms``), in Tiled layer order. Excluded from
     ``all_sprites``; see the class docstring."""
+
+    def add_fighter(self, fighter: Entity) -> None:
+        """File a fighter where the world looks for one: drawn, moved, fought.
+
+        The one spelling of it: the world builder and both debug spawns used to
+        list the three groups each, and a fourth caller that forgot one would
+        build an enemy that is drawn but never hit, or hit but never moved.
+        """
+        self.all_sprites.add(fighter)
+        self.entity_sprites.add(fighter)
+        self.combat_sprites.add(fighter)
+        fighter.roster = self.entity_sprites
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:

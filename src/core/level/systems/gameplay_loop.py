@@ -1,8 +1,8 @@
-"""Orchestration of the fixed-tick systems of a level (audit F1.6 / §4).
+"""Orchestration of the fixed-tick systems of a level.
 
 ``GameplayLoop`` owns the *order* in which a level's systems run; the systems
 themselves are assembled by :class:`~src.core.level.level.Level` and injected
-here, so each one stays independently testable (audit F1.2).  The level is
+here, so each one stays independently testable.  The level is
 then a strict facade: :meth:`~src.core.level.level.Level.update` delegates
 its whole tick — debug spawner, simulation, camera, notifications and
 rollback bookkeeping — to :meth:`update` below.
@@ -11,7 +11,7 @@ rollback bookkeeping — to :meth:`update` below.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 import pygame
 
@@ -19,7 +19,8 @@ from src.combat.combatant_protocol import Combatant
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.combat_system import CombatSystem, GuardEvent
 from src.core.level.systems.contact_damage import ContactDamageSystem
-from src.core.level.systems.contact_system import ContactSystem
+from src.core.level.systems.contact_system import ContactSystem, ImpactEvent
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
 from src.core.level.systems.notification_system import NotificationSystem
@@ -35,45 +36,27 @@ from src.entities.entity import Entity
 if TYPE_CHECKING:
     from src.core.level.systems.projectile_system import ProjectileSystem
 from src.core.rollback import RollbackSystem
-from src.core.settings import CameraShake, World
-from src.core.settings import Combat as CombatSettings
-from src.core.settings import Guard as GuardSettings
+from src.core.settings import World
 from src.core.sprite_groups import SpriteGroups
 from src.entities.player import Player
 from src.physics.entity_grid import EntityGrid
 
-__all__ = ["GameplayLoop"]
-
-_Stage = TypeVar("_Stage")
+__all__ = ["CombatLoop", "GameplayLoop"]
 
 
-class GameplayLoop:
-    """Sequence a level's systems for one fixed simulation tick.
+class CombatLoop:
+    """The combat core of a tick: hit-stop, separation, hit detection, reaping.
 
-    The combat core (hit-stop, separation, hit detection) is always present,
-    so :meth:`combat_only` stays usable on its own in unit tests.  The world
-    stages are injected by the level and are required by :meth:`update`,
-    which validates the full wiring up front — before any mutation — and
-    fails fast with a wiring hint when one is missing.
+    Usable on its own, which is what the combat tests build. A level builds a
+    :class:`GameplayLoop`, which is this core plus every world stage.
     """
 
     def __init__(
         self,
-        platform_system: PlatformSystem | None = None,
-        physics_system: PhysicsSystem | None = None,
-        hazard_system: HazardSystem | None = None,
-        contact_damage_system: ContactDamageSystem | None = None,
-        hazard_damage_system: HazardDamageSystem | None = None,
-        respawn_system: PlayerRespawnSystem | None = None,
-        progression_system: ProgressionSystem | None = None,
-        spawn_system: SpawnSystem | None = None,
-        camera_system: CameraSystem | None = None,
-        notification_system: NotificationSystem | None = None,
-        tick_system: TickSystem | None = None,
-        projectile_system: ProjectileSystem | None = None,
         contact_system: ContactSystem | None = None,
+        feedback_system: FeedbackSystem | None = None,
     ) -> None:
-        # Unified offensive-contact pipeline (P4.1): one shared engine for
+        # Unified offensive-contact pipeline: one shared engine for
         # melee, projectiles, hazards and contact damage (injected by Level
         # in production; created here for combat-only test fixtures). Its
         # tick accumulator is what the debug metrics panel surfaces.
@@ -82,12 +65,91 @@ class GameplayLoop:
         )
         self.combat_system: CombatSystem = CombatSystem(contact_system=self.contact_system)
         self.separation_system: SeparationSystem = SeparationSystem()
-        # PERF-02: per-tick hash over the live entities. Rebuilt in one O(n)
-        # pass at the start of process_combat_and_separation (positions are
-        # up to date there) and shared with every pairing system, turning
-        # the legacy O(n²) pair loops into O(n · k) local queries.
+        # Per-tick hash over the live entities, rebuilt in one O(n) pass at the
+        # start of ``process_combat_and_separation`` and shared with every
+        # pairing system, so a pair search is a local query.
         self.entity_grid: EntityGrid = EntityGrid(cell_size=World.HASH_CELL_SIZE)
+        #: Leaves a body behind for a reaped fighter; nothing without one.
+        self.reaper_feedback: FeedbackSystem | None = feedback_system
 
+    def begin_tick(self, delta_time: float) -> float:
+        """Advance hit-stop timing and return the simulation delta."""
+        simulation_suspended = self.combat_system.in_hit_stop
+        self.combat_system.update_timer(delta_time)
+        if not simulation_suspended:
+            self.contact_system.begin_tick()
+        return 0.0 if simulation_suspended else delta_time
+
+    def _collect_guard_events(self) -> list[GuardEvent]:
+        """Take this tick's guard events from the melee system."""
+        events = list(self.combat_system.guard_events)
+        self.combat_system.guard_events.clear()
+        return events
+
+    def _collect_impact_events(self) -> list[ImpactEvent]:
+        """Take this tick's landed hits from the melee system."""
+        events = list(self.combat_system.impact_events)
+        self.combat_system.impact_events.clear()
+        return events
+
+    def process_combat_and_separation(
+        self,
+        effective_delta: float,
+        combat_sprites: Iterable[Combatant],
+        entity_sprites: pygame.sprite.Group[Entity],
+    ) -> None:
+        if effective_delta <= 0.0:
+            return
+
+        self.entity_grid.rebuild(entity_sprites)
+        displaced = self.separation_system.process(entity_sprites, self.entity_grid)
+        combatants = tuple(combat_sprites)
+        # Only the fighters separation actually pushed need their attack box
+        # re-positioned: it is derived from the hitbox, and separation moved
+        # that after ``Entity.update`` had already synced it.
+        for combatant in displaced:
+            combatant.combat.sync_attack_box()
+        self.combat_system.process_attacks(combatants, self.entity_grid)
+
+    def remove_dead_entities(
+        self,
+        entity_sprites: Iterable[Entity],
+        player: Entity | None,
+    ) -> None:
+        for entity in tuple(entity_sprites):
+            if entity.is_dead and entity is not player:
+                if self.reaper_feedback is not None:
+                    self.reaper_feedback.before_removal(entity)
+                entity.kill()
+
+
+class GameplayLoop(CombatLoop):
+    """Sequence a level's systems for one fixed simulation tick.
+
+    Every stage is required: a loop that cannot run a tick cannot be built,
+    so there is nothing for :meth:`update` to check before it starts. The
+    combat core alone is :class:`CombatLoop`.
+    """
+
+    def __init__(
+        self,
+        *,
+        platform_system: PlatformSystem,
+        physics_system: PhysicsSystem,
+        hazard_system: HazardSystem,
+        contact_damage_system: ContactDamageSystem,
+        hazard_damage_system: HazardDamageSystem,
+        respawn_system: PlayerRespawnSystem,
+        progression_system: ProgressionSystem,
+        spawn_system: SpawnSystem,
+        camera_system: CameraSystem,
+        notification_system: NotificationSystem,
+        tick_system: TickSystem,
+        projectile_system: ProjectileSystem,
+        feedback_system: FeedbackSystem,
+        contact_system: ContactSystem | None = None,
+    ) -> None:
+        super().__init__(contact_system=contact_system, feedback_system=feedback_system)
         # World stages, assembled by the level and run in the order below.
         self.platform_system = platform_system
         self.physics_system = physics_system
@@ -103,24 +165,7 @@ class GameplayLoop:
         self.notification_system = notification_system
         self.tick_system = tick_system
         self.projectile_system = projectile_system
-
-    @classmethod
-    def combat_only(cls) -> GameplayLoop:
-        """Combat/separation core without world stages.
-
-        Explicit assembly fixture: ``begin_tick``,
-        ``process_combat_and_separation`` and ``remove_dead_entities`` stay
-        usable; ``update()`` raises ``RuntimeError`` before any mutation.
-        """
-        return cls()
-
-    def begin_tick(self, delta_time: float) -> float:
-        """Advance hit-stop timing and return the simulation delta."""
-        simulation_suspended = self.combat_system.in_hit_stop
-        self.combat_system.update_timer(delta_time)
-        if not simulation_suspended:
-            self.contact_system.begin_tick()
-        return 0.0 if simulation_suspended else delta_time
+        self.feedback_system = feedback_system
 
     def update(
         self,
@@ -130,190 +175,128 @@ class GameplayLoop:
         level: TickOwner,
         rollback: RollbackSystem,
     ) -> None:
-        """Run every stage of one tick, in their historical order.
+        """Run every stage of one tick, in the order below.
 
-        The debug spawner runs first with the raw frame delta (it only
-        decays cooldowns and spawns), then hit-stop decides the simulation
-        delta: a suspended tick skips the world stages but still advances
-        the camera, notifications and tick bookkeeping — the level did the
-        same before it became a facade.  The order is load-bearing and
-        matches the pre-refactor ``Level.update`` exactly: spawner,
-        platforms, hazards, entity integration, pairings, deaths reaped,
-        respawn, progression, camera, notifications, tick counter.
+        Stage          | Purpose                         | Order invariant
+        ---------------|---------------------------------|----------------------
+        spawner        | decay cooldowns, debug spawns   | raw delta, before hit-stop
+        hit-stop       | decide the simulation delta     | a frozen tick skips the world
+        sweep origins  | capture this tick's geometry    | before any movement or attack
+        platforms      | move carried platforms          | before entity integration
+        hazards        | move hazards                    | before entity integration
+        physics        | integrate entities              | before separation / melee
+        feedback       | movement feedback               | after physics
+        launch shots   | drain phase launches            | before combat resolution
+        combat+separation | melee pairs, push apart      | after physics, before projectiles
+        projectiles    | advance and resolve shots       | after launch, after melee
+        damage         | contact and hazard damage       | after all offensive boxes exist
+        deaths         | reap the dead                   | after damage
+        respawn        | place the respawned             | after reaping
+        progression    | exit flag                       | after respawn
+        camera         | ease toward the player          | frozen ticks still run it
+        notifications  | emit level milestones           | frozen ticks still run it
+        tick counter   | record the rollback snapshot    | last, after everything above
 
-        The full wiring (spawner, world stages, camera, notifications,
-        tick) is resolved up front, before the spawner or hit-stop mutate
-        anything: an invalid assembly raises ``RuntimeError`` without
-        touching cooldowns, hit-stop, groups, tick or rollback.
+        The entity grid is rebuilt at the start of ``process_combat_and_separation``,
+        *before* separation pushes entities apart; the damage systems that follow
+        reuse that same grid. Reordering either step silently changes collision
+        results, which is why the order is listed here in one place.
         """
-        spawn = self._require(self.spawn_system, "spawn_system")
-        camera = self._require(self.camera_system, "camera_system")
-        notifications = self._require(self.notification_system, "notification_system")
-        tick = self._require(self.tick_system, "tick_system")
-        platform = self._require(self.platform_system, "platform_system")
-        hazard = self._require(self.hazard_system, "hazard_system")
-        physics = self._require(self.physics_system, "physics_system")
-        contact = self._require(self.contact_damage_system, "contact_damage_system")
-        hazard_damage = self._require(self.hazard_damage_system, "hazard_damage_system")
-        respawn = self._require(self.respawn_system, "respawn_system")
-        progression = self._require(self.progression_system, "progression_system")
-
-        spawn.process(raw_delta, player)
+        for fighter in groups.entity_sprites:
+            fighter.render_hints.previous_center = fighter.hitbox.center
+        self.spawn_system.process(raw_delta, player)
         effective_delta = self.begin_tick(raw_delta)
 
         if effective_delta > 0.0:
-            # P1 sweep (D1/D3): tick-frontier capture. One explicit capture
-            # per tick, before any movement or attack start of the tick —
-            # covering the pre-carry segment, unlike a start-of-``update``
-            # capture that would run after the platform carry. ``update``
-            # positioning stays pure/idempotent, so the double sync stays
-            # harmless. Covers spawn-adjacent sprites too (both sides of
-            # the loop boundary).
+            # The tick frontier: one capture per tick, before any movement or
+            # attack start, so a sweep covers the whole tick including the
+            # platform carry. Covers sprites spawned this tick too.
             for sprite in groups.entity_sprites:
                 if isinstance(sprite, Entity):
                     sprite.capture_sweep_origin()
             for combatant in groups.combat_sprites:
                 combatant.combat.capture_attack_origin()
-            platform.process(effective_delta)
-            hazard.process(effective_delta)
-            physics.process(effective_delta)
+            # A perfect dodge slows the world and not the player: everything
+            # but the player runs on ``world_delta`` until the rush is over.
+            world_delta = effective_delta * player.world_time_scale
+            self.platform_system.process(world_delta)
+            self.hazard_system.process(world_delta)
+            self.physics_system.process(effective_delta, world_delta, player)
+            self.feedback_system.after_movement(effective_delta)
+            self._launch_shots(groups.combat_sprites)
 
             self.process_combat_and_separation(
                 effective_delta, groups.combat_sprites, groups.entity_sprites
             )
-            impact = float(getattr(self.combat_system, "impact", 0.0) or 0.0)
-            if impact >= CombatSettings.HEAVY_KNOCKBACK_THRESHOLD:
-                camera.add_trauma(impact / CameraShake.HEAVY_DIV)
-            if self.projectile_system is not None:
-                self.projectile_system.process(effective_delta, self.entity_grid)
-            self._emit_guard_fx(groups, camera)
-            # Dash start screen shake
-            if getattr(player, "_dash_started_this_frame", False):
-                player._dash_started_this_frame = False
-                camera.add_trauma(GuardSettings.PARRY_TRAUMA * 0.4)
-            contact.process(groups.entity_sprites, self.entity_grid)
-            hazard_damage.process(groups.entity_sprites, groups.hazard_sprites, self.entity_grid)
+            self.projectile_system.process(world_delta, self.entity_grid)
+            self.feedback_system.after_combat(
+                self.combat_system.impact,
+                self._collect_guard_events(),
+                player,
+                self.camera_system,
+                self._collect_impact_events(),
+            )
+            self.contact_damage_system.process(groups.entity_sprites, self.entity_grid)
+            self.hazard_damage_system.process(
+                groups.entity_sprites, groups.hazard_sprites, self.entity_grid
+            )
             self._flush_combat_trace()
             self.remove_dead_entities(groups.entity_sprites, player)
 
-            respawn.process(effective_delta, groups.entity_sprites)
-            progression.process(player)
+            self.respawn_system.process(effective_delta, groups.entity_sprites)
+            self.progression_system.process(player)
 
-            camera.process(raw_delta, player)
-            notifications.process(
-                player,
-                deaths=respawn.deaths,
-                exit_reached=progression.exit_reached,
-            )
-            tick.process(level, rollback)
-            return
-
-        camera.process(raw_delta, player)
-        notifications.process(
+        # The tail runs on a frozen tick too: the camera keeps easing and the
+        # tick is still counted and recorded.
+        self.camera_system.process(raw_delta, player)
+        self.notification_system.process(
             player,
-            deaths=respawn.deaths,
-            exit_reached=progression.exit_reached,
+            deaths=self.respawn_system.deaths,
+            exit_reached=self.progression_system.exit_reached,
         )
-        tick.process(level, rollback)
+        self.tick_system.process(level, rollback)
 
-    @staticmethod
-    def _require(system: _Stage | None, name: str) -> _Stage:
-        """Return an injected stage, or fail fast with a wiring hint."""
-        if system is None:
-            raise RuntimeError(
-                f"GameplayLoop.update() needs the {name!r} stage: assemble it "
-                "in Level and pass it to GameplayLoop(...)."
-            )
-        return system
+    def _launch_shots(self, combatants: Iterable[Combatant]) -> None:
+        """Put in flight every shot a phase threw this tick, from the hand forward."""
+        from src.entities.shots import SHOTS, charged
+
+        for fighter in combatants:
+            for name, charge in fighter.combat.state.take_launches():
+                spec = charged(SHOTS[name], charge)
+                side = 1.0 if fighter.facing_right else -1.0
+                width, height = spec.config.size
+                x = fighter.hitbox.centerx + spec.muzzle[0] * side - width / 2.0
+                y = fighter.hitbox.centery + spec.muzzle[1] - height / 2.0
+                self.projectile_system.spawn(
+                    spec.config,
+                    pos=(x, y),
+                    velocity=(spec.speed * side, spec.rise),
+                    faction=fighter.faction,
+                )
 
     def _flush_combat_trace(self) -> None:
-        """Axe G: dump buffered HitCandidates when the debug trace is on.
+        """Dump the buffered hit candidates when the debug trace is on.
 
         Off-by-default (``DEBUG`` + ``DEBUG_COMBAT_DUMP``); the path lives
         under ``logs/`` next to the rotating handler configured in main.
         """
-        trace = getattr(self.contact_system, "trace", None)
-        if trace is None or not trace.enabled or len(trace) == 0:
+        trace = self.contact_system.trace
+        if not trace.enabled or len(trace) == 0:
             return
         from pathlib import Path  # local: keep import cost off the hot path
 
         trace.drain_jsonl(Path("logs") / "combat_trace.jsonl")
 
-    def _emit_guard_fx(self, groups: SpriteGroups, camera: CameraSystem) -> None:
-        events = self._collect_guard_events()
-        if not events:
-            return
-        self._spawn_guard_fx(events, groups, camera)
-
     def _collect_guard_events(self) -> list[GuardEvent]:
-        events = list(getattr(self.combat_system, "guard_events", None) or [])
-        if hasattr(self.combat_system, "guard_events"):
-            self.combat_system.guard_events.clear()
-        projectile_system = self.projectile_system
-        if projectile_system is not None:
-            events.extend(getattr(projectile_system, "guard_events", None) or [])
-            if hasattr(projectile_system, "guard_events"):
-                projectile_system.guard_events.clear()
+        """Take this tick's guard events from the melee and projectile systems."""
+        events = super()._collect_guard_events()
+        events.extend(self.projectile_system.guard_events)
+        self.projectile_system.guard_events.clear()
         return events
 
-    def _spawn_guard_fx(
-        self, events: list[GuardEvent], groups: SpriteGroups, camera: CameraSystem
-    ) -> None:
-        fx_group = getattr(groups, "fx_sprites", None)
-        if fx_group is None:
-            return
-
-        trauma = 0.0
-        for event in events:
-            trauma = max(trauma, self._trauma_for_event(event))
-            self._spawn_fx_for_event(event, fx_group)
-        if trauma > 0.0 and hasattr(camera, "add_trauma"):
-            camera.add_trauma(trauma)
-
-    def _trauma_for_event(self, event: GuardEvent) -> float:
-        if event.kind == "parry":
-            return GuardSettings.PARRY_TRAUMA
-        if event.kind in ("break", "stun"):
-            return GuardSettings.BREAK_TRAUMA
-        return GuardSettings.GUARD_TRAUMA
-
-    def _spawn_fx_for_event(self, event: GuardEvent, fx_group: pygame.sprite.Group) -> None:
-        from src.core.fx import spawn_guard_arc, spawn_shatter_arc
-
-        if event.kind == "parry":
-            spawn_guard_arc(fx_group, event.target, parried=True, contact=event.point)
-        elif event.kind == "break":
-            spawn_shatter_arc(fx_group, event.target, contact=event.point)
-        elif event.kind == "guard":
-            spawn_guard_arc(fx_group, event.target, contact=event.point)
-
-    def process_combat_and_separation(
-        self,
-        effective_delta: float,
-        combat_sprites: Iterable[Combatant],
-        entity_sprites: pygame.sprite.Group[pygame.sprite.Sprite],
-    ) -> None:
-        if effective_delta <= 0.0:
-            return
-
-        self.entity_grid.rebuild(entity_sprites)
-        displaced = self.separation_system.process(entity_sprites, self.entity_grid)
-        combatants = tuple(combat_sprites)
-        # Only the fighters separation actually pushed need their attack box
-        # re-positioned: it is derived from the hitbox, and separation moved
-        # that after ``Entity.update`` had already synced it. This used to loop
-        # over every combatant unconditionally, which paid for the ones that
-        # happened to be standing near somebody -- which is most of them, most
-        # of the time.
-        for combatant in displaced:
-            combatant.combat.sync_attack_box()
-        self.combat_system.process_attacks(combatants, self.entity_grid)
-
-    def remove_dead_entities(
-        self,
-        entity_sprites: Iterable[pygame.sprite.Sprite],
-        player: pygame.sprite.Sprite | None,
-    ) -> None:
-        for entity in tuple(entity_sprites):
-            if getattr(entity, "is_dead", False) and entity is not player:
-                entity.kill()
+    def _collect_impact_events(self) -> list[ImpactEvent]:
+        """Take this tick's landed hits from the melee and projectile systems."""
+        events = super()._collect_impact_events()
+        events.extend(self.projectile_system.impact_events)
+        self.projectile_system.impact_events.clear()
+        return events

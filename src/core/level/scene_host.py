@@ -38,7 +38,7 @@ class SceneStack(Protocol):
 class SceneHost(Protocol):
     """Whoever can answer "which scene is on top right now".
 
-    Implemented by :class:`~src.core.game.Game`. The SCENE debug panel reads
+    Implemented by :class:`~src.application.game.Game`. The SCENE debug panel reads
     the current scene's name, its ``level_id`` and its level's death count --
     the first two through the stack, the last through the scene, and both
     through ``getattr`` with a default, because a scene that has no level is a

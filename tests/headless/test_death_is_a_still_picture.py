@@ -29,8 +29,8 @@ import pathlib
 import pygame
 import pytest
 
+from src.application.game import Game
 from src.application.scenes.gameplay_scene import GameplayScene
-from src.core.game import Game
 from src.core.settings import Debug, Respawn, Simulation
 
 #: Ticks after the death before the picture is expected to have settled. The

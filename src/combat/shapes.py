@@ -82,16 +82,6 @@ class SweptShape:
     current: ShapePose
 
 
-@dataclass(frozen=True, slots=True)
-class AnchorSpec:
-    kind: AnchorKind
-    offset: tuple[float, float] = (0.0, 0.0)
-
-    def __post_init__(self) -> None:
-        if not all(math.isfinite(value) for value in self.offset):
-            raise ValueError("Anchor offsets must be finite")
-
-
 def _bounds(aabb: pygame.FRect) -> tuple[float, float, float, float]:
     left, top = float(aabb.left), float(aabb.top)
     right, bottom = float(aabb.right), float(aabb.bottom)

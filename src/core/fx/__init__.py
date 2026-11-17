@@ -136,6 +136,7 @@ or steps through a ladder it built alongside, which is what
 from __future__ import annotations
 
 from src.core.fx.particles import (
+    CorpseParticle,
     DashDustParticle,
     DizzyVortexParticle,
     DustParticle,
@@ -155,6 +156,7 @@ from src.core.fx.spawners import (
     FX_FAMILY_BUDGETS,
     MAX_FX_SPRITES,
     iter_landing_entities,
+    spawn_corpse,
     spawn_dash_dust,
     spawn_dash_grains,
     spawn_dizzy_stars,
@@ -172,6 +174,7 @@ from src.core.fx.spawners import (
 __all__ = [
     "FX_FAMILY_BUDGETS",
     "MAX_FX_SPRITES",
+    "CorpseParticle",
     "DashDustParticle",
     "DizzyVortexParticle",
     "DustParticle",
@@ -186,6 +189,7 @@ __all__ = [
     "dash_tint",
     "iter_landing_entities",
     "puff_frames",
+    "spawn_corpse",
     "spawn_dash_dust",
     "spawn_dash_grains",
     "spawn_dizzy_stars",

@@ -10,7 +10,6 @@ did not ask for one.
 import pygame
 import pytest
 
-from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.scene_manager import SceneManager
 from src.application.scenes.controls_scene import ControlsScene
 from src.application.scenes.gameplay_scene import GameplayScene
@@ -18,8 +17,8 @@ from src.application.scenes.menu_scene import MenuScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.pause_scene import PauseScene
 from src.application.scenes.video_scene import VideoScene
-from src.core.display.mode import DisplayMode
-from src.core.input.event_router import RoutedInput
+from src.core.events import EventBus, UiEffect, UiFeedback
+from src.core.input.event_router import EventRouter
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from tests.headless.conftest import make_programmatic_level_data, make_viewport
@@ -84,7 +83,7 @@ def test_opening_a_screen_and_coming_back_are_two_distinct_effects(
 
 def test_a_value_change_in_place_is_a_confirmation(manager: SceneManager, feedback) -> None:
     """→ on a value row adjusts the setting without leaving the screen."""
-    manager.game.settings = manager.game.settings.with_video(display=DisplayMode.WINDOW)
+    manager.game.settings = manager.game.settings.with_video(pixel_perfect=True)
     manager.switch(VideoScene(manager.game))
     before = manager.game.settings.vsync
 
@@ -366,7 +365,7 @@ def test_the_simulation_reports_do_not_reach_the_interface_feedback(
     manager.switch(OptionsScene(manager.game))
 
     game_runtime.events.emit(
-        __import__("src.application.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
+        __import__("src.core.events", fromlist=["x"]).PlayerDied(entity_id="p", deaths=0)
     )
 
     assert feedback.cues == []
@@ -395,7 +394,7 @@ def test_the_dispatcher_owns_no_presentation_state(manager: SceneManager) -> Non
 
     assert sorted(vars(dispatcher)) == ["_events", "_router"]
     assert isinstance(dispatcher._events, EventBus)
-    assert isinstance(dispatcher._router, RoutedInput.__module__ and object)
+    assert isinstance(dispatcher._router, EventRouter)
 
 
 def test_one_input_reaches_exactly_one_subscriber_call(

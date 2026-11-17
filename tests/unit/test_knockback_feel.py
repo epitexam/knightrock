@@ -27,6 +27,12 @@ def _wall(box: pygame.FRect):
 class KnockedEntity:
     """Entity double stuck in its knockback reaction state."""
 
+    def wall_bounce_factor(self) -> float:
+        """The entity decides its own wall bounce, physics stays state-agnostic."""
+        if self.state_machine.current_state_name == "knockback":
+            return CombatSettings.WALL_BOUNCE_FACTOR
+        return 0.0
+
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()
         self.hitbox = hitbox
@@ -130,7 +136,7 @@ def test_airborne_victim_steers_its_flight() -> None:
     assert entity.velocity.x <= 600.0 + CombatSettings.KNOCKBACK_DI_CAP
 
 
-def test_neutral_stick_leaves_flight_untouched() -> None:
+def test_neutral_stick_does_not_steer_the_flight() -> None:
     entity = SimpleNamespace(
         velocity=Vector2(600, 0),
         move_axis=0.0,
@@ -141,7 +147,8 @@ def test_neutral_stick_leaves_flight_untouched() -> None:
 
     state.update(1 / 60)
 
-    assert entity.velocity.x == pytest.approx(600.0)
+    # Only the air drag acts: a hundredth of the speed, never a gain.
+    assert 590.0 < entity.velocity.x < 600.0
 
 
 def test_enemy_drops_stale_axis_on_launch() -> None:
@@ -191,3 +198,35 @@ def test_grounded_hits_ignore_juggle_scaling() -> None:
     )
 
     assert target.health == pytest.approx(90.0)
+
+
+def test_a_fixed_heavy_launch_goes_where_its_power_points() -> None:
+    """``fixed`` means world-space: a launch to the right goes right, whoever hit.
+
+    The plain push already honoured the mode; the heavy launch read the side the
+    source stood on instead, and flipped a fixed launch whose attacker stood on
+    the far side. No shipped attack uses ``fixed`` yet.
+    """
+    from pygame.sprite import Group
+
+    from src.combat.knockback import KnockbackConfig
+    from src.data.provider import shipped_gameplay_data
+    from src.entities.enemies.factory import create_enemy
+
+    goblin = create_enemy(
+        "goblin",
+        (100.0, 100.0),
+        Group(),
+        Group(),
+        None,
+        config=shipped_gameplay_data().enemies["goblin"],
+    )
+    goblin.on_surface["floor"] = True
+    source_on_the_right = goblin.hitbox.centerx + 50.0
+
+    goblin.receive_damage(
+        1.0, source_on_the_right, KnockbackConfig(power=(500.0, -100.0), mode="fixed")
+    )
+
+    assert goblin.state_machine.current_state_name == "knockback"
+    assert goblin.velocity.x > 0.0

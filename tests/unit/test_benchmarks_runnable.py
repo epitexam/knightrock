@@ -18,7 +18,7 @@ import pytest
 BENCHMARKS = Path(__file__).resolve().parent.parent / "benchmarks"
 
 
-def _run(name: str, argv: list[str]) -> dict[str, float]:
+def _run(name: str, argv: list[str]) -> str:
     """Run a benchmark's ``main`` and capture what it put on stdout."""
     import io
     from contextlib import redirect_stdout
@@ -47,6 +47,10 @@ def test_fx_benchmark_runs() -> None:
     assert '"grid_bound"' in out
 
 
+@pytest.mark.skipif(
+    not (BENCHMARKS.parent.parent / "assets/data/levels/1.tmx").is_file(),
+    reason="the render benchmark measures the shipped TMX, which is git-ignored",
+)
 def test_render_benchmark_runs() -> None:
     out = _run("render_benchmark.py", ["--repeats", "2", "--window", "320", "240"])
     assert "ms" in out or "p50" in out
@@ -60,9 +64,21 @@ def test_ui_benchmark_runs() -> None:
     assert "cache_entries=0." not in out
 
 
+def test_combat_feel_benchmark_runs() -> None:
+    out = _run("combat_feel.py", ["--seconds", "1", "--json"])
+    assert '"kill_s"' in out, out[-400:]
+    assert '"enemy_warning_ms"' in out
+
+
 @pytest.mark.parametrize(
     "name",
-    ["contact_benchmark.py", "fx_benchmark.py", "render_benchmark.py", "ui_benchmark.py"],
+    [
+        "combat_feel.py",
+        "contact_benchmark.py",
+        "fx_benchmark.py",
+        "render_benchmark.py",
+        "ui_benchmark.py",
+    ],
 )
 def test_every_benchmark_is_reachable(name: str) -> None:
     """Each file is a script someone can actually invoke by path."""

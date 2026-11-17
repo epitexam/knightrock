@@ -1,4 +1,4 @@
-"""Generic object pool (audit F6.3, Phase 3 #1).
+"""Generic object pool.
 
 Short-lived objects are created and destroyed by the hundreds per second;
 CPython allocation + GC churn is the next bottleneck once entity counts grow.

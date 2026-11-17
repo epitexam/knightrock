@@ -13,8 +13,8 @@ others, and the next one costs nothing here.
 
 import pygame
 
-from src.application.events import EventBus, UiEffect, UiFeedback
 from src.application.scene import Scene
+from src.core.events import EventBus, UiEffect, UiFeedback
 from src.core.input.event_router import EventRouter, RoutedInput
 from src.ui.menu_model import MenuAction
 

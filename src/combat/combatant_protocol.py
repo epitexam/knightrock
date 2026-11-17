@@ -7,12 +7,13 @@ class.
 """
 
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from enum import Enum
+from typing import Any, Protocol
 
 import pygame
 
 from src.combat.damage_types import DamageType
-from src.combat.frame_data import PhaseDefinition, Stance
+from src.combat.frame_data import Height, PhaseDefinition, Stance
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapePose, SweptShape
 
@@ -23,11 +24,28 @@ class DamageResult:
 
     applied: bool = False
     guarded: bool = False
-    parried: bool = False
-    guard_broken: bool = False
     killed: bool = False
     actual_damage: float = 0.0
     heavy_knockback: bool = False
+    stunned: bool = False
+    """The hit filled the target's stun gauge."""
+    executed: bool = False
+    """The hit killed a helpless target outright."""
+    doomed: bool = False
+    """The hit brought the target to nothing: it waits for the death blow."""
+    evaded: bool = False
+    """The target dodged the hit at the last moment: a dark step."""
+
+
+class Finish(Enum):
+    """What a fighter's blow does to a target it would kill."""
+
+    NONE = "none"
+    """It kills it."""
+    DOOM = "doom"
+    """It leaves it doomed, waiting for a death blow."""
+    KILL = "kill"
+    """Every blow kills, whatever the target has left."""
 
 
 class AttackStatePort(Protocol):
@@ -42,18 +60,20 @@ class AttackStatePort(Protocol):
     @property
     def targets_hit(self) -> set[str]: ...
 
+    def take_launches(self) -> list[tuple[str, float]]:
+        """The shots thrown since the last call, with their charge."""
+        ...
 
-@runtime_checkable
+
 class AttackComboPort(Protocol):
     """Air-combo tracking consumed from an attacker's combat."""
 
     @property
     def air_combo_count(self) -> int: ...
 
-    def record_hit_landed(self, airborne: bool) -> None: ...
+    def record_hit_landed(self, airborne: bool) -> bool: ...
 
 
-@runtime_checkable
 class AttackerPort(Protocol):
     """Hit carrier: hitbox plus combo tracking, nothing else."""
 
@@ -62,8 +82,23 @@ class AttackerPort(Protocol):
     @property
     def combat(self) -> AttackComboPort: ...
 
+    @property
+    def finish(self) -> Finish:
+        """What this carrier's blow does to a target it would kill."""
+        ...
 
-@runtime_checkable
+    def on_hit_confirmed(
+        self, target: Combatant, combo_advanced: bool, result: DamageResult
+    ) -> None:
+        """One of this carrier's hits took health off ``target``.
+
+        ``combo_advanced`` is whether the hit moved the combo counter, which
+        happens once per attack however many targets it reached; ``result``
+        is what the hit did.
+        """
+        ...
+
+
 class CombatPort(AttackComboPort, Protocol):
     """Minimal combat component surface exposed by a combatant.
 
@@ -116,7 +151,7 @@ class CombatPort(AttackComboPort, Protocol):
     @property
     def air_combo_count(self) -> int: ...
 
-    def record_hit_landed(self, airborne: bool) -> None: ...
+    def record_hit_landed(self, airborne: bool) -> bool: ...
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None: ...
 
@@ -135,7 +170,6 @@ class CombatPort(AttackComboPort, Protocol):
     def reset(self) -> None: ...
 
 
-@runtime_checkable
 class Combatant(Protocol):
     """Protocol defining the minimal interface an entity must expose for combat.
 
@@ -165,8 +199,7 @@ class Combatant(Protocol):
     stance : Stance
         The posture the entity is in, read by the attack policy to decide which
         moves are available. Defaults to GROUND on `Entity`; the player resolves
-        it from its geometry so a crouch-guard or a crouch-attack still reads as
-        crouched.
+        it from its contacts, wall first.
     """
 
     id: str
@@ -226,12 +259,72 @@ class Combatant(Protocol):
         """Union of the per-zone swept rectangles (legacy single-view API)."""
         ...
 
+    @property
+    def is_stunned(self) -> bool:
+        """Whether the entity is stunned: helpless, and open to a throw."""
+        ...
+
+    @property
+    def is_doomed(self) -> bool:
+        """Whether the entity was brought to nothing and waits for the death blow."""
+        ...
+
+    @property
+    def is_helpless(self) -> bool:
+        """Stunned, on the ground or doomed: an ``execute`` hit kills it outright."""
+        ...
+
+    doomable: bool
+    """Whether a blow that would kill it leaves it doomed instead (see :class:`Finish`)."""
+
+    def doom(self) -> None:
+        """Leave the entity doomed: all but dead, waiting for the death blow."""
+        ...
+
+    def recover_from_doom(self) -> None:
+        """A death blow missed: the doomed entity gets back up with some health."""
+        ...
+
+    def guards_against(self, height: Height, unblockable: bool, source_center_x: float) -> bool:
+        """Whether the entity's guard stops a hit at ``height`` coming from that side.
+
+        An ``unblockable`` hit is never stopped, and breaks the guard it meets.
+        """
+        ...
+
+    def add_stun(self, amount: float) -> bool:
+        """Fill the stun gauge by ``amount``; True if that stunned the entity."""
+        ...
+
+    dodge_ghost: pygame.FRect | None
+    """Where the entity stood when it began a dodge that can still be a perfect
+    one, or ``None``. A hit that reaches this box was dodged at the last moment."""
+
+    def on_hit_evaded(self) -> bool:
+        """A hit passed through this entity while it was invincible, or through its ghost.
+
+        True if that was a perfect dodge, which is reported once per dodge.
+        """
+        ...
+
+    @property
+    def is_invincible(self) -> bool:
+        """Whether the current state ignores every hit (dash, launch...)."""
+        ...
+
+    contact_shape: ShapePose
+    """The body's own contact shape, for momentum contact."""
+
+    def swept_contact_shapes(self) -> tuple[SweptShape, ...]:
+        """The contact shape swept since the last capture."""
+        ...
+
     def swept_pushbox(self) -> pygame.FRect:
         """Physical body rectangle swept over the current tick."""
         ...
 
     def capture_sweep_origin(self) -> None:
-        """Freeze the current zones as the next tick's sweep origin (P1/D3)."""
+        """Freeze the current zones as the next tick's sweep origin."""
         ...
 
     @property
@@ -253,31 +346,12 @@ class Combatant(Protocol):
         source_center_x: float | None = None,
         knockback: KnockbackConfig | None = None,
         interrupt: bool = True,
-        unblockable: bool = False,
-        height: str = "mid",
-        block_mask: str = "any",
-        hit_level: str = "med",
     ) -> DamageResult:
         """Apply raw damage and knockback to the entity.
 
-        Parameters
-        ----------
-        amount : float
-            Hit points to subtract.
-        source_center_x : float | None
-            X centre of the damage source.
-        knockback : KnockbackConfig | None
-            Knockback impulse.
-        interrupt : bool
-            Whether the hit may interrupt the current action.
-        unblockable : bool
-            Whether the hit bypasses guard and parry.
-        height : str
-            Guard height checked against the crouch state.
-        block_mask : str
-            Posture mask checked before guard height.
-        hit_level : str
-            Guard pressure level affecting posture cost.
+        Guards are not asked here: a hazard or a body contact lands on a
+        guarding fighter. An attack is checked against the guard first, by
+        ``HitResolver`` through :meth:`guards_against`.
 
         Returns
         -------
@@ -328,18 +402,15 @@ class Combatant(Protocol):
         """Break the entity's super armor, allowing stagger again."""
         ...
 
+    def on_clash(self, other: Combatant) -> None:
+        """This fighter's attack and ``other``'s cancelled each other."""
+        ...
 
-# There is deliberately no guard port.
-#
-# `Player` is the only guarding type, and it serves `guard_posture` (and the
-# rest of its controller state) through the `CONTROLLER_VIEWS` table and
-# `__getattr__`, not as attributes on the instance. A `runtime_checkable`
-# Protocol is checked with `inspect.getattr_static`, which does not follow
-# `__getattr__`, so a `GuardingCombatant` port declared here would be False for
-# `Player` itself -- the one type it exists to describe. It was here, unused
-# and unsatisfiable, until it was deleted.
-#
-# What a guard needs is `guard_posture` and `is_guarding`; `hud.py`,
-# `player_ui.py` and `Player` itself read them, and `Player.is_guarding` is a
-# real property. Declaring them on a Protocol here would state a contract that
-# reads as checkable and is not, which is worse than not stating it.
+    @property
+    def counter_covered(self) -> bool:
+        """Whether this fighter is striking back behind its guard: a blade it meets bounces off."""
+        ...
+
+    def on_deflected(self, source_center_x: float) -> None:
+        """This fighter's blow was stopped by a guard on the side of ``source_center_x``."""
+        ...

@@ -25,6 +25,7 @@ from src.ui.panel_renderer import (
 )
 from src.ui.styles import PANEL_BORDER, TEXT_MUTED, TEXT_TITLE
 from src.ui.ui_manager import UIManager
+from tests.fakes import player_shape
 from tests.unit.helpers import make_overlay
 
 
@@ -437,12 +438,10 @@ def test_panel_mouse_routing_is_skipped_without_debug(monkeypatch: pytest.Monkey
 
 def _player() -> SimpleNamespace:
     """Minimal player for the STATS panel (the fields it reads)."""
-    return SimpleNamespace(
+    return player_shape(
         health=100.0,
         max_health=100.0,
-        guard_posture=50.0,
-        guard_posture_max=100.0,
-        guard_lockout_timer=0.0,
+        guard_recovery_timer=0.0,
         guard_riposte_timer=0.0,
         dash_charges=2,
         max_dash_charges=2,
@@ -455,7 +454,6 @@ def _player() -> SimpleNamespace:
         wall_jump_height=600.0,
         dash_speed=800.0,
         dash_duration=0.12,
-        dash_friction=15.0,
         gravity_scale=1.0,
         stagger_timer=0.0,
         invincibility_timer=0.0,

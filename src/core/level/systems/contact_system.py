@@ -1,4 +1,4 @@
-"""Unified offensive-contact pipeline (P4.1).
+"""Unified offensive-contact pipeline.
 
 Every offensive producer (melee, projectiles, hazards, contact damage)
 emits :class:`OffensiveBox` records; this system runs the shared pipeline:
@@ -36,17 +36,18 @@ from src.combat.shapes import (
 )
 from src.core.level.systems.combat_trace import CombatTrace, HitCandidate
 from src.core.settings import Combat as CombatSettings
+from src.core.settings import Finisher as FinisherSettings
 from src.core.settings import Guard as GuardSettings
-from src.entities.enemies.enemy import Enemy
+from src.core.settings import Rush as RushSettings
 from src.physics.entity_grid import EntityGrid
 from src.physics.spatial_hash import SpatialHashMember
-from src.states.reaction_states import DIZZY_STATE
 
 __all__ = [
     "CombatMetrics",
     "ContactOutcome",
     "ContactSystem",
     "GuardEvent",
+    "ImpactEvent",
     "OffensiveBox",
     "ZoneContact",
 ]
@@ -100,14 +101,34 @@ class CombatMetrics:
 
 @dataclass(frozen=True)
 class GuardEvent:
-    """Render-only guard outcome drained once per tick by the game loop."""
+    """Render-only outcome of an exchange, drained once per tick by the game loop.
+
+    ``kind`` is ``"guard"`` (a guard stopped the hit), ``"stun"`` (the
+    target's stun gauge filled), ``"doom"`` (the target waits for the death
+    blow), ``"dodge"`` (a dark step) or ``"clash"`` (two attacks cancelled).
+    """
 
     kind: str
     target: Combatant
     point: tuple[float, float] | None = None
-    """Where the block landed, so the FX spawn at the contact and not at the
-    middle of the defender. None when the outcome has no single contact
+    """Where the guard was struck, so the FX spawn at the contact and not at
+    the middle of the defender. None when the outcome has no single contact
     point, as a clash between two attackers does not."""
+
+
+@dataclass(frozen=True)
+class ImpactEvent:
+    """Render-only record of a hit that took health off its target.
+
+    What the shake of a hit is drawn from: how hard it was, and whether it
+    killed.
+    """
+
+    strength: float
+    """The hit's knockback magnitude, charge included, in px/s."""
+    killed: bool = False
+    executed: bool = False
+    """The hit killed a stunned target outright."""
 
 
 def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] | None:
@@ -116,9 +137,7 @@ def _contact_point(box: OffensiveBox, target: Combatant) -> tuple[float, float] 
     Falls back to the target's own centre when the two do not overlap in
     their stored rectangles, which a swept or moving attack can produce.
     """
-    hitbox = getattr(target, "hitbox", None)
-    if hitbox is None:
-        return None
+    hitbox = target.hitbox
     overlap = box.box.clip(hitbox)
     if overlap.width <= 0.0 or overlap.height <= 0.0:
         return (hitbox.centerx, hitbox.centery)
@@ -133,17 +152,34 @@ class ContactOutcome:
     guard_events: list[GuardEvent] = field(default_factory=list)
     impact: float = 0.0
     hit_stop: float = 0.0
+    impact_events: list[ImpactEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ZoneContact:
-    """One landed contact with the hurt zone that absorbed it (P2.4)."""
+    """One landed contact with the hurt zone that absorbed it."""
 
     owner_id: str
     target_id: str
     zone_index: int
     zone_mult: float
     kind: str = "melee"
+
+
+def _hit_stop(hit: HitProperties, magnitude: float) -> float:
+    """How long a landed melee hit freezes the world, in seconds.
+
+    The hit's own ``hit_stop`` when the data gives one; otherwise a base plus
+    a share of the damage and of the knockback, so a jab barely stops the
+    world and a launcher holds it.
+    """
+    if hit.hit_stop is not None:
+        return hit.hit_stop
+    return (
+        CombatSettings.HITSTOP_BASE
+        + hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
+        + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
+    )
 
 
 def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> bool:
@@ -158,61 +194,29 @@ def _zone_vulnerable(zone_tags: tuple[str, ...], hit_tags: tuple[str, ...]) -> b
 
 
 def _target_swept_zones(target: Combatant) -> tuple[pygame.FRect, ...]:
-    """Per-zone swept rectangles (P2), single legacy box as fallback.
-
-    The ``getattr`` looks redundant next to ``Combatant.swept_hurtboxes``,
-    which the protocol does declare, and the audit read it that way. It is not
-    redundant: the fallback is *behaviour*, not tolerance. A target that has
-    no previous-tick capture -- one that has not been swept since it was
-    placed, or a duck-typed producer's stand-in -- has no swept geometry to
-    offer, and the discrete hurtbox is then the best available answer rather
-    than a wrong one. The protocol says what a combatant *is*; this says what
-    to do when it cannot answer.
-    """
-    swept = getattr(target, "swept_hurtboxes", None)
-    if callable(swept):
-        zones = tuple(swept())
-        if zones:
-            return zones
-    return (target.hurtbox,)
+    """Per-zone swept rectangles; the discrete hurtbox when there are none."""
+    return target.swept_hurtboxes() or (target.hurtbox,)
 
 
 def _zone_mults(target: Combatant) -> tuple[float, ...]:
-    """Per-zone damage multipliers (P2), neutral 1.0 for legacy targets.
-
-    Declared on ``Combatant.hurtbox_mult``; ``getattr`` remains for stubs.
-    """
-    mults = getattr(target, "hurtbox_mult", ())
-    if isinstance(mults, tuple):
-        return mults
-    if callable(mults):
-        return tuple(mults())
-    return (1.0,)
+    """Per-zone damage multipliers."""
+    return target.hurtbox_mult
 
 
 def _zone_tags(target: Combatant) -> tuple[tuple[str, ...], ...]:
-    """Per-zone reserved invulnerability tags (empty when unknown, P2).
-
-    Declared on ``Combatant.hurtbox_tags``; ``getattr`` remains for stubs.
-    """
-    tags = getattr(target, "hurtbox_tags", ())
-    return tuple(tuple(zone) for zone in tags)
+    """Per-zone reserved invulnerability tags."""
+    return target.hurtbox_tags
 
 
 def _is_valid_target(box: OffensiveBox, target: Combatant) -> bool:
-    """Target eligibility: not the owner, alive, enemy faction, contact.
-
-    Duck-typed on purpose: hazard/contact producers are exercised with
-    minimal stubs (no ``id``/``faction``), like the legacy systems were.
-    """
-    if getattr(target, "is_dead", False):
+    """Target eligibility: not the owner, alive, enemy faction, contact."""
+    if target.is_dead:
         return False
-    target_id = getattr(target, "id", "") or ""
-    if target_id and target_id == box.owner_id:
+    if target.id == box.owner_id:
         return False
-    if box.faction is not None and getattr(target, "faction", None) == box.faction:
+    if box.faction is not None and target.faction == box.faction:
         return False
-    return bool(box.can_contact(target_id))
+    return bool(box.can_contact(target.id))
 
 
 def _eligible(box: OffensiveBox, target: Combatant) -> bool:
@@ -266,22 +270,15 @@ class _TargetGeometry:
 
 
 def _swept_target_box(box: OffensiveBox, target: Combatant) -> pygame.FRect:
-    """Return the target geometry swept only for swept offensive producers.
+    """The rectangle a box of this kind tests the target against.
 
-    Same reasoning as :func:`_target_swept_zones`: a target with no sweep
-    falls back to its discrete geometry, which is a decision about what to
-    draw rather than a duck-typing concession.
+    A projectile meets the swept hurtbox, a hazard the swept pushbox, anything
+    else the plain pushbox.
     """
     if box.kind == "projectile":
-        swept = getattr(target, "swept_hurtbox", None)
-        if callable(swept):
-            return cast(pygame.FRect, swept())
-        return target.hurtbox
+        return target.swept_hurtbox()
     if box.kind == "hazard":
-        swept = getattr(target, "swept_pushbox", None)
-        if callable(swept):
-            return cast(pygame.FRect, swept())
-        return target.hitbox
+        return target.swept_pushbox()
     return target.hitbox
 
 
@@ -293,13 +290,26 @@ def _shape_swept_intersects(shape: SweptShape, target: pygame.FRect) -> bool:
     return swept_intersects_aabb(shape.previous, shape.current, target)
 
 
+def _generic_hit(box: OffensiveBox, target_box: pygame.FRect) -> bool:
+    """Whether a projectile, hazard or body box touches ``target_box``.
+
+    A box with a round (or otherwise non-rectangular) shape is judged on that
+    shape alone, as melee already is: its rectangle is only the shape's bounding
+    box, and testing it too made a saw hurt from the empty corners of its frame.
+    """
+    advanced = [shape for shape in box.swept_shapes if shape.current.kind is not ShapeKind.AABB]
+    if advanced:
+        return any(_shape_swept_intersects(shape, target_box) for shape in advanced)
+    return any(swept.colliderect(target_box) for swept in box.swept)
+
+
 def _first_vulnerable_zone(
     target: Combatant,
     swept_boxes: tuple[pygame.FRect, ...],
     hit_tags: tuple[str, ...] = (),
     swept_shapes: tuple[SweptShape, ...] = (),
 ) -> tuple[int, float] | None:
-    """First vulnerable zone touched by any swept attack box (P2).
+    """First vulnerable zone touched by any swept attack box.
 
     Zones are tested in order; the first vulnerable zone overlapping a swept
     box wins.
@@ -339,7 +349,8 @@ class ContactSystem:
         self.impact: float = 0.0
         self.hit_stop: float = 0.0
         self.guard_events: list[GuardEvent] = []
-        #: Contacts landed this resolve, with their absorbing zone (P2.4).
+        self.impact_events: list[ImpactEvent] = []
+        #: Contacts landed this resolve, with their absorbing zone.
         self.zone_contacts: list[ZoneContact] = []
         #: Optional Axe G dump; enabled only under DEBUG + DEBUG_COMBAT_DUMP.
         self.trace = CombatTrace(enabled=CombatTrace.is_enabled())
@@ -370,13 +381,17 @@ class ContactSystem:
         self.impact = 0.0
         self.hit_stop = 0.0
         self.guard_events = []
+        self.impact_events = []
         # zone_contacts accumulates across producers of the same tick
         # (cleared only by begin_tick), mirroring tick_metrics.
         self._target_geometry.reset()
         target_list = tuple(targets)
         order = {id(target): index for index, target in enumerate(target_list)}
+        ghosts = tuple(target for target in target_list if target.dodge_ghost is not None)
 
         for box in boxes:
+            if ghosts and box.attacker is not None:
+                self._resolve_ghosts(box, ghosts)
             for target in self._candidates(box, target_list, order, entity_grid):
                 self.metrics.pairs_tested += 1
                 if box.kind == "melee":
@@ -393,11 +408,7 @@ class ContactSystem:
                     self._resolve_melee(box, target, contact[0], contact[1])
                 else:
                     target_box = self._target_geometry.for_box(box, target)
-                    shape_hit = any(
-                        _shape_swept_intersects(shape, target_box) for shape in box.swept_shapes
-                    )
-                    swept_hit = any(swept.colliderect(target_box) for swept in box.swept)
-                    if not shape_hit and not swept_hit:
+                    if not _generic_hit(box, target_box):
                         continue
                     self.metrics.overlaps += 1
                     self._target_geometry.reset()
@@ -439,7 +450,23 @@ class ContactSystem:
             guard_events=self.guard_events,
             impact=self.impact,
             hit_stop=self.hit_stop,
+            impact_events=self.impact_events,
         )
+
+    def _resolve_ghosts(self, box: OffensiveBox, ghosts: tuple[Combatant, ...]) -> None:
+        """An attack that reaches the place a dodge just left is a perfect dodge.
+
+        The dodger is long gone from its ghost, so the broadphase would not
+        offer it to the box: the ghosts are tested apart, against every box
+        thrown by a fighter. Hazards and body contact have no attacker and
+        make no perfect dodge.
+        """
+        for target in ghosts:
+            ghost = target.dodge_ghost
+            if ghost is None or not _is_valid_target(box, target):
+                continue
+            if any(swept.colliderect(ghost) for swept in box.swept) and target.on_hit_evaded():
+                self._record_perfect_dodge(target)
 
     def _candidates(
         self,
@@ -462,14 +489,7 @@ class ContactSystem:
         self._nearby.clear()
         self._seen.clear()
         for swept in box.swept:
-            if type(entity_grid) is EntityGrid:
-                entity_grid.append_near(swept, self._nearby, self._seen)
-            else:
-                for member in entity_grid.near(swept):
-                    key = id(member)
-                    if key not in self._seen:
-                        self._seen.add(key)
-                        self._nearby.append(member)
+            entity_grid.append_near(swept, self._nearby, self._seen)
         self._nearby.sort(key=lambda member: order.get(id(member), len(order)))
         self._candidates_buffer.clear()
         self._candidates_buffer.extend(
@@ -490,6 +510,8 @@ class ContactSystem:
             charge_multiplier=box.charge_mult,
             zone_mult=zone_mult,
         )
+        if result.evaded:
+            self._record_perfect_dodge(target)
         if not (result.applied or result.guarded):
             return
         if box.record_contact is not None:
@@ -498,29 +520,23 @@ class ContactSystem:
         self.zone_contacts.append(
             ZoneContact(
                 owner_id=box.owner_id,
-                target_id=getattr(target, "id", "") or "",
+                target_id=target.id,
                 zone_index=zone_index,
                 zone_mult=zone_mult,
                 kind=box.kind,
             )
         )
         if result.guarded:
-            self._record_guard_event(result, target, box)
-            if result.parried:
-                self._maybe_parry_stun(box.attacker)
+            self.guard_events.append(GuardEvent("guard", target, _contact_point(box, target)))
+            self.hit_stop = max(self.hit_stop, GuardSettings.GUARD_HITSTOP)
+            if box.attacker is not None:
+                box.attacker.on_deflected(target.hitbox.centerx)
+            return
         magnitude = pygame.math.Vector2(box.hit.knockback.power).length() * box.charge_mult
         self.impact = max(self.impact, magnitude)
-        duration = (
-            CombatSettings.HITSTOP_BASE
-            + box.hit.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
-            + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
-        )
-        if result.parried:
-            duration = max(duration, GuardSettings.PARRY_HITSTOP)
-        self.hit_stop = max(self.hit_stop, duration)
-        # Real HP damage resets the consecutive-parry counter.
-        if result.applied and hasattr(box.attacker, "parries_taken"):
-            box.attacker.parries_taken = 0
+        self.hit_stop = max(self.hit_stop, self._freeze(box.hit, magnitude, result))
+        if result.applied:
+            self._record_impact(target, magnitude, result)
 
     def _resolve_generic(self, box: OffensiveBox, target: Combatant) -> None:
         """Projectile/hazard/contact hit, keeping their legacy semantics.
@@ -533,9 +549,15 @@ class ContactSystem:
         """
         if box.attacker is not None:
             result = HitResolver.resolve(attacker=box.attacker, target=target, hit=box.hit)
+            if result.evaded:
+                self._record_perfect_dodge(target)
             if not (result.applied or result.guarded):
                 return
-            self._record_guard_event(result, target, box)
+            if result.guarded:
+                self.guard_events.append(GuardEvent("guard", target, _contact_point(box, target)))
+            if result.applied:
+                magnitude = pygame.math.Vector2(box.hit.knockback.power).length()
+                self._record_impact(target, magnitude, result)
         else:
             target.receive_damage(
                 amount=box.hit.damage,
@@ -547,7 +569,7 @@ class ContactSystem:
         self.zone_contacts.append(
             ZoneContact(
                 owner_id=box.owner_id,
-                target_id=getattr(target, "id", "") or "",
+                target_id=target.id,
                 zone_index=0,
                 zone_mult=1.0,
                 kind=box.kind,
@@ -556,30 +578,27 @@ class ContactSystem:
         if box.record_contact is not None:
             box.record_contact(target)
 
-    def _record_guard_event(
-        self, result: DamageResult, target: Combatant, box: OffensiveBox
-    ) -> None:
-        """Record guard/parry/break outcomes for event-draining systems."""
-        if not result.guarded:
-            return
-        kind = "guard"
-        if result.parried:
-            kind = "parry"
-        elif result.guard_broken:
-            kind = "break"
-        self.guard_events.append(GuardEvent(kind, target, _contact_point(box, target)))
+    @staticmethod
+    def _freeze(hit: HitProperties, magnitude: float, result: DamageResult) -> float:
+        """How long the hit stops the world: its own weight, or what it did if longer."""
+        if result.doomed:
+            return FinisherSettings.DOOM_HITSTOP
+        duration = _hit_stop(hit, magnitude)
+        if result.killed:
+            duration = max(duration, CombatSettings.KILL_HITSTOP)
+        if result.executed:
+            duration = max(duration, CombatSettings.EXECUTION_HITSTOP)
+        return duration
 
-    def _maybe_parry_stun(self, attacker: Any) -> None:
-        """Parry-stun: count the consecutive perfect parries an enemy took."""
-        if not isinstance(attacker, Enemy):
-            return
-        attacker.parries_taken += 1
-        if (
-            attacker.parry_stun_threshold is not None
-            and attacker.parries_taken >= attacker.parry_stun_threshold
-        ):
-            attacker.state_machine.change_state(
-                DIZZY_STATE, force=True, duration=attacker.parry_stun_duration
-            )
-            attacker.parries_taken = 0
-            self.guard_events.append(GuardEvent("stun", attacker))
+    def _record_impact(self, target: Combatant, strength: float, result: DamageResult) -> None:
+        """Note how hard a hit landed, for the shake, and the stun or the doom it caused."""
+        self.impact_events.append(ImpactEvent(strength, result.killed, result.executed))
+        if result.stunned:
+            self.guard_events.append(GuardEvent("stun", target))
+        if result.doomed:
+            self.guard_events.append(GuardEvent("doom", target))
+
+    def _record_perfect_dodge(self, target: Combatant) -> None:
+        """A hit was dodged at the last moment: a short stop marks it."""
+        self.hit_stop = max(self.hit_stop, RushSettings.HITSTOP)
+        self.guard_events.append(GuardEvent("dodge", target))

@@ -17,8 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from src.combat.shapes import ShapePose
 from src.core.input.input_state import InputState
 from src.entities.entity import EntitySnapshot
+from src.entities.projectile import Projectile, ProjectileConfig
 
 
 class SnapshotCapable(Protocol):
@@ -37,6 +39,29 @@ class PlatformSnapshot:
     direction: int
 
 
+@dataclass(frozen=True)
+class ProjectileSnapshot:
+    """Capture of one in-flight projectile's changing state.
+
+    ``projectile`` is a live reference so a rewind can re-add it to its groups,
+    just like ``EntitySnapshot.entity``. The swept-shape origins are derived at
+    the next tick and are not captured.
+    """
+
+    projectile: Projectile
+    id: str
+    pos: tuple[float, float]
+    velocity: tuple[float, float]
+    life: float
+    active: bool
+    is_dead: bool
+    faction: str
+    facing_right: bool
+    config: ProjectileConfig
+    contact_shape: ShapePose
+    targets_hit: frozenset[str]
+
+
 @dataclass
 class LevelSnapshot:
     """Capture of a level's full simulation state at one tick."""
@@ -52,3 +77,4 @@ class LevelSnapshot:
     input_previous: InputState = field(default_factory=InputState)
     entities: dict[str, EntitySnapshot] = field(default_factory=dict)
     platforms: list[PlatformSnapshot] = field(default_factory=list)
+    projectiles: list[ProjectileSnapshot] = field(default_factory=list)

@@ -27,7 +27,7 @@ when it happens, and a port that stops at "the caller knows" would have left
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
 import pygame
@@ -60,7 +60,10 @@ class WorldOverlay(Protocol):
         """Draw the world-space debug layer (hitboxes, velocities, labels)."""
 
     def draw_health_bars(
-        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
+        self,
+        entities: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
     ) -> list[pygame.Rect]:
         """Draw the HP bars over the world pass; return the rects they occupy."""
 
@@ -113,7 +116,10 @@ class NullOverlay:
         """No overlay layer."""
 
     def draw_health_bars(
-        self, entities: Iterable[pygame.sprite.Sprite], camera: Camera
+        self,
+        entities: Iterable[pygame.sprite.Sprite],
+        camera: Camera,
+        screen_rects: Mapping[int, pygame.Rect | pygame.FRect] | None = None,
     ) -> list[pygame.Rect]:
         """No bars, and therefore no rects."""
         return []

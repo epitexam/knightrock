@@ -1,169 +1,275 @@
-"""The window: mode, size, position and vsync.
+"""The window: its size, its position, fullscreen and vsync.
 
-Deliberately the only module in the game that calls ``set_mode``. Everything
-else draws into a ``Viewport`` and never learns that a window exists.
+The only module that calls ``set_mode``; everything else draws into a
+``Viewport``. One mode: a ``RESIZABLE`` window, sized by the player and placed
+by the window manager. Fullscreen is the desktop kind, with no mode change --
+a real mode change is what blacks out a hybrid-GPU laptop.
 """
 
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, replace
 
 import pygame
 
-from . import detection
-from .mode import DisplayMode
+from .monitors import (
+    MIN_WINDOW,
+    Monitor,
+    centre_on,
+    fit_size,
+    opening_size,
+    sits_within,
+)
 
 logger = logging.getLogger(__name__)
+
+#: How many times a size is asked for before a refusal is believed: the
+#: platform sometimes grants another size once and honours the same request
+#: the second time.
+SIZE_ATTEMPTS = 2
+
+#: The window's flags. No ``SCALED``: the render target does the letterboxing.
+WINDOW_FLAGS = pygame.RESIZABLE
 
 
 @dataclass(frozen=True)
 class WindowSpec:
-    """What the player asked for, before the desktop has its say.
+    """What the player asked for, before the platform has its say.
 
-    A plain value rather than ``UserSettings``, so this module stays free of the
-    application layer and can be driven straight from a test.
-
-    There is no size here, and that is the point: the game does not get an
-    opinion about how big the window should be. Each mode asks the platform for
-    whatever it is, and the render target follows the window it is given.
+    ``size`` is clamped to the monitor it opens on; ``None`` lets the machine
+    decide (first launch, reset).
     """
 
-    mode: DisplayMode = DisplayMode.BORDERLESS
     vsync: bool = False
+    size: tuple[int, int] | None = None
+    #: Desktop fullscreen: the window covers its screen without a mode change.
+    #: ``size`` is still the windowed size, the one it returns to.
+    fullscreen: bool = False
 
 
 class Stage:
     """The OS window the game is presented in.
 
-    Two rules earn their keep here:
-
-    * **The surface is measured, never assumed.** The size actually granted is
-      read back off the surface rather than trusted from the request, because
-      with high-DPI windows the two differ and every layout downstream would be
-      quietly wrong.
-    * **The window is re-centred after every rebuild.** Changing the display
-      mode moves the window, and left alone it stays wherever the window manager
-      dropped it -- which is how a window ends up one monitor away from the one
-      the game is on.
+    The granted size is read back off the surface, never trusted from the
+    request. Placement uses the monitor's real origin from
+    :mod:`src.core.display.sdl_probe`.
     """
 
-    def __init__(
-        self,
-        spec: WindowSpec,
-        desktop: tuple[int, int] | None = None,
-    ) -> None:
+    def __init__(self, spec: WindowSpec, monitor: Monitor) -> None:
         self.spec = spec
-        self.surface = self._create(spec, desktop)
+        self.monitor = monitor
+        #: Whether the window covers its screen, and the size it had before.
+        self.fullscreen = False
+        self.windowed_size: tuple[int, int] | None = None
+        self.surface = self._create(spec, monitor)
 
     @property
     def size(self) -> tuple[int, int]:
         """The window's granted size, read back from the surface."""
         return self.surface.get_size()
 
-    def rebuild(
-        self,
-        spec: WindowSpec,
-        desktop: tuple[int, int] | None = None,
-    ) -> pygame.Surface:
-        """Recreate the window for a new specification and return its surface."""
-        self.spec = spec
-        self.surface = self._create(spec, desktop)
+    def rebuild(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
+        """Recreate the window for a new specification and return its surface.
+
+        All or nothing: if it fails (vsync refused, screen gone), the previous
+        window is asked for again and the error raised for the caller.
+
+        Asked for again, not merely remembered. pygame hands back the *same*
+        surface object from every ``set_mode``, so putting the old fields back
+        left a stage describing one window while the platform showed whatever
+        the failed attempt got as far as: its size, its screen, its fullscreen.
+        """
+        previous_spec, previous_monitor = self.spec, self.monitor
+        # The window as it stands, which the spec alone does not say: a size
+        # left to the machine, a fullscreen toggled since.
+        standing = replace(
+            self.spec,
+            fullscreen=self.fullscreen,
+            size=(self.windowed_size if self.fullscreen else self.size) or self.spec.size,
+        )
+        try:
+            self.spec = spec
+            self.monitor = monitor
+            self.fullscreen = False
+            self.surface = self._create(spec, monitor)
+        except Exception:
+            self.spec = previous_spec
+            self._restore(standing, previous_monitor)
+            raise
         return self.surface
 
-    def _create(
-        self,
-        spec: WindowSpec,
-        desktop: tuple[int, int] | None,
+    def _restore(self, standing: WindowSpec, monitor: Monitor) -> None:
+        """Get the previous window back after a failed rebuild. Never raises.
+
+        If the platform refuses that too, the stage at least describes what is
+        really on screen: the surface pygame holds, not fullscreen.
+        """
+        self.monitor = monitor
+        self.fullscreen = False
+        try:
+            self.surface = self._create(standing, monitor)
+        except Exception:
+            logger.exception("The previous window could not be restored either")
+            self.surface = pygame.display.get_surface() or self.surface
+
+    def set_fullscreen(self, on: bool) -> pygame.Surface:
+        """Cover the screen, or go back to the window, without a mode change.
+
+        The windowed size is kept: the window returns to it, and the next launch
+        opens at it.
+        """
+        if on == self.fullscreen:
+            return self.surface
+        window = self._window_handle()
+        if on:
+            self.windowed_size = self.size
+        if window is None:
+            self.surface = self._fullscreen_by_mode(on)
+        else:
+            if on:
+                window.set_fullscreen(desktop=True)
+            else:
+                window.set_windowed()
+            self.surface = pygame.display.get_surface() or self.surface
+        self.fullscreen = on
+        return self.surface
+
+    def _fullscreen_by_mode(self, on: bool) -> pygame.Surface:
+        """The same toggle through ``set_mode``, for a build with no ``Window`` handle.
+
+        Asking for the screen's own desktop size is what keeps this a desktop
+        fullscreen: pygame only changes the video mode for a size the desktop
+        is not already at. Measured here on a two-screen desk: the desktop sizes
+        read the same before, during and after.
+        """
+        if on:
+            size, flags = self.monitor.size, WINDOW_FLAGS | pygame.FULLSCREEN
+        else:
+            size, flags = (
+                self.windowed_size or self._window_size(self.spec, self.monitor),
+                (WINDOW_FLAGS),
+            )
+        return pygame.display.set_mode(
+            size, flags, 0, self.monitor.index, 1 if self.spec.vsync else 0
+        )
+
+    def _create(self, spec: WindowSpec, monitor: Monitor) -> pygame.Surface:
+        """Open the window at the asked size (asking again once if refused), then place it.
+
+        Placed after sizing, so the placement works against the granted size.
+        """
+        asked = self._window_size(spec, monitor)
+        surface = self._set_mode(spec, monitor, asked)
+        for _ in range(SIZE_ATTEMPTS - 1):
+            if surface.get_size() == asked:
+                break
+            logger.info(
+                "The platform granted %s instead of %s; asking again",
+                surface.get_size(),
+                asked,
+            )
+            surface = self._set_mode(spec, monitor, asked)
+        # Before placing: placement reads ``self.size``.
+        self.surface = surface
+        self._place(spec, monitor)
+        self._limit_size()
+        if spec.fullscreen:
+            self.set_fullscreen(True)
+            self.windowed_size = asked
+        return self.surface
+
+    def _set_mode(
+        self, spec: WindowSpec, monitor: Monitor, size: tuple[int, int]
     ) -> pygame.Surface:
-        resolved = detection.desktop_size() if desktop is None else desktop
+        """One ``set_mode`` at ``size``, kept in ``self.surface`` straight away."""
         surface = pygame.display.set_mode(
-            self._window_size(spec, resolved),
-            self._flags(spec),
+            size,
+            WINDOW_FLAGS,
             0,
-            0,  # display index: the primary screen, always (see detection)
+            monitor.index,
             1 if spec.vsync else 0,
         )
-        # Measured, not requested: see the class docstring.
-        self._recenter(self._mode_for(spec))
+        self.surface = surface
         return surface
 
     @staticmethod
-    def _mode_for(spec: WindowSpec) -> DisplayMode:
-        """AUTO behaves as borderless for flags, so it behaves as borderless here."""
-        return spec.mode if spec.mode.is_concrete else DisplayMode.BORDERLESS
+    def _window_size(spec: WindowSpec, monitor: Monitor) -> tuple[int, int]:
+        """The chosen size fitted to the monitor and raised to ``MIN_WINDOW``,
+        or the opening size when nothing was chosen."""
+        if spec.size is not None:
+            return fit_size(spec.size, monitor)
+        return opening_size(monitor)
+
+    def _place(self, spec: WindowSpec, monitor: Monitor) -> None:
+        """Keep the window where it is if it still fits its screen; centre it otherwise.
+
+        Re-centring on every size change made the window jump across a
+        two-screen desk.
+        """
+        current = self._position()
+        if current is not None and sits_within(current, monitor, self.size):
+            return
+        if current is None:
+            logger.debug("No window position readable; centring")
+        self._move_to(centre_on(monitor, self.size))
+
+    def _position(self) -> tuple[int, int] | None:
+        """Where the window is, from the handle or else from the display module."""
+        window = self._window_handle()
+        try:
+            x, y = window.position if window is not None else pygame.display.get_window_position()
+        except pygame.error, AttributeError, TypeError, ValueError:
+            return None
+        return (int(x), int(y))
+
+    def _move_to(self, position: tuple[int, int]) -> None:
+        """Put the window at ``position``. Best effort: the platform may refuse."""
+        window = self._window_handle()
+        try:
+            if window is not None:
+                window.position = position
+            else:
+                pygame.display.set_window_position(position)
+        except pygame.error, AttributeError:
+            logger.debug("The platform refused to move the window")
 
     @staticmethod
-    def _window_size(spec: WindowSpec, desktop: tuple[int, int]) -> tuple[int, int]:
-        """The size to ask for, which each mode answers for itself.
+    def _window_handle() -> pygame.Window | None:
+        """The window behind the display surface, when this build has one.
 
-        - **Window**: the biggest one that still leaves room for a title bar.
-          A starting point, not a remembered size -- the player drags it to
-          whatever they like and the render target follows.
-        - **Borderless**: the desktop's own size, whatever it is. A window that
-          already matches the screen cannot be the wrong shape.
-        - **Fullscreen**: ``(0, 0)``, which is how SDL is told to use the
-          display's current mode rather than a resolution we made up.
+        The one place that asks for it. ``from_display_module`` is deprecated in
+        pygame-ce, so nothing may *depend* on the answer: fullscreen and placement
+        each have a path through the display module for a build that has dropped
+        it, and only the minimum size has none (it is then not enforced).
         """
-        if spec.mode is DisplayMode.FULLSCREEN:
-            return (0, 0)
-        if spec.mode is DisplayMode.BORDERLESS and desktop[0] > 0 and desktop[1] > 0:
-            return desktop
-        return detection.initial_window_size(desktop)
+        try:
+            with warnings.catch_warnings():
+                # The deprecation is known and handled by the fallbacks above;
+                # repeating it on every placement says nothing new.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                return pygame.Window.from_display_module()
+        except pygame.error, AttributeError:
+            logger.debug("No Window handle; using the display module instead")
+            return None
 
-    @staticmethod
-    def _flags(spec: WindowSpec) -> int:
-        """The SDL flags for a mode.
-
-        Windowed is resizable. It used not to be, on the grounds that a user
-        drag would change the viewport the camera culls against -- which was
-        true, and stopped being true once the framing became a fixed constant
-        in world units. A resized window now changes how large the world is
-        drawn and nothing else.
-
-        ``pygame.SCALED`` is gone. It was doing the letterboxing, which the
-        render target does itself, and pygame's own documentation calls it an
-        experimental API. Dropping it is also why windowed vsync is unreliable:
-        SDL only honours the request for a scaled or GL surface.
-        """
-        if spec.mode is DisplayMode.BORDERLESS:
-            return pygame.FULLSCREEN
-        if spec.mode is DisplayMode.FULLSCREEN:
-            return pygame.FULLSCREEN
-        return pygame.RESIZABLE
-
-    @staticmethod
-    def _recenter(mode: DisplayMode) -> None:
-        """Hand the placement to SDL, which knows where the displays are.
-
-        This used to compute the position itself, from the assumption that the
-        primary display sits at the origin of the virtual desktop. That is the
-        Windows and macOS convention, and it is **false** on a Linux desktop
-        whose primary is not the leftmost monitor. Measured on such a machine --
-        two displays, primary 2560x1440 sitting at origin (1920, 0) -- the
-        arithmetic produced x=192 and put the window on the *other* monitor,
-        which is worse than not placing it at all.
-
-        ``pygame.Window.position`` accepts ``WINDOWPOS_CENTERED``, and SDL
-        resolves that against the display the window is actually on. The
-        module-level ``pygame.display.set_window_position`` refuses the constant
-        ("position must be two numbers"), which is why this goes through the
-        ``Window`` handle.
-
-        Reaching the ``Window`` handle of a window created by
-        ``display.set_mode`` is deprecated -- pygame warns, correctly, that the
-        two APIs will eventually separate. The warning is left visible rather
-        than suppressed, and the failure mode is the ``except`` below: if the
-        call ever stops working, the window is left where the window manager put
-        it, which is a worse-looking outcome and not a broken one.
-
-        A fullscreen window is left alone: SDL places it on the display itself
-        and refuses to move it, so asking is at best a no-op.
-        """
-        if mode is not DisplayMode.WINDOW:
+    def _limit_size(self) -> None:
+        """Ask for ``MIN_WINDOW`` as the minimum size. Best effort."""
+        window = self._window_handle()
+        if window is None:
             return
         try:
-            pygame.Window.from_display_module().position = pygame.WINDOWPOS_CENTERED
+            window.minimum_size = MIN_WINDOW
         except pygame.error, AttributeError:
-            # No usable Window class in this build. Leave the placement to the
-            # window manager, which gets it right more often than a guess
-            # from us would.
-            logger.debug("No Window handle; leaving the window where the WM put it")
+            logger.debug("The platform refused a minimum window size")
+
+    def __repr__(self) -> str:
+        return f"Stage(monitor={self.monitor.index}, size={self.size})"
+
+
+__all__ = [
+    "Stage",
+    "WindowSpec",
+    "SIZE_ATTEMPTS",
+]

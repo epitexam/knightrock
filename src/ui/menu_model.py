@@ -23,6 +23,9 @@ class MenuItem:
     label: str
     value: str = ""
     enabled: bool = True
+    #: What pressing the row does, for the view to say: ``"list"`` or
+    #: ``"page"`` opens something, ``"toggle"`` flips a value, ``""`` acts.
+    kind: str = ""
 
 
 class MenuAction(StrEnum):
@@ -41,6 +44,22 @@ class MenuAction(StrEnum):
     BACK = "back"
 
 
+#: The routed actions that move the focus, and nothing else.
+#: One module-level set rather than six ``is`` tests inside
+#: ``handle_routed``, which is what kept that method readable
+#: as the list vocabulary grew.
+_NAVIGATION_ACTIONS = frozenset(
+    {
+        InputAction.UI_UP,
+        InputAction.UI_DOWN,
+        InputAction.UI_PAGE_UP,
+        InputAction.UI_PAGE_DOWN,
+        InputAction.UI_HOME,
+        InputAction.UI_END,
+    }
+)
+
+
 class MenuModel:
     @staticmethod
     def is_release(variant: str | None) -> bool:
@@ -54,7 +73,11 @@ class MenuModel:
         return variant == "release"
 
     def __init__(
-        self, items: list[MenuItem] | tuple[MenuItem, ...] = (), *, wrap: bool = False
+        self,
+        items: list[MenuItem] | tuple[MenuItem, ...] = (),
+        *,
+        wrap: bool = False,
+        selected: int = 0,
     ) -> None:
         self._wrap = wrap
         self._items: tuple[MenuItem, ...] = ()
@@ -67,7 +90,7 @@ class MenuModel:
         # arrives on row 0, and row 0 was already "the hovered one" as far as
         # the selection is concerned.
         self._pointer_row: int | None = None
-        self.set_items(items)
+        self.set_items(items, selected)
 
     @property
     def items(self) -> tuple[MenuItem, ...]:
@@ -87,6 +110,13 @@ class MenuModel:
 
     def set_items(self, items: list[MenuItem] | tuple[MenuItem, ...], selected: int = 0) -> None:
         self._items = tuple(items)
+        # The pointer's row is forgotten, because the rows it was pointing at
+        # are new objects with new rects. Kept across a rebuild it becomes an
+        # index into a list that may no longer have that row, and the next
+        # hover onto a row at that index reports "no change" -- so the cursor
+        # sits over a row that does nothing until the player moves it off and
+        # back on.
+        self._pointer_row = None
         if not self._items:
             self._current = -1
             self._hovered = -1
@@ -105,22 +135,56 @@ class MenuModel:
             elif not 0 <= index < len(self._items):
                 break
             if self._items[index].enabled:
-                self._current = index
+                self._select(index)
                 return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
         return None
 
+    def move_page(self, direction: int, page: int) -> str | None:
+        """Move by a page: as many rows as the window shows.
+
+        A disabled landing row gives way to the nearest enabled one in the same
+        direction, as :meth:`move` does.
+        """
+        if not self._items:
+            return None
+        start = self._current if self._current >= 0 else 0
+        target = max(0, min(start + direction * max(1, page), len(self._items) - 1))
+        for offset in range(len(self._items)):
+            index = target + direction * offset
+            if not 0 <= index < len(self._items):
+                break
+            if self._items[index].enabled:
+                self._select(index)
+                return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
+        return None
+
+    def jump(self, direction: int) -> str | None:
+        """To the first (``direction`` < 0) or last row, skipping disabled edge rows."""
+        if not self._items:
+            return None
+        order = range(len(self._items) - 1, -1, -1) if direction > 0 else range(len(self._items))
+        for index in order:
+            if self._items[index].enabled:
+                self._select(index)
+                return MenuAction.MOVE_UP if direction < 0 else MenuAction.MOVE_DOWN
+        return None
+
+    def _select(self, index: int) -> None:
+        """Move the cursor and take the selection from the pointer.
+
+        Otherwise, after an arrow key, small pointer moves inside the row it was
+        already on report no change, and the pointer cannot take the selection
+        back until it crosses into another row.
+        """
+        self._current = index
+        self._pointer_row = None
+
     def hover(self, position: tuple[int, int], rects: Sequence[pygame.Rect]) -> str | None:
-        """Focus the item under the pointer; report only when the focus moved.
+        """Focus the row under the pointer; report only when the focus moved.
 
-        A pointer is routed on every mouse sample, so returning ``HOVER`` for
-        all of them describes the *motion*, not the *interaction* — and the
-        motion is not something a screen, or anything listening to it, can act
-        on. Returning the move only when the pointer lands on a row it was not
-        on makes this the exact counterpart of :meth:`move`, which already
-        returns None when the selection is blocked.
-
-        Leaving the rows reports nothing and forgets the position, so coming
-        back onto one reports again.
+        The pointer is sampled constantly, so this reports a row reached, not
+        motion. Leaving the rows reports nothing and forgets the row, so coming
+        back reports again.
         """
         self._hovered = -1
         row: int | None = None
@@ -161,10 +225,8 @@ class MenuModel:
             # guard every press (move +1) was followed by a second move on
             # release -- a double step, which reads as lag.
             return None, variant
-        if action is InputAction.UI_UP:
-            return self.move(-1), variant
-        if action is InputAction.UI_DOWN:
-            return self.move(1), variant
+        if action in _NAVIGATION_ACTIONS:
+            return self._navigate(action, rects), variant
         if action is InputAction.UI_POINTER_MOVE and position is not None:
             return self.hover(position, rects), variant
         if action is InputAction.UI_POINTER_DOWN and position is not None:
@@ -178,6 +240,29 @@ class MenuModel:
             return self.activate(self._current), variant
         return None, variant
 
+    def _navigate(self, action: InputAction, rects: Sequence[pygame.Rect]) -> str | None:
+        """The six ways a list moves: one row, a page, or an edge.
+
+        Kept apart from :meth:`handle_routed` because the
+        router's vocabulary grew past what one method reads
+        like: a page is a move with the window's row count
+        in it, and an edge is a move that starts at the
+        end, but both are still "the focus moved".
+        """
+        if action is InputAction.UI_UP:
+            return self.move(-1)
+        if action is InputAction.UI_DOWN:
+            return self.move(1)
+        if action is InputAction.UI_PAGE_UP:
+            return self.move_page(-1, self._page_size(rects))
+        if action is InputAction.UI_PAGE_DOWN:
+            return self.move_page(1, self._page_size(rects))
+        if action is InputAction.UI_HOME:
+            return self.jump(-1)
+        if action is InputAction.UI_END:
+            return self.jump(1)
+        return None
+
     def _nearest_enabled(self, selected: int) -> int:
         if not self._items:
             return -1
@@ -188,3 +273,13 @@ class MenuModel:
             if self._items[index].enabled:
                 return index
         return -1
+
+    @staticmethod
+    def _page_size(rects: Sequence[pygame.Rect]) -> int:
+        """How many rows are on screen, which is what a page is.
+
+        The rects the view painted, one per item: a row scrolled
+        out of view keeps its place with an empty rect, so the
+        painted ones are exactly the visible ones.
+        """
+        return max(1, sum(1 for rect in rects if rect.width > 0))

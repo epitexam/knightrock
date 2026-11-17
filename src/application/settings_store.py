@@ -3,39 +3,50 @@
 What a setting is allowed to be
 -------------------------------
 A choice the player can make and the game can honour, or nothing. That rule is
-what this file is down to, and it is why there is no window size here any more.
+what this file is down to.
 
-The size used to be here, with a ``size_mode`` to say whether it was the
-player's or the machine's, and a ``render_scale`` on top to say how sharply to
-draw a fixed target. All three were claims about the player's screen, and the
-game could check none of them: it could not tell whether a remembered size still
-fit, and in borderless the window is the desktop's size whatever the file says,
-so the menu displayed a number the game was not using. A player who set a
-resolution watched the menu disagree with the screen and the number change on
-the next launch.
+The *mode* keys used to be here -- a fixed ``width``/``height``, a ``size_mode``
+to say whether it was the player's or the machine's, and a ``render_scale`` on
+top to say how sharply to draw a fixed target. All three were claims about the
+player's screen, and the game could check none of them: it could not tell
+whether a remembered size still fit, and in borderless the window is the
+desktop's size whatever the file says, so the menu displayed a number the game
+was not using. A player who set a resolution watched the menu disagree with the
+screen and the number change on the next launch.
 
 The window is now the only source of truth (:mod:`src.core.display.letterbox`),
-and the picture is derived from it, so the settings that survive are the ones
-that were never about the screen: a display mode, whole-pixel art, vsync, a
-frame limit, an interface scale, and the bindings.
+and the picture is derived from it. What survives is of two shapes, and the
+difference is worth naming: the settings that were never about the screen --
+whole-pixel art, vsync, a frame limit, an interface scale, the bindings -- and
+**one** size key, ``window_size``, which is a *preference* and not a claim. It
+is asked for as it stands where the panel can take it, clamped where it cannot,
+and never written back -- so the file never again carries a number the window
+disagrees with (:func:`src.core.display.monitors.fit_size`).
 
-Schema v3 dropped the window keys. A v2 or v1 file still loads: unknown keys
-are ignored rather than rejected, because the bindings are the expensive half
-to rebuild and must not be lost over a video key that no longer means anything.
+A display mode and a chosen screen lived here too, and both are gone. The game is
+a window now, with one set of flags; the player chooses its size and the window
+manager owns where it sits. Each was a claim about the screen the game could not
+keep -- it cannot move a window the compositor has decided to pin, and a mode
+that asks the driver for a change is the thing that blanks a hybrid-GPU laptop.
+
+Schema v3 dropped the window keys, and v4 still reads the keys that remain. A
+removed key is ignored rather than rejected, because the bindings are the
+expensive half to rebuild and must not be lost over a video key that no longer
+means anything.
 """
 
 import json
 import logging
 import os
-import shutil
-import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from src.core.display.mode import DisplayMode
-from src.core.input.bindings_repository import (
+from src.core.atomic_json import write_json_atomic
+from src.core.display.letterbox import FitPolicy
+from src.core.input.bindings_codec import (
     bindings_from_dict,
     bindings_to_dict,
 )
@@ -43,8 +54,11 @@ from src.core.input.input_bindings import InputBindings
 
 logger = logging.getLogger(__name__)
 
-#: v1 had a boolean, v2 a window and a render scale, v3 only choices. All are read.
-SETTINGS_FORMAT_VERSION = 3
+#: v1 had a boolean, v2 a window and a render scale, v3 only choices, v4 the
+#: window size the player chose. All are read. The v4 keys that named a screen or
+#: a display mode were dropped without a new version: they are simply not read
+#: any more, and a file that still carries them loads unchanged.
+SETTINGS_FORMAT_VERSION = 4
 LEGACY_FORMAT_VERSIONS = (1, 2)
 
 #: Interface scale, as the player chooses it. The scale the views are handed is
@@ -86,48 +100,111 @@ MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500
 
 
+def _sections(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The ``video`` and ``ui`` blocks, every schema version has them."""
+    video = data.get("video", {})
+    ui = data.get("ui", {})
+    if not isinstance(video, dict) or not isinstance(ui, dict):
+        raise ValueError("settings sections must be objects")
+    return video, ui
+
+
+def _scales(ui: dict[str, Any]) -> tuple[float, float]:
+    """The two scale preferences, validated once for all four migrations."""
+    scale = ui.get("scale", 1.0)
+    if scale not in UI_SCALES:
+        raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+    panel_scale = ui.get("panel_scale", 1.0)
+    if panel_scale not in PANEL_SCALES:
+        raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+    return scale, panel_scale
+
+
+def _frame_limit(video: dict[str, Any]) -> int | None:
+    """The bounded frame limit; ``None`` means uncapped and needs no bounds."""
+    value = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
+    if value is None:
+        return None
+    return _bounded_int(value, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT)
+
+
 @dataclass(frozen=True)
 class UserSettings:
     """Everything the player is allowed to have an opinion about.
 
-    Notice what is not here: a window size, a "size mode", a render scale or a
-    smoothing flag. Every one of them was a claim about the player's screen
-    that the game could not check, and the two that mattered most were also
-    wrong in practice -- the window is either the desktop's size (borderless) or
-    whatever the player dragged it to, while the file and the menu carried a
-    third number that nobody wrote back. The picture is derived from the window
-    instead, so there is nothing to store and nothing to get wrong.
+    Notice what is not here: the fixed ``width``/``height`` the window used to
+    be opened *as*, a "size mode", a render scale or a smoothing flag. Every one
+    of them was a claim about the player's screen that the game could not check,
+    and the two that mattered most were also wrong in practice -- the window is
+    either the desktop's size (borderless) or whatever the player dragged it to,
+    while the file and the menu carried a third number that nobody wrote back.
+    The picture is derived from the window instead, so there is nothing to store
+    and nothing to get wrong.
 
     What is left is a list of choices, and each one is really a choice:
 
-    - **display**: how to occupy the screen. ``AUTO`` is re-evaluated every
-      launch, which is the honest answer for "I have never seen this machine".
     - **pixel_perfect**: give up filling the window to get whole-pixel art.
+    - **fit**: how the picture meets the window -- see the field, and
+      :meth:`src.application.game.Game.effective_fit` for how the two reconcile.
     - **vsync**, **frame_limit**: how often to present.
     - **ui_scale**: the interface's own size, independent of the density.
     - **panel_scale**: the debug panels' size, down to 0.4 so the full stack fits
       a small window. Offered in the video menu only when the game is running
       with the debug overlay on, since there is nothing for it to size otherwise.
+    - **window_size**: the *only* size key left, and a preference rather than a
+      claim -- the one size the player chose, asked for as-is where the panel can
+      take it, clamped where it cannot, never overwritten.
+    - **last_window_size**: the size the window had when the game last closed
+      with no size chosen -- where the next launch opens, nothing more.
+    - **last_window_screen**: the name of the screen the window was on when the
+      game last closed -- where the next launch opens if that screen is still
+      there, and the primary otherwise.
+    - **fullscreen**: the window covers its screen, without a mode change.
     - **bindings**: what the buttons do.
     """
 
     bindings: InputBindings = field(default_factory=InputBindings)
-    display: DisplayMode = DisplayMode.AUTO
     pixel_perfect: bool = False
+    #: How the picture meets the window: bars, whole-pixel blocks, or zoom to
+    #: fill with the overflow cropped. All three show *at most* the framing, so
+    #: none of them can turn a video setting into a gameplay advantage.
+    fit: FitPolicy = FitPolicy.AUTO
     vsync: bool = False
     frame_limit: int | None = DEFAULT_FRAME_LIMIT
     ui_scale: float = 1.0
     panel_scale: float = 1.0
+    #: The window size to open at, or ``None`` to keep the size the player last
+    #: dragged the window to. Clamped to the monitor it opens on rather than
+    #: overwritten -- see :func:`src.core.display.monitors.fit_size`.
+    window_size: tuple[int, int] | None = None
+    #: The size the window had when the game last closed, with no size chosen.
+    #: Used only to open at it next time; never a preference, and written only
+    #: on the way out, so a resize mid-session does not rewrite the file.
+    last_window_size: tuple[int, int] | None = None
+    #: The screen the window was on when the game last closed, by the name the
+    #: platform gives it. A name and not an index or a position: on another
+    #: machine, or with that screen unplugged, a name matches nothing and the
+    #: window opens on the primary -- an index would name another panel, or
+    #: none, which is the file that used to take the first frame down.
+    last_window_screen: str | None = None
+    #: Desktop fullscreen: the window covers its screen, with no mode change.
+    fullscreen: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
             "version": SETTINGS_FORMAT_VERSION,
             "bindings": bindings_to_dict(self.bindings),
             "video": {
-                "display": self.display.value,
                 "pixel_perfect": self.pixel_perfect,
+                "fit": self.fit.value,
                 "vsync": self.vsync,
                 "frame_limit": self.frame_limit,
+            },
+            "window": {
+                "size": list(self.window_size) if self.window_size else None,
+                "last": list(self.last_window_size) if self.last_window_size else None,
+                "screen": self.last_window_screen,
+                "fullscreen": self.fullscreen,
             },
             # Under ``ui`` and not ``video``: this is about the size of text on
             # screen, like the scale above it, and the ``video`` section is held
@@ -144,9 +221,11 @@ class UserSettings:
         version = data.get("version")
         if version in LEGACY_FORMAT_VERSIONS:
             return cls._from_v1(data) if version == 1 else cls._from_v2(data)
+        if version == 3:
+            return cls._from_v3(data)
         if version != SETTINGS_FORMAT_VERSION:
             raise ValueError("unsupported settings schema")
-        return cls._from_v3(data)
+        return cls._from_v4(data)
 
     @classmethod
     def _bindings(cls, data: dict[str, Any]) -> InputBindings:
@@ -161,33 +240,52 @@ class UserSettings:
     def _from_v3(cls, data: dict[str, Any]) -> UserSettings:
         """Read a v3 file: choices, and nothing about the screen."""
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
-
-        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
-        if frame_limit is not None:
-            frame_limit = _bounded_int(
-                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
-            )
+        video, ui = _sections(data)
+        scale, panel_scale = _scales(ui)
 
         return cls(
             bindings=bindings,
-            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
-            frame_limit=frame_limit,
+            frame_limit=_frame_limit(video),
             ui_scale=scale,
             panel_scale=panel_scale,
+        )
+
+    @classmethod
+    def _from_v4(cls, data: dict[str, Any]) -> UserSettings:
+        """Read a v4 file: a chosen window size, plus v3's choices.
+
+        The window key is read as a *request*. Nothing here decides whether it
+        can be honoured -- that needs the topology, which is not known until the
+        window is opened -- so it is carried through and clamped by
+        :mod:`src.core.display.monitors` at launch. What is decided here is only
+        whether the file is well formed, because a settings file that fails to
+        parse takes the player's bindings down with it.
+
+        A v3 file loads through this too, and so does a v4 file written before
+        the display mode and the chosen screen were removed: the keys it no
+        longer has, and the keys that no longer exist, are simply ignored.
+        """
+        bindings = cls._bindings(data)
+        video, ui = _sections(data)
+        window = data.get("window", {})
+        if not isinstance(window, dict):
+            raise ValueError("settings window section must be an object")
+        scale, panel_scale = _scales(ui)
+
+        return cls(
+            bindings=bindings,
+            pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
+            fit=_enum(FitPolicy, video.get("fit", FitPolicy.BARS), "fit"),
+            vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
+            frame_limit=_frame_limit(video),
+            ui_scale=scale,
+            panel_scale=panel_scale,
+            window_size=_placement(window, "size"),
+            last_window_size=_placement(window, "last"),
+            last_window_screen=_screen_name(window),
+            fullscreen=_bounded_bool(window.get("fullscreen", False), "window.fullscreen"),
         )
 
     @classmethod
@@ -203,36 +301,17 @@ class UserSettings:
         anything.
         """
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+        video, ui = _sections(data)
+        scale, panel_scale = _scales(ui)
 
         frame_counter = video.get("frame_counter", True)
         if not isinstance(frame_counter, bool):
             raise ValueError("video.frame_counter must be boolean")
 
-        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
-        if frame_limit is not None:
-            frame_limit = _bounded_int(
-                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
-            )
-
         return cls(
             bindings=bindings,
-            # v2 defaulted a missing mode to borderless, having just invented
-            # the mode; v3 defaults it to auto, which is the honest answer for a
-            # file that never expressed a preference.
-            display=_enum(DisplayMode, video.get("display", DisplayMode.AUTO), "display"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
-            frame_limit=frame_limit,
+            frame_limit=_frame_limit(video),
             panel_scale=panel_scale,
             ui_scale=scale,
         )
@@ -241,35 +320,21 @@ class UserSettings:
     def _from_v1(cls, data: dict[str, Any]) -> UserSettings:
         """Read a v1 file.
 
-        One mapping, and it is a mode rather than a size: ``fullscreen: true``
-        becomes **borderless**, not exclusive fullscreen. A v1 player who asked
-        for fullscreen asked not to have a window, and borderless is the way to
-        give them that without asking the driver for a mode change -- which is
-        what makes v1 fullscreen the thing that blacks out a hybrid-GPU laptop.
-
-        The size v1 stored is dropped rather than honoured. It came off a fixed
-        catalogue, so it was a guess about the player's monitor, and honouring
-        it would mean being the only component left that believes in a window
-        size.
+        Only the bindings and the two scales survive. v1 stored a boolean
+        ``fullscreen`` and a window size off a fixed catalogue, and both were
+        claims about the player's monitor: the size could be offered to a screen
+        too small to hold it, and the boolean asked the driver for a mode change,
+        which is what blacked out a hybrid-GPU laptop. The game is a window now,
+        so a v1 player keeps their controls and takes the default window.
         """
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-        fullscreen = _bounded_bool(video.get("fullscreen", False), "video.fullscreen")
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-        # A v1 file predates the key; 1.0 is what an absent preference has to
-        # mean, or migrating a file would resize every panel on the first launch
-        # after the upgrade.
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+        video, ui = _sections(data)
+        # A v1 file predates the panel_scale key; _scales' 1.0 default is what
+        # an absent preference has to mean, or migrating would resize every
+        # panel on the first launch after the upgrade.
+        scale, panel_scale = _scales(ui)
         return cls(
             bindings=bindings,
-            display=DisplayMode.BORDERLESS if fullscreen else DisplayMode.WINDOW,
             panel_scale=panel_scale,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
             ui_scale=scale,
@@ -284,8 +349,19 @@ class UserSettings:
         The name is now the least accurate thing here: the interface and panel
         scales are edited through it too. Renamed for clarity the moment it is
         cheaper than the grep this comment is standing in for.
+
+        The enum fields are coerced rather than trusted. This is the only way a
+        setting changes once the file has been read, so it is the only place a
+        raw ``"zoom"`` can enter -- from a caller cycling a row with the value
+        rather than the enum. A ``str`` that reached the dataclass unconverted
+        would sit there looking fine and then raise at ``to_dict``, on the frame
+        the game tries to write its settings on, which is the worst moment
+        available to find out.
         """
-        return replace(self, **changes)  # type: ignore[arg-type]
+        coerced = dict(changes)
+        if isinstance(coerced.get("fit"), str):
+            coerced["fit"] = FitPolicy(str(coerced["fit"]))
+        return replace(self, **coerced)  # type: ignore[arg-type]
 
 
 def _enum[E: StrEnum](enum_type: type[E], value: object, name: str) -> E:
@@ -308,6 +384,61 @@ def _bounded_bool(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be boolean")
     return value
+
+
+#: Longer than any name a platform gives a panel; past it the value is not one.
+MAX_SCREEN_NAME = 120
+
+
+def _screen_name(window: dict[str, Any]) -> str | None:
+    """The remembered screen's name, or ``None`` for none.
+
+    Only ever compared with the names of the screens that are there, so a name
+    that matches nothing costs nothing; the type and the length are still
+    checked so the file cannot carry something that is not a name.
+    """
+    value = window.get("screen")
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or len(value) > MAX_SCREEN_NAME:
+        raise ValueError("window.screen must be a screen name or null")
+    return value
+
+
+def _placement(window: dict[str, Any], key: str) -> tuple[int, int] | None:
+    """A remembered window coordinate pair, or ``None`` for no preference.
+
+    Read strictly -- two numbers in range -- because the alternative is a
+    coordinate the stage would have to defend against, and a stage that
+    sanitises its own settings cannot be tested on its own arithmetic. The
+    values are still *clamped* rather than rejected at launch, because "this
+    window is larger than this laptop's screen" is a normal thing to open on
+    another machine and not a malformed file.
+    """
+    value = window.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError(f"window.{key} must be a pair of numbers or null")
+    first, second = value
+    for number in (first, second):
+        if not isinstance(number, int) or isinstance(number, bool):
+            raise ValueError(f"window.{key} must be a pair of numbers or null")
+    # A negative coordinate is legitimate: a monitor to the left of the primary
+    # sits at a negative origin, and that is where a window belongs. A wildly
+    # large one is not a coordinate, it is a corrupted number, and it is capped
+    # rather than refused so the file still loads and the player keeps their
+    # bindings.
+    return (
+        max(-_COORDINATE_LIMIT, min(_COORDINATE_LIMIT, first)),
+        max(-_COORDINATE_LIMIT, min(_COORDINATE_LIMIT, second)),
+    )
+
+
+#: Bound on a remembered coordinate. Beyond it the number cannot describe a
+#: position on any desktop the game will meet, and clamping it lets the rest of
+#: the file survive a corrupted value.
+_COORDINATE_LIMIT = 65535
 
 
 class SettingsStore:
@@ -349,30 +480,11 @@ class SettingsStore:
             return UserSettings()
 
     def save(self, settings: UserSettings) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._keep_backup()
-        with tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=self.path.parent, delete=False
-        ) as temporary:
-            json.dump(settings.to_dict(), temporary, indent=2)
-            temporary_path = Path(temporary.name)
-        temporary_path.replace(self.path)
-
-    def _keep_backup(self) -> None:
-        """Copy the file about to be replaced next to it, best effort.
-
-        Best effort on purpose: a backup that can fail the write is a worse
-        outcome than no backup, and the case it exists for -- a valid file being
-        replaced by a valid file -- is not the case that needed saving anyway.
-        """
-        try:
-            if self.path.is_file():
-                shutil.copy2(self.path, self.path.with_suffix(".json.bak"))
-        except OSError as error:
-            logger.warning("Could not keep a backup of %s: %s", self.path, error)
+        write_json_atomic(self.path, settings.to_dict())
 
 
-def default_settings_path() -> Path:
+def default_settings_path(environ: Mapping[str, str] | None = None) -> Path:
     """Where settings live when nothing overrides it."""
-    base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
+    env = os.environ if environ is None else environ
+    base = Path(env.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"

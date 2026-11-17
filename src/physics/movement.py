@@ -1,6 +1,6 @@
 import math
 from collections.abc import Iterable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import pygame
 from pygame.math import Vector2
@@ -21,7 +21,7 @@ from src.physics.collisions import (
     update_contact_state,
 )
 from src.physics.gravity import apply_entity_gravity
-from src.physics.spatial_hash import SpatialHash
+from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
 
 VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 
@@ -29,6 +29,17 @@ VELOCITY_EPSILON = Locomotion.VELOCITY_EPSILON
 class MovementCombat(Protocol):
     @property
     def movement_multiplier(self) -> float: ...
+
+
+class WallJumpLock(Protocol):
+    """The lock that damps the run after a wall jump (the player's jump controller).
+
+    ``wall_jump_lock_timer`` is counted down by :func:`apply_horizontal_movement`.
+    """
+
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    wall_jump_min_lock: float
 
 
 class HorizontalMovementEntity(Protocol):
@@ -41,85 +52,36 @@ class HorizontalMovementEntity(Protocol):
     turn_enabled: bool
     turn_brake_control: float
     turn_plant_px_s: float
+    #: ``None`` for a fighter that cannot wall jump.
+    wall_jump_lock: WallJumpLock | None
 
     @property
     def combat(self) -> MovementCombat: ...
 
 
-@runtime_checkable
-class WallJumpLock(Protocol):
-    """Surface consumed to damp horizontal control after a wall jump.
+class JumpState(Protocol):
+    """The jump resources :func:`resolve_jump` spends: the player's jump controller."""
 
-    ``wall_jump_lock_timer`` is mutated by :func:`apply_horizontal_movement`;
-    the two tuning mirrors are read-only.
-    """
-
-    @property
-    def wall_jump_lock_timer(self) -> float: ...
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_duration(self) -> float: ...
-
-    @property
-    def wall_jump_min_lock(self) -> float: ...
+    jump_buffer_timer: float
+    coyote_timer: float
+    wall_jump_lock_timer: float
+    wall_jump_lock_duration: float
+    jump_height: float
+    wall_jump_height: float
+    wall_jump_push_multiplier: float
+    wall_jumps_left: int | float
+    midair_jumps_left: int
 
 
 class JumpEntity(Protocol):
-    """Surface consumed by :func:`resolve_jump`.
-
-    Members the resolver mutates are declared as read/write properties;
-    tuning mirrors are read-only. Concrete entities expose them through
-    flat delegation properties backed by their controllers.
-    """
+    """Surface consumed by :func:`resolve_jump`: the body, and its jump resources."""
 
     velocity: Vector2
     speed: float
     on_surface: dict[str, bool]
 
     @property
-    def jump_buffer_timer(self) -> float: ...
-
-    @jump_buffer_timer.setter
-    def jump_buffer_timer(self, value: float) -> None: ...
-
-    @property
-    def coyote_timer(self) -> float: ...
-
-    @coyote_timer.setter
-    def coyote_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_timer(self) -> float: ...
-
-    @wall_jump_lock_timer.setter
-    def wall_jump_lock_timer(self, value: float) -> None: ...
-
-    @property
-    def wall_jump_lock_duration(self) -> float: ...
-
-    @property
-    def jump_height(self) -> float: ...
-
-    @property
-    def wall_jump_height(self) -> float: ...
-
-    @property
-    def wall_jump_push_multiplier(self) -> float: ...
-
-    @property
-    def wall_jumps_left(self) -> float: ...
-
-    @wall_jumps_left.setter
-    def wall_jumps_left(self, value: float) -> None: ...
-
-    @property
-    def midair_jumps_left(self) -> int: ...
-
-    @midair_jumps_left.setter
-    def midair_jumps_left(self, value: int) -> None: ...
+    def jump(self) -> JumpState: ...
 
 
 class MovableEntity(Protocol):
@@ -139,6 +101,13 @@ class MovableEntity(Protocol):
     fast_fall: bool
     drag_coefficient: float
     fall_drag_coefficient: float
+    move_axis: float
+    crushed: bool
+    carry_backup: tuple[float, float, float, float] | None
+
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns (0 when not knocked)."""
+        ...
 
     def is_wall_sliding(self) -> bool: ...
 
@@ -190,16 +159,17 @@ def apply_horizontal_movement(entity: HorizontalMovementEntity, delta_time: floa
     the arc, and the tighter air curve is what makes an air dash feel like an
     air dash.
     """
-    if isinstance(entity, WallJumpLock) and entity.wall_jump_lock_timer > 0:
-        elapsed = entity.wall_jump_lock_duration - entity.wall_jump_lock_timer
-        entity.wall_jump_lock_timer -= delta_time
+    lock = entity.wall_jump_lock
+    if lock is not None and lock.wall_jump_lock_timer > 0:
+        elapsed = lock.wall_jump_lock_duration - lock.wall_jump_lock_timer
+        lock.wall_jump_lock_timer -= delta_time
 
         opposing = (entity.move_axis > Input.AXIS_DEADZONE and entity.velocity.x < 0) or (
             entity.move_axis < -Input.AXIS_DEADZONE and entity.velocity.x > 0
         )
 
-        if elapsed >= entity.wall_jump_min_lock and opposing:
-            entity.wall_jump_lock_timer = 0.0
+        if elapsed >= lock.wall_jump_min_lock and opposing:
+            lock.wall_jump_lock_timer = 0.0
         else:
             damp_alpha = 1.0 - math.exp(-Locomotion.WALL_JUMP_DAMPING * delta_time)
             entity.velocity.x += (0 - entity.velocity.x) * damp_alpha
@@ -256,25 +226,26 @@ def _braking(entity: HorizontalMovementEntity, target_speed: float) -> bool:
 
 
 def resolve_jump(entity: JumpEntity) -> None:
-    """Resolve a jump attempt for the entity."""
-    if entity.jump_buffer_timer <= 0:
+    """Resolve a jump attempt: from the ground or coyote time, off a wall, or in the air."""
+    jump = entity.jump
+    if jump.jump_buffer_timer <= 0:
         return
 
-    if entity.coyote_timer > 0:
-        entity.velocity.y = -entity.jump_height
-        entity.jump_buffer_timer = 0.0
-        entity.coyote_timer = 0.0
-    elif (entity.on_surface["left"] or entity.on_surface["right"]) and entity.wall_jumps_left > 0:
-        entity.velocity.y = -entity.wall_jump_height
-        push = entity.speed * entity.wall_jump_push_multiplier
+    if jump.coyote_timer > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.jump_buffer_timer = 0.0
+        jump.coyote_timer = 0.0
+    elif (entity.on_surface["left"] or entity.on_surface["right"]) and jump.wall_jumps_left > 0:
+        entity.velocity.y = -jump.wall_jump_height
+        push = entity.speed * jump.wall_jump_push_multiplier
         entity.velocity.x = push if entity.on_surface["left"] else -push
-        entity.wall_jump_lock_timer = entity.wall_jump_lock_duration
-        entity.wall_jumps_left -= 1
-        entity.jump_buffer_timer = 0.0
-    elif entity.midair_jumps_left > 0:
-        entity.velocity.y = -entity.jump_height
-        entity.midair_jumps_left -= 1
-        entity.jump_buffer_timer = 0.0
+        jump.wall_jump_lock_timer = jump.wall_jump_lock_duration
+        jump.wall_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
+    elif jump.midair_jumps_left > 0:
+        entity.velocity.y = -jump.jump_height
+        jump.midair_jumps_left -= 1
+        jump.jump_buffer_timer = 0.0
 
 
 def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> None:
@@ -290,18 +261,15 @@ def apply_jump_cut(entity: Any, divisor: float = GameFeel.JUMP_CUT_DIVISOR) -> N
 def move_entity(entity: MovableEntity, delta_time: float, apply_gravity: bool = True) -> None:
     """Move an entity according to its velocity and the environment.
 
-    Uses spatial hash for O(1) collision lookup (PERF-01/02). Falls back to
+    Uses spatial hash for O(1) collision lookup. Falls back to
     the original O(n) search if spatial_hash is not available.
     """
-    if hasattr(entity, "crushed"):
-        entity.crushed = False
+    entity.crushed = False
     # Use spatial hash if available, otherwise fall back to collision_sprites
-    spatial_hash = getattr(entity, "spatial_hash", None)
-    collision_sprites = getattr(entity, "collision_sprites", None)
-    if spatial_hash is not None:
-        nearby_sprites = get_nearby_sprites(entity, spatial_hash=spatial_hash)
+    if entity.spatial_hash is not None:
+        nearby_sprites = get_nearby_sprites(entity, spatial_hash=entity.spatial_hash)
     else:
-        nearby_sprites = get_nearby_sprites(entity, collision_sprites=collision_sprites)
+        nearby_sprites = get_nearby_sprites(entity, collision_sprites=entity.collision_sprites)
 
     move_x = entity.velocity.x * delta_time
     steps_x = min(
@@ -353,15 +321,15 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
 
     best: float | None = None
     for sprite in nearby_sprites:
-        if getattr(sprite, "one_way", False):
-            box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        if is_one_way(sprite):
+            box = collider_box(sprite)
             if box is None or entity.old_hitbox.bottom > box.top + Collision.CONTACT_SKIN_PX:
                 continue
             gap = box.top - entity.hitbox.bottom
             if 0 <= gap <= snap and (best is None or gap < best):
                 best = gap
             continue
-        box = getattr(sprite, "hitbox", getattr(sprite, "rect", None))
+        box = collider_box(sprite)
         if box is None:
             continue
         overlap_x = min(entity.hitbox.right, box.right) - max(entity.hitbox.left, box.left)
@@ -373,15 +341,14 @@ def _snap_to_ground(entity: MovableEntity, nearby_sprites: list) -> None:
     if best is not None:
         entity.hitbox.bottom += best
         entity.velocity.y = 0.0
+        entity.sync_rects()
 
 
 def _revert_carry_crush(entity: MovableEntity) -> None:
     """Restore the pre-carry position when a platform crushed the entity."""
-    crushed = bool(getattr(entity, "crushed", False))
-    backup = getattr(entity, "carry_backup", None)
-    if hasattr(entity, "carry_backup"):
-        entity.carry_backup = None
-    if not crushed or backup is None:
+    backup = entity.carry_backup
+    entity.carry_backup = None
+    if not entity.crushed or backup is None:
         return
     entity.hitbox.x, entity.hitbox.y, entity.hitbox.width, entity.hitbox.height = backup
     entity.velocity.x = 0.0

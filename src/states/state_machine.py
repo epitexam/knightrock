@@ -1,16 +1,16 @@
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from src.core.settings import StateMachineConfig
 
-# Transient per-state attributes worth capturing for rollback: plain
-# scalars (timers, counters, flags, directions).  Callables (``exit_resolver``,
-# ``on_enter``), the back-reference ``entity``, and mutable containers
-# (``tags``) are configuration or shared objects that never change between
-# ticks — excluding them keeps snapshots small and side-effect free.
-_SNAPSHOTABLE_TYPES = (bool, int, float, str)
+if TYPE_CHECKING:
+    from src.entities.entity import Entity
+
+#: The fighter a state drives. Bound to ``Entity`` so a state shared by every
+#: fighter reads the base class, and a player or enemy state reads its own.
+EntityT = TypeVar("EntityT", bound="Entity")
 
 
 @dataclass(frozen=True)
@@ -29,21 +29,19 @@ class StateMachineSnapshot:
     state_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-def _capture_state_attrs(state: State) -> dict[str, Any]:
-    """Copy the snapshotable scalar attributes of one state instance."""
-    return {
-        name: value
-        for name, value in vars(state).items()
-        if name != "entity" and isinstance(value, _SNAPSHOTABLE_TYPES)
-    }
+class State(Generic[EntityT]):
+    """Abstract base for all states, typed by the fighter it drives.
 
+    ``snapshot_fields`` is the declared rollback schema: the transient scalars
+    a state needs restored by a teleport. A field added to a state must be
+    declared here (or on its subclass) or it is silently absent from a rewind.
+    """
 
-class State:
-    """Abstract base for all states."""
+    snapshot_fields: tuple[str, ...] = ()
 
-    def __init__(self, entity: Any, tags: list[str] | None = None) -> None:
+    def __init__(self, entity: EntityT, tags: list[str] | None = None) -> None:
         """Initialize the State instance."""
-        self.entity: Any = entity
+        self.entity: EntityT = entity
         self.tags: list[str] = tags or []
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -59,15 +57,25 @@ class State:
         return None
 
 
+def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
+    """Copy the declared fields a state has already set.
+
+    Several states create their transient fields in ``enter()`` rather than in
+    ``__init__``, so a field may legitimately be absent before the first entry.
+    """
+    attrs = vars(state)
+    return {name: attrs[name] for name in state.snapshot_fields if name in attrs}
+
+
 class StateMachine:
     """Represent a StateMachine optimized for Hack 'n' Slash."""
 
     def __init__(self, entity: Any) -> None:
         """Initialize the StateMachine instance."""
         self.entity: Any = entity
-        self.states: dict[str, State] = {}
+        self.states: dict[str, State[Any]] = {}
 
-        self.current_state: State | None = None
+        self.current_state: State[Any] | None = None
         self.current_state_name: str | None = None
         self.previous_state_name: str | None = None
 
@@ -78,7 +86,7 @@ class StateMachine:
 
         self.on_state_change: Callable[[str | None, str], None] | None = None
 
-    def add_state(self, name: str, state: State) -> None:
+    def add_state(self, name: str, state: State[Any]) -> None:
         """Add state."""
         self.states[name] = state
 
@@ -163,7 +171,7 @@ class StateMachine:
     def save_state(self) -> StateMachineSnapshot:
         """Capture the machine position and every state's transient scalars.
 
-        Used by the rollback system (Phase 3 #3).  ``history`` is
+        Used by the rollback system.  ``history`` is
         deliberately not captured: it is debug/telemetry only and never
         read by simulation logic.
         """

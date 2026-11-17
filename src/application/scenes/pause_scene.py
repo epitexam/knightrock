@@ -1,73 +1,56 @@
+"""The pause menu, drawn over the frozen world."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pygame
-
-from src.application.scene import Scene
+from src.application.scenes.menu_page import MenuPage
 from src.application.scenes.menu_scene import MenuScene
-from src.core.input.event_router import RoutedInput
 from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.ui.menu_model import MenuAction, MenuItem
 from src.ui.styles import TEXT_WARN
+from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.scene_context import SceneContext
 
 
-class PauseScene(Scene):
-    TITLE = "PAUSE"
-
+class PauseScene(MenuPage):
+    TITLE = t("title.pause")
+    TITLE_COLOR = TEXT_WARN
     #: The world stops; see ``Scene.halts_simulation`` for why saying so
-    #: is not the same as simply not updating.
+    #: is not the same as simply not updating. The world stays visible under
+    #: the stack's veil, because the page covers the panels below it.
     halts_simulation = True
 
-    def __init__(self, game: Game, level_id: int = 0) -> None:
-        super().__init__(game)
+    def __init__(self, game: SceneContext, level_id: int = 0) -> None:
+        super().__init__(
+            game,
+            (
+                MenuItem("resume", t("row.resume")),
+                MenuItem("options", t("row.options"), kind="page"),
+                MenuItem("menu", t("row.to_menu")),
+            ),
+        )
         self.level_id = level_id
-        items = (
-            MenuItem("resume", "Resume"),
-            MenuItem("options", "Options"),
-            MenuItem("menu", "Back to menu"),
-        )
-        self.model = MenuModel(items)
-        self.view: MenuView = MenuView()
-        self._overlay: pygame.Surface | None = None
-        self._overlay_size: tuple[int, int] = (0, 0)
-        self._overlay_color: tuple[int, int, int, int] = (8, 10, 14, 190)
 
-    def update(self, delta_time: float) -> None:
-        return None
-
-    def handle_routed(self, routed_input: RoutedInput) -> str | None:
-        if routed_input.action is InputAction.UI_BACK:
+    def on_back_key(self, action: InputAction) -> str | None:
+        """Back resumes; Cancel goes to the main menu."""
+        if action is InputAction.UI_BACK:
             self.game.scene_manager.pop()
-            return MenuAction.BACK
-        if (
-            routed_input.action is InputAction.UI_CANCEL
-            and routed_input.variant != "device_removed"
-        ):
+        else:
             self.game.scene_manager.switch(MenuScene(self.game))
-            return MenuAction.BACK
-        action, _ = self.model.handle_routed(
-            routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
-        )
+        return MenuAction.BACK
+
+    def on_pause_key(self) -> str | None:
+        """Start resumes, as it paused."""
+        self.game.scene_manager.pop()
+        return MenuAction.BACK
+
+    def act(self, action: str) -> None:
         if action == "resume":
             self.game.scene_manager.pop()
         elif action == "menu":
             self.game.scene_manager.switch(MenuScene(self.game))
         elif action == "options":
-            from src.application.scenes.options_scene import OptionsScene
-
-            self.game.scene_manager.push(OptionsScene(self.game))
-        return action
-
-    def draw(self, surface: pygame.Surface) -> None:
-        size = surface.get_size()
-        if self._overlay is None or self._overlay_size != size:
-            self._overlay = pygame.Surface(size, pygame.SRCALPHA)
-            self._overlay_size = size
-            self._overlay.fill(self._overlay_color)
-        surface.blit(self._overlay, (0, 0))
-        self.view.draw(surface, self.TITLE, self.model, top=220, title_color=TEXT_WARN)
+            self.game.scene_manager.navigator.push_options()

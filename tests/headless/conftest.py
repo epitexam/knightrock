@@ -11,7 +11,7 @@ import pygame
 import pytest
 
 from src.core.display.framing import DEFAULT_FRAMING
-from src.core.display.letterbox import letterbox
+from src.core.display.letterbox import picture
 from src.core.display.viewport import Viewport
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
@@ -45,7 +45,7 @@ def make_viewport(window: tuple[int, int] = TEST_WINDOW) -> Viewport:
     suite built entirely on those cannot tell a correct rounding rule from a
     broken one.
     """
-    return Viewport(DEFAULT_FRAMING, letterbox(window, DEFAULT_FRAMING).size)
+    return Viewport(DEFAULT_FRAMING, picture(window, DEFAULT_FRAMING).dest.size)
 
 
 def make_programmatic_level_data() -> LevelData:
@@ -88,7 +88,7 @@ def build_level(mock_input_manager):
 @pytest.fixture()
 def game_runtime(tmp_path):
     """An initialized ``Game`` (dummy display) without running the loop."""
-    from src.core.game import Game
+    from src.application.game import Game
 
     game = Game(
         save_path=tmp_path / "savegame.json",
@@ -97,5 +97,4 @@ def game_runtime(tmp_path):
     # The real construction path, so the fixture cannot drift from the loop:
     # window, render target and presentation, all three.
     game.initialize_display()
-    game.clock = pygame.time.Clock()
     return game

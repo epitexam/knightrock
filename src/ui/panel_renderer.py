@@ -4,8 +4,21 @@ from collections import OrderedDict
 import pygame
 
 from src.core.settings import Debug
-from src.ui.scale import font_size, screen_scale, world_scale
-from src.ui.styles import PANEL_BG, PANEL_BORDER, TEXT_CRIT, TEXT_MUTED, TEXT_TITLE
+from src.ui.fonts import menu_font, menu_font_size
+from src.ui.pixel import font_unit, pixel_frame
+from src.ui.scale import screen_scale, world_scale
+from src.ui.styles import (
+    PANEL_BG,
+    PANEL_BORDER,
+    SELECTION_BG,
+    SELECTION_TEXT,
+    TEXT_MUTED,
+    TEXT_WARN,
+)
+from src.ui.text_cache import TextCache
+
+#: A panel title's colour: the menus' section headings.
+PANEL_TITLE_COLOR = TEXT_WARN
 
 #: Close button geometry (px): box side, inset from the panel corner, and the
 #: air kept left of the box so the ``×`` never sits on the title or first line.
@@ -65,6 +78,9 @@ class PanelInteraction:
         self._drag_offset: tuple[int, int] = (0, 0)
         self._drag_target: tuple[int, int] = (0, 0)
         self._pending: dict[str, pygame.Rect] = {}
+        #: The pointer's last position in render-target coordinates, from the
+        #: events the panels are offered -- the space their rects are in.
+        self.pointer: tuple[int, int] | None = None
 
     def begin_frame(self) -> None:
         """Promote the rects drawn last frame and start a fresh registry.
@@ -201,6 +217,9 @@ class PanelInteraction:
         a panel grabs it for a drag. Motion and release only matter while a
         drag is in flight, so the rest of the game keeps receiving its input.
         """
+        position = getattr(event, "pos", None)
+        if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN) and position is not None:
+            self.pointer = (int(position[0]), int(position[1]))
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = tuple(event.pos)
             for panel_id in reversed(list(self.panels)):
@@ -474,14 +493,21 @@ class PanelRenderer:
         self._screen_scale = screen_scale(density) * self._panel_scale
         self._build_fonts()
 
-        self._text_cache: OrderedDict[tuple, pygame.Surface] = OrderedDict()
-        self._text_cache_hits = 0
-        self._text_cache_misses = 0
+        self._text_cache = TextCache(text_cache_capacity)
         self._background_cache: OrderedDict[
             tuple[int, int, tuple[int, int, int, int]], pygame.Surface
         ] = OrderedDict()
         #: Panel ids closed this frame set (draw_panel leaves them out).
         self.interaction = PanelInteraction(self._screen_scale)
+        #: A help line drawn under a panel's rows, by panel id: how to get
+        #: around the panels, on the one being looked at, as the menus do.
+        self.footers: dict[str, str] = {}
+
+    @property
+    def line_height(self) -> int:
+        """A panel row: the pixel font's line, and the leading it lacks."""
+        size = self.debug_font.get_linesize()
+        return size + max(3, size // 4)
 
     def _px(self, value: float) -> int:
         """A panel dimension written for the design size, in whole target pixels."""
@@ -563,22 +589,16 @@ class PanelRenderer:
         Two families, so the two scales have to be applied to the right ones: the
         world cards scale with the world, the panels with the screen.
         """
-        self.debug_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale)
+        # The menu font, on its 8-pixel grid, as in the menus.
+        self.debug_font = menu_font(menu_font_size(Debug.FONT_SIZE, self._screen_scale))
+        self.title_font = menu_font(menu_font_size(Debug.TITLE_FONT_SIZE, self._screen_scale))
+        self.label_font = menu_font(menu_font_size(Debug.LABEL_FONT_SIZE, self._screen_scale))
+        # World-space entity cards: small, so a card does not cover its sprite.
+        self.world_title_font = menu_font(
+            menu_font_size(Debug.WORLD_TITLE_FONT_SIZE, self._world_scale)
         )
-        self.title_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.FONT_SIZE, self._screen_scale), bold=True
-        )
-        self.label_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.LABEL_FONT_SIZE, self._screen_scale)
-        )
-        # World-space entity cards: compact fonts so the floating labels
-        # stay readable without covering the sprites they describe.
-        self.world_title_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.WORLD_TITLE_FONT_SIZE, self._world_scale), bold=True
-        )
-        self.world_label_font = pygame.font.SysFont(
-            "Consolas", font_size(Debug.WORLD_LABEL_FONT_SIZE, self._world_scale)
+        self.world_label_font = menu_font(
+            menu_font_size(Debug.WORLD_LABEL_FONT_SIZE, self._world_scale)
         )
 
     def set_surface(self, surface: pygame.Surface, density: float = 1.0) -> None:
@@ -611,32 +631,18 @@ class PanelRenderer:
     @property
     def text_cache_stats(self) -> dict[str, int]:
         return {
-            "hits": self._text_cache_hits,
-            "misses": self._text_cache_misses,
+            "hits": self._text_cache.hits,
+            "misses": self._text_cache.misses,
             "entries": len(self._text_cache),
         }
 
     def clear_text_cache(self) -> None:
         self._text_cache.clear()
-        self._text_cache_hits = 0
-        self._text_cache_misses = 0
 
     def render_text(
         self, text: str, font: pygame.font.Font, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        key = (text, id(font), color)
-        cached = self._text_cache.get(key)
-        if cached is not None:
-            self._text_cache.move_to_end(key)
-            self._text_cache_hits += 1
-            return cached
-        self._text_cache_misses += 1
-        rendered = font.render(text, True, color)
-        if self.text_cache_capacity:
-            self._text_cache[key] = rendered
-            if len(self._text_cache) > self.text_cache_capacity:
-                self._text_cache.popitem(last=False)
-        return rendered
+        return self._text_cache.render(font, text, color)
 
     def measure_panel(
         self,
@@ -647,6 +653,7 @@ class PanelRenderer:
         padding: int | None = None,
         title_gap: int | None = None,
         reserve_close: bool = False,
+        footer: str | None = None,
     ) -> tuple[int, int]:
         """Measure a panel without drawing it (layout pass before ``draw``).
 
@@ -657,7 +664,7 @@ class PanelRenderer:
         then draws exactly the size that was reserved.
         """
         title_font = title_font or self.title_font
-        line_height = line_height if line_height is not None else self.debug_font.get_linesize()
+        line_height = line_height if line_height is not None else self.line_height
         padding = self._px(PANEL_PADDING) if padding is None else padding
         title_gap = self._px(PANEL_TITLE_GAP) if title_gap is None else title_gap
 
@@ -667,7 +674,7 @@ class PanelRenderer:
         title_w = 0
         title_block_h = 0
         if title:
-            title_surf = self.render_text(title, title_font, TEXT_TITLE)
+            title_surf = self.render_text(title, title_font, PANEL_TITLE_COLOR)
             title_w = title_surf.get_width()
             max_w = max(max_w, title_w)
             title_block_h = title_surf.get_height() + title_gap + 1 + title_gap
@@ -684,6 +691,10 @@ class PanelRenderer:
                 + padding,
             )
         panel_h = title_block_h + len(lines) * line_height + padding * 2
+        if footer:
+            footer_w = self.render_text(footer, self.debug_font, TEXT_MUTED).get_width()
+            panel_w = max(panel_w, footer_w + padding * 2)
+            panel_h += title_gap + 1 + line_height
         return panel_w, panel_h
 
     def _clamp_panel(self, x: int, y: int, w: int, h: int) -> tuple[int, int]:
@@ -731,9 +742,7 @@ class PanelRenderer:
         if cached is not None:
             self._background_cache.move_to_end(key)
             return cached
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        pygame.draw.rect(surface, color, surface.get_rect())
-        pygame.draw.rect(surface, PANEL_BORDER, surface.get_rect(), width=self._border())
+        surface = pixel_frame(width, height, font_unit(self.debug_font), color)
         self._background_cache[key] = surface
         if len(self._background_cache) > 16:
             self._background_cache.popitem(last=False)
@@ -778,10 +787,11 @@ class PanelRenderer:
             title_gap = self._px(PANEL_TITLE_GAP)
         if panel_id is not None and self.interaction.is_closed(panel_id):
             return 0
+        footer = self.footers.get(panel_id) if panel_id is not None else None
 
         line_colors = line_colors or {}
         title_font = title_font or self.title_font
-        line_height = line_height if line_height is not None else self.debug_font.get_linesize()
+        line_height = line_height if line_height is not None else self.line_height
 
         panel_w, panel_h = self.measure_panel(
             lines,
@@ -791,6 +801,7 @@ class PanelRenderer:
             padding=padding,
             title_gap=title_gap,
             reserve_close=panel_id is not None,
+            footer=footer,
         )
 
         position = self._place_panel(x, y, panel_w, panel_h, layout, panel_id)
@@ -802,7 +813,7 @@ class PanelRenderer:
             self.render_text(line, self.debug_font, line_colors.get(i, text_color))
             for i, line in enumerate(lines)
         ]
-        title_surf = self.render_text(title, title_font, TEXT_TITLE) if title else None
+        title_surf = self.render_text(title, title_font, PANEL_TITLE_COLOR) if title else None
 
         bg = self._panel_surface(panel_w, panel_h, color)
         self.surface.blit(bg, (x, y))
@@ -811,17 +822,24 @@ class PanelRenderer:
         if title_surf:
             self.surface.blit(title_surf, (x + padding, content_y))
             content_y += title_surf.get_height() + title_gap
-            pygame.draw.line(
-                self.surface,
+            self.surface.fill(
                 PANEL_BORDER,
-                (x + padding, content_y),
-                (x + panel_w - padding, content_y),
-                1,
+                pygame.Rect(x + padding, content_y, panel_w - padding * 2, 1),
             )
             content_y += title_gap + 1
 
         for i, surf in enumerate(rendered_lines):
             self.surface.blit(surf, (x + padding, content_y + i * line_height))
+
+        if footer:
+            rule_y = content_y + len(rendered_lines) * line_height + title_gap // 2
+            self.surface.fill(
+                PANEL_BORDER, pygame.Rect(x + padding, rule_y, panel_w - padding * 2, 1)
+            )
+            self.surface.blit(
+                self.render_text(footer, self.debug_font, TEXT_MUTED),
+                (x + padding, rule_y + 1 + title_gap // 2),
+            )
 
         if panel_id is not None:
             self.draw_close_button(x, y, panel_w, panel_id)
@@ -840,12 +858,15 @@ class PanelRenderer:
         """
         rect = close_box_rect(x + panel_w, y, self._screen_scale)
         hover_rect = self.interaction.close_rect(panel_id) if panel_id is not None else None
-        hovered = bool(hover_rect and hover_rect.collidepoint(pygame.mouse.get_pos()))
+        pointer = self.interaction.pointer
+        hovered = bool(hover_rect and pointer is not None and hover_rect.collidepoint(pointer))
 
+        # The menus' one mark for "a press acts here": the gold bar.
         if hovered:
-            pygame.draw.rect(self.surface, PANEL_BORDER, rect)
-        pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=self._border())
-        color = TEXT_CRIT if hovered else TEXT_MUTED
+            self.surface.fill(SELECTION_BG, rect)
+        else:
+            pygame.draw.rect(self.surface, PANEL_BORDER, rect, width=self._border())
+        color = SELECTION_TEXT if hovered else TEXT_MUTED
         first, second, stroke = _close_glyph(rect)
         pygame.draw.line(self.surface, color, first, second, stroke)
         pygame.draw.line(self.surface, color, (second[0], first[1]), (first[0], second[1]), stroke)

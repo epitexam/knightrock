@@ -3,7 +3,8 @@
 Every actual setting lives in the screen that owns it, so a value has a
 single source of truth and a single place to change it:
 
-- **Video settings** — resolution, fullscreen, VSync, UI scale;
+- **Video settings** — the window's size, how the picture fits it, VSync, frame
+  limit, UI scale;
 - **Controls** — key/button rebinding and the menu stick Y inversion.
 
 This screen is navigation only: it holds no toggle of its own, hence no
@@ -14,57 +15,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pygame
-
-from src.application.scene import Scene
-from src.core.input.event_router import RoutedInput
-from src.core.input.input_actions import InputAction
-from src.ui.menu_model import MenuAction, MenuItem, MenuModel
-from src.ui.menu_view import MenuView
+from src.application.scenes.menu_page import MenuPage
+from src.ui.menu_model import MenuItem
+from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.scene_context import SceneContext
 
 
-class OptionsScene(Scene):
-    TITLE = "OPTIONS"
+class OptionsScene(MenuPage):
+    TITLE = t("title.options")
 
-    def __init__(self, game: Game) -> None:
-        super().__init__(game)
-        self.model = MenuModel(
+    def __init__(self, game: SceneContext) -> None:
+        super().__init__(
+            game,
             (
-                MenuItem("video", "Video settings"),
-                MenuItem("controls", "Controls"),
-                MenuItem("back", "Back"),
-            )
+                MenuItem("video", t("row.video"), kind="page"),
+                MenuItem("controls", t("row.controls"), kind="page"),
+                MenuItem("back", t("row.back")),
+            ),
         )
-        self.view: MenuView = MenuView(game.ui_scale)
 
-    def update(self, delta_time: float) -> None:
-        return None
-
-    def handle_routed(self, routed_input: RoutedInput) -> str | None:
-        if routed_input.action in (InputAction.UI_BACK, InputAction.UI_CANCEL):
-            if routed_input.variant != "device_removed":
-                self.game.scene_manager.pop()
-                return MenuAction.BACK
-            return None
-        action, _ = self.model.handle_routed(
-            routed_input.action, routed_input.position, self.view.item_rects, routed_input.variant
-        )
+    def act(self, action: str) -> None:
         if action == "video":
-            from src.application.scenes.video_scene import VideoScene
-
-            self.game.scene_manager.push(VideoScene(self.game))
+            self.game.scene_manager.navigator.push_video()
         elif action == "controls":
-            from src.application.scenes.controls_category_scene import ControlsCategoryScene
-
-            self.game.scene_manager.push(ControlsCategoryScene(self.game))
-        elif action == "back":
-            self.game.scene_manager.pop()
-            return MenuAction.BACK
-        return action
-
-    def draw(self, surface: pygame.Surface) -> None:
-        self.view.set_scale(self.game.ui_scale)
-        self.view.draw(surface, self.TITLE, self.model, top=220)
+            self.game.scene_manager.navigator.push_controls_category()

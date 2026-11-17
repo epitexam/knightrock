@@ -1,4 +1,4 @@
-"""TickSystem: bookkeeping tail of the level pipeline (audit F1.2, Phase 3 #2).
+"""TickSystem: bookkeeping tail of the level pipeline.
 
 Runs last, after every simulation and notification stage: records the
 end-of-tick rollback snapshot, then advances the monotonic tick counter.

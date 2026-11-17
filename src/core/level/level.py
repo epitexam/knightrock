@@ -4,17 +4,19 @@ The Level facade: it builds a world and delegates its tick to the systems.
 
 import logging
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any
 
 import pygame
 
-from src.application.events import EventBus, LevelStarted
+from src.core.events import EventBus, LevelStarted
 from src.core.input.input_manager import InputManager
 from src.core.level.level_data import LevelData
 from src.core.level.scene_host import SceneHost
 from src.core.level.systems.camera_system import CameraSystem
 from src.core.level.systems.contact_damage import ContactDamageSystem
 from src.core.level.systems.contact_system import ContactSystem
+from src.core.level.systems.feedback_system import FeedbackSystem
 from src.core.level.systems.gameplay_loop import GameplayLoop
 from src.core.level.systems.hazard_damage import HazardDamageSystem
 from src.core.level.systems.hazard_system import HazardSystem
@@ -31,12 +33,14 @@ from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
+from src.core.rollback import LevelSnapshot, PlatformSnapshot, ProjectileSnapshot, RollbackSystem
 from src.core.settings import Debug, World
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
+from src.entities.id_factory import IdFactory
 from src.entities.player import Player
+from src.entities.projectile import Projectile
 from src.physics.spatial_hash import SpatialHash
 
 logger = logging.getLogger(__name__)
@@ -50,7 +54,7 @@ class Level:
     the systems that make up its tick, and re-exposes the state they hold
     (``respawn_timer``/``deaths``/``exit_reached``) directly from them.
 
-    It is a *strict facade* over those systems (audit F1.2/§4): :meth:`update`
+    It is a *strict facade* over those systems: :meth:`update`
     is a single delegation to
     :meth:`~src.core.level.systems.gameplay_loop.GameplayLoop.update` — the
     debug spawner, every simulation stage, the camera follow, the event-bus
@@ -80,10 +84,10 @@ class Level:
             events: Optional event bus; emissions are notifications only
                 (subscribers must never mutate the simulation).
             rollback_enabled: Opt-in per-tick snapshot recording for the
-                local rollback core (Phase 3 #3). Off by default: recording
+                local rollback core. Off by default: recording
                 costs a full state capture each tick and only netcode,
                 rewind-the-tape, or tests need it.
-            gameplay_data: Optional gameplay-data bundle (Phase 3 #4).
+            gameplay_data: Optional gameplay-data bundle.
                 When given, the player config, enemy configs and level
                 paths are taken from the JSON assets instead of the
                 built-in Python values.
@@ -103,11 +107,11 @@ class Level:
         self.camera.set_world_size(level_data.pixel_width, level_data.pixel_height)
 
         # ``exit_reached``, ``respawn_timer`` and ``deaths`` live in the
-        # systems assembled below and are re-exposed as properties (audit F1.2).
+        # systems assembled below and are re-exposed as properties.
         self.level_id = level_id
         self.events = events
 
-        # Local rollback core (Phase 3 #3): monotonic fixed-tick counter and
+        # Local rollback core: monotonic fixed-tick counter and
         # the ring buffer that captures a snapshot at the end of each tick.
         # Recording is opt-in because a capture costs a full state copy.
         self.tick = 0
@@ -115,12 +119,13 @@ class Level:
         self.rollback = RollbackSystem()
 
         self.renderer = Renderer(self.surface, self.camera, level_data.config, overlay)
-        # Spatial hash for O(1) collision lookups (PERF-01/02). Created before
+        # Spatial hash for O(1) collision lookups. Created before
         # the world build, not before the spawner: what the build needs is the
         # grid, so that every entity it creates is wired into it from the start.
         self.spatial_hash = SpatialHash(cell_size=World.HASH_CELL_SIZE)
 
-        self.world_builder = WorldBuilder(level_data, gameplay_data)
+        self.id_factory = IdFactory()
+        self.world_builder = WorldBuilder(level_data, gameplay_data, id_factory=self.id_factory)
         # The grid is bound *before* the build so every entity comes out of the
         # world builder already wired. Entities created by a registry or object
         # factory behind the builder's back are still swept up by the pass
@@ -129,6 +134,9 @@ class Level:
         self.player: Player = self.world_builder.build(self.groups, self.input_manager)
 
         self._install_static_culls()
+        for entity in self.groups.entity_sprites:
+            if entity.animator is not None:
+                entity.animator.preload()
 
         # Bucket the static collidables once; entities query the grid every
         # tick, so each one must know it (moving platforms are re-bucketed
@@ -143,15 +151,16 @@ class Level:
             # collision tile in the level.
             platform.spatial_hash = self.spatial_hash
 
-        # Systems assembled by the level (audit F1.2/§4): the level owns them
+        # Systems assembled by the level: the level owns them
         # and re-exposes the state they hold, while the gameplay loop owns the
-        # order in which they run (audit F1.6).  Each one takes its
+        # order in which they run.  Each one takes its
         # collaborators explicitly, so it stays independently testable.
         # P4.1: one ContactSystem instance shared by all four offensive
         # producers (melee via GameplayLoop, projectiles, hazards, contact).
         self.contact_system = ContactSystem()
         self.platform_system = PlatformSystem(self.groups, self.spatial_hash)
         self.physics_system = PhysicsSystem(self.groups)
+        self.feedback_system = FeedbackSystem(self.groups)
         self.hazard_system = HazardSystem(self.groups)
         self.contact_damage_system = ContactDamageSystem(contact_system=self.contact_system)
         self.hazard_damage_system = HazardDamageSystem(contact_system=self.contact_system)
@@ -164,6 +173,7 @@ class Level:
             self.groups,
             spatial_hash=self.spatial_hash,
             contact_system=self.contact_system,
+            id_factory=self.id_factory,
         )
         # Assembled after the projectile system so it can be *given* rather
         # than assigned in afterwards. It used to be created before the world
@@ -178,6 +188,8 @@ class Level:
             self.groups,
             self.spatial_hash,
             projectile_system=self.projectile_system,
+            enemy_configs=self.world_builder.gameplay_data.enemies,
+            id_factory=self.id_factory,
         )
 
         self.gameplay_loop = GameplayLoop(
@@ -194,10 +206,30 @@ class Level:
             tick_system=self.tick_system,
             projectile_system=self.projectile_system,
             contact_system=self.contact_system,
+            feedback_system=self.feedback_system,
         )
 
         if self.events is not None:
             self.events.emit(LevelStarted(level_id=self.level_id))
+
+    def reconvert_tiles(self) -> None:
+        """Convert the tile planes' images to the display's current format.
+
+        PyTMX converted them when the level was read; a window rebuilt with
+        another format leaves them in the old one, and every blit of a tile
+        then converts it again on the fly. Without a display (headless) there
+        is no format to follow.
+        """
+        if pygame.display.get_surface() is None:
+            return
+        for sprite in (*self.groups.static_sprites, *self.groups.fg_sprites):
+            image = sprite.image
+            if image is None:
+                continue
+            if image.get_flags() & pygame.SRCALPHA:
+                sprite.image = image.convert_alpha()
+            else:
+                sprite.image = image.convert()
 
     def _install_static_culls(self) -> None:
         """Hand the renderer a chunked cull for the frozen tile planes.
@@ -241,7 +273,7 @@ class Level:
     # -- the facade's read/write surface over the systems' state --------------
     #
     # Three delegating properties, and they are here on purpose. The whole
-    # point of the level being a strict facade over its systems (audit F1.2)
+    # point of the level being a strict facade over its systems
     # is that a scene asks the level a question instead of reaching into
     # `level.respawn_system`; without these, every consumer would know how the
     # level is built, and the moment the respawn state moved into a different
@@ -272,7 +304,7 @@ class Level:
         """Number of respawns performed, owned by the respawn system.
 
         ``GameplayScene`` turns this into a Game Over transition after
-        ``Gameplay.MAX_DEATHS`` (Phase 2 #4).
+        ``Gameplay.MAX_DEATHS``.
         """
         return self.respawn_system.deaths
 
@@ -297,19 +329,25 @@ class Level:
         """
         Advance the level simulation by one tick.
 
-        The level is a strict facade (audit F1.2/§4): the whole tick —
-        debug spawner, every simulation stage, camera follow, event-bus
-        notifications and the end-of-tick rollback snapshot — runs inside
-        the gameplay loop's pipeline.
+        The whole tick -- debug spawner, every simulation stage, camera,
+        notifications and the rollback snapshot -- runs inside the gameplay
+        loop's pipeline. The one thing done here first is reading the input,
+        and only on a tick that hit-stop does not freeze.
         """
+        if not self.gameplay_loop.combat_system.in_hit_stop:
+            # Read on the ticks the player is simulated, and only on those. A
+            # tick frozen by hit-stop does not run the player, so polling on it
+            # would spend the one tick a press is "just pressed" on a tick that
+            # cannot see it -- and the press made to chain off a landed hit is
+            # exactly the one that falls inside the freeze. Not polling leaves
+            # the press latched in the provider until the world moves again.
+            self.input_manager.update()
         self.gameplay_loop.update(delta_time, self.groups, self.player, self, self.rollback)
         if Debug.is_enabled():
-            renderer = getattr(self, "renderer", None)
-            if renderer is not None:
-                renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
+            self.renderer.overlay.update_metrics(self.gameplay_loop.contact_system.tick_metrics)
 
     def save_state(self) -> LevelSnapshot:
-        """Capture the whole level's simulation state for rollback (Phase 3 #3).
+        """Capture the whole level's simulation state for rollback.
 
         Groups the per-entity snapshots (keyed by deterministic ``entity_id``)
         with the level's own transient state and the moving-platform
@@ -318,10 +356,7 @@ class Level:
         """
         entities: dict[str, EntitySnapshot] = {}
         for entity in self.groups.entity_sprites:
-            save = getattr(entity, "save_state", None)
-            if save is None:
-                continue
-            snapshot = save()
+            snapshot = entity.save_state()
             entities[snapshot.entity_id] = snapshot
 
         platforms = [
@@ -332,6 +367,25 @@ class Level:
                 direction=platform.direction,
             )
             for platform in self.groups.moving_platforms
+        ]
+
+        projectiles = [
+            ProjectileSnapshot(
+                projectile=shot,
+                id=shot.id,
+                pos=(shot.hitbox.x, shot.hitbox.y),
+                velocity=(shot.velocity.x, shot.velocity.y),
+                life=shot.life,
+                active=shot.active,
+                is_dead=shot.is_dead,
+                faction=shot.faction,
+                facing_right=shot.facing_right,
+                config=shot.config,
+                contact_shape=replace(shot.contact_shape),
+                targets_hit=frozenset(shot.targets_hit),
+            )
+            for shot in self.groups.projectile_sprites
+            if isinstance(shot, Projectile)
         ]
 
         input_current, input_previous = self.input_manager.snapshot()
@@ -347,6 +401,7 @@ class Level:
             input_previous=input_previous,
             entities=entities,
             platforms=platforms,
+            projectiles=projectiles,
         )
 
     def load_state(self, snapshot: LevelSnapshot) -> None:
@@ -369,12 +424,9 @@ class Level:
 
         # Reap entities that did not exist at capture time (e.g. a debug
         # spawn after the target tick) — they must not pollute the restored
-        # simulation.  Only snapshottable entities are candidates: a plain
-        # sprite without ``save_state`` was never captured and must stay.
+        # simulation.
         for entity in list(self.groups.entity_sprites):
-            if not hasattr(entity, "save_state"):
-                continue
-            if getattr(entity, "id", None) not in snapshot.entities:
+            if entity.id not in snapshot.entities:
                 entity.kill()
 
         for entity_snapshot in snapshot.entities.values():
@@ -392,6 +444,34 @@ class Level:
             platform.hitbox.topleft = platform.pos
             platform.old_rect = platform.rect.copy()
             platform.old_hitbox = platform.hitbox.copy()
+
+        # Projectiles live in their own pooled group. A shot launched after the
+        # captured tick belongs to the discarded future and is reaped; a shot
+        # that was in flight at capture but has since landed is put back and
+        # restored to its captured state.
+        captured = {id(snapshot.projectile) for snapshot in snapshot.projectiles}
+        pool = self.projectile_system.pool
+        for shot in list(self.groups.projectile_sprites):
+            if not isinstance(shot, Projectile) or id(shot) in captured:
+                continue
+            shot.kill()
+            pool.release(shot)
+        for shot_snapshot in snapshot.projectiles:
+            shot = shot_snapshot.projectile
+            if shot not in self.groups.projectile_sprites:
+                self.groups.projectile_sprites.add(shot)
+                self.groups.all_sprites.add(shot)
+            shot.hitbox.x, shot.hitbox.y = shot_snapshot.pos
+            shot.velocity.x, shot.velocity.y = shot_snapshot.velocity
+            shot.life = shot_snapshot.life
+            shot.active = shot_snapshot.active
+            shot.is_dead = shot_snapshot.is_dead
+            shot.faction = shot_snapshot.faction
+            shot.facing_right = shot_snapshot.facing_right
+            shot.config = shot_snapshot.config
+            shot.contact_shape = replace(shot_snapshot.contact_shape)
+            shot.targets_hit = set(shot_snapshot.targets_hit)
+            shot.sync_rects()
 
     def draw(
         self,

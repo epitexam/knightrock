@@ -9,6 +9,17 @@ from src.combat.combatant_protocol import Combatant
 from src.combat.frame_data import BoxGeometry, HitboxSpec, PhaseDefinition
 from src.combat.shapes import AnchorKind, ShapeKind, ShapePose, SweptShape, broadphase_aabb
 from src.combat.sweep import swept_box
+from src.core.settings import Combat as CombatSettings
+
+
+def charge_reach_scale(charge_multiplier: float) -> float:
+    """How much bigger a move thrown at ``charge_multiplier`` is: 1 uncharged.
+
+    The charge multiplier runs from 1 (let go at once) to 2 (held to the end);
+    the gesture grows ``Combat.CHARGE_REACH_GAIN`` of that, so a full charge
+    is longer and reaches farther as well as hitting harder.
+    """
+    return 1.0 + CombatSettings.CHARGE_REACH_GAIN * max(0.0, charge_multiplier - 1.0)
 
 
 class HitboxManager:
@@ -22,7 +33,7 @@ class HitboxManager:
 
     P1 sweep: ``_prev_pool`` holds the geometry captured at the previous
     tick boundary (``capture_origin``), the sole other writers of which
-    are the ``start_attack`` seed (D1) and ``clear`` (attack end).
+    are the ``start_attack`` seed and ``clear`` (attack end).
     ``update`` never touches it: positioning is pure and idempotent, so a
     second sync in the same tick -- which the gameplay loop still does, for
     the fighters separation just pushed -- is harmless.
@@ -51,9 +62,9 @@ class HitboxManager:
     def swept_rects(self) -> tuple[pygame.FRect, ...]:
         """Per-index swept rectangles between the captured origin and now.
 
-        An index without a captured origin (spawn, resize) or whose
-        displacement is out of the ``Combat`` sweep bounds yields ``cur``
-        (D1/D4); otherwise the union of prev and cur.
+                An index without a captured origin (spawn, resize) or whose
+                displacement is out of the ``Combat`` sweep bounds yields ``cur``
+        ; otherwise the union of prev and cur.
         """
         return tuple(
             swept_box(
@@ -104,7 +115,8 @@ class HitboxManager:
         facing_right = state.effective_facing
         if facing_right is None:
             facing_right = self._entity.facing_right
-        self._position_rects(phase, facing_right, state.animation_frame)
+        scale = charge_reach_scale(state.charge_multiplier)
+        self._position_rects(phase, facing_right, state.animation_frame, scale)
 
     def clear(self) -> None:
         """Remove offensive geometry immediately (end of attack)."""
@@ -130,8 +142,14 @@ class HitboxManager:
         self._prev_pool.clear()
         self._prev_shape_pool.clear()
 
-    def _position_rects(self, phase: PhaseDefinition, facing_right: bool, frame: int) -> None:
-        """Create or reposition every rectangle and advanced shape."""
+    def _position_rects(
+        self, phase: PhaseDefinition, facing_right: bool, frame: int, scale: float = 1.0
+    ) -> None:
+        """Create or reposition every rectangle and advanced shape.
+
+        ``scale`` grows the whole gesture about the anchor -- the blade longer,
+        its reach farther -- for a charged move.
+        """
         shape_data = self._shape_data(phase, frame)
         self._resize_pools(len(shape_data))
         for index, (rect, (spec, (size, offset), angle)) in enumerate(
@@ -139,7 +157,8 @@ class HitboxManager:
         ):
             anchor = self._anchor_position(spec, facing_right)
             self._anchor_pool[index] = anchor
-            offset_x, offset_y = offset
+            offset_x, offset_y = offset[0] * scale, offset[1] * scale
+            size = (size[0] * scale, size[1] * scale)
             if not facing_right:
                 offset_x = -offset_x
             position = (anchor[0] + offset_x, anchor[1] + offset_y)

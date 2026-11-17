@@ -27,7 +27,7 @@ class ComboTracker:
     count : int
         Current number of consecutive landed hits in the combo.  0 when idle.
     air_count : int
-        Hits landed on an airborne victim in the current window (Phase 5 #4).
+        Hits landed on an airborne victim in the current window.
     """
 
     def __init__(self, window_duration: float) -> None:
@@ -121,18 +121,22 @@ class ComboTracker:
                 # disarming's job, which is driven off the attack actually being
                 # live rather than off the clock.
 
-    def on_hit_landed(self, airborne: bool) -> None:
-        """Record a connected hit, counting air juggles separately (Phase 5 #4).
+    def on_hit_landed(self, airborne: bool) -> bool:
+        """Record a connected hit, counting air juggles separately.
 
         This is the only site that increments the combo counter. A hit that no
         armed attack vouches for -- contact damage, a projectile drifting into
         someone -- still tallies the air juggle but leaves the counter alone, so
         the combo stays a count of attacks that actually reached something.
+
+        Returns whether the counter moved, so a reward for the combo is paid
+        once per attack and not once per target it reached.
         """
         if airborne:
             self.air_count += 1
         if not self._armed:
-            return
+            return False
         self._armed = False
         self.count = self.count + 1 if self._timer > 0 else 1
         self._timer = self._window_duration
+        return True

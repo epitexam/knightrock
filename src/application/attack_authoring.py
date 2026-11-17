@@ -14,6 +14,7 @@ def export_attack(
     attack_sets: Mapping[str, Mapping[MoveId, AttackDefinition]],
     attack_name: MoveId,
     destination: str | Path | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> Path:
     """Export one attack by name without modifying runtime data files."""
     matches: dict[str, dict[MoveId, AttackDefinition]] = {}
@@ -22,9 +23,10 @@ def export_attack(
             matches[set_name] = {attack_name: attacks[attack_name]}
     if not matches:
         raise KeyError(f"Unknown attack: {attack_name}")
+    env = os.environ if environ is None else environ
     root = Path(
         destination
         if destination is not None
-        else os.environ.get("KNIGHTROCK_EXPORT_DIR", Path.home() / ".knightrock" / "exports")
+        else env.get("KNIGHTROCK_EXPORT_DIR", Path.home() / ".knightrock" / "exports")
     )
     return write_attacks_file(root / f"{attack_name}.json", matches)

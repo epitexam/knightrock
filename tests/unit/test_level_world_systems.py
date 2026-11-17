@@ -19,6 +19,7 @@ from src.core.level.systems.platform_system import PlatformSystem
 from src.core.level.systems.progression_system import ProgressionSystem
 from src.core.level.systems.respawn_system import PlayerRespawnSystem
 from src.core.settings import Respawn
+from tests.fakes import FighterSprite
 
 
 class RecordingGroup(list):
@@ -61,7 +62,7 @@ class PlayerStub:
         self.is_dead = True
 
 
-class RiderStub(pygame.sprite.Sprite):
+class RiderStub(FighterSprite):
     """Entity double for the platform carry: geometry plus the carry hooks."""
 
     def __init__(self, pos: tuple[float, float], *, on_floor: bool = True) -> None:
@@ -70,6 +71,7 @@ class RiderStub(pygame.sprite.Sprite):
         self.old_hitbox = self.hitbox.copy()
         self.rect = pygame.FRect(self.hitbox)
         self.on_surface = {"floor": on_floor, "left": False, "right": False}
+        self.velocity = pygame.math.Vector2()
         self.x_at_entity_update: float | None = None
 
     def sync_rects(self) -> None:
@@ -98,7 +100,7 @@ class TestPlatformSystem:
 
 
 class TestPhysicsSystem:
-    """Carry the platform riders, then integrate entities and effects."""
+    """Carry the platform riders, then integrate the entities."""
 
     def _groups(self, rider: RiderStub) -> SimpleNamespace:
         return SimpleNamespace(
@@ -121,7 +123,8 @@ class TestPhysicsSystem:
         assert rider.hitbox.x == pytest.approx(105.0)
         # The carry ran before the entity pass: the sprite already sees the new x.
         assert rider.x_at_entity_update == pytest.approx(105.0)
-        assert groups.fx_sprites.delta == pytest.approx(1 / 60)
+        # The FX plane is the feedback stage's to advance, not physics'.
+        assert groups.fx_sprites.delta is None
 
     def test_does_not_carry_an_airborne_entity(self) -> None:
         rider = RiderStub((100.0, 150.0), on_floor=False)

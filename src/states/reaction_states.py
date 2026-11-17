@@ -1,7 +1,7 @@
 """Shared reaction states (hurt / knockback / stagger) for players and enemies.
 
 These states were duplicated between ``player_states.py`` and
-``enemy_states.py`` with only small differences (ARCH-05).  The shared
+``enemy_states.py`` with only small differences.  The shared
 logic is now parameterized by:
 
 - ``exit_resolver``: a zero-argument callable returning the next state name
@@ -9,8 +9,11 @@ logic is now parameterized by:
   ``ground_return``-style names; enemies resolve to ``"idle"``.
 - ``on_enter``: optional callback invoked with the transition ``kwargs``,
   used for entity-specific setup (clearing the dash request, light knockback).
-- ``friction``: drag coefficient applied to horizontal velocity (0 = none).
 - ``tags``: state-machine tags preserved from the original classes.
+
+What is *not* a parameter is how the push decays. The three states slow their
+fighter with the same :func:`apply_reaction_drag`, so the distance a hit sends
+its target depends on the hit, not on which reaction it happened to trigger.
 
 Dizzy is the exception and is *not* shared: ``PlayerDizzyState`` and
 ``EnemyDizzyState`` are two near-identical classes in their own modules, each
@@ -26,36 +29,62 @@ from collections.abc import Callable
 from typing import Any, Final
 
 from src.core.settings import Combat, Physics
-from src.physics import lerp_velocity
-from src.states.state_machine import State
+from src.physics import apply_slide_friction, apply_velocity_friction
+from src.states import state_names
+from src.states.state_machine import EntityT, State
 
 #: Shared reaction-state vocabulary: ``ReactionComponent`` drives the state
 #: machine with these names, and both state-name enums carry the same values
 #: (``PlayerState``/``EnemyState``). Kept in sync by ``test_reaction_status``.
-KNOCKBACK_STATE: Final[str] = "knockback"
-STAGGER_STATE: Final[str] = "stagger"
-DIZZY_STATE: Final[str] = "dizzy"
+KNOCKBACK_STATE: Final[str] = state_names.KNOCKBACK
+STAGGER_STATE: Final[str] = state_names.STAGGER
+DIZZY_STATE: Final[str] = state_names.DIZZY
 # Horizontal speed (px/s) below which knockback is considered resolved.
 KNOCKBACK_STOP_SPEED = 20.0
 # Vertical speed (px/s) below which the launch is considered landed.
 KNOCKBACK_STOP_VERTICAL = 1.0
 
 
-class HurtState(State):
+def is_sliding(entity: Any) -> bool:
+    """Whether a hit fighter is on the ground, as opposed to leaving it.
+
+    The floor flag alone is one tick late: it is refreshed by the move, which
+    runs after the state. A fighter launched upward still carries it on the
+    tick of the launch, and the ground friction used to take an eighth of the
+    launch speed before the feet had left the floor.
+    """
+    return bool(entity.on_surface["floor"]) and entity.velocity.y >= 0.0
+
+
+def apply_reaction_drag(entity: Any, delta_time: float) -> None:
+    """Bleed off the horizontal speed of a fighter reacting to a hit.
+
+    Sliding, the ground grips it (:func:`apply_slide_friction`); airborne, the
+    air barely slows it. See ``Physics.REACTION_*`` for the figures.
+    """
+    if is_sliding(entity):
+        apply_slide_friction(
+            entity, Physics.REACTION_SLIDE_FRICTION, Physics.REACTION_SLIDE_DRAG, delta_time
+        )
+    elif Physics.REACTION_AIR_DRAG > 0.0:
+        apply_velocity_friction(entity, Physics.REACTION_AIR_DRAG, delta_time)
+
+
+class HurtState(State[EntityT]):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Reaction to taking damage: wait for the hurt timer to clear."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
-        friction: float = 0.0,
         tags: list[str] | None = None,
         on_enter: Callable[..., None] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["hurt", "busy"])
         self.exit_resolver = exit_resolver
-        self.friction = friction
         self.on_enter = on_enter
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -64,34 +93,29 @@ class HurtState(State):
             self.on_enter(**kwargs)
 
     def update(self, delta_time: float) -> str | None:
-        """Apply friction and leave the state once the hurt timer clears.
-
-        Friction is applied unconditionally (even airborne) to match the
-        original player hurt behaviour.
-        """
-        if self.friction > 0:
-            lerp_velocity(self.entity, 0.0, self.friction, delta_time)
+        """Slow the push and leave the state once the hurt timer clears."""
+        apply_reaction_drag(self.entity, delta_time)
         if not self.entity.combat.is_hurt:
             return self.exit_resolver()
         return None
 
 
-class KnockbackState(State):
+class KnockbackState(State[EntityT]):
+    snapshot_fields = ("max_duration", "_elapsed", "_launch_vx")
+
     """Strong launch: wait for the entity to land and slow down."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
-        friction: float = Physics.KNOCKBACK_FRICTION,
         max_duration: float = Combat.KNOCKBACK_MAX_DURATION,
         tags: list[str] | None = None,
         on_enter: Callable[..., None] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["knockback", "busy"])
         self.exit_resolver = exit_resolver
-        self.friction = friction
         self.max_duration = max_duration
         self.on_enter = on_enter
         self._elapsed = 0.0
@@ -114,7 +138,7 @@ class KnockbackState(State):
         self._launch_vx = self.entity.velocity.x
 
     def update(self, delta_time: float) -> str | None:
-        """Apply ground friction and resolve once the entity stops sliding.
+        """Slow the flight or the slide, and resolve once the entity stops sliding.
 
         A launch that never lands (pit fall) still releases after
         ``max_duration`` instead of locking the state machine forever.
@@ -122,8 +146,8 @@ class KnockbackState(State):
         influence), capped around the launch speed.
         """
         self._elapsed += delta_time
-        if self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, self.friction, delta_time)
+        apply_reaction_drag(self.entity, delta_time)
+        if is_sliding(self.entity):
             if (
                 abs(self.entity.velocity.x) < KNOCKBACK_STOP_SPEED
                 and abs(self.entity.velocity.y) < KNOCKBACK_STOP_VERTICAL
@@ -138,7 +162,7 @@ class KnockbackState(State):
 
     def _apply_directional_influence(self, delta_time: float) -> None:
         """Steer an airborne launch toward the held direction (DI)."""
-        move_axis = float(getattr(self.entity, "move_axis", 0.0) or 0.0)
+        move_axis = float(self.entity.move_axis)
         if move_axis == 0.0 or Combat.KNOCKBACK_DI_ACCEL <= 0:
             return
         cap = abs(self._launch_vx) + Combat.KNOCKBACK_DI_CAP
@@ -146,25 +170,24 @@ class KnockbackState(State):
         self.entity.velocity.x = max(-cap, min(cap, vx))
 
 
-class StaggerState(State):
+class StaggerState(State[EntityT]):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Stunned: stay locked until the stagger timer clears."""
 
     def __init__(
         self,
-        entity: Any,
+        entity: EntityT,
         exit_resolver: Callable[[], str | None],
         *,
-        friction: float = 0.0,
         tags: list[str] | None = None,
     ) -> None:
         super().__init__(entity, tags or ["stagger", "busy"])
         self.exit_resolver = exit_resolver
-        self.friction = friction
 
     def update(self, delta_time: float) -> str | None:
-        """Apply ground friction and leave the state when the timer clears."""
-        if self.friction > 0 and self.entity.on_surface["floor"]:
-            lerp_velocity(self.entity, 0.0, self.friction, delta_time)
+        """Slow the push and leave the state when the timer clears."""
+        apply_reaction_drag(self.entity, delta_time)
         if self.entity.stagger_timer <= 0:
             return self.exit_resolver()
         return None

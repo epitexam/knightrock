@@ -8,6 +8,7 @@ The tests below pin the mechanics instead.
 
 import contextlib
 import os
+from dataclasses import replace
 from unittest.mock import patch
 
 import pygame
@@ -199,3 +200,82 @@ def test_just_pressed_survives_the_latch(provider: LocalInputProvider) -> None:
     assert manager.just_pressed(InputAction.JUMP) is True
     manager.update()
     assert manager.just_released(InputAction.JUMP) is True
+
+
+# -- the pad's buttons ----------------------------------------------------------
+
+
+class _Pad:
+    """A connected pad with every button up, as the poll reads it."""
+
+    def __init__(self, instance_id: int = 3) -> None:
+        self.instance_id = instance_id
+
+    def get_instance_id(self) -> int:
+        return self.instance_id
+
+    def get_numbuttons(self) -> int:
+        return 16
+
+    def get_button(self, index: int) -> bool:
+        return False
+
+    def get_numaxes(self) -> int:
+        return 0
+
+    def get_hat(self, index: int) -> tuple[int, int]:
+        return (0, 0)
+
+
+def _button_down(button: int, instance_id: int = 3) -> pygame.event.Event:
+    return pygame.event.Event(pygame.JOYBUTTONDOWN, button=button, instance_id=instance_id)
+
+
+def _pad_provider() -> LocalInputProvider:
+    provider = LocalInputProvider()
+    provider.connect_joystick(_Pad())  # type: ignore[arg-type]
+    return provider
+
+
+def _poll(provider: LocalInputProvider) -> frozenset[InputAction]:
+    with patch.object(pygame.key, "get_pressed", lambda: {}):
+        return provider.poll().held_actions
+
+
+def test_a_pad_tap_between_two_polls_is_held_for_exactly_one_poll() -> None:
+    """Hit-stop skips the level's polls; a tap inside it must survive until the next."""
+    provider = _pad_provider()
+    button = provider._bindings.gameplay.gamepad_buttons[InputAction.ATTACK_1]
+
+    provider.note_event(_button_down(button))
+
+    assert InputAction.ATTACK_1 in _poll(provider)
+    assert InputAction.ATTACK_1 not in _poll(provider)
+
+
+def test_a_tap_from_another_pad_is_not_latched() -> None:
+    provider = _pad_provider()
+    button = provider._bindings.gameplay.gamepad_buttons[InputAction.ATTACK_1]
+
+    provider.note_event(_button_down(button, instance_id=99))
+
+    assert InputAction.ATTACK_1 not in _poll(provider)
+
+
+def test_a_pad_tap_never_latches_the_crouch() -> None:
+    """The crouch is a posture: a graze of the button must not flicker it for a tick."""
+    provider = _pad_provider()
+    gameplay = provider._bindings.gameplay
+    provider.set_bindings(
+        replace(
+            provider._bindings,
+            gameplay=replace(
+                gameplay,
+                gamepad_buttons={**gameplay.gamepad_buttons, InputAction.MOVE_DOWN: 13},
+            ),
+        )
+    )
+
+    provider.note_event(_button_down(13))
+
+    assert InputAction.MOVE_DOWN not in _poll(provider)

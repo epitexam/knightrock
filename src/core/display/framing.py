@@ -1,19 +1,9 @@
 """The framing: how much of the world the player is allowed to see.
 
-Why this module exists
-----------------------
-The game used to answer "how much world is visible" from the *window*: the
-camera was built with the window's pixel dimensions and a fixed zoom, so the
-visible world was a free variable of a video setting. Measured on the level
-actually registered for play (2560x1920 world pixels), the reveal went from
-34% of the height at the smallest preset to 60% at the largest, and on the
-unregistered 40x15 levels a high enough preset revealed a whole level, height
-included. A player could see more of the level by opening the video menu.
-
-``Framing`` closes that door. It is the single fixed answer, expressed in world
-units, and it is the only display quantity the simulation is allowed to read.
-The window can then be whatever the player or the desktop imposes: it changes
-how large the world is *drawn*, never how much of it is *shown*.
+A fixed answer in world units, and the only display quantity the simulation
+reads. The window changes how large the world is *drawn*, never how much of it
+is *shown* -- when the camera used the window's size, a bigger window revealed
+more of the level.
 """
 
 from dataclasses import dataclass
@@ -21,11 +11,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Framing:
-    """The visible slice of the world, in world units.
-
-    Immutable on purpose: this is a gameplay contract, and a contract that can
-    be edited in place mid-session is not one.
-    """
+    """The visible slice of the world, in world units. Immutable: a gameplay contract."""
 
     width: float
     height: float
@@ -47,27 +33,13 @@ class Framing:
     def is_smaller_than(self, world_size: tuple[float, float]) -> bool:
         """Whether this framing shows less than ``world_size`` on both axes.
 
-        Both axes are required, and that is the whole point. A framing narrower
-        than a level but taller than it still puts the entire level on screen,
-        so "smaller" has to mean smaller in every direction before the suspense
-        this framing exists for is actually there.
-
-        ``tests/unit/test_framing_contract.py`` runs this over every ``.tmx``
-        in the level folder.
+        Both: a framing narrower but taller than a level still shows all of it.
+        ``tests/unit/test_framing_contract.py`` checks every ``.tmx``.
         """
         return self.width < world_size[0] and self.height < world_size[1]
 
 
-#: The gameplay framing.
-#:
-#: Chosen against the levels rather than for a round number: 1152x648 shows
-#: 45% of the width and 34% of the height of the registered level, and stays
-#: narrower *and* shorter than every ``.tmx`` in the folder, so no level can
-#: ever be taken in at once. It is also 16:9, matching most displays, which
-#: keeps the letterbox bars small.
-#:
-#: It is expressed in world units and nothing else. How many pixels a world unit
-#: occupies is the *window's* business, read off the render target
-#: (:func:`src.core.display.letterbox.density_for`), which is why this file
-#: needs no window and no pygame.
+#: The gameplay framing: 16:9, and smaller than every level on both axes. How
+#: many pixels a world unit takes is read off the render target
+#: (:func:`src.core.display.letterbox.density_for`), not decided here.
 DEFAULT_FRAMING = Framing(1152.0, 648.0)

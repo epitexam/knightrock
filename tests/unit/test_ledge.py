@@ -166,6 +166,8 @@ def _patrol_stub(*, at_ledge: bool) -> SimpleNamespace:
         patrol_direction=1,
         patrol_speed=60.0,
         speed=120.0,
+        can_jump=False,
+        jump_height=0.0,
         facing_right=True,
         move_axis=0.0,
         on_surface={"floor": True},
@@ -204,9 +206,8 @@ def test_patrol_steps_into_ledge_state_at_the_edge() -> None:
     state = EnemyPatrolState(entity)
     state.enter()
 
-    state.update(1 / 60)
+    assert state.update(1 / 60) == EnemyState.LEDGE
 
-    entity.state_machine.change_state.assert_called_once_with(EnemyState.LEDGE)
     entity.apply_horizontal_movement.assert_not_called()
 
 
@@ -234,8 +235,13 @@ def _chase_stub(*, at_ledge: bool) -> SimpleNamespace:
         combat=SimpleNamespace(),
         chase_speed=120.0,
         speed=120.0,
+        can_jump=False,
+        jump_height=0.0,
         face_player=Mock(),
         is_player_in_range=Mock(return_value=False),
+        plan_move=Mock(return_value="claw_swipe"),
+        move_range=Mock(return_value=60.0),
+        attack_slot_free=Mock(return_value=True),
         can_see_player=Mock(return_value=True),
         is_at_ledge=Mock(return_value=at_ledge),
         apply_horizontal_movement=Mock(),
@@ -252,9 +258,7 @@ def test_chase_refuses_to_run_off_the_edge() -> None:
     entity = _chase_stub(at_ledge=True)
     state = EnemyChaseState(entity)
 
-    state.update(1 / 60)
-
-    entity.state_machine.change_state.assert_called_once_with(EnemyState.LEDGE)
+    assert state.update(1 / 60) == EnemyState.LEDGE
 
 
 def test_chase_keeps_running_with_ground_ahead() -> None:

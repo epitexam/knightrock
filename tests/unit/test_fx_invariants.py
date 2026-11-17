@@ -401,7 +401,7 @@ def test_every_footstep_tier_is_a_player_state_and_nothing_else() -> None:
     ``walk_slow``, which is silent on purpose, so the assertion names it rather
     than banning it.
     """
-    from src.core.settings import FootstepDust
+    from src.core.fx.tuning import FootstepDust
     from src.states.player_states import PlayerState
 
     states = {state.value for state in PlayerState}
@@ -434,7 +434,7 @@ def test_the_default_footstep_tier_is_the_run_row() -> None:
     Compared by value on both fields, because a row that matched on one and not
     the other would be a worse bug than either.
     """
-    from src.core.settings import FootstepDust
+    from src.core.fx.tuning import FootstepDust
     from src.states.player_states import PlayerState
 
     assert FootstepDust.TIER[PlayerState.RUN.value] == FootstepDust.DEFAULT_TIER, (
@@ -456,7 +456,8 @@ def test_the_walk_and_run_combs_are_far_enough_apart_to_read_as_gaits() -> None:
     too far apart and the walk is not marking the floor at all, which is the
     ``walk_slow`` behaviour wearing the wrong state's name.
     """
-    from src.core.settings import FootstepDust, Physics
+    from src.core.fx.tuning import FootstepDust
+    from src.core.settings import Physics
     from src.states.player_states import PlayerState
 
     walk = FootstepDust.TIER[PlayerState.WALK.value]

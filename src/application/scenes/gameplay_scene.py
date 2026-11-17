@@ -1,4 +1,4 @@
-"""Gameplay scene: one level, its deaths, its transitions (Phase 2 #4)."""
+"""Gameplay scene: one level, its deaths, its transitions."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pygame
 
 from src.application.scene import Scene
 from src.core.colors import Colors
-from src.core.input.event_router import RoutedInput
+from src.core.input.event_router import InputDevice, RoutedInput
 from src.core.input.input_actions import InputAction
 from src.core.level.level import Level
 from src.core.settings import Debug, Gameplay
@@ -20,7 +20,7 @@ from src.ui.ui_manager import UIManager
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.core.game import Game
+    from src.application.scene_context import SceneContext
 
 
 #: Debug overlay layers toggled by function keys (F1-F5).
@@ -34,6 +34,9 @@ _OVERLAY_TOGGLES = {
 
 #: Debug-only freeze key (F6): holds the simulation still so floating
 #: label cards can be read, while rendering keeps running.
+#: The window lost the keyboard, or was put away: the player is not looking.
+_AWAY_EVENTS = frozenset({pygame.WINDOWFOCUSLOST, pygame.WINDOWMINIMIZED})
+
 _FREEZE_KEY = pygame.K_F6
 
 #: Debug-only single-step key (F7): while frozen, advance exactly one tick
@@ -69,7 +72,10 @@ class GameplayScene(Scene):
     whole set.
     """
 
-    def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
+    opaque = True
+    is_backdrop = True
+
+    def __init__(self, game: SceneContext, level_id: int = 0, level: Level | None = None) -> None:
         """``level`` allows injecting a Level in tests (no TMX)."""
         super().__init__(game)
         self.level_id = level_id
@@ -87,7 +93,7 @@ class GameplayScene(Scene):
     def _load_level(self) -> None:
         # The level draws into the render target, never into the window: the
         # target has a fixed size whatever the player's video settings say.
-        target = self.game._draw_target()
+        target = self.game.render_target
         level_data = self.game.level_manager.get(self.level_id)
         self.level = Level(
             target,
@@ -102,7 +108,6 @@ class GameplayScene(Scene):
     def update(self, delta_time: float) -> None:
         if self.level is None:
             raise RuntimeError("GameplayScene has no level loaded")
-        self.game.input_manager.update()
         if self.frozen and Debug.is_enabled():
             if not self._step_pending:
                 return  # debug freeze: the frame still renders, the sim holds still
@@ -112,33 +117,42 @@ class GameplayScene(Scene):
         if self.level.exit_reached:
             self._advance_level()
         elif self.level.deaths >= Gameplay.MAX_DEATHS:
-            # Local import: Menu/GameOver/Gameplay reference each other.
-            from src.application.scenes.gameover_scene import GameOverScene
-
-            self.game.scene_manager.push(GameOverScene(self.game, self.level_id))
+            self.game.scene_manager.navigator.push_game_over(self.level_id)
 
     def _advance_level(self) -> None:
-        from src.application.scenes.gameplay_scene import GameplayScene
-
         next_id = self.game.level_manager.next_id(self.level_id)
         if next_id is None:
-            from src.application.scenes.victory_scene import VictoryScene
-
-            self.game.scene_manager.switch(VictoryScene(self.game, self.level_id))
+            self.game.scene_manager.navigator.switch_to_victory(self.level_id)
         else:
-            self.game.scene_manager.switch(GameplayScene(self.game, next_id))
+            self.game.scene_manager.navigator.switch_to_gameplay(next_id)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self._route_to_panels(event):
             return
+        if event.type in _AWAY_EVENTS:
+            self._pause_while_away()
+            return
         if event.type == pygame.KEYDOWN and self.level is not None:
             self._handle_gameplay_key(event.key)
 
-    def handle_routed(self, routed_input: RoutedInput) -> str | None:
-        if routed_input.action is InputAction.UI_BACK:
-            from src.application.scenes.pause_scene import PauseScene
+    def _pause_while_away(self) -> None:
+        """The player left the window: stop the level on the pause page.
 
-            self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+        A level that keeps running behind another window is one the player comes
+        back to dead. Not in debug mode, where looking away -- at a log, at an
+        editor -- is half of what the session is, and coming back to a pause
+        page every time would be the tool getting in the way.
+        """
+        if self.level is None or Debug.is_enabled():
+            return
+        self._pause()
+
+    def _pause(self) -> None:
+        self.game.scene_manager.navigator.push_pause(self.level_id)
+
+    def handle_routed(self, routed_input: RoutedInput) -> str | None:
+        if self._pauses(routed_input):
+            self._pause()
             return MenuAction.BACK
         # Everything else the router sends here is None, and that is the whole
         # point: the menu keys are the player keys (the arrows, Space, Escape
@@ -146,6 +160,20 @@ class GameplayScene(Scene):
         # being heard once per menu auto-repeat. The silence is its report, not
         # a mute it had to ask for.
         return None
+
+    @staticmethod
+    def _pauses(routed_input: RoutedInput) -> bool:
+        """Start on a pad; Escape or a right click otherwise.
+
+        Not the pad's Back button: B is an attack in the game, and pausing on it
+        stopped the game on the first light attack.
+        """
+        if routed_input.action is InputAction.UI_PAUSE:
+            return True
+        return (
+            routed_input.action is InputAction.UI_BACK
+            and routed_input.device is not InputDevice.GAMEPAD
+        )
 
     def set_surface(self, surface: pygame.Surface) -> None:
         """Adopt a new render target, after the render scale changed.
@@ -155,6 +183,7 @@ class GameplayScene(Scene):
         """
         if self.level is not None:
             self.level.surface = surface
+            self.level.reconvert_tiles()
             self.level.renderer.set_surface(surface)
 
     def set_ui_scale(self, scale: float) -> None:
@@ -169,11 +198,9 @@ class GameplayScene(Scene):
         The application layer is where ``core`` and ``ui`` meet, so this is
         the one place allowed to name :class:`UIManager` concretely -- the
         renderer and the level go through the ``WorldOverlay`` port instead.
-        Optional because the tests drive this scene with a lightweight game
-        stand-in that has no interface at all, and a debug keypress on such a
-        runtime should do nothing rather than raise.
+        ``None`` until the first level built it (``Game.world_overlay``).
         """
-        return getattr(self.game, "ui", None)
+        return self.game.ui
 
     def _handle_panel_tools_key(self, key: int) -> bool:
         if self.level is None:
@@ -181,10 +208,9 @@ class GameplayScene(Scene):
         if key == _EXPORT_KEY:
             from src.application.attack_authoring import export_attack
 
-            spawn = getattr(self.level, "spawn_system", None)
-            selected = getattr(spawn, "selected_attack", None)
-            if callable(selected) and selected():
-                export_attack(self.game.gameplay_data.attack_sets, selected())
+            selected = self.level.spawn_system.selected_attack()
+            if selected:
+                export_attack(self.game.gameplay_data.attack_sets, selected)
             return True
         if key == _PANEL_FOCUS_KEY:
             ui = self._ui
@@ -211,10 +237,7 @@ class GameplayScene(Scene):
             self._step_pending = True
             return
         if key == _REPLAY_KEY:
-            spawn = getattr(self.level, "spawn_system", None)
-            toggle = getattr(spawn, "toggle_attack_replay", None)
-            if callable(toggle):
-                toggle()
+            self.level.spawn_system.toggle_attack_replay()
             return
         if self._handle_panel_tools_key(key):
             return
@@ -251,12 +274,10 @@ class GameplayScene(Scene):
             return
         self._dead_key_notice_shown = True
         purpose = self._KEY_PURPOSE.get(key, "toggle the overlay")
-        notice = getattr(self.game, "notice", None)
-        if callable(notice):
-            notice(
-                f"F-keys are debug-only -- {purpose}",
-                "Start with:  python main.py --debug",
-            )
+        self.game.notice(
+            f"F-keys are debug-only -- {purpose}",
+            "Start with:  python main.py --debug",
+        )
 
     def _route_to_panels(self, event: pygame.event.Event) -> bool:
         """Let the debug panels swallow a mouse event (``×``, drag & drop).
@@ -282,11 +303,7 @@ class GameplayScene(Scene):
         clock = self.game.clock
         fps = clock.get_fps() if clock else 0.0
         frame_time = clock.get_time() if clock else 0.0
-        # Duck-typed: tests drive this scene with a lightweight game stand-in,
-        # which has no accumulator to read a tick fraction from. Such a
-        # runtime gets no interpolation, which is the correct fallback.
-        render_alpha = getattr(self.game, "render_alpha", None)
-        alpha = render_alpha() if callable(render_alpha) else 0.0
+        alpha = self.game.render_alpha()
         self.level.draw(
             fps,
             scene_host=self.game,
@@ -298,13 +315,17 @@ class GameplayScene(Scene):
         # declared about them any more: the next frame erases the whole target,
         # so a shrinking bar or an expiring combo cannot leave a stripe behind.
         ui = self._ui
-        if ui is not None:
-            ui.draw_hud(getattr(self.level, "player", None))
-        notice = getattr(self.game, "notice_lines", ())  # absent: nothing to say
-        if ui is not None and notice:
-            ui.hud.draw_notice(notice)
-        if self.frozen:
-            self._draw_frozen_tag()
+        if ui is None:
+            return
+        # Inside the part of the target the window shows: under the zoom fit
+        # the rest is cropped off, and the gauges anchored to its corners with it.
+        with ui.drawing_within(self.game.shown_area):
+            ui.draw_hud(self.level.player)
+            notice = self.game.notice_lines
+            if notice:
+                ui.hud.draw_notice(notice)
+            if self.frozen:
+                self._draw_frozen_tag()
 
     def _draw_frozen_tag(self) -> None:
         """Paint a red FROZEN marker, top-center, while the sim is held."""

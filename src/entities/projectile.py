@@ -9,20 +9,19 @@ ranged hits share armor, stagger and finisher rules.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import count
 from typing import Any
 
 import pygame
 from pygame.math import Vector2
 from pygame.sprite import Sprite
 
+from src.combat.combatant_protocol import Combatant, DamageResult, Finish
 from src.combat.damage_types import DamageType
 from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
-
-_PROJECTILE_ID_SEQUENCE = count()
+from src.entities.id_factory import IdFactory, shared_id_factory
 
 __all__ = ["FIREBOLT_CONFIG", "PIERCING_BOLT_CONFIG", "Projectile", "ProjectileConfig"]
 
@@ -39,16 +38,21 @@ class ProjectileConfig:
         default_factory=lambda: HitProperties(damage=5.0),
     )
     pierce: bool = False
+    #: Downward pull in px/s², for a lobbed shot; a bolt flies straight.
+    gravity: float = 0.0
+    #: How it is drawn (``src/core/rendering/strike_trails.py``); the sprite's
+    #: own image stays blank so the drawing can glow past the hitbox.
+    look: str = "bolt"
 
 
 class Projectile(Sprite):
     """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt."""
 
-    def __init__(self) -> None:
+    def __init__(self, id_factory: IdFactory | None = None) -> None:
         super().__init__()
-        self.id: str = f"p{next(_PROJECTILE_ID_SEQUENCE)}"
-        self.image = pygame.Surface((8, 8))
-        self.image.fill((255, 200, 60))
+        factory = id_factory if id_factory is not None else shared_id_factory()
+        self.id: str = factory.projectile_id()
+        self.image = pygame.Surface((8, 8), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.hitbox = pygame.FRect(0, 0, 8, 8)
         self.velocity = Vector2(0, 0)
@@ -70,6 +74,15 @@ class Projectile(Sprite):
     def hurtbox(self) -> pygame.FRect:
         """Body box used if something intercepts the projectile itself."""
         return self.hitbox
+
+    #: A projectile's hit kills what it would kill: it leaves no one doomed.
+    finish = Finish.NONE
+
+    def on_hit_confirmed(
+        self, target: Combatant, combo_advanced: bool, result: DamageResult
+    ) -> None:
+        """A projectile is owed nothing for a hit."""
+        del target, combo_advanced, result
 
     def launch(
         self,
@@ -117,8 +130,9 @@ class Projectile(Sprite):
         wanted = (max(1, int(size[0])), max(1, int(size[1])))
         surface = self.image
         if surface is None or surface.get_size() != wanted:
-            surface = pygame.Surface(wanted)
-        surface.fill((255, 200, 60))
+            surface = pygame.Surface(wanted, pygame.SRCALPHA)
+        # Blank: the strike layer draws the shot, glow and trail included.
+        surface.fill((0, 0, 0, 0))
         return surface
 
     def reset(self) -> None:
@@ -151,6 +165,7 @@ class Projectile(Sprite):
         """Integrate flight and age; expire without freeing (system frees)."""
         if not self.active or self.is_dead:
             return
+        self.velocity.y += self.config.gravity * delta_time
         self.hitbox.x += self.velocity.x * delta_time
         self.hitbox.y += self.velocity.y * delta_time
         self.contact_shape = ShapePose(
@@ -180,7 +195,7 @@ class Projectile(Sprite):
         }
 
 
-#: Straight firebolt for debug key V (Phase 5 #3 showcase).
+#: Straight firebolt for debug key V.
 FIREBOLT_CONFIG = ProjectileConfig(
     size=(12.0, 12.0),
     lifetime=2.0,
@@ -193,7 +208,7 @@ FIREBOLT_CONFIG = ProjectileConfig(
     pierce=False,
 )
 
-#: Piercing bolt for debug key B (Phase 5 #3 showcase).
+#: Piercing bolt for debug key B.
 PIERCING_BOLT_CONFIG = ProjectileConfig(
     size=(14.0, 14.0),
     lifetime=2.5,

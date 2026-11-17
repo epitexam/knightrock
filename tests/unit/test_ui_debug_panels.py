@@ -143,7 +143,7 @@ def test_the_game_satisfies_the_scene_host_port(tmp_path: Path) -> None:
     instance: `hasattr(Game, ...)` would be false for a member that is very
     much there.
     """
-    from src.core.game import Game
+    from src.application.game import Game
     from src.core.level.scene_host import SceneHost
 
     game = Game(save_path=tmp_path / "save.json", bindings_path=tmp_path / "settings.json")

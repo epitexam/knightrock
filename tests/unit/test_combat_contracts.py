@@ -2,11 +2,14 @@
 
 import inspect
 
+import pygame
+
 from src.combat.combat_component import CombatComponent, NullCombatComponent
 from src.combat.combatant_protocol import AttackerPort, Combatant, CombatPort
 from src.combat.frame_data import HitProperties
 from src.combat.hit_resolver import HitResolver
 from src.combat.knockback import KnockbackConfig
+from src.combat.refusal import Refusal
 from src.entities.projectile import Projectile
 from tests.unit.helpers import AttackerStub, make_entity
 
@@ -34,8 +37,11 @@ def test_attacker_view_is_narrow() -> None:
     for forbidden in ("health", "receive_damage", "stagger"):
         assert forbidden not in AttackerPort.__annotations__
         assert not hasattr(AttackerPort, forbidden)
-    assert isinstance(AttackerStub(), AttackerPort)
-    assert isinstance(Projectile(), AttackerPort)
+    # Checked member by member: the port is not runtime-checkable, on purpose.
+    for attacker in (AttackerStub(), Projectile()):
+        assert isinstance(attacker.hitbox, pygame.FRect)
+        assert isinstance(attacker.combat.air_combo_count, int)
+        assert callable(attacker.combat.record_hit_landed)
 
 
 def test_projectile_carries_neutral_combat() -> None:
@@ -45,20 +51,28 @@ def test_projectile_carries_neutral_combat() -> None:
     projectile.combat.record_hit_landed(True)
 
 
-def test_resolver_uses_typed_access_without_getattr_fallbacks() -> None:
-    import src.combat.hit_resolver as module
-
-    text = inspect.getsource(module)
-    # Allow getattr for:
-    # - DIZZY state check (1)
-    # - is_invincible property check (1)
-    # - dash refresh on hit (getattr for dash, state_machine, charges, max_charges) (4)
-    # - Perfect dash parry uses getattr on attacker for state_machine, dash, etc (2)
-    # Total: 8 getattr calls are legitimate dynamic attribute accesses.
-    getattr_count = text.count("getattr")
-    assert getattr_count <= 8, (
-        f"Expected at most 8 getattr (DIZZY, invincibility, dash refresh, perfect parry), found {getattr_count}"
+def test_null_combat_signatures_match_the_real_component() -> None:
+    """A null object must be substitutable, including its return contracts."""
+    shared = (
+        "start_attack",
+        "release_charge",
+        "start_charge",
+        "cancel_attack",
+        "on_hit",
+        "record_hit_landed",
+        "reset_hurt_state",
     )
+    for name in shared:
+        real = inspect.signature(getattr(CombatComponent, name))
+        null = inspect.signature(getattr(NullCombatComponent, name))
+        assert list(real.parameters) == list(null.parameters), name
+        assert real.return_annotation == null.return_annotation, name
+
+    assert inspect.signature(CombatComponent.release_charge).return_annotation in (
+        Refusal,
+        "Refusal",
+    )
+    assert NullCombatComponent().release_charge() is Refusal.UNKNOWN
 
 
 def test_combo_recorded_once_air_only() -> None:

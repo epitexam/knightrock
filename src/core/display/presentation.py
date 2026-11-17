@@ -1,36 +1,32 @@
 """The single place where a window and a picture are reconciled.
 
-The window is whatever the platform granted and the picture is drawn at the
-window's own size, so there is no scale factor left to apply: the finished frame
-is blitted onto the window 1:1, pixel for pixel, every frame.
-
-That is the whole point of this module having been reduced to a blit. It used to
-compute a ratio between a fixed render target and the window and resample the
-frame onto it, which cost a ``smoothscale`` per frame and could not be sharp on
-any display whose size is not a whole multiple of the framing. Now there is no
-second code path that could scale something differently, because there is no
-scaling.
-
-It also owns the render target, because it is the only component that knows both
-sides of the reconciliation. :meth:`recompute` says whether the target changed,
-which is the one fact a caller needs in order to re-point the scene stack at it.
+The picture is drawn at the window's own size, so the finished frame is blitted
+1:1 every frame: no ratio, no resampling, nothing that can soften a pixel. It
+also owns the render target, and :meth:`Presentation.recompute` says when the
+target is new so the caller can re-point the scene stack at it.
 """
+
+import logging
 
 import pygame
 
 from .framing import DEFAULT_FRAMING, Framing
-from .letterbox import letterbox
+from .letterbox import FitPolicy, Picture, picture
+from .monitors import MIN_WINDOW
 from .viewport import Viewport
+
+logger = logging.getLogger(__name__)
+
+#: The letterbox strips: the darkest shade of the menus' background, so a
+#: wide screen reads as a frame around the picture rather than a broken one.
+BAR_COLOR = (10, 11, 15)
 
 
 class Presentation:
     """Puts the picture on the window, and maps the pointer back.
 
-    The letterbox rectangle is computed once per rebuild and used for both the
-    blit and the pointer inversion. That sharing is not tidiness: if the two used
-    different rectangles, a click would land on a pixel that is not where the
-    player aimed, and the error would be invisible at any resolution where the
-    bars are thin.
+    The blit and the pointer inversion share one placement, so a click lands
+    on the pixel the player aimed at.
     """
 
     def __init__(
@@ -39,34 +35,38 @@ class Presentation:
         framing: Framing = DEFAULT_FRAMING,
         *,
         pixel_perfect: bool = False,
+        fit: FitPolicy = FitPolicy.BARS,
         convert: bool = False,
     ) -> None:
         self.stage = stage
         self.framing = framing
-        self.pixel_perfect = pixel_perfect
+        self.fit = fit
         self.convert = convert
         self.rect = pygame.Rect(0, 0, 1, 1)
         self.viewport: Viewport
+        #: The whole placement -- target, source and destination -- rather than
+        #: a rect, because zoom's destination is the window and its source is a
+        #: crop of a target larger than the window.
+        self.picture: Picture
         self._fitted: tuple[int, int] | None = None
-        #: The letterbox strips, fitted alongside ``rect``. Computed here rather
-        #: than per frame because ``present`` needs them every frame and they
-        #: only move when the window does.
-        self._bars: tuple[pygame.Rect, ...] = ()
-        #: The ``rect`` the strips were last painted for, or ``None`` while the
+        #: The ``dest`` the strips were last painted for, or ``None`` while the
         #: window holds pixels nobody has accounted for. See :meth:`present`.
         self._painted: pygame.Rect | None = None
         self.recompute()
 
-    def retarget(self, stage: pygame.Surface) -> bool:
-        """Adopt a new window surface -- a display setting changed -- and refit.
+    @property
+    def pixel_perfect(self) -> bool:
+        """The older name for ``fit is FitPolicy.INTEGER``."""
+        return self.fit is FitPolicy.INTEGER
 
-        Separate from :meth:`recompute` because the surface is the window's and
-        the window is the only thing that can replace it.
-        """
+    @pixel_perfect.setter
+    def pixel_perfect(self, value: bool) -> None:
+        self.fit = FitPolicy.INTEGER if value else FitPolicy.BARS
+
+    def retarget(self, stage: pygame.Surface) -> bool:
+        """Adopt a new window surface and refit."""
         self.stage = stage
-        # A new surface has nothing painted on it, whatever size it turns out
-        # to be -- and ``recompute`` below may well decide the fitted rectangle
-        # has not moved, which would otherwise leave this looking painted.
+        # A new surface has no strips painted on it, even at the same size.
         self._painted = None
         return self.recompute()
 
@@ -81,24 +81,34 @@ class Presentation:
         return self.viewport.density
 
     def recompute(self) -> bool:
-        """Fit the window again, replacing the target if its size moved.
+        """Fit the window again; return whether the target surface is new.
 
-        Returns whether the target surface is new, so the caller knows if it has
-        to re-point the scene stack, the camera and the interface at it. Called
-        on launch, after a display setting changes, and on every window resize.
+        A window under :data:`~src.core.display.monitors.MIN_WINDOW` is refused
+        and the last target kept: below it the interface scale is one
+        :func:`~src.ui.scale.checked_ui_scale` rejects, so a window dragged that
+        small is clipped for the drag rather than crashing. The first fit has
+        nothing to keep and fits anyway.
         """
-        self.rect = letterbox(self.window_size, self.framing, pixel_perfect=self.pixel_perfect)
-        # Refitted on every call, before the early return below: the strips are a
-        # function of where ``rect`` *sits*, and a window can change shape in a
-        # way that moves it without changing its size (a 16:9 window made taller
-        # keeps its fitted width and gains a strip above and below). Keying this
-        # on size, as the target below is, would miss exactly that.
-        self._bars = self._fit_bars()
-        if self.rect.size == self._fitted:
+        if self._fitted is not None and self._is_too_small():
+            logger.debug(
+                "A %sx%s window is below the %s floor; keeping the current target",
+                *self.window_size,
+                MIN_WINDOW,
+            )
             return False
-        self._fitted = self.rect.size
+        self.picture = picture(self.window_size, self.framing, self.fit)
+        self.rect = self.picture.dest
+        # Placed on every call: the picture can move without changing size.
+        if self.picture.target.size == self._fitted:
+            return False
+        self._fitted = self.picture.target.size
         self.viewport = Viewport(self.framing, self._fitted, convert=self.convert)
         return True
+
+    def _is_too_small(self) -> bool:
+        """Whether the window is under the size the interface can be laid out in."""
+        width, height = self.window_size
+        return width < MIN_WINDOW[0] or height < MIN_WINDOW[1]
 
     @property
     def window_size(self) -> tuple[int, int]:
@@ -109,83 +119,39 @@ class Presentation:
     def bars(self) -> tuple[pygame.Rect, ...]:
         """The letterbox strips, as up to four rects.
 
-        They are painted rather than left alone because the blit only covers the
-        picture: after a resize the strips still hold the previous frame's
-        pixels, which is how a stretched outline of the old window ends up
-        hanging off the edge of the new one.
-
-        Fitted in :meth:`recompute` rather than worked out here, because
-        :meth:`present` reads them every frame and they only change when the
-        window does.
+        Painted, because after a resize they still hold the old frame's pixels.
         """
-        return self._bars
-
-    def _fit_bars(self) -> tuple[pygame.Rect, ...]:
-        """The window, less the rectangle the picture occupies."""
-        width, height = self.window_size
-        return tuple(
-            bar
-            for bar in (
-                pygame.Rect(0, 0, self.rect.x, height),
-                pygame.Rect(self.rect.right, 0, max(0, width - self.rect.right), height),
-                pygame.Rect(self.rect.x, 0, self.rect.width, self.rect.y),
-                pygame.Rect(
-                    self.rect.x,
-                    self.rect.bottom,
-                    self.rect.width,
-                    max(0, height - self.rect.bottom),
-                ),
-            )
-            if bar.width > 0 and bar.height > 0
-        )
+        return self.picture.bars
 
     def present(self) -> None:
-        """Show one finished frame. The only screen read in the whole loop.
+        """Show one finished frame.
 
-        The strips are painted only when they have moved. They were painted on
-        every frame, which is a second full pass over them for nothing: this is
-        the only place anything writes to the window surface, so outside the
-        picture the window holds whatever was last put there, and that is black
-        from the first frame onward. On a 3440x1440 window the strips are 1.27
-        million pixels and the pass costs 0.69 ms a frame, 38 % of the present
-        and 4 % of the frame budget, to write black over black. A 16:9 window
-        has no strips at all, so this only ever pays off on a window of another
-        shape -- and there it is the largest single cost of presenting a frame.
-
-        What it rests on is that a painted window pixel stays painted until
-        something writes over it. :meth:`present` paints the strips and then
-        blits the picture over the same surface before a single flip, so the
-        picture already depends on this: if ``flip`` handed back a different
-        buffer than the one just drawn into, the frame itself would not survive
-        its own present. The strips are simply the part of that assumption that
-        is not rewritten every frame.
-
-        That holds while the window is a software surface, which is all this
-        game can ask for -- :meth:`Stage._flags` requests ``FULLSCREEN`` or
-        ``RESIZABLE`` and never ``OPENGL``, so ``flip`` is an update rather than
-        a buffer exchange. An accelerated path would have to paint every frame
-        again, because each buffer would then arrive holding the other's
-        contents.
+        The strips are painted only when they moved (on an ultrawide window
+        they were 0.7 ms a frame of black over black). That relies on the
+        window surface keeping its pixels between flips, which holds for the
+        stage's ``RESIZABLE`` window with or without vsync; an ``OPENGL``
+        window would need them painted every frame.
         """
         if self._painted != self.rect:
-            for bar in self._bars:
-                self.stage.fill((0, 0, 0), bar)
-            # A copy, not the rect itself: the window being resized must not be
-            # able to move the one this comparison is made against.
+            for bar in self.picture.bars:
+                self.stage.fill(BAR_COLOR, bar)
+            # A copy, so a later change to ``rect`` cannot move it.
             self._painted = pygame.Rect(self.rect)
-        # 1:1, always. No ratio, no resampling, nothing that can soften a pixel.
-        self.stage.blit(self.viewport.surface, self.rect)
+        # 1:1. Under zoom the crop is the *area* and the placement the *dest*
+        # (``blit(source, dest, area)``); both are the same size.
+        self.stage.blit(self.viewport.surface, self.picture.dest, self.picture.source)
         pygame.display.flip()
 
     def pointer_to_viewport(self, position: tuple[int, int]) -> tuple[int, int]:
-        """A window position in target coordinates.
+        """A window position in target coordinates: the exact inverse of the blit.
 
-        The exact inverse of the blit above, using the same rectangle, so a
-        click on a menu row lands on that row's pixels. The positions that fall
-        in the letterbox bars map outside the target; callers that care should
-        test :meth:`pointer_in_viewport` first.
+        A position in a bar maps outside the target; see
+        :meth:`pointer_in_viewport`. Under zoom the crop's origin counts too.
         """
-        return (position[0] - self.rect.x, position[1] - self.rect.y)
+        return (
+            position[0] + self.picture.source.x - self.picture.dest.x,
+            position[1] + self.picture.source.y - self.picture.dest.y,
+        )
 
     def pointer_in_viewport(self, position: tuple[int, int]) -> bool:
         """Whether a window position is over the picture rather than a bar."""

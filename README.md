@@ -7,7 +7,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.14-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame-ce](https://img.shields.io/badge/pygame--ce-2.5.7%2B-2ea44f)](https://github.com/pygame-community/pygame-ce)
-[![tests](https://img.shields.io/badge/tests-2491%20passing-brightgreen)](#tests--quality)
+[![tests](https://img.shields.io/badge/tests-3739%20passing-brightgreen)](#tests--quality)
 [![coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](#tests--quality)
 [![mypy](https://img.shields.io/badge/mypy-strict-blue)](#tests--quality)
 
@@ -55,13 +55,13 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 
 | Capability | What it does |
 |---|---|
-| **Frame-data combat** | Startup / active / recovery phases, chargeable heavies, combos, juggles, OTG guard and multi-hitbox attacks. |
+| **Hack 'n' slash combat** | No More Heroes 2 in 2D: high and low slashes against high and low guards, a blade battery to recharge by hand, beats that stun and throws, death blows on a direction prompt, a slot machine, blade locks, a dark step that slows the world and a fury gauge that opens the dark side -- on frame data with startup / active / recovery phases and multi-hitbox attacks. |
 | **Deterministic physics** | Fixed 60 Hz simulation, sub-stepped swept collisions, moving platforms, one-way platforms, spatial hashing. |
-| **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors and safe fallbacks. |
+| **Data-driven design** | Attacks, enemies, the player and the level registry live in tracked JSON, validated with strict errors; the attacks, enemies and player have no copy in code. |
 | **Scene stack** | Menu, level select, options, video, controls, gameplay, pause, game-over and victory scenes over a synchronous, ordered [event bus](#architecture). |
 | **Interface sounds** | One bus owns `pygame.mixer` and answers facts from the event bus (navigate, confirm, back). No screen names a cue or a file. Silent and non-fatal without a sound card. |
 | **Debug test bench** | Hotkeys to spawn foes, fire pooled projectiles and force showcase attacks — no recompilation, no code edits. |
-| **Quality gates** | 2491 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
+| **Quality gates** | 3739 tests, strict mypy and Ruff (lint, format, `C901`), all blocking in CI. |
 
 ---
 
@@ -72,37 +72,44 @@ uv run python main.py --debug    # play with the debug overlay (DEBUG=1)
 | Action | Key |
 |---|---|
 | Move | `Left arrow` / `Right arrow` |
-| Crouch (ground) / fast fall (air) | `Down arrow` |
+| Low stance (ground) / fast fall (air) | `Down arrow` |
 | Jump | `Space` |
-| Dash (cancellable into an attack or guard) | `Left Shift` |
-| Guard (tap = parry) | `Q` |
-| Reset position | `R` |
-| Attack 1 — light on the ground, aerial in the air | `A` |
-| Attack 2 — heavy (hold to charge, release to swing) | `S` |
-| Attack 3 — uppercut | `D` |
-| Attack 4 — dash attack (lunge; cancels a dash) | `F` |
-| Special attack | `G` + `H` |
+| Dodge (passes through enemies) | `Left Shift` |
+| Guard (held); with Down, recharge the battery | `Q` |
+| Reset position (debug builds only) | `R` |
+| Slash (hold to charge) | `A` |
+| Punch / kick (hold to charge); throw a stunned foe | `S` |
+| Shoot (hold to charge) | `D` |
+| Dark side (with a full fury gauge) | `G` + `H` |
 | Pause / resume | `Esc` / `Enter` |
 | Menu navigation | `Enter` / `N` |
 | Back in menus | `Esc` / right click |
 
-**Gamepad**
+**Gamepad** — the Xbox One layout, as SDL numbers its buttons
 
 | Action | Button / axis |
 |---|---|
 | Move | Left stick (axis `0`) or D-pad (`0`) |
-| Crouch / fast fall | Left stick (axis `1`) or D-pad (`0`) |
-| Jump | `0` |
-| Attack 1 | `1` |
-| Attack 2 | `2` |
-| Attack 3 | `3` |
-| Guard (tap = parry) | `4` |
-| Attack 4 | `5` |
-| Reset | `7` |
-| Dash | Axis `2` |
-| Special attack | `1` + `3` |
-| Menu navigation / confirm | Left stick or D-pad / `0` (`A`) |
-| Back in menus | `1` (`B`) |
+| Low stance / fast fall | Left stick (axis `1`) or D-pad (`0`) |
+| Jump | `A` (`0`) |
+| Slash (hold to charge) | `X` (`2`) |
+| Punch / kick (hold to charge); throw | `Y` (`3`) |
+| Shoot (hold to charge) | `B` (`1`) |
+| Guard; with Down, recharge | `LB` (`4`) |
+| Dark side (with a full fury gauge) | `X` + `Y` |
+| Dash | Axis `2` (left trigger on Linux) |
+| Reset position (debug builds only) | `View` (`6`) |
+| Pause / resume | `Start` (`7`) |
+| Menu navigation / confirm | Left stick or D-pad / `A` |
+| Back in menus | `B` |
+
+`B` is *Back* in the menus and the shot in the game, and it never pauses: the
+pause is `Start` on the pad and `Esc` on the keyboard. A settings file still on
+the previous default layout is moved to this one when it is read; a layout the
+player built is kept, with the reset moved off `Start`; a file from before the
+shot gets it on `B` and `D` unless something else is already there. Axis numbers are the
+joystick API's and differ by platform: on Windows axis `2` is the right stick's
+X, and the dash can be rebound from *Options → Controls*.
 
 Three details of the menu navigation, all in `src/core/settings.py` under
 `Input`:
@@ -115,6 +122,73 @@ Three details of the menu navigation, all in `src/core/settings.py` under
 
 ---
 
+**Moves.** Three attack buttons -- the blade, the body and the shot -- the
+first two thrown high, or low with Down held, and all three charged when held.
+What a press throws depends on what the fighter is doing
+(`src/entities/attack_moves.py`, chains in `data/gameplay/attacks.json`):
+
+| Input | Move |
+|---|---|
+| Slash ×4 | `slash_high_1` cut down → `_2` backhand → `_3` thrust that steps in → `_4` heavy vertical cut (finisher). Down switches any link to its low twin: knee cut, low backhand, low thrust, and a rising cut that launches |
+| Slash held | let go early: `charged_slash`, a wide cut that breaks a guard, harder with the time held. Held to the end: `charged_slash_full`, a bigger cut that throws a crescent forward |
+| Beat ×3 | `punch_1` jab → `punch_2` cross → `punch_3` uppercut (launches); fills the stun gauge |
+| Down + beat ×2 | `kick_1` sweep at the ankles → `kick_2` roundhouse that sends the foe into the wall |
+| Beat held | `charged_kick`: goes through guards and armour, pushes hard |
+| Shoot | `shot`: a short bolt fired from the blade for `Battery.SHOT_COST`; it breaks a wind-up from out of reach |
+| Shoot held | `piercing_shot`: a bolt that goes through every guard and every foe on its line |
+| Beat on a stunned foe in front, on the ground | the throw: a run of directions, then `throw` |
+| Down + slash over a downed foe | `stab`: kills it |
+| Slash during a dash, or just after | `dash_slash`: a cut across at full stretch that keeps the dash's speed |
+| A slash that would kill | the foe is doomed: one direction, then `death_blow` |
+| Slash / beat / shoot in the air | `air_slash` / `air_kick` (dive) / `air_shot` |
+
+Every strike is sized to the drawn fighter (about 24 × 33 inside a 40 × 56
+hitbox): a blade about 28 long from the shoulder, a fist about 22, a leg about
+26; nothing reaches more than 48 in front or swings more than 150°, a high blow
+stays above the hips and a low one starts below them, and no two moves of one
+fighter share shape, timing, height and push (`tests/unit/test_move_proportions.py`).
+A charge grows what it throws: at the charge multiplier `m` (1 let go at once, 2 held to the end) the blow hits `m` times harder, pushes and stuns `m` times more, and its shape and reach are `1 + Combat.CHARGE_REACH_GAIN × (m − 1)` times the uncharged one's; a full charge keeps that power and adds its tier's extra (the crescent, the pierce). A charged shot grows the same way. The blade and the body are two kinds of blow: the blade is quicker, longer and pushes little; the body starts later, freezes longer on a hit, pushes hard, stuns and goes through guards (`tests/headless/test_charge_and_buttons.py`).
+A phase can launch a shot as it turns active (`launches`, from
+`src/entities/shots.py`): the bolt, the piercing bolt, the crescent of a full
+cut, the slime's lobbed glob.
+
+**Enemies.** Each fighting type has its own moves: the goblin's two claws (an
+overhead swipe, a low reach), the tooth's bite at the head and snap at the
+ankles, the shell's shoulder bash and a roll along the floor that no guard
+stops -- it is jumped -- and the slime's slam and spat glob, which lands low.
+
+**What is drawn** (`src/core/rendering/strike_trails.py`, render only): a blade
+cuts a thin crescent, a heavy cut a wider one; the body leaves a short streak
+and a knuckle or a heel; a charged cut is gold and brighter the longer it was
+held, a full one white-hot with afterimages; the death blow is dark red. A
+held button gathers a ring at the hand that closes as it fills and flashes when
+full. An enemy winding up shows a chevron at the height it will strike -- red,
+or violet when no guard stops it. A blow that lands leaves its mark at the tip: a sharp cut for the blade, a burst of lines for the body, a cut with a flash for a charged one, drawn over the struck fighter's flash. A dash leaves stamps of the fighter spaced by the distance covered (`Afterimage.SPACING`), pale at the back and cyan nearer the fighter, with speed lines behind it that outlast it a moment and a clap of air where it started; a dark step throws out a violet ring and tints the slowed world; a block throws up a shield of light on the side of the blow -- a crescent that pushes outward, a brief bubble, sparks off its face -- gold for a perfect block.
+
+A link of a chain starts as soon as the previous one has hit, and a press made a
+little early is kept for `Input.ATTACK_BUFFER_WINDOW` and played the moment it
+can be.
+
+**The combat loop.** Modelled on No More Heroes 2, in 2D (`src/core/settings.py`:
+`Battery`, `Fury`, `Finisher`, `Throw`, `Clash`, `Slot`, `Stun`, `Rush`, `Guard`):
+
+| Mechanic | Rule |
+|---|---|
+| **Guards** | An enemy that guards (`guards` in `enemies.json`) holds it high or low and switches now and then; a mark on its front edge shows which half. A slash at that height is stopped. Mid-combo it braces: the `Guard.BLOCK_AFTER_HITS`-th blockable blow in a row is stopped at its height, so the same slash mashed stalls. A blocked blow bounces off: the move ends, the player is pushed back (`Guard.DEFLECT_PUSH`), staggers for `Guard.DEFLECT_STAGGER` and pays `Battery.DEFLECT_COST`. The enemy answers with a counter thrown behind the guard until its recovery, which is the opening; a blade that meets the counter bounces off the same way and locks nothing. A punch, a kick or a charged slash breaks the guard for `Guard.BROKEN_TIME`. The player's guard is held and stops everything from the front, for `Battery.GUARD_COST`, except a blow that breaks it. |
+| **Battery** | Every slash costs `Battery.SLASH_COST`; on an empty battery a slash does `Battery.EMPTY_POWER` of its damage. Guard + Down recharges it, standing open. |
+| **Death blow** | A slash that would kill leaves the foe doomed at `Finisher.DOOM_HEALTH`. The fight slows to `Finisher.TIME_SCALE` and one direction is asked: given in time, the death blow lands, fills fury and spins the slot machine. Missed, the foe gets back up with `Finisher.RECOVER_RATIO` of its health. |
+| **Stun and throw** | Beats fill the stun gauge (the strip under an enemy's health bar). A stunned foe in front is grabbed with the beat button: `Throw.STEPS` directions, then the throw, which kills. A wrong one leaves the player open. |
+| **Downed** | A launched foe lies on the ground for `Combat.DOWNED_DURATION`; a low slash over it is the stab that ends it. |
+| **Blade lock** | Two blades that meet (`clash` on both hits) lock: mash the slash `Clash.PRESSES` times in `Clash.WINDOW` and the foe is thrown off balance (`Clash.WIN_STAGGER`) with its guard down for `Clash.WIN_OPEN` -- an opening, not a stun; lose, and it costs health. A counter never locks (see Guards). |
+| **Dash** | One length whatever the stick (about 80 to 105 px): a burst from `Physics.DASH_SPEED` that eases out as `(1 - t)^Physics.DASH_CURVE` to the run speed when the stick holds its way -- so it hands over to the run without a stop -- or to a short glide when it does not. A push the other way in the first `Physics.DASH_REVERSE_WINDOW` turns it round, once, and no ground pivot can cut it short. Untouchable throughout; three charges, and spending the last locks it for `Physics.DASH_PENALTY_TIME`. |
+| **Dark step** | A dodge less than `Rush.WINDOW` before a blow lands -- on the player, or on the spot the dodge left -- slows everything but the player for `Rush.DURATION`; slashes are free and fast meanwhile. |
+| **Fury** | Filled by landing hits, death blows, throws and dark steps; a hit taken costs `Fury.HURT_LOSS`. Its tiers (`Fury.TIERS`) speed the slashes up -- the HUD combo counter gains a `!` per tier. Full, the chord opens the dark side: `Fury.DARK_DURATION` seconds untouchable, faster, every blow a kill. |
+| **Slot machine** | Each death blow spins three reels; three of a kind (`Slot.JACKPOT_CHANCE`) grants a power for `Slot.POWER_DURATION`: stasis (the world slows, every blow kills), blitz (faster, every blow kills) or cleave (slashes `Slot.CLEAVE_MULT` harder). |
+
+During a prompt the player is untouchable and the fight around it nearly
+stops. Every `Combat.COMBO_DASH_REFILL_HITS` hits of one combo give a dash
+charge back, and a hit landed out of a dodge refunds it.
+
 ## In-game options
 
 Options is a **navigation hub**, not a list: every setting lives in the screen
@@ -122,7 +196,7 @@ that owns it. Reachable from the main menu and from the pause screen.
 
 | Screen | Owns |
 |---|---|
-| **Video** | Display mode, whole-pixel art, VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. |
+| **Video** | The window's size, how the picture fits the window (bars / whole-pixel / zoom), VSync, frame limit, UI scale, a read-out of what the game derived from the window, and — only under `DEBUG=1` — a debug panel scale. Settings with more than a few values open a **list** rather than cycling on ←/→, and each entry says what it does. |
 | **Controls → Menu controls** | Key/button rebinding and the menu stick Y inversion. |
 | **Controls → Gameplay controls** | Key/button rebinding. |
 
@@ -152,13 +226,12 @@ Every showcase feature is reachable from a single hotkey, live in game.
 
 | Key | Feature | Detail |
 |:---:|---|---|
-| `1` | Multi-hitbox | `twin_fangs` — blade plus a second, disjoint box |
-| `2` | Animated hitbox | `sweeping_arc` — the box grows along its keyframe curve |
-| `3` | Juggle | `sky_launcher` — launches upward with softened gravity (`×0.5`) |
-| `4` | OTG | `otg_slam` — the only attack allowed during the OTG guard |
-| `5` | Extra shapes | `p5_shapes` |
-| `6` | Radial burst | `circle_burst` |
-| `7` `8` `9` `0` | Air kit | `air_attack`, `air_forward`, `air_rise`, `air_sweep` — **in the air only** |
+| `1` `2` | Slash finishers | `slash_high_4`, `slash_low_4` |
+| `3` `4` | Beat finishers | `punch_3` (uppercut, launches), `kick_2` (roundhouse, into the wall) |
+| `5` | Charged slash | `charged_slash` — breaks a guard |
+| `6` | Stab | `stab` — kills a downed foe |
+| `7` `8` | Finishing moves | `death_blow`, `throw` — kill a helpless foe |
+| `9` `0` | Air kit | `air_slash`, `air_kick` — **in the air only** |
 | `V` | Projectile | plain `firebolt`, reuses `HitResolver` |
 | `B` | Piercing projectile | passes through, hits each target once |
 | `C` | Juggle dummy | pops an airborne dummy in front of the player |
@@ -167,9 +240,8 @@ Every showcase feature is reachable from a single hotkey, live in game.
 <details>
 <summary><b>Suggested juggle protocol</b></summary>
 
-Press `C`, then `3` under the dummy (neutral, while airborne) to start the
-juggle. Juggle mid-air with `A` during the jump, then finish on the ground with
-`4` while the OTG guard is active.
+Press `C` to pop an airborne dummy, slash it in the air with `A` during the
+jump, then `6` -- the stab -- once it lands.
 
 Under `DEBUG=1` the overlay shows the offensive boxes plus `Combo (air xN)`,
 `Juggle`, `OTG guard` and the `Shots` counter in the SCENE panel.
@@ -218,7 +290,7 @@ contact damage keep **discrete** collision.
 > you nothing, and drawing them is the most expensive thing the overlay does.
 > Measured on level 0 at 1280×720, dropping the layer took the whole overlay pass
 > from **1.98 ms to 0.09 ms** — 1.9 ms of a 16.7 ms budget, for a picture of the
-> tileset. (`notes/perf_debug_overlay.md`)
+> tileset.
 
 ### Frame timings & benchmarks
 
@@ -232,6 +304,7 @@ uv run python tests/benchmarks/ui_benchmark.py       # frame timing, in general
 uv run python tests/benchmarks/fx_benchmark.py       # cost to build one particle
 uv run python tests/benchmarks/render_benchmark.py
 uv run python tests/benchmarks/contact_benchmark.py
+uv run python tests/benchmarks/combat_feel.py      # how the combat plays: swings/s, kill times
 ```
 
 ---
@@ -242,7 +315,7 @@ uv run python tests/benchmarks/contact_benchmark.py
 
 > **The camera shows a fixed rectangle of the world: 1152×648 world units**
 > (`src/core/display/framing.py`). It is render-only, and **the simulation reads
-> it and nothing else** — window size, DPI, display mode and desktop dimensions
+> it and nothing else** — window size, DPI and desktop dimensions
 > are not observable from it.
 
 It is deliberately tight: the player sees 45 % of the width and 34 % of the
@@ -252,43 +325,102 @@ than mapped from the menu.
 | Object | What it is |
 |---|---|
 | `Framing` | the visible rectangle of the world, in world units. Fixed. |
-| `Viewport` | the surface everything is drawn into: the window's letterbox rect |
-| `Stage` | the OS window: mode, position, DPI, vsync. No opinion about size. |
+| `Viewport` | the surface everything is drawn into: the window's fitted rect |
+| `Stage` | the OS window: size, monitor, DPI, vsync |
 | `Presentation` | window onto target, and the pointer back. Scales nothing. |
+| `monitors` | what this machine has, and which panel holds the window |
+| `sdl_probe` | the libSDL2 pygame already links, for what pygame cannot say |
 
 How large the world is *drawn* is a separate question, answered by the window: a
 world unit gets `window / framing` pixels — 1.667 at 1920×1080, 0.694 in an
 800×600 window — and the art is magnified once, at load. The camera has no zoom;
 it has a density, read off the target so the two cannot disagree.
 
-**The window is the only source of truth about the window.** There is no stored
-size, no `size_mode`, no render scale and no smoothing flag, because none of those
-describes a screen. Four rules replace them:
+**More than one screen is a first-class case.** pygame-ce reports display
+*sizes* and nothing else, which is why the window used to be pinned to the
+primary: the other screens' origins were described as unknowable. They are not
+unknowable, they are one layer down — `sdl_probe` reads the bundled SDL2 through
+`ctypes` (stdlib only) and gets each display's bounds, the area a taskbar leaves
+free, the name the platform gives it, its refresh rate and the compositor's
+scale. Measured on the development machine:
 
-- the **display mode** defaults to *auto* — borderless when the screen already has
-  the shape of the framing, a window otherwise, re-evaluated on every launch. A
-  chosen mode is never re-resolved;
-- a **windowed** game opens as large as fits with room for its own title bar, and
-  that is all. Drag it to whatever you like;
-- the **render target is the window** — more precisely the letterbox rectangle of
-  the window that carries the picture at the framing's aspect. The finished frame
-  is blitted **1:1**, so presenting costs a copy rather than a resample;
-- **whole-pixel art** trades filling the window for every art pixel being an exact
-  *k*×*k* block: the picture becomes the largest whole multiple of the framing
-  that fits and the bars take the rest. It is a no-op below the framing size, and
-  the row says so.
+```
+pygame       SDL_GetDesktopSizes()   -> [(1920, 1080)]
+SDL          SDL_GetDisplayBounds(0) -> (0, 0, 1920, 1080)
+SDL          SDL_GetDisplayUsableBounds(0) -> (0, 32, 1920, 1048)
+SDL          SDL_GetDisplayName(0)   -> b'eDP-1 17"'
+```
+
+The probe is cross-checked against pygame's own numbers and thrown away if they
+disagree — `find_library` can hand back a second libSDL2 whose video subsystem
+was never initialised, and it answers with plausible numbers describing nothing.
+When it cannot be reached the game runs on what pygame can say, which is what it
+did before.
+
+**The game is a window, full stop.** There is no display mode, no exclusive
+fullscreen, no borderless and no screen picker: the window is the render target
+and the player chooses how big it is. Three rules replace all of that:
+
+- the window opens **centred on the screen the last session closed on**, or on
+  the primary display when that screen is not there, at the size the player
+  chose or as large as fits the panel when they have not chosen one, and the
+  player drags it from there. The screen is remembered by its name, so a
+  settings file carried to another machine matches nothing and falls back to the
+  primary. Where the window sits belongs to the window manager, which is why
+  there is still no row claiming a screen and no stored position: a placement
+  the game cannot guarantee is a setting it must not offer;
+- the **render target is the window** — more precisely the fitted rectangle of the
+  window that carries the picture at the framing's aspect. The finished frame is
+  blitted **1:1**, so presenting costs a copy rather than a resample;
+- **how the picture fits is the player's choice**: bars, whole-pixel art (each art
+  pixel an exact *k*×*k* block, bars taking the rest), or zoom to fill, which crops
+  the overflow. All three show *at most* the framing — zoom shows strictly less,
+  so a video setting can never show more level than another. The HUD is laid out
+  in the part of the target the window shows (`Game.shown_area`), so under zoom
+  the gauges sit on the corners the player sees, not on the cropped-off ones.
 
 Resizing the window rebuilds the render target, re-reads the pixel density and
-re-lays out the interface — the same cascade as a display change, which is why it
+re-lays out the interface — the same cascade as a window rebuild, which is why it
 is one piece of code. What resizing never changes is **how much world you see**.
 
-<details>
-<summary><b>Why the video menu has no resolution row, and the framing is not derived from the window</b></summary>
+A resize is **read off the window, not off an event**: pygame-ce turns one SDL
+window event into seven of its own, and which of them carries the new size depends
+on the platform *and* on the gesture — measured, a snap reports `WindowSizeChanged`,
+a maximise reports three events, a drag reports `VideoResize`. The size is polled
+once per frame (0.07 µs), and the frame in which it changed lays the interface out
+**before** the input is read. That ordering is the whole fix for "the clickable
+area moved": a click is converted through the picture in force *now* and hit-tested
+against the rectangles the last draw produced, and after a resize those two
+disagreed — measured, by 244 px, so a click landed on a neighbour or on nothing.
+`reset_cache` drops the rectangles too, covering the one case the runtime cannot
+see coming: a change the game performs *while* handling an input, with a second
+input already queued behind it in the same frame.
 
-**No resolution row.** A list of window sizes is a claim about the player's
-monitor that the game cannot check, and a remembered size is a claim that goes
-stale — in borderless the window *is* the screen's size whatever the file says,
-so the row used to display a number the game was not using.
+The screen the game reports — the VSync row's rate — is the screen **the window
+is actually on**, found from its position rather than from the primary. When the
+window's screen cannot be established, the row says nothing rather than the
+primary's rate: a missing hint is recoverable, a wrong number is a fact.
+
+Plugging a screen in or out mid-session is noticed: pygame-ce surfaces no event
+for a display appearing or disappearing, so the display list is re-read on a timer
+and a window whose screen has gone is rebuilt on the primary and says so.
+
+<details>
+<summary><b>Why the window's size is only a request, and why the framing is not derived from the window</b></summary>
+
+**A size is asked for, not asserted.** A hardcoded list of window sizes is a
+claim about the player's monitor the game cannot check — offering 2560×1440 to a
+1366×768 laptop is what that costs. The sizes the menu offers are derived from
+the panel in force and filtered to what it can hold, and the choice is only ever
+*asked for*: the window manager grants it and the stage measures back what it
+actually got, so the row reports the window rather than the request.
+
+**The window's remembered size is a request, not an assertion.** It is honoured
+where it fits and clamped where it does not, and the file keeps what the player
+chose — so a 4K window arrives at a laptop shrunk to fit and comes back at 4K on
+the next launch on a desk with the room. The old `width`/`height` keys were
+*overwritten* at launch whenever they did not fit, which is why a size could never
+survive a change of machine and why the menu and the screen used to disagree.
 
 **The framing is not derived from the window.** It used to be built from the
 window's pixel size and a zoom constant, which made the visible world a free
@@ -317,8 +449,6 @@ target with `pygame.transform.smoothscale`:
 | 1280×720 | ~0.38 ms | ~3.95 ms |
 | 2560×1440 | ~1.33 ms | ~7.46 ms |
 
-Sources: `notes/perf_shatter_arc.md`, `notes/audit_dimensions_fenetre.md`.
-
 </details>
 
 ### Camera, rounding and culling
@@ -333,6 +463,12 @@ Sources: `notes/perf_shatter_arc.md`, `notes/audit_dimensions_fenetre.md`.
   narrowed to a handful of chunks before it gets there.
 - Every frame is a complete repaint of the target, so a stale pixel is not
   possible rather than merely unlikely.
+- A frame drawn between two ticks blends the camera *and* the fighters by the
+  same `alpha`: each fighter is drawn between where the last tick began and
+  where it ended (`RenderHints.previous_center`, written at the top of every
+  tick, frozen ones included). A move longer than `Interpolation.MAX_STEP_PX`
+  is a teleport and is drawn where it lands. Health bars follow the drawn
+  fighter. `Interpolation.ENABLED = False` turns it off.
 
 <details>
 <summary><b>Why the rounding rule is asymmetric</b></summary>
@@ -362,13 +498,6 @@ legacy, assist-free behaviour. All of them live in `src/core/settings.py`.
 | `Collision` | `MIN_PENETRATION_PX` | Grazes keep sliding instead of stopping dead. |
 | `Collision` | `MAX_RESOLVE_PX` | Anti-teleport guard; deeper overlaps flag the entity `crushed`. |
 | `PlatformRide` | `STICKY_FACTOR` | Stay mounted on fast-descending platforms. |
-| `Physics` | `CROUCH_HEIGHT_FACTOR` | Crouched hurtbox as a fraction of the standing height. |
-| `Physics` | `CROUCH_HEIGHT_BLEND_TIME` | Seconds to ease into and out of the crouched collider. |
-| `Physics` | `CROUCH_SPEED_MULT` | Crouch-walk speed as a fraction of the fighter's own speed. |
-
-> **The crouch constants live in `Physics`, not `GameFeel`.** They belong to the
-> collider, not to the feel, and their only readers are
-> `src/entities/crouch_posture.py` and `src/states/player_states.py`.
 
 ### Combat and knockback
 
@@ -379,12 +508,54 @@ Combat is frame-data driven: startup / active / recovery phases feed
 | Constant | Effect |
 |---|---|
 | `Combat.WALL_BOUNCE_FACTOR` | Mid-launch entities rebound off walls (red arrow in debug) instead of stopping dead. |
+| `Combat.GROUND_BOUNCE_MIN_SPEED` / `_FACTOR` / `_KEEP` | A launched fighter that lands faster than `MIN_SPEED` rebounds once, keeping `FACTOR` of its fall and `KEEP` of its run. `FACTOR = 0` turns it off. |
 | `Combat.KNOCKBACK_MAX_DURATION` | Anti-lock safety for pits. |
+| `Physics.REACTION_SLIDE_FRICTION` / `_SLIDE_DRAG` | How a hit fighter slides to a stop on the ground: a constant grip (px/s²) plus a drag (1/s). Shared by hurt, stagger and knockback, so a hit's `power` alone decides how far it sends its target. |
+| `Physics.REACTION_AIR_DRAG` | Light horizontal drag while a hit fighter is airborne; `0` keeps the launch speed constant. |
 | `Combat.KNOCKBACK_DI_ACCEL` / `_DI_CAP` | Directional influence: an airborne entity can steer its trajectory. |
 | `Combat.JUGGLE_DECAY_STEP` / `JUGGLE_DAMAGE_FLOOR` | Diminishing returns on consecutive juggle hits. |
 | `Combat.HITSTOP_KNOCKBACK_FACTOR` | Hit-stop scaled to impact magnitude. |
+| `Combat.KILL_HITSTOP` / `EXECUTION_HITSTOP` | The least a killing blow, and an execution (a stab, a throw, a death blow), freeze the world. A hit's own `hit_stop` in `attacks.json` replaces the formula: the slash links freeze for two ticks, the finisher for seven. |
+| `Combat.OTG_INVULN_DURATION` / `ENEMY_OTG_INVULN_DURATION` | How long a fighter landing from a launch is safe from ground hits: the player is, an enemy is not, so the blow after a launch lands. |
 | `Combat.HEAVY_KNOCKBACK_THRESHOLD` | `400` — above it, `CameraShake` is given trauma of `impact / HEAVY_DIV`. |
+| `CameraShake.HIT_TRAUMA` / `HIT_DIV` / `KILL_TRAUMA` / `EXECUTION_TRAUMA` | Every landed hit shakes a little, a kill a little more, an execution the most; the strongest of the tick wins. |
 | `CameraShake` | `MAX_PX`, `DECAY_PER_S`, `FREQUENCY` — the shake envelope itself. |
+
+Three things decide how far a hit sends its target, and nothing else does:
+
+- the hit's `knockback.power` in `attacks.json` — the speed it gives, in px/s;
+- the target's `weight` in `enemies.json` — every knockback it takes is divided
+  by it, *before* the launch threshold is read, so one blow launches a slime
+  (`0.8`), shoves a goblin (`1.0`) and barely moves a shell (`1.5`);
+- the shared friction above (`Physics.REACTION_*`), the same in hurt, stagger
+  and knockback.
+
+A hit marked `flinch` in `attacks.json` does not push a grounded target
+sideways: the chains' links stun without sending the target out of reach.
+An airborne target is pushed as usual, so a juggle still carries.
+
+An enemy the last hit kills leaves the simulation on that tick, and a body in
+the FX plane (`CorpseParticle`, tuned by `fx.tuning.Corpse`) carries the hit on:
+thrown the way the blow pushed, tumbling, fading. Render-only — it collides with
+nothing and no snapshot or golden sees it.
+
+**Enemies choose and take turns.** An enemy type lists its `moves` in
+`enemies.json` -- an attack, the range it is thrown from and a weight. The chase
+picks one on entry (from the enemy's own random stream, so a rollback replays the
+choice) and closes in until it is in range. No more than `AI.MAX_ATTACKERS`
+enemies attack the player at once: the others wait at striking distance, which
+is counted from the roster's states each time and stored nowhere. The goblin and
+the tooth add a long claw that sweeps the floor, the slime a splash: both can be
+jumped. The goblin's swipe meets a slash blade to blade (`clash` on both hits).
+
+**A slowed world is the same world on a slower clock.** During a dark step, a
+prompt or stasis, the physics stage hands every entity but the player a share
+of the tick's delta (`Player.world_time_scale`, `PhysicsSystem.process`), as do
+the platforms, the hazards and the projectiles; attacks count frames off that
+delta, so an enemy's swing takes that much longer. Fury, the dark side and
+blitz do the reverse: the player's attack clock runs fast, and the surplus
+frames are spent on the startup and the recovery only -- an active frame is
+never skipped, so a fast swing hits what a slow one would.
 
 > **Directional influence is not player-gated.** `_apply_directional_influence` in
 > `src/states/reaction_states.py` fires for any entity whose `move_axis` is
@@ -528,7 +699,7 @@ are reviewable in a pull request. The frozen dataclasses stay the runtime model.
 | File | Contents |
 |---|---|
 | `attacks.json` | Named attack sets (`player`, `goblin`, `slime`, …) with full frame data. |
-| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them. |
+| `enemies.json` | Enemy configs, referencing attack sets by name or inlining them; `moves` lists the attacks the AI chooses between, `stun_max` and `stun_duration` are the stun gauge, `guards` whether the type holds a guard. |
 | `player.json` | Player overrides plus the name of the attack set to use. |
 | `levels.json` | Level id to TMX path mapping. |
 
@@ -554,15 +725,15 @@ data problem.
 
 ```
 src/
-├── application/   Scene stack, event bus, save game, settings store
+├── application/   Composition root (game.py), scene stack, save game, settings store
 │   └── scenes/    menu · level select · options · video · controls category ·
 │                  controls · gameplay · pause · game over · victory
 ├── combat/        Frame data, hit resolver, knockback, charge and combo
 │                  tracking (CombatSystem lives in core/level/systems/)
-├── core/          Bootstrap (game.py), settings, paths, colors, object pool,
+├── core/          Event bus, settings, paths, colors, object pool,
 │                  hazards, sprites, sprite groups, asset library, audio
 │   ├── animation/ Animator
-│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, detection
+│   ├── display/   Framing, letterbox, Viewport, Stage, Presentation, monitors, detection, sdl_probe
 │   ├── fx/        Draw, particles, spawners
 │   ├── input/     Bindings, providers, managers, input state
 │   ├── level/     Level facade + ordered fixed-tick systems
@@ -581,16 +752,16 @@ src/
 
 data/gameplay/     Tracked JSON gameplay values
 assets/            TMX levels and sprites — required at runtime
-notes/             Refactoring plans, audit reports, measurements, open gaps
+docs/              Audit reports, measurements, open points, design proposals
 ```
 
 ### Reading the code, module by module
 
 | Module | Owns |
 |---|---|
-| `src/core/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
-| `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. Each system stays independently testable. |
-| `src/application/events.py` | A synchronous, strictly ordered event bus with two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`, `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no reference to the application) and interface feedback (`UiFeedback`, emitted by the input dispatcher from what a screen reports). Subscribers must never mutate the simulation. |
+| `src/application/game.py` | The display, the input and the scene stack. The loop feeds fixed ticks to the active scene, draws into the render target and presents it once. |
+| `src/core/level/systems/gameplay_loop.py` | The *order* in which the level systems run. `GameplayLoop` requires every stage, so a loop that exists can run a tick; `CombatLoop` is the combat core alone, for tests. |
+| `src/core/events.py` | A synchronous, strictly ordered event bus with two families of facts: simulation milestones (`LevelStarted`, `PlayerDied`, `LevelCompleted`, emitted from the fixed tick by a `Level` that holds no reference to the application) and interface feedback (`UiFeedback`, emitted by the input dispatcher from what a screen reports). Subscribers must never mutate the simulation. |
 | `src/core/audio.py` | The only module that touches `pygame.mixer`, and it is a **consumer**: it never asks who did something and imports neither the input router, the menu model, the scenes nor the views. `cue_for(effect)` is the whole policy — one effect, one cue — and `attach(bus)` subscribes to the facts it answers. It loads each sound once, caches it, applies the cue's category volume and never raises: no sound card, no asset and an undecodable file all end with a warning and a silent cue, which is also the CI path. |
 | `src/core/rendering/overlay.py` | The `WorldOverlay` port. `UIManager` implements it and `Game.world_overlay` builds it once. |
 
@@ -644,6 +815,15 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
   at all. `GridView` measures the real fonts rather than trusting the design
   constants, since a fallback face has different metrics again.
 - **No dead menu options.** User-facing hotkeys are mirrored by tests.
+- **Comments say why, commits say how it got here.** A docstring states what the
+  code does and why the rule exists; a body comment explains an invariant or a
+  choice that is not obvious. The history -- what it used to do, a measurement
+  from one session, an audit identifier -- goes in the commit message or in
+  `docs/`, where it cannot go stale next to code that has moved on.
+- **Stand-ins have the real shape.** A test double for a fighter starts from
+  `tests/fakes.py` (`BodyStub`, `FighterSprite`, `player_shape`, `game_shape`),
+  which is pinned to the protocols it imitates. Production code does not read a
+  declared field through `getattr(x, name, default)` to tolerate a partial fake.
 
 ---
 
@@ -653,9 +833,9 @@ runs at most `Simulation.MAX_TICKS_PER_FRAME` ticks and the surplus is dropped.
 uv run pytest
 ```
 
-> **Current baseline:** 2491 tests · 94 % instruction coverage · 82 % branch
-> coverage · Ruff clean · mypy clean (175 files across `src main.py tools`;
-> `mypy src` alone is 172).[^coverage]
+> **Current baseline:** 3739 tests · 94 % instruction coverage · 84 % branch
+> coverage · Ruff clean · mypy clean (184 files across `src main.py tools`;
+> `mypy src` alone is 181).[^coverage]
 
 Tests run headless through the `SDL_*_DRIVER=dummy` variables, so they need no
 display. Coverage, from:
@@ -679,7 +859,7 @@ uv run mypy src main.py tools                         # types
 ```
 
 `C901` has no standalone CI step — it is enforced because it sits in the ruff
-`select` list consumed by the lint step. Ruff covers all four paths, 328 files.
+`select` list consumed by the lint step. Ruff covers all four paths, 369 files.
 
 `tests/` is **deliberately not type-checked**, which is why the mypy command omits
 it.[^mypy-tests] The suite pins behaviour, not annotations, and test doubles are
@@ -726,16 +906,7 @@ Written in French unless stated otherwise.
 
 | File | Contents |
 |---|---|
-| `notes/audit_consolide.md` | Consolidated code audit. |
-| `notes/audit_ui.md`, `notes/audit_controles.md` | UI and input audits, with the delivery matrix and acceptance checklist. |
-| `notes/ecarts_ouverts.md` | Open gaps and the measured reference baseline. |
-| `notes/hitbox_amelioration.md` | Hitbox and advanced-combat work, with `notes/plan_hitbox_amelioration_partiels.md` for the partial-compliance follow-up. |
-| `notes/plan_limit_frames_video.md` | Planned frame-limit setting for the video menu, with the measurements that bound it. |
-| `notes/audit_p1_measured.md` | Measured rendering baselines behind the tile-chunk index numbers. |
-| `notes/audit_dimensions_fenetre.md` | Window and sizing audit, with the `smoothscale` measurements. |
-| `notes/perf_debug_overlay.md` | The overlay pass cost, with and without the static layer. |
-| `notes/perf_shatter_arc.md` | Particle construction cost and the 1:1 present measurement. |
-| `notes/refacto.md` | Refactoring plans and open threads. |
+| `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
 
 ---
 

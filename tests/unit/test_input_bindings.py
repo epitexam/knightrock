@@ -54,4 +54,4 @@ def test_default_combos_are_typed_and_nonempty() -> None:
         pygame.K_g,
         pygame.K_h,
     )
-    assert bindings.gameplay.gamepad_combos[InputAction.SPECIAL_ATTACK] == (1, 3)
+    assert bindings.gameplay.gamepad_combos[InputAction.SPECIAL_ATTACK] == (2, 3)  # X + Y

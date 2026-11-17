@@ -1,6 +1,13 @@
 from collections.abc import Callable
 from typing import Any
 
+from src.states.state_names import StateName
+
+
+def _checked(name: str) -> str:
+    """Reject a name that is not in the canonical vocabulary."""
+    return StateName(name).value
+
 
 class NullStateMachine:
     """A dummy state machine used for entities that don't need state logic."""
@@ -13,7 +20,7 @@ class NullStateMachine:
 
     def change_state(self, name: str, force: bool = False, **kwargs: Any) -> None:
         """Change the current state."""
-        pass
+        _checked(name)
 
     def add_state(self, name: str, state: Any) -> None:
         """Register a state (no-op: keeps the StateMachine interface)."""
@@ -32,7 +39,7 @@ class NullStateMachine:
 
     def set_initial_state(self, name: str) -> None:
         """Set the initial state (no-op for the null state machine)."""
-        self.current_state_name = name
+        self.current_state_name = _checked(name)
 
     def add_interrupt(self, target: str, condition: Callable[[], bool], priority: int = 0) -> None:
         """Register an interrupt (no-op for the null state machine)."""

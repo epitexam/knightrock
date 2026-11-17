@@ -64,6 +64,11 @@ class AttackStateMachine:
     ``1 / FRAME_RATE`` seconds to guarantee frame-accurate timing
     regardless of the game's variable delta time.
 
+    ``speed`` is how fast the attack's clock runs against the tick's: 1.0 is
+    the frame data as written, and above it the startup and the recovery go by
+    faster. It is set by the owner before each update and never stored, so a
+    snapshot does not carry it.
+
     Parameters
     ----------
     attacks : dict[MoveId, AttackDefinition]
@@ -82,6 +87,11 @@ class AttackStateMachine:
         self._accumulator: float = 0.0
         self._locked_facing: bool | None = None
         self._charge_multiplier: float = 1.0
+        self.speed: float = 1.0
+        #: Shots thrown this tick by a phase turning active, with the charge
+        #: they carry; the level takes them before the tick ends
+        #: (:meth:`take_launches`), so a snapshot never holds one.
+        self.launches: list[tuple[str, float]] = []
 
     @property
     def is_idle(self) -> bool:
@@ -171,12 +181,16 @@ class AttackStateMachine:
             ``True`` if the machine is in RECOVERY and the current phase's
             ``cancel_into`` tuple contains ``attack_name``.
         """
-        if self.sub_state != PhaseState.RECOVERY:
-            return False
         phase = self.current_phase_def
-        if phase is None:
+        if phase is None or attack_name not in phase.cancel_into:
             return False
-        return attack_name in phase.cancel_into
+        if self.sub_state == PhaseState.RECOVERY:
+            return True
+        # A chain link opens on contact: once this phase has hit someone, the
+        # next link need not wait for the recovery.
+        return (
+            self.sub_state == PhaseState.ACTIVE and phase.cancel_on_hit and bool(self.targets_hit)
+        )
 
     def start(self, attack_name: MoveId, charge_multiplier: float = 1.0) -> bool:
         """Begin a new attack sequence deterministically.
@@ -271,10 +285,27 @@ class AttackStateMachine:
         """
         if self.is_idle:
             return
-        self._accumulator += delta_time
-        # Resolve at most one attack frame per simulation tick so an active
-        # window always receives a collision pass, even after a delayed caller.
-        if self._accumulator >= self._FRAME_DURATION:
+        self._accumulator += delta_time * self.speed
+        # Resolve at most one attack frame per simulation tick, so an active
+        # window always receives a collision pass even after a delayed caller.
+        # The surplus is *kept*, not dropped: the frame count is what the attack
+        # owes the player, and throwing the remainder away would play the same
+        # attack shorter and lose its tail. The cost is elapsed time -- a hitch
+        # stretches the attack -- which is the half of the choice that
+        # ``test_attack_accumulator.py`` pins down.
+        if self._accumulator < self._FRAME_DURATION:
+            return
+        self._accumulator -= self._FRAME_DURATION
+        self._advance_one_frame()
+        # A clock running fast owes a second frame now and then. It is paid
+        # only outside the active window, which keeps its one collision pass
+        # per frame: the speed shortens the startup and the recovery, never
+        # the time a hitbox is out.
+        if (
+            self.speed > 1.0
+            and self.sub_state in (PhaseState.STARTUP, PhaseState.RECOVERY)
+            and self._accumulator >= self._FRAME_DURATION
+        ):
             self._accumulator -= self._FRAME_DURATION
             self._advance_one_frame()
 
@@ -303,6 +334,14 @@ class AttackStateMachine:
         """
         self.sub_state = new_state
         self.frame_counter = 0
+        phase = self.current_phase_def
+        if new_state is PhaseState.ACTIVE and phase is not None and phase.launches:
+            self.launches.append((phase.launches, self._charge_multiplier))
+
+    def take_launches(self) -> list[tuple[str, float]]:
+        """The shots thrown since the last call, forgotten once taken."""
+        launches, self.launches = self.launches, []
+        return launches
 
     def _advance_phase(self) -> None:
         """Move to the next phase of the current attack, or end if none remains."""

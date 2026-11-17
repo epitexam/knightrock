@@ -19,10 +19,12 @@ import pygame
 import pytest
 
 from src.core.input.input_actions import InputAction
+from src.core.input.input_provider import InputProvider
 from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.entities.enemies.factory import create_enemy
 from src.entities.entity import Entity
+from src.entities.projectile import FIREBOLT_CONFIG
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -37,6 +39,7 @@ def _headless_display() -> None:
 def scripted_level(build_level):
     """Level with rollback enabled; no enemy yet (caller decides)."""
     level = build_level()
+    _pad(level)
     level.rollback_enabled = True
     # Enlarge the buffer so a 30-tick run stays fully rewindable.
     level.rollback = type(level.rollback)(capacity=64)
@@ -57,13 +60,37 @@ def _extract_entity_state(entity: Entity) -> dict[str, object]:
     }
 
 
+class _RemotePad(InputProvider):
+    """The input of each tick, handed in from outside -- as netcode would.
+
+    The level reads its provider on every simulated tick, so a state planted
+    with ``apply_remote_state`` before ``level.update`` would be read over at
+    once. A provider is the seam a network session plugs into.
+    """
+
+    def __init__(self) -> None:
+        self.next = InputState()
+
+    def poll(self) -> InputState:
+        return self.next
+
+
+def _pad(level: Level) -> _RemotePad:
+    pad = _RemotePad()
+    level.input_manager._provider = pad
+    return pad
+
+
 def _script_tick(level: Level, inputs: InputState) -> None:
-    level.input_manager.apply_remote_state(inputs)
+    provider = level.input_manager._provider
+    assert isinstance(provider, _RemotePad), "build the level with _pad(level) first"
+    provider.next = inputs
     level.update(1 / 60)
 
 
 def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     level = build_level()
+    _pad(level)
     level.rollback_enabled = True
     level.rollback = type(level.rollback)(capacity=64)
 
@@ -97,10 +124,13 @@ def test_rollback_replays_identical_state_from_same_inputs(build_level) -> None:
     end_state_second_pass = _extract_entity_state(level.player)
 
     assert end_state_second_pass == end_state_first_pass
+    # The script did something: a replay of a player who never moved proves nothing.
+    assert end_state_first_pass["hitbox"] != player_before["player"]["hitbox"]
 
 
 def test_rollback_restores_input_edges_for_replayed_actions(build_level) -> None:
     level = build_level()
+    _pad(level)
     level.rollback_enabled = True
     level.rollback = type(level.rollback)(capacity=8)
     held_jump = InputState(held_actions=frozenset({InputAction.JUMP}))
@@ -109,13 +139,15 @@ def test_rollback_restores_input_edges_for_replayed_actions(build_level) -> None
     _script_tick(level, held_jump)
     assert level.rollback.rollback_to(level, 0) is True
 
-    level.input_manager.apply_remote_state(held_jump)
+    level.input_manager._provider.next = held_jump  # type: ignore[attr-defined]
+    level.input_manager.update()
 
     assert level.input_manager.just_pressed(InputAction.JUMP) is True
 
 
 def test_rollback_resurrects_killed_enemy(build_level) -> None:
     level = build_level()
+    _pad(level)
     level.rollback_enabled = True
     level.rollback = type(level.rollback)(capacity=64)
 
@@ -150,6 +182,7 @@ def test_rollback_resurrects_killed_enemy(build_level) -> None:
 
 def test_rollback_reaps_entity_spawned_after_snapshot(build_level) -> None:
     level = build_level()
+    _pad(level)
     level.rollback_enabled = True
     level.rollback = type(level.rollback)(capacity=64)
 
@@ -174,3 +207,56 @@ def test_rollback_reaps_entity_spawned_after_snapshot(build_level) -> None:
     assert level.rollback.rollback_to(level, 0) is True
     assert enemy not in level.groups.entity_sprites
     assert enemy.is_dead is False  # not killed, just removed from groups
+
+
+def test_rollback_reaps_a_projectile_spawned_after_the_snapshot(build_level) -> None:
+    """A shot from the discarded future must not survive a rewind."""
+    level = build_level()
+    _pad(level)
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=64)
+
+    # Tick 0: the captured state has no projectile in flight.
+    level.update(1 / 60)
+    assert not list(level.groups.projectile_sprites)
+
+    # Tick 1: a shot is launched and flies for one tick.
+    shot = level.projectile_system.spawn(
+        FIREBOLT_CONFIG,
+        pos=(200.0, 100.0),
+        velocity=(300.0, 0.0),
+        faction="player",
+    )
+    level.update(1 / 60)
+    assert shot in level.groups.projectile_sprites
+
+    # Rewind to tick 0: that shot did not exist yet.
+    assert level.rollback.rollback_to(level, 0) is True
+    assert shot not in level.groups.projectile_sprites
+    assert shot not in level.groups.all_sprites
+
+
+def test_rollback_restores_an_in_flight_projectile(build_level) -> None:
+    """A shot that existed at the captured tick comes back where it was."""
+    level = build_level()
+    _pad(level)
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=64)
+
+    shot = level.projectile_system.spawn(
+        FIREBOLT_CONFIG,
+        pos=(200.0, 100.0),
+        velocity=(300.0, 0.0),
+        faction="player",
+    )
+    level.update(1 / 60)
+    captured_pos = (shot.hitbox.x, shot.hitbox.y)
+    captured_life = shot.life
+
+    level.update(1 / 60)
+    assert (shot.hitbox.x, shot.hitbox.y) != captured_pos
+
+    assert level.rollback.rollback_to(level, 0) is True
+    assert shot in level.groups.projectile_sprites
+    assert (shot.hitbox.x, shot.hitbox.y) == captured_pos
+    assert shot.life == pytest.approx(captured_life)

@@ -11,6 +11,7 @@ from src.combat.shapes import ShapeKind, ShapePose
 from src.core.colors import Color, Colors
 from src.core.display.framing import Framing
 from src.core.rendering.camera import Camera
+from src.core.rendering.render_hints import RenderHints
 from src.entities.components.reaction import ReactionKind, ReactionStatus
 from src.ui.styles import TEXT_CRIT, TEXT_MUTED, TEXT_OK, TEXT_WARN
 from src.ui.ui_manager import UIManager
@@ -32,6 +33,7 @@ from src.ui.world_overlay_metrics import (
 from src.ui.world_overlay_shared import display_name, hitbox_color
 from src.ui.world_overlay_velocity import arrow_outline
 from src.ui.world_ui import WorldUI
+from tests.fakes import game_shape
 from tests.unit.helpers import card_rows, make_overlay
 
 
@@ -76,6 +78,7 @@ def _entity(**overrides) -> SimpleNamespace:
         "gravity_scale": 1.0,
         "on_surface": {"floor": True, "left": False, "right": False},
         "state_machine": SimpleNamespace(current_state_name="idle"),
+        "render_hints": RenderHints(),
         "combat": SimpleNamespace(
             state=SimpleNamespace(attack_name=None, sub_state=None, phase_index=0, frame_counter=0),
             targets_hit=set(),
@@ -333,7 +336,7 @@ def test_knockback_vector_is_red(world_ui: WorldUI, camera: Camera) -> None:
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
 
@@ -350,24 +353,12 @@ def test_state_name_alone_no_longer_colors_the_vector_red(
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
 
-def test_guarded_push_status_colors_the_vector_red(world_ui: WorldUI, camera: Camera) -> None:
-    surface = world_ui.surface
-    surface.fill((0, 0, 0))
-    entity = _entity(velocity=Vector2(600, 0))
-    entity.reaction_status = ReactionStatus(
-        kind=ReactionKind.GUARDED, magnitude=90.0, direction=1.0
-    )
-    entity.reaction_age = 0.4
-    world_ui.draw_debug_overlays([entity], camera)
-    assert surface.get_at((200, 124))[:3] == Colors.red
-
-
 def test_parried_status_colors_the_vector_gold(world_ui: WorldUI, camera: Camera) -> None:
     surface = world_ui.surface
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PARRIED, magnitude=0.0, direction=1.0)
-    entity.reaction_age = 0.4
+    entity.render_hints.reaction_age = 0.4
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.gold
 
@@ -380,7 +371,7 @@ def test_expired_reaction_status_keeps_the_locomotion_color(
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
@@ -400,7 +391,7 @@ def test_knockback_state_keeps_the_vector_red_after_the_freshness_window(
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.0  # freshness expired, still being launched
+    entity.render_hints.reaction_age = 0.0  # freshness expired, still being launched
     entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.red
@@ -416,7 +407,7 @@ def test_resolved_knockback_falls_back_to_the_locomotion_color(
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     entity.state_machine = SimpleNamespace(current_state_name="chase")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
@@ -428,7 +419,7 @@ def test_stale_stagger_never_turns_the_vector_red(world_ui: WorldUI, camera: Cam
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     entity.state_machine = SimpleNamespace(current_state_name="knockback")
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
@@ -440,7 +431,7 @@ def test_stagger_status_keeps_the_locomotion_color(world_ui: WorldUI, camera: Ca
     surface.fill((0, 0, 0))
     entity = _entity(velocity=Vector2(600, 0))
     entity.reaction_status = ReactionStatus(kind=ReactionKind.STAGGER, magnitude=0.0, direction=0.0)
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     world_ui.draw_debug_overlays([entity], camera)
     assert surface.get_at((200, 124))[:3] == Colors.debug_velocity
 
@@ -450,7 +441,7 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
     entity.reaction_status = ReactionStatus(
         kind=ReactionKind.LAUNCH, magnitude=500.0, direction=1.0
     )
-    entity.reaction_age = 0.2
+    entity.render_hints.reaction_age = 0.2
     segments = world_ui._cards.label_segments(entity)
     lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
@@ -461,7 +452,7 @@ def test_fresh_reaction_status_shows_the_hit_flag(world_ui: WorldUI) -> None:
 def test_stale_reaction_status_shows_the_expired_marker(world_ui: WorldUI) -> None:
     entity = _entity()
     entity.reaction_status = ReactionStatus(kind=ReactionKind.PUSH, magnitude=300.0, direction=1.0)
-    entity.reaction_age = 0.0
+    entity.render_hints.reaction_age = 0.0
     segments = world_ui._cards.label_segments(entity)
     lines = card_rows(world_ui._cards, entity)
     assert segments is not None and lines is not None
@@ -560,11 +551,13 @@ def test_labels_beyond_all_slots_are_dropped(
     """More labels than dodge room: extras vanish instead of overdrawing."""
     placed = _place_crowd(monkeypatch, world_ui, _crowd(12), camera)
 
-    # Compact world fonts: cards are ~53 px tall with padding at the
-    # default anchor, so more dodge slots fit than with the old panel-sized
-    # fonts — exactly 5 cards, all apart, the rest dropped.
-    assert len(placed) == 5
-    assert all(not placed[i].colliderect(placed[j]) for i in range(5) for j in range(i + 1, 5))
+    # The pixel font's 8 px cards: more dodge slots fit than the 12 crowding
+    # entities need -- exactly 6 cards, all apart, the rest dropped.
+    count = len(placed)
+    assert count == 6
+    assert all(
+        not placed[i].colliderect(placed[j]) for i in range(count) for j in range(i + 1, count)
+    )
 
 
 def test_label_card_renders_header_divider_and_accent_edge(
@@ -606,15 +599,14 @@ def test_label_card_renders_header_divider_and_accent_edge(
     assert surface.get_at((bar.x + 1, bar.y + 2))[:3] != (0, 0, 0)
 
     # Inside the HP row (below the divider rule): the dark fill shows through
-    # in the padding, away from the glyphs.
-    assert surface.get_at((content_left + LABEL_PAD_X + 4, body_y + 2))[:3] == (14, 16, 19)
-    # Top accent edge (faction red for enemies): 2 px just inside the top
-    # border, spanning the card width.
+    # in the padding, away from the glyphs. The padding is read rather than the
+    # body, because which pixels a glyph covers is a function of the font.
     bg_left = content_left - LABEL_PAD_X
     bg_top = content_top - LABEL_PAD_Y
-    assert surface.get_at((bg_left + 3, bg_top + 2))[:3] == (Colors.light_red)
-    # No full-height side stripe anymore: the left padding shows card fill.
     assert surface.get_at((bg_left + 3, body_y + 2))[:3] == (14, 16, 19)
+    # Top accent edge (faction red for enemies): 2 px just inside the top
+    # border, spanning the card width.
+    assert surface.get_at((bg_left + 3, bg_top + 2))[:3] == (Colors.light_red)
 
 
 def test_health_bar_never_hides_inside_the_label_card(world_ui: WorldUI, camera: Camera) -> None:
@@ -700,9 +692,13 @@ def test_player_has_no_world_space_health_bar(world_ui: WorldUI, camera: Camera)
 
 
 def test_world_cards_use_compact_fonts(world_ui: WorldUI) -> None:
-    """Regression pin: entity cards stay smaller than the side debug panels."""
+    """Regression pin: entity cards are never larger than the side debug panels.
+
+    Equal at the design size: 8 px is the pixel font's smallest size, and both
+    are there. From a density of 1.25 the panels go to 16 px with the cards.
+    """
     assert (
-        world_ui.renderer.world_title_font.get_height() < world_ui.renderer.title_font.get_height()
+        world_ui.renderer.world_title_font.get_height() <= world_ui.renderer.title_font.get_height()
     )
     assert (
         world_ui.renderer.world_label_font.get_height() <= world_ui.renderer.label_font.get_height()
@@ -782,7 +778,7 @@ def test_gameplay_scene_function_keys_toggle_overlay_layers(
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
     level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
-    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
+    scene = GameplayScene(game_shape(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is False
@@ -804,7 +800,7 @@ def test_gameplay_scene_overlay_keys_are_ignored_without_debug(
     ui_manager = UIManager(pygame.display.get_surface())
     world_ui = ui_manager.world_ui
     level = SimpleNamespace(renderer=SimpleNamespace(overlay=ui_manager))
-    scene = GameplayScene(SimpleNamespace(ui=ui_manager), level_id=0, level=level)
+    scene = GameplayScene(game_shape(ui=ui_manager), level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F2))
     assert world_ui.layers["labels"] is True
@@ -814,7 +810,7 @@ def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
     """F6 flips the freeze switch in debug mode, ignored otherwise."""
     from src.application.scenes.gameplay_scene import GameplayScene
 
-    scene = GameplayScene(SimpleNamespace(), level_id=0, level=SimpleNamespace())
+    scene = GameplayScene(game_shape(), level_id=0, level=SimpleNamespace())
 
     monkeypatch.setenv("DEBUG", "1")
     assert scene.frozen is False
@@ -829,14 +825,17 @@ def test_freeze_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Frozen: input still polls, level.update never runs until unfreeze."""
+    """Frozen: level.update never runs until unfreeze.
+
+    The scene does not read the input itself: the level does, on the ticks it
+    simulates, so a frozen level reads nothing and a press made meanwhile stays
+    latched until the world moves again.
+    """
     from src.application.scenes.gameplay_scene import GameplayScene
 
     monkeypatch.setenv("DEBUG", "1")
-    calls = {"input": 0, "level": 0}
-    game = SimpleNamespace(
-        input_manager=SimpleNamespace(update=lambda: calls.__setitem__("input", calls["input"] + 1))
-    )
+    calls = {"level": 0}
+    game = game_shape()  # no input_manager: the scene must not need one
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
         exit_reached=False,
@@ -845,15 +844,15 @@ def test_frozen_scene_holds_the_simulation(monkeypatch: pytest.MonkeyPatch) -> N
     scene = GameplayScene(game, level_id=0, level=level)
 
     scene.update(1 / 60)
-    assert calls == {"input": 1, "level": 1}
+    assert calls == {"level": 1}
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
     scene.update(1 / 60)
-    assert calls == {"input": 2, "level": 1}
+    assert calls == {"level": 1}
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
     scene.update(1 / 60)
-    assert calls == {"input": 3, "level": 2}
+    assert calls == {"level": 2}
 
 
 def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -862,7 +861,7 @@ def test_step_key_advances_one_tick_while_frozen(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setenv("DEBUG", "1")
     calls = {"level": 0}
-    game = SimpleNamespace(input_manager=SimpleNamespace(update=lambda: None))
+    game = game_shape()
     level = SimpleNamespace(
         update=lambda dt: calls.__setitem__("level", calls["level"] + 1),
         exit_reached=False,
@@ -896,7 +895,7 @@ def test_replay_key_toggles_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> No
 
     spawn = SpawnSystem(SpriteGroups())
     scene = GameplayScene(
-        SimpleNamespace(),
+        game_shape(),
         level_id=0,
         level=SimpleNamespace(spawn_system=spawn),
     )
@@ -922,10 +921,10 @@ def test_frozen_scene_paints_a_marker(monkeypatch: pytest.MonkeyPatch, camera: C
     surface = pygame.display.get_surface()
     assert surface is not None
     renderer = Renderer(surface, camera, overlay=make_overlay(surface))
-    game = SimpleNamespace(
+    game = game_shape(
         input_manager=SimpleNamespace(update=lambda: None), clock=None, ui=renderer.overlay
     )
-    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None)
+    level = SimpleNamespace(renderer=renderer, draw=lambda *args, **kwargs: None, player=None)
     scene = GameplayScene(game, level_id=0, level=level)
 
     scene.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_F6))
