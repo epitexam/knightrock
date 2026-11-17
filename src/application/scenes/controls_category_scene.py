@@ -10,13 +10,13 @@ from src.ui.menu_model import MenuItem
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class ControlsCategoryScene(MenuPage):
     TITLE = t("title.controls")
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         super().__init__(
             game,
             (

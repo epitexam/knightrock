@@ -18,7 +18,7 @@ from src.ui.menu_model import MenuItem
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ class OptionScreen(MenuPage):
 
     def __init__(
         self,
-        game: Game,
+        game: SceneContext,
         title: str,
         options: Sequence[Option],
         apply: Callable[[Any], None],

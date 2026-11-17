@@ -11,7 +11,7 @@ from src.ui.menu_model import MenuItem
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class LevelSelectScene(MenuPage):
@@ -21,7 +21,7 @@ class LevelSelectScene(MenuPage):
     covers_panels_below = False
     scrollable = True
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         unlocked = set(game.save_game.unlocked_levels)
         levels = tuple(
             MenuItem(

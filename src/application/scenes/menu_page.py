@@ -33,7 +33,7 @@ from src.ui.styles import TEXT_TITLE
 from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 #: What the model reports when only the focus moved.
 _NAVIGATION = frozenset({MenuAction.MOVE_UP, MenuAction.MOVE_DOWN, MenuAction.HOVER})
@@ -57,7 +57,9 @@ class MenuPage(Scene):
     scrollable = False
     covers_panels_below = True
 
-    def __init__(self, game: Game, items: Sequence[MenuItem] = (), selected: int = 0) -> None:
+    def __init__(
+        self, game: SceneContext, items: Sequence[MenuItem] = (), selected: int = 0
+    ) -> None:
         super().__init__(game)
         self.title = self.TITLE
         self.footer = self.FOOTER

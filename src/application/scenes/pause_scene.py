@@ -12,7 +12,7 @@ from src.ui.styles import TEXT_WARN
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class PauseScene(MenuPage):
@@ -23,7 +23,7 @@ class PauseScene(MenuPage):
     #: the stack's veil, because the page covers the panels below it.
     halts_simulation = True
 
-    def __init__(self, game: Game, level_id: int = 0) -> None:
+    def __init__(self, game: SceneContext, level_id: int = 0) -> None:
         super().__init__(
             game,
             (

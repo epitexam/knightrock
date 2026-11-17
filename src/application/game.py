@@ -110,6 +110,10 @@ class Game:
         self._notice: tuple[str, ...] = ()
         self._notice_ttl = 0.0
 
+    def quit(self) -> None:
+        """Ask the loop to stop; scenes do not write ``running`` themselves."""
+        self.running = False
+
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
         self.events.subscribe(LevelStarted, self._on_level_started)
@@ -210,9 +214,14 @@ class Game:
             return None
         return pygame.Rect(self.presentation.picture.source)
 
-    def _draw_target(self) -> pygame.Surface:
+    @property
+    def render_target(self) -> pygame.Surface:
         """The surface every scene draws into."""
         return self.screen.target
+
+    def _draw_target(self) -> pygame.Surface:
+        """Deprecated alias for :attr:`render_target`."""
+        return self.render_target
 
     def world_overlay(self, target: pygame.Surface) -> UIManager:
         """The interface drawn over the world, built once and kept.

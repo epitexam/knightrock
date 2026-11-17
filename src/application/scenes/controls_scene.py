@@ -30,7 +30,7 @@ from src.ui.menu_view import MenuView
 from src.ui.text import DEVICE_KEYS, t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 T = TypeVar("T")
 
@@ -83,7 +83,7 @@ class ControlsScene(Scene):
         ),
     }
 
-    def __init__(self, game: Game, section: str) -> None:
+    def __init__(self, game: SceneContext, section: str) -> None:
         super().__init__(game)
         if section not in self.SECTIONS:
             raise ValueError(f"unknown controls section: {section}")

@@ -32,7 +32,7 @@ from src.ui.text import t
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 #: What a submenu builder returns: a title, the options, the value in force,
 #: and what to call with the one picked.
@@ -100,7 +100,7 @@ class VideoScene(MenuPage):
     #: The help line of the lists this screen opens.
     SUBMENU_FOOTER = "footer.page"
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         super().__init__(game)
         self._signature = self._current_signature()
         self._flash_row = -1

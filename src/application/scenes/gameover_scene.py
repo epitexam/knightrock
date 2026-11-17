@@ -13,7 +13,7 @@ from src.ui.styles import TEXT_CRIT
 from src.ui.text import t
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class GameOverScene(MenuPage):
@@ -26,7 +26,7 @@ class GameOverScene(MenuPage):
     #: is not the same as simply not updating.
     halts_simulation = True
 
-    def __init__(self, game: Game, level_id: int = 0) -> None:
+    def __init__(self, game: SceneContext, level_id: int = 0) -> None:
         super().__init__(
             game, (MenuItem("retry", t("row.retry")), MenuItem("menu", t("row.to_menu")))
         )

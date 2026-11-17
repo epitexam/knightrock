@@ -20,7 +20,7 @@ from src.ui.ui_manager import UIManager
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 #: Debug overlay layers toggled by function keys (F1-F5).
@@ -75,7 +75,7 @@ class GameplayScene(Scene):
     opaque = True
     is_backdrop = True
 
-    def __init__(self, game: Game, level_id: int = 0, level: Level | None = None) -> None:
+    def __init__(self, game: SceneContext, level_id: int = 0, level: Level | None = None) -> None:
         """``level`` allows injecting a Level in tests (no TMX)."""
         super().__init__(game)
         self.level_id = level_id
@@ -93,7 +93,7 @@ class GameplayScene(Scene):
     def _load_level(self) -> None:
         # The level draws into the render target, never into the window: the
         # target has a fixed size whatever the player's video settings say.
-        target = self.game._draw_target()
+        target = self.game.render_target
         level_data = self.game.level_manager.get(self.level_id)
         self.level = Level(
             target,

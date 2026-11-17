@@ -9,7 +9,7 @@ from src.core.input.event_router import RoutedInput
 from src.ui.scale import ScaledView
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class Scene(ABC):
@@ -35,7 +35,7 @@ class Scene(ABC):
     #: What a covering page is drawn over: the world, not another menu.
     is_backdrop: bool = False
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         self.game = game
 
     def enter(self) -> None:  # noqa: B027 - optional lifecycle hook

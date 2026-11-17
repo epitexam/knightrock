@@ -15,7 +15,7 @@ from src.ui.text import t
 from src.ui.title_backdrop import TitleBackdrop
 
 if TYPE_CHECKING:
-    from src.application.game import Game
+    from src.application.scene_context import SceneContext
 
 
 class MenuScene(MenuPage):
@@ -25,7 +25,7 @@ class MenuScene(MenuPage):
     CONFIRM_TITLE = t("title.quit")
     CONFIRM_ITEMS = (MenuItem("no", t("row.quit_no")), MenuItem("yes", t("row.quit_yes")))
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self, game: SceneContext) -> None:
         save = game.save_game
         has_progress = save.last_level_id != 0 or len(save.unlocked_levels) > 1
         items: tuple[MenuItem, ...]
@@ -121,7 +121,7 @@ class MenuScene(MenuPage):
             routed_input.variant,
         )
         if action == "yes":
-            self.game.running = False
+            self.game.quit()
         elif action == "no":
             self._disarm_quit()
             return MenuAction.BACK
