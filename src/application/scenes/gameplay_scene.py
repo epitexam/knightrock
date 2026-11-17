@@ -117,21 +117,14 @@ class GameplayScene(Scene):
         if self.level.exit_reached:
             self._advance_level()
         elif self.level.deaths >= Gameplay.MAX_DEATHS:
-            # Local import: Menu/GameOver/Gameplay reference each other.
-            from src.application.scenes.gameover_scene import GameOverScene
-
-            self.game.scene_manager.push(GameOverScene(self.game, self.level_id))
+            self.game.scene_manager.navigator.push_game_over(self.level_id)
 
     def _advance_level(self) -> None:
-        from src.application.scenes.gameplay_scene import GameplayScene
-
         next_id = self.game.level_manager.next_id(self.level_id)
         if next_id is None:
-            from src.application.scenes.victory_scene import VictoryScene
-
-            self.game.scene_manager.switch(VictoryScene(self.game, self.level_id))
+            self.game.scene_manager.navigator.switch_to_victory(self.level_id)
         else:
-            self.game.scene_manager.switch(GameplayScene(self.game, next_id))
+            self.game.scene_manager.navigator.switch_to_gameplay(next_id)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self._route_to_panels(event):
@@ -155,9 +148,7 @@ class GameplayScene(Scene):
         self._pause()
 
     def _pause(self) -> None:
-        from src.application.scenes.pause_scene import PauseScene
-
-        self.game.scene_manager.push(PauseScene(self.game, self.level_id))
+        self.game.scene_manager.navigator.push_pause(self.level_id)
 
     def handle_routed(self, routed_input: RoutedInput) -> str | None:
         if self._pauses(routed_input):

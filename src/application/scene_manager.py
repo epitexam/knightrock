@@ -15,6 +15,7 @@ import pygame
 
 from src.application.input_dispatcher import InputDispatcher
 from src.application.scene import Scene
+from src.application.scene_navigator import SceneNavigator
 from src.core.colors import Colors
 from src.core.events import AppExitRequested
 
@@ -27,6 +28,7 @@ class SceneManager:
 
     def __init__(self, game: Game) -> None:
         self.game = game
+        self.navigator = SceneNavigator(game)
         self._stack: list[Scene] = []
         self._veil: pygame.Surface | None = None
         #: The target the last draw painted, and the frame a transition fades

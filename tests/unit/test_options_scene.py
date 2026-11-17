@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pygame
 
+from src.application.scene_navigator import SceneNavigator
 from src.application.scenes.controls_category_scene import ControlsCategoryScene
 from src.application.scenes.options_scene import OptionsScene
 from src.application.scenes.video_scene import VideoScene
@@ -21,9 +22,10 @@ from src.core.settings import Debug
 
 def _game(topology=None) -> SimpleNamespace:
     desk = degraded(((1152, 648),)) if topology is None else topology
+    manager = SimpleNamespace(push=lambda _: None, pop=lambda: None)
     game = SimpleNamespace(
         settings=UserSettings(),
-        scene_manager=SimpleNamespace(push=lambda _: None, pop=lambda: None),
+        scene_manager=manager,
         # The views are laid out at the preference times the density, and the
         # video screen reports the window it is in; a stand-in provides both.
         ui_scale=1.0,
@@ -55,6 +57,7 @@ def _game(topology=None) -> SimpleNamespace:
         game.settings = settings
 
     game.apply_settings = apply_settings
+    manager.navigator = SceneNavigator(game)
     return game
 
 

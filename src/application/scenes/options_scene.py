@@ -38,10 +38,6 @@ class OptionsScene(MenuPage):
 
     def act(self, action: str) -> None:
         if action == "video":
-            from src.application.scenes.video_scene import VideoScene
-
-            self.game.scene_manager.push(VideoScene(self.game))
+            self.game.scene_manager.navigator.push_video()
         elif action == "controls":
-            from src.application.scenes.controls_category_scene import ControlsCategoryScene
-
-            self.game.scene_manager.push(ControlsCategoryScene(self.game))
+            self.game.scene_manager.navigator.push_controls_category()

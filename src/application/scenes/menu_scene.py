@@ -97,13 +97,9 @@ class MenuScene(MenuPage):
         elif action == "new_game":
             self.game.scene_manager.switch(GameplayScene(self.game, 0))
         elif action == "levels":
-            from src.application.scenes.level_select_scene import LevelSelectScene
-
-            self.game.scene_manager.push(LevelSelectScene(self.game))
+            self.game.scene_manager.navigator.push_level_select()
         elif action == "options":
-            from src.application.scenes.options_scene import OptionsScene
-
-            self.game.scene_manager.push(OptionsScene(self.game))
+            self.game.scene_manager.navigator.push_options()
         return action
 
     def _handle_confirm(self, routed_input: RoutedInput) -> str | None:

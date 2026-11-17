@@ -53,6 +53,4 @@ class PauseScene(MenuPage):
         elif action == "menu":
             self.game.scene_manager.switch(MenuScene(self.game))
         elif action == "options":
-            from src.application.scenes.options_scene import OptionsScene
-
-            self.game.scene_manager.push(OptionsScene(self.game))
+            self.game.scene_manager.navigator.push_options()
