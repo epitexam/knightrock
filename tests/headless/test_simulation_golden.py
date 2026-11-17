@@ -20,7 +20,6 @@ import hashlib
 import random
 
 import pygame
-import pytest
 
 from src.combat.knockback import NULL_KNOCKBACK
 from src.core.input.input_manager import InputManager
@@ -28,7 +27,6 @@ from src.core.input.input_provider import InputProvider
 from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.core.level.level_data import LevelConfig, LevelData, ObjectData, ObjectLayerData
-from src.core.paths import PROJECT_ROOT
 from src.core.sprites import MovingPlatform
 from tests.fakes import HazardStub
 from tests.headless.conftest import make_viewport
@@ -36,16 +34,10 @@ from tests.headless.conftest import make_viewport
 SEED = 20260913
 TICKS = 300
 
-# Building a real Level loads the player/enemy animations from ``assets/``,
-# which is untracked (see .gitignore): a bare checkout cannot run these
-# scenarios.  The pre-existing headless tests have exactly the same
-# requirement, so this is a pre-existing CI limitation, not a new one.
-PLAYER_ASSET_DIR = PROJECT_ROOT / "assets" / "graphics" / "player"
-
-requires_assets = pytest.mark.skipif(
-    not PLAYER_ASSET_DIR.is_dir(),
-    reason="needs the untracked assets/graphics tree to build a real Level",
-)
+# The scenarios build a programmatic LevelData with no art dependency:
+# Animator.preload skips missing clip directories, so these run on a bare
+# checkout just as they do with assets/ present. Keep them ungated -- they are
+# the only whole-pipeline regression net and must run in CI.
 
 
 def _object(name: str, x: float, y: float) -> ObjectData:
@@ -247,19 +239,16 @@ RIDE_DIGEST = "e86caa42e85d9db9217dee6f85c417eaa3c412bcbb42b2126ad0a013b2eecd5d"
 RESPAWN_DIGEST = "3e37730c583750c0b95d7d1c785eaff271f81cd96a5c248c8125c9f6a867ec46"
 
 
-@requires_assets
 def test_physics_ai_and_contact_damage_are_unchanged() -> None:
     """300 ticks of gravity, AI, separation and contact damage."""
     assert run(build_physics_level()) == PHYSICS_DIGEST
 
 
-@requires_assets
 def test_moving_platform_hazard_and_exit_are_unchanged() -> None:
     """300 ticks riding a moving platform through a hazard and onto the exit."""
     assert run(build_ride_level()) == RIDE_DIGEST
 
 
-@requires_assets
 def test_death_border_and_respawn_are_unchanged() -> None:
     """300 ticks of falling below the death border, dying and respawning."""
     assert run(build_respawn_level()) == RESPAWN_DIGEST

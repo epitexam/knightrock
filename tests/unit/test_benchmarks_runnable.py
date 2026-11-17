@@ -47,6 +47,10 @@ def test_fx_benchmark_runs() -> None:
     assert '"grid_bound"' in out
 
 
+@pytest.mark.skipif(
+    not (BENCHMARKS.parent.parent / "assets/data/levels/1.tmx").is_file(),
+    reason="the render benchmark measures the shipped TMX, which is git-ignored",
+)
 def test_render_benchmark_runs() -> None:
     out = _run("render_benchmark.py", ["--repeats", "2", "--window", "320", "240"])
     assert "ms" in out or "p50" in out
