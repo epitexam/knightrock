@@ -9,11 +9,13 @@ from src.states.player_states import PlayerState
 from src.states.state_names import StateName
 
 
-def test_both_fighter_enums_are_subsets_of_the_canonical_vocabulary() -> None:
+def test_both_fighter_enums_are_generated_from_the_canonical_vocabulary() -> None:
     canonical = {name.value for name in StateName}
 
-    assert {state.value for state in PlayerState} <= canonical
-    assert {state.value for state in EnemyState} <= canonical
+    for enum in (PlayerState, EnemyState):
+        assert {state.value for state in enum} <= canonical
+        for state in enum:
+            assert StateName[state.name].value == state.value
 
 
 def test_the_legacy_constants_keep_their_string_values() -> None:

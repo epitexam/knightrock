@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from src.combat.frame_data import move_id
-from src.core.settings import AI, EnemyJump, Turn
+from src.core.settings import AI, EnemyJump
 from src.core.settings import Combat as CombatSettings
 from src.states.reaction_states import (
     HurtState,
@@ -20,15 +20,16 @@ if TYPE_CHECKING:
 
 
 class EnemyState(str, Enum):
-    """Enemy state names: typed equivalent of the player PlayerState.
+    """Enemy-facing subset of the canonical state vocabulary.
 
-    String-based for drop-in compatibility with StateMachine keys.
+    Literals keep ``.value`` typed as ``str`` by mypy; ``test_state_names``
+    checks every one against :class:`~src.states.state_names.StateName`.
     """
 
     IDLE = "idle"
     PATROL = "patrol"
     CHASE = "chase"
-    TURN = Turn.STATE
+    TURN = "turn"
     ATTACK = "attack"
     CHARGE = "charge"
     HURT = "hurt"

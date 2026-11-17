@@ -2,7 +2,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from src.combat.frame_data import PhaseState
-from src.core.settings import Locomotion, Physics, Turn
+from src.core.settings import Locomotion, Physics
 from src.physics import apply_velocity_friction
 from src.states.reaction_states import (
     HurtState,
@@ -578,13 +578,18 @@ class PlayerDizzyState(State["Player"]):
 
 
 class PlayerState(str, Enum):
-    """Enumeration of player states for type safety and refactoring reliability."""
+    """Player-facing subset of the canonical state vocabulary.
+
+    Values are literals because mypy types ``.value`` as ``str`` only for
+    literal enum values. ``test_state_names`` checks every one against
+    :class:`~src.states.state_names.StateName`, so they cannot drift.
+    """
 
     IDLE = "idle"
     WALK_SLOW = "walk_slow"
     WALK = "walk"
     RUN = "run"
-    TURN = Turn.STATE
+    TURN = "turn"
     JUMP = "jump"
     FALL = "fall"
     WALL_SLIDE = "wall_slide"
