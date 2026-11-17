@@ -9,7 +9,6 @@ ranged hits share armor, stagger and finisher rules.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import count
 from typing import Any
 
 import pygame
@@ -22,8 +21,7 @@ from src.combat.frame_data import HitProperties
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
-
-_PROJECTILE_ID_SEQUENCE = count()
+from src.entities.id_factory import IdFactory, shared_id_factory
 
 __all__ = ["FIREBOLT_CONFIG", "PIERCING_BOLT_CONFIG", "Projectile", "ProjectileConfig"]
 
@@ -50,9 +48,10 @@ class ProjectileConfig:
 class Projectile(Sprite):
     """Pooled flying hitbox. Recycled through ``ObjectPool``, never rebuilt."""
 
-    def __init__(self) -> None:
+    def __init__(self, id_factory: IdFactory | None = None) -> None:
         super().__init__()
-        self.id: str = f"p{next(_PROJECTILE_ID_SEQUENCE)}"
+        factory = id_factory if id_factory is not None else shared_id_factory()
+        self.id: str = factory.projectile_id()
         self.image = pygame.Surface((8, 8), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.hitbox = pygame.FRect(0, 0, 8, 8)

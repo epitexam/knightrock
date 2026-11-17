@@ -3,7 +3,6 @@
 import random
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from itertools import count
 from typing import Any, Literal, cast
 
 import pygame
@@ -39,6 +38,7 @@ from src.entities.components.reaction import (
     ReactionStatus,
 )
 from src.entities.hurtbox_zones import HurtboxZoneDef
+from src.entities.id_factory import IdFactory, shared_id_factory
 from src.entities.player_controllers import DashController
 from src.entities.vitals import Vitals, VitalsSnapshot
 from src.physics import (
@@ -55,11 +55,6 @@ from src.states import state_names
 from src.states.null_state_machine import NullStateMachine
 from src.states.state_machine import StateMachine, StateMachineSnapshot
 from src.states.turn_state import FACING_LOCKED
-
-# Deterministic entity identifier source.  A sequential counter
-# yields identical IDs for identically-ordered simulations, which keeps
-# rollback and future netcode in sync (unlike a random UUID).
-_ENTITY_ID_SEQUENCE = count()
 
 __all__ = ["Entity"]
 
@@ -158,6 +153,7 @@ class Entity(Sprite):
         rng: random.Random | None = None,
         entity_id: str | None = None,
         spatial_hash: SpatialHash | None = None,
+        id_factory: IdFactory | None = None,
     ) -> None:
         """Initialize the entity.
 
@@ -203,7 +199,8 @@ class Entity(Sprite):
             measured x2.4 on the whole simulation with no visible symptom.
         """
         super().__init__(groups)
-        self.id: str = entity_id if entity_id is not None else f"e{next(_ENTITY_ID_SEQUENCE)}"
+        factory = id_factory if id_factory is not None else shared_id_factory()
+        self.id: str = entity_id if entity_id is not None else factory.entity_id()
         self.pushable: bool = True
         self.faction: str = faction
         self.rng = rng or random.Random()
