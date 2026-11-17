@@ -4,6 +4,7 @@ The Level facade: it builds a world and delegates its tick to the systems.
 
 import logging
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any
 
 import pygame
@@ -32,13 +33,14 @@ from src.core.rendering.camera import Camera
 from src.core.rendering.overlay import WorldOverlay
 from src.core.rendering.renderer import Renderer
 from src.core.rendering.tile_chunk_index import TileChunkIndex
-from src.core.rollback import LevelSnapshot, PlatformSnapshot, RollbackSystem
+from src.core.rollback import LevelSnapshot, PlatformSnapshot, ProjectileSnapshot, RollbackSystem
 from src.core.settings import Debug, World
 from src.core.sprite_groups import SpriteGroups
 from src.data.provider import GameplayData
 from src.entities.entity import EntitySnapshot
 from src.entities.id_factory import IdFactory
 from src.entities.player import Player
+from src.entities.projectile import Projectile
 from src.physics.spatial_hash import SpatialHash
 
 logger = logging.getLogger(__name__)
@@ -367,6 +369,25 @@ class Level:
             for platform in self.groups.moving_platforms
         ]
 
+        projectiles = [
+            ProjectileSnapshot(
+                projectile=shot,
+                id=shot.id,
+                pos=(shot.hitbox.x, shot.hitbox.y),
+                velocity=(shot.velocity.x, shot.velocity.y),
+                life=shot.life,
+                active=shot.active,
+                is_dead=shot.is_dead,
+                faction=shot.faction,
+                facing_right=shot.facing_right,
+                config=shot.config,
+                contact_shape=replace(shot.contact_shape),
+                targets_hit=frozenset(shot.targets_hit),
+            )
+            for shot in self.groups.projectile_sprites
+            if isinstance(shot, Projectile)
+        ]
+
         input_current, input_previous = self.input_manager.snapshot()
         return LevelSnapshot(
             tick=self.tick,
@@ -380,6 +401,7 @@ class Level:
             input_previous=input_previous,
             entities=entities,
             platforms=platforms,
+            projectiles=projectiles,
         )
 
     def load_state(self, snapshot: LevelSnapshot) -> None:
@@ -422,6 +444,34 @@ class Level:
             platform.hitbox.topleft = platform.pos
             platform.old_rect = platform.rect.copy()
             platform.old_hitbox = platform.hitbox.copy()
+
+        # Projectiles live in their own pooled group. A shot launched after the
+        # captured tick belongs to the discarded future and is reaped; a shot
+        # that was in flight at capture but has since landed is put back and
+        # restored to its captured state.
+        captured = {id(snapshot.projectile) for snapshot in snapshot.projectiles}
+        pool = self.projectile_system.pool
+        for shot in list(self.groups.projectile_sprites):
+            if not isinstance(shot, Projectile) or id(shot) in captured:
+                continue
+            shot.kill()
+            pool.release(shot)
+        for shot_snapshot in snapshot.projectiles:
+            shot = shot_snapshot.projectile
+            if shot not in self.groups.projectile_sprites:
+                self.groups.projectile_sprites.add(shot)
+                self.groups.all_sprites.add(shot)
+            shot.hitbox.x, shot.hitbox.y = shot_snapshot.pos
+            shot.velocity.x, shot.velocity.y = shot_snapshot.velocity
+            shot.life = shot_snapshot.life
+            shot.active = shot_snapshot.active
+            shot.is_dead = shot_snapshot.is_dead
+            shot.faction = shot_snapshot.faction
+            shot.facing_right = shot_snapshot.facing_right
+            shot.config = shot_snapshot.config
+            shot.contact_shape = replace(shot_snapshot.contact_shape)
+            shot.targets_hit = set(shot_snapshot.targets_hit)
+            shot.sync_rects()
 
     def draw(
         self,

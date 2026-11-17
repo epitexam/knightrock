@@ -24,6 +24,7 @@ from src.core.input.input_state import InputState
 from src.core.level.level import Level
 from src.entities.enemies.factory import create_enemy
 from src.entities.entity import Entity
+from src.entities.projectile import FIREBOLT_CONFIG
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -206,3 +207,56 @@ def test_rollback_reaps_entity_spawned_after_snapshot(build_level) -> None:
     assert level.rollback.rollback_to(level, 0) is True
     assert enemy not in level.groups.entity_sprites
     assert enemy.is_dead is False  # not killed, just removed from groups
+
+
+def test_rollback_reaps_a_projectile_spawned_after_the_snapshot(build_level) -> None:
+    """A shot from the discarded future must not survive a rewind."""
+    level = build_level()
+    _pad(level)
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=64)
+
+    # Tick 0: the captured state has no projectile in flight.
+    level.update(1 / 60)
+    assert not list(level.groups.projectile_sprites)
+
+    # Tick 1: a shot is launched and flies for one tick.
+    shot = level.projectile_system.spawn(
+        FIREBOLT_CONFIG,
+        pos=(200.0, 100.0),
+        velocity=(300.0, 0.0),
+        faction="player",
+    )
+    level.update(1 / 60)
+    assert shot in level.groups.projectile_sprites
+
+    # Rewind to tick 0: that shot did not exist yet.
+    assert level.rollback.rollback_to(level, 0) is True
+    assert shot not in level.groups.projectile_sprites
+    assert shot not in level.groups.all_sprites
+
+
+def test_rollback_restores_an_in_flight_projectile(build_level) -> None:
+    """A shot that existed at the captured tick comes back where it was."""
+    level = build_level()
+    _pad(level)
+    level.rollback_enabled = True
+    level.rollback = type(level.rollback)(capacity=64)
+
+    shot = level.projectile_system.spawn(
+        FIREBOLT_CONFIG,
+        pos=(200.0, 100.0),
+        velocity=(300.0, 0.0),
+        faction="player",
+    )
+    level.update(1 / 60)
+    captured_pos = (shot.hitbox.x, shot.hitbox.y)
+    captured_life = shot.life
+
+    level.update(1 / 60)
+    assert (shot.hitbox.x, shot.hitbox.y) != captured_pos
+
+    assert level.rollback.rollback_to(level, 0) is True
+    assert shot in level.groups.projectile_sprites
+    assert (shot.hitbox.x, shot.hitbox.y) == captured_pos
+    assert shot.life == pytest.approx(captured_life)
