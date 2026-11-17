@@ -4,9 +4,8 @@ from typing import Literal, Protocol, cast
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, Combat, GameFeel, Separation
+from src.core.settings import Collision, GameFeel, Separation
 from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
-from src.states import state_names
 
 
 class CollisionSprite(Protocol):
@@ -15,11 +14,6 @@ class CollisionSprite(Protocol):
 
     @property
     def hitbox(self) -> pygame.Rect | pygame.FRect: ...
-
-
-class NamedState(Protocol):
-    @property
-    def current_state_name(self) -> str | None: ...
 
 
 class CollisionEntity(Protocol):
@@ -32,8 +26,9 @@ class CollisionEntity(Protocol):
     move_axis: float
     crushed: bool
 
-    @property
-    def state_machine(self) -> NamedState: ...
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns (0 when not knocked)."""
+        ...
 
     def sync_rects(self) -> None: ...
 
@@ -169,11 +164,6 @@ def _flag_crushed(entity: CollisionEntity) -> None:
     entity.crushed = True
 
 
-def _is_knocked(entity: CollisionEntity) -> bool:
-    """Whether the entity is flying in its knockback reaction state."""
-    return entity.state_machine.current_state_name == state_names.KNOCKBACK
-
-
 def _resolve_with_cap(entity: CollisionEntity, correction: float, current: float) -> float:
     """Clamp an axis-nearest fallback correction, flagging crush when capped."""
     if abs(correction) <= Collision.MAX_RESOLVE_PX:
@@ -275,8 +265,9 @@ def _resolve_horizontal(
         entity.hitbox.left = _resolve_with_cap(
             entity, sprite_box.right - entity.hitbox.left, entity.hitbox.left
         )
-    if _is_knocked(entity) and Combat.WALL_BOUNCE_FACTOR > 0:
-        entity.velocity.x = -entity.velocity.x * Combat.WALL_BOUNCE_FACTOR
+    bounce = entity.wall_bounce_factor()
+    if bounce > 0:
+        entity.velocity.x = -entity.velocity.x * bounce
     elif penetration >= Collision.MIN_PENETRATION_PX:
         entity.velocity.x = 0
 

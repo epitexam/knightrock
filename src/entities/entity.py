@@ -503,6 +503,16 @@ class Entity(Sprite):
     def is_dashing(self) -> bool:
         return self.state_machine.current_state_name == state_names.DASH
 
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns, 0 outside knockback.
+
+        The collision resolver asks the entity instead of importing the state
+        vocabulary and the combat tuning, keeping physics independent of both.
+        """
+        if self.state_machine.current_state_name == state_names.KNOCKBACK:
+            return CombatSettings.WALL_BOUNCE_FACTOR
+        return 0.0
+
     def _handle_death(self) -> None:
         """Entity-level cleanup triggered when health reaches zero."""
         self.combat.reset()

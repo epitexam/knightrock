@@ -36,6 +36,9 @@ class FeelEntity:
 class WallEntity(FeelEntity):
     """Feel entity with collision geometry for resolve/move tests."""
 
+    def wall_bounce_factor(self) -> float:
+        return 0.0
+
     def __init__(self, hitbox: pygame.FRect) -> None:
         super().__init__()
         self.rect = hitbox.copy()

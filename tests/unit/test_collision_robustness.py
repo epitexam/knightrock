@@ -5,13 +5,19 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-from src.core.settings import Collision, PlatformRide
+from src.core.settings import Collision, Combat, PlatformRide
 from src.physics.collisions import resolve_collisions
 from src.physics.movement import _revert_carry_crush, apply_moving_platform, move_entity
 
 
 class RobustEntity:
     """Collision entity with crush/carry bookkeeping like the real one."""
+
+    def wall_bounce_factor(self) -> float:
+        """The entity decides its own wall bounce, physics stays state-agnostic."""
+        if self.state_machine.current_state_name == "knockback":
+            return Combat.WALL_BOUNCE_FACTOR
+        return 0.0
 
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()

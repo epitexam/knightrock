@@ -27,6 +27,12 @@ def _wall(box: pygame.FRect):
 class KnockedEntity:
     """Entity double stuck in its knockback reaction state."""
 
+    def wall_bounce_factor(self) -> float:
+        """The entity decides its own wall bounce, physics stays state-agnostic."""
+        if self.state_machine.current_state_name == "knockback":
+            return CombatSettings.WALL_BOUNCE_FACTOR
+        return 0.0
+
     def __init__(self, hitbox: pygame.FRect) -> None:
         self.rect = hitbox.copy()
         self.hitbox = hitbox

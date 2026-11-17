@@ -16,7 +16,6 @@ from src.core.settings import (
 )
 from src.physics.collisions import (
     CollisionSprite,
-    NamedState,
     get_nearby_sprites,
     resolve_collisions,
     update_contact_state,
@@ -106,8 +105,9 @@ class MovableEntity(Protocol):
     crushed: bool
     carry_backup: tuple[float, float, float, float] | None
 
-    @property
-    def state_machine(self) -> NamedState: ...
+    def wall_bounce_factor(self) -> float:
+        """How much horizontal velocity a wall returns (0 when not knocked)."""
+        ...
 
     def is_wall_sliding(self) -> bool: ...
 
