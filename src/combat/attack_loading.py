@@ -251,6 +251,21 @@ def _validate_follow_ups(
             )
 
 
+#: A frozen attack mapping is validated once at data load, then registered on
+#: every fighter built from it. Re-running the full cross-attack validation per
+#: entity cost ~0.1 ms for a 25-attack set (12 enemies + 1 player per level).
+#: The mapping is held strongly so a recycled id cannot report a stale pass.
+_validated_tables: dict[int, Mapping[MoveId, AttackDefinition]] = {}
+
+
+def _validated(attacks: Mapping[MoveId, AttackDefinition]) -> None:
+    key = id(attacks)
+    if _validated_tables.get(key) is attacks:
+        return
+    validate_attacks(attacks)
+    _validated_tables[key] = attacks
+
+
 def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinition]) -> None:
     """Validate then register a mapping of attack definitions.
 
@@ -267,6 +282,6 @@ def load_attacks(combat: CombatComponent, attacks: Mapping[MoveId, AttackDefinit
         Any frame-data rule above is violated; the message names the attack,
         the phase index and the field at fault.
     """
-    validate_attacks(attacks)
+    _validated(attacks)
     for name, definition in attacks.items():
         combat.add_attack(name, definition)
