@@ -14,7 +14,7 @@ spelled as a string because JSON has no infinity literal.
 from __future__ import annotations
 
 import math
-from dataclasses import fields
+from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,7 @@ from src.data.errors import (
     triple_of_ints,
 )
 from src.entities.hurtbox_zones import read_hurtbox_zones
-from src.entities.player_config import PlayerConfig
+from src.entities.player_config import PlayerConfig, _default_attacks
 
 PLAYER_FILENAME = "player.json"
 PLAYER_VERSION = 1
@@ -61,6 +61,14 @@ def _read_wall_jumps(value: Any, where: str) -> int | float:
     return int(number) if number.is_integer() and number >= 0 else number
 
 
+def _value_defaults(cls: type) -> dict[str, Any]:
+    """The dataclass's literal defaults, without invoking any default_factory."""
+    return {field.name: field.default for field in fields(cls) if field.default is not MISSING}
+
+
+_PLAYER_DEFAULTS = _value_defaults(PlayerConfig)
+
+
 def read_player_config(
     raw: Any,
     where: str,
@@ -74,7 +82,10 @@ def read_player_config(
     # derived ones (the attack table is reached through ``attack_set``). The
     # allowed set is therefore the reader's own, listed once.
     reject_unknown(raw, _player_override_keys(), where)
-    base = PlayerConfig()
+    # The attack default is a factory that reads attacks.json; calling it here
+    # would parse the whole table a second time for a value the `attack_set`
+    # override below always replaces. Build the defaults from the fields'
+    # *values*, skipping factories, and supply the already-loaded table.
     raw_attacks = raw.get("attack_set")
     attacks: dict[MoveId, AttackDefinition] | None = None
     if raw_attacks is not None:
@@ -83,91 +94,112 @@ def read_player_config(
         attacks = dict(attack_sets[MoveId(raw_attacks)])
     try:
         return PlayerConfig(
-            size=pair_of_floats(raw.get("size", list(base.size)), f"{where}.size"),
-            color=triple_of_ints(raw.get("color", list(base.color)), f"{where}.color"),
-            health=read_number(raw.get("health", base.health), f"{where}.health"),
-            max_health=read_number(raw.get("max_health", base.max_health), f"{where}.max_health"),
+            size=pair_of_floats(raw.get("size", list(_PLAYER_DEFAULTS["size"])), f"{where}.size"),
+            color=triple_of_ints(
+                raw.get("color", list(_PLAYER_DEFAULTS["color"])), f"{where}.color"
+            ),
+            health=read_number(raw.get("health", _PLAYER_DEFAULTS["health"]), f"{where}.health"),
+            max_health=read_number(
+                raw.get("max_health", _PLAYER_DEFAULTS["max_health"]), f"{where}.max_health"
+            ),
             hitbox_inflate=pair_of_floats(
-                raw.get("hitbox_inflate", list(base.hitbox_inflate)), f"{where}.hitbox_inflate"
+                raw.get("hitbox_inflate", list(_PLAYER_DEFAULTS["hitbox_inflate"])),
+                f"{where}.hitbox_inflate",
             ),
             hurtbox_inflate=pair_of_floats(
-                raw.get("hurtbox_inflate", list(base.hurtbox_inflate)), f"{where}.hurtbox_inflate"
+                raw.get("hurtbox_inflate", list(_PLAYER_DEFAULTS["hurtbox_inflate"])),
+                f"{where}.hurtbox_inflate",
             ),
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
             hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
-            attacks=attacks if attacks is not None else dict(base.attacks),
-            speed=read_number(raw.get("speed", base.speed), f"{where}.speed"),
+            # `attack_set` absent falls back to the shipped player table. The
+            # shim is cached, so this does not add a parse on the normal path
+            # where player.json names its set explicitly.
+            attacks=attacks if attacks is not None else dict(_default_attacks()),
+            speed=read_number(raw.get("speed", _PLAYER_DEFAULTS["speed"]), f"{where}.speed"),
             floor_control=read_number(
-                raw.get("floor_control", base.floor_control), f"{where}.floor_control"
+                raw.get("floor_control", _PLAYER_DEFAULTS["floor_control"]),
+                f"{where}.floor_control",
             ),
             air_control=read_number(
-                raw.get("air_control", base.air_control), f"{where}.air_control"
+                raw.get("air_control", _PLAYER_DEFAULTS["air_control"]), f"{where}.air_control"
             ),
             jump_height=read_number(
-                raw.get("jump_height", base.jump_height), f"{where}.jump_height"
+                raw.get("jump_height", _PLAYER_DEFAULTS["jump_height"]), f"{where}.jump_height"
             ),
             wall_jump_height=read_number(
-                raw.get("wall_jump_height", base.wall_jump_height), f"{where}.wall_jump_height"
+                raw.get("wall_jump_height", _PLAYER_DEFAULTS["wall_jump_height"]),
+                f"{where}.wall_jump_height",
             ),
             wall_jump_push_multiplier=read_number(
-                raw.get("wall_jump_push_multiplier", base.wall_jump_push_multiplier),
+                raw.get("wall_jump_push_multiplier", _PLAYER_DEFAULTS["wall_jump_push_multiplier"]),
                 f"{where}.wall_jump_push_multiplier",
             ),
             wall_jump_lock_duration=read_number(
-                raw.get("wall_jump_lock_duration", base.wall_jump_lock_duration),
+                raw.get("wall_jump_lock_duration", _PLAYER_DEFAULTS["wall_jump_lock_duration"]),
                 f"{where}.wall_jump_lock_duration",
             ),
             wall_jump_min_lock=read_number(
-                raw.get("wall_jump_min_lock", base.wall_jump_min_lock),
+                raw.get("wall_jump_min_lock", _PLAYER_DEFAULTS["wall_jump_min_lock"]),
                 f"{where}.wall_jump_min_lock",
             ),
             wall_slide_speed=read_number(
-                raw.get("wall_slide_speed", base.wall_slide_speed), f"{where}.wall_slide_speed"
+                raw.get("wall_slide_speed", _PLAYER_DEFAULTS["wall_slide_speed"]),
+                f"{where}.wall_slide_speed",
             ),
             max_midair_jumps=read_int(
-                raw.get("max_midair_jumps", base.max_midair_jumps), f"{where}.max_midair_jumps"
+                raw.get("max_midair_jumps", _PLAYER_DEFAULTS["max_midair_jumps"]),
+                f"{where}.max_midair_jumps",
             ),
             max_wall_jumps=(
                 _read_wall_jumps(raw["max_wall_jumps"], f"{where}.max_wall_jumps")
                 if "max_wall_jumps" in raw
-                else base.max_wall_jumps
+                else _PLAYER_DEFAULTS["max_wall_jumps"]
             ),
             coyote_duration=read_number(
-                raw.get("coyote_duration", base.coyote_duration), f"{where}.coyote_duration"
+                raw.get("coyote_duration", _PLAYER_DEFAULTS["coyote_duration"]),
+                f"{where}.coyote_duration",
             ),
             jump_buffer_duration=read_number(
-                raw.get("jump_buffer_duration", base.jump_buffer_duration),
+                raw.get("jump_buffer_duration", _PLAYER_DEFAULTS["jump_buffer_duration"]),
                 f"{where}.jump_buffer_duration",
             ),
             max_dash_charges=read_int(
-                raw.get("max_dash_charges", base.max_dash_charges), f"{where}.max_dash_charges"
+                raw.get("max_dash_charges", _PLAYER_DEFAULTS["max_dash_charges"]),
+                f"{where}.max_dash_charges",
             ),
-            dash_speed=read_number(raw.get("dash_speed", base.dash_speed), f"{where}.dash_speed"),
+            dash_speed=read_number(
+                raw.get("dash_speed", _PLAYER_DEFAULTS["dash_speed"]), f"{where}.dash_speed"
+            ),
             dash_duration=read_number(
-                raw.get("dash_duration", base.dash_duration), f"{where}.dash_duration"
+                raw.get("dash_duration", _PLAYER_DEFAULTS["dash_duration"]),
+                f"{where}.dash_duration",
             ),
             dash_penalty_duration=read_number(
-                raw.get("dash_penalty_duration", base.dash_penalty_duration),
+                raw.get("dash_penalty_duration", _PLAYER_DEFAULTS["dash_penalty_duration"]),
                 f"{where}.dash_penalty_duration",
             ),
             dash_recharge_time=read_number(
-                raw.get("dash_recharge_time", base.dash_recharge_time),
+                raw.get("dash_recharge_time", _PLAYER_DEFAULTS["dash_recharge_time"]),
                 f"{where}.dash_recharge_time",
             ),
             dash_gravity_mult=read_number(
-                raw.get("dash_gravity_mult", base.dash_gravity_mult), f"{where}.dash_gravity_mult"
+                raw.get("dash_gravity_mult", _PLAYER_DEFAULTS["dash_gravity_mult"]),
+                f"{where}.dash_gravity_mult",
             ),
             dash_coyote_time=read_number(
-                raw.get("dash_coyote_time", base.dash_coyote_time), f"{where}.dash_coyote_time"
+                raw.get("dash_coyote_time", _PLAYER_DEFAULTS["dash_coyote_time"]),
+                f"{where}.dash_coyote_time",
             ),
             hurt_duration=read_number(
-                raw.get("hurt_duration", base.hurt_duration), f"{where}.hurt_duration"
+                raw.get("hurt_duration", _PLAYER_DEFAULTS["hurt_duration"]),
+                f"{where}.hurt_duration",
             ),
             invincibility_duration=read_number(
-                raw.get("invincibility_duration", base.invincibility_duration),
+                raw.get("invincibility_duration", _PLAYER_DEFAULTS["invincibility_duration"]),
                 f"{where}.invincibility_duration",
             ),
-            faction=str(raw.get("faction", base.faction)),
+            faction=str(raw.get("faction", _PLAYER_DEFAULTS["faction"])),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid player value: {exc}") from exc
