@@ -278,6 +278,8 @@ class StrikeTrails:
         self._dashes: dict[int, _Dash] = {}
         self._rushing: dict[int, float] = {}
         """The fighters in a dark step, and how much of it is left (seconds)."""
+        self._rush_tints: dict[tuple[tuple[int, int], int], pygame.Surface] = {}
+        """Full-screen rush tints, one per size and integer alpha (<= 55)."""
         self._clock = 0.0
 
     def __len__(self) -> int:
@@ -702,8 +704,13 @@ class StrikeTrails:
         left = max(self._rushing.values())
         level = min(1.0, left / RUSH_FADE)
         r, g, b, a = RUSH_TINT
-        tint = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-        tint.fill((r, g, b, int(a * level)))
+        alpha = int(a * level)
+        key = (surface.get_size(), alpha)
+        tint = self._rush_tints.get(key)
+        if tint is None:
+            tint = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+            tint.fill((r, g, b, alpha))
+            self._rush_tints[key] = tint
         surface.blit(tint, (0, 0))
 
     def _draw_impact(
