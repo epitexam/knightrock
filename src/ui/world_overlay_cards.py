@@ -16,6 +16,7 @@ taken is exactly how a label ends up underneath a health bar."""
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 import pygame
@@ -93,6 +94,23 @@ class CardLayer:
         #: its bar is and where it was -- otherwise a bar sliding onto its own
         #: card reads as a placement bug.
         self.previous_bar_obstacles: list[pygame.Rect] = []
+        # A card background is a pure function of its size and pixel unit, yet
+        # pixel_frame() cost ~59 us and ran once per card per debug frame.
+        self._backgrounds: OrderedDict[tuple[int, int, int], pygame.Surface] = OrderedDict()
+
+    _BACKGROUND_CACHE_MAX = 64
+
+    def _background(self, rect: pygame.Rect, unit: int) -> pygame.Surface:
+        key = (rect.width, rect.height, unit)
+        panel = self._backgrounds.get(key)
+        if panel is None:
+            panel = pixel_frame(*key, (18, 20, 24, 210))
+            if len(self._backgrounds) >= self._BACKGROUND_CACHE_MAX:
+                self._backgrounds.popitem(last=False)
+            self._backgrounds[key] = panel
+        else:
+            self._backgrounds.move_to_end(key)
+        return panel
 
     @property
     def surface(self) -> pygame.Surface:
@@ -137,7 +155,7 @@ class CardLayer:
     ) -> None:
         """Blit the card: panel, top faction edge, bold header, divider, rows."""
         unit = font_unit(self.renderer.world_label_font)
-        panel = pixel_frame(*background_rect.size, unit, (18, 20, 24, 210))
+        panel = self._background(background_rect, unit)
         self.surface.blit(panel, background_rect.topleft)
         # A rule just inside the top rim, spanning the card width: the faction
         # at a glance, without cutting through the card and its divider.
