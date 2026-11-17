@@ -76,6 +76,8 @@ class EnemyTurnState(TurnState["Enemy"]):
 
 
 class EnemyIdleState(State["Enemy"]):
+    snapshot_fields = ("timer",)
+
     """Idle state: the enemy stands still for a short duration."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -94,6 +96,8 @@ class EnemyIdleState(State["Enemy"]):
 
 
 class EnemyPatrolState(State["Enemy"]):
+    snapshot_fields = ("patrol_timer", "direction")
+
     """Patrol state: the enemy moves back and forth in a single direction."""
 
     def enter(self, previous: str | None = None, **kwargs: Any) -> None:
@@ -134,6 +138,8 @@ class EnemyPatrolState(State["Enemy"]):
 
 
 class EnemyChaseState(State["Enemy"]):
+    snapshot_fields = ("jump_cooldown_timer", "leap_glide_timer", "planned_move")
+
     """Chase state: the enemy moves towards the player."""
 
     def __init__(self, entity: Enemy, tags: list[str] | None = None):

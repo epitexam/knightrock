@@ -95,6 +95,8 @@ def request_turn(entity: Entity) -> bool:
 
 
 class TurnState(State[EntityT]):
+    snapshot_fields = ("held", "target", "timer", "resume", "commit")
+
     """A fighter mid-pivot: feet turned, head still catching up.
 
     It is a locomotion state in every other respect. The fighter keeps its

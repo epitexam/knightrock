@@ -220,6 +220,8 @@ class PlayerWallSlideState(PlayerBaseState):
 
 
 class PlayerChargeState(PlayerBaseState):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Represent the PlayerCharge state."""
 
     def __init__(self, entity: Player):
@@ -251,6 +253,8 @@ class PlayerChargeState(PlayerBaseState):
 
 
 class PlayerAttackState(PlayerBaseState):
+    snapshot_fields = ("_started",)
+
     """Represent the PlayerAttack state."""
 
     def __init__(self, entity: Player):
@@ -448,6 +452,8 @@ class PlayerKnockbackState(KnockbackState["Player"]):
 
 
 class PlayerDashState(PlayerBaseState):
+    snapshot_fields = ("direction", "reversed")
+
     """The dash: a burst that eases into the run, the same length every time.
 
     The speed follows one curve, from ``dash.speed`` at the press down to the

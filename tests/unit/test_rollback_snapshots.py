@@ -59,6 +59,8 @@ def test_vitals_round_trip_captures_health_and_timers() -> None:
 class _IdleWithTimer(State):
     """State that owns a transient timer — must survive a rollback."""
 
+    snapshot_fields = ("timer",)
+
     def enter(self, previous=None, **kwargs) -> None:
         self.timer = 0.5
 
@@ -213,6 +215,32 @@ def test_entity_snapshot_captures_combat_and_state_machine() -> None:
     assert entity.combat.state.attack_name is None
     entity.load_state(snapshot)
     assert entity.combat.state.attack_name == "test"
+
+
+def test_every_player_state_declares_its_snapshot_fields() -> None:
+    """The declared schema must cover exactly the transient scalars a state owns.
+
+    The old ``isinstance`` heuristic captured every scalar it found, so a new
+    Enum- or tuple-typed field was silently left out of a rewind. Declaring the
+    fields makes that omission a test failure instead of a desync.
+    """
+    player = Player(
+        pos=(100.0, 100.0),
+        groups=Group(),
+        collision_sprites=Group(),
+        moving_platforms=[],
+        input_manager=InputStub(),  # type: ignore[arg-type]
+    )
+
+    for name, state in player.state_machine.states.items():
+        scalars = {
+            attr
+            for attr, value in vars(state).items()
+            if attr not in ("entity", "tags") and isinstance(value, (bool, int, float, str))
+        }
+        assert set(state.snapshot_fields) == scalars, (
+            f"{name}: declared {state.snapshot_fields}, owns {sorted(scalars)}"
+        )
 
 
 def test_player_snapshot_restores_controllers_and_buffered_attack() -> None:

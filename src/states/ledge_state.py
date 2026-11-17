@@ -18,6 +18,8 @@ __all__ = ["LedgeState"]
 
 
 class LedgeState(State[EntityT]):
+    snapshot_fields = ("hold_duration", "friction", "hold_timer")
+
     """At the void's edge: brake, turn around, wait out the hold beat."""
 
     def __init__(

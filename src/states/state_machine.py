@@ -12,13 +12,6 @@ if TYPE_CHECKING:
 #: fighter reads the base class, and a player or enemy state reads its own.
 EntityT = TypeVar("EntityT", bound="Entity")
 
-# Transient per-state attributes worth capturing for rollback: plain
-# scalars (timers, counters, flags, directions).  Callables (``exit_resolver``,
-# ``on_enter``), the back-reference ``entity``, and mutable containers
-# (``tags``) are configuration or shared objects that never change between
-# ticks — excluding them keeps snapshots small and side-effect free.
-_SNAPSHOTABLE_TYPES = (bool, int, float, str)
-
 
 @dataclass(frozen=True)
 class StateMachineSnapshot:
@@ -36,17 +29,15 @@ class StateMachineSnapshot:
     state_attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
-    """Copy the snapshotable scalar attributes of one state instance."""
-    return {
-        name: value
-        for name, value in vars(state).items()
-        if name != "entity" and isinstance(value, _SNAPSHOTABLE_TYPES)
-    }
-
-
 class State(Generic[EntityT]):
-    """Abstract base for all states, typed by the fighter it drives."""
+    """Abstract base for all states, typed by the fighter it drives.
+
+    ``snapshot_fields`` is the declared rollback schema: the transient scalars
+    a state needs restored by a teleport. A field added to a state must be
+    declared here (or on its subclass) or it is silently absent from a rewind.
+    """
+
+    snapshot_fields: tuple[str, ...] = ()
 
     def __init__(self, entity: EntityT, tags: list[str] | None = None) -> None:
         """Initialize the State instance."""
@@ -64,6 +55,16 @@ class State(Generic[EntityT]):
     def update(self, delta_time: float) -> str | tuple[str, dict[str, Any]] | None:
         """Update the current state. Can return a string or a tuple (state_name, kwargs)."""
         return None
+
+
+def _capture_state_attrs(state: State[Any]) -> dict[str, Any]:
+    """Copy the declared fields a state has already set.
+
+    Several states create their transient fields in ``enter()`` rather than in
+    ``__init__``, so a field may legitimately be absent before the first entry.
+    """
+    attrs = vars(state)
+    return {name: attrs[name] for name in state.snapshot_fields if name in attrs}
 
 
 class StateMachine:

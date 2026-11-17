@@ -71,6 +71,8 @@ def apply_reaction_drag(entity: Any, delta_time: float) -> None:
 
 
 class HurtState(State[EntityT]):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Reaction to taking damage: wait for the hurt timer to clear."""
 
     def __init__(
@@ -99,6 +101,8 @@ class HurtState(State[EntityT]):
 
 
 class KnockbackState(State[EntityT]):
+    snapshot_fields = ("max_duration", "_elapsed", "_launch_vx")
+
     """Strong launch: wait for the entity to land and slow down."""
 
     def __init__(
@@ -167,6 +171,8 @@ class KnockbackState(State[EntityT]):
 
 
 class StaggerState(State[EntityT]):
+    snapshot_fields: tuple[str, ...] = ()
+
     """Stunned: stay locked until the stagger timer clears."""
 
     def __init__(
