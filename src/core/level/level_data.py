@@ -9,6 +9,7 @@ from typing import Any
 import pygame
 import pytmx
 
+from src.core.level.tmx_adapter import TmxAdapter
 from src.core.settings import World
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ class LevelData:
         tile_layers: dict[str, TileLayerData] = {}
         object_layers: dict[str, ObjectLayerData] = {}
         config = LevelConfig()
+        adapter = TmxAdapter(tmx_map)
 
         for layer in tmx_map.layers:
             if not getattr(layer, "visible", True) and layer.name != DATA_LAYER_NAME:
@@ -149,7 +151,7 @@ class LevelData:
             if isinstance(layer, pytmx.TiledTileLayer):
                 tile_layers[layer.name] = TileLayerData(name=layer.name, tiles=list(layer.tiles()))
             elif isinstance(layer, pytmx.TiledObjectGroup):
-                objects = [_object_from_tmx(obj, tmx_map) for obj in layer]
+                objects = [_object_from_tmx(obj, adapter) for obj in layer]
                 object_layers[layer.name] = ObjectLayerData(name=layer.name, objects=objects)
                 if layer.name == DATA_LAYER_NAME and objects:
                     config = _config_from_properties(objects[0].properties)
@@ -174,25 +176,17 @@ class LevelData:
 
 
 def _gid_flips(tmx_map: Any, gid: int | None) -> tuple[bool, bool]:
-    """The (horizontal, vertical) mirror of a tile object's pytmx gid.
-
-    A mirrored tile object gets its own internal gid, registered with the
-    flags beside the tile's own: ``gidmap[tile] -> [(gid, flags), ...]``.
-    """
-    if not gid or tmx_map is None:
-        return False, False
-    tile = getattr(tmx_map, "tiledgidmap", {}).get(gid)
-    for internal, flags in getattr(tmx_map, "gidmap", {}).get(tile, ()):
-        if internal == gid:
-            return bool(flags.flipped_horizontally), bool(flags.flipped_vertically)
-    return False, False
+    """Compatibility alias; PyTMX's private gid access lives in :class:`TmxAdapter`."""
+    return TmxAdapter(tmx_map).flips(gid)
 
 
-def _object_from_tmx(obj: Any, tmx_map: Any = None) -> ObjectData:
+def _object_from_tmx(obj: Any, adapter: TmxAdapter | None = None) -> ObjectData:
     """Convert a pytmx object to our ObjectData structure."""
     raw_points = getattr(obj, "points", None)
     points = [(float(px), float(py)) for px, py in raw_points] if raw_points else None
-    flip_x, flip_y = _gid_flips(tmx_map, getattr(obj, "gid", None))
+    flip_x, flip_y = (
+        adapter.flips(getattr(obj, "gid", None)) if adapter is not None else (False, False)
+    )
     return ObjectData(
         name=obj.name or "",
         x=obj.x,
