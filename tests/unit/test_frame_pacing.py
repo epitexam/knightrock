@@ -43,8 +43,14 @@ class _FakeClock:
         self.slept: list[int] = []
         self.elapsed = elapsed
 
-    def tick(self, fps: int) -> int:
+    def tick(self, fps: int) -> float:
         self.slept.append(fps)
+        return self.elapsed / 1000.0
+
+    def get_fps(self) -> float:
+        return 0.0
+
+    def get_time(self) -> int:
         return self.elapsed
 
 

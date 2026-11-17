@@ -97,5 +97,4 @@ def game_runtime(tmp_path):
     # The real construction path, so the fixture cannot drift from the loop:
     # window, render target and presentation, all three.
     game.initialize_display()
-    game.clock = pygame.time.Clock()
     return game

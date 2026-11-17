@@ -97,7 +97,7 @@ def test_run_handles_initialization_errors_and_always_quits(
     initialize = Mock(side_effect=error)
     handle_fatal_error = Mock()
     quit_pygame = Mock()
-    monkeypatch.setattr(game, "_initialize", initialize)
+    monkeypatch.setattr(game, "bootstrap", initialize)
     monkeypatch.setattr(game, "_handle_fatal_error", handle_fatal_error)
     monkeypatch.setattr(pygame, "quit", quit_pygame)
 
@@ -118,7 +118,7 @@ def test_run_handles_loop_errors_and_always_quits(
     run_loop = Mock(side_effect=error)
     handle_fatal_error = Mock()
     quit_pygame = Mock()
-    monkeypatch.setattr(game, "_initialize", initialize)
+    monkeypatch.setattr(game, "bootstrap", initialize)
     monkeypatch.setattr(game, "_run_loop", run_loop)
     monkeypatch.setattr(game, "_handle_fatal_error", handle_fatal_error)
     monkeypatch.setattr(pygame, "quit", quit_pygame)
@@ -136,7 +136,7 @@ def test_run_quits_when_the_event_loop_requests_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     game = Game()
-    monkeypatch.setattr(game, "_initialize", Mock())
+    monkeypatch.setattr(game, "bootstrap", Mock())
     monkeypatch.setattr(game, "_run_loop", Mock(side_effect=SystemExit))
     quit_pygame = Mock()
     monkeypatch.setattr(pygame, "quit", quit_pygame)

@@ -7,6 +7,7 @@ from time import perf_counter
 import pygame
 from pygame.joystick import JoystickType
 
+from src.application.runtime_clock import FrameClock, PygameFrameClock
 from src.application.save_game import SaveGame, default_save_path
 from src.application.scene_manager import SceneManager
 from src.application.scenes.menu_scene import MenuScene
@@ -65,7 +66,12 @@ class Game:
     :class:`EventBus`; subscribers must never mutate the simulation.
     """
 
-    def __init__(self, save_path: Path | None = None, bindings_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        save_path: Path | None = None,
+        bindings_path: Path | None = None,
+        frame_clock: FrameClock | None = None,
+    ) -> None:
         for name, value in SDL_HINTS.items():
             os.environ[name] = value
         #: The window, the picture drawn into it and the screens around it.
@@ -102,7 +108,9 @@ class Game:
         #: See :meth:`world_overlay`.
         self.ui: UIManager | None = None
         self.running = True
-        self.clock: pygame.time.Clock | None = None
+        #: The frame pacer. Injected so a test can drive frames without sleeping;
+        #: kept as ``clock`` because the debug overlay reads its FPS stats.
+        self.clock: FrameClock = frame_clock if frame_clock is not None else PygameFrameClock()
         self._accumulator = 0.0
         self._settings_dirty = False
         #: A transient message for the player, with the seconds left on it.
@@ -135,7 +143,12 @@ class Game:
         except OSError:
             logger.exception("Unable to persist the save at %s", self._save_path)
 
-    def _initialize(self) -> None:
+    def bootstrap(self) -> None:
+        """Bring the runtime up: display, input-ready clock and the menu scene.
+
+        Public so tests and the manual acceptance run share the real boot path
+        instead of reimplementing part of it.
+        """
         pygame.init()
         pygame.joystick.init()
         # After pygame.init(), and never fatal: a machine with no sound card
@@ -145,7 +158,6 @@ class Game:
         self.initialize_display()
         pygame.display.set_caption(Display.TITLE)
 
-        self.clock = pygame.time.Clock()
         self._accumulator = 0.0
         # Level loading took an arbitrary amount of wall time; the first frame
         # must not bill all of it to the simulation. The clock measures the gap
@@ -153,6 +165,10 @@ class Game:
         # now and the next one bills a single frame.
         self.clock.tick(0)
         self.scene_manager.switch(MenuScene(self))
+
+    def _initialize(self) -> None:
+        """Backward-compatible alias for :meth:`bootstrap`."""
+        self.bootstrap()
 
     # The display, as the scenes and the tests read it. Owned by ``screen``.
 
@@ -497,16 +513,20 @@ class Game:
     def run(self) -> None:
         """Initialize and run the game, always releasing Pygame resources."""
         try:
-            self._initialize()
+            self.bootstrap()
             self._run_loop()
         except Exception as error:
             traceback.print_exc()
             self._handle_fatal_error(error)
             raise SystemExit(1) from error
         finally:
-            self._remember_the_window()
-            self.flush_settings()
-            pygame.quit()
+            self.shutdown()
+
+    def shutdown(self) -> None:
+        """Persist what changed and release Pygame, whether or not the loop ran."""
+        self._remember_the_window()
+        self.flush_settings()
+        pygame.quit()
 
     def _frame_delta(self) -> float:
         """Seconds elapsed since the previous frame, for the fixed-step accumulator.
@@ -531,11 +551,9 @@ class Game:
         lands outside the window the clock measures and the meter would miss
         it entirely.
         """
-        if self.clock is None:
-            raise RuntimeError("The game runtime is not initialized")
         if not self.settings.vsync:
-            return self.clock.tick(self._frame_target()) / 1000.0
-        return self.clock.tick(max(DISPLAY_SAFETY_CEILING_FPS, self._frame_target())) / 1000.0
+            return self.clock.tick(self._frame_target())
+        return self.clock.tick(max(DISPLAY_SAFETY_CEILING_FPS, self._frame_target()))
 
     def _frame_target(self) -> int:
         """The rate the clock paces to when vsync is not doing it.
@@ -548,8 +566,6 @@ class Game:
         return 0 if self.settings.frame_limit is None else self.settings.frame_limit
 
     def _run_loop(self) -> None:
-        if self.clock is None:
-            raise RuntimeError("The game runtime is not initialized")
         while self.running:
             self.step()
 
@@ -560,8 +576,6 @@ class Game:
         the manual acceptance run does, to hold a display state on screen while
         it is looked at.
         """
-        if self.clock is None:
-            raise RuntimeError("the game runtime is not initialized")
         frame_started = perf_counter()
         frame_delta = self._frame_delta()
         self._accumulator += min(frame_delta, Simulation.MAX_FRAME_TIME)
