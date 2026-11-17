@@ -259,6 +259,11 @@ def _evict_half_shear_cache() -> None:
     _evict_half(_SHEAR_CACHE)
 
 
+def clear_shear_cache() -> None:
+    """Drop sheared surfaces derived from an obsolete display format."""
+    _SHEAR_CACHE.clear()
+
+
 def _monochrome(image: pygame.Surface, tint: Color) -> pygame.Surface:
     """``image`` with its hue knocked back to one, keeping its shading.
 

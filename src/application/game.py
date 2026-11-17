@@ -33,6 +33,8 @@ from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
 from src.core.input.input_provider import LocalInputProvider
 from src.core.level.level_manager import LEVEL_PATHS, LevelManager
+from src.core.rendering.renderer import clear_shear_cache
+from src.core.resource_coordinator import ResourceCoordinator
 from src.core.settings import Display, Simulation
 from src.data.provider import GameplayData, load_gameplay_data
 from src.ui.ui_manager import UIManager
@@ -88,6 +90,14 @@ class Game:
         self.audio = AudioBus()
         self.level_manager = LevelManager(
             self.gameplay_data.levels if self.gameplay_data.levels else LEVEL_PATHS
+        )
+        # Every surface derived from the display format is invalidated through
+        # one owner, including the renderer's shear cache the old path missed.
+        self.resources = ResourceCoordinator(
+            shared_library().clear,
+            self.level_manager.invalidate,
+            fx=fx.clear_frame_cache,
+            renderer=clear_shear_cache,
         )
         self._save_path = save_path if save_path is not None else self.config.save_path
         self.save_game = SaveGame.load(self._save_path)
@@ -408,16 +418,8 @@ class Game:
             self.ui.set_panel_scale(settings.panel_scale)
 
     def _invalidate_assets(self) -> None:
-        """Drop every surface derived from the old display format.
-
-        Three independent caches sit on top of the art: ``AssetLibrary``, the
-        module-level frame cache in ``fx``, and the level cache, whose tiles
-        PyTMX converted against the display format at load time. Clearing only
-        the first would let the others hand back pre-reformat surfaces anyway.
-        """
-        shared_library().clear()
-        fx.clear_frame_cache()
-        self.level_manager.invalidate()
+        """Drop every surface derived from the old display format, in one place."""
+        self.resources.invalidate_display_format()
 
     @staticmethod
     def _window_signature(settings: UserSettings) -> tuple[object, ...]:
