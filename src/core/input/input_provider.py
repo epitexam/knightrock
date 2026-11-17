@@ -4,6 +4,7 @@ from typing import cast
 import pygame
 from pygame.joystick import JoystickType
 
+from src.core.input.device_registry import DeviceRegistry
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import ActionMap, AxisMap, ButtonMap, ComboMap, InputBindings
 from src.core.input.input_state import InputState
@@ -57,9 +58,13 @@ class NullInputProvider(InputProvider):
 
 
 class LocalInputProvider(InputProvider):
-    def __init__(self, bindings: InputBindings | None = None) -> None:
+    def __init__(
+        self,
+        bindings: InputBindings | None = None,
+        devices: DeviceRegistry | None = None,
+    ) -> None:
         self._bindings = bindings or InputBindings()
-        self._joystick: JoystickType | None = None
+        self.devices = devices if devices is not None else DeviceRegistry()
         self._current_joy_buttons: dict[int, bool] = {}
         self._current_joy_axes: dict[int, float] = {}
         self._current_joy_hats: dict[int, tuple[float, float]] = {}
@@ -70,15 +75,13 @@ class LocalInputProvider(InputProvider):
         self._bindings = bindings
 
     def connect_joystick(self, joystick: JoystickType) -> None:
-        self._joystick = joystick
+        self.devices.connect(joystick)
 
     def disconnect_joystick(self, instance_id: int) -> None:
-        if self._joystick and self._joystick.get_instance_id() == instance_id:
-            self._joystick = None
+        self.devices.disconnect(instance_id)
 
     def reassign_joystick(self, joysticks: dict[int, JoystickType]) -> None:
-        if not self._joystick and joysticks:
-            self._joystick = next(iter(joysticks.values()))
+        self.devices.replace(joysticks)
 
     def note_event(self, event: pygame.event.Event) -> None:
         """Latch a key or pad-button edge seen between two polls.
@@ -107,7 +110,7 @@ class LocalInputProvider(InputProvider):
 
     def _from_the_pad(self, event: pygame.event.Event) -> bool:
         """Whether a pad event comes from the pad that drives the player."""
-        joystick = self._joystick
+        joystick = self.devices.active()
         return joystick is not None and getattr(event, "instance_id", None) == (
             joystick.get_instance_id()
         )
@@ -118,18 +121,19 @@ class LocalInputProvider(InputProvider):
         self._current_joy_buttons = {}
         self._current_joy_axes = {}
         self._current_joy_hats = {}
-        if self._joystick:
-            for index in range(self._joystick.get_numbuttons()):
-                self._current_joy_buttons[index] = bool(self._joystick.get_button(index))
-            for index in range(self._joystick.get_numaxes()):
-                self._current_joy_axes[index] = self._joystick.get_axis(index)
+        joystick = self.devices.active()
+        if joystick is not None:
+            for index in range(joystick.get_numbuttons()):
+                self._current_joy_buttons[index] = bool(joystick.get_button(index))
+            for index in range(joystick.get_numaxes()):
+                self._current_joy_axes[index] = joystick.get_axis(index)
             hat_indices = {
                 index
                 for binding in gameplay.gamepad_hats.values()
                 for index in (binding if isinstance(binding, tuple) else (binding,))
             }
             for index in hat_indices:
-                self._current_joy_hats[index] = self._joystick.get_hat(index)
+                self._current_joy_hats[index] = joystick.get_hat(index)
 
         down_held = self._key_held(keys, gameplay.keyboard, InputAction.MOVE_DOWN, latch=False)
         if not down_held:

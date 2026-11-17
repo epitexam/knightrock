@@ -65,14 +65,17 @@ class Game:
         self.config = config if config is not None else RuntimeConfig.from_environment()
         #: The window, the picture drawn into it and the screens around it.
         self.screen = Screen()
-        self.joysticks: dict[int, JoystickType] = {}
         self.settings_store = SettingsStore(
             bindings_path if bindings_path is not None else self.config.settings_path
         )
         self.settings = self.settings_store.load()
         self.input_bindings = self.settings.bindings
-        self.input_router = EventRouter(self.input_bindings, joystick_reader=lambda: self.joysticks)
         self.input_provider = LocalInputProvider(self.input_bindings)
+        self.input_router = EventRouter(
+            self.input_bindings,
+            joystick_reader=lambda: self.joysticks,
+            devices=self.input_provider.devices,
+        )
         self.input_manager = InputManager(self.input_provider)
         # Gameplay data driven by JSON: attack sets, enemy
         # configs, player config and level registry. Falls back to the
@@ -113,6 +116,15 @@ class Game:
     def quit(self) -> None:
         """Ask the loop to stop; scenes do not write ``running`` themselves."""
         self.running = False
+
+    @property
+    def joysticks(self) -> dict[int, JoystickType]:
+        """A view of the pads owned by the input provider's device registry."""
+        return self.input_provider.devices.as_dict()
+
+    @joysticks.setter
+    def joysticks(self, devices: dict[int, JoystickType]) -> None:
+        self.input_provider.devices.replace(devices)
 
     def _subscribe_notifications(self) -> None:
         """Log the gameplay notifications (hook point for UI/audio/save)."""
@@ -696,20 +708,24 @@ class Game:
                 continue
 
             if event.type == pygame.JOYDEVICEADDED:
-                should_assign = not self.joysticks
+                first = self.input_provider.devices.active() is None
                 joy = pygame.joystick.Joystick(event.device_index)
-                self.joysticks[joy.get_instance_id()] = joy
                 logger.info("Connected controller : %s", joy.get_name())
+                self.input_provider.devices.connect(joy)
                 self.input_router.notify_joystick_connected(joy.get_instance_id(), joy)
-                if should_assign:
+                if first:
                     self.input_provider.connect_joystick(joy)
 
-            elif event.type == pygame.JOYDEVICEREMOVED and event.instance_id in self.joysticks:
-                disconnected_joy = self.joysticks[event.instance_id]
+            elif (
+                event.type == pygame.JOYDEVICEREMOVED
+                and self.input_provider.devices.get(event.instance_id) is not None
+            ):
+                disconnected_joy = self.input_provider.devices.get(event.instance_id)
+                assert disconnected_joy is not None
                 logger.info("Controller disconnected : %s", disconnected_joy.get_name())
+                self.input_provider.devices.disconnect(event.instance_id)
                 self.input_provider.disconnect_joystick(event.instance_id)
                 self.input_router.notify_joystick_removed(event.instance_id)
-                del self.joysticks[event.instance_id]
                 self.input_provider.reassign_joystick(self.joysticks)
 
             elif not self._is_a_real_pointer_move(event):

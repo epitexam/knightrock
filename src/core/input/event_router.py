@@ -5,6 +5,7 @@ from enum import StrEnum
 
 import pygame
 
+from src.core.input.device_registry import DeviceRegistry
 from src.core.input.input_actions import InputAction
 from src.core.input.input_bindings import InputBindings
 from src.core.settings import Input as InputSettings
@@ -56,6 +57,7 @@ class EventRouter:
         bindings: InputBindings | None = None,
         clock: Callable[[], float] | None = None,
         joystick_reader: Callable[[], object] | None = None,
+        devices: DeviceRegistry | None = None,
     ) -> None:
         self._bindings = bindings or InputBindings()
         self._active_axes: dict[tuple[int, int], InputAction] = {}
@@ -67,6 +69,7 @@ class EventRouter:
         self._key_next_repeat: dict[int, float] = {}
         self._clock = clock or time.monotonic
         self._joystick_reader = joystick_reader
+        self.devices = devices
         self._connected_joysticks: dict[int, object] = {}
 
     def route(self, event: pygame.event.Event) -> RoutedInput | None:
@@ -208,9 +211,13 @@ class EventRouter:
 
     def notify_joystick_connected(self, instance_id: int, joystick: object) -> None:
         self._connected_joysticks[instance_id] = joystick
+        if self.devices is not None:
+            self.devices.connect(joystick)  # type: ignore[arg-type]
 
     def notify_joystick_removed(self, instance_id: int) -> None:
         self._connected_joysticks.pop(instance_id, None)
+        if self.devices is not None:
+            self.devices.disconnect(instance_id)
         for key in tuple(self._active_axes):
             if key[0] == instance_id:
                 self._active_axes.pop(key, None)
@@ -355,6 +362,10 @@ class EventRouter:
         return repeats
 
     def _resolve_joystick(self, instance_id: int) -> object | None:
+        if self.devices is not None:
+            shared = self.devices.get(instance_id)
+            if shared is not None:
+                return shared
         if instance_id in self._connected_joysticks:
             return self._connected_joysticks[instance_id]
         if self._joystick_reader is not None:
