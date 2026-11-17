@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,8 @@ class SaveGame:
             return cls()
 
 
-def default_save_path() -> Path:
+def default_save_path(environ: Mapping[str, str] | None = None) -> Path:
     """User-owned save location (overridable via ``KNIGHTROCK_SAVE_DIR``)."""
-    base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
+    env = os.environ if environ is None else environ
+    base = Path(env.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "savegame.json"

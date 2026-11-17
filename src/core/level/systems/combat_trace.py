@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -56,9 +57,13 @@ class CombatTrace:
         self._tick = 0
 
     @staticmethod
-    def is_enabled() -> bool:
+    def is_enabled(environ: Mapping[str, str] | None = None) -> bool:
         """Debug overlay on *and* explicit dump opt-in via env."""
-        return Debug.is_enabled() and os.getenv("DEBUG_COMBAT_DUMP", "0") == "1"
+        # Keep the no-argument call for the default path: tests stub
+        # Debug.is_enabled with a zero-argument callable.
+        debug = Debug.is_enabled() if environ is None else Debug.is_enabled(environ)
+        env = os.environ if environ is None else environ
+        return debug and env.get("DEBUG_COMBAT_DUMP", "0") == "1"
 
     @property
     def tick(self) -> int:

@@ -3,6 +3,7 @@ Centralized game configuration and constants.
 """
 
 import os
+from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 
@@ -761,14 +762,16 @@ class Debug:
     WORLD_LABEL_FONT_SIZE = 8
 
     @staticmethod
-    def is_enabled() -> bool:
+    def is_enabled(environ: Mapping[str, str] | None = None) -> bool:
         """Return True when the debug overlay is enabled.
 
-        The environment variable is read at call time (not at import time)
-        so that ``main_debug()`` can enable the overlay after the module
-        hierarchy has already been imported.
+        The environment is read at call time (not at import time) so that
+        ``main_debug()`` can enable the overlay after the modules are imported.
+        Passing ``environ`` gives tests an explicit injection point without
+        changing the default for existing callers.
         """
-        return os.getenv("DEBUG", "0") == "1"
+        env = os.environ if environ is None else environ
+        return env.get("DEBUG", "0") == "1"
 
 
 class Simulation:

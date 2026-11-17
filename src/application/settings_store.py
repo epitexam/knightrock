@@ -38,6 +38,7 @@ means anything.
 import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
@@ -482,7 +483,8 @@ class SettingsStore:
         write_json_atomic(self.path, settings.to_dict())
 
 
-def default_settings_path() -> Path:
+def default_settings_path(environ: Mapping[str, str] | None = None) -> Path:
     """Where settings live when nothing overrides it."""
-    base = Path(os.environ.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
+    env = os.environ if environ is None else environ
+    base = Path(env.get("KNIGHTROCK_SAVE_DIR", str(Path.home())))
     return base / ".knightrock" / "settings.json"
