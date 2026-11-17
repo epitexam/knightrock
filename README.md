@@ -290,7 +290,7 @@ contact damage keep **discrete** collision.
 > you nothing, and drawing them is the most expensive thing the overlay does.
 > Measured on level 0 at 1280×720, dropping the layer took the whole overlay pass
 > from **1.98 ms to 0.09 ms** — 1.9 ms of a 16.7 ms budget, for a picture of the
-> tileset. (`docs/audit/final-report.md`, §12)
+> tileset.
 
 ### Frame timings & benchmarks
 
@@ -448,8 +448,6 @@ target with `pygame.transform.smoothscale`:
 |---|---|---|
 | 1280×720 | ~0.38 ms | ~3.95 ms |
 | 2560×1440 | ~1.33 ms | ~7.46 ms |
-
-Source: `docs/audit/final-report.md`, §12.
 
 </details>
 
@@ -908,12 +906,6 @@ Written in French unless stated otherwise.
 
 | File | Contents |
 |---|---|
-| `docs/audit/current-architecture.md` | The architecture as it is (2026-11-12): layers, tick order, combat, AI and animation flows. |
-| `docs/audit/comprehensive-audit.md` | The audit: verified defects C1-C5, every subsystem classified (keep, refactor, simplify...). |
-| `docs/audit/architectural-recommendations.md` | The recommendations, the alternatives weighed, the target architecture. |
-| `docs/audit/refactoring-roadmap.md` | The staged roadmap the refactoring followed. |
-| `docs/audit/final-report.md` | What was changed, preserved, verified, the debt left, and the open points kept from the old notes. |
-| `docs/audit/combat-dynamism.md` | Why the combat lacked pace, measured, the first reworks (§8-§11), and the full No More Heroes 2 rework (§12). |
 | `docs/design/matrice-niveaux.md` | Proposal, not implemented: a world of rooms laid out as a matrix. |
 
 ---
