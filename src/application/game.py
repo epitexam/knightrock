@@ -27,7 +27,7 @@ from src.core.display.monitors import Monitor, Topology
 from src.core.display.presentation import Presentation
 from src.core.display.stage import Stage
 from src.core.display.window_watch import DisplayChange, WindowWatch
-from src.core.events import EventBus, LevelCompleted, LevelStarted, PlayerDied
+from src.core.events import AppExitRequested, EventBus, LevelCompleted, LevelStarted, PlayerDied
 from src.core.input.event_router import EventRouter
 from src.core.input.input_bindings import InputBindings
 from src.core.input.input_manager import InputManager
@@ -119,6 +119,12 @@ class Game:
         self.events.subscribe(LevelStarted, self._on_level_started)
         self.events.subscribe(PlayerDied, self._on_player_died)
         self.events.subscribe(LevelCompleted, self._on_level_completed)
+        self.events.subscribe(AppExitRequested, self._on_app_exit_requested)
+
+    def _on_app_exit_requested(self, event: AppExitRequested) -> None:
+        """An empty scene stack is a request, not a command to the scene manager."""
+        del event
+        self.quit()
 
     @staticmethod
     def _on_level_started(event: LevelStarted) -> None:

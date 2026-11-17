@@ -81,6 +81,11 @@ class LevelCompleted(Event):
     unlock_level_id: int | None = None
 
 
+@dataclass(frozen=True)
+class AppExitRequested(Event):
+    """The scene stack is empty; the application decides whether to stop."""
+
+
 class UiEffect(StrEnum):
     """What the interface just did, in the vocabulary producers share.
 
@@ -110,7 +115,7 @@ class UiFeedback(Event):
     action: str = ""
 
 
-GameEvent = LevelStarted | PlayerDied | LevelCompleted | UiFeedback
+GameEvent = LevelStarted | PlayerDied | LevelCompleted | AppExitRequested | UiFeedback
 """Union of every concrete event payload."""
 
 Handler = Callable[[GameEvent], None]

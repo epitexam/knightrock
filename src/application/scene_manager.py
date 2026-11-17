@@ -16,6 +16,7 @@ import pygame
 from src.application.input_dispatcher import InputDispatcher
 from src.application.scene import Scene
 from src.core.colors import Colors
+from src.core.events import AppExitRequested
 
 if TYPE_CHECKING:
     from src.application.game import Game
@@ -82,7 +83,9 @@ class SceneManager:
         self._stack.pop().exit()
         self.input_dispatcher.router.reset()
         if not self._stack:
-            self.game.running = False
+            # The manager reports the fact; stopping the loop is the
+            # application's decision (Game subscribes to this event).
+            self.game.events.emit(AppExitRequested())
 
     def handle_event(self, event: pygame.event.Event | None) -> None:
         """Forward an event to the active scene.
