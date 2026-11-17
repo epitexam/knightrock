@@ -120,6 +120,9 @@ class GridView:
             self.TEXT_CACHE_LIMIT,
             lambda font, text, color, width: self._fit(font, text, width, color),
         )
+        # Text widths are measured ~90-150 times/frame on the controls screen
+        # for strings that never change while it is up (bug/perf MEDIUM-1).
+        self._size_cache: dict[tuple[int, str], int] = {}
 
     @property
     def row_rects(self) -> list[pygame.Rect]:
@@ -557,9 +560,9 @@ class GridView:
         its longest label, the width the text scale is settled against.
         """
         columns_count = max(1, len(column_headers))
-        label_width = max((item_font.size(row.label)[0] for row in rows), default=0)
+        label_width = max((self._width(item_font, row.label) for row in rows), default=0)
         for header in column_headers:
-            label_width = max(label_width, small_font.size(header)[0])
+            label_width = max(label_width, self._width(small_font, header))
         # Plus the air the drawing leaves after a label: the first column starts
         # at the end of the gutter, and ``draw`` paints a label in
         # ``gutter - gap``, so a gutter measured without it cut the air out of
@@ -570,12 +573,12 @@ class GridView:
         for row in rows:
             for cell in row.cells:
                 if cell is not None:
-                    cell_width = max(cell_width, item_font.size(cell.text)[0])
+                    cell_width = max(cell_width, self._width(item_font, cell.text))
         for header in column_headers:
-            cell_width = max(cell_width, small_font.size(header)[0])
+            cell_width = max(cell_width, self._width(small_font, header))
         for text in reserve:
-            cell_width = max(cell_width, item_font.size(text)[0])
-        cell_width += small_font.size(" ")[0] * 2
+            cell_width = max(cell_width, self._width(item_font, text))
+        cell_width += self._width(small_font, " ") * 2
         # A gutter wider than half the panel leaves cells no room, so cap it at
         # a third and give the rest to the values, which are the wider text.
         if capped:
@@ -585,6 +588,15 @@ class GridView:
 
     def _max_panel_width(self, surface: pygame.Surface, margin: int) -> int:
         return max(self._metrics.px(200), surface.get_width() - margin * 2)
+
+    def _width(self, font: pygame.font.Font, text: str) -> int:
+        """Memoised text width; fonts are stable between font rebuilds."""
+        key = (id(font), text)
+        width = self._size_cache.get(key)
+        if width is None:
+            width = font.size(text)[0]
+            self._size_cache[key] = width
+        return width
 
     def _ensure_fonts(self) -> None:
         """The three faces at the settled text scale, rebuilt only when it changes.
@@ -601,6 +613,7 @@ class GridView:
         )
         if self._font_key is not None:
             self._text_cache.clear()
+            self._size_cache.clear()
         self._font_key = self._text_scale
 
     def _panel_for(self, size: tuple[int, int], unit: int = 1) -> pygame.Surface:
