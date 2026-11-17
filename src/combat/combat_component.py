@@ -633,10 +633,10 @@ class NullCombatComponent:
         """Always returns ``False``."""
         return False
 
-    def release_charge(self, full: MoveId | None = None) -> bool:
-        """Always returns ``False``."""
+    def release_charge(self, full: MoveId | None = None) -> Refusal:
+        """Never starts an attack, with the same return contract as the real one."""
         del full
-        return False
+        return Refusal.UNKNOWN
 
     def on_hit(self, duration: float | None = None, interrupt: bool = True) -> None:
         """No-op."""
