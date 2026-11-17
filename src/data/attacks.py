@@ -42,7 +42,14 @@ from src.combat.frame_data import (
 )
 from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import AnchorKind, EasingKind, ShapeKind
-from src.data.errors import GameplayDataError, read_json_object, reject_unknown
+from src.data.errors import (
+    GameplayDataError,
+    read_bool,
+    read_int,
+    read_json_object,
+    read_number,
+    reject_unknown,
+)
 
 ATTACKS_FILENAME = "attacks.json"
 ATTACKS_VERSION = 1
@@ -167,27 +174,39 @@ def _read_hit(raw: Any, where: str) -> HitProperties:
         raise GameplayDataError(f"{where}.damage_type: unknown type {damage_type!r}")
     try:
         return HitProperties(
-            damage=float(_required(raw, "damage", where)),
+            damage=read_number(_required(raw, "damage", where), f"{where}.damage"),
             knockback=_read_knockback(raw.get("knockback", {}), f"{where}.knockback"),
             damage_type=_DAMAGE_TYPES[damage_type],
-            stagger=float(raw.get("stagger", _HIT_DEFAULTS["stagger"])),
-            super_armor_break=bool(
-                raw.get("super_armor_break", _HIT_DEFAULTS["super_armor_break"])
+            stagger=read_number(raw.get("stagger", _HIT_DEFAULTS["stagger"]), f"{where}.stagger"),
+            super_armor_break=read_bool(
+                raw.get("super_armor_break", _HIT_DEFAULTS["super_armor_break"]),
+                f"{where}.super_armor_break",
             ),
-            is_finisher=bool(raw.get("is_finisher", _HIT_DEFAULTS["is_finisher"])),
-            juggle_gravity_mult=float(
-                raw.get("juggle_gravity_mult", _HIT_DEFAULTS["juggle_gravity_mult"])
+            is_finisher=read_bool(
+                raw.get("is_finisher", _HIT_DEFAULTS["is_finisher"]), f"{where}.is_finisher"
             ),
-            otg_allowed=bool(raw.get("otg_allowed", _HIT_DEFAULTS["otg_allowed"])),
-            unblockable=bool(raw.get("unblockable", _HIT_DEFAULTS["unblockable"])),
-            priority=int(raw.get("priority", _HIT_DEFAULTS["priority"])),
+            juggle_gravity_mult=read_number(
+                raw.get("juggle_gravity_mult", _HIT_DEFAULTS["juggle_gravity_mult"]),
+                f"{where}.juggle_gravity_mult",
+            ),
+            otg_allowed=read_bool(
+                raw.get("otg_allowed", _HIT_DEFAULTS["otg_allowed"]), f"{where}.otg_allowed"
+            ),
+            unblockable=read_bool(
+                raw.get("unblockable", _HIT_DEFAULTS["unblockable"]), f"{where}.unblockable"
+            ),
+            priority=read_int(raw.get("priority", _HIT_DEFAULTS["priority"]), f"{where}.priority"),
             clash=_named(Clash, raw, "clash", where),
             height=_named(Height, raw, "height", where),
             tags=_read_tags(raw.get("tags"), f"{where}.tags"),
-            flinch=bool(raw.get("flinch", _HIT_DEFAULTS["flinch"])),
-            hit_stop=(float(raw["hit_stop"]) if raw.get("hit_stop") is not None else None),
-            stun=float(raw.get("stun", _HIT_DEFAULTS["stun"])),
-            execute=bool(raw.get("execute", _HIT_DEFAULTS["execute"])),
+            flinch=read_bool(raw.get("flinch", _HIT_DEFAULTS["flinch"]), f"{where}.flinch"),
+            hit_stop=(
+                read_number(raw["hit_stop"], f"{where}.hit_stop")
+                if raw.get("hit_stop") is not None
+                else None
+            ),
+            stun=read_number(raw.get("stun", _HIT_DEFAULTS["stun"]), f"{where}.stun"),
+            execute=read_bool(raw.get("execute", _HIT_DEFAULTS["execute"]), f"{where}.execute"),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hit value: {exc}") from exc
@@ -217,7 +236,7 @@ def _read_hitbox_spec(raw: Any, where: str) -> HitboxSpec:
                 f"{where}.shape",
                 _HITBOX_DEFAULTS["shape"],
             ),
-            angle=float(raw.get("angle", _HITBOX_DEFAULTS["angle"])),
+            angle=read_number(raw.get("angle", _HITBOX_DEFAULTS["angle"]), f"{where}.angle"),
             easing=_enum_value(
                 _EASING_KINDS,
                 raw.get("easing"),
@@ -255,10 +274,10 @@ def _read_hitbox_keyframe(raw: Any, where: str) -> HitboxKeyframe:
     reject_unknown(raw, _field_names(HitboxKeyframe), where)
     try:
         return HitboxKeyframe(
-            frame=int(_required(raw, "frame", where)),
+            frame=read_int(_required(raw, "frame", where), f"{where}.frame"),
             size=_pair_of_floats(_required(raw, "size", where), f"{where}.size"),
             offset=_pair_of_floats(_required(raw, "offset", where), f"{where}.offset"),
-            angle=float(raw.get("angle", _KEYFRAME_DEFAULTS["angle"])),
+            angle=read_number(raw.get("angle", _KEYFRAME_DEFAULTS["angle"]), f"{where}.angle"),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid hitbox keyframe: {exc}") from exc
@@ -314,7 +333,10 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                     f"{where}.hitbox_shape",
                     _PHASE_DEFAULTS["hitbox_shape"],
                 ),
-                angle=float(raw.get("hitbox_angle", _PHASE_DEFAULTS["hitbox_angle"])),
+                angle=read_number(
+                    raw.get("hitbox_angle", _PHASE_DEFAULTS["hitbox_angle"]),
+                    f"{where}.hitbox_angle",
+                ),
                 easing=_enum_value(
                     _EASING_KINDS,
                     raw.get("hitbox_easing"),
@@ -338,9 +360,15 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             primary, *extra_specs = specs
             extras = tuple(extra_specs)
         return PhaseDefinition(
-            startup_frames=int(_required(raw, "startup_frames", where)),
-            active_frames=int(_required(raw, "active_frames", where)),
-            recovery_frames=int(_required(raw, "recovery_frames", where)),
+            startup_frames=read_int(
+                _required(raw, "startup_frames", where), f"{where}.startup_frames"
+            ),
+            active_frames=read_int(
+                _required(raw, "active_frames", where), f"{where}.active_frames"
+            ),
+            recovery_frames=read_int(
+                _required(raw, "recovery_frames", where), f"{where}.recovery_frames"
+            ),
             hitbox_size=primary.size,
             hitbox_offset=primary.offset,
             hit=_read_hit(_required(raw, "hit", where), f"{where}.hit"),
@@ -351,11 +379,15 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
             hitbox_anchor_offset=primary.anchor_offset,
             extra_hitboxes=extras,
             hitbox_keyframes=primary.keyframes,
-            reset_targets=bool(raw.get("reset_targets", _PHASE_DEFAULTS["reset_targets"])),
+            reset_targets=read_bool(
+                raw.get("reset_targets", _PHASE_DEFAULTS["reset_targets"]), f"{where}.reset_targets"
+            ),
             cancel_into=tuple(
                 MoveId(name) for name in raw.get("cancel_into", _PHASE_DEFAULTS["cancel_into"])
             ),
-            cancel_on_hit=bool(raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"])),
+            cancel_on_hit=read_bool(
+                raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"]), f"{where}.cancel_on_hit"
+            ),
             launches=_read_launch(raw.get("launches"), f"{where}.launches"),
         )
     except (TypeError, ValueError) as exc:
@@ -412,24 +444,45 @@ def read_attack_definition(raw: Any, where: str) -> AttackDefinition:
                 _read_phase(phase, f"{where}.phases[{index}]")
                 for index, phase in enumerate(raw_phases)
             ),
-            cooldown=float(_required(raw, "cooldown", where)),
+            cooldown=read_number(_required(raw, "cooldown", where), f"{where}.cooldown"),
             stances=_read_stances(raw.get("stances"), where),
             animation=str(raw.get("animation", _ATTACK_DEFAULTS["animation"])),
-            vertical_lunge=float(raw.get("vertical_lunge", _ATTACK_DEFAULTS["vertical_lunge"])),
-            lock_direction=bool(raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"])),
-            combo_reset=bool(raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"])),
-            chargeable=bool(raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"])),
-            max_charge_time=float(raw.get("max_charge_time", _ATTACK_DEFAULTS["max_charge_time"])),
-            charge_move_multiplier=float(
-                raw.get("charge_move_multiplier", _ATTACK_DEFAULTS["charge_move_multiplier"])
+            vertical_lunge=read_number(
+                raw.get("vertical_lunge", _ATTACK_DEFAULTS["vertical_lunge"]),
+                f"{where}.vertical_lunge",
             ),
-            uninterruptible=bool(raw.get("uninterruptible", _ATTACK_DEFAULTS["uninterruptible"])),
-            invincible=bool(raw.get("invincible", _ATTACK_DEFAULTS["invincible"])),
-            lunge_speed_multiplier=float(
-                raw.get("lunge_speed_multiplier", _ATTACK_DEFAULTS["lunge_speed_multiplier"])
+            lock_direction=read_bool(
+                raw.get("lock_direction", _ATTACK_DEFAULTS["lock_direction"]),
+                f"{where}.lock_direction",
             ),
-            attack_move_multiplier=float(
-                raw.get("attack_move_multiplier", _ATTACK_DEFAULTS["attack_move_multiplier"])
+            combo_reset=read_bool(
+                raw.get("combo_reset", _ATTACK_DEFAULTS["combo_reset"]), f"{where}.combo_reset"
+            ),
+            chargeable=read_bool(
+                raw.get("chargeable", _ATTACK_DEFAULTS["chargeable"]), f"{where}.chargeable"
+            ),
+            max_charge_time=read_number(
+                raw.get("max_charge_time", _ATTACK_DEFAULTS["max_charge_time"]),
+                f"{where}.max_charge_time",
+            ),
+            charge_move_multiplier=read_number(
+                raw.get("charge_move_multiplier", _ATTACK_DEFAULTS["charge_move_multiplier"]),
+                f"{where}.charge_move_multiplier",
+            ),
+            uninterruptible=read_bool(
+                raw.get("uninterruptible", _ATTACK_DEFAULTS["uninterruptible"]),
+                f"{where}.uninterruptible",
+            ),
+            invincible=read_bool(
+                raw.get("invincible", _ATTACK_DEFAULTS["invincible"]), f"{where}.invincible"
+            ),
+            lunge_speed_multiplier=read_number(
+                raw.get("lunge_speed_multiplier", _ATTACK_DEFAULTS["lunge_speed_multiplier"]),
+                f"{where}.lunge_speed_multiplier",
+            ),
+            attack_move_multiplier=read_number(
+                raw.get("attack_move_multiplier", _ATTACK_DEFAULTS["attack_move_multiplier"]),
+                f"{where}.attack_move_multiplier",
             ),
             follow_ups=_read_follow_ups(raw.get("follow_ups"), where),
         )

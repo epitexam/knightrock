@@ -33,12 +33,18 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import NamedTuple, TypeVar
 
 logger = logging.getLogger(__name__)
+
+#: How many recent subscriber failures to keep. A subscriber that fails on
+#: every event would otherwise append one record per event for the whole
+#: session; the log is a diagnostic, not an audit trail.
+MAX_RECORDED_FAILURES = 64
 
 EventT = TypeVar("EventT", bound="Event")
 
@@ -115,7 +121,7 @@ class SubscriberFailure(NamedTuple):
 
     event: GameEvent
     handler: Handler
-    error: BaseException
+    error: Exception
 
 
 class EventBus:
@@ -144,7 +150,7 @@ class EventBus:
 
     def __init__(self) -> None:
         self._subscribers: dict[type[Event], list[Handler]] = {}
-        self._failures: list[SubscriberFailure] = []
+        self._failures: deque[SubscriberFailure] = deque(maxlen=MAX_RECORDED_FAILURES)
 
     @property
     def failures(self) -> tuple[SubscriberFailure, ...]:

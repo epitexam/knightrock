@@ -38,13 +38,12 @@ means anything.
 import json
 import logging
 import os
-import shutil
-import tempfile
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from src.core.atomic_json import write_json_atomic
 from src.core.display.letterbox import FitPolicy
 from src.core.input.bindings_codec import (
     bindings_from_dict,
@@ -98,6 +97,34 @@ DEFAULT_FRAME_LIMIT: int | None = 60
 #: name that explained itself, next to the one that was actually enforced.
 MIN_FRAME_LIMIT = 20
 MAX_FRAME_LIMIT = 500
+
+
+def _sections(data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The ``video`` and ``ui`` blocks, every schema version has them."""
+    video = data.get("video", {})
+    ui = data.get("ui", {})
+    if not isinstance(video, dict) or not isinstance(ui, dict):
+        raise ValueError("settings sections must be objects")
+    return video, ui
+
+
+def _scales(ui: dict[str, Any]) -> tuple[float, float]:
+    """The two scale preferences, validated once for all four migrations."""
+    scale = ui.get("scale", 1.0)
+    if scale not in UI_SCALES:
+        raise ValueError(f"ui.scale must be one of {UI_SCALES}")
+    panel_scale = ui.get("panel_scale", 1.0)
+    if panel_scale not in PANEL_SCALES:
+        raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+    return scale, panel_scale
+
+
+def _frame_limit(video: dict[str, Any]) -> int | None:
+    """The bounded frame limit; ``None`` means uncapped and needs no bounds."""
+    value = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
+    if value is None:
+        return None
+    return _bounded_int(value, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT)
 
 
 @dataclass(frozen=True)
@@ -212,30 +239,14 @@ class UserSettings:
     def _from_v3(cls, data: dict[str, Any]) -> UserSettings:
         """Read a v3 file: choices, and nothing about the screen."""
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
-
-        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
-        if frame_limit is not None:
-            frame_limit = _bounded_int(
-                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
-            )
+        video, ui = _sections(data)
+        scale, panel_scale = _scales(ui)
 
         return cls(
             bindings=bindings,
             pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
-            frame_limit=frame_limit,
+            frame_limit=_frame_limit(video),
             ui_scale=scale,
             panel_scale=panel_scale,
         )
@@ -256,34 +267,18 @@ class UserSettings:
         longer has, and the keys that no longer exist, are simply ignored.
         """
         bindings = cls._bindings(data)
-        video = data.get("video", {})
+        video, ui = _sections(data)
         window = data.get("window", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
         if not isinstance(window, dict):
             raise ValueError("settings window section must be an object")
-
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
-
-        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
-        if frame_limit is not None:
-            frame_limit = _bounded_int(
-                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
-            )
+        scale, panel_scale = _scales(ui)
 
         return cls(
             bindings=bindings,
             pixel_perfect=_bounded_bool(video.get("pixel_perfect", False), "video.pixel_perfect"),
             fit=_enum(FitPolicy, video.get("fit", FitPolicy.BARS), "fit"),
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
-            frame_limit=frame_limit,
+            frame_limit=_frame_limit(video),
             ui_scale=scale,
             panel_scale=panel_scale,
             window_size=_placement(window, "size"),
@@ -305,32 +300,17 @@ class UserSettings:
         anything.
         """
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+        video, ui = _sections(data)
+        scale, panel_scale = _scales(ui)
 
         frame_counter = video.get("frame_counter", True)
         if not isinstance(frame_counter, bool):
             raise ValueError("video.frame_counter must be boolean")
 
-        frame_limit = video.get("frame_limit", DEFAULT_FRAME_LIMIT)
-        if frame_limit is not None:
-            frame_limit = _bounded_int(
-                frame_limit, "video.frame_limit", MIN_FRAME_LIMIT, MAX_FRAME_LIMIT
-            )
-
         return cls(
             bindings=bindings,
             vsync=_bounded_bool(video.get("vsync", False), "video.vsync"),
-            frame_limit=frame_limit,
+            frame_limit=_frame_limit(video),
             panel_scale=panel_scale,
             ui_scale=scale,
         )
@@ -347,19 +327,11 @@ class UserSettings:
         so a v1 player keeps their controls and takes the default window.
         """
         bindings = cls._bindings(data)
-        video = data.get("video", {})
-        ui = data.get("ui", {})
-        if not isinstance(video, dict) or not isinstance(ui, dict):
-            raise ValueError("settings sections must be objects")
-        scale = ui.get("scale", 1.0)
-        if scale not in UI_SCALES:
-            raise ValueError(f"ui.scale must be one of {UI_SCALES}")
-        # A v1 file predates the key; 1.0 is what an absent preference has to
-        # mean, or migrating a file would resize every panel on the first launch
-        # after the upgrade.
-        panel_scale = ui.get("panel_scale", 1.0)
-        if panel_scale not in PANEL_SCALES:
-            raise ValueError(f"ui.panel_scale must be one of {PANEL_SCALES}")
+        video, ui = _sections(data)
+        # A v1 file predates the panel_scale key; _scales' 1.0 default is what
+        # an absent preference has to mean, or migrating would resize every
+        # panel on the first launch after the upgrade.
+        scale, panel_scale = _scales(ui)
         return cls(
             bindings=bindings,
             panel_scale=panel_scale,
@@ -507,27 +479,7 @@ class SettingsStore:
             return UserSettings()
 
     def save(self, settings: UserSettings) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._keep_backup()
-        with tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=self.path.parent, delete=False
-        ) as temporary:
-            json.dump(settings.to_dict(), temporary, indent=2)
-            temporary_path = Path(temporary.name)
-        temporary_path.replace(self.path)
-
-    def _keep_backup(self) -> None:
-        """Copy the file about to be replaced next to it, best effort.
-
-        Best effort on purpose: a backup that can fail the write is a worse
-        outcome than no backup, and the case it exists for -- a valid file being
-        replaced by a valid file -- is not the case that needed saving anyway.
-        """
-        try:
-            if self.path.is_file():
-                shutil.copy2(self.path, self.path.with_suffix(".json.bak"))
-        except OSError as error:
-            logger.warning("Could not keep a backup of %s: %s", self.path, error)
+        write_json_atomic(self.path, settings.to_dict())
 
 
 def default_settings_path() -> Path:

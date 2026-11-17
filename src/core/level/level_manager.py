@@ -1,13 +1,17 @@
 """Manages level loading and caching with automatic progression."""
 
+import logging
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from pathlib import Path
 
 from pytmx.util_pygame import load_pygame
 
-from src.core.level.level_data import LevelData
+from src.core.level.level_data import LevelData, LevelDataError
 from src.core.level.properties import LevelPropertyError
 from src.core.paths import resource_path
+
+logger = logging.getLogger(__name__)
 
 LEVEL_PATHS: dict[int, str] = {
     0: "assets/data/levels/1.tmx",
@@ -113,9 +117,16 @@ class LevelManager:
             try:
                 tmx_map = load_pygame(absolute_path)
                 level_data = LevelData.from_tmx(tmx_map)
-            except LevelPropertyError:
+            except LevelDataError, LevelPropertyError:
                 raise
-            except Exception as error:  # noqa: BLE001 - pytmx raises bare types
+            except ET.ParseError as error:
+                raise LevelLoadError(f"{absolute_path} cannot be loaded: {error}") from error
+            except Exception as error:  # noqa: BLE001 - pytmx raises a bare type
+                # pytmx signals a missing tileset with a plain Exception, so
+                # this branch cannot be removed. Log the traceback: an adapter
+                # bug landing here must be visible as one, not silently filed
+                # as "a bad map file".
+                logger.error("Unable to load level %s", absolute_path, exc_info=error)
                 raise LevelLoadError(f"{absolute_path} cannot be loaded: {error}") from error
             self._cache[level_id] = level_data
         return self._cache[level_id]

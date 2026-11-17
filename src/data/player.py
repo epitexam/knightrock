@@ -22,7 +22,9 @@ from src.combat.frame_data import AttackDefinition, MoveId
 from src.data.errors import (
     GameplayDataError,
     pair_of_floats,
+    read_int,
     read_json_object,
+    read_number,
     reject_unknown,
     triple_of_ints,
 )
@@ -83,8 +85,8 @@ def read_player_config(
         return PlayerConfig(
             size=pair_of_floats(raw.get("size", list(base.size)), f"{where}.size"),
             color=triple_of_ints(raw.get("color", list(base.color)), f"{where}.color"),
-            health=float(raw.get("health", base.health)),
-            max_health=float(raw.get("max_health", base.max_health)),
+            health=read_number(raw.get("health", base.health), f"{where}.health"),
+            max_health=read_number(raw.get("max_health", base.max_health), f"{where}.max_health"),
             hitbox_inflate=pair_of_floats(
                 raw.get("hitbox_inflate", list(base.hitbox_inflate)), f"{where}.hitbox_inflate"
             ),
@@ -94,39 +96,76 @@ def read_player_config(
             # P2: absent field keeps the legacy fallback on ``hurtbox_inflate``.
             hurtbox_zones=read_hurtbox_zones(raw.get("hurtbox_zones"), f"{where}.hurtbox_zones"),
             attacks=attacks if attacks is not None else dict(base.attacks),
-            speed=float(raw.get("speed", base.speed)),
-            floor_control=float(raw.get("floor_control", base.floor_control)),
-            air_control=float(raw.get("air_control", base.air_control)),
-            jump_height=float(raw.get("jump_height", base.jump_height)),
-            wall_jump_height=float(raw.get("wall_jump_height", base.wall_jump_height)),
-            wall_jump_push_multiplier=float(
-                raw.get("wall_jump_push_multiplier", base.wall_jump_push_multiplier)
+            speed=read_number(raw.get("speed", base.speed), f"{where}.speed"),
+            floor_control=read_number(
+                raw.get("floor_control", base.floor_control), f"{where}.floor_control"
             ),
-            wall_jump_lock_duration=float(
-                raw.get("wall_jump_lock_duration", base.wall_jump_lock_duration)
+            air_control=read_number(
+                raw.get("air_control", base.air_control), f"{where}.air_control"
             ),
-            wall_jump_min_lock=float(raw.get("wall_jump_min_lock", base.wall_jump_min_lock)),
-            wall_slide_speed=float(raw.get("wall_slide_speed", base.wall_slide_speed)),
-            max_midair_jumps=int(raw.get("max_midair_jumps", base.max_midair_jumps)),
+            jump_height=read_number(
+                raw.get("jump_height", base.jump_height), f"{where}.jump_height"
+            ),
+            wall_jump_height=read_number(
+                raw.get("wall_jump_height", base.wall_jump_height), f"{where}.wall_jump_height"
+            ),
+            wall_jump_push_multiplier=read_number(
+                raw.get("wall_jump_push_multiplier", base.wall_jump_push_multiplier),
+                f"{where}.wall_jump_push_multiplier",
+            ),
+            wall_jump_lock_duration=read_number(
+                raw.get("wall_jump_lock_duration", base.wall_jump_lock_duration),
+                f"{where}.wall_jump_lock_duration",
+            ),
+            wall_jump_min_lock=read_number(
+                raw.get("wall_jump_min_lock", base.wall_jump_min_lock),
+                f"{where}.wall_jump_min_lock",
+            ),
+            wall_slide_speed=read_number(
+                raw.get("wall_slide_speed", base.wall_slide_speed), f"{where}.wall_slide_speed"
+            ),
+            max_midair_jumps=read_int(
+                raw.get("max_midair_jumps", base.max_midair_jumps), f"{where}.max_midair_jumps"
+            ),
             max_wall_jumps=(
                 _read_wall_jumps(raw["max_wall_jumps"], f"{where}.max_wall_jumps")
                 if "max_wall_jumps" in raw
                 else base.max_wall_jumps
             ),
-            coyote_duration=float(raw.get("coyote_duration", base.coyote_duration)),
-            jump_buffer_duration=float(raw.get("jump_buffer_duration", base.jump_buffer_duration)),
-            max_dash_charges=int(raw.get("max_dash_charges", base.max_dash_charges)),
-            dash_speed=float(raw.get("dash_speed", base.dash_speed)),
-            dash_duration=float(raw.get("dash_duration", base.dash_duration)),
-            dash_penalty_duration=float(
-                raw.get("dash_penalty_duration", base.dash_penalty_duration)
+            coyote_duration=read_number(
+                raw.get("coyote_duration", base.coyote_duration), f"{where}.coyote_duration"
             ),
-            dash_recharge_time=float(raw.get("dash_recharge_time", base.dash_recharge_time)),
-            dash_gravity_mult=float(raw.get("dash_gravity_mult", base.dash_gravity_mult)),
-            dash_coyote_time=float(raw.get("dash_coyote_time", base.dash_coyote_time)),
-            hurt_duration=float(raw.get("hurt_duration", base.hurt_duration)),
-            invincibility_duration=float(
-                raw.get("invincibility_duration", base.invincibility_duration)
+            jump_buffer_duration=read_number(
+                raw.get("jump_buffer_duration", base.jump_buffer_duration),
+                f"{where}.jump_buffer_duration",
+            ),
+            max_dash_charges=read_int(
+                raw.get("max_dash_charges", base.max_dash_charges), f"{where}.max_dash_charges"
+            ),
+            dash_speed=read_number(raw.get("dash_speed", base.dash_speed), f"{where}.dash_speed"),
+            dash_duration=read_number(
+                raw.get("dash_duration", base.dash_duration), f"{where}.dash_duration"
+            ),
+            dash_penalty_duration=read_number(
+                raw.get("dash_penalty_duration", base.dash_penalty_duration),
+                f"{where}.dash_penalty_duration",
+            ),
+            dash_recharge_time=read_number(
+                raw.get("dash_recharge_time", base.dash_recharge_time),
+                f"{where}.dash_recharge_time",
+            ),
+            dash_gravity_mult=read_number(
+                raw.get("dash_gravity_mult", base.dash_gravity_mult), f"{where}.dash_gravity_mult"
+            ),
+            dash_coyote_time=read_number(
+                raw.get("dash_coyote_time", base.dash_coyote_time), f"{where}.dash_coyote_time"
+            ),
+            hurt_duration=read_number(
+                raw.get("hurt_duration", base.hurt_duration), f"{where}.hurt_duration"
+            ),
+            invincibility_duration=read_number(
+                raw.get("invincibility_duration", base.invincibility_duration),
+                f"{where}.invincibility_duration",
             ),
             faction=str(raw.get("faction", base.faction)),
         )

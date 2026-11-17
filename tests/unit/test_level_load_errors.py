@@ -51,6 +51,32 @@ def test_the_original_cause_is_kept(tmp_path: Path) -> None:
     assert raised.value.__cause__ is not None
 
 
+def test_an_internal_failure_is_logged_with_its_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A bug in the adapter must not be silently filed as a bad map file."""
+    import logging
+
+    from src.core.level import level_manager
+    from src.core.level.level_data import LevelData
+
+    path = tmp_path / "broken.tmx"
+    path.write_text("anything", encoding="utf-8")
+    monkeypatch.setattr(level_manager, "load_pygame", lambda _: object())
+
+    def broken(tmx: object) -> LevelData:
+        raise RuntimeError("adapter bug")
+
+    monkeypatch.setattr(LevelData, "from_tmx", broken)
+    manager = LevelManager({0: str(path)})
+
+    with caplog.at_level(logging.ERROR), pytest.raises(LevelLoadError):
+        manager.get(0)
+
+    assert "adapter bug" in caplog.text
+    assert "Traceback" in caplog.text
+
+
 def test_a_level_load_error_is_a_value_error(tmp_path: Path) -> None:
     (tmp_path / "broken.tmx").write_text(_TRUNCATED, encoding="utf-8")
     manager = LevelManager({0: str(tmp_path / "broken.tmx")})
