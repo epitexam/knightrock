@@ -489,14 +489,7 @@ class ContactSystem:
         self._nearby.clear()
         self._seen.clear()
         for swept in box.swept:
-            if type(entity_grid) is EntityGrid:
-                entity_grid.append_near(swept, self._nearby, self._seen)
-            else:
-                for member in entity_grid.near(swept):
-                    key = id(member)
-                    if key not in self._seen:
-                        self._seen.add(key)
-                        self._nearby.append(member)
+            entity_grid.append_near(swept, self._nearby, self._seen)
         self._nearby.sort(key=lambda member: order.get(id(member), len(order)))
         self._candidates_buffer.clear()
         self._candidates_buffer.extend(

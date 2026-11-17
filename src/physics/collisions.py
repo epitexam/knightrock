@@ -1,11 +1,12 @@
 from collections.abc import Iterable
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
 import pygame
 from pygame.math import Vector2
 
-from src.core.settings import Collision, GameFeel, Separation
+from src.core.settings import Collision, GameFeel
 from src.physics.spatial_hash import SpatialHash, collider_box, is_one_way
+from src.physics.spatial_query import make_query
 
 
 class CollisionSprite(Protocol):
@@ -92,23 +93,7 @@ def get_nearby_sprites(
     Uses spatial hash for O(1) lookup when available, otherwise falls back
     to the original O(n) search.
     """
-    # Only use spatial_hash if it's actually a SpatialHash instance
-    if isinstance(spatial_hash, SpatialHash):
-        # The grid stores heterogeneous members (rect-only tiles as well as
-        # hitbox-bearing sprites); every consumer re-derives the box with
-        # getattr, so narrowing the member type back to CollisionSprite is
-        # safe here.
-        return cast(list[CollisionSprite], spatial_hash.get_nearby(sprite.hitbox))
-
-    # Fallback to original O(n) search for backward compatibility
-    if collision_sprites is None:
-        return []
-    search_area = sprite.hitbox.inflate(Separation.SEARCH_INFLATE, Separation.SEARCH_INFLATE)
-    return [
-        other
-        for other in collision_sprites
-        if (box := collider_box(other)) is not None and search_area.colliderect(box)
-    ]
+    return make_query(spatial_hash, collision_sprites).get_nearby(sprite.hitbox)
 
 
 def update_contact_state(

@@ -204,6 +204,10 @@ class _CountingGrid(EntityGrid):
         self.queries += 1
         return super().near(box)
 
+    def append_near(self, box, nearby, seen):  # noqa: ANN001, ANN202 (test double)
+        self.queries += 1
+        return super().append_near(box, nearby, seen)
+
 
 def _parity_pass(use_grid: bool) -> tuple[int, int, int, int]:
     """One sweep tick, with or without a grid. Returns metrics and queries.

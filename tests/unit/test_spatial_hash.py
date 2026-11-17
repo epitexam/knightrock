@@ -12,13 +12,30 @@ from typing import cast
 import pygame
 
 from src.core.level.level import Level
-from src.core.settings import World
+from src.core.settings import Physics, Simulation, World
 from src.physics.spatial_hash import (
     QUERY_MARGIN_PX,
     SpatialHash,
     SpatialHashMember,
 )
+from src.physics.spatial_query import LinearQuery, make_query
 from tests.unit.helpers import make_entity
+
+
+def test_query_margin_covers_one_tick_of_max_fall() -> None:
+    """The hidden broad-phase invariant, made explicit as a test."""
+    fall_per_tick = Physics.MAX_FALL_SPEED * Simulation.TIMESTEP
+
+    assert fall_per_tick <= QUERY_MARGIN_PX
+
+
+def test_a_duck_typed_query_needs_no_spatial_hash_type() -> None:
+    """make_query chooses by injection, never by isinstance on the index."""
+    sprite = BoxSprite(pygame.FRect(100, 100, 40, 48))
+    query = make_query(None, [sprite])
+
+    assert isinstance(query, LinearQuery)
+    assert query.get_nearby(pygame.FRect(100, 100, 40, 48)) == [sprite]
 
 
 class BoxSprite:
