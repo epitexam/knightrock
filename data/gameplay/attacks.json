@@ -543,7 +543,7 @@
           {
             "startup_frames": 7,
             "active_frames": 4,
-            "recovery_frames": 14,
+            "recovery_frames": 11,
             "hit": {
               "damage": 13.0,
               "knockback": {
@@ -573,6 +573,7 @@
               "kick_1",
               "shot"
             ],
+            "cancel_on_hit": true,
             "hitboxes": [
               {
                 "size": [
@@ -1297,7 +1298,7 @@
           {
             "startup_frames": 6,
             "active_frames": 5,
-            "recovery_frames": 14,
+            "recovery_frames": 11,
             "hit": {
               "damage": 11.0,
               "knockback": {
@@ -1327,6 +1328,7 @@
               "kick_1",
               "shot"
             ],
+            "cancel_on_hit": true,
             "hitboxes": [
               {
                 "size": [
@@ -4106,6 +4108,7 @@
               "air_slash",
               "air_kick"
             ],
+            "cancel_on_hit": true,
             "hitboxes": [
               {
                 "size": [
@@ -4743,7 +4746,8 @@
               "priority": 0,
               "clash": "clash",
               "height": "mid",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5051,7 +5055,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5233,7 +5238,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -5633,7 +5639,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6043,7 +6050,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "high",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6297,7 +6305,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "low",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6601,7 +6610,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "mid",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],
@@ -6959,7 +6969,8 @@
               "priority": 0,
               "clash": "trade",
               "height": "low",
-              "tags": []
+              "tags": [],
+              "hit_stop": 0.04
             },
             "reset_targets": true,
             "cancel_into": [],

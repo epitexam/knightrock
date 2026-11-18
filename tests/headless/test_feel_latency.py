@@ -121,7 +121,7 @@ def test_press_before_contact_waits_for_the_hit_and_the_freeze() -> None:
     _run(level, pad)
     assert len(starts) >= 2
     assert starts[0] == 0
-    assert starts[1] - 3 == 9  # characterisation: refused in ACTIVE, replayed after hit-stop
+    assert starts[1] - 3 == 7  # after the enemy's shorter hit-stop: two ticks won back
 
 
 def test_a_hit_freezes_at_least_one_tick_of_world_time() -> None:

@@ -9,7 +9,6 @@ update the corresponding assertion with a reason in the audit.
 
 from __future__ import annotations
 
-from src.core.settings import Combat as CombatSettings
 from src.data.provider import shipped_gameplay_data
 
 
@@ -22,30 +21,26 @@ def test_every_player_strike_carries_an_explicit_hitstop() -> None:
             assert phase.hit.hit_stop is not None, f"{name}[{index}] uses the global formula"
 
 
-def test_enemy_strikes_have_no_explicit_hitstop() -> None:
-    """Enemy freeze comes from the global formula, unlike the player's."""
+def test_enemy_strikes_carry_a_short_explicit_hitstop() -> None:
+    """Enemy freeze is no longer the ~0.088 s the global formula produced."""
     sets = shipped_gameplay_data().attack_sets
     for owner, attacks in sets.items():
         if owner == "player":
             continue
         for name, definition in attacks.items():
             for phase in definition.phases:
-                assert phase.hit.hit_stop is None, f"{owner}.{name} has an explicit hit-stop"
+                if phase.hit.damage <= 0:
+                    continue  # a marker box throws a shot, it does not strike
+                assert phase.hit.hit_stop == 0.04, f"{owner}.{name} uses the old formula"
 
 
-def test_the_global_formula_is_shorter_than_a_player_light() -> None:
-    """The strongest enemy nuance of the day, quantified: ~3x a light slash."""
+def test_enemy_hitstop_is_close_to_a_player_light() -> None:
     attacks = shipped_gameplay_data().attack_sets
     player_light = attacks["player"]["slash_high_1"].phases[0].hit.hit_stop
-    goblin = attacks["goblin"]["claw_swipe"].phases[1].hit
-    magnitude = (goblin.knockback.power[0] ** 2 + goblin.knockback.power[1] ** 2) ** 0.5
-    formula = (
-        CombatSettings.HITSTOP_BASE
-        + goblin.damage * CombatSettings.HITSTOP_DAMAGE_FACTOR
-        + magnitude * CombatSettings.HITSTOP_KNOCKBACK_FACTOR
-    )
+    enemy = attacks["goblin"]["claw_swipe"].phases[1].hit.hit_stop
     assert player_light is not None
-    assert formula > player_light * 2.0
+    assert enemy is not None
+    assert enemy <= player_light * 1.5
 
 
 def test_the_first_three_chain_links_cancel_on_contact() -> None:
@@ -54,8 +49,14 @@ def test_the_first_three_chain_links_cancel_on_contact() -> None:
         assert attacks[name].phases[0].cancel_on_hit is True, name
 
 
-def test_the_chain_terminals_do_not_cancel_on_contact() -> None:
-    """Characterisation of the flow break at the end of a chain."""
+def test_the_blade_chain_terminals_cancel_on_contact() -> None:
+    """The 4th slash is no longer the flow break it used to be."""
     attacks = shipped_gameplay_data().attack_sets["player"]
-    for name in ("slash_high_4", "slash_low_4", "punch_3", "kick_2"):
-        assert attacks[name].phases[0].cancel_on_hit is False, name
+    for name in ("slash_high_4", "slash_low_4", "air_slash"):
+        assert attacks[name].phases[0].cancel_on_hit is True, name
+
+
+def test_the_blade_chain_terminals_are_less_committed() -> None:
+    attacks = shipped_gameplay_data().attack_sets["player"]
+    for name in ("slash_high_4", "slash_low_4"):
+        assert attacks[name].phases[0].recovery_frames == 11, name
