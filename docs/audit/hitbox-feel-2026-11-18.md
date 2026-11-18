@@ -74,28 +74,62 @@ vs goblin 0.75 → 1.0.
   **uniquement** les huit `hit_stop` ennemis dans un data root temporaire, le
   digest précédent est reproduit bit pour bit. PHYSICS et RESPAWN inchangés.
 
-## 4. Recette
+## 4. Poursuite de l'audit (deux points initialement reportés)
 
-`pytest -q` : **3752 passed, 1 skipped**. `DEBUG=1 pytest -q` :
-**3750 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
+### 4.1 Prédicat d'éligibilité unique — rejeté, micro-refactor fait
+
+Les six gardes ne sont pas des doublons mais des phases distinctes :
+
+| Garde | Phase | Effet de bord |
+|---|---|---|
+| `_is_valid_target` / `can_contact` | sélection de la paire | aucun ; mémoire armée après |
+| `MomentumGate` / `OffensiveBox.accept` | filtre producteur | aucun, vitesse mutable |
+| zones / tags | narrowphase (melee seul) | fixe `zone_mult` → dégâts |
+| `_misses` | pré-dégâts | `on_hit_evaded()` **mute** (rush, fury, dash) |
+| `guards_against` | défense | **mute** batterie/recul, peut casser la garde puis refuser |
+| `receive_damage` → `Vitals` | autorité finale | dégâts, i-frames, hook de mort |
+
+Un prédicat pur unique déplacerait ces effets, casserait les 675 outcomes, les
+events/hit-stop et les digests de cooldown. **Fusion totale rejetée.** À la place :
+- `hit_refusal()` classe les refus de `_misses` sans produire d'effet ;
+  `on_hit_evaded()` reste appelé au même point et dans le même ordre ;
+- `_invulnerable()` factorise la notion « esquive » dans le seul producteur
+  contact, où les deux usages sont silencieux (contrairement au resolver).
+
+### 4.2 `PhaseDefinition.boxes` — canonicalisation totale faite
+
+Le chiffre initial (« ~200 fichiers de tests ») était faux : mesure réelle,
+**5 fichiers source et 11 fichiers de tests**, ~95 occurrences. La refonte a été
+faite :
+- `boxes` est le seul champ stocké ; les 9 champs plats sont des propriétés en
+  lecture seule dérivées de `boxes[0]` ;
+- un constructeur accepte l'ancienne forme plate (adaptateur v1, fixtures,
+  `dataclasses.replace`) et la forme `boxes` (loader v2) ; plus de réaplat
+  v2 → plat → spec ;
+- `boxes` reste un champ comparé/haché : l'égalité des définitions dépend
+  toujours de leur géométrie ;
+- 2 tests qui contournaient la validation via `object.__setattr__` sur un champ
+  plat mutent désormais le `HitboxSpec` stocké.
+
+**Aucun golden recapturé, aucun fichier de données réécrit.** Le fichier
+`attacks.json` reste byte-identique, les 675 issues et les 3 digests passent tels
+quels — la preuve que la refonte est bien behavior-preserving.
+
+## 5. Recette finale
+
+`pytest -q` : **3753 passed, 1 skipped**. `DEBUG=1 pytest -q` :
+**3751 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
 `ruff check .` : propre.
 
-## 5. Reporté (non fait, volontairement)
+## 6. Toujours écarté (décision de design)
 
-- **Prédicat d'éligibilité unique** (`HitResolver._misses`,
-  `ContactSystem._is_valid_target`, `MomentumGate`) : les trois filtres ont des
-  paramètres et des sémantiques différentes ; les fusionner changerait le
-  comportement sans bénéfice de ressenti mesuré.
-- **Canonicalisation complète** de `PhaseDefinition.boxes` : le chemin
-  d'interpolation est unifié, mais les champs plats restent la source de vérité
-  du schéma et du JSON. Une refonte toucherait ~200 fichiers de tests.
-- **Références de design externes** (God of War : cancels pré-hit réservés aux
-  attaques de base ; Sakurai : hit-stop court + secousse du modèle rendu
-  uniquement ; NMH : changement de stance au milieu du combo). Le cancel
-  pré-hit est **rejeté** ici : `can_cancel_into` n'a qu'un appelant et le lock en
-  STARTUP est un choix de commitment documenté (README ligne 168-170).
+- **Références externes** (God of War : cancels pré-hit réservés aux attaques de
+  base ; Sakurai : hit-stop court + secousse du modèle rendu uniquement ; NMH :
+  changement de stance au milieu du combo). Le cancel pré-hit est **rejeté** ici :
+  `can_cancel_into` n'a qu'un appelant et le lock en STARTUP est un choix de
+  commitment documenté (README ligne 168-170).
 
-## 6. Sources consultées
+## 7. Sources consultées
 
 - Eric Williams, *Combat Canceled: God of War & Action Game Design*.
 - Notes de Sakurai sur les 8 techniques de hit-stop.

@@ -112,8 +112,9 @@ def test_a_self_cancel_on_a_move_without_cooldown_is_a_chain() -> None:
 
 def test_non_positive_box_size_is_rejected_with_named_message() -> None:
     definition = _valid_attack()
-    # Bypass the dataclass guard to exercise the loader's own naming.
-    object.__setattr__(definition.phases[0], "hitbox_size", (0.0, 20.0))
+    # Bypass the spec's own guard to exercise the loader's naming: the flat
+    # fields are now read-only views over the stored boxes.
+    object.__setattr__(definition.phases[0].boxes[0], "size", (0.0, 20.0))
 
     with pytest.raises(GameplayDataError, match=r"kick' phase 0 hitbox: size"):
         validate_attacks({"kick": definition})
@@ -121,10 +122,10 @@ def test_non_positive_box_size_is_rejected_with_named_message() -> None:
 
 def test_keyframe_outside_the_phase_span_is_rejected_with_named_message() -> None:
     definition = attack(phase(startup=2, active=2, recovery=1))
-    # Bypass the dataclass guard to exercise the loader's own naming.
+    # Bypass the spec's own guard to exercise the loader's naming.
     object.__setattr__(
-        definition.phases[0],
-        "hitbox_keyframes",
+        definition.phases[0].boxes[0],
+        "keyframes",
         (HitboxKeyframe(frame=99, size=(10.0, 10.0), offset=(0.0, 0.0)),),
     )
 

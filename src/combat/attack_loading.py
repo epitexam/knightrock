@@ -54,7 +54,12 @@ _BoxEntry = tuple[str, tuple[float, float], tuple[float, float], tuple[HitboxKey
 
 
 def _box_entries(phase: PhaseDefinition) -> Iterator[_BoxEntry]:
-    """Yield ``(field, size, offset, keyframes)`` for every box of a phase."""
+    """Yield ``(field, size, offset, keyframes)`` for every box of a phase.
+
+    Validation deliberately reads the flat fields rather than ``phase.boxes``:
+    an invalid size or keyframe must be reported with the JSON field name, and
+    building a ``HitboxSpec`` first would raise a bare ``ValueError`` instead.
+    """
     yield "hitbox", phase.hitbox_size, phase.hitbox_offset, phase.hitbox_keyframes
     for index, spec in enumerate(phase.extra_hitboxes):
         yield f"extra_hitboxes[{index}]", spec.size, spec.offset, spec.keyframes

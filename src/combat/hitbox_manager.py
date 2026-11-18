@@ -184,7 +184,7 @@ class HitboxManager:
         the extra boxes, so a box cannot drift between the two treatments.
         """
         shape_data: list[tuple[HitboxSpec, BoxGeometry, float]] = []
-        for spec in (phase.hitbox_spec, *phase.extra_hitboxes):
+        for spec in phase.boxes:
             geometry, angle = interpolate_shape_keyframes(
                 spec.keyframes, (spec.size, spec.offset), frame, spec.easing
             )
