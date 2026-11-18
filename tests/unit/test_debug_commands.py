@@ -95,6 +95,26 @@ def test_trigger_test_attack_starts_showcase_move() -> None:
     assert player.combat.is_attacking
 
 
+def test_a_wrong_posture_bench_key_does_not_crash_the_live_tick(monkeypatch) -> None:
+    """The direct API still raises; a key held during a tick is only reported."""
+    from src.core.settings import Debug
+
+    monkeypatch.setattr(Debug, "is_enabled", staticmethod(lambda: True))
+    key = next(k for k, name in DEBUG_ATTACKS.items() if name == move_id("slash_high_4"))
+    pressed = [False] * 512
+    pressed[key] = True
+    monkeypatch.setattr(pygame.key, "get_pressed", lambda: pressed)
+
+    system = SpawnSystem(SpriteGroups())
+    player = _player()
+    player.on_surface["floor"] = False
+
+    system.process(1 / 60, player)  # type: ignore[arg-type]
+
+    assert "needs a different posture" in (system.last_error or "")
+    assert not player.combat.is_attacking
+
+
 def test_trigger_test_attack_says_so_when_the_move_is_not_registered() -> None:
     """It used to answer ``False``, which is also what "you are busy" answers.
 

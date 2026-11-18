@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pygame
 
-from src.combat.frame_data import MoveId, move_id
+from src.combat.frame_data import MoveId, Stance, move_id
 from src.combat.refusal import Refusal
 from src.core.settings import Debug, Respawn
 from src.core.sprite_groups import SpriteGroups
@@ -111,6 +111,10 @@ class SpawnSystem:
         self.id_factory = id_factory if id_factory is not None else IdFactory()
         self.spawn_cooldowns = dict.fromkeys(DEBUG_SPAWNS.values(), 0.0)
         self.debug_cooldowns: dict[str, float] = {}
+        #: Last refused bench key, kept for the overlay instead of killing the
+        #: game: a bench key pressed in the wrong posture is a mistake to show,
+        #: not a reason to abort the whole run.
+        self.last_error: str | None = None
         #: Attack name looped by the debug replay key, ``None`` when off.
         self.attack_replay: MoveId | None = None
         self._last_attack: MoveId | None = None
@@ -155,11 +159,20 @@ class SpawnSystem:
 
     def _trigger_attacks(self, keys: Sequence[bool], player: Player) -> None:
         for key, attack_name in DEBUG_ATTACKS.items():
-            if (
-                keys[key]
-                and self._debug_ready(attack_name)
-                and self.trigger_test_attack(player, attack_name)
-            ):
+            if not (keys[key] and self._debug_ready(attack_name)):
+                continue
+            try:
+                started = self.trigger_test_attack(player, attack_name)
+            except (RuntimeError, KeyError) as exc:
+                # The direct API call still raises -- that is how the tests
+                # pin a mis-wired key -- but a key held during a live tick must
+                # not take the game down. Arm the cooldown so it is reported
+                # once per press rather than once per frame.
+                self.last_error = str(exc)
+                self._arm_debug_cooldown(attack_name)
+                continue
+            if started:
+                self.last_error = None
                 self._arm_debug_cooldown(attack_name)
                 self._last_attack = attack_name
 
@@ -210,8 +223,8 @@ class SpawnSystem:
         refusal = start(attack_name)
         if refusal is Refusal.STANCE:
             raise RuntimeError(
-                f"Debug bench attack {str(attack_name)!r} needs a different posture; "
-                "the air keys only fire off the ground"
+                f"Debug bench attack {str(attack_name)!r} needs a different posture "
+                f"({player.stance.value}); {'the air keys only fire off the ground' if player.stance is Stance.AIR else 'this key only fires on the ground'}"
             )
         return bool(refusal)
 
