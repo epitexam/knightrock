@@ -19,11 +19,12 @@ from enum import Enum
 class Refusal(Enum):
     """Why an attack was not started.
 
-    The split that matters is retryable versus not. ``COOLDOWN`` is the only
-    value worth retrying: it is the one case where the same press, unchanged,
-    would succeed later. Everything else describes a situation the fighter has
-    to *change* -- a different posture, a different state -- or one where the
-    request was simply not a real attack request.
+    The split that matters is retryable versus not. ``COOLDOWN`` and
+    ``NO_CANCEL`` are worth retrying: in both, the same press, unchanged, would
+    succeed once a timer runs down or the running attack reaches its cancel
+    window. Everything else describes a situation the fighter has to *change*
+    -- a different posture, a different state -- or one where the request was
+    simply not a real attack request.
     """
 
     NONE = "none"
@@ -64,11 +65,10 @@ class Refusal(Enum):
     NO_CANCEL = "no_cancel"
     """An attack is running and this move cannot cancel out of it.
 
-    Not retryable on its own. Whether it becomes possible depends on the
-    running attack reaching a cancellable phase, which is the one refusal a
-    buffered press *could* legitimately outlive -- the buffer exists precisely
-    for a chain input during recovery. Kept distinct from the rest so that
-    decision can be made rather than assumed.
+    Retryable: the same press succeeds once the running attack reaches its
+    cancel window, which is the case the buffer exists for -- a chain input
+    made before that window opens. Kept distinct from the other retryable
+    member so the caller can still tell a timer from a cancel window.
     """
 
     def __bool__(self) -> bool:

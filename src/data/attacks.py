@@ -52,7 +52,9 @@ from src.data.errors import (
 )
 
 ATTACKS_FILENAME = "attacks.json"
-ATTACKS_VERSION = 1
+# The shipped table is v2; writing v1 by default would silently rewrite every
+# exported move into the older flat dialect on the next round-trip.
+ATTACKS_VERSION = 2
 SUPPORTED_ATTACK_VERSIONS = (1, 2)
 
 _DAMAGE_TYPES: dict[str, DamageType] = {member.value: member for member in DamageType}

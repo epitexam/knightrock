@@ -297,43 +297,6 @@ def _check_keyframe_span(keyframes: tuple[HitboxKeyframe, ...], span: int, label
         previous = keyframe.frame
 
 
-def interpolate_keyframes(
-    keyframes: tuple[HitboxKeyframe, ...],
-    static: BoxGeometry,
-    frame: int,
-) -> BoxGeometry:
-    """Linearly interpolate ``(size, offset)`` at a phase ``frame``.
-
-    ``frame`` counts from the start of startup (``0`` = phase start),
-    matching ``AttackStateMachine.frame_counter`` within each sub-state.
-    With no keyframes the static box is returned. Otherwise the
-    surrounding keyframes are interpolated linearly; outside their range
-    the nearest endpoint is held.
-    """
-    if not keyframes:
-        return static
-    if frame <= keyframes[0].frame:
-        first = keyframes[0]
-        return (first.size, first.offset)
-    # Pairwise walk over offset slices: the second slice is one shorter
-    # by construction, so strict=True would always raise (B905 exempt).
-    for before, after in zip(keyframes, keyframes[1:]):  # noqa: B905
-        if frame <= after.frame:
-            span = after.frame - before.frame
-            blend = (frame - before.frame) / span
-            size = (
-                before.size[0] + (after.size[0] - before.size[0]) * blend,
-                before.size[1] + (after.size[1] - before.size[1]) * blend,
-            )
-            offset = (
-                before.offset[0] + (after.offset[0] - before.offset[0]) * blend,
-                before.offset[1] + (after.offset[1] - before.offset[1]) * blend,
-            )
-            return (size, offset)
-    last = keyframes[-1]
-    return (last.size, last.offset)
-
-
 def interpolate_shape_keyframes(
     keyframes: tuple[HitboxKeyframe, ...],
     static: BoxGeometry,
@@ -516,16 +479,13 @@ class PhaseDefinition:
             _check_keyframe_span(spec.keyframes, span, f"Extra hitbox #{index} keyframe")
 
     def hitbox_at(self, frame: int) -> BoxGeometry:
-        """Interpolate the primary ``(size, offset)`` at a phase ``frame``.
+        """Primary ``(size, offset)`` at a phase frame, geometry only.
 
-        ``frame`` counts from the start of startup (``0`` = phase start),
-        matching ``AttackStateMachine.frame_counter`` within each
-        sub-state. Delegates to :func:`interpolate_keyframes` over the
-        primary curve (static legacy box when empty).
+        A read-only shim over the shape path: callers that only need the two
+        tuples still work, while the single interpolator is the one that feeds
+        the live hitboxes.
         """
-        return interpolate_keyframes(
-            self.hitbox_keyframes, (self.hitbox_size, self.hitbox_offset), frame
-        )
+        return self.hitbox_shape_at(frame)[0]
 
     @cached_property
     def hitbox_spec(self) -> HitboxSpec:
@@ -551,12 +511,15 @@ class PhaseDefinition:
         )
 
     def hitbox_shape_at(self, frame: int) -> tuple[BoxGeometry, float]:
-        """Interpolate the primary geometry and angle at a phase frame."""
+        """Interpolate the primary geometry and angle at a phase frame.
+
+        The primary box goes through the same ``HitboxSpec`` as every extra
+        box; the flat ``hitbox_*`` fields remain only as the data source the
+        spec is built from.
+        """
+        spec = self.hitbox_spec
         return interpolate_shape_keyframes(
-            self.hitbox_keyframes,
-            (self.hitbox_size, self.hitbox_offset),
-            frame,
-            self.hitbox_easing,
+            spec.keyframes, (spec.size, spec.offset), frame, spec.easing
         )
 
     def extra_shape_at(self, index: int, frame: int) -> tuple[BoxGeometry, float]:

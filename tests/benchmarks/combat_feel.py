@@ -117,6 +117,7 @@ def _arena(enemy: str, ai: bool = True, health: float | None = None):
         player,
         config=config,
         spatial_hash=level.spatial_hash,
+        id_factory=level.id_factory,
     )
     foe.animator = None
     level.groups.add_fighter(foe)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pygame
@@ -126,6 +127,18 @@ def test_v2_attack_file_roundtrips_through_read_and_write(tmp_path: Path) -> Non
     parsed = read_attacks_file(path)["player"]["slash_high_1"]
 
     assert parsed == PLAYER_ATTACKS["slash_high_1"]
+
+
+def test_default_writer_emits_the_shipped_v2_dialect(tmp_path: Path) -> None:
+    path = write_attacks_file(
+        tmp_path / "attacks.json",
+        {"player": {"slash_high_1": PLAYER_ATTACKS["slash_high_1"]}},
+    )
+
+    raw = json.loads(path.read_text())
+    assert raw["version"] == 2
+    assert "hitboxes" in raw["sets"]["player"]["slash_high_1"]["phases"][0]
+    assert read_attacks_file(path)["player"]["slash_high_1"] == PLAYER_ATTACKS["slash_high_1"]
 
 
 def test_circle_shape_uses_narrowphase_instead_of_bounding_rect() -> None:
