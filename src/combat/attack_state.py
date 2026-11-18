@@ -343,14 +343,34 @@ class AttackStateMachine:
         launches, self.launches = self.launches, []
         return launches
 
+    def _restart_in_place(self, name: MoveId) -> None:
+        """Continue as another move without paying for a new attack.
+
+        Charge, locked facing, combo and the already-hit set carry over; no
+        cooldown, battery or ``attacks_started`` is touched, so the follow-through
+        stays one gesture and does not earn a second lunge.
+        """
+        self.attack_name = name
+        self.phase_index = 0
+        self.sub_state = PhaseState.STARTUP
+        self.frame_counter = 0
+        self._accumulator = 0.0
+        first = self._attacks[name].phases[0]
+        if first.reset_targets:
+            self.targets_hit.clear()
+
     def _advance_phase(self) -> None:
-        """Move to the next phase of the current attack, or end if none remains."""
+        """Next phase, an automatic continuation, or the end of the attack."""
         if self.attack_name is None:
             return
         attack = self._attacks[self.attack_name]
         next_index = self.phase_index + 1
         if next_index >= len(attack.phases):
-            self.end()
+            auto = attack.phases[self.phase_index].auto_into
+            if auto is not None and auto in self._attacks:
+                self._restart_in_place(auto)
+            else:
+                self.end()
             return
 
         self.phase_index = next_index

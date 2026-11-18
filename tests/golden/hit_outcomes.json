@@ -4786,7 +4786,7 @@
    0
   ]
  },
- "player.charged_slash_full[1] -> dummy_armoured": {
+ "player.crescent_wave[0] -> dummy_armoured": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4814,7 +4814,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_airborne": {
+ "player.crescent_wave[0] -> goblin_airborne": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4842,7 +4842,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_doomed": {
+ "player.crescent_wave[0] -> goblin_doomed": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4870,7 +4870,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_downed": {
+ "player.crescent_wave[0] -> goblin_downed": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4898,7 +4898,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_guard_high": {
+ "player.crescent_wave[0] -> goblin_guard_high": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4926,7 +4926,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_guard_low": {
+ "player.crescent_wave[0] -> goblin_guard_low": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4954,7 +4954,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_idle": {
+ "player.crescent_wave[0] -> goblin_idle": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -4982,7 +4982,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_low_health": {
+ "player.crescent_wave[0] -> goblin_low_health": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -5010,7 +5010,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_nearly_stunned": {
+ "player.crescent_wave[0] -> goblin_nearly_stunned": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -5038,7 +5038,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_otg": {
+ "player.crescent_wave[0] -> goblin_otg": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -5066,7 +5066,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> goblin_stunned": {
+ "player.crescent_wave[0] -> goblin_stunned": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -5094,7 +5094,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.airborne": {
+ "player.crescent_wave[0] -> player.airborne": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5123,7 +5123,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.dark_side": {
+ "player.crescent_wave[0] -> player.dark_side": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5152,7 +5152,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.dash_early": {
+ "player.crescent_wave[0] -> player.dash_early": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5183,7 +5183,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.dash_late": {
+ "player.crescent_wave[0] -> player.dash_late": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5212,7 +5212,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.guard": {
+ "player.crescent_wave[0] -> player.guard": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5241,7 +5241,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.guard_back": {
+ "player.crescent_wave[0] -> player.guard_back": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5270,7 +5270,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.idle": {
+ "player.crescent_wave[0] -> player.idle": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5299,7 +5299,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.low_health": {
+ "player.crescent_wave[0] -> player.low_health": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5328,7 +5328,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> player.recharging": {
+ "player.crescent_wave[0] -> player.recharging": {
   "attacker_combo": 0,
   "attacker_state": "idle",
   "attacker_stun": 0.0,
@@ -5357,7 +5357,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> shell_armoured": {
+ "player.crescent_wave[0] -> shell_armoured": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,
@@ -5385,7 +5385,7 @@
   ],
   "zone": []
  },
- "player.charged_slash_full[1] -> slime_idle": {
+ "player.crescent_wave[0] -> slime_idle": {
   "attacker_combo": 0,
   "attacker_fury": 0.0,
   "attacker_prompt": null,

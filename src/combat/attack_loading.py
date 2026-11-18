@@ -117,6 +117,30 @@ def _validate_phase(name: str, phase_index: int, phase: PhaseDefinition) -> None
         _validate_keyframes(name, phase_index, field, keyframes, span, limit_x, limit_y)
 
 
+def _validate_atomicity(name: str, index: int, phase: PhaseDefinition) -> None:
+    """One phase, one kind of effect.
+
+    A phase either strikes or launches a shot, never both: the launch belongs
+    to the hand that throws it, and the hit would be a second weapon hidden in
+    the same gesture. Conversely a marker phase (zero damage) carries no
+    offensive flags -- ``HitResolver`` refuses a zero-damage hit, so
+    ``execute``/``unblockable``/``otg_allowed`` there would be dead data that
+    reads like a rule to whoever authors the next move.
+    """
+    if phase.hit.damage > 0 and phase.launches:
+        raise GameplayDataError(
+            f"Attack {name!r} phase {index}: a phase that deals damage "
+            f"({phase.hit.damage}) cannot also launch {phase.launches!r}"
+        )
+    if phase.hit.damage == 0 and (
+        phase.hit.execute or phase.hit.unblockable or phase.hit.otg_allowed
+    ):
+        raise GameplayDataError(
+            f"Attack {name!r} phase {index}: a zero-damage marker phase cannot "
+            "carry execute, unblockable or otg_allowed"
+        )
+
+
 def _validate_attack(name: str, definition: AttackDefinition) -> None:
     """Timing rules of one attack.
 
@@ -130,6 +154,7 @@ def _validate_attack(name: str, definition: AttackDefinition) -> None:
     _validate_vertical_lunge(name, definition)
     for index, phase in enumerate(definition.phases):
         _validate_phase(name, index, phase)
+        _validate_atomicity(name, index, phase)
         if index < last_index and not phase.reset_targets:
             warnings.warn(
                 f"Attack {name!r} phase {index}: reset_targets is False on an "
@@ -183,6 +208,8 @@ def validate_attacks(attacks: Mapping[MoveId, AttackDefinition]) -> None:
         unknown: set[MoveId] = set()
         for phase in definition.phases:
             unknown.update(set(phase.cancel_into) - names)
+            if phase.auto_into is not None and phase.auto_into not in names:
+                unknown.add(phase.auto_into)
         if unknown:
             raise GameplayDataError(
                 f"Attack {name!r} references unknown cancels: {', '.join(sorted(unknown))}"
@@ -217,6 +244,21 @@ def _validate_cancels(
     """
     _validate_follow_ups(name, definition, attacks)
     for index, phase in enumerate(definition.phases):
+        if phase.auto_into is not None:
+            target = phase.auto_into
+            if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: auto-transitions into itself "
+                    f"({target!r}), which its {definition.cooldown:g}s cooldown makes unreachable"
+                )
+            missing = set(attacks[target].stances) - set(definition.stances)
+            if missing:
+                raise GameplayDataError(
+                    f"Attack {name!r} phase {index}: auto-transitions into {target!r}, "
+                    f"which is not reachable from "
+                    f" {'/'.join(sorted(s.value for s in definition.stances))} "
+                    f"(it needs {'/'.join(sorted(s.value for s in missing))})"
+                )
         for target in phase.cancel_into:
             if target == name and definition.cooldown >= definition.total_frames / FRAME_RATE:
                 raise GameplayDataError(

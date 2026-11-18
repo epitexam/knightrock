@@ -387,9 +387,19 @@ def _read_phase(raw: Any, where: str) -> PhaseDefinition:
                 raw.get("cancel_on_hit", _PHASE_DEFAULTS["cancel_on_hit"]), f"{where}.cancel_on_hit"
             ),
             launches=_read_launch(raw.get("launches"), f"{where}.launches"),
+            auto_into=_read_auto_into(raw.get("auto_into"), where),
         )
     except (TypeError, ValueError) as exc:
         raise GameplayDataError(f"{where}: invalid phase value: {exc}") from exc
+
+
+def _read_auto_into(raw: Any, where: str) -> MoveId | None:
+    """An automatic continuation is a move name, or ``None``."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw:
+        raise GameplayDataError(f"{where}.auto_into: expected a move name")
+    return MoveId(raw)
 
 
 def _read_launch(raw: Any, where: str) -> str | None:
@@ -632,6 +642,7 @@ def attack_definition_to_dict(definition: AttackDefinition) -> dict[str, Any]:
                 "cancel_into": list(phase.cancel_into),
                 **({"cancel_on_hit": True} if phase.cancel_on_hit else {}),
                 **({"launches": phase.launches} if phase.launches else {}),
+                **({"auto_into": phase.auto_into} if phase.auto_into else {}),
             }
             for phase in definition.phases
         ],

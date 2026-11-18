@@ -166,13 +166,39 @@ Un harnais `tools/capture_debug_overlay.py` produit une frame DEBUG du swap
 réel (slash au sol contre un goblin) : boîtes, zones et annotations vérifiées
 visuellement.
 
-## 6. Recette finale
+## 6. Catalogue : une phase = un mouvement
 
-`pytest -q` : **3767 passed, 1 skipped**. `DEBUG=1 pytest -q` :
-**3765 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
+La demande « une attaque = un mouvement bien défini » a été confrontée au code :
+le moteur a déjà cette granularité, mais le vocabulaire la masquait. Une
+**phase** est le mouvement atomique (timing, une hitbox, un effet) ; un **move**
+est une chaîne de phases qui s'enchaînent automatiquement ; les **combos** sont
+les liens entre moves (`follow_ups`, `cancel_into`, `cancel_on_hit`).
+
+Deux règles de validation rendent le principe vérifiable
+(`attack_loading._validate_atomicity`) : une phase ne peut pas frapper **et**
+lancer un projectile ; une phase à 0 dégât ne peut pas porter `execute`,
+`unblockable` ou `otg_allowed`. Seul `throw[0]` violait la seconde, avec des
+flags déjà inertes : nettoyés sans changement de golden.
+
+Pour authorer un geste distinct sans perdre la garantie de la suite, les phases
+portent `auto_into` : en fin de dernière phase, `AttackStateMachine` repart en
+place sur le premier move nommé, en conservant charge, facing et combo, sans
+payer un second cooldown, une seconde batterie ou un second `attacks_started`.
+Le croissant du full charge est devenu `crescent_wave`, atteint par cette
+transition ; `CHARGES.full` continue de nommer `charged_slash_full`.
+
+Recapture de la matrice : **22 clés renommées** (`charged_slash_full[1]` →
+`crescent_wave[0]`), **aucune valeur modifiée**. Les digests de simulation ne
+tapent aucun bouton joueur et n'ont pas bougé. `strike_trails.NAMED_LOOKS` a
+reçu le nouveau nom pour éviter une dérive silencieuse du rendu.
+
+## 7. Recette finale
+
+`pytest -q` : **3773 passed, 1 skipped**. `DEBUG=1 pytest -q` :
+**3771 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
 `ruff check .` : propre.
 
-## 7. Toujours écarté (décision de design)
+## 8. Toujours écarté (décision de design)
 
 - **Références externes** (God of War : cancels pré-hit réservés aux attaques de
   base ; Sakurai : hit-stop court + secousse du modèle rendu uniquement ; NMH :
@@ -180,7 +206,7 @@ visuellement.
   `can_cancel_into` n'a qu'un appelant et le lock en STARTUP est un choix de
   commitment documenté (README ligne 168-170).
 
-## 8. Sources consultées
+## 9. Sources consultées
 
 - Eric Williams, *Combat Canceled: God of War & Action Game Design*.
 - Notes de Sakurai sur les 8 techniques de hit-stop.

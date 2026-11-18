@@ -453,6 +453,14 @@ class PhaseDefinition:
     """The shot (``src/entities/shots.py``) this phase throws as it turns
     active. A launching phase strikes with the shot alone: its box marks the
     hand it leaves from, for the eye and the debug view, and never touches."""
+    auto_into: MoveId | None = None
+    """A move started automatically after this phase's last recovery frame.
+
+    Atomic authoring without an input: the follow-through (a thrown crescent,
+    the second half of a throw) can live in its own move while still being a
+    guaranteed continuation of the same gesture. The state machine restarts in
+    place, so no cooldown, battery, lunge or combo entry is paid twice.
+    """
 
     def __init__(
         self,
@@ -473,6 +481,7 @@ class PhaseDefinition:
         cancel_into: tuple[MoveId, ...] = (),
         cancel_on_hit: bool = False,
         launches: str | None = None,
+        auto_into: MoveId | None = None,
         *,
         boxes: tuple[HitboxSpec, ...] | None = None,
     ) -> None:
@@ -510,6 +519,7 @@ class PhaseDefinition:
         object.__setattr__(self, "cancel_into", cancel_into)
         object.__setattr__(self, "cancel_on_hit", cancel_on_hit)
         object.__setattr__(self, "launches", launches)
+        object.__setattr__(self, "auto_into", auto_into)
         self.__post_init__()
 
     # Legacy flat views: read-only adapters, never storage.
