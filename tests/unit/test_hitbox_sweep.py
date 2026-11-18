@@ -534,12 +534,29 @@ def test_an_empty_corner_of_the_rotated_bound_is_not_a_hit() -> None:
     assert not swept_intersects_aabb(start, end, target)
 
 
-def test_only_the_hit_vs_hit_sweep_has_no_displacement_ceiling() -> None:
-    """A jump beyond 64 px is discarded everywhere except the clash test."""
+def test_a_teleport_is_not_smeared_into_a_clash() -> None:
+    """Past the sweep bound, even hit-vs-hit compares the endpoints only."""
     start = ShapePose(ShapeKind.AABB, (8.0, 8.0), (0.0, 0.0))
     end = ShapePose(ShapeKind.AABB, (8.0, 8.0), (100.0, 0.0))
     target = pygame.FRect(49.0, 99.0, 2.0, 2.0)
 
     assert not swept_box(broadphase_aabb(start), broadphase_aabb(end)).colliderect(target)
     assert not swept_intersects_aabb(start, end, target)
-    assert swept_shape_shape_intersects(start, end, start, end)
+
+    # Crossing paths with no overlap at either endpoint: sampled inside the
+    # bound they clash, past the bound the teleport is not smeared.
+    def crossing(span: float) -> tuple[ShapePose, ...]:
+        return (
+            ShapePose(ShapeKind.AABB, (8.0, 8.0), (0.0, 0.0)),
+            ShapePose(ShapeKind.AABB, (8.0, 8.0), (span, span)),
+            ShapePose(ShapeKind.AABB, (8.0, 8.0), (span, 0.0)),
+            ShapePose(ShapeKind.AABB, (8.0, 8.0), (0.0, span)),
+        )
+
+    near = crossing(20.0)
+    assert swept_shape_shape_intersects(*near)
+    far = crossing(100.0)
+    assert not swept_shape_shape_intersects(*far)
+    # A real overlap at the destination still counts.
+    landing = ShapePose(ShapeKind.AABB, (8.0, 8.0), (100.0, 0.0))
+    assert swept_shape_shape_intersects(start, end, landing, landing)
