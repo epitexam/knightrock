@@ -22,7 +22,9 @@ if TYPE_CHECKING:
     from src.entities.player import Player
 
 #: The attack buttons, in the order they are considered: a tick starts one
-#: attack, so the first pressed wins.
+#: attack, so the first in this order wins. The provider stores latches in a
+#: set, so the order two presses arrived in is not available here; the
+#: effective priority is SPECIAL > grab (ATTACK_2) > ATTACK_1 > ATTACK_2 > SHOOT.
 ATTACK_BUTTONS: tuple[InputAction, ...] = (
     InputAction.ATTACK_1,
     InputAction.ATTACK_2,
@@ -184,6 +186,10 @@ class PlayerInputHandler:
                 continue
             if player.combat.start_charge(CHARGES[button].move):
                 self.charge_button = button
+                # Charging short-circuits _handle_attack_request until release,
+                # so a press buffered on this very tick would freeze here and
+                # fire as a ghost attack afterwards.
+                self.clear_buffer()
                 player.state_machine.change_state("charge", force=True)
             return
 

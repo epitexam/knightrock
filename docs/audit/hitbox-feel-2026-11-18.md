@@ -115,13 +115,64 @@ faite :
 `attacks.json` reste byte-identique, les 675 issues et les 3 digests passent tels
 quels — la preuve que la refonte est bien behavior-preserving.
 
-## 5. Recette finale
+## 5. Quatre axes supplémentaires
 
-`pytest -q` : **3753 passed, 1 skipped**. `DEBUG=1 pytest -q` :
-**3751 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
+### 5.1 Benchmark asserté
+Le benchmark affirmait « the simulation is deterministic » mais ne l'était pas :
+deux processes produisaient des JSON différents (`Entity` construisait un
+`random.Random()` non semé, `create_enemy` n'avait pas de paramètre `rng`).
+`_arena` sème désormais `player.rng`/`foe.rng` **avant** les 60 ticks
+d'échauffement et réécrit `patrol_direction`, comme `test_simulation_golden.py`
+le fait déjà. Vérifié : deux processes donnent le même fichier.
+
+Un `_FeelTrace` observe le taux de cancel, le hit-stop par move, le frame
+advantage, le combo maximum et la recovery après whiff. `test_benchmark_reference.py`
+épingle ces valeurs avec des tolérances larges — une régression de feel fait
+maintenant échouer la suite.
+
+### 5.2 Input : deux vrais bugs, trois conventions conservées
+Corrigé : un press bufferisé juste avant un prompt *death blow* ou *clash*
+restait en attente pendant jusqu'à 1,6 s et ressortait en attaque fantôme ;
+le buffer est effacé à l'ouverture de ces prompts. Même chose au démarrage
+d'une charge.
+
+Conservé et documenté : `BUSY` non retryable (un coup reçu doit faire oublier
+le press), `buffered_low` figé au moment du press (convention de combat),
+priorité fixe des boutons (le provider stocke des `sets` : l'ordre d'arrivée
+n'existe pas, et « dernier press gagnant » exigerait une refonte de l'API
+d'input, des snapshots rollback et des fakes).
+
+### 5.3 Animation pilotée par la frame data
+Le clip `attack` (3 poses × 0,07 s = 0,21 s) couvrait 105 % de `slash_high_1`
+mais seulement 30-57 % des finisseurs, ne redémarrait pas entre les liens de
+combo, et ignorait les multiplicateurs de vitesse (fury 1,45, rush 1,6,
+blitz 2,0) qui accéléraient les hitboxes sans toucher au sprite.
+
+`Animator.set_frame()` et `AnimationPublisher` choisissent désormais la pose
+depuis `sub_state` (windup / impact / follow-through) pour le joueur uniquement.
+Render-only : aucun asset, aucune donnée, aucun golden touché. Les ennemis
+garden leurs clips pilotés par le temps mural.
+
+### 5.4 Sweep : caractérisation, pas unification
+Les deux mécanismes divergent structurellement (union AABB pas chère et
+généreuse vs 16 échantillons de narrowphase précise), mais aucune vitesse
+livrée ne dépasse ~27 px/tick contre un plafond de 64 px : pas de tunneling
+mesurable. L'unification coûterait 3-5× en perf et supprimerait la grâce
+d'esquive voulue. Trois tests de caractérisation épinglent la divergence ;
+l'absence de plafond de `swept_shape_shape_intersects` est notée comme
+correctif séparé.
+
+Un harnais `tools/capture_debug_overlay.py` produit une frame DEBUG du swap
+réel (slash au sol contre un goblin) : boîtes, zones et annotations vérifiées
+visuellement.
+
+## 6. Recette finale
+
+`pytest -q` : **3767 passed, 1 skipped**. `DEBUG=1 pytest -q` :
+**3765 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
 `ruff check .` : propre.
 
-## 6. Toujours écarté (décision de design)
+## 7. Toujours écarté (décision de design)
 
 - **Références externes** (God of War : cancels pré-hit réservés aux attaques de
   base ; Sakurai : hit-stop court + secousse du modèle rendu uniquement ; NMH :
@@ -129,7 +180,7 @@ quels — la preuve que la refonte est bien behavior-preserving.
   `can_cancel_into` n'a qu'un appelant et le lock en STARTUP est un choix de
   commitment documenté (README ligne 168-170).
 
-## 7. Sources consultées
+## 8. Sources consultées
 
 - Eric Williams, *Combat Canceled: God of War & Action Game Design*.
 - Notes de Sakurai sur les 8 techniques de hit-stop.

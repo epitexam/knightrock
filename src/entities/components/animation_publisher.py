@@ -11,7 +11,25 @@ from typing import Protocol
 
 import pygame
 
+from src.combat.frame_data import PhaseState
 from src.core.animation.animator import Animator
+
+#: Clips whose pose belongs to the frame data, not to a wall-clock timer.
+ATTACK_ANIMATIONS = frozenset({"attack", "air_attack"})
+
+
+def _attack_frame(state: object) -> int | None:
+    """Phase-driven pose: windup / impact / follow-through."""
+    if not getattr(state, "is_attacking", False):
+        return None
+    sub_state = getattr(state, "sub_state", None)
+    if sub_state is PhaseState.STARTUP:
+        return 0
+    if sub_state is PhaseState.ACTIVE:
+        return 1
+    if sub_state is PhaseState.RECOVERY:
+        return 2
+    return None
 
 
 class AnimationOwner(Protocol):
@@ -44,7 +62,21 @@ class AnimationPublisher:
         name = owner._animation_name()
         if name is not None:
             owner.animator.play(name)
-        owner.animator.update(delta_time)
+        combat = getattr(owner, "combat", None)
+        state = getattr(combat, "state", None)
+        frame = (
+            _attack_frame(state)
+            if (
+                getattr(owner, "_phase_driven_attack_art", False)
+                and owner.animator.current in ATTACK_ANIMATIONS
+                and state is not None
+            )
+            else None
+        )
+        if frame is None:
+            owner.animator.update(delta_time)
+        else:
+            owner.animator.set_frame(frame)
         surface = owner.animator.surface(
             (round(owner.rect.width), round(owner.rect.height)),
             owner.facing_right,

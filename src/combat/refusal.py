@@ -33,8 +33,8 @@ class Refusal(Enum):
     COOLDOWN = "cooldown"
     """This move is still on cooldown.
 
-    The only retryable one. The press is worth keeping: throw it again once the
-    timer runs down and it lands.
+    Retryable, like ``NO_CANCEL``. The press is worth keeping: throw it again
+    once the timer runs down and it lands.
     """
 
     STANCE = "stance"

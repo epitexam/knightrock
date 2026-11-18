@@ -131,6 +131,20 @@ class Animator:
         self._finished = False
         return True
 
+    def set_frame(self, index: int) -> None:
+        """Show ``index`` directly, instead of advancing a wall-clock timer.
+
+        Attack art follows the frame data rather than the number of seconds
+        since the clip started: a startup/active/recovery phase maps to a pose,
+        and the attack's own speed multiplier then moves the phases, not a
+        separate animation clock.
+        """
+        spec = self._specs[self._current]
+        last = len(self._library.frames(spec.directory)) - 1
+        self._frame = max(0, min(index, last))
+        self._timer = 0.0
+        self._finished = not spec.loop and self._frame >= last
+
     def update(self, delta_time: float) -> None:
         """Advance the frame clock by ``delta_time`` seconds."""
         spec = self._specs[self._current]
