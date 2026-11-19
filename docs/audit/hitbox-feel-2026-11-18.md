@@ -194,9 +194,19 @@ reçu le nouveau nom pour éviter une dérive silencieuse du rendu.
 
 ## 7. Recette finale
 
-`pytest -q` : **3773 passed, 1 skipped**. `DEBUG=1 pytest -q` :
-**3771 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
+`pytest -q` : **3774 passed, 1 skipped**. `DEBUG=1 pytest -q` :
+**3772 passed, 3 skipped**. `mypy src` : 197 fichiers, aucune erreur.
 `ruff check .` : propre.
+
+Comparatif du benchmark final contre le baseline initial (10 s) : swings/s en
+hausse sur la plupart des duels (slash vs shell 5,57 → 6,07 ; slash vs slime
+6,21 → 6,51), taux de touche beat 0,75 → 1,0 contre goblin et shell, part de
+freeze en baisse (slash vs goblin 0,36 → 0,32 ; idle 0,06 → 0,04).
+
+Derniers correctifs : le banc de debug ne tue plus la partie sur une touche
+pressée dans la mauvaise posture (le message nomme la posture réelle), et
+`swept_shape_shape_intersects` borne maintenant les déplacements au-delà de
+64 px comme le chemin AABB, pour ne pas inventer de clash sur un téléport.
 
 ## 8. Toujours écarté (décision de design)
 
