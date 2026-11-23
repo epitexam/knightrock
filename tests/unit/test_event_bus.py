@@ -304,3 +304,47 @@ def test_rewind_rearms_a_notification_latch() -> None:
     notifications.player_dead_emitted = False
     notifications.process(dead, deaths=1, exit_reached=False)
     assert seen == [1, 1]
+
+
+def test_a_subscription_handle_detaches_once() -> None:
+    bus = EventBus()
+    seen: list[LevelStarted] = []
+    handle = bus.subscribe_handle(LevelStarted, seen.append)
+
+    bus.emit(LevelStarted(level_id=1))
+    handle.unsubscribe()
+    handle.unsubscribe()
+    bus.emit(LevelStarted(level_id=2))
+
+    assert seen == [LevelStarted(level_id=1)]
+
+
+def test_a_subscription_handle_works_as_a_context_manager() -> None:
+    bus = EventBus()
+    seen: list[LevelStarted] = []
+    with bus.subscribe_handle(LevelStarted, seen.append):
+        bus.emit(LevelStarted(level_id=1))
+    bus.emit(LevelStarted(level_id=2))
+
+    assert seen == [LevelStarted(level_id=1)]
+
+
+def test_a_handle_can_unsubscribe_another_listener_mid_delivery() -> None:
+    bus = EventBus()
+    order: list[str] = []
+
+    def first(_: LevelStarted) -> None:
+        order.append("first")
+        second_handle.unsubscribe()
+
+    def second(_: LevelStarted) -> None:
+        order.append("second")
+
+    bus.subscribe(LevelStarted, first)
+    second_handle = bus.subscribe_handle(LevelStarted, second)
+    bus.emit(LevelStarted(level_id=1))
+    bus.emit(LevelStarted(level_id=2))
+
+    # The delivery snapshot is a tuple: a listener removed mid-emit still runs
+    # for that emit, and is gone from the next one.
+    assert order == ["first", "second", "first"]

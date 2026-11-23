@@ -136,6 +136,33 @@ class SubscriberFailure(NamedTuple):
     error: Exception
 
 
+class Subscription:
+    """An opaque handle for a temporary subscription.
+
+    ``EventBus.subscribe`` is for app-lifetime listeners and still returns
+    nothing. A caller that owns a listener for a shorter scope -- a tutorial
+    overlay, a per-level probe -- can keep this handle instead of remembering
+    the event type and the bound method separately. Unsubscribing twice is a
+    no-op, so cleanup paths can call it freely.
+    """
+
+    def __init__(self, detach: Callable[[], None]) -> None:
+        self._detach = detach
+        self._active = True
+
+    def unsubscribe(self) -> None:
+        """Detach the listener once, even if called repeatedly."""
+        if self._active:
+            self._active = False
+            self._detach()
+
+    def __enter__(self) -> Subscription:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.unsubscribe()
+
+
 class EventBus:
     """Minimal pub/sub: ``subscribe(type, handler)`` then ``emit(event)``.
 
@@ -188,6 +215,13 @@ class EventBus:
         erased = cast("Handler", handler)
         if erased not in handlers:
             handlers.append(erased)
+
+    def subscribe_handle[T: GameEvent](
+        self, event_type: type[T], handler: Callable[[T], None]
+    ) -> Subscription:
+        """Subscribe and return an idempotent handle for a scoped listener."""
+        self.subscribe(event_type, handler)
+        return Subscription(lambda: self.unsubscribe(event_type, handler))
 
     def unsubscribe[T: GameEvent](self, event_type: type[T], handler: Callable[[T], None]) -> None:
         """Remove a previously registered handler (no-op if absent)."""
