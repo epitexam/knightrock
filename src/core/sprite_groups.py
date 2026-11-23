@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 if TYPE_CHECKING:
+    from src.core.ecs.combat_table import CombatTable
     from src.core.ecs.geometry_table import GeometryTable
     from src.core.ecs.movement_table import MovementTable
     from src.core.ecs.vitals_table import VitalsTable
@@ -55,6 +56,7 @@ class SpriteGroups:
     movement_table: MovementTable | None = None
     vitals_table: VitalsTable | None = None
     geometry_table: GeometryTable | None = None
+    combat_table: CombatTable | None = None
 
     static_sprites: pygame.sprite.Group = field(default_factory=pygame.sprite.Group)
     """The frozen tile layers that draw *under* the world (``Terrain``,
@@ -78,6 +80,8 @@ class SpriteGroups:
             fighter.bind_vitals(self.vitals_table)
         if self.geometry_table is not None:
             fighter.bind_geometry(self.geometry_table)
+        if self.combat_table is not None:
+            fighter.bind_combat(self.combat_table)
 
     @property
     def every_sprite(self) -> tuple[pygame.sprite.Sprite, ...]:

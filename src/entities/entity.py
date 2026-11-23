@@ -18,6 +18,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
+from src.core.ecs.combat_table import CombatTable
 from src.core.ecs.geometry_table import GeometryTable
 from src.core.ecs.movement_table import MovementTable
 from src.core.ecs.vitals_table import VitalsTable
@@ -131,6 +132,8 @@ class Entity(Sprite):
     vitals_table: VitalsTable | None = None
     geometry_table: GeometryTable | None = None
     geometry_slot: int | None = None
+    combat_table: CombatTable | None = None
+    combat_slot: int | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -254,7 +257,7 @@ class Entity(Sprite):
             on_death=self._handle_death,
         )
         if combat is not None:
-            self.combat: CombatComponent | NullCombatComponent = combat
+            self._combat: CombatComponent | NullCombatComponent = combat
         elif attacks:
             self.combat = CombatComponent(
                 self,
@@ -528,6 +531,31 @@ class Entity(Sprite):
             self.geometry_table.release(self.geometry_slot)
         self.geometry_table = table
         self.geometry_slot = table.register(self)
+
+    def bind_combat(self, table: CombatTable) -> None:
+        """Attach this fighter's combat component to a level's dense table."""
+        if self.combat_table is table:
+            return
+        if self.combat_table is not None and self.combat_slot is not None:
+            self.combat_table.release(self.combat_slot)
+        self.combat_table = table
+        self.combat_slot = table.register(self)
+
+    @property
+    def combat(self) -> CombatComponent | NullCombatComponent:
+        """The combat component, owned by the dense row when bound."""
+        if self.combat_table is not None and self.combat_slot is not None:
+            component: CombatComponent | NullCombatComponent = self.combat_table.combat_of(
+                self.combat_slot
+            )
+            return component
+        return self._combat
+
+    @combat.setter
+    def combat(self, value: CombatComponent | NullCombatComponent) -> None:
+        self._combat = value
+        if self.combat_table is not None and self.combat_slot is not None:
+            self.combat_table.column("combat")[self.combat_slot] = value
 
     @property
     def velocity(self) -> Vector2:
@@ -1108,6 +1136,9 @@ class Entity(Sprite):
         if self.geometry_table is not None and self.geometry_slot is not None:
             self.geometry_table.release(self.geometry_slot)
             self.geometry_slot = None
+        if self.combat_table is not None and self.combat_slot is not None:
+            self.combat_table.release(self.combat_slot)
+            self.combat_slot = None
         self.vitals.unbind()
         super().kill()
 
