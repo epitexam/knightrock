@@ -285,12 +285,9 @@ class Renderer:
         applies it, so every sprite, the HP bars and the debug overlay read
         one transform and cannot drift apart.
 
-        Returns nothing. It used to return the rects that changed so the loop
-        could present only those, and the HUD and the health bars -- painted
-        after this pass decides what to present -- had to be declared one
-        frame ahead for the next frame's erase to reach them. A gauge that
-        shrank left a stripe behind whenever that bookkeeping slipped. A full
-        repaint has no such window.
+        Returns nothing: the whole target is repainted every frame, so nothing
+        painted afterwards has to declare its rects a frame ahead for a partial
+        erase to reach them.
         """
         self.camera.begin_frame(alpha)
         self._lag = self._interpolation_lag(groups, alpha)
@@ -552,13 +549,10 @@ class Renderer:
         """Maintain the dash ghost trail (render-only, capped + fading).
 
         Each ghost keeps the world rectangle it was spawned over, and its
-        screen position is mapped through the camera again every frame. It
-        used to store the screen rect computed once, at spawn: the ghost then
-        stayed nailed to the window while the world scrolled underneath it,
-        so during a dash -- the one time the camera moves far enough per tick
-        to see -- the trail slid backwards across the screen instead of hanging
-        in the world, and a ghost spawned near an edge could sit against that
-        edge for its whole life.
+        screen position is mapped through the camera again every frame. A
+        screen rect cached at spawn would stay nailed to the window while the
+        world scrolled underneath it, and a dash is exactly when the camera
+        moves far enough for that to show.
         """
         live: list[tuple[pygame.Surface, pygame.FRect, float]] = []
         for surface, world_rect, ttl in self._ghosts:
@@ -646,12 +640,10 @@ class Renderer:
         bar drawn at the simulation position sits half a tick behind its own
         sprite, which reads as a stripe trailing a moving enemy.
 
-        The rects used to be handed to the presenter so the next frame's erase
-        would reach them. The whole chain still returns them because
-        ``world_overlay.bars`` computes them anyway, and dropping the return
-        would mean changing a port signature to save nothing. Be aware that
-        ``Level.draw`` discards the result: the only readers today are the
-        tests that assert which rects were painted.
+        The chain still returns those rects because
+        ``world_overlay.bars`` computes them anyway, and changing a port
+        signature to drop them would buy nothing. ``Level.draw`` discards the
+        result; the readers are the tests that assert what was painted.
         """
         fighters = tuple(entities)
         screen_rects = {
