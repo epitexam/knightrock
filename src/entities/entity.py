@@ -18,6 +18,7 @@ from src.combat.knockback import KnockbackConfig
 from src.combat.shapes import ShapeKind, ShapePose, SweptShape
 from src.combat.sweep import swept_box
 from src.core.animation.animator import Animator
+from src.core.ecs.movement_table import MovementTable
 from src.core.rendering.render_hints import RenderHints
 from src.core.settings import Clash as ClashSettings
 from src.core.settings import Combat as CombatSettings
@@ -120,6 +121,11 @@ class Entity(Sprite):
     # Only a fighter that can dash has the resource; the player sets it. Declared
     # here so the systems that walk every entity ask ``is None`` and not ``getattr``.
     dash: DashController | None = None
+
+    # Dense kinematic row, bound by ``SpriteGroups.add_fighter`` for fighters
+    # that live in a level. A standalone entity in a test keeps the component.
+    movement_table: MovementTable | None = None
+    movement_slot: int | None = None
 
     # Only the player drives attack poses off frame data. Declared here so the
     # animation publisher reads a declared field on every fighter instead of
@@ -487,30 +493,52 @@ class Entity(Sprite):
         self.vitals.super_armor_count = value
 
     # ------------------------------------------------------------------
-    # Kinematic state is owned by ``self._movement`` and exposed here as
-    # delegating properties. The getter returns the component's live, mutable
-    # object so in-place writes (``entity.velocity.x = ...``,
-    # ``entity.on_surface["floor"] = ...`` — used throughout ``src.physics``
-    # and the state machine) reach the single source of truth; the setter
-    # supports whole-object replacement (``entity.velocity = Vector2(...)``).
+    # Kinematic state lives in the level's dense movement table for fighters
+    # that have one. Each entity owns a stable view, so the hundreds of
+    # in-place writes in ``src.physics`` and the state machines keep working;
+    # standalone entities still delegate to their MovementComponent.
     # ------------------------------------------------------------------
+
+    def bind_movement(self, table: MovementTable) -> None:
+        """Attach this fighter to a level's kinematic table, once."""
+        if self.movement_table is table:
+            return
+        if self.movement_table is not None and self.movement_slot is not None:
+            self.movement_table.release(self.movement_slot)
+        self.movement_table = table
+        self.movement_slot = table.register(self)
 
     @property
     def velocity(self) -> Vector2:
-        """Current velocity vector, owned by the movement component."""
+        """Current velocity, backed by the dense row when bound to a level."""
+        if self.movement_table is not None and self.movement_slot is not None:
+            view, _ = self.movement_table.views_for(self.movement_slot)
+            return cast(Vector2, view)
         return self._movement.velocity
 
     @velocity.setter
     def velocity(self, value: Vector2) -> None:
+        if self.movement_table is not None and self.movement_slot is not None:
+            view, _ = self.movement_table.views_for(self.movement_slot)
+            view.update(value.x, value.y)
+            return
         self._movement.velocity = value
 
     @property
     def on_surface(self) -> dict[str, bool]:
-        """Floor/left/right contact flags, owned by the movement component."""
+        """Contact flags, backed by the dense row when bound to a level."""
+        if self.movement_table is not None and self.movement_slot is not None:
+            _, view = self.movement_table.views_for(self.movement_slot)
+            return cast(dict[str, bool], view)
         return self._movement.on_surface
 
     @on_surface.setter
     def on_surface(self, value: dict[str, bool]) -> None:
+        if self.movement_table is not None and self.movement_slot is not None:
+            _, view = self.movement_table.views_for(self.movement_slot)
+            for flag in ("floor", "left", "right"):
+                view[flag] = value.get(flag, False)
+            return
         self._movement.on_surface = value
 
     @property
@@ -1049,6 +1077,9 @@ class Entity(Sprite):
         spatial_hash = self.spatial_hash
         if spatial_hash is not None:
             spatial_hash.remove(self)
+        if self.movement_table is not None and self.movement_slot is not None:
+            self.movement_table.release(self.movement_slot)
+            self.movement_slot = None
         super().kill()
 
     def receive_damage(
