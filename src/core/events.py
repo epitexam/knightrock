@@ -37,7 +37,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import NamedTuple, TypeVar
+from typing import NamedTuple, cast
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,6 @@ logger = logging.getLogger(__name__)
 #: every event would otherwise append one record per event for the whole
 #: session; the log is a diagnostic, not an audit trail.
 MAX_RECORDED_FAILURES = 64
-
-EventT = TypeVar("EventT", bound="Event")
 
 
 @dataclass(frozen=True)
@@ -162,7 +160,7 @@ class EventBus:
         """Subscribers that raised, oldest first. Cleared by :meth:`clear`."""
         return tuple(self._failures)
 
-    def subscribe(self, event_type: type[EventT], handler: Callable[[EventT], None]) -> None:
+    def subscribe[T: GameEvent](self, event_type: type[T], handler: Callable[[T], None]) -> None:
         """Register ``handler`` for events of exactly ``event_type``.
 
         Idempotent for a given handler: subscribing the same one twice used to
@@ -173,16 +171,21 @@ class EventBus:
         for the save handler a second write of the progression file.
         """
         handlers = self._subscribers.setdefault(event_type, [])
-        if handler not in handlers:
-            handlers.append(handler)  # type: ignore[arg-type]
+        # A handler is stored under exactly ``type(event)``. Erasing it to the
+        # union here is local and checked by that invariant, unlike a bare
+        # ``type: ignore`` which would hide any future mismatch.
+        erased = cast("Handler", handler)
+        if erased not in handlers:
+            handlers.append(erased)
 
-    def unsubscribe(self, event_type: type[EventT], handler: Callable[[EventT], None]) -> None:
+    def unsubscribe[T: GameEvent](self, event_type: type[T], handler: Callable[[T], None]) -> None:
         """Remove a previously registered handler (no-op if absent)."""
         handlers = self._subscribers.get(event_type)
         if handlers is None:
             return
+        erased = cast("Handler", handler)
         with contextlib.suppress(ValueError):
-            handlers.remove(handler)  # type: ignore[arg-type]
+            handlers.remove(erased)
 
     def emit(self, event: GameEvent) -> None:
         """Dispatch ``event`` synchronously, in subscription order.
